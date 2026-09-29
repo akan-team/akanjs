@@ -155,6 +155,18 @@ export interface AkanMobileNativeConfig {
   };
 }
 
+/** Where an installed app looks for newer releases of itself (the native runtime's updates plugin). */
+export interface AkanMobileUpdatesConfig {
+  /** A static base URL, a storage bucket's: `<url>/<os>-<arch>/<channel>.json` (desktop) or `<url>/<platform>/…` (a phone's web bundle). */
+  url: string;
+  /** The update key's public half: `akan update-keygen` prints it, and the private half stays on the machine that publishes. */
+  publicKey: string;
+  /** The manifest the app follows, e.g. "stable" or a "pilot" target's "pilot". Default "production". */
+  channel?: string;
+  /** How long a newly applied release has to call notifyReady() before it is rolled back, ms. Default 10000. */
+  readyTimeout?: number;
+}
+
 export interface AkanMobileTargetConfig {
   name: string;
   basePath?: string;
@@ -170,6 +182,7 @@ export interface AkanMobileTargetConfig {
   deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
+  updates?: AkanMobileUpdatesConfig;
 }
 
 export interface AkanMobileConfig {
@@ -180,6 +193,7 @@ export interface AkanMobileConfig {
   buildNum: number;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
+  updates?: AkanMobileUpdatesConfig;
   targets: Record<string, AkanMobileTargetConfig>;
 }
 

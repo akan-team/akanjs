@@ -11,6 +11,7 @@ export type {
   AkanMobileConfig,
   AkanMobileNativeConfig,
   AkanMobileTargetConfig,
+  AkanMobileUpdatesConfig,
   AkanNativeValue,
   AkanPlugin,
   AkanPluginNativeConfig,

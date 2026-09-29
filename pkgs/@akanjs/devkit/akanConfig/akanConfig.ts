@@ -16,6 +16,7 @@ import {
   type AkanDatabaseConfig,
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
+  type AkanMobileUpdatesConfig,
   type AkanRouteConfig,
   type AkanWebConfig,
   type AkanWebOption,
@@ -269,6 +270,7 @@ export class AkanAppConfig implements AppConfigResult {
     const buildNum = rawMobile.buildNum ?? 1;
     const files = AkanAppConfig.#resolveMobileFiles(rawMobile.files as AkanMobileConfig["files"], "mobile", configPath);
     const native = rawMobile.native as AkanMobileConfig["native"];
+    const updates = rawMobile.updates as AkanMobileConfig["updates"];
     const defaultTargetName = this.#defaultMobileTargetName(rawTargets);
     const targetEntries = Object.entries(
       rawTargets ?? {
@@ -309,6 +311,9 @@ export class AkanAppConfig implements AppConfigResult {
           ...(native || target.native
             ? { native: AkanAppConfig.#mergeNative(native, target.native as AkanMobileTargetConfig["native"]) }
             : {}),
+          ...(updates || target.updates
+            ? { updates: { ...updates, ...target.updates } as AkanMobileUpdatesConfig }
+            : {}),
         } satisfies AkanMobileTargetConfig;
         return [name, resolved];
       }),
@@ -321,10 +326,11 @@ export class AkanAppConfig implements AppConfigResult {
       buildNum,
       ...(files ? { files } : {}),
       ...(native ? { native } : {}),
+      ...(updates ? { updates } : {}),
       targets,
     };
   }
-  static readonly #mobileKeys = ["appName", "appId", "fileName", "version", "buildNum", "files", "native"];
+  static readonly #mobileKeys = ["appName", "appId", "fileName", "version", "buildNum", "files", "native", "updates"];
   static readonly #targetKeys = [
     "basePath",
     "indexPath",
@@ -338,6 +344,7 @@ export class AkanAppConfig implements AppConfigResult {
     "deepLinks",
     "files",
     "native",
+    "updates",
   ];
   //* The Capacitor keys used to pass straight through; the native runtime takes typed ones, so a leftover is refused.
   static #assertMobileKeys(section: object, known: string[], where: string, configPath: string) {

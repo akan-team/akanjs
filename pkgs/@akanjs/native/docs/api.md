@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.4.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.5.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -26,7 +26,7 @@
 ## 1. 모양
 
 ```ts
-import { build, run, dev, release, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
+import { build, run, dev, release, publishUpdate, updateKeygen, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
 ```
 
 - 함수마다 옵션 객체 하나를 받고 Promise를 돌려준다.
@@ -232,6 +232,16 @@ run·dev의 iPhone 빌드와 iOS release는 같은 규칙으로 인증서(identi
 
 - 버전: `config.app.version`이 versionName·CFBundleShortVersionString이고, `config.app.build`가 versionCode·CFBundleVersion이다.
 - 업로드(TestFlight, Play)는 별도 함수 `upload()`로 나중에 붙인다(O1-3, O1-6).
+
+### publishUpdate와 updateKeygen — 업데이트 릴리스 (UP-1, UP-2)
+
+```ts
+const { publicKey, keyPath, created } = updateKeygen({ config });
+const { dir, bundle, channel, files, size, build } = await publishUpdate({ appDir, config, platform: "windows", channel: "pilot", out });
+```
+- `updateKeygen`: 앱 id의 Ed25519 키를 한 번 만들고 그 뒤로는 읽는다(`AKAN_NATIVE_UPDATE_KEY`, 없으면 `~/.akan/native/keys/<app id>.update.key`). `publicKey`는 설정의 `updates.publicKey`로 간다.
+- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없으면 빌드 전에 `CONFIG_INVALID`.
+- akanjs: `akan update-keygen`, `akan publish-update`(devkit `NativeApp.updateKeygen`·`publishUpdate`).
 
 ### doctor와 devices
 

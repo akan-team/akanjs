@@ -9,6 +9,8 @@ import {
   build,
   doctor,
   type LogEvent,
+  publishUpdate,
+  updateKeygen,
   validateConfig,
 } from "../src/api.ts";
 import { ENV_TYPES_FILE } from "../src/lib/env.ts";
@@ -108,6 +110,22 @@ describe("programmatic API", () => {
       'keyboard.resize must be "resize" or "none" (got "pan")',
       "ios.hideFormAccessoryBar must be a boolean",
     ]);
+  });
+
+  test("updateKeygen makes the update key once and reads it after; publishUpdate needs updates first", async () => {
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "apitest.update.key");
+    try {
+      const made = updateKeygen({ config: config() });
+      expect(made).toMatchObject({ created: true, keyPath: process.env.AKAN_NATIVE_UPDATE_KEY });
+      expect(Buffer.from(made.publicKey, "base64")).toHaveLength(32);
+      expect(updateKeygen({ config: config() })).toEqual({ ...made, created: false });
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
+    const refused = await failure(publishUpdate({ appDir: app("publish"), config: config(), platform: "android" }));
+    expect(refused.code).toBe("CONFIG_INVALID");
   });
 
   test("desktop.recovery, desktop.window and android.autoplay are checked", () => {

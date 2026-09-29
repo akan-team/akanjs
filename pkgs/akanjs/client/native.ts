@@ -42,6 +42,8 @@ export type {
 } from "@akanjs/native/plugins/push";
 export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
+export type { UpdateCheck, UpdateProgress, UpdateState } from "@akanjs/native/plugins/updates";
+export { markReady, updates, useUpdateState } from "@akanjs/native/plugins/updates";
 export type { VolumeState } from "@akanjs/native/plugins/volume";
 export { volume } from "@akanjs/native/plugins/volume";
 export { useLiveValue, usePluginEvent } from "@akanjs/native/react";

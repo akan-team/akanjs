@@ -99,6 +99,7 @@ export class NativeConfig {
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
         //? A second copy of the app would start a second server on the same data.
         ...(desktopServer ? ["single-instance"] : []),
+        ...(target.updates ? ["updates"] : []),
         ...(target.native?.plugins ?? []),
         ...nativePlugins.map((plugin) => plugin.dir),
       ]),
@@ -177,6 +178,7 @@ export class NativeConfig {
       },
       keyboard: { resize: "none" },
       ...(desktop ? { desktop } : {}),
+      ...(target.updates ? { updates: target.updates } : {}),
       ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
       ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
     };

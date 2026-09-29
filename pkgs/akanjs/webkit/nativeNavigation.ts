@@ -1,6 +1,6 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
-import { app, appState, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
+import { app, appState, desktopPlatform, isNativeApp, markReady, push } from "akanjs/client/native";
 
 export interface NativeBackState {
   path: string;
@@ -34,6 +34,8 @@ export class NativeNavigation {
   constructor(readonly options: NativeNavigationOptions) {}
 
   listen() {
+    //? An updated release runs on trial until its page says it works, and is rolled back otherwise: a mounted frame does.
+    void markReady().catch(() => undefined);
     //? WebView2 walks history on Alt+← and the mouse back button by itself; WKWebView leaves both to the app.
     if (desktopPlatform() === "macos") return this.#listenMacBack();
     if (!isNativeApp()) return () => undefined;

@@ -1747,6 +1747,43 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
   },
 },`}
           />
+          <Docs.SubSubTitle>{l.trans({ en: "Updates", ko: "업데이트" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An installed app updates itself from releases you sign. <code>akan update-keygen</code> makes the key
+                  once and prints its public half for <code>mobile.updates</code>; <code>akan publish-update</code>{" "}
+                  builds a release (the whole app on the desktop, the web bundle on a phone) into{" "}
+                  <code>.akan/mobile/&lt;target&gt;/updates</code>, which you upload to <code>updates.url</code>, the
+                  manifests last. A new release runs on trial until its first page mounts; when to check, download and
+                  apply is the app's call.
+                </span>
+              ),
+              ko: (
+                <span>
+                  설치된 앱은 직접 서명한 릴리스로 스스로 업데이트합니다. <code>akan update-keygen</code>이 키를 한 번
+                  만들고 <code>mobile.updates</code>에 넣을 공개 키를 출력합니다. <code>akan publish-update</code>는
+                  릴리스(데스크톱은 앱 전체, 폰은 웹 번들)를 <code>.akan/mobile/&lt;target&gt;/updates</code>에
+                  빌드하고, 그 폴더를 <code>updates.url</code>에 올리되 manifest를 마지막에 올립니다. 새 릴리스는 첫
+                  페이지가 마운트될 때까지 시험 실행이며, 언제 확인·다운로드·적용할지는 앱이 정합니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="webkit/useAppUpdates.tsx"
+            language="typescript"
+            code={`import { updates } from "akanjs/client/native";
+
+// e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
+const { available } = await updates.check();
+if (available) {
+  await updates.download();
+  await updates.apply();
+}`}
+          />
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

@@ -224,6 +224,20 @@ describe("NativeConfig.build", () => {
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
   });
 
+  test("an app with updates ships the updates plugin and its settings", () => {
+    const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=`, channel: "pilot" };
+    const { config } = NativeConfig.build({
+      appPath: "/repo/apps/board",
+      target: { ...minimalTarget, permissions: [], deepLinks: undefined, native: undefined, updates },
+      webDir: "/web",
+      contributions: [],
+      locales: ["en"],
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, "updates"]);
+    expect(config.updates).toEqual(updates);
+  });
+
   test("keeps a file name the runtime accepts", () => {
     expect(NativeConfig.fileNameOf("minimal")).toBe("minimal");
     expect(NativeConfig.fileNameOf("my app!")).toBe("my-app");

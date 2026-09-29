@@ -169,6 +169,37 @@ export class NativeApp {
     });
   }
 
+  /** Where publishUpdate writes: upload this folder as the target's updates.url. */
+  get updatesDir() {
+    return path.join(this.targetRoot, "updates");
+  }
+
+  /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */
+  async publishUpdate(
+    platform: NativePlatform,
+    { channel, server }: { channel?: string; server?: DesktopServerBundle } = {},
+  ) {
+    NativeApp.#assertServerPlatform(platform, server);
+    if (!this.target.config.updates)
+      throw new Error(
+        `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
+      );
+    await this.assembleWeb();
+    const { api, config } = await this.prepare(server);
+    return await api.publishUpdate({
+      ...this.#task(platform, config),
+      platform,
+      out: this.updatesDir,
+      ...(channel ? { channel } : {}),
+    });
+  }
+
+  /** The key update releases of this target's app id are signed with: made once, then read. */
+  async updateKeygen() {
+    const [api, { config }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config()]);
+    return api.updateKeygen({ config });
+  }
+
   async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
     const signing = NativeApp.androidSigning();
     await this.assembleWeb();

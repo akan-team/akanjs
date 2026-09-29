@@ -271,6 +271,38 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         allowLocalRelease,
       });
     }),
+  updateKeygen: target({ desc: "Make (once) the key an app's update releases are signed with; print its public key" })
+    .with(App)
+    .option("target", String, mobileTargetOption)
+    .exec(async function (app, target) {
+      await this.applicationScript.updateKeygen(app, { target });
+    }),
+  publishUpdate: target({ desc: "Build and sign an update release installed apps take (desktop, android or ios)" })
+    .with(App)
+    .option("platform", String, {
+      enum: ["desktop", "android", "ios"],
+      default: "desktop",
+      desc: "desktop is this computer's OS and CPU; android and ios publish the web bundle",
+    })
+    .option("target", String, mobileTargetOption)
+    .option("env", String, releaseEnvOption)
+    .option("channel", String, {
+      desc: "the manifest to publish to (default: the target's updates.channel)",
+      nullable: true,
+    })
+    .option("server", Boolean, { ...serverOption, desc: "a desktop release that carries the app's server" })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
+    .exec(async function (app, platform, target, env, channel, server, write, allowLocalRelease) {
+      await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+        target,
+        env,
+        ...(channel ? { channel } : {}),
+        server,
+        write,
+        allowLocalRelease,
+      });
+    }),
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
     .option("mode", String, {

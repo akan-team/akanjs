@@ -310,6 +310,14 @@ export default page().render(() => {
             ko: "App Store나 Play Store 출시용으로 앱을 빌드합니다.",
           }),
         },
+        {
+          name: ["update-keygen", "publish-update"],
+          href: ["#update-keygen", "#publish-update"],
+          desc: l.trans({
+            en: "Sign and publish releases installed apps update themselves to.",
+            ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시합니다.",
+          }),
+        },
       ],
     },
   ];
@@ -1133,6 +1141,53 @@ akan release-ios myapp --target default --ad-hoc true`,
       notes: [androidSigningNote, outputNote("android")],
       examples: `akan release-android myapp --target all --env main
 akan release-android myapp --assemble-type apk --target all --env main`,
+    },
+    {
+      name: "update-keygen",
+      signature: "akan update-keygen <app> [--target <target>]",
+      desc: l.trans({
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `mobile.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다.",
+      }),
+      options: [targetOption],
+      examples: "akan update-keygen myapp",
+    },
+    {
+      name: "publish-update",
+      signature:
+        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
+      desc: l.trans({
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, the manifests last. A desktop app that carries its server publishes with `--server`, as it was built.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 manifest를 마지막에 올립니다. 서버를 싣는 데스크톱 앱은 빌드할 때처럼 `--server`로 게시합니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          defaultValue: "desktop",
+          enumOrFlag: "desktop | android | ios",
+          desc: l.trans({
+            en: "`desktop` is this computer's own OS and CPU.",
+            ko: "`desktop`은 이 컴퓨터의 OS와 CPU입니다.",
+          }),
+        },
+        targetOption,
+        releaseEnvOption,
+        {
+          name: "--channel",
+          type: "String",
+          desc: l.trans({
+            en: "The manifest to publish to; default the target's `updates.channel`. Publish to a pilot channel first, then to the one everyone follows.",
+            ko: "게시할 manifest이며 기본값은 타깃의 `updates.channel`입니다. pilot 채널에 먼저 내고, 모두가 따르는 채널로 올립니다.",
+          }),
+        },
+        carryServerOption,
+        writeOption,
+        allowLocalReleaseOption,
+      ],
+      examples: `akan publish-update myapp --env main
+akan publish-update myapp --target pilot --env main
+akan publish-update myapp --platform android --env main`,
     },
   ];
 

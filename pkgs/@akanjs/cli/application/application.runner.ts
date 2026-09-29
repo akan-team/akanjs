@@ -36,6 +36,12 @@ export interface MobileTargetOptions {
   target?: string;
   env?: MobileEnv;
 }
+export interface MobilePublishOptions extends MobileTargetOptions {
+  /** The manifest to publish to; default the target's updates.channel. */
+  channel?: string;
+  /** A desktop release that carries the app's server, as the installed app does (`build-desktop --server`). */
+  server?: boolean;
+}
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
   /** A desktop build that carries the app's server. */
@@ -365,6 +371,49 @@ try {
         mobileTarget,
         await new NativeApp(app, mobileTarget).releaseAndroid({ formats: [format] }),
       );
+  }
+
+  //* A target that shares its app id with another shares its key too, so each id is answered once.
+  async updateKeygen(app: App, target?: string) {
+    const seen = new Set<string>();
+    for (const mobileTarget of await resolveMobileTargets(app, target ?? "all")) {
+      if (seen.has(mobileTarget.config.appId)) continue;
+      seen.add(mobileTarget.config.appId);
+      const { publicKey, keyPath, created } = await new NativeApp(app, mobileTarget).updateKeygen();
+      app.log(
+        `${mobileTarget.config.appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
+      );
+      app.log(`  mobile: { updates: { url: "https://…/${app.name}", publicKey: ${JSON.stringify(publicKey)} } }`);
+      const declared = mobileTarget.config.updates?.publicKey;
+      if (declared && declared !== publicKey)
+        app.logger.warn(
+          `mobile.targets.${mobileTarget.name}.updates.publicKey is another key's; releases would not verify.`,
+        );
+    }
+  }
+
+  async publishUpdate(
+    app: App,
+    platform: "desktop" | "android" | "ios",
+    { target, env = "main", channel, server = false }: MobilePublishOptions = {},
+  ) {
+    const targets = await resolveMobileTargets(app, target);
+    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
+    await this.#buildMobileCsr(app, env);
+    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+    const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    for (const mobileTarget of targets) {
+      const nativeApp = new NativeApp(app, mobileTarget);
+      const published = await nativeApp.publishUpdate(nativePlatform, {
+        ...(channel ? { channel } : {}),
+        ...(carried ? { server: carried } : {}),
+      });
+      this.#reportBuild(app, mobileTarget, published.build);
+      app.log(
+        `${app.name}/${mobileTarget.name} ${published.bundle}: ${published.dir}/${published.channel}.json, ${published.files} files, ${Math.round(published.size / 1024)} KiB`,
+      );
+      app.log(`Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last.`);
+    }
   }
 
   #reportBuild(

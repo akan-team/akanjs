@@ -17,13 +17,17 @@ afterEach(() => {
   host?.uninstall();
   host = null;
   reported.length = 0;
+  confirmed.length = 0;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
 });
 
-const installAndroid = () => {
+const confirmed: number[] = [];
+
+const installAndroid = ({ updates = false } = {}) => {
   host = installMockHost({
     platform: "android",
     plugins: {
+      ...(updates ? { updates: { methods: { notifyReady: () => void confirmed.push(Date.now()) } } } : {}),
       app: {
         methods: {
           exit: () => undefined,
@@ -46,6 +50,32 @@ const installAndroid = () => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe("NativeNavigation on Android", () => {
+  test("confirms an updated release once the frame listens, and asks nothing of an app without updates", async () => {
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const options = {
+      historyIdx: () => 0,
+      backState: () => ({
+        path: "/:lang/explore",
+        keyboardHeight: 0,
+        keyboardVisible: false,
+        router: { back: () => undefined },
+      }),
+      dismissKeyboard: () => undefined,
+    };
+    installAndroid({ updates: true });
+    const stop = new NativeNavigation(options).listen();
+    await settle();
+    expect(confirmed).toHaveLength(1);
+    stop();
+    host?.uninstall();
+
+    installAndroid();
+    const stopAgain = new NativeNavigation(options).listen();
+    await settle();
+    expect(confirmed).toHaveLength(1);
+    stopAgain();
+  });
+
   test("hands back to the system only where the page has nothing to go back to", async () => {
     installAndroid();
     const state: { idx: number; back: NativeBackState } = {

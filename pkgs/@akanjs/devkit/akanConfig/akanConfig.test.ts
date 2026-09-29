@@ -491,6 +491,25 @@ describe("AkanAppConfig", () => {
     });
   });
 
+  test("gives every target the mobile-wide updates, a target overriding a field", () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: "key=" };
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          updates,
+          targets: { default: {}, pilot: { updates: { channel: "pilot" } } },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default?.updates).toEqual(updates);
+    expect(config.mobile.targets.pilot?.updates).toEqual({ ...updates, channel: "pilot" });
+  });
+
   test("merges the desktop settings field by field, the target winning", () => {
     const config = new AkanAppConfig(
       app,

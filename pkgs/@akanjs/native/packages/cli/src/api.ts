@@ -23,6 +23,8 @@ import {
   WebInputError,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
+import { publishRelease } from "./lib/publish.ts";
+import { generateUpdateKey, updateKeyPath } from "./lib/updates.ts";
 import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
@@ -41,7 +43,7 @@ export type {
 };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.4.0";
+export const API_VERSION = "0.5.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -184,6 +186,57 @@ export function release(
     const android = { signing: options.signing, bundle: formats.includes("aab") };
     return (await buildIn(options, "release", options.mode ?? "production", warnings, { android })).result;
   });
+}
+
+export interface PublishResult {
+  build: BuildResult;
+  /** `<out>/<os>-<arch>` (desktop) or `<out>/<platform>` (a phone's web bundle): what to upload under updates.url. */
+  dir: string;
+  bundle: string;
+  channel: string;
+  files: number;
+  /** Bytes of the files the manifest names. */
+  size: number;
+}
+
+/**
+ * A signed release for the updates plugin (UP-1, UP-2): a release build, then `<channel>.json`, its signature and
+ * its files under `out` (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
+ */
+export function publishUpdate(
+  options: TaskOptions & { platform: Exclude<TargetPlatform, "web">; channel?: string; out?: string },
+): Promise<PublishResult> {
+  return task(options, async (warnings) => {
+    if (!options.config.updates)
+      throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
+    const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings);
+    const channel = options.channel ?? ctx.project.config.updates?.channel ?? "production";
+    const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
+    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
+      throw toAkanNativeError(error, "CONFIG_INVALID");
+    });
+    return {
+      build: result,
+      dir,
+      bundle: manifest.bundle,
+      channel,
+      files: manifest.files.length,
+      size: manifest.files.reduce((n, f) => n + f.size, 0),
+    };
+  });
+}
+
+/**
+ * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
+ * then read. `publicKey` goes into the config's `updates.publicKey`; the key file never leaves the machine.
+ */
+export function updateKeygen(options: { config: AkanNativeConfig }): {
+  publicKey: string;
+  keyPath: string;
+  created: boolean;
+} {
+  const keyPath = updateKeyPath(options.config.app.id);
+  return { ...generateUpdateKey(keyPath), keyPath };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */

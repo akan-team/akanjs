@@ -22,6 +22,7 @@ import {
   type IosReleaseOptions,
   type LogsOptions,
   type MobileBuildOptions,
+  type MobilePublishOptions,
   type MobileStartOptions,
   type MobileTargetOptions,
 } from "./application.runner";
@@ -376,6 +377,22 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("releaseAndroid", options.env ?? "main", allowLocalRelease);
     await this.applicationRunner.releaseAndroid(app, format, options);
+  }
+  async updateKeygen(app: App, { target }: { target?: string } = {}) {
+    await this.applicationRunner.updateKeygen(app, target);
+  }
+  async publishUpdate(
+    app: App,
+    platform: "desktop" | "android" | "ios",
+    {
+      write = true,
+      allowLocalRelease = false,
+      ...options
+    }: MobilePublishOptions & MobileWriteOptions & MobileReleaseGate = {},
+  ) {
+    await app.scanSync({ write });
+    ApplicationScript.#assertReleaseEnv("publishUpdate", options.env ?? "main", allowLocalRelease);
+    await this.applicationRunner.publishUpdate(app, platform, options);
   }
   static #assertReleaseEnv(command: string, env: string, allowLocalRelease: boolean) {
     if (env === "local" && !allowLocalRelease)
