@@ -166,6 +166,12 @@ const setAnsweringFetch = () => {
   }) as typeof globalThis.fetch;
   return signals;
 };
+//? A fixed delay loses to a stalled event loop: the timers it outwaits fire in its pass and schedule theirs after it.
+const waitUntil = async (done: () => boolean) => {
+  for (let tries = 0; !done() && tries < 1000; tries += 1) {
+    await new Promise((resolve) => originalSetTimeout(resolve, 1));
+  }
+};
 const captureWarnings = async (run: (warnings: string[]) => Promise<void>) => {
   const originalConsoleWarn = console.warn;
   const warnings: string[] = [];
@@ -1878,21 +1884,24 @@ describe("WsClient", () => {
     globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
       originalSetTimeout(handler, 0, ...args)) as typeof setTimeout;
     const client = new WsClient("ws://example/ws");
-    client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
-    client.connect();
-    const ws = FakeWebSocket.instances[0];
-    ws.open();
+    try {
+      client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+      client.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
 
-    // A socket the network dropped without a FIN keeps accepting `send()`, so only the missing pong says so.
-    setSystemTime(new Date("2026-09-18T00:10:00Z"));
-    await new Promise((resolve) => originalSetTimeout(resolve, 10));
+      // A socket the network dropped without a FIN keeps accepting `send()`, so only the missing pong says so.
+      setSystemTime(new Date("2026-09-18T00:10:00Z"));
+      await waitUntil(() => FakeWebSocket.instances.length > 1);
 
-    expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
-    const reconnected = FakeWebSocket.instances[1];
-    expect(reconnected).toBeDefined();
-    reconnected.open();
-    expect(JSON.parse(reconnected.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
-    client.destroy();
+      expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
+      const reconnected = FakeWebSocket.instances[1];
+      expect(reconnected).toBeDefined();
+      reconnected.open();
+      expect(JSON.parse(reconnected.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+    } finally {
+      client.destroy();
+    }
   });
 
   test("resubscribes rooms on reconnect and destroy prevents reconnect", async () => {
