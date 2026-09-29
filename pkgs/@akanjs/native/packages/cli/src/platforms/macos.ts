@@ -9,9 +9,20 @@
 //     Resources/boot.json              platform, plugins, app info
 //     Resources/env.runtime.json       replaceable runtime env (ENV-4)
 //     Resources/shell.json, updates.json (platforms/desktop.ts)
-//     Resources/server/                the carried server (desktop.server), its native addons signed too
+//     Resources/server/                the carried server (desktop.server), its Mach-O files signed too
 
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { ParsedArgs } from "../lib/args.ts";
 import { execOrThrow } from "../lib/exec.ts";
@@ -101,13 +112,32 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
   return appPath;
 }
 
-/** Mach-O files in the carried server (npm native addons): nested code the bundle's signature does not sign. */
+/**
+ * Mach-O files in the carried server, whatever their names (native addons, `bin` executables, a package's own
+ * executable): nested code the bundle's signature does not sign.
+ */
 export function serverNativeCode(resources: string): string[] {
   const dir = join(resources, "server");
   if (!existsSync(dir)) return [];
   return (readdirSync(dir, { recursive: true }) as string[])
-    .filter((file) => /\.(node|dylib|so)$/.test(file))
-    .map((file) => join(dir, file));
+    .filter((file) => !/\.(c?js|mjs|ts|json|map|md|txt|html|css)$/i.test(file))
+    .map((file) => join(dir, file))
+    .filter(isMachO);
+}
+
+function isMachO(file: string): boolean {
+  if (!lstatSync(file).isFile()) return false;
+  const head = Buffer.alloc(8);
+  const fd = openSync(file, "r");
+  try {
+    if (readSync(fd, head, 0, 8, 0) < 8) return false;
+  } finally {
+    closeSync(fd);
+  }
+  const magic = head.readUInt32BE(0);
+  if (magic === 0xfeedface || magic === 0xfeedfacf || magic === 0xcefaedfe || magic === 0xcffaedfe) return true;
+  //? A Java class file starts with 0xcafebabe too: its next word is the class version (45 and up), a fat header's its arch count.
+  return (magic === 0xcafebabe || magic === 0xcafebabf) && head.readUInt32BE(4) < 45;
 }
 
 export async function launchMacos(ctx: BuildContext, appPath: string, opts: LaunchOptions): Promise<Launched> {
