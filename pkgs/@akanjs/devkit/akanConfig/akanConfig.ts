@@ -16,7 +16,6 @@ import {
   type AkanDatabaseConfig,
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
-  type AkanMobileUpdatesConfig,
   type AkanRouteConfig,
   type AkanWebConfig,
   type AkanWebOption,
@@ -295,6 +294,11 @@ export class AkanAppConfig implements AppConfigResult {
           configPath,
         );
         const fileName = (target.fileName ?? rawMobile.fileName) as string | undefined;
+        const targetUpdates = updates || target.updates ? { ...updates, ...target.updates } : undefined;
+        if (targetUpdates && (!targetUpdates.url || !targetUpdates.publicKey))
+          throw new Error(
+            `${where}.updates in ${configPath} has no url or publicKey; give them in mobile.updates or the target's own.`,
+          );
         const resolved = {
           name,
           basePath,
@@ -311,9 +315,7 @@ export class AkanAppConfig implements AppConfigResult {
           ...(native || target.native
             ? { native: AkanAppConfig.#mergeNative(native, target.native as AkanMobileTargetConfig["native"]) }
             : {}),
-          ...(updates || target.updates
-            ? { updates: { ...updates, ...target.updates } as AkanMobileUpdatesConfig }
-            : {}),
+          ...(targetUpdates ? { updates: targetUpdates } : {}),
         } satisfies AkanMobileTargetConfig;
         return [name, resolved];
       }),

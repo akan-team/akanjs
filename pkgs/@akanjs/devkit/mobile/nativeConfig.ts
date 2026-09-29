@@ -99,7 +99,7 @@ export class NativeConfig {
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
         //? A second copy of the app would start a second server on the same data.
         ...(desktopServer ? ["single-instance"] : []),
-        ...(target.updates ? ["updates"] : []),
+        ...(NativeConfig.#updates(target) ? ["updates"] : []),
         ...(target.native?.plugins ?? []),
         ...nativePlugins.map((plugin) => plugin.dir),
       ]),
@@ -178,11 +178,17 @@ export class NativeConfig {
       },
       keyboard: { resize: "none" },
       ...(desktop ? { desktop } : {}),
-      ...(target.updates ? { updates: target.updates } : {}),
+      ...(NativeConfig.#updates(target) ? { updates: NativeConfig.#updates(target) } : {}),
       ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
       ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
     };
     return { config, warnings };
+  }
+
+  //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
+  static #updates(target: AkanMobileTargetConfig): NonNullable<AkanNativeConfig["updates"]> | undefined {
+    const { url, publicKey, ...rest } = target.updates ?? {};
+    return url && publicKey ? { ...rest, url, publicKey } : undefined;
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */

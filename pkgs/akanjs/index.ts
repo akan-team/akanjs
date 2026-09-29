@@ -182,7 +182,8 @@ export interface AkanMobileTargetConfig {
   deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
-  updates?: AkanMobileUpdatesConfig;
+  /** Over mobile.updates, field by field: a pilot target names its own channel. */
+  updates?: Partial<AkanMobileUpdatesConfig>;
 }
 
 export interface AkanMobileConfig {

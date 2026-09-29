@@ -508,6 +508,16 @@ describe("AkanAppConfig", () => {
 
     expect(config.mobile.targets.default?.updates).toEqual(updates);
     expect(config.mobile.targets.pilot?.updates).toEqual({ ...updates, channel: "pilot" });
+    expect(
+      () =>
+        new AkanAppConfig(
+          app,
+          [],
+          packageJson,
+          { mobile: { targets: { pilot: { updates: { channel: "pilot" } } } } },
+          baseDevEnv,
+        ),
+    ).toThrow("mobile.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKey");
   });
 
   test("merges the desktop settings field by field, the target winning", () => {
