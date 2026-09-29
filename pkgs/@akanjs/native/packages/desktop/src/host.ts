@@ -374,7 +374,9 @@ export function startHost(plugins: DesktopPlugin[]): void {
           }).catch((error: unknown) => console.error("[akan-native] cannot show the server alert", error)),
       });
       lifecycle.onQuit(() => server.stop());
-      return { PUBLIC_AKAN_SERVER_URL: (await server.start()).url };
+      const { url, ready } = await server.start();
+      console.info(`[akan-native] server ${ready ? "ready" : "still starting"} on ${url}`);
+      return { PUBLIC_AKAN_SERVER_URL: url };
     } catch (error) {
       console.error("[akan-native] the app's server could not start", error);
       return undefined;
