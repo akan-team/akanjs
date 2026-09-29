@@ -138,6 +138,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
     plugins,
     {
       app: boot.app,
+      dev: boot.dev === true,
       appDataDir: appDataDir(boot.app.id),
       emit(window, message) {
         emitJs(window, `window.__AKAN_NATIVE__&&window.__AKAN_NATIVE__.receive(${JSON.stringify(message)})`);

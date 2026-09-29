@@ -10,6 +10,8 @@
 // - Bun as a CLI reads .env and bunfig.toml from its working folder (<app data>/server, writable by
 //   any process of the user) and installs missing packages; the flags turn all three off.
 // - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up.
+// - A `file.resolve` request names a grant the file picker gave the page (forServer); the answer is
+//   the path the user picked, or an error for a grant this app never gave (grants.ts).
 // - Quit: an IPC shutdown, then SIGTERM after STOP_GRACE. If the shell dies first, the child sees its
 //   IPC channel close and stops itself (akanjs AkanServer); on Windows the job object ends it at once.
 
@@ -17,6 +19,7 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { delimiter, join } from "node:path";
+import { resolveGrant } from "./grants.ts";
 
 export interface ServerManifest {
   /** The file in resources/server that starts the server. */
@@ -211,6 +214,15 @@ const spawnServer = (argv: string[], { cwd, env, onMessage, onLine }: SpawnOptio
   return { exited: proc.exited, send: (message) => proc.send(message), kill: (signal) => proc.kill(signal) };
 };
 
+function answerGrant(child: ServerProcess, { id, grant }: { id?: unknown; grant?: unknown }) {
+  const found = resolveGrant(grant);
+  child.send(
+    found
+      ? { type: "file.resolved", id, path: found.path, mode: found.mode }
+      : { type: "file.resolved", id, error: "no file was granted under this id" },
+  );
+}
+
 export function createDesktopServer(options: DesktopServerOptions): DesktopServer {
   const dataDir = join(options.appDataDir, "server");
   const spawn = options.spawn ?? spawnServer;
@@ -230,7 +242,9 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       cwd: dataDir,
       env,
       onMessage(message) {
-        if ((message as { type?: unknown } | null)?.type !== "ready" || readyAt !== null) return;
+        const type = (message as { type?: unknown } | null)?.type;
+        if (type === "file.resolve") return answerGrant(child, message as { id?: unknown; grant?: unknown });
+        if (type !== "ready" || readyAt !== null) return;
         readyAt = now();
         markReady();
       },

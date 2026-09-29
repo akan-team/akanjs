@@ -806,16 +806,18 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - Worker는 main이 막혀 있는 동안 SIGTERM 핸들러를 받지 못한다(확인). 그래서 셸이 SIGTERM을 받아(libc `signal` + self-pipe, `lib.rs` `sigterm`) `signal` 이벤트로 넘기고, 호스트는 veto 없이 `onQuit` 훅을 돌린 뒤 끝낸다. 두 번째 SIGTERM이나 5초 초과면 바로 종료한다.
 
 ### 데스크톱 내장 서버 (desktop.server, akanjs `build-desktop --server`)
-- 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 `.node`·`.dylib`·`.so`를 dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
+- 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env, bin)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 Mach-O 파일을 이름과 상관없이(파일 머리로 판별) dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
 - 시작(`packages/desktop/src/server.ts`): 플러그인 호스트가 launch 단계(`dispatcher.launched`) 뒤에 띄운다. `exit`이면(다른 인스턴스로 넘겼으면) 띄우지 않는다. 두 번째 인스턴스가 서버를 잠깐이라도 띄우면 같은 DB와 cron을 건드린다.
   - 포트: 127.0.0.1에서 0번 포트로 listen해 번호를 받고 닫는다. init.js가 이 포트를 담아 `akan_native_run`에 한 번 넘어가므로 세션 동안 바꾸지 않고, 재시작도 같은 포트로 한다.
   - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개 + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`). launcher 값이 이긴다.
+  - PATH: `server.json`의 `bin`(서버 폴더 안의 폴더, akanjs `bin`)을 PATH 맨 앞에 붙인다. `server.json`이 PATH를 정해도, 셸이 Windows처럼 `Path`로 적어도 그렇다. 그래서 서버 코드의 `spawn("ffmpeg")`가 앱이 싣고 온 파일을 쓴다.
   - 데이터: `<app data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret` 0600). FileRef가 서빙하지 않는 예약 폴더다(L4).
   - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다.
 - 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다.
 - 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGTERM. 셸이 먼저 죽으면 macOS·Linux에서는 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). Windows에서는 Bun이 자식을 넣는 job object가 셸과 함께 서버를 바로 끝낸다(서버 로그에 종료 줄이 없다). SQLite WAL이 있어 데이터는 남는다.
 - 확인(E2E `pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`, 2026-09-29): macOS, Linux 컨테이너(WebKitGTK), Windows 11 ARM VM(WebView2) 모두 통과. 생성·목록·업로드와 되읽기, rebinding Host·외부 Origin·LAN 주소 거부, 두 번째 실행은 서버 없이 넘김, 종료(SIGTERM, Windows는 stdin quit) 뒤 graceful 종료와 데이터 유지, 강제 종료 뒤 서버도 내려감. 세 OS 모두 서버는 127.0.0.1에만 LISTEN하고 WebView(WebKit, msedgewebview2)가 그 포트에 연결한다. 네트워크 없는 Linux 컨테이너(`--network none`)에서도 동작했다.
 - 로그: 서버의 stdout·stderr를 줄마다 `[server] ` 접두사로 셸 stdout·stderr에 넘긴다. 파일 로그는 `<app data>/server/runtime/logs`.
+- 파일 허가(`packages/desktop/src/grants.ts`): file-picker `forServer`는 복사하지 않고, 원본을 FileRef로 서빙하며, 결과마다 불투명한 `grant`를 준다(읽기·쓰기·폴더). 서버가 IPC `file.resolve { id, grant }`를 보내면 셸이 `file.resolved { id, path, mode }`(모르는 grant면 `error`)로 답한다(akanjs `NativeFile`). 그래서 서버는 사용자가 고른 것만 얻고, 페이지는 경로를 갖지 않는다. dev 빌드의 서버는 셸의 자식이 아니므로(`akan start`) grant에 경로를 담고 `~/.akan/native/dev-file-grant.key`(0600)로 HMAC 서명한다. akanjs는 `operationMode` local에서만 그 서명을 확인해 받는다.
 
 ### macOS 네이티브 시트 (file-picker, dialog, D7)
 - 셸 op `panel.open`·`panel.save`·`panel.mime`·`panel.types`·`alert.show`는 `native/desktop/src/panels.rs`가 처리한다. 시트는 나중에 답하므로 이 op들은 요청 id를 받아 완료 핸들러에서 `reply`한다(`lib.rs`의 Shell 이벤트에서 notify·camera와 함께 먼저 분기). 창이 숨어 있으면 먼저 보인다(숨은 창의 시트는 뜨지 않고 핸들러도 불리지 않는다).

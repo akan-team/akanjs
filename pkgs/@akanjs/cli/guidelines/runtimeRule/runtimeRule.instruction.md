@@ -243,6 +243,20 @@ root to change the network or the clock — runs as a service on that machine (t
 without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
 user and stops with the app.
 
+**A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
+["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
+from `akanjs/client/native`) copies nothing, whatever the size: its FileRefs serve the originals for a preview, and
+each result carries a `grant`. The page hands the grant to an endpoint, and the server exchanges it:
+
+```ts
+const input = await NativeFile.resolve(grant, "read"); // "write" for a saveFile grant, "folder" for pickDirectory
+const clip = await NativeFile.resolveIn(folderGrant, "day1/a.mp4"); // refused if it climbs out of the folder
+```
+
+The carried server asks the shell that showed the dialog over its IPC channel, so it reaches what the user picked
+and nothing else, and no page ever holds a path. Behind a dev build `akan start` checks the grant's signature
+against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
+
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
 (`window`), global shortcuts, keep-awake and launch at login are native runtime plugins. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.

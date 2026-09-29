@@ -10,6 +10,16 @@ export type { Contact } from "@akanjs/native/plugins/contacts";
 export type { DeviceInfo } from "@akanjs/native/plugins/device";
 export { device } from "@akanjs/native/plugins/device";
 export { dialog } from "@akanjs/native/plugins/dialog";
+export type {
+  DirectoryFile,
+  PickDirectoryOptions,
+  PickDirectoryResult,
+  PickedFile,
+  PickFilesOptions,
+  SaveFileOptions,
+  SaveFileResult,
+} from "@akanjs/native/plugins/file-picker";
+export { filePicker } from "@akanjs/native/plugins/file-picker";
 export type { Position } from "@akanjs/native/plugins/geolocation";
 export { haptics } from "@akanjs/native/plugins/haptics";
 export type { IapProduct, IapTransaction } from "@akanjs/native/plugins/iap";

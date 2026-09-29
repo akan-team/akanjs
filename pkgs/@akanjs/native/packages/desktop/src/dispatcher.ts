@@ -40,6 +40,7 @@ export const SETUP_WAIT_MS = 5000;
 
 export interface HostServices {
   app: AppInfo;
+  dev?: boolean;
   appDataDir: string;
   /** Sends an event (numbered for its document) to a window's page. */
   emit(window: number, message: BridgeEvent): void;
@@ -215,6 +216,7 @@ export function createDispatcher(
     if (!ctx) {
       ctx = {
         app: services.app,
+        dev: services.dev === true,
         get appDataDir() {
           if (!dataDirReady) {
             mkdirSync(services.appDataDir, { recursive: true });

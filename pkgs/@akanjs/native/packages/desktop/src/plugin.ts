@@ -17,6 +17,8 @@ export type EmitTarget = { window: number } | "focused";
 
 export interface DesktopContext {
   app: AppInfo;
+  /** A dev build (boot.json `dev`): its pages come from a dev server the shell did not start. */
+  readonly dev: boolean;
   /**
    * The window whose page made this call (SH-6; 1 = the window the app opened). Only in method
    * calls; undefined in setup and event sources.

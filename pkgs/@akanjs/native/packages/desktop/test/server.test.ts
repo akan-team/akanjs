@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { grantFile } from "../src/grants.ts";
 import { runtimeEnv } from "../src/main.ts";
 import {
   createDesktopServer,
@@ -131,6 +132,21 @@ describe("the server a desktop app carries", () => {
     expect(windows.env.Path).toBeUndefined();
     const bare = await run({});
     expect(bare.env.PATH).toBe(bare.bin);
+  });
+
+  test("tells the server the path behind a grant the file picker gave, and nothing for any other", async () => {
+    const { server, children } = setup();
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.ready();
+    await started;
+    const grant = grantFile("/Users/me/Movies/trip.mov", "read");
+    children[0]?.options.onMessage({ type: "file.resolve", id: "a", grant });
+    children[0]?.options.onMessage({ type: "file.resolve", id: "b", grant: "forged" });
+    expect(children[0]?.sent).toEqual([
+      { type: "file.resolved", id: "a", path: "/Users/me/Movies/trip.mov", mode: "read" },
+      { type: "file.resolved", id: "b", error: "no file was granted under this id" },
+    ]);
   });
 
   test("keeps one owner-only JWT secret per installation", () => {

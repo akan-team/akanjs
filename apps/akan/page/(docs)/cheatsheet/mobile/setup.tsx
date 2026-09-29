@@ -1620,6 +1620,39 @@ akan build-desktop myapp --server true --env main`}
               ko: "정적 LGPL 빌드를 넣으세요. 공유 라이브러리를 따로 불러오는 빌드는 만든 컴퓨터에서만 돌고, --enable-nonfree로 빌드한 것(npm ffmpeg-static이 받는 macOS 파일)은 재배포할 수 없습니다.",
             })}
           </Docs.Alert>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A file the user picks reaches that server as a grant, never as a copy or a path, so a video of several
+                  gigabytes is not copied or uploaded. Add <code>file-picker</code> to the target's{" "}
+                  <code>native.plugins</code>, pick with <code>forServer: true</code>, hand the grant to an endpoint,
+                  and let the server exchange it with <code>NativeFile</code>: it gets the files the user picked and
+                  nothing else.
+                </span>
+              ),
+              ko: (
+                <span>
+                  사용자가 고른 파일은 복사본이나 경로가 아니라 허가(grant)로 서버에 전달됩니다. 그래서 수 GB 영상도
+                  복사하거나 업로드하지 않습니다. 타깃의 <code>native.plugins</code>에 <code>file-picker</code>를
+                  추가하고 <code>forServer: true</code>로 고른 뒤, grant를 엔드포인트에 넘기면 서버가{" "}
+                  <code>NativeFile</code>로 경로를 받습니다. 서버는 사용자가 고른 파일만 얻습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="page → server"
+            language="typescript"
+            code={`// webkit/usePickVideo.tsx (akanjs/client/native)
+const { files } = await filePicker.pickFiles({ types: ["video/*"], forServer: true });
+await fetch.trimVideo(files[0].grant, 0, 30);
+
+// lib/video/video.service.ts (akanjs/server)
+const input = await NativeFile.resolve(grant, "read");
+const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.saveFile({ name, forServer: true })`}
+          />
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

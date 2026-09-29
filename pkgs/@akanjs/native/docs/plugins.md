@@ -292,6 +292,7 @@ Expo SDK는 클론하지 않았다. Expo에만 있는 기능에는 †를 붙였
     - Android: `ACTION_OPEN_DOCUMENT` / `ACTION_CREATE_DOCUMENT`
     - macOS: `NSOpenPanel` / `NSSavePanel`
   - 파일 열기만 필요하면 S8(`<input type=file>`)로 충분하다. 이 플러그인의 핵심은 저장과 폴더 선택이다.
+  - 데스크톱 `forServer`: 복사하지 않고 앱이 싣고 온 서버에 grant를 준다. 수 GB 영상도 복사 없이 서버가 원본을 읽고, 저장 위치(`saveFile`)에 서버가 직접 쓴다(architecture.md "데스크톱 내장 서버"). 다른 플랫폼은 대화상자 전에 `UNSUPPORTED`로 거절한다.
   - Tauri dialog는 모바일에서 폴더 선택을 지원하지 않는다. Electrobun에는 저장 대화상자가 없다.
 - **secure-storage**
   - iOS·macOS는 Keychain을 쓴다.

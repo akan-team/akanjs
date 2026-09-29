@@ -470,6 +470,18 @@ const config: AppConfig = {
 };
 ```
 
+### page → server
+
+```typescript
+// webkit/usePickVideo.tsx (akanjs/client/native)
+const { files } = await filePicker.pickFiles({ types: ["video/*"], forServer: true });
+await fetch.trimVideo(files[0].grant, 0, 30);
+
+// lib/video/video.service.ts (akanjs/server)
+const input = await NativeFile.resolve(grant, "read");
+const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.saveFile({ name, forServer: true })
+```
+
 ## Agent Notes
 
 - Prefer the linked source docs for human-facing UI details and this Markdown mirror for agent context.

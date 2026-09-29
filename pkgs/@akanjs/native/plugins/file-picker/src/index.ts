@@ -15,6 +15,8 @@ import { web } from "./web.ts";
 export interface PickedFile extends FileRef {
   /** The file's name as the user saw it, e.g. "Invoice.pdf". Never a path. */
   name: string;
+  /** With forServer: what the app's server exchanges for the file's path (akanjs `NativeFile`). */
+  grant?: string;
 }
 
 export interface DirectoryFile extends PickedFile {
@@ -31,6 +33,11 @@ export interface PickFilesOptions {
   types?: string[];
   /** Let the user pick more than one file. Default false. */
   multiple?: boolean;
+  /**
+   * Desktop only: hand the files to the app's server instead of copying them. The FileRefs serve the
+   * originals and each result carries a `grant`; nothing is copied, whatever the file's size.
+   */
+  forServer?: boolean;
 }
 
 export interface SaveFileOptions {
@@ -44,6 +51,11 @@ export interface SaveFileOptions {
   url?: string;
   /** MIME type of the content (Android files the document under it). Default: from the name's extension. */
   mime?: string;
+  /**
+   * Desktop only: ask where to save and write nothing. The result's `grant` lets the app's server write
+   * the file there; data and url are refused.
+   */
+  forServer?: boolean;
 }
 
 export interface SaveFileResult {
@@ -51,11 +63,15 @@ export interface SaveFileResult {
   saved: boolean;
   /** The name the file was saved under, when the platform tells (it may differ from the suggestion). */
   name?: string;
+  /** With forServer: what the app's server exchanges for the path to write. */
+  grant?: string;
 }
 
 export interface PickDirectoryOptions {
   /** Most files to return (1–10000, default 1000); `truncated` tells whether there were more. */
   limit?: number;
+  /** Desktop only: grant the folder to the app's server and copy nothing (FileRefs serve the originals). */
+  forServer?: boolean;
 }
 
 export interface PickDirectoryResult {
@@ -64,6 +80,8 @@ export interface PickDirectoryResult {
   /** Every file inside, recursively, as copies; hidden files and folders (".*") are left out. */
   files: DirectoryFile[];
   truncated: boolean;
+  /** With forServer: what the app's server exchanges for the folder's path. */
+  grant?: string;
 }
 
 /**
@@ -73,7 +91,8 @@ export interface PickDirectoryResult {
  * - saveFile: the export picker (iOS), ACTION_CREATE_DOCUMENT (Android), an NSSavePanel sheet
  *   (macOS), showSaveFilePicker or a download (web).
  * - pickDirectory: a read-only snapshot of a folder the user picks: its files, copied like pickFiles.
- * Results are copies registered as FileRefs; no absolute path reaches the page. Closing a dialog
+ * Results are copies registered as FileRefs; no absolute path reaches the page. forServer (desktop)
+ * copies nothing and grants the originals to the app's server instead. Closing a dialog
  * resolves (`files: []`, `saved: false`, `name: null`); a second dialog while one is open rejects
  * CANCELLED. On the web call these from a click handler, before any await (user activation).
  */
@@ -130,9 +149,25 @@ function protectLeadingBom(options: SaveFileOptions): SaveFileOptions {
   return { ...options, data: bytesToBase64(new TextEncoder().encode(options.data)), encoding: "base64" };
 }
 
+const DESKTOP = new Set(["macos", "windows", "linux"]);
+
+/** A grant is for the server a desktop app carries; no other platform has one. */
+function refuseForServer(options: { forServer?: boolean } | undefined): Promise<never> | null {
+  if (options?.forServer !== true || DESKTOP.has(platform)) return null;
+  return Promise.reject(new AkanNativeError("UNSUPPORTED", "forServer needs a desktop app"));
+}
+
 export const filePicker: FilePicker = Object.freeze({
   ...handle,
+  pickFiles(options?: PickFilesOptions): Promise<{ files: PickedFile[] }> {
+    return refuseForServer(options) ?? handle.pickFiles(options);
+  },
+  pickDirectory(options?: PickDirectoryOptions): Promise<PickDirectoryResult> {
+    return refuseForServer(options) ?? handle.pickDirectory(options);
+  },
   saveFile(options: SaveFileOptions): Promise<SaveFileResult> {
+    const refused = refuseForServer(options);
+    if (refused) return refused;
     const url = options?.url;
     const native = handle.implementation("saveFile") === "native";
     // The web implementation is called synchronously: showSaveFilePicker needs the click's activation.

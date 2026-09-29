@@ -370,7 +370,8 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   goes in `bin` — per platform, a download checked against its `sha256` or a file beside the config, put first on
   the server's PATH so `spawn("ffmpeg")` finds it — and a package that builds itself at install goes in
   `trustedDependencies`, which the image honours too. Carry a static LGPL ffmpeg: a `--enable-nonfree` build may
-  not be redistributed.
+  not be redistributed. A file the user picks with `filePicker.pickFiles({ forServer: true })` reaches it as a
+  grant, never a copy or a path: `NativeFile.resolve(grant, "read")` in `akanjs/server` asks the shell for it.
 - **`assets: { pruneFonts, keepFonts }`** trims from the `dist` copy of `public/` the fonts nothing reads; source
   trees are never touched. A font with `optimize` on is a build input, not a runtime asset. `keepFonts` belongs to
   the `akan.config.ts` that owns the font, written against that scope's own `public/`.
