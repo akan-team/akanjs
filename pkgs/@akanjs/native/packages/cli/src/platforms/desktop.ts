@@ -247,6 +247,7 @@ export function writeDesktopResources(
       devtools: ctx.dev,
       quitOnLastWindowClosed: config.desktop.quitOnLastWindowClosed,
       recovery: config.desktop.recovery,
+      screenCapture: config.desktop.screenCapture,
       fullscreen: config.desktop.window.fullscreen,
       skipTaskbar: config.desktop.window.skipTaskbar,
       // Windows and Linux register them at startup (packages/desktop/src/deeplinks.ts); macOS has Info.plist.

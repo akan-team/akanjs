@@ -8,7 +8,8 @@
 // 1. the main window is fullscreen from the start,
 // 2. a page whose process ends again and again is loaded again each time, waiting longer each time,
 // 3. app.relaunch() starts the app again in a new process,
-// 4. an ended WebView2 browser process relaunches the app instead of quitting it.
+// 4. an ended WebView2 browser process relaunches the app instead of quitting it,
+// 5. with desktop.screenCapture "auto", getDisplayMedia() answers with the first screen, no picker and no gesture.
 
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,15 +60,16 @@ async function crashPage() {
   ws.close();
 }
 
-/** Calls a plugin method from the page, as a page does (the runtime's own request ids). */
-async function bridge(plugin: string, method: string, args?: unknown): Promise<{ ok: boolean; result?: any }> {
+interface Evaluated {
+  result?: { value?: string };
+  exceptionDetails?: { exception?: { description?: string } };
+}
+
+async function evaluate(expression: string, what: string, timeout = 5000): Promise<Evaluated> {
   const ws = await pageSocket();
-  const request = JSON.stringify({ v: 1, plugin, method, ...(args === undefined ? {} : { args }) });
-  const expression = `(async () => { const rt = window.__AKAN_NATIVE__.__runtime; const r = ${request};
-    r.id = ++rt.nextId; return JSON.stringify(await rt.transport.send(r)); })()`;
   ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, awaitPromise: true } }));
-  const answer = await new Promise<any>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${plugin}.${method}: no answer`)), 5000);
+  const answer = await new Promise<{ result?: Evaluated }>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what}: no answer`)), timeout);
     ws.onmessage = (event) => {
       clearTimeout(timer);
       resolve(JSON.parse(String(event.data)));
@@ -78,7 +80,15 @@ async function bridge(plugin: string, method: string, args?: unknown): Promise<{
     };
   });
   ws.close();
-  return JSON.parse(answer.result?.result?.value ?? "{}");
+  return answer.result ?? {};
+}
+
+/** Calls a plugin method from the page, as a page does (the runtime's own request ids). */
+async function bridge(plugin: string, method: string, args?: unknown): Promise<{ ok: boolean; result?: any }> {
+  const request = JSON.stringify({ v: 1, plugin, method, ...(args === undefined ? {} : { args }) });
+  const expression = `(async () => { const rt = window.__AKAN_NATIVE__.__runtime; const r = ${request};
+    r.id = ++rt.nextId; return JSON.stringify(await rt.transport.send(r)); })()`;
+  return JSON.parse((await evaluate(expression, `${plugin}.${method}`)).result?.value ?? "{}");
 }
 
 function powershell(command: string): string {
@@ -98,12 +108,19 @@ const appPids = (name: string) =>
 let exeName = "";
 const lines: string[] = [];
 try {
-  step("build the sample with desktop.recovery reload and a fullscreen window without a taskbar button");
+  step(
+    "build the sample with desktop.recovery reload, a fullscreen window without a taskbar button and screenCapture auto",
+  );
   const { artifacts } = await build({
     appDir: sample,
     config: {
       ...sampleConfig,
-      desktop: { ...sampleConfig.desktop, recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+      desktop: {
+        ...sampleConfig.desktop,
+        recovery: "reload",
+        window: { fullscreen: true, skipTaskbar: true },
+        screenCapture: "auto",
+      },
     },
     platform: "windows",
     profile: "debug",
@@ -165,6 +182,19 @@ try {
   );
   await until("its page", async () => (await bridge("app", "getInfo")).ok);
   console.info(`  browser ${browser} ended: ${relaunched} -> ${after}`);
+
+  step("5. getDisplayMedia() answers with the first screen, without the picker");
+  const captured = await evaluate(
+    `(async () => { const s = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const t = s.getVideoTracks()[0]; const r = { label: t.label, surface: t.getSettings().displaySurface };
+    s.getTracks().forEach((x) => x.stop()); return JSON.stringify(r); })()`,
+    "getDisplayMedia",
+    10_000,
+  );
+  const track = captured.result?.value;
+  if (!track?.includes('"surface":"monitor"'))
+    throw new Error(`no screen without the picker: ${captured.exceptionDetails?.exception?.description ?? track}`);
+  console.info(`  ${track}`);
   console.info("\nkiosk-check passed");
 } catch (error) {
   console.error(`the app's last lines (the relaunched app writes to the same pipe):\n${lines.slice(-40).join("\n")}`);

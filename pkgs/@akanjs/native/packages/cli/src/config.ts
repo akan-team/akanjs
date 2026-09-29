@@ -248,6 +248,14 @@ export interface AkanNativeConfig {
      */
     window?: { fullscreen?: boolean; skipTaskbar?: boolean };
     /**
+     * Windows: "auto" answers the page's getDisplayMedia() with the first screen at once, without the picker or a
+     * user gesture: a remote-support session on an unattended screen. It is Chromium's switch for automated media
+     * tests (--use-fake-ui-for-media-stream), made for every media request, so keep it to an app whose pages ask
+     * for no camera or microphone. Default "picker". WebView2's choice by title follows the UI language, so none is
+     * offered. macOS and Linux ignore it.
+     */
+    screenCapture?: "picker" | "auto";
+    /**
      * A server the app starts beside its window (akanjs `build-desktop --server`). `dir` is copied to
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher

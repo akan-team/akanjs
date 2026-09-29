@@ -48,6 +48,8 @@ interface ShellConfig {
   externalSchemes?: string[];
   /** desktop.recovery: what a window does when its page's process ends. */
   recovery?: "errorPage" | "reload";
+  /** desktop.screenCapture (Windows): "auto" answers getDisplayMedia with the first screen. */
+  screenCapture?: "picker" | "auto";
   /** desktop.window: the main window from its first frame, unless the launch phase says otherwise. */
   fullscreen?: boolean;
   skipTaskbar?: boolean;
@@ -149,6 +151,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     backgroundColorDark: shell.backgroundColorDark,
     externalSchemes: shell.externalSchemes ?? [],
     ...(shell.recovery ? { recovery: shell.recovery } : {}),
+    ...(shell.screenCapture ? { screenCapture: shell.screenCapture } : {}),
     // Tests start the app without stealing focus from the user.
     activation: process.env.AKAN_NATIVE_ACTIVATION ?? "regular",
     // Only a dev build may load its pages from elsewhere.

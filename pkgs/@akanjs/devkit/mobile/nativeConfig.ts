@@ -146,6 +146,7 @@ export class NativeConfig {
     const googleServices = target.native?.android?.googleServices;
     const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
       recovery: target.native?.desktop?.recovery,
+      screenCapture: target.native?.desktop?.screenCapture,
       window: NativeConfig.#compact({ ...target.native?.desktop?.window }),
       server: desktopServer,
       bin: desktopBin,

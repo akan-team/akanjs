@@ -153,6 +153,11 @@ export interface AkanMobileNativeConfig {
     recovery?: "errorPage" | "reload";
     /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
     window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+    /**
+     * Windows: `"auto"` answers getDisplayMedia() with the first screen at once, no picker or gesture — remote
+     * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
+     */
+    screenCapture?: "picker" | "auto";
   };
 }
 

@@ -209,6 +209,11 @@ Akan Native Sample.app/Contents/
   - WebView2의 브라우저 단축키는 모든 빌드에서 끈다(`with_browser_accelerator_keys(false)`). F12도 꺼지므로 dev 빌드의 DevTools는 메뉴의 "검사"로 연다.
 - 창 아이콘: CLI가 `resources/icon.rgba`([u32 w][u32 h][RGBA])를 쓰고, 셸이 `tao::window::Icon`으로 읽는다. 셸에 이미지 디코더를 넣지 않기 위해서다.
 - 카메라·마이크 권한 요청: WebView2는 자기 확인 창을 띄우고 답을 오리진별로 기억한다(Default). WebKitGTK는 답하지 않은 요청을 거부하고 Linux에는 OS 권한 창이 없어서, 셸이 허용한다.
+- 화면 공유(`getDisplayMedia`): WebView2는 Chromium의 선택 창을 띄운다. `desktop.screenCapture: "auto"`(2026-09-30, 전광판 원격 지원)는 브라우저 인자 `--use-fake-ui-for-media-stream`을 더해 선택 창과 사용자 동작 없이 첫 화면으로 답한다.
+  - VM에서 확인: `displaySurface: "monitor"` 트랙이 바로 오고, `--lang=ko`에서도 같다.
+  - `--auto-select-desktop-capture-source=<제목>`은 쓰지 않는다. 선택 창의 "Entire screen" 같은 제목이 UI 언어를 따라, `--lang=ko`에서는 맞지 않아 실패했다(확인).
+  - 이 스위치는 Chromium이 미디어 요청 전체에 쓰는 자동화 테스트용이다. 카메라·마이크 요청에서의 동작은 확인하지 않았으므로, 그런 요청을 하는 앱에는 켜지 않는다.
+  - `with_additional_browser_args`는 wry의 기본 인자를 대신하므로, 셸이 기본 인자(`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required`)를 다시 적는다. DevTools 포트(`AKAN_NATIVE_WEBVIEW2_DEBUG_PORT`, dev 빌드)도 같은 줄에 붙는다.
 - 종료 흐름(D4):
   - 창 닫기(Alt+F4 포함)와 `app.exit()`는 macOS와 같은 경로다.
   - Linux의 SIGTERM은 macOS와 같은 `sigterm` 모듈이 받는다.

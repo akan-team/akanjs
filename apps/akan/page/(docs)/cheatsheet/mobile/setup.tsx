@@ -177,8 +177,8 @@ export default page().render(() => {
       key: "targets.*.native",
       type: "{ plugins?, ios?, android?, desktop? }",
       desc: l.trans({
-        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery` and `desktop.window`.",
-        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`를 적습니다.",
+        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.",
+        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`·`desktop.screenCapture`를 적습니다.",
       }),
     },
     {
@@ -1720,7 +1720,10 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
                   a page whose process ended again every time, waiting longer after each end in a row, and relaunches
                   the app when the webview's browser process ends. <code>desktop.window</code> opens the main window
                   fullscreen and without a taskbar button from its first frame, and <code>app.relaunch()</code> starts
-                  the app over in a new process on the desktop and Android.
+                  the app over in a new process on the desktop and Android. For remote support on Windows,{" "}
+                  <code>desktop.screenCapture: "auto"</code> answers <code>getDisplayMedia()</code> with the first
+                  screen, without the picker or a tap; it covers every media request, so leave it off in an app that
+                  asks for a camera or a microphone.
                 </span>
               ),
               ko: (
@@ -1729,7 +1732,9 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
                   프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가
                   끝나면 앱을 다시 띄웁니다. <code>desktop.window</code>는 주 창을 첫 프레임부터 전체화면, 작업 표시줄
                   버튼 없이 열고, <code>app.relaunch()</code>는 데스크톱과 Android에서 앱을 새 프로세스로 다시
-                  시작합니다.
+                  시작합니다. Windows에서 원격 지원을 하려면 <code>desktop.screenCapture: "auto"</code>가{" "}
+                  <code>getDisplayMedia()</code>에 선택 창도 터치도 없이 첫 화면으로 답합니다. 모든 미디어 요청에
+                  적용되므로 카메라나 마이크를 요청하는 앱에서는 켜지 않습니다.
                 </span>
               ),
             })}
@@ -1741,7 +1746,7 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
   targets: {
     default: {
       native: {
-        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
         android: { autoplay: true },
       },
     },

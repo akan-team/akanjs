@@ -31,6 +31,7 @@ export interface ResolvedConfig extends Omit<AkanNativeConfig, "icon" | "splash"
     quitOnLastWindowClosed: boolean;
     recovery: "errorPage" | "reload";
     window: { fullscreen: boolean; skipTaskbar: boolean };
+    screenCapture: "picker" | "auto";
     server?: DesktopServerConfig;
     /** Absolute. */
     bin?: string;
@@ -201,6 +202,9 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
     const value = raw.desktop?.window?.[key];
     if (value !== undefined && typeof value !== "boolean") problems.push(`desktop.window.${key} must be a boolean`);
   }
+  const screenCapture = raw.desktop?.screenCapture;
+  if (screenCapture !== undefined && screenCapture !== "picker" && screenCapture !== "auto")
+    problems.push(`desktop.screenCapture must be "picker" or "auto" (got ${JSON.stringify(screenCapture)})`);
   if (raw.android?.autoplay !== undefined && typeof raw.android.autoplay !== "boolean")
     problems.push("android.autoplay must be a boolean");
   const bin = raw.desktop?.bin;
@@ -270,6 +274,7 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
     desktop: {
       quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true,
       recovery: raw.desktop?.recovery === "reload" ? "reload" : "errorPage",
+      screenCapture: raw.desktop?.screenCapture === "auto" ? "auto" : "picker",
       window: {
         fullscreen: raw.desktop?.window?.fullscreen === true,
         skipTaskbar: raw.desktop?.window?.skipTaskbar === true,

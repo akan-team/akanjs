@@ -36,6 +36,7 @@ const KNOWN: Shape = {
     quitOnLastWindowClosed: true,
     recovery: true,
     window: { fullscreen: true, skipTaskbar: true },
+    screenCapture: true,
     server: { dir: true, entry: true, env: true },
     bin: true,
   },

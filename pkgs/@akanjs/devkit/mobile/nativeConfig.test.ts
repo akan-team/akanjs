@@ -199,7 +199,7 @@ describe("NativeConfig.build", () => {
     expect(api.validateConfig(config, { appDir: root })).toEqual([]);
   });
 
-  test("hands an unattended app's settings on: page recovery, a kiosk window and Android autoplay", async () => {
+  test("hands an unattended app's settings on: page recovery, a kiosk window, screen capture and Android autoplay", async () => {
     const root = await makeTempRoot();
     const { config } = NativeConfig.build({
       appPath: root,
@@ -209,7 +209,7 @@ describe("NativeConfig.build", () => {
         deepLinks: undefined,
         native: {
           android: { autoplay: true },
-          desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+          desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
         },
       },
       webDir: path.join(root, "web"),
@@ -218,7 +218,12 @@ describe("NativeConfig.build", () => {
       desktopBin: root,
     });
 
-    expect(config.desktop).toEqual({ recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, bin: root });
+    expect(config.desktop).toEqual({
+      recovery: "reload",
+      window: { fullscreen: true, skipTaskbar: true },
+      screenCapture: "auto",
+      bin: root,
+    });
     expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");

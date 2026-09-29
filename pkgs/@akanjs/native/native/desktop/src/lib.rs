@@ -770,6 +770,8 @@ struct Config {
   /// the display it is placed on, and no taskbar button (Windows, Linux).
   fullscreen: bool,
   skip_taskbar: bool,
+  /// desktop.screenCapture "auto" (Windows): the page captures the first screen without the picker.
+  screen_capture_auto: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -839,6 +841,11 @@ fn parse_config(s: &str) -> Result<Config, String> {
     },
     fullscreen: get_b("fullscreen", false),
     skip_taskbar: get_b("skipTaskbar", false),
+    screen_capture_auto: match get_s("screenCapture").as_deref() {
+      None | Some("picker") => false,
+      Some("auto") => true,
+      Some(other) => return Err(format!("screenCapture must be \"picker\" or \"auto\", not {other:?}")),
+    },
   })
 }
 
@@ -1103,6 +1110,8 @@ struct Shell {
   #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
   app_id: String,
   recovery_reload: bool,
+  #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+  screen_capture_auto: bool,
 }
 
 /// The CLI's icon.rgba (icons.ts windowIcon) as a tao icon.
@@ -1383,11 +1392,18 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     // Dev builds: AKAN_NATIVE_WEBVIEW2_DEBUG_PORT opens the Chrome DevTools Protocol on that port, for
     // test automation. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS does not apply: wry passes arguments of
     // its own, repeated here because these replace them (wry webview2/mod.rs, with autoplay on).
-    match std::env::var("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").ok().filter(|_| shell.devtools).and_then(|p| p.parse::<u16>().ok()) {
-      Some(port) => builder.with_additional_browser_args(format!(
-        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port={port}"
-      )),
-      None => builder,
+    let port = std::env::var("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").ok().filter(|_| shell.devtools).and_then(|p| p.parse::<u16>().ok());
+    // desktop.screenCapture "auto": getDisplayMedia answers with the first screen, no picker, no user gesture. Not
+    // --auto-select-desktop-capture-source: it matches the picker's title, which follows the UI language (verified).
+    let capture = shell.screen_capture_auto.then(|| "--use-fake-ui-for-media-stream".to_string());
+    let extra: Vec<String> = port.map(|p| format!("--remote-debugging-port={p}")).into_iter().chain(capture).collect();
+    if extra.is_empty() {
+      builder
+    } else {
+      builder.with_additional_browser_args(format!(
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required {}",
+        extra.join(" ")
+      ))
     }
   };
   // SH-4: pages never leave the app origin (navigation.rs). Linux decides in its own signal handlers.
@@ -1833,6 +1849,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
       icon: cfg.icon.as_deref().and_then(read_icon),
       app_id: cfg.app_id.clone(),
       recovery_reload: cfg.recovery_reload,
+      screen_capture_auto: cfg.screen_capture_auto,
     },
     web_context: wry::WebContext::new(cfg.data_dir.clone()),
     map: HashMap::new(),
@@ -2289,5 +2306,7 @@ mod recovery_tests {
     assert!(!super::parse_config(&format!("{{{base}}}")).unwrap().recovery_reload);
     assert!(super::parse_config(&format!(r#"{{{base},"recovery":"reload","fullscreen":true}}"#)).unwrap().recovery_reload);
     assert!(super::parse_config(&format!(r#"{{{base},"recovery":"always"}}"#)).is_err());
+    assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"auto"}}"#)).unwrap().screen_capture_auto);
+    assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"any"}}"#)).is_err());
   }
 }

@@ -128,15 +128,19 @@ describe("programmatic API", () => {
     expect(refused.code).toBe("CONFIG_INVALID");
   });
 
-  test("desktop.recovery, desktop.window and android.autoplay are checked", () => {
+  test("desktop.recovery, desktop.window, desktop.screenCapture and android.autoplay are checked", () => {
     const kiosk = config({
-      desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true } },
+      desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
       android: { autoplay: true },
     });
     expect(validateConfig(kiosk, { appDir: app("kiosk") })).toEqual([]);
     const problems = validateConfig(
       config({
-        desktop: { recovery: "always" as never, window: { fullscreen: "yes" as never } },
+        desktop: {
+          recovery: "always" as never,
+          window: { fullscreen: "yes" as never },
+          screenCapture: "silent" as never,
+        },
         android: { autoplay: 1 as never },
       }),
       { appDir: app("kiosk2") },
@@ -144,6 +148,7 @@ describe("programmatic API", () => {
     expect(problems).toEqual([
       'desktop.recovery must be "errorPage" or "reload" (got "always")',
       "desktop.window.fullscreen must be a boolean",
+      'desktop.screenCapture must be "picker" or "auto" (got "silent")',
       "android.autoplay must be a boolean",
     ]);
   });
