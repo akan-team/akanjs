@@ -104,6 +104,8 @@ Build the native app on the native runtime.
 
 Build the app for an App Store or Play Store release.
 
+Sign and publish releases installed apps update themselves to.
+
 Create `apps/<appName>` from the app template, then sync it. With `--start` it also boots the dev server.
 
 App name. It is lowercased, and spaces become hyphens.
@@ -312,7 +314,9 @@ Build an APK of the Android app on the native runtime. Like `build-ios`, it make
 
 Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
 
-Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. Distribution signing, notarization and installers are not part of it yet.
+Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.
+
+Windows: also build `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`). It installs for the current user under `%LOCALAPPDATA%\Programs`, where updates can swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards; it installs the WebView2 Runtime where it is missing.
 
 Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa`. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
 
@@ -324,15 +328,11 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 `aab` for a Play Store upload, `apk` for direct installs.
 
-Application CLI
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.
 
-These commands carry an app from creation to release: create it, run it locally, check and build it, then ship it to mobile.
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, the manifests last. A desktop app that carries its server publishes with `--server`, as it was built.
 
-Command
-
-Rules Every Command Shares
-
-Short Names
+`desktop` is this computer's own OS and CPU.
 
 ## Code Examples
 
