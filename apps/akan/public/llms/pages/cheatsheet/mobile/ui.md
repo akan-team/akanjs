@@ -154,7 +154,7 @@ How Android measures the safe area; `none` reserves nothing.
 
 true at depth ≤ 1, else false
 
-Keeps the page mounted in a hidden cache layer after you navigate away.
+Keeps one page for the route, mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.
 
 the background color
 

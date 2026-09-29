@@ -1865,11 +1865,17 @@ Locks `document.body` scrolling while `active`. Overlays share one count.
 
 Calls `onEscape` on Escape while `active`. Only the topmost open surface gets the key.
 
+Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
+
+`{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.
+
+`"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
+
 Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
-Start the CSR (mobile) bundle and hold its router state. The generated entry calls them.
+Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
 
 Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
 
@@ -1886,12 +1892,6 @@ Server HTML
 While the chunk loads
 
 No option
-
-The component itself.
-
-The nearest boundary, usually the whole route, shows its fallback.
-
-The component, sent after the shell in stream mode.
 
 ## Agent
 
@@ -1999,6 +1999,14 @@ dev server
 
 Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
+Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.
+
+With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.
+
+carried server
+
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it.
+
 one target
 
 Runs one mobile target at a time; with several, pass `--target <name>`.
@@ -2024,14 +2032,6 @@ List the files an app needs to move into a workspace of its own.
 Local Development
 
 Run the dev server for one or more apps.
-
-Start the local database containers.
-
-Stop the local database containers.
-
-Copy an app's data out of one database mode and into another.
-
-Run a file from the app's `script/` folder.
 
 ## Cloud CLI
 

@@ -1534,10 +1534,45 @@ akan start-desktop myapp --release true --env debug`}
             <ExternalLink href="https://rustup.rs" label={l.trans({ en: "Open rustup", ko: "rustup 열기" })} />
           </div>
           <Docs.IntroTable type="OS" items={desktopPrereqs} />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A desktop app can also carry the app's own server, so it works on one computer with no backend
+                  elsewhere. With <code>--server</code>, <code>akan start-desktop</code> starts <code>akan start</code>{" "}
+                  in the same command when none is running, and <code>akan build-desktop</code> builds the app with the
+                  server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
+                  SQLite data in the app data folder's <code>server/</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.{" "}
+                  <code>--server</code>를 주면 <code>akan start-desktop</code>은 떠 있는 개발 서버가 없을 때 같은
+                  명령에서 <code>akan start</code>를 띄우고, <code>akan build-desktop</code>은 서버를 넣은 앱을
+                  빌드합니다. 이 서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
+                  <code>server/</code>에 둡니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`akan start-desktop myapp --server true
+akan build-desktop myapp --server true --env main`}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "The server needs `single` in `database.modes`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets such as cloud keys out of it.",
+              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 클라우드 키 같은 배포용 비밀을 두지 마세요.",
+            })}
+          </Docs.Alert>
           <Docs.Alert type="info">
             {l.trans({
-              en: "start-desktop is for development and testing. A signed desktop package for distribution is not one of the akan commands yet.",
-              ko: "start-desktop은 개발과 테스트용입니다. 배포용으로 서명한 데스크톱 패키지는 아직 akan 명령에 없습니다.",
+              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer signed ad hoc. Distribution signing, notarization and installers are not akan commands yet.",
+              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용으로 ad hoc 서명한 앱을 만듭니다. 배포 서명, 공증, 설치 프로그램은 아직 akan 명령에 없습니다.",
             })}
           </Docs.Alert>
         </Docs.Description>

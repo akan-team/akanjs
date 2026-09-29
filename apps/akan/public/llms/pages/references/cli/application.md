@@ -40,6 +40,14 @@ dev server
 
 Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
+Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.
+
+With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.
+
+carried server
+
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it.
+
 one target
 
 Runs one mobile target at a time; with several, pass `--target <name>`.
@@ -294,11 +302,17 @@ Run the Android app on an emulator or a connected device. It works like `start-i
 
 Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
 
+--server without --release
+
+A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
+
 Build the iOS app on the native runtime. It first makes a production web build against `--env`, then builds a simulator app for each target.
 
 Build an APK of the Android app on the native runtime. Like `build-ios`, it makes a production web build against `--env` first.
 
 Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
+
+Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. Distribution signing, notarization and installers are not part of it yet.
 
 Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa`. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
 
@@ -319,10 +333,6 @@ Command
 Rules Every Command Shares
 
 Short Names
-
-Short name
-
-Runs
 
 ## Code Examples
 

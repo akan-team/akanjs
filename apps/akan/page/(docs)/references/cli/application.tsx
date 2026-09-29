@@ -112,6 +112,31 @@ export default page().render(() => {
       ko: "`--release` 없이 실행하면 앱이 dev gateway를 거쳐 `akan start <app>`에서 화면을 불러오므로 저장할 때마다 반영됩니다. 개발 서버를 켜 두세요. 꺼져 있으면 명령이 그렇게 알리고 멈춥니다.",
     }),
   };
+  const carryServerOption: ReferenceRow = {
+    name: "--server",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.",
+      ko: "앱의 서버를 데스크톱 앱에 넣습니다. 창과 함께 loopback 포트로 떠서 페이지가 그 서버를 부릅니다.",
+    }),
+  };
+  const startServerOption: ReferenceRow = {
+    name: "--server",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.",
+      ko: "`--release`와 함께 주면 `build-desktop --server`처럼 앱의 서버를 앱에 넣습니다. `--release` 없이 주면 응답하는 개발 서버가 없을 때 같은 명령에서 `akan start <app>`을 띄웁니다.",
+    }),
+  };
+  const carriedServerNote: ReferenceRow = {
+    name: l.trans({ en: "carried server", ko: "내장 서버" }),
+    desc: l.trans({
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 배포용 비밀을 두지 마세요.",
+    }),
+  };
   const oneTargetNote: ReferenceRow = {
     name: l.trans({ en: "one target", ko: "타깃 하나" }),
     desc: l.trans({
@@ -270,8 +295,8 @@ export default page().render(() => {
           }),
         },
         {
-          name: ["build-ios", "build-android"],
-          href: ["#build-ios", "#build-android"],
+          name: ["build-ios", "build-android", "build-desktop"],
+          href: ["#build-ios", "#build-android", "#build-desktop"],
           desc: l.trans({
             en: "Build the native app on the native runtime.",
             ko: "네이티브 런타임으로 네이티브 앱을 빌드합니다.",
@@ -295,6 +320,7 @@ export default page().render(() => {
     { alias: "akan s", command: "akan start" },
     { alias: "akan bi", command: "akan build-ios" },
     { alias: "akan ba", command: "akan build-android" },
+    { alias: "akan bd", command: "akan build-desktop" },
     { alias: "akan si", command: "akan start-ios" },
     { alias: "akan sa", command: "akan start-android" },
     { alias: "akan sd", command: "akan start-desktop" },
@@ -974,15 +1000,29 @@ akan start-android myapp --device Pixel_10`,
     },
     {
       name: "start-desktop",
-      signature: "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]",
+      signature:
+        "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--server <boolean>] [--write <boolean>]",
       desc: l.trans({
         en: "Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.",
         ko: "모바일 타깃을 이 컴퓨터에서 데스크톱 앱으로 실행합니다. 데스크톱 앱은 자기 OS에서만 빌드되므로 macOS, Windows, Linux 중 지금 컴퓨터의 것을 씁니다. `start-ios`와 같이 동작하며, 고를 기기나 팀은 없습니다.",
       }),
-      options: [targetOption, localEnvOption, releaseModeOption, writeOption],
-      notes: [aliasNote("sd"), devServerNote, oneTargetNote],
+      options: [targetOption, localEnvOption, releaseModeOption, startServerOption, writeOption],
+      notes: [
+        aliasNote("sd"),
+        devServerNote,
+        {
+          name: l.trans({ en: "--server without --release", ko: "--release 없는 --server" }),
+          desc: l.trans({
+            en: "A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
+            ko: "앱의 개발 포트에서 이미 응답하는 개발 서버가 있으면 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
+          }),
+        },
+        carriedServerNote,
+        oneTargetNote,
+      ],
       examples: `akan start-desktop myapp --target default
-akan start-desktop myapp --release true --env debug`,
+akan start-desktop myapp --server true
+akan start-desktop myapp --release true --server true --env debug`,
     },
     {
       name: "build-ios",
@@ -1015,6 +1055,19 @@ akan start-desktop myapp --release true --env debug`,
         outputNote("android"),
       ],
       examples: "akan build-android myapp --target all --env debug",
+    },
+    {
+      name: "build-desktop",
+      signature:
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--write <boolean>]",
+      desc: l.trans({
+        en: "Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. Distribution signing, notarization and installers are not part of it yet.",
+        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더이며, ad hoc 또는 개발용 인증서로 서명합니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. 배포 서명, 공증, 설치 프로그램은 아직 포함하지 않습니다.",
+      }),
+      options: [targetOption, debugEnvOption, debugBuildOption, carryServerOption, writeOption],
+      notes: [aliasNote("bd"), carriedServerNote, outputNote("<macos|windows|linux>")],
+      examples: `akan build-desktop myapp --target default
+akan build-desktop myapp --server true --env main`,
     },
     {
       name: "release-ios",
