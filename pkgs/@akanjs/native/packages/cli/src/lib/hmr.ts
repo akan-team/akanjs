@@ -447,6 +447,9 @@ export async function startHmrServer(opts: HmrOptions): Promise<HmrServer> {
     Bun.serve({
       hostname: opts.hostname,
       port: opts.port,
+      // A dev server builds a page on its first request (27 s on a Windows VM): Bun's default 10 s idle timeout closed
+      // the shell's request first, and the shell fell back to its bundled files, which a dev build has none of.
+      idleTimeout: 0,
       async fetch(req, srv) {
         const url = new URL(req.url);
         if (relayed.has(url.pathname) && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
