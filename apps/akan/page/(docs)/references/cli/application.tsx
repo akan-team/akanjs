@@ -133,8 +133,8 @@ export default page().render(() => {
   const carriedServerNote: ReferenceRow = {
     name: l.trans({ en: "carried server", ko: "내장 서버" }),
     desc: l.trans({
-      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it.",
-      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 배포용 비밀을 두지 마세요.",
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
     }),
   };
   const oneTargetNote: ReferenceRow = {

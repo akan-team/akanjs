@@ -310,6 +310,8 @@ The server needs `single` in `database.modes`. `env.server.<env>.ts` ships insid
 
 start-desktop is for development and testing, and build-desktop makes an app for this computer signed ad hoc. Distribution signing, notarization and installers are not akan commands yet.
 
+Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.
+
 Verify Setup
 
 A green build is not the finish line. On a real device, check that plugins load, native files are in place, permission prompts appear, and push arrives and opens the right screen.
@@ -451,6 +453,21 @@ akan start-desktop myapp --release true --env debug
 ```bash
 akan start-desktop myapp --server true
 akan build-desktop myapp --server true --env main
+```
+
+### akan.config.ts
+
+```typescript
+const config: AppConfig = {
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": { url: "https://files.example.com/ffmpeg-lgpl-darwin-arm64.zip", sha256: "…", file: "bin/ffmpeg" },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+  trustedDependencies: ["rclnodejs"],
+};
 ```
 
 ## Agent Notes

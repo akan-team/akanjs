@@ -28,7 +28,7 @@ you fetch on demand — `get_guideline` with the name, or `akan guideline show <
 | name | covers |
 |---|---|
 | `ssrRule` | server-share targets, the `akan.ssr.*` warnings, the client-boundary playbook |
-| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, shipped assets, database modes |
+| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, a desktop app's server, shipped assets, database modes |
 | `queryRule` | slices and hydration, the generated filter methods, full-text search, cascade removal |
 | `transportRule` | guards across HTTP and websocket, socket identity and cleanup, binary pubsub, mutation verbs |
 | `mcpRule` | MCP configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions |
@@ -348,6 +348,11 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   assembles one from; the string form takes no contributions. The generated image installs `ca-certificates` and
   `tzdata` and nothing else, so an app needing `ffmpeg` or Chromium declares it in `preRuns` / `postRuns`. A lib
   declares the steps its own runtime needs and every mounting app inherits them.
+- **A desktop app's server (`build-desktop --server`) gets nothing from `docker`.** An executable its code spawns
+  goes in `bin` — per platform, a download checked against its `sha256` or a file beside the config, put first on
+  the server's PATH so `spawn("ffmpeg")` finds it — and a package that builds itself at install goes in
+  `trustedDependencies`, which the image honours too. Carry a static LGPL ffmpeg: a `--enable-nonfree` build may
+  not be redistributed.
 - **`assets: { pruneFonts, keepFonts }`** trims from the `dist` copy of `public/` the fonts nothing reads; source
   trees are never touched. A font with `optimize` on is a build input, not a runtime asset. `keepFonts` belongs to
   the `akan.config.ts` that owns the font, written against that scope's own `public/`.

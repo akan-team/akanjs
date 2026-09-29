@@ -46,7 +46,7 @@ With `--release`, carry the app's server in the app as `build-desktop --server` 
 
 carried server
 
-The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it.
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.
 
 one target
 

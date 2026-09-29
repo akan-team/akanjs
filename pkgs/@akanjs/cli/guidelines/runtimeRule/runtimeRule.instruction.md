@@ -1,4 +1,4 @@
-# Runtime Rule — Serving, Processes, Logging, Image, Assets
+# Runtime Rule — Serving, Processes, Logging, Image, Desktop Server, Assets
 
 How an Akan app is built, what it serves, how many processes it runs, where its logs go, and what ends up in
 its image. Everything here is declared in `akan.config.ts` or narrowed by an env at boot; none of it is reached
@@ -183,6 +183,69 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+
+## A Desktop App's Server — `bin` And `trustedDependencies`
+
+`akan build-desktop --server` (and `start-desktop --release --server`) puts the backend `akan build` made into the
+app — the dist `.js`, `akan.build.json` and `private/` — and installs it on its own with `bun install --production`.
+A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
+on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks.
+
+**Nothing from `docker` reaches it.** `preRuns`, `postRuns` and a whole Dockerfile install into a Linux image the
+desktop app never runs in, and the build warns when an app has them and carries no `bin`. What the server needs
+from them comes one of two ways:
+
+```ts
+const config: AppConfig = {
+  trustedDependencies: ["rclnodejs"],
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": {
+        url: "https://files.example.com/ffmpeg-7.1-lgpl-darwin-arm64.zip",
+        sha256: "…",
+        file: "ffmpeg-7.1/bin/ffmpeg",
+      },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-7.1-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+};
+```
+
+- **An executable the server's code spawns goes in `bin`**, keyed by the name the code spawns and then by
+  `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
+  `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
+  to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
+  `{ path, file? }`, relative to the `akan.config.ts` that declares it. `file` is the executable inside an archive
+  (`.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.tar`), unpacked with the OS's own `tar` (`unzip` for a zip
+  on Linux).
+- Only the building computer's platform is fetched, and an entry without it fails the build instead of the user's
+  call. The file is copied into the server's `bin/` (keeping `.exe` on Windows), signed with the app on macOS, and
+  that folder goes first on the server's PATH. `spawn("ffmpeg")` needs no change and finds the carried file even
+  in an app launched from the Finder, whose PATH is only `/usr/bin:/bin:/usr/sbin:/sbin`.
+- **One file per entry, so carry a static build.** A build that loads its own shared libraries — a `-shared`
+  archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
+- **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the
+  same name wins, and two libs that declare one name differently fail the build.
+- **The image does not read `bin`.** Keep installing through `docker.preRuns` there.
+- **A package that builds itself at install goes in `trustedDependencies`.** `bun install --production` runs no
+  dependency's install or postinstall script unless the package is trusted, so an addon with no prebuild arrives
+  unbuilt and fails at its first call. The list lands in the built `package.json`, so it applies to the image and to
+  the desktop server alike, and a lib's list reaches every app, like its `externalLibs`.
+
+**Carry an LGPL ffmpeg.** A build configured with `--enable-nonfree` may not be redistributed at all — the macOS
+binary npm's `ffmpeg-static` downloads is one — and a `--enable-gpl` build obliges you to offer its source. An LGPL
+build has no `libx264`, so encode H.264 through the OS's encoder: `h264_videotoolbox` on macOS, `h264_mf` on
+Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settle before shipping.
+
+**A server bound to its machine stays a service.** A server that needs a whole environment — ROS, system services,
+root to change the network or the clock — runs as a service on that machine (the image), and the desktop app ships
+without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
+user and stops with the app.
+
+**Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
+(`window`), global shortcuts, keep-awake and launch at login are native runtime plugins. A capability the shell
+lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
 
 ## Database Modes — `database` In `akan.config.ts`
 

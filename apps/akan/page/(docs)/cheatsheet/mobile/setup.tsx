@@ -1575,6 +1575,51 @@ akan build-desktop myapp --server true --env main`}
               ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용으로 ad hoc 서명한 앱을 만듭니다. 배포 서명, 공증, 설치 프로그램은 아직 akan 명령에 없습니다.",
             })}
           </Docs.Alert>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The carried server gets none of the image's <code>docker</code> steps. An executable its code spawns,
+                  such as ffmpeg, goes in <code>bin</code> in <code>akan.config.ts</code>: per platform, a download
+                  checked against its <code>sha256</code> or a file next to the config. The build fetches the one for
+                  this computer, puts it in the app and its folder first on the server's PATH, so{" "}
+                  <code>spawn("ffmpeg")</code> runs it and the user installs nothing. A package that builds itself at
+                  install goes in <code>trustedDependencies</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱에 넣은 서버에는 이미지의 <code>docker</code> 단계가 하나도 들어가지 않습니다. 서버 코드가 실행하는
+                  ffmpeg 같은 실행 파일은 <code>akan.config.ts</code>의 <code>bin</code>에 적습니다. 플랫폼마다{" "}
+                  <code>sha256</code>로 확인하는 다운로드나 설정 파일 옆의 파일을 적으면, 빌드가 이 컴퓨터용 파일을 앱에
+                  넣고 그 폴더를 서버 PATH 맨 앞에 둡니다. 그래서 <code>spawn("ffmpeg")</code>가 그 파일을 실행하고,
+                  사용자는 아무것도 설치하지 않습니다. 설치하면서 스스로 빌드하는 패키지는{" "}
+                  <code>trustedDependencies</code>에 적습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="akan.config.ts"
+            language="typescript"
+            code={`const config: AppConfig = {
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": { url: "https://files.example.com/ffmpeg-lgpl-darwin-arm64.zip", sha256: "…", file: "bin/ffmpeg" },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+  trustedDependencies: ["rclnodejs"],
+};`}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.",
+              ko: "정적 LGPL 빌드를 넣으세요. 공유 라이브러리를 따로 불러오는 빌드는 만든 컴퓨터에서만 돌고, --enable-nonfree로 빌드한 것(npm ffmpeg-static이 받는 macOS 파일)은 재배포할 수 없습니다.",
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

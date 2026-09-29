@@ -144,7 +144,7 @@ Build And Runtime
 
 The rest of the config is for the build system and the production image. Most apps never touch it, but it is where a package stays external, a font survives pruning, a library's routes join the app, and the image gains a system dependency.
 
-A library contributes to three of these: its own externalLibs, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
+A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 
 A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.
 
@@ -368,6 +368,13 @@ import { pushNotificationPlugin } from "./plugin/pushNotification.plugin";
 
 const config: AppConfig = {
   externalLibs: ["shiki"],
+  trustedDependencies: ["rclnodejs"],
+  bin: {
+    ffmpeg: {
+      "linux-x64": { url: "https://files.example.com/ffmpeg-lgpl-linux64.tar.xz", sha256: "…", file: "bin/ffmpeg" },
+      "darwin-arm64": { path: "tools/darwin-arm64/ffmpeg" },
+    },
+  },
   optimizeImports: ["custom-icons"],
   barrelImports: ["@acme/ui"],
   database: { modes: ["single", "cluster"] },
