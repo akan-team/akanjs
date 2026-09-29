@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { Err } from "../../lib/dict";
 
 export interface WriteReadableStreamOptions {
@@ -15,6 +17,8 @@ export async function writeReadableStreamToFile(
   readStream: ReadableStream,
   { onChunk, signal, stallTimeout = 0 }: WriteReadableStreamOptions = {},
 ) {
+  //? Unlike Bun.write, a FileSink does not create the folders on its way: a fresh data folder has none.
+  await mkdir(dirname(localPath), { recursive: true });
   const reader = readStream.getReader();
   const writer = Bun.file(localPath).writer();
   let loaded = 0;
