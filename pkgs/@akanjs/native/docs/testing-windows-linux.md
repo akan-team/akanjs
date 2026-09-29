@@ -94,6 +94,20 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 
 주의: 확인이 도중에 실패하면 임시 폴더에 설치한 앱이 남아 있을 수 있다. 그러면 다음 실행의 앱이 single-instance로 넘기고 바로 끝나서 확인이 멈춘다. Windows에서는 `bun scripts/vm/windows.ts ssh 'Get-Process | Where-Object { $_.Path -like "*akan-native-update-check*" } | Stop-Process -Force'`로 먼저 끝낸다.
 
+## ARM64 Windows에서 x64 앱 빌드
+
+데스크톱 빌드는 실행 중인 Bun의 CPU를 따른다. Rust 타깃을 Bun의 `process.arch`로 고르고(`platforms/desktop.ts` `libraryTarget`), `bun build --compile`도 그 Bun을 앱에 넣는다. 그래서 ARM64 VM에서 x64 Bun으로 CLI를 돌리면 코드 변경 없이 x64 앱이 나온다.
+
+```powershell
+rustup target add x86_64-pc-windows-msvc          # native\desktop 폴더에서 (고정한 툴체인에)
+C:\bun-x64\bun.exe packages/cli/src/index.ts build windows --app examples/sample
+C:\bun-x64\bun.exe run akan build-desktop <app> --installer   # akanjs 앱: <file>-<version>-x64-setup.exe
+```
+
+- x64 Bun은 `bun-windows-x64-baseline`을 쓴다. 앱에 그대로 들어가므로 AVX2가 없는 오래된 x64 CPU에서도 돈다. windows-setup.ps1이 ARM64 VM에 `C:\bun-x64\bun.exe`로 설치한다.
+- Visual Studio Build Tools의 ARM64 호스트용 x64 도구(`Hostarm64\x64\link.exe`)와 x64 라이브러리를 쓴다. windows-setup.ps1이 설치하는 구성에 들어 있다.
+- Windows 11 ARM은 x64 프로그램을 에뮬레이션(Prism)으로 돌리므로 확인도 같은 VM에서 한다. 확인 결과(2026-09-30): 샘플의 x64 빌드(exe·DLL 모두 PE machine 0x8664)가 자체 테스트 73/73. 현장 투입 전에는 실제 x64 PC에서 한 번 더 본다.
+
 ## 설치 프로그램과 무인 운영 확인
 
 ```sh

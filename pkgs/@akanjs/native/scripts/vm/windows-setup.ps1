@@ -12,7 +12,8 @@
 #   1. OpenSSH server on (PowerShell as its shell), the Mac's akan-native VM key trusted
 #   2. No sleep and no display timeout: tests open real windows in the logged-in session
 #   3. Visual Studio 2022 Build Tools (C++ for ARM64 and x64, Windows SDK), rustup (no toolchain:
-#      akan-native pins one per project), Bun, NSIS (build windows --installer)
+#      akan-native pins one per project), Bun, NSIS (build windows --installer), and on an ARM64 machine an
+#      x64 Bun in C:\bun-x64 (x64 apps build with it, docs/testing-windows-linux.md)
 #   4. Reports this machine's addresses and user name back to the Mac
 #
 # Safe to run again: finished steps are skipped.
@@ -53,6 +54,7 @@ akan-native VM setup will install and configure:
   - rustup, the Rust installer (MIT / Apache-2.0)
   - Bun $BunVersion (MIT)
   - NSIS, the installer builder, through winget (zlib/libpng license)
+  - on ARM64, the x64 (baseline) build of Bun $BunVersion in C:\bun-x64 (MIT)
 It also turns off sleep and the display timeout while plugged in.
 "@
 $answer = Read-Host "Accept these tools' licenses and continue? (y/N)"
@@ -115,6 +117,18 @@ try {
   if (-not ((Test-Path $bun) -and ((& $bun --version) -eq $BunVersion))) {
     & ([scriptblock]::Create((Invoke-RestMethod "https://bun.sh/install.ps1"))) -Version $BunVersion
   } else { Write-Host "already installed" }
+
+  if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+    Step "x64 Bun $BunVersion"
+    $bunX64 = "C:\bun-x64\bun.exe"
+    if (-not ((Test-Path $bunX64) -and ((& $bunX64 --version) -eq $BunVersion))) {
+      $zip = "$env:TEMP\bun-windows-x64-baseline.zip"
+      Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/bun-v$BunVersion/bun-windows-x64-baseline.zip" -OutFile $zip -UseBasicParsing
+      Expand-Archive $zip -DestinationPath "$env:TEMP\bun-x64" -Force
+      New-Item -ItemType Directory -Force (Split-Path $bunX64) | Out-Null
+      Copy-Item (Get-ChildItem "$env:TEMP\bun-x64" -Recurse -Filter bun.exe | Select-Object -First 1).FullName $bunX64 -Force
+    } else { Write-Host "already installed" }
+  }
 
   Step "NSIS"
   if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {

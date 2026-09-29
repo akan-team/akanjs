@@ -1771,6 +1771,25 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
               ),
             })}
           </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The build follows the CPU of the Bun that runs it, so an ARM64 Windows machine builds an x64 PC's app
+                  when <code>akan</code> runs on an x64 Bun (<code>bun-windows-x64-baseline</code>, which also runs on
+                  CPUs without AVX2) after <code>rustup target add x86_64-pc-windows-msvc</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  빌드는 그것을 실행하는 Bun의 CPU를 따릅니다. 그래서 ARM64 Windows에서도{" "}
+                  <code>rustup target add x86_64-pc-windows-msvc</code> 뒤 x64 Bun(
+                  <code>bun-windows-x64-baseline</code>, AVX2가 없는 CPU에서도 도는 빌드)으로 <code>akan</code>을
+                  실행하면 x64 PC용 앱이 나옵니다.
+                </span>
+              ),
+            })}
+          </div>
           <Docs.SubSubTitle>{l.trans({ en: "Updates", ko: "업데이트" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
