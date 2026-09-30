@@ -18,3 +18,6 @@ An app `build-desktop --installer` installed takes updates and uninstalls cleanl
   Runtime still missing after its setup ran (an interactive install asks), or a `/D=` folder holding someone else's
   files.
 - The WebView2 setup's signature check works under a user folder with `'` in its name.
+- An uninstaller that cannot be written beside the folder (a `/D=` right under a drive root) fails the install
+  instead of leaving an app nothing can remove.
+- An applied update sets `DisplayVersion` under any profile folder name: `reg.exe` output is no longer parsed.

@@ -64,7 +64,7 @@ const command = interactive ? "bash" : args.map((a) => `'${a.replace(/'/g, `'\\'
 // collection and storing a secret waits for a password prompt that never comes (checked).
 const session = `
 set -e
-rsync -a --delete --exclude node_modules --exclude target --exclude .akan --exclude dist /src/ ${HOME}/work/akan-native/
+rsync -a --delete --exclude node_modules --exclude target --exclude .akan --exclude dist --exclude .git --exclude .claude --exclude local /src/ ${HOME}/work/akan-native/
 cd ${HOME}/work/akan-native
 [ -d node_modules ] || bun install --silent >/dev/null
 export DISPLAY=:99 NO_AT_BRIDGE=1

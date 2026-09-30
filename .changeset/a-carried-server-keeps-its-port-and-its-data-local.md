@@ -15,3 +15,6 @@ fix: a desktop app's server keeps its port, keeps its data on this computer, and
 - Bun's transpiler cache goes to `<server data>/runtime/transpiler-cache` instead of the user's home, where nothing
   removed it.
 - A `PATH` in `desktop.server.env` keeps the app's own `bin` first.
+- The server also gets the desktop session's variables (`DISPLAY`, `WAYLAND_DISPLAY`, the session bus, the audio
+  server, `XDG_*`, and Windows' `ProgramFiles`, `ComSpec`, `PATHEXT` and the like), for a `bin` tool that opens the
+  screen, the audio server or a shell.

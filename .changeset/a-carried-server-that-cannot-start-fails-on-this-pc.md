@@ -18,3 +18,7 @@ fix: a desktop app's server that cannot start fails on this computer, and a stop
   server never comes up is rolled back like one whose page never renders.
 - A debug build that carries a server grants the files the user picks the way a release build does; its carried
   server runs in edge mode and refused the dev build's grant.
+- The alert for a server that cannot start at all waits for the window's shell to run, which takes no alert before
+  that; it used to be dropped.
+- An update's trial clock starts once the carried server answered or gave up, so a release whose server is slow on
+  its first run (its new files being scanned) is not rolled back for it.

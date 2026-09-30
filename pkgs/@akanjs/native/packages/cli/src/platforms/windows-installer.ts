@@ -183,7 +183,11 @@ Section "Install"
   \${If} \${Errors}
     !insertmacro Fail "Some files could not be written under $INSTDIR. Windows refuses a path over 260 characters unless long paths are enabled."
   \${EndIf}
+  ClearErrors
   WriteUninstaller "$INSTDIR.uninstall.exe"
+  \${If} \${Errors}
+    !insertmacro Fail "$INSTDIR.uninstall.exe could not be written: install into a folder under one this user may write to."
+  \${EndIf}
   SetOutPath "$LOCALAPPDATA"
   CreateShortcut "$SMPROGRAMS\\\${APP_NAME}.lnk" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayName" "\${APP_NAME}"

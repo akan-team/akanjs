@@ -85,7 +85,12 @@ function ps(script: string, quiet = false): { code: number; out: string } {
 function sync(): void {
   const archive = join(tmpdir(), `${COPY}-sync.tar.gz`);
   console.info("sync: packing the repository");
-  const excludes = ["node_modules", "target", ".akan", "dist", ".DS_Store"].flatMap((e) => ["--exclude", e]);
+  //? .git, .claude (its worktrees) and local are gigabytes in the monorepo and nothing a VM build reads; no tracked
+  //? folder carries one of these names.
+  const excludes = ["node_modules", "target", ".akan", "dist", ".DS_Store", ".git", ".claude", "local"].flatMap((e) => [
+    "--exclude",
+    e,
+  ]);
   if (spawn(["tar", "-czf", archive, ...excludes, "-C", REPO, "."], { quiet: true }).code !== 0)
     throw new Error("tar failed");
   if (spawn(["scp", ...SSH, "-q", archive, `${target()}:${COPY}-sync.tar.gz`]).code !== 0)
@@ -100,7 +105,7 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $staging
 New-Item -ItemType Directory -Force -Path $staging, '${WORK}\\${COPY}' | Out-Null
 tar.exe -xzf "$HOME\\${COPY}-sync.tar.gz" -C $staging
 Remove-Item "$HOME\\${COPY}-sync.tar.gz"
-robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist .git .claude local /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 Remove-Item -Recurse -Force $staging
 Set-Location '${WORK}\\${COPY}'

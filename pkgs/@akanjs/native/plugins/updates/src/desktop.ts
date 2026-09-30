@@ -110,22 +110,20 @@ const executableIn = (app: string) =>
   mac ? join(app, "Contents", "MacOS", basename(process.execPath)) : join(app, basename(process.execPath));
 
 /**
- * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the
- * key). A copy of the app elsewhere leaves the installed one's entry alone. Best effort: the update stands anyway.
+ * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the key
+ * and puts the uninstaller beside the folder). A copy of the app elsewhere leaves the installed one's entry alone.
+ * Best effort: the update stands anyway.
  */
 async function recordInstalledVersion(appId: string, app: string | null, version: string): Promise<void> {
-  if (!app || !version) return;
+  if (!app || !version || !existsSync(`${app}.uninstall.exe`)) return;
   const key = `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${appId}`;
-  const reg = async (args: string[]) => {
-    const p = Bun.spawn(["reg.exe", ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore", windowsHide: true });
-    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
-    return code === 0 ? out : null;
-  };
+  //? Only exit codes are read: reg.exe writes in the OEM code page, which a non-ASCII profile folder would garble.
+  const reg = async (args: string[]) =>
+    (await Bun.spawn(["reg.exe", ...args], { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true })
+      .exited) === 0;
   try {
-    const query = await reg(["query", key, "/v", "InstallLocation"]);
-    const location = query && /InstallLocation\s+REG_\w+\s+(.+?)\s*$/m.exec(query)?.[1];
-    if (!location || location.replace(/[\\/]+$/, "").toLowerCase() !== app.replace(/[\\/]+$/, "").toLowerCase()) return;
-    await reg(["add", key, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", version, "/f"]);
+    if (await reg(["query", key, "/v", "InstallLocation"]))
+      await reg(["add", key, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", version, "/f"]);
   } catch (error) {
     console.warn("[akan-native] updates: cannot record the installed version", error);
   }
@@ -306,12 +304,18 @@ export default defineDesktopPlugin<UpdatesApi, UpdatesEvents>(
           state.trial.pid = process.pid;
           writeState(state);
           onTrial = true;
-          ctx.onNativeEvent("pageLoad", (e) => {
-            if (e.event !== "finished" || (e.window ?? 1) !== 1 || !onTrial) return;
+          const startClock = () => {
             clearTimeout(timer);
             timer = setTimeout(() => {
               if (onTrial) void rollBack(readState(), (code) => ctx.quit(code), "did not call notifyReady() in time");
             }, config.readyTimeout);
+          };
+          ctx.onNativeEvent("pageLoad", (e) => {
+            if (e.event !== "finished" || (e.window ?? 1) !== 1 || !onTrial) return;
+            //? A carried server still starting (a new release's first run, its files being scanned) is not the release
+            //? failing: the clock starts once the server answered or gave up.
+            if (ctx.server) void ctx.server.ready.then(() => onTrial && startClock());
+            else startClock();
           });
         }
       }

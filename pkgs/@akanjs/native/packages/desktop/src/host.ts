@@ -283,6 +283,11 @@ export function startHost(plugins: DesktopPlugin[]): void {
     respond(reqId, 200, await dispatcher.handle(decoder.decode(body), window));
   };
 
+  //? The shell takes an op only once akan_native_run runs, after the launch phase: an alert raised before that (a
+  //? server that cannot start) waits for the first event the shell sends.
+  let shellRunning = false;
+  const heldAlerts: string[] = [];
+
   // Once per process: the browser process ends for every window at once, and each window reports it.
   let browserExitHandled = false;
   const relaunchAfterBrowserExit = () => {
@@ -300,6 +305,10 @@ export function startHost(plugins: DesktopPlugin[]): void {
   };
 
   const onEvent = (event: NativeEvent) => {
+    if (!shellRunning) {
+      shellRunning = true;
+      for (const message of heldAlerts.splice(0)) serverAlert(message);
+    }
     if (event.type === "shellReply" && typeof event.id === "number") {
       const pending = shellPending.get(event.id);
       shellPending.delete(event.id);
@@ -399,13 +408,18 @@ export function startHost(plugins: DesktopPlugin[]): void {
   }
   // JSCallback does not keep the event loop alive.
   setInterval(() => {}, 2 ** 31 - 1);
-  const serverAlert = (message: string) =>
+  const serverAlert = (message: string) => {
+    if (!shellRunning) {
+      heldAlerts.push(message);
+      return;
+    }
     void shell("alert.show", {
       title: boot.app.name,
       message,
       buttons: [{ title: "OK" }],
       tag: "akan-server",
     }).catch((error: unknown) => console.error("[akan-native] cannot show the server alert", error));
+  };
   //? A page of an app that carries a server always gets a loopback URL, even one nothing answers: without it the page
   //? would call the backend its bundle was built for, and a desktop app would read and write another copy's data.
   const startServer = async (): Promise<Record<string, string> | undefined> => {
@@ -423,7 +437,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       void server.ready.then(settleServer);
       lifecycle.onQuit(() => server.stop());
       const { url, ready } = await server.start();
-      console.info(`[akan-native] server ${ready ? "ready" : "still starting"} on ${url}`);
+      console.info(`[akan-native] server ${ready ? "ready" : "not ready"} on ${url}`);
       return { PUBLIC_AKAN_SERVER_URL: url };
     } catch (error) {
       console.error("[akan-native] the app's server could not start", error);

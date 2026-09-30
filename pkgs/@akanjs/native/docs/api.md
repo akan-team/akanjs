@@ -241,8 +241,18 @@ const { publicKey, keyPath, created } = updateKeygen({ config });
 const { dir, bundle, channel, files, size, build } = await publishUpdate({ appDir, config, platform: "windows", channel: "pilot", out });
 ```
 - `updateKeygen`: 앱 id의 Ed25519 키를 한 번 만들고 그 뒤로는 읽는다(`AKAN_NATIVE_UPDATE_KEY`, 없으면 `~/.akan/native/keys/<app id>.update.key`). `publicKey`는 설정의 `updates.publicKey`로 간다.
-- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없으면 빌드 전에 `CONFIG_INVALID`.
+- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없거나 `channel`이 설정 `updates.channel`의 규칙(소문자·숫자·`.`·`_`·`-`)을 어기면 빌드 전에 `CONFIG_INVALID`. `sequence`는 `max(그 채널에 이미 있는 매니페스트 + 1, 지금)`이다(시계가 늦으면 경고).
 - akanjs: `akan update-keygen`, `akan publish-update`(devkit `NativeApp.updateKeygen`·`publishUpdate`).
+
+### packUpdate와 compareBundles — 서명하지 않은 웹 번들 업데이트 (UP-2, UP-3)
+
+```ts
+const { manifest, out } = await packUpdate({ appDir, config, platform: "android", out: "/tmp/pack" });
+const { compatible, problems } = compareBundles("<스토어 빌드의 bundle.json>", `${out}/bundle.json`);
+```
+- `packUpdate`: 키 없이 폰 웹 번들을 release처럼 준비해 `out` 아래 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다. 템플릿은 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 매니페스트다. 네이티브 앱은 빌드하지 않는다. 서명하는 쪽의 계약은 `architecture.md`의 "서명 분리"에 있다.
+- `compareBundles`: 스토어 빌드의 `bundle.json`과 pack의 `bundle.json`을 비교해, 그 번들이 스토어 바이너리에서 돌 수 없으면 `problems`를 준다(새 바이너리가 필요하다).
+- akanjs: `akan pack-update [--against]`(devkit `NativeApp.packUpdate`·`NativeApp.compareBundles`).
 
 ### doctor와 devices
 
