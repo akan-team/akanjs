@@ -25,10 +25,12 @@ export const AttachImage = ({ memoId }: AttachImageProps) => {
       <BiImageAdd /> {l("memo.imageUrl")}
       <input
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp,image/gif"
         className="hidden"
         onChange={(event) => {
-          if (event.target.files) void st.do.attachMemoImage(memoId, event.target.files);
+          const files = [...(event.target.files ?? [])];
+          event.target.value = "";
+          if (files.length) void st.do.attachMemoImage(memoId, files);
         }}
       />
     </label>

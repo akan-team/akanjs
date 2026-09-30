@@ -8,6 +8,7 @@ export class LocalOrEdge implements Guard {
   static name = "LocalOrEdge";
   static scope: GuardScope = "account";
   canPass() {
-    return getEnv().operationMode !== "cloud";
+    const { operationMode } = getEnv();
+    return operationMode === "local" || operationMode === "edge";
   }
 }

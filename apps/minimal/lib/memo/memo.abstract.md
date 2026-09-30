@@ -4,8 +4,9 @@ stored through the util lib's blob storage.
 
 ## Rules
 - minimal has no accounts, so every memo endpoint is anonymous and guarded by `LocalOrEdge`: it answers on a developer's
-  server and on a desktop app's carried server, never on a cloud deployment.
+  server (`local`) and on a desktop app's carried server (`edge`), never in any other operation mode, and never over
+  MCP.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
-- An attached image is an image type of at most 5 MB.
+- An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB.
 - Removal is soft: a removed memo keeps its row with `removedAt` set, and its image stays in storage.

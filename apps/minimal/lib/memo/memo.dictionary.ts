@@ -27,6 +27,9 @@ export const dictionary = modelDictionary(["en", "ko"])
       })),
   }))
   .error({
-    imageRejected: ["Attach an image of at most 5 MB", "5MB 이하의 이미지만 붙일 수 있습니다."],
+    imageRejected: [
+      "Attach a PNG, JPEG, WebP or GIF image of at most 5 MB",
+      "5MB 이하의 PNG, JPEG, WebP, GIF 이미지만 붙일 수 있습니다.",
+    ],
   })
   .translate({});

@@ -9,7 +9,7 @@ export class MemoInternal extends internal(srv.memo, ({ interval }) => ({})) {}
 
 export class MemoSlice extends slice(
   srv.memo,
-  { guards: { root: None, get: LocalOrEdge, cru: LocalOrEdge } },
+  { guards: { root: None, get: LocalOrEdge, cru: LocalOrEdge }, mcp: false },
   (init) => ({
     inPublic: init({ guards: [LocalOrEdge], mcp: false }).exec(function () {
       return this.memoService.queryAny();

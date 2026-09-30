@@ -8,10 +8,11 @@ export class MemoService extends serve(db.memo, ({ use }) => ({
   blobStorageApi: use<BlobStorageApi>(),
 })) {
   static readonly imageLimit = 5 * 1024 * 1024;
+  static readonly imageTypes: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
   async attachImage(memoId: string, upload: File) {
     const image = await (upload as unknown as Promise<File>);
-    if (!image.type.startsWith("image/") || image.size > MemoService.imageLimit)
+    if (!MemoService.imageTypes.includes(image.type) || image.size > MemoService.imageLimit)
       throw new Err("memo.error.imageRejected");
     const memo = await this.getMemo(memoId);
     const filename = image.name.replace(/[^A-Za-z0-9._-]/g, "") || "image";
