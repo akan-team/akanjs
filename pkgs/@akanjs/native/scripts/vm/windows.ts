@@ -104,6 +104,8 @@ $staging = '${WORK}\\sync-${COPY}'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $staging
 New-Item -ItemType Directory -Force -Path $staging, '${WORK}\\${COPY}' | Out-Null
 tar.exe -xzf "$HOME\\${COPY}-sync.tar.gz" -C $staging
+# A partial unpack mirrored with /MIR would delete the sources it missed from the work copy.
+if ($LASTEXITCODE -ne 0) { throw "tar failed with $LASTEXITCODE" }
 Remove-Item "$HOME\\${COPY}-sync.tar.gz"
 robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist .git .claude local /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }

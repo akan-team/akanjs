@@ -15,7 +15,9 @@ let dir = "";
 const open: Claim[] = [];
 afterEach(() => {
   for (const c of open.splice(0)) if (c.kind === "primary") c.close();
-  rmSync(dir, { recursive: true, force: true });
+  //? Only a folder a test made: Bun on Windows reads rmSync("") as the working folder, this package.
+  if (dir) rmSync(dir, { recursive: true, force: true });
+  dir = "";
 });
 const tempSocket = () => {
   dir = mkdtempSync(join(tmpdir(), "akan-native-si-"));

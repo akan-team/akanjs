@@ -105,7 +105,11 @@ describe("window-state file and rules", () => {
 
 describe("window-state desktop plugin", () => {
   let dir = "";
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    //? Only a folder a test made: Bun on Windows reads rmSync("") as the working folder, this package.
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = "";
+  });
 
   function fakeContext(state: () => WindowSnapshot) {
     dir = mkdtempSync(join(tmpdir(), "akan-native-ws-"));
