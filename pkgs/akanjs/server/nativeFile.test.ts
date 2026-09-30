@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { grantFile } from "../../@akanjs/native/packages/desktop/src/grants.ts";
@@ -57,6 +57,24 @@ describe("NativeFile", () => {
     await expect(NativeFile.resolveIn("f1", "../../.ssh/id_ed25519")).rejects.toThrow("outside the folder");
   });
 
+  test("a name that starts with two dots is inside, and a link in the folder cannot reach out of it", async () => {
+    const granted = path.join(home, "granted");
+    const outside = path.join(home, "outside");
+    mkdirSync(path.join(granted, "..cache"), { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(path.join(outside, "secret.txt"), "secret");
+    symlinkSync(outside, path.join(granted, "link"), "junction");
+    symlinkSync(path.join(home, "nowhere"), path.join(granted, "dangling"), "junction");
+    symlinkSync(path.join(granted, "..cache"), path.join(granted, "inner"), "junction");
+    shell({ f2: { path: granted, mode: "folder" } });
+
+    expect(await NativeFile.resolveIn("f2", "..cache/x")).toBe(path.join(granted, "..cache", "x"));
+    expect(await NativeFile.resolveIn("f2", "inner/x")).toBe(path.join(granted, "inner", "x"));
+    await expect(NativeFile.resolveIn("f2", "link/secret.txt")).rejects.toThrow("outside the folder");
+    await expect(NativeFile.resolveIn("f2", "link/new/file.txt")).rejects.toThrow("outside the folder");
+    await expect(NativeFile.resolveIn("f2", "dangling")).rejects.toThrow("a link to nothing");
+  });
+
   test("resolves nothing outside a desktop app", async () => {
     process.send = undefined;
     await expect(NativeFile.resolve("g1", "read")).rejects.toThrow("only inside the desktop app that gave it");
@@ -80,7 +98,7 @@ process.send({ type: "ready", pid: process.pid });`,
     const grant = grantFile("/Users/me/Movies/trip.mov", "read");
     const server = createDesktopServer({
       resources,
-      appDataDir: path.join(home, "data"),
+      dataDir: path.join(home, "data", "server"),
       manifest: { entry: "main.js", env: { TEST_GRANTS: `${grant},forged` } },
       freePort: async () => 1,
     });

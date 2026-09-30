@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { getEnv } from "akanjs/base";
@@ -30,10 +30,41 @@ export class NativeFile {
   static async resolveIn(grant: string, relative: string): Promise<string> {
     const folder = await NativeFile.resolve(grant, "folder");
     const target = path.resolve(folder, relative);
-    const inside = path.relative(folder, target);
-    if (inside.startsWith("..") || path.isAbsolute(inside))
-      throw new Error(`${relative} is outside the folder the user granted.`);
+    NativeFile.#assertInside(folder, target, relative);
+    //? A link already in the granted folder may point anywhere, and the page names `relative`: the file the link
+    //? reaches has to be inside the grant as well.
+    NativeFile.#assertInside(NativeFile.#realPath(folder), NativeFile.#realPath(target), relative);
     return target;
+  }
+
+  static #assertInside(folder: string, target: string, relative: string) {
+    const inside = path.relative(folder, target);
+    if (inside === ".." || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside))
+      throw new Error(`${relative} is outside the folder the user granted.`);
+  }
+
+  //? What does not exist yet is resolved through its nearest existing ancestor, so a file about to be written under a
+  //? linked folder is judged by where the write would land; a dangling link could land anywhere and is refused.
+  static #realPath(target: string): string {
+    const rest: string[] = [];
+    for (let current = target; ; current = path.dirname(current)) {
+      try {
+        return path.join(realpathSync(current), ...rest);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT" || path.dirname(current) === current) throw error;
+        if (NativeFile.#exists(current)) throw new Error(`${target} is a link to nothing.`);
+        rest.unshift(path.basename(current));
+      }
+    }
+  }
+
+  static #exists(entry: string) {
+    try {
+      lstatSync(entry);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   static #ask(grant: string): Promise<{ path: string; mode: NativeFileMode }> {
