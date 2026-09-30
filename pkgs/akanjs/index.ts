@@ -299,7 +299,7 @@ export interface AppConfigResult {
   externalLibs: string[];
   /** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
   trustedDependencies: string[];
-  /** A desktop app's server carries these; the image does not read them and installs through `docker`. */
+  /** Every desktop build, run and dev session carries these, server or not; the image installs through `docker`. */
   bin: AkanBinConfig;
   barrelImports: string[];
   optimizeImports: string[];
@@ -314,7 +314,7 @@ export interface AppConfigResult {
 export interface LibConfigResult {
   externalLibs: string[];
   trustedDependencies: string[];
-  /** Carried by the desktop server of every app that depends on this lib; an app's own entry of the same name wins. */
+  /** Carried by the desktop app of every app that depends on this lib; an app's own entry of the same name wins. */
   bin: AkanBinConfig;
   /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
   docker: LibDockerConfig;

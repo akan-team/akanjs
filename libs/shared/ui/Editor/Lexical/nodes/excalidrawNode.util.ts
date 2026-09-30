@@ -1,4 +1,6 @@
 import { Err } from "@libs/shared/client";
+import { getEnv } from "akanjs/base";
+import { resolveServerUrl } from "akanjs/client";
 import {
   $applyNodeReplacement,
   type LexicalNode,
@@ -99,6 +101,30 @@ export const sanitizeSceneFiles = async (
     }
   }
   return { ...scene, files: nextFiles };
+};
+
+const mapHostedFiles = (files: ExcalidrawScene["files"], map: (url: string) => string): ExcalidrawScene["files"] =>
+  files &&
+  Object.fromEntries(
+    Object.entries(files).map(([id, file]) => [
+      id,
+      typeof file.dataURL === "string" && !file.dataURL.startsWith("data:")
+        ? { ...file, dataURL: map(file.dataURL) }
+        : file,
+    ]),
+  );
+
+//? A hosted file is stored relative to the server that wrote it, and Excalidraw loads `dataURL` itself: a page served
+//? from another origin (a native shell's) hands it the server's absolute URL and takes that back before storing.
+export const toLoadableFiles = (files: ExcalidrawScene["files"]) => mapHostedFiles(files, resolveServerUrl);
+
+export const toStorableFiles = (files: ExcalidrawScene["files"]) => {
+  const { apiPrefix } = getEnv();
+  const served = resolveServerUrl(apiPrefix);
+  if (served === apiPrefix) return files;
+  return mapHostedFiles(files, (url) =>
+    url.startsWith(`${served}/`) ? url.slice(served.length - apiPrefix.length) : url,
+  );
 };
 
 export const dataUrlToFile = (dataUrl: string, id: string): File => {

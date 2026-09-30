@@ -1,6 +1,6 @@
 "use client";
 import { buttonRecipe } from "@libs/util/ui";
-import { cn } from "akanjs/client";
+import { cn, resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import { AiOutlineDelete, AiOutlineDownload, AiOutlineFile } from "react-icons/ai";
 import { formatSize } from "./fileNode.util";
@@ -37,7 +37,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
         </span>
         <span className="ml-auto flex items-center gap-1">
           <a
-            href={src}
+            href={resolveServerUrl(src)}
             target="_blank"
             rel="noreferrer"
             download={name}
