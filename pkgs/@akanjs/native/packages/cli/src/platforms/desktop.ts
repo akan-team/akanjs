@@ -8,7 +8,7 @@
 //   resources/shell.json        window and shell settings for main.ts and the plugin host
 //   resources/server/           desktop.server.dir, when the app carries a server (packages/desktop/src/server.ts)
 //   resources/server.json       its entry and env
-//   resources/bin/              desktop.bin: executables put first on the app's PATH (packages/desktop/src/main.ts)
+//   resources/bin/              desktop.bin: executables put first on the app's PATH (packages/desktop/src/host.ts)
 //   resources/server.bunfig.toml  empty: the server's Bun reads it instead of a bunfig.toml in its data folder
 //
 // Where each OS puts the executable, the library and the resources: macos.ts, windows.ts, linux.ts

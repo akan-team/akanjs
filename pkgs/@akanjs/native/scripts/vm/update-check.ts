@@ -87,7 +87,9 @@ try {
   async function probe(mode: string, until: RegExp, timeoutMs = 90_000): Promise<string[]> {
     const lines: string[] = [];
     const all: string[] = [];
+    //? In its own folder, as Explorer starts it: Windows cannot rename a folder a process works in.
     const child = Bun.spawn([exe], {
+      cwd: app,
       env: { ...env, AKAN_NATIVE_PUBLIC_UPDATE_PROBE: mode },
       stdout: "pipe",
       stderr: "pipe",
