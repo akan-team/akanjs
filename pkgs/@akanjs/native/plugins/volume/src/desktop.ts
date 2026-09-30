@@ -18,11 +18,15 @@ export type PactlSubscribe = (onLine: (line: string) => void) => () => void;
 
 //? A desktop session's PATH has /usr/bin, but whatever launched the app may have passed no PATH at all.
 const pactlPath = () => Bun.which("pactl") ?? "/usr/bin/pactl";
+//? pactl translates its output ("Mute: 예", "이벤트 '변경'"), and only the C locale's words are parsed here.
+const pactlEnv = () => ({ ...process.env, LC_ALL: "C" });
+
+export const resubscribeDelay = (ends: number) => Math.min(1000 * 2 ** Math.max(ends - 1, 0), 30_000);
 
 export const runPactl: Pactl = async (...args) => {
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
-    proc = Bun.spawn([pactlPath(), ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+    proc = Bun.spawn([pactlPath(), ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe", env: pactlEnv() });
   } catch {
     throw new AkanNativeError("UNSUPPORTED", "there is no pactl (PulseAudio's or PipeWire's pulseaudio-utils)");
   }
@@ -35,14 +39,22 @@ export const runPactl: Pactl = async (...args) => {
   return out;
 };
 
-export const subscribePactl: PactlSubscribe = (onLine) => {
+/** One `pactl subscribe`: its lines until it ends; `stop` ends it. */
+export type PactlSubscription = (onLine: (line: string) => void) => { ended: Promise<void>; stop(): void } | null;
+
+const pactlSubscription: PactlSubscription = (onLine) => {
   let proc: Bun.Subprocess<"ignore", "pipe", "ignore">;
   try {
-    proc = Bun.spawn([pactlPath(), "subscribe"], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+    proc = Bun.spawn([pactlPath(), "subscribe"], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+      env: pactlEnv(),
+    });
   } catch {
-    return () => {};
+    return null;
   }
-  void (async () => {
+  const ended = (async () => {
     const decoder = new TextDecoder();
     let pending = "";
     for await (const chunk of proc.stdout) {
@@ -51,8 +63,40 @@ export const subscribePactl: PactlSubscribe = (onLine) => {
       for (const line of lines) onLine(line);
     }
   })().catch(() => {});
-  return () => proc.kill();
+  return { ended, stop: () => proc.kill() };
 };
+
+/** `pactl subscribe`, started again (resubscribeDelay) whenever it ends until stopped: a restarted audio server ends it. */
+export function resubscribing(
+  subscription: PactlSubscription = pactlSubscription,
+  delay = resubscribeDelay,
+): PactlSubscribe {
+  return (onLine) => {
+    let stopped = false;
+    let current: ReturnType<PactlSubscription> = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let ends = 0;
+    const start = () => {
+      if (stopped) return;
+      const startedAt = Date.now();
+      current = subscription(onLine);
+      if (!current) return;
+      void current.ended.then(() => {
+        if (stopped) return;
+        ends = Date.now() - startedAt >= 60_000 ? 1 : ends + 1;
+        timer = setTimeout(start, delay(ends));
+      });
+    };
+    start();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      current?.stop();
+    };
+  };
+}
+
+export const subscribePactl: PactlSubscribe = resubscribing();
 
 export function createDesktopVolume(
   platform: NodeJS.Platform = process.platform,

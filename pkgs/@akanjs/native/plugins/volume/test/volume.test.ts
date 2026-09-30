@@ -3,7 +3,7 @@ import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
 import { pactlLevel, pactlMuted } from "../src/common.ts";
-import { createDesktopVolume } from "../src/desktop.ts";
+import { createDesktopVolume, resubscribeDelay, resubscribing } from "../src/desktop.ts";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
@@ -92,6 +92,41 @@ describe("volume plugin", () => {
       { event: "change", data: { level: 0.2, muted: false, settable: true }, windows: [1] },
     ]);
     expect(host.shell).toEqual([]);
+  });
+
+  test("Linux: pactl subscribe starts again after it ends, waiting longer each time, until stopped", async () => {
+    const started: { end(): void; stopped: boolean }[] = [];
+    const delays: number[] = [];
+    const subscribe = resubscribing(
+      () => {
+        let end = () => {};
+        const ended = new Promise<void>((resolve) => (end = resolve));
+        const run = { end, stopped: false };
+        started.push(run);
+        return {
+          ended,
+          stop: () => {
+            run.stopped = true;
+          },
+        };
+      },
+      (ends) => {
+        delays.push(resubscribeDelay(ends));
+        return 1;
+      },
+    );
+    const stop = subscribe(() => {});
+    started[0]?.end();
+    await Bun.sleep(10);
+    started[1]?.end();
+    await Bun.sleep(10);
+    expect(started).toHaveLength(3);
+    expect(delays).toEqual([1000, 2000]);
+    stop();
+    expect(started[2]?.stopped).toBe(true);
+    started[2]?.end();
+    await Bun.sleep(10);
+    expect(started).toHaveLength(3);
   });
 
   test("Linux without an audio server answers NOT_FOUND", async () => {
