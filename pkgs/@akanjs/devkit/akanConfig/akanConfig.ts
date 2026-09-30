@@ -456,14 +456,14 @@ export class AkanAppConfig implements AppConfigResult {
     };
   }
   /** What the built server runs with in its image; a desktop app's carried server starts from the same values. */
-  getProductionEnv(): Record<string, string> {
+  getProductionEnv(environment: string = this.baseDevEnv.env): Record<string, string> {
     return {
       PORT: "8282",
       NODE_ENV: "production",
       AKAN_PUBLIC_REPO_NAME: this.baseDevEnv.repoName,
       AKAN_PUBLIC_SERVE_DOMAIN: this.baseDevEnv.serveDomain,
       AKAN_PUBLIC_APP_NAME: this.app.name,
-      AKAN_PUBLIC_ENV: this.baseDevEnv.env,
+      AKAN_PUBLIC_ENV: environment,
       ...(this.basePaths.size ? { AKAN_PUBLIC_BASE_PATHS: [...this.basePaths].join(",") } : {}),
       AKAN_PUBLIC_DEFAULT_LOCALE: this.i18n.defaultLocale,
       AKAN_PUBLIC_LOCALES: this.i18n.locales.join(","),
@@ -478,13 +478,16 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
     };
   }
-  #makeDockerfile(): string {
+  dockerfileFor(environment: string): string {
+    return this.#makeDockerfile(environment);
+  }
+  #makeDockerfile(environment?: string): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
     const preRunScripts = this.#getDockerRunScripts(preRuns);
     const postRunScripts = this.#getDockerRunScripts(postRuns);
     const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
-    const envLines = Object.entries(this.getProductionEnv()).map(([key, value]) => `ENV ${key}=${value}`);
+    const envLines = Object.entries(this.getProductionEnv(environment)).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
@@ -324,6 +325,37 @@ describe("Workspace and app executor environment contracts", () => {
     expect(process.env.AKAN_PUBLIC_SERVER_PORT).toBeUndefined();
     expect((await stat(path.join(root, "dist/apps/demo/private"))).isDirectory()).toBe(true);
     expect((await stat(path.join(root, "dist/apps/demo/public"))).isDirectory()).toBe(true);
+  });
+
+  test("akan start clears the dev output and keeps native builds, update releases and the bin downloads", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    process.env.PORT_OFFSET = "0";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/startclean/page"), { recursive: true });
+    await writeFile(path.join(root, "apps/startclean/akan.config.ts"), "export default {};\n");
+    const akan = path.join(root, "apps/startclean/.akan");
+    const kept = [
+      "mobile/desktop/updates/macos-arm64/main.json",
+      "mobile/desktop/native/macos/App.app",
+      "cache/bin/ffmpeg",
+    ];
+    const removed = [
+      "artifact/client/app.js",
+      "generated/dict/index.ts",
+      "cache/cssCandidates.json",
+      "desktop/server/main.js",
+    ];
+    for (const file of [...kept, ...removed]) await writeText(path.join(akan, file), "x");
+
+    const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), "startclean");
+    await app.prepareCommand("start");
+
+    for (const file of kept) expect(existsSync(path.join(akan, file))).toBe(true);
+    for (const file of [...removed, "artifact", "generated", "desktop"])
+      expect(existsSync(path.join(akan, file))).toBe(false);
   });
 
   describe("syncPages", () => {

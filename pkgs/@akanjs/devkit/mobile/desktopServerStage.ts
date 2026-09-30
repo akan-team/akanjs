@@ -36,10 +36,9 @@ export class DesktopServerStage {
 
   static env(config: AkanAppConfig, environment: MobileEnv): Record<string, string> {
     //? The launcher picks the port, and the log file stays on: a user's computer has no log collector.
-    const { PORT: _port, AKAN_LOG_TO_FILE: _fileLog, ...image } = config.getProductionEnv();
+    const { PORT: _port, AKAN_LOG_TO_FILE: _fileLog, ...image } = config.getProductionEnv(environment);
     return {
       ...image,
-      AKAN_PUBLIC_ENV: environment,
       //? Neither the developer's machine (local, which derives a forgeable JWT secret) nor a deployment (cloud).
       AKAN_PUBLIC_OPERATION_MODE: "edge",
       AKAN_DATABASE_MODE: "single",

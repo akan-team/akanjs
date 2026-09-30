@@ -494,6 +494,29 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
   });
 
+  test("start-desktop --server stops at once when the dev server it started gives up", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    script.startOne = async (_app, options) => {
+      setTimeout(() => options?.onDevEvent?.({ app: "demo", state: "failed" }), 5);
+      return {
+        stop: async () => {
+          recorder.record("devServer.stop");
+        },
+      } as never;
+    };
+    const startedAt = Date.now();
+    try {
+      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+        "akan start demo gave up restarting its server",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
+  });
+
   test("start-desktop --server asks for one target before it starts a dev server", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     ApplicationRunner.startTarget = async () => {
@@ -586,29 +609,33 @@ describe("ApplicationRunner mobile", () => {
   });
 
   test("a dev server is reused only when it is this app's", async () => {
-    const serve = (appName?: string) =>
+    const serve = (appName?: string, pid?: number) =>
       Bun.serve({
         port: 0,
         fetch: (req) => {
           const { pathname } = new URL(req.url);
-          if (pathname === "/_akan/app/health") return Response.json({ status: "running" });
+          if (pathname === "/_akan/app/health") return Response.json({ status: "running", ...(pid ? { pid } : {}) });
           if (pathname === "/_akan/app/info" && appName) return Response.json({ appName, environment: "local" });
           return new Response("not found", { status: 404 });
         },
       });
     const own = serve("demo");
     const other = serve("admin");
+    const older = serve(undefined, 4242);
     const foreign = serve();
     try {
       expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(true);
       await expect(ApplicationRunner.answers(`http://localhost:${other.port}`, "demo")).rejects.toThrow(
         `http://localhost:${other.port} is the dev server of admin, not demo.`,
       );
+      await expect(ApplicationRunner.answers(`http://localhost:${older.port}`, "demo")).rejects.toThrow(
+        `http://localhost:${older.port} is an akan dev server (pid 4242) too old to say which app it serves. Stop it (\`akan start demo --kill\` takes the port over)`,
+      );
       await expect(ApplicationRunner.answers(`http://localhost:${foreign.port}`, "demo")).rejects.toThrow(
         "answers, but not as an akan dev server",
       );
     } finally {
-      for (const server of [own, other, foreign]) server.stop(true);
+      for (const server of [own, other, older, foreign]) server.stop(true);
     }
     expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(false);
   });

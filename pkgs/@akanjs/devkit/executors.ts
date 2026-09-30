@@ -1118,6 +1118,20 @@ export class AppExecutor extends SysExecutor {
   static from(executor: SysExecutor | WorkspaceExecutor, name: string) {
     return new AppExecutor({ workspace: executor instanceof WorkspaceExecutor ? executor : executor.workspace, name });
   }
+  //* Not dev output: native builds and the update releases waiting to be uploaded, and the downloaded `bin` sources.
+  static readonly #keptOnStart = [path.join(".akan", "mobile"), path.join(".akan", "cache", "bin")];
+  async #removeDevOutput(dir = ".akan") {
+    const entries = await readDirEntries(this.getPath(dir)).catch(() => [] as string[]);
+    await Promise.all(
+      entries.map(async (name) => {
+        const entry = path.join(dir, name);
+        if (AppExecutor.#keptOnStart.includes(entry)) return;
+        if (AppExecutor.#keptOnStart.some((kept) => kept.startsWith(`${entry}${path.sep}`)))
+          return await this.#removeDevOutput(entry);
+        await this.removeDir(entry);
+      }),
+    );
+  }
   getEnv() {
     return WorkspaceExecutor.getBaseDevEnv().env;
   }
@@ -1174,7 +1188,7 @@ export class AppExecutor extends SysExecutor {
         ...(akanConfig.web.ssr ? [this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true })] : []),
       ]);
     } else {
-      await this.removeDir(".akan");
+      await this.#removeDevOutput();
       //? `akan start` keeps the full dev surface: the incremental builder is also the file watcher.
       if (!akanConfig.web.ssr || !akanConfig.web.csr)
         this.logger.verbose(

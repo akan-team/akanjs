@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS } from "./applicationBuildRunner";
+import { AkanAppConfig } from "./akanConfig";
+import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
+import type { App } from "./commandDecorators";
+import { Executor } from "./executors";
 
 describe("ApplicationBuildRunner", () => {
   test("externalizes Akan optional backend dependencies", () => {
@@ -42,6 +45,37 @@ console.info(new SampleService().name);
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an image of a --env build boots the env its server carries, not the root .env's", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const baseDevEnv = {
+      repoName: "akanjs",
+      serveDomain: "akanjs.com",
+      env: "local" as const,
+      portOffset: 0,
+      workspaceRoot: root,
+    };
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      {},
+      baseDevEnv,
+    );
+    const app = {
+      getConfig: async () => config,
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+    } as unknown as App;
+    try {
+      await new ApplicationBuildRunner(app, { environment: "debug" }).buildAppMeta();
+      expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("ENV AKAN_PUBLIC_ENV=debug\n");
+      await new ApplicationBuildRunner(app).buildAppMeta();
+      expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("ENV AKAN_PUBLIC_ENV=local\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

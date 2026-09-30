@@ -138,7 +138,7 @@ export class ApplicationBuildRunner {
           ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
     );
-    await this.#runPhase("metadata", "Writing production metadata", () => this.#buildAppMeta());
+    await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     return {
       phases: this.#phases,
       durationMs: Date.now() - this.#startedAt,
@@ -180,11 +180,12 @@ export class ApplicationBuildRunner {
     }
   }
 
-  async #buildAppMeta() {
+  async buildAppMeta() {
     const akanConfig = await this.#app.getConfig();
+    const dockerfile = akanConfig.dockerfileFor(this.#environment ?? akanConfig.baseDevEnv.env);
     await Promise.all([
       this.#app.dist.writeJson("package.json", akanConfig.getProductionPackageJson()),
-      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, akanConfig.dockerfile),
+      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, dockerfile),
       this.#app.dist.writeJson("akan.build.json", {
         buildId: await this.#resolveBuildId(),
         akanVersion: akanConfig.akanVersion,

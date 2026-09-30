@@ -16,7 +16,11 @@ const deviceOption = {
 const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to", default: "" };
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
-const startEnvOption = { enum: devEnvs, desc: "backend environment", default: "local" } as const;
+const startEnvOption = {
+  enum: devEnvs,
+  desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
+  default: "local",
+} as const;
 const serverOption = {
   desc: "also carry the app's server in the desktop app (database mode single, API only, on loopback)",
   default: false,

@@ -285,7 +285,7 @@ describe("NativeConfig.build", () => {
     expect(api.validateConfig(config, { appDir: root })).toEqual([]);
   });
 
-  test("ships a native/ folder once when the target also lists it by path", async () => {
+  test("ships a native/ folder once when the target also lists it by path or by id", async () => {
     const root = await makeTempRoot();
     const kiosk = await writeManifest(path.join(root, "native", "kiosk"), "kiosk");
     const { config } = NativeConfig.build({
@@ -293,7 +293,7 @@ describe("NativeConfig.build", () => {
       target: {
         ...minimalTarget,
         permissions: [],
-        native: { plugins: ["./native/kiosk/", "haptics"] },
+        native: { plugins: ["./native/kiosk/", "kiosk", "haptics"] },
         deepLinks: undefined,
       },
       webDir: path.join(root, "web"),

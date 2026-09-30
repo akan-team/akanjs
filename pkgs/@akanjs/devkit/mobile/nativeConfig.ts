@@ -110,9 +110,10 @@ export class NativeConfig {
     const abs = (relative: string) => path.resolve(appPath, relative);
     const updates = NativeConfig.#updates(target, env);
     const folders = new Set(nativePlugins.map((plugin) => path.resolve(plugin.dir)));
-    //? A `native/<id>` folder ships by itself, and the same folder listed again by path would reach the runtime twice.
-    const listed = (target.native?.plugins ?? []).filter(
-      (spec) => NativeConfig.#isId(spec) || !folders.has(path.resolve(appPath, spec)),
+    const folderIds = new Set(nativePlugins.map((plugin) => plugin.id));
+    //? A `native/<id>` folder ships by itself; listed again, by path or by id, it would reach the runtime twice.
+    const listed = (target.native?.plugins ?? []).filter((spec) =>
+      NativeConfig.#isId(spec) ? !folderIds.has(spec) : !folders.has(path.resolve(appPath, spec)),
     );
     const plugins = [
       ...new Set([

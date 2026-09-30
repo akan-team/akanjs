@@ -339,23 +339,33 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   //* `akan start` in this process, as `--plain` runs it: the full-screen view would take the terminal from the app's logs.
   async #startDevServerFor(app: App, upstream: string) {
     app.log(`No dev server answers on ${upstream}; starting \`akan start ${app.name}\` for the desktop app.`);
-    let markReady = () => {};
-    const ready = new Promise<void>((resolve) => (markReady = resolve));
+    let settle: (state: "ready" | "failed") => void = () => {};
+    const settled = new Promise<"ready" | "failed">((resolve) => (settle = resolve));
     const appHost = await this.startOne(app, {
       write: false,
       onDevEvent: (event) => {
-        if ("state" in event && event.state === "ready") markReady();
+        if ("state" in event && (event.state === "ready" || event.state === "failed")) settle(event.state);
       },
     });
-    this.#interrupt.add(async () => {
-      await appHost.stop();
-    }, "Abandoning the dev server shutdown; its processes may still be running.");
-    if (await DevSupervisor.timesOut(ready, ApplicationScript.devServerReadyTimeoutMs)) {
-      await this.#interrupt.runAll();
-      throw new Error(
-        `akan start ${app.name} did not answer within ${ApplicationScript.devServerReadyTimeoutMs / 1000}s; see its log above.`,
-      );
-    }
+    this.#interrupt.add(
+      async () => {
+        await appHost.stop();
+      },
+      "Abandoning the dev server shutdown; its processes may still be running.",
+      130,
+    );
+    let state: "ready" | "failed" | undefined;
+    const timedOut = await DevSupervisor.timesOut(
+      settled.then((settledState) => (state = settledState)),
+      ApplicationScript.devServerReadyTimeoutMs,
+    );
+    if (state === "ready") return;
+    await this.#interrupt.runAll();
+    throw new Error(
+      timedOut
+        ? `akan start ${app.name} did not answer within ${ApplicationScript.devServerReadyTimeoutMs / 1000}s; see its log above.`
+        : `akan start ${app.name} gave up restarting its server; see its log above.`,
+    );
   }
   async releaseIos(
     app: App,

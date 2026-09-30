@@ -365,17 +365,22 @@ try {
   //? builder that idled out) past these 3 s. Another app's dev server may hold the port, so the name has to match.
   static async answers(url: string, appName: string) {
     const signal = AbortSignal.timeout(3_000);
+    const health = await fetch(new URL("/_akan/app/health", url), { signal }).catch(() => null);
     // Nothing listening, which the caller turns into what to run.
-    if (!(await fetch(new URL("/_akan/app/health", url), { signal }).catch(() => null))) return false;
+    if (!health) return false;
     const info = (await fetch(new URL("/_akan/app/info", url), { signal })
       .then(async (res) => (res.ok ? await res.json() : null))
       .catch(() => null)) as { appName?: unknown } | null;
     if (info?.appName === appName) return true;
-    const moveIt = `give ${appName} another port with AKAN_DEV_PORT`;
+    const stopIt = `Stop it (\`akan start ${appName} --kill\` takes the port over) or give ${appName} another port with AKAN_DEV_PORT`;
+    if (typeof info?.appName === "string")
+      throw new Error(`${url} is the dev server of ${info.appName}, not ${appName}. ${stopIt}.`);
+    //? An akan older than /_akan/app/info still puts its pid in the health answer.
+    const { pid } = ((await health.json().catch(() => null)) ?? {}) as { pid?: unknown };
     throw new Error(
-      typeof info?.appName === "string"
-        ? `${url} is the dev server of ${info.appName}, not ${appName}. Stop it (\`akan start ${appName} --kill\` takes the port over) or ${moveIt}.`
-        : `${url} answers, but not as an akan dev server; ${moveIt}.`,
+      typeof pid === "number"
+        ? `${url} is an akan dev server (pid ${pid}) too old to say which app it serves. ${stopIt}.`
+        : `${url} answers, but not as an akan dev server. Stop what holds the port or give ${appName} another port with AKAN_DEV_PORT.`,
     );
   }
 
