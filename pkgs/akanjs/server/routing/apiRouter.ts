@@ -79,6 +79,13 @@ export class ApiRouter {
     const endpointPaths = new Set([...endpointEntries.map(([path]) => path), ...builtinEntries.map(([path]) => path)]);
     const routeTable = {
       [`${prefix}${websocketPrefix}` as "/api/ws"]: (req) => {
+        //? A socket has no CORS: a page on another site that opens one reads every room it may subscribe to, and it
+        //? carries the SameSite=None auth cookie. The browser only sends Origin; the server is the one to refuse it.
+        try {
+          CrossSiteGuard.assertOrigin(req, new URL(req.url), "websocket");
+        } catch {
+          return new Response("Forbidden", { status: 403 });
+        }
         const upgraded = upgradeAppWs(req, AppWsData.fromRequest(req));
         if (upgraded) return;
         return new Response("Failed to upgrade to WebSocket", { status: 500 });

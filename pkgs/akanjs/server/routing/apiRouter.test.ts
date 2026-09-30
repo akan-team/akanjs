@@ -159,6 +159,44 @@ describe("ApiRouter.buildRoutes", () => {
     await (routes["/api/ws"] as RouteFn)(at("/api/ws", "127.0.0.1:52345"));
     expect(upgrades).toBe(1);
   });
+
+  test("the socket upgrade refuses a cross-site Origin and admits same-site, native shell and Origin-less callers", async () => {
+    const { CrossSiteGuard } = await import("akanjs/signal");
+    const upgraded: string[] = [];
+    const routes = await buildRoutes({
+      upgradeAppWs: (req) => {
+        upgraded.push(req.headers.get("origin") ?? "none");
+        return true;
+      },
+    });
+    const open = (origin?: string, headers: Record<string, string> = {}) =>
+      (routes["/api/ws"] as RouteFn)(
+        new Request("http://127.0.0.1:52345/api/ws", {
+          headers: { host: "127.0.0.1:52345", ...(origin ? { origin } : {}), ...headers },
+        }),
+      );
+    const warn = CrossSiteGuard.logger.warn;
+    CrossSiteGuard.logger.warn = () => undefined;
+    try {
+      expect((await open("https://evil.example"))?.status).toBe(403);
+      expect((await open("null"))?.status).toBe(403);
+      expect(upgraded).toEqual([]);
+
+      for (const origin of ["http://127.0.0.1:52345", ...CrossSiteGuard.nativeOrigins]) {
+        expect(await open(origin)).toBeUndefined();
+      }
+      expect(await open()).toBeUndefined();
+      expect(await open("https://app.example.com", { "x-forwarded-host": "app.example.com" })).toBeUndefined();
+      expect(upgraded).toEqual([
+        "http://127.0.0.1:52345",
+        ...CrossSiteGuard.nativeOrigins,
+        "none",
+        "https://app.example.com",
+      ]);
+    } finally {
+      CrossSiteGuard.logger.warn = warn;
+    }
+  });
 });
 
 describe("ApiRouter.buildWebsocketHandlers", () => {

@@ -122,7 +122,7 @@ export class SignalContext<
   }
   async init() {
     // Before the body is read. Only a mutation: a cross-origin caller cannot read a GET's response, and a websocket
-    // frame rides a socket whose handshake already carried the browser's check.
+    // frame rides a socket whose upgrade route already refused a cross-site Origin (ApiRouter).
     if (this.endpointInfo.type === "mutation" && this.transport === "http") {
       const httpCtx = this.getHttpContext();
       CrossSiteGuard.assertOrigin(httpCtx.req, httpCtx.url, this.key);
