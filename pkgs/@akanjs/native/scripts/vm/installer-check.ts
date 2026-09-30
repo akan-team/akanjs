@@ -9,8 +9,11 @@
 // 2. lets the app the installer started take A, as a deployed one would: applied, confirmed, the uninstaller beside
 //    the folder still there, and the entry showing A's version,
 // 3. installs it again over the running app: the copy running from the folder is stopped first,
-// 4. uninstalls it silently: the folder, what updates left beside it, the uninstaller, the shortcut and the entry
-//    are gone.
+// 4. a setup that cannot unpack its files fails with 2 and never stops the running app,
+// 5. a setup with /RUN that cannot swap the folder (another program works in it) fails with 2, leaves the installed
+//    build as it was and starts it again,
+// 6. uninstalls it silently: the folder, what updates and setups left beside it, the uninstaller, the shortcut, the
+//    entry, the launch at login and the shell's update state are gone, and the server's data stays.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,6 +32,8 @@ const uninstaller = `${installDir}.uninstall.exe`;
 const exe = join(installDir, `${fileName}.exe`);
 const shortcut = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", `${name}.lnk`);
 const uninstallKey = `HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${id}`;
+const runKey = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const localData = join(process.env.LOCALAPPDATA ?? "", id);
 const nextVersion = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
 
 function powershell(command: string): string {
@@ -65,11 +70,13 @@ async function until<T>(what: string, check: () => T | undefined | false, timeou
   throw new Error(`timed out waiting for ${what}`);
 }
 
-async function runSetup(setup: string, args: string[], env: Record<string, string> = {}) {
+async function runSetup(setup: string, args: string[], env: Record<string, string> = {}, expected = 0) {
   const p = Bun.spawn([setup, ...args], { stdout: "ignore", stderr: "ignore", env: { ...process.env, ...env } });
   const code = await p.exited;
-  if (code !== 0) throw new Error(`${setup} ${args.join(" ")} exited with ${code}`);
+  if (code !== expected) throw new Error(`${setup} ${args.join(" ")} exited with ${code}, not ${expected}`);
 }
+
+const leftBeside = () => [".setup-new", ".setup-old"].map((s) => `${installDir}${s}`).filter((p) => existsSync(p));
 
 const out = join(scratch, "updates");
 mkdirSync(out, { recursive: true });
@@ -91,7 +98,8 @@ try {
     ...sampleConfig,
     updates: { ...sampleConfig.updates, url: `http://127.0.0.1:${releases.port}`, publicKey },
   };
-  rmSync(join(process.env.APPDATA ?? "", id, "akan-native-updates"), { recursive: true, force: true });
+  for (const base of [process.env.APPDATA ?? "", process.env.LOCALAPPDATA ?? ""])
+    rmSync(join(base, id, "akan-native-updates"), { recursive: true, force: true });
 
   step("build the sample with its installer, then publish release A");
   const { artifacts } = await build({
@@ -151,12 +159,67 @@ try {
   if (!existsSync(exe)) throw new Error("the reinstall left no app");
   console.info(`  app ${updated} stopped, ${exe} in place`);
 
-  step("4. a silent uninstall");
-  const leftovers = [`${installDir}.previous`, `${installDir}.update-0.0.0-1`, `${installDir}.failed-1`];
+  Bun.spawn([exe], { cwd: process.env.LOCALAPPDATA, stdout: "ignore", stderr: "ignore" });
+  const [running] = await until("the app started again", () => {
+    const pids = runningFromInstall();
+    return pids.length ? pids : undefined;
+  });
+  const buildBefore = installedBuild();
+
+  step("4. a setup that cannot unpack its files");
+  writeFileSync(`${installDir}.setup-new`, "a file where the setup unpacks");
+  await runSetup(setup, ["/S", "/RUN"], {}, 2);
+  rmSync(`${installDir}.setup-new`, { force: true });
+  if (!runningFromInstall().includes(running ?? -1)) throw new Error(`the running app ${running} was stopped`);
+  if (installedBuild() !== buildBefore) throw new Error("the installed build changed");
+  console.info(`  exited with 2, app ${running} still running`);
+
+  step("5. a setup with /RUN that cannot swap the folder");
+  const holder = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 300"], {
+    cwd: installDir,
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  try {
+    await runSetup(setup, ["/S", "/RUN"], {}, 2);
+    if (!existsSync(exe) || installedBuild() !== buildBefore)
+      throw new Error("the failed setup did not leave the app as it was");
+    if (leftBeside().length) throw new Error(`the failed setup left ${leftBeside().join(", ")}`);
+    const [again] = await until("the old app started again", () => {
+      const pids = runningFromInstall().filter((pid) => pid !== running);
+      return pids.length ? pids : undefined;
+    });
+    console.info(`  exited with 2, build ${buildBefore} in place, app ${running} stopped and ${again} started again`);
+  } finally {
+    holder.kill();
+    await holder.exited;
+  }
+
+  step("6. a silent uninstall");
+  const leftovers = [
+    `${installDir}.previous`,
+    `${installDir}.update-0.0.0-1`,
+    `${installDir}.failed-1`,
+    `${installDir}.setup-new`,
+    `${installDir}.setup-old`,
+    join(localData, "akan-native-updates"),
+  ];
   for (const dir of leftovers) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "left.txt"), "");
   }
+  const serverDir = join(localData, "server");
+  const serverData = join(serverDir, "installer-check.txt");
+  const serverDirExisted = existsSync(serverDir);
+  mkdirSync(serverDir, { recursive: true });
+  writeFileSync(serverData, "");
+  const startsAtLogin = () =>
+    powershell(`$null -ne (Get-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -ErrorAction SilentlyContinue)`) ===
+    "True";
+  powershell(
+    `New-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -Value '"${exe.replace(/'/g, "''")}"' -PropertyType String -Force | Out-Null`,
+  );
+  if (!startsAtLogin()) throw new Error("could not register the app to start at login");
   await runSetup(uninstaller, ["/S"]);
   await until("the folder to go", () => !existsSync(installDir));
   await until("the uninstaller to go", () => !existsSync(uninstaller));
@@ -164,7 +227,12 @@ try {
   if (left.length) throw new Error(`left next to the folder: ${left.join(", ")}`);
   if (existsSync(shortcut)) throw new Error("the shortcut is still there");
   if (powershell(`Test-Path -LiteralPath '${uninstallKey}'`) !== "False") throw new Error("the entry is still there");
-  console.info("  folder, leftovers, uninstaller, shortcut and entry gone");
+  if (startsAtLogin()) throw new Error("the app still starts at login");
+  if (!existsSync(serverData)) throw new Error("the uninstall took the server's data");
+  rmSync(serverDirExisted ? serverData : serverDir, { recursive: true, force: true });
+  console.info(
+    "  folder, leftovers, uninstaller, shortcut, entry, launch at login and update state gone; server data kept",
+  );
   console.info("\ninstaller-check passed");
 } finally {
   for (const pid of runningFromInstall()) process.kill(pid);

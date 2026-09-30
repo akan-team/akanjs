@@ -8,8 +8,10 @@
 // - WebView2: Windows 11 has it, and so does almost every Windows 10; LTSC editions do not. The installer
 //   runs Microsoft's Evergreen Bootstrapper (embedded, 2 MB, it downloads the runtime) only when neither
 //   the machine nor the user has one (docs: "Detect if a WebView2 Runtime is already installed").
-// - A running copy in the folder is stopped first, by its path, so an unrelated program with the same
-//   file name is left alone.
+// - Whatever can fail without touching the installed app runs before it is stopped: WebView2, and the new
+//   files, unpacked beside the folder (`<folder>.setup-new`). The running copy is stopped by its path, so an
+//   unrelated program with the same file name is left alone, and the folder is swapped by two renames; a failed
+//   swap puts the old folder back, and with /RUN the old app is started again.
 // - The folder is the app's: updates replace it whole, so the uninstaller lives beside it
 //   (`<folder>.uninstall.exe`) and a reinstall or an uninstall removes all of it. A `/D=` folder must be empty
 //   or hold the app already; without the app's executable in it only the entries this build made are removed.
@@ -57,8 +59,11 @@ const nsis = (value: string) => value.replace(/\$/g, "$$$$");
 
 const removal = (entries: InstallerInput["entries"]) =>
   entries
-    .map(({ name, dir }) => (dir ? `    RMDir /r "$INSTDIR\\${nsis(name)}"` : `    Delete "$INSTDIR\\${nsis(name)}"`))
+    .map(({ name, dir }) => (dir ? `  RMDir /r "$INSTDIR\\${nsis(name)}"` : `  Delete "$INSTDIR\\${nsis(name)}"`))
     .join("\n");
+
+const moveIn = (entries: InstallerInput["entries"]) =>
+  entries.map(({ name }) => `      Rename "$INSTDIR.setup-new\\${nsis(name)}" "$INSTDIR\\${nsis(name)}"`).join("\n");
 
 export function installerScript(input: InstallerInput): string {
   const version = windowsVersion(input.version, input.build);
@@ -75,7 +80,10 @@ RequestExecutionLevel user
 
 !define APP_NAME "${nsis(input.name)}"
 !define EXE "${nsis(input.exe)}"
+!define APP_ID "${nsis(input.id)}"
 !define UNINSTALL_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${input.id}"
+!define RUN_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+!define STARTUP_APPROVED_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run"
 !define WEBVIEW2_KEY "SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\${WEBVIEW2_CLIENT}"
 
 Name "\${APP_NAME}"
@@ -96,21 +104,55 @@ ${icon}!define MUI_FINISHPAGE_RUN "$INSTDIR\\\${EXE}"
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Korean"
 
+Var AppStopped
+Var RunAfter
+
+Function RunApp
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    SetOutPath "$LOCALAPPDATA"
+    Exec '"$INSTDIR\\\${EXE}"'
+  \${EndIf}
+FunctionEnd
+
 !macro Fail MESSAGE
   DetailPrint "\${MESSAGE}"
   \${IfNot} \${Silent}
     MessageBox MB_ICONSTOP|MB_OK "\${MESSAGE}"
   \${EndIf}
+  \${If} $AppStopped == 1
+  \${AndIf} $RunAfter == 1
+    Call RunApp
+  \${EndIf}
   SetErrorLevel 2
   Abort
+!macroend
+
+!macro RemoveEntries
+${removal(input.entries)}
 !macroend
 
 !macro RemoveApp
   \${If} \${FileExists} "$INSTDIR\\\${EXE}"
     RMDir /r "$INSTDIR"
   \${Else}
-${removal(input.entries)}
+    !insertmacro RemoveEntries
   \${EndIf}
+!macroend
+
+; Windows refuses to rename a folder while a file in it is open: a stopped process's handles, and an antivirus
+; scan of files just written, close a moment later. $R2 is "done" once the rename went through.
+!macro RenameRetry FROM TO
+  StrCpy $R2 0
+  \${Do}
+    ClearErrors
+    Rename "\${FROM}" "\${TO}"
+    \${IfNot} \${Errors}
+      StrCpy $R2 "done"
+      \${ExitDo}
+    \${EndIf}
+    IntOp $R2 $R2 + 1
+    Sleep 250
+  \${LoopWhile} $R2 < 40
 !macroend
 
 !macro RemoveSiblings SUFFIX
@@ -165,6 +207,25 @@ webview2_anyway:
 FunctionEnd
 
 Section "Install"
+  \${If} \${Silent}
+    \${GetParameters} $0
+    ClearErrors
+    \${GetOptions} $0 "/RUN" $1
+    \${IfNot} \${Errors}
+      StrCpy $RunAfter 1
+    \${EndIf}
+  \${EndIf}
+  ; A setup cut off between its two renames left the app only in .setup-old.
+  \${DirState} "$INSTDIR" $0
+  \${If} $0 == -1
+  \${AndIf} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+    Rename "$INSTDIR.setup-old" "$INSTDIR"
+  \${EndIf}
+  RMDir /r "$INSTDIR.setup-new"
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+  \${OrIfNot} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+    RMDir /r "$INSTDIR.setup-old"
+  \${EndIf}
   \${DirState} "$INSTDIR" $0
   \${If} $0 == 1
   \${AndIfNot} \${FileExists} "$INSTDIR\\\${EXE}"
@@ -172,23 +233,58 @@ Section "Install"
     !insertmacro Fail "$INSTDIR holds other files. Install into an empty folder, or where \${APP_NAME} is installed."
   \${EndIf}
   InitPluginsDir
-  File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
-  Pop $0
   Call EnsureWebView2
-  !insertmacro RemoveApp
-  SetOutPath "$INSTDIR"
+  SetOutPath "$INSTDIR.setup-new"
   ClearErrors
   File /r "${nsis(input.folder)}\\*"
   \${If} \${Errors}
-    !insertmacro Fail "Some files could not be written under $INSTDIR. Windows refuses a path over 260 characters unless long paths are enabled."
+    SetOutPath "$LOCALAPPDATA"
+    RMDir /r "$INSTDIR.setup-new"
+    !insertmacro Fail "Some files could not be written beside $INSTDIR. Windows refuses a path over 260 characters unless long paths are enabled."
+  \${EndIf}
+  ; SetOutPath is also the installer's working folder, which Windows does not let anyone rename.
+  SetOutPath "$LOCALAPPDATA"
+  File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
+  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  Pop $0
+  StrCpy $AppStopped 1
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"
+    \${If} $R2 != "done"
+      RMDir /r "$INSTDIR.setup-new"
+      !insertmacro Fail "$INSTDIR is in use and could not be replaced; \${APP_NAME} is left as it was."
+    \${EndIf}
+    !insertmacro RenameRetry "$INSTDIR.setup-new" "$INSTDIR"
+    \${If} $R2 != "done"
+      !insertmacro RenameRetry "$INSTDIR.setup-old" "$INSTDIR"
+      RMDir /r "$INSTDIR.setup-new"
+      !insertmacro Fail "The new files could not take the place of $INSTDIR; \${APP_NAME} is left as it was."
+    \${EndIf}
+    RMDir /r "$INSTDIR.setup-old"
+  \${Else}
+    !insertmacro RemoveEntries
+    RMDir "$INSTDIR"
+    \${DirState} "$INSTDIR" $0
+    \${If} $0 == 1
+      ClearErrors
+${moveIn(input.entries)}
+      \${If} \${Errors}
+        !insertmacro Fail "Some files could not be moved into $INSTDIR."
+      \${EndIf}
+      RMDir /r "$INSTDIR.setup-new"
+    \${Else}
+      !insertmacro RenameRetry "$INSTDIR.setup-new" "$INSTDIR"
+      \${If} $R2 != "done"
+        RMDir /r "$INSTDIR.setup-new"
+        !insertmacro Fail "$INSTDIR could not be made."
+      \${EndIf}
+    \${EndIf}
   \${EndIf}
   ClearErrors
   WriteUninstaller "$INSTDIR.uninstall.exe"
   \${If} \${Errors}
     !insertmacro Fail "$INSTDIR.uninstall.exe could not be written: install into a folder under one this user may write to."
   \${EndIf}
-  SetOutPath "$LOCALAPPDATA"
   CreateShortcut "$SMPROGRAMS\\\${APP_NAME}.lnk" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayName" "\${APP_NAME}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayVersion" "${nsis(input.version)}"
@@ -200,13 +296,8 @@ Section "Install"
   WriteRegDWORD HKCU "\${UNINSTALL_KEY}" "NoRepair" 1
   \${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
   WriteRegDWORD HKCU "\${UNINSTALL_KEY}" "EstimatedSize" $0
-  \${If} \${Silent}
-    \${GetParameters} $0
-    ClearErrors
-    \${GetOptions} $0 "/RUN" $1
-    \${IfNot} \${Errors}
-      Exec '"$INSTDIR\\\${EXE}"'
-    \${EndIf}
+  \${If} $RunAfter == 1
+    Call RunApp
   \${EndIf}
 SectionEnd
 
@@ -230,10 +321,16 @@ Section "Uninstall"
   RMDir /r "$INSTDIR.previous"
   !insertmacro RemoveSiblings "update-"
   !insertmacro RemoveSiblings "failed-"
+  !insertmacro RemoveSiblings "setup-"
   !insertmacro RemoveApp
   RMDir "$INSTDIR"
   Delete "$INSTDIR.uninstall.exe"
   DeleteRegKey HKCU "\${UNINSTALL_KEY}"
+  DeleteRegValue HKCU "\${RUN_KEY}" "\${APP_ID}"
+  DeleteRegValue HKCU "\${STARTUP_APPROVED_KEY}" "\${APP_ID}"
+  RMDir /r "$LOCALAPPDATA\\\${APP_ID}\\akan-native-updates"
+  Delete "$LOCALAPPDATA\\\${APP_ID}\\akan-native-relaunch.json"
+  RMDir "$LOCALAPPDATA\\\${APP_ID}"
 SectionEnd
 `;
 }
