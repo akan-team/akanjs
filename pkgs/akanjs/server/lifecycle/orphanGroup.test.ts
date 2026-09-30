@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+//? A container whose PID 1 reaps no orphans keeps an ended one as a zombie, which still answers signal 0.
+const zombie = (pid: number) => {
+  try {
+    return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") ?? false;
+  } catch {
+    return false;
+  }
+};
 
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
-    return true;
+    return !zombie(pid);
   } catch {
     return false;
   }
