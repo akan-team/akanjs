@@ -46,7 +46,7 @@ With `--release`, carry the app's server in the app as `build-desktop --server` 
 
 carried server
 
-The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). Only the `--env` environment's `env.server.<env>.ts` ships, with the server env defaults of the libs it uses, in plain text that anyone with the app can read, so keep deployment secrets out of them. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.
 
 one target
 
@@ -104,7 +104,7 @@ Build the native app on the native runtime.
 
 Build the app for an App Store or Play Store release.
 
-Sign and publish releases installed apps update themselves to.
+Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 `akan create-application <appName> [--start <boolean>]`
 
@@ -374,9 +374,11 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 `aab` for a Play Store upload, `apk` for direct installs.
 
-`akan update-keygen <app> [--target <target>]`
+`akan update-keygen <app> [--platform <platform>] [--target <target>]`
 
-Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
+
+The platform whose app id the key signs for.
 
 `akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
 
@@ -385,6 +387,16 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 `desktop` is this computer's own OS and CPU.
 
 Default `updates.channel`, else `--env`, the channel an app built with that env follows. Publish to a pilot channel first.
+
+`akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]`
+
+Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.
+
+The app it updates.
+
+Default `.akan/mobile/<target>/updates/<platform>`.
+
+The `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.
 
 Application CLI
 

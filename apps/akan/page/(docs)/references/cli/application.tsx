@@ -133,8 +133,8 @@ export default page().render(() => {
   const carriedServerNote: ReferenceRow = {
     name: l.trans({ en: "carried server", ko: "내장 서버" }),
     desc: l.trans({
-      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
-      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `--env` 환경의 `env.server.<env>.ts` 하나만, 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). Only the `--env` environment's `env.server.<env>.ts` ships, with the server env defaults of the libs it uses, in plain text that anyone with the app can read, so keep deployment secrets out of them. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다(Windows는 `%LOCALAPPDATA%` 아래, `--debug` 빌드는 `server-debug/`). `--env` 환경의 `env.server.<env>.ts` 하나와 앱이 쓰는 lib의 서버 env 기본값이, 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
     }),
   };
   const oneTargetNote: ReferenceRow = {
@@ -311,11 +311,11 @@ export default page().render(() => {
           }),
         },
         {
-          name: ["update-keygen", "publish-update"],
-          href: ["#update-keygen", "#publish-update"],
+          name: ["update-keygen", "publish-update", "pack-update"],
+          href: ["#update-keygen", "#publish-update", "#pack-update"],
           desc: l.trans({
-            en: "Sign and publish releases installed apps update themselves to.",
-            ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시합니다.",
+            en: "Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.",
+            ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시하거나, 다른 곳에서 서명할 폰 업데이트를 묶습니다.",
           }),
         },
       ],
@@ -1160,13 +1160,26 @@ akan release-android myapp --assemble-type apk --target all --env main`,
     },
     {
       name: "update-keygen",
-      signature: "akan update-keygen <app> [--target <target>]",
+      signature: "akan update-keygen <app> [--platform <platform>] [--target <target>]",
       desc: l.trans({
-        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.",
-        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `mobile.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다.",
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `mobile.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
       }),
-      options: [targetOption],
-      examples: "akan update-keygen myapp",
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          defaultValue: "desktop",
+          enumOrFlag: "desktop | android | ios",
+          desc: l.trans({
+            en: "The platform whose app id the key signs for.",
+            ko: "키가 서명할 app id의 플랫폼입니다.",
+          }),
+        },
+        targetOption,
+      ],
+      examples: `akan update-keygen myapp
+akan update-keygen myapp --platform android`,
     },
     {
       name: "publish-update",
@@ -1204,6 +1217,45 @@ akan release-android myapp --assemble-type apk --target all --env main`,
       examples: `akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main
 akan publish-update myapp --platform android --env main`,
+    },
+    {
+      name: "pack-update",
+      signature:
+        "akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]",
+      desc: l.trans({
+        en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.",
+        ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓰고, 매니페스트의 `channel`·`sequence`·`bundle`은 서명자가 채웁니다. 서명자는 올리는 바이트 그대로에 서명하고 `files/`를 먼저 올립니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          enumOrFlag: "ios | android",
+          desc: l.trans({ en: "The app it updates.", ko: "업데이트할 앱입니다." }),
+        },
+        targetOption,
+        releaseEnvOption,
+        {
+          name: "--out",
+          type: "String",
+          desc: l.trans({
+            en: "Default `.akan/mobile/<target>/updates/<platform>`.",
+            ko: "기본값은 `.akan/mobile/<target>/updates/<platform>`입니다.",
+          }),
+        },
+        {
+          name: "--against",
+          type: "String",
+          desc: l.trans({
+            en: "The `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.",
+            ko: "이 번들이 돌아야 할 스토어 빌드의 `bundle.json`입니다. `compat.json`을 쓰고, 새 바이너리가 필요하면 실패합니다.",
+          }),
+        },
+        writeOption,
+        allowLocalReleaseOption,
+      ],
+      examples: `akan pack-update myapp --platform android --env main
+akan pack-update myapp --platform ios --env main --against store/bundle.json`,
     },
   ];
 

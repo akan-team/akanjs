@@ -198,8 +198,9 @@ Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate sto
 **Everything it carries is on the user's computer, readable.** That is `private/` as it is, and the server env of
 the one environment the build is for (`--env`: `debug` for `build-desktop`, `main` for `publish-update`, unless
 named): the build keeps `env/env.server.<env>.ts` and swaps every other environment's file for exports that refuse to
-be read. Keep a key in that file only if every user of the app may hold it; a secret the server needs belongs to a
-cloud server its adapter calls. There is no `public/`: a file the server reads at runtime goes in `private/` and is
+be read. The server env each lib exports as its defaults (spread into every environment by `env.server.type.ts`)
+ships as well. Keep a key in those files only if every user of the app may hold it; a secret the server needs belongs
+to a cloud server its adapter calls. There is no `public/`: a file the server reads at runtime goes in `private/` and is
 read from `AKAN_APP_DIR` (the folder `server.js` sits in), never from `process.cwd()`, which is the app's data
 folder.
 

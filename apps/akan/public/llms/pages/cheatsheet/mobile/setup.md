@@ -308,7 +308,7 @@ It needs Rust through rustup, which installs the toolchain the build pins, plus 
 
 Open rustup
 
-The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.
+The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, plus the defaults each lib it uses exports as its server env, all in plain text: anyone who has the app can read every value in them. Keep deployment secrets such as cloud keys out of those files.
 
 start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.
 

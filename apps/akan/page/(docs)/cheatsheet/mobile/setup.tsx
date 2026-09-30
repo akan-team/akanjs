@@ -1624,8 +1624,8 @@ akan build-desktop myapp --server true --env main`}
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.",
-              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나만, 평문으로 실립니다. 앱을 가진 사람은 누구나 그 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀은 그 파일에 두지 마세요.",
+              en: "The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, plus the defaults each lib it uses exports as its server env, all in plain text: anyone who has the app can read every value in them. Keep deployment secrets such as cloud keys out of those files.",
+              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나와, 앱이 쓰는 lib이 서버 env로 내보내는 기본값이 평문으로 실립니다. 앱을 가진 사람은 누구나 그 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀은 그 파일들에 두지 마세요.",
             })}
           </Docs.Alert>
           <Docs.Alert type="info">
@@ -1815,8 +1815,11 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
                   once and prints its public half for <code>mobile.updates</code>; <code>akan publish-update</code>{" "}
                   builds a release (the whole app on the desktop, the web bundle on a phone) into{" "}
                   <code>.akan/mobile/&lt;target&gt;/updates</code>, which you upload to <code>updates.url</code>, the
-                  manifests last. A new release runs on trial until its first page mounts; when to check, download and
-                  apply is the app's call.
+                  manifests last. A new release runs on trial until its first page mounts. A phone looks for a newer web
+                  bundle by itself, at start and on each return to the front, and runs it from the next cold start; on
+                  the desktop a release is the whole app and a relaunch, so when to check, download and apply is the
+                  app's call. <code>akan pack-update</code> writes a phone update unsigned instead, for a signer that
+                  keeps the key elsewhere.
                 </span>
               ),
               ko: (
@@ -1825,7 +1828,10 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
                   만들고 <code>mobile.updates</code>에 넣을 공개 키를 출력합니다. <code>akan publish-update</code>는
                   릴리스(데스크톱은 앱 전체, 폰은 웹 번들)를 <code>.akan/mobile/&lt;target&gt;/updates</code>에
                   빌드하고, 그 폴더를 <code>updates.url</code>에 올리되 manifest를 마지막에 올립니다. 새 릴리스는 첫
-                  페이지가 마운트될 때까지 시험 실행이며, 언제 확인·다운로드·적용할지는 앱이 정합니다.
+                  페이지가 마운트될 때까지 시험 실행입니다. 폰은 시작할 때와 앞으로 돌아올 때마다 새 웹 번들을 스스로
+                  찾아 받고 다음 콜드 스타트부터 씁니다. 데스크톱은 릴리스가 앱 전체이고 재실행이 따르므로 언제
+                  확인·다운로드·적용할지는 앱이 정합니다. <code>akan pack-update</code>는 키를 다른 곳에 두는 서명자를
+                  위해 폰 업데이트를 서명 없이 씁니다.
                 </span>
               ),
             })}

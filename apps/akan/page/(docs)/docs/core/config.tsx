@@ -255,8 +255,8 @@ const mobileFields = [
   {
     key: "updates",
     type: "{ url, publicKey, channel?, readyTimeout? }",
-    en: "Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default the --env it is built with, so it takes only releases of its own env; a pilot target names its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does; when to check, download and apply is the app's own call through updates from akanjs/client/native.",
-    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳입니다. akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등), akan update-keygen이 출력한 공개 키, 앱이 따르는 채널(기본값은 빌드할 때의 --env라 자기 env의 릴리스만 받음, pilot 타깃은 자기 채널)을 적습니다. root와 target을 필드별로 병합합니다. 새 릴리스는 첫 페이지가 마운트될 때까지 시험 실행이고, 끝내 마운트되지 않으면 되돌립니다. 언제 확인·다운로드·적용할지는 akanjs/client/native의 updates로 앱이 정합니다.",
+    en: "Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default the --env it is built with, so it takes only releases of its own env; a pilot target names its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does. A phone looks for a newer web bundle by itself (akan pack-update writes one unsigned for a signer elsewhere); on the desktop, when to check, download and apply is the app's own call through updates from akanjs/client/native.",
+    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳입니다. akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등), akan update-keygen이 출력한 공개 키, 앱이 따르는 채널(기본값은 빌드할 때의 --env라 자기 env의 릴리스만 받음, pilot 타깃은 자기 채널)을 적습니다. root와 target을 필드별로 병합합니다. 새 릴리스는 첫 페이지가 마운트될 때까지 시험 실행이고, 끝내 마운트되지 않으면 되돌립니다. 폰은 새 웹 번들을 스스로 찾아 받습니다(akan pack-update는 다른 곳에서 서명할 업데이트를 서명 없이 씁니다). 데스크톱은 언제 확인·다운로드·적용할지를 akanjs/client/native의 updates로 앱이 정합니다.",
   },
 ];
 
