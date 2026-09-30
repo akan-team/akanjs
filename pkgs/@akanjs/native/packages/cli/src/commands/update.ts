@@ -7,7 +7,7 @@ import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.
 import { bold, CliError, dim, log } from "../lib/log.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
 import { publishRelease } from "../lib/publish.ts";
-import { generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
+import { assertChannel, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
 import { BOOLEAN_FLAGS, buildFromArgs } from "./build.ts";
 
 export const UPDATE_USAGE =
@@ -38,13 +38,15 @@ async function publish(args: ParsedArgs): Promise<number> {
   const desktop = arg === "macos" || arg === "windows" || arg === "linux" ? arg : null;
   if (!desktop && arg !== "ios" && arg !== "android") throw new CliError(`usage: ${UPDATE_USAGE}`, 2);
   const platform = desktop ?? (arg as "ios" | "android");
+  const requested = stringFlag(args, "channel");
+  if (requested !== undefined) assertChannel(requested);
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
     { mode: "production", profile: "release" },
     platform,
   );
   const { config, appDir } = ctx.project;
-  const channel = stringFlag(args, "channel") ?? config.updates?.channel ?? "production";
+  const channel = requested ?? config.updates?.channel ?? "production";
   const { dir, manifest } = await publishRelease(ctx, platform, artifact, outDir(args, appDir), channel);
   const size = manifest.files.reduce((n, f) => n + f.size, 0);
   log.ok(

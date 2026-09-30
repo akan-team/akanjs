@@ -126,6 +126,12 @@ describe("programmatic API", () => {
     }
     const refused = await failure(publishUpdate({ appDir: app("publish"), config: config(), platform: "android" }));
     expect(refused.code).toBe("CONFIG_INVALID");
+    const updates = { url: "https://updates.example.com", publicKey: Buffer.alloc(32, 1).toString("base64") };
+    const outside = await failure(
+      publishUpdate({ appDir: app("publish2"), config: config({ updates }), platform: "android", channel: "../x" }),
+    );
+    expect(outside.code).toBe("CONFIG_INVALID");
+    expect(outside.message).toContain('channel "../x"');
   });
 
   test("desktop.recovery, desktop.window, desktop.screenCapture and android.autoplay are checked", () => {

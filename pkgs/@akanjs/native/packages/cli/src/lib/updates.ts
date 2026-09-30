@@ -70,6 +70,15 @@ export interface UpdateManifest {
   patches?: { from: string; url: string; sha256: string; size: number }[];
 }
 
+/** A channel is a file name in the release folder and a string an app's config compares: lowercase, no separators. */
+const CHANNEL_NAME = /^[a-z0-9][a-z0-9._-]{0,40}$/;
+
+/** Refuses a channel no app could be configured for: it would be written but never taken. */
+export function assertChannel(channel: string): void {
+  if (!CHANNEL_NAME.test(channel))
+    throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
+}
+
 export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig | null {
   if (raw === undefined) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -81,7 +90,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     problems.push("updates.url must be an http(s) URL");
   if (typeof r.publicKey !== "string" || Buffer.from(r.publicKey, "base64").length !== 32)
     problems.push("updates.publicKey must be a base64 Ed25519 public key (akan-native update keygen)");
-  if (r.channel !== undefined && (typeof r.channel !== "string" || !/^[a-z0-9][a-z0-9._-]{0,40}$/.test(r.channel)))
+  if (r.channel !== undefined && (typeof r.channel !== "string" || !CHANNEL_NAME.test(r.channel)))
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");

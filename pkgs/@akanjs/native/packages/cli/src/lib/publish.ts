@@ -6,9 +6,17 @@ import { join, relative } from "node:path";
 import { publishAppUpdate } from "../platforms/desktop-update.ts";
 import { runtimeVersion } from "./boot.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
-import { CliError } from "./log.ts";
+import { CliError, log } from "./log.ts";
 import type { BuildContext } from "./prepare.ts";
-import { hostArch, sha256, signManifest, type UpdateFile, type UpdateManifest, updateKeyPath } from "./updates.ts";
+import {
+  assertChannel,
+  hostArch,
+  sha256,
+  signManifest,
+  type UpdateFile,
+  type UpdateManifest,
+  updateKeyPath,
+} from "./updates.ts";
 
 export type ReleasePlatform = "macos" | "windows" | "linux" | "ios" | "android";
 
@@ -36,6 +44,22 @@ function webFiles(webDir: string, html: string, env: Record<string, string>): { 
   return files;
 }
 
+/**
+ * The publish time in seconds, and past the release `<channel>.json` in `dir` already names: apps take only a larger
+ * sequence, so a clock behind the last publisher's would make this release look older to every one of them.
+ */
+export function nextSequence(dir: string, channel: string, now = Math.floor(Date.now() / 1000)): number {
+  const path = join(dir, `${channel}.json`);
+  if (!existsSync(path)) return now;
+  const previous = (JSON.parse(readFileSync(path, "utf8")) as Partial<UpdateManifest>).sequence;
+  if (typeof previous !== "number" || previous < now) return now;
+  if (previous > now)
+    log.warn(
+      `the ${channel} release already here has sequence ${previous}, later than this computer's clock (${now}): publishing as ${previous + 1}. Check the clock of the computer that publishes.`,
+    );
+  return previous + 1;
+}
+
 /** Writes the release of `artifact` (the app a release build made) and its signed `<channel>.json` under `out`. */
 export async function publishRelease(
   ctx: BuildContext,
@@ -50,8 +74,9 @@ export async function publishRelease(
   const desktop = platform === "macos" || platform === "windows" || platform === "linux" ? platform : null;
   // A desktop app runs on one CPU: x64 and arm64 releases of the same OS live side by side.
   const dir = join(out, desktop ? `${desktop}-${hostArch()}` : platform);
+  assertChannel(channel);
   const keyPath = updateKeyPath(config.app.id);
-  const sequence = Math.floor(Date.now() / 1000);
+  const sequence = nextSequence(dir, channel);
 
   let manifest: UpdateManifest;
   if (desktop) {
