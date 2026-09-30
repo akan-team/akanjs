@@ -175,10 +175,10 @@ export default page().render(() => {
     },
     {
       key: "targets.*.native",
-      type: "{ plugins?, ios?, android? }",
+      type: "{ plugins?, ios?, android?, desktop? }",
       desc: l.trans({
-        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, and `android.googleServices` for FCM.",
-        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`를 적습니다.",
+        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.",
+        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`·`desktop.screenCapture`를 적습니다.",
       }),
     },
     {
@@ -1197,6 +1197,57 @@ export default config;`}
               <li key={idx}>{note}</li>
             ))}
           </ul>
+          <Docs.SubSubTitle>{l.trans({ en: "Your Own Plugins", ko: "앱이 가진 플러그인" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A device feature no builtin covers — a kiosk's boot receiver, a Windows registry setting — is a plugin
+                  in the app's own <code>native/</code> folder, one folder per plugin, named after its id. It is not
+                  listed anywhere: every target of the app ships it, and its manifest says what runs on each platform. A
+                  lib's <code>native/</code> plugins reach the apps that depend on it, and an app's own plugin wins an
+                  id a lib also uses.
+                </span>
+              ),
+              ko: (
+                <span>
+                  빌트인에 없는 장치 기능(키오스크의 부팅 수신, Windows 레지스트리 설정 같은 것)은 앱의{" "}
+                  <code>native/</code> 폴더에 플러그인으로 둡니다. 플러그인 하나가 폴더 하나이고, 폴더 이름은 그
+                  id입니다. 어디에도 적지 않습니다. 앱의 모든 타깃에 들어가고, 플랫폼마다 무엇이 도는지는 manifest가
+                  정합니다. lib의 <code>native/</code> 플러그인은 그 lib에 의존하는 앱에 들어가며, 같은 id를 앱도 가지면
+                  앱 것이 쓰입니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/native/kiosk"
+            code={`native-plugin.json   { "id": "kiosk", "apiVersion": 1, "methods": ["hideTaskbar"], "desktop": "./src/desktop.ts", … }
+src/index.ts         export const kiosk = definePlugin<KioskApi>("kiosk", { methods: ["hideTaskbar"] });
+src/desktop.ts       export default defineDesktopPlugin<KioskApi>({ id: "kiosk", methods: { hideTaskbar: … } });
+android/KioskPlugin.kt`}
+          />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>definePlugin</code> comes from <code>akanjs/client/native</code> and{" "}
+                  <code>defineDesktopPlugin</code> from <code>akanjs/native/desktop</code>; the runtime's own package is
+                  not installed in an app's workspace. A <code>webkit/</code> hook imports the plugin's API from{" "}
+                  <code>../native/kiosk/src</code>, and pages call the hook.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>definePlugin</code>은 <code>akanjs/client/native</code>에서, <code>defineDesktopPlugin</code>은{" "}
+                  <code>akanjs/native/desktop</code>에서 가져옵니다. 런타임 패키지 자체는 앱의 작업 공간에 설치되지
+                  않습니다. 플러그인 API는 <code>webkit/</code> 훅이 <code>../native/kiosk/src</code>에서 가져오고,
+                  페이지는 그 훅을 부릅니다.
+                </span>
+              ),
+            })}
+          </div>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -1534,10 +1585,294 @@ akan start-desktop myapp --release true --env debug`}
             <ExternalLink href="https://rustup.rs" label={l.trans({ en: "Open rustup", ko: "rustup 열기" })} />
           </div>
           <Docs.IntroTable type="OS" items={desktopPrereqs} />
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A desktop app can also carry the app's own server, so it works on one computer with no backend
+                  elsewhere. With <code>--server</code>, <code>akan start-desktop</code> starts <code>akan start</code>{" "}
+                  in the same command when none is running, and <code>akan build-desktop</code> builds the app with the
+                  server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
+                  SQLite data in the app data folder's <code>server/</code> (on Windows under{" "}
+                  <code>%LOCALAPPDATA%</code>; a <code>--debug</code> build keeps its own <code>server-debug/</code>).
+                  It trusts the certificates the operating system trusts and follows the proxy variables of the user's
+                  session, as the page does. The port is usually the one it had last time but is not guaranteed, so a
+                  sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not
+                  through the carried server.
+                </span>
+              ),
+              ko: (
+                <span>
+                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.{" "}
+                  <code>--server</code>를 주면 <code>akan start-desktop</code>은 떠 있는 개발 서버가 없을 때 같은
+                  명령에서 <code>akan start</code>를 띄우고, <code>akan build-desktop</code>은 서버를 넣은 앱을
+                  빌드합니다. 이 서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
+                  <code>server/</code>에 둡니다(Windows는 <code>%LOCALAPPDATA%</code> 아래, <code>--debug</code> 빌드는
+                  따로 <code>server-debug/</code>). 운영체제가 믿는 인증서를 믿고, 페이지처럼 사용자 세션의 프록시
+                  변수를 따릅니다. 포트는 대개 지난번과 같지만 보장되지 않습니다. 그래서 redirect URI가 정확히 같아야
+                  하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의 adapter로 받습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`akan start-desktop myapp --server true
+akan build-desktop myapp --server true --env main`}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.",
+              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나만, 평문으로 실립니다. 앱을 가진 사람은 누구나 그 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀은 그 파일에 두지 마세요.",
+            })}
+          </Docs.Alert>
           <Docs.Alert type="info">
             {l.trans({
-              en: "start-desktop is for development and testing. A signed desktop package for distribution is not one of the akan commands yet.",
-              ko: "start-desktop은 개발과 테스트용입니다. 배포용으로 서명한 데스크톱 패키지는 아직 akan 명령에 없습니다.",
+              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.",
+              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용 앱을 ad hoc 또는 개발용 인증서로 서명해 만듭니다. 배포 서명과 공증은 아직 akan 명령에 없고, Windows에서는 --installer가 서명하지 않은 현재 사용자용 설치 프로그램을 만듭니다.",
+            })}
+          </Docs.Alert>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The carried server gets none of the image's <code>docker</code> steps. An executable the server or a
+                  native plugin spawns, such as ffmpeg, goes in <code>bin</code> in <code>akan.config.ts</code>: per
+                  platform, a download checked against its <code>sha256</code> or a file next to the config. Every
+                  desktop build, run and dev carries it, with a server or without: the build fetches the one for this
+                  computer, puts it in the app and its folder first on the app's PATH, so the server's{" "}
+                  <code>spawn("ffmpeg")</code> runs it and the user installs nothing; a native plugin finds it in{" "}
+                  <code>ctx.binDir</code>. A package that builds itself at install goes in{" "}
+                  <code>trustedDependencies</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱에 넣은 서버에는 이미지의 <code>docker</code> 단계가 하나도 들어가지 않습니다. 서버나 네이티브
+                  플러그인이 실행하는 ffmpeg 같은 실행 파일은 <code>akan.config.ts</code>의 <code>bin</code>에 적습니다.
+                  플랫폼마다 <code>sha256</code>로 확인하는 다운로드나 설정 파일 옆의 파일을 적습니다. 서버가 있든 없든
+                  모든 데스크톱 빌드·실행·개발이 이 파일을 싣습니다. 빌드가 이 컴퓨터용 파일을 앱에 넣고 그 폴더를 앱의
+                  PATH 맨 앞에 두므로, 서버의 <code>spawn("ffmpeg")</code>가 그 파일을 실행하고 사용자는 아무것도
+                  설치하지 않으며, 네이티브 플러그인은 <code>ctx.binDir</code>에서 찾습니다. 설치하면서 스스로 빌드하는
+                  패키지는 <code>trustedDependencies</code>에 적습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="akan.config.ts"
+            language="typescript"
+            code={`const config: AppConfig = {
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": { url: "https://files.example.com/ffmpeg-lgpl-darwin-arm64.zip", sha256: "…", file: "bin/ffmpeg" },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+  trustedDependencies: ["rclnodejs"],
+};`}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.",
+              ko: "정적 LGPL 빌드를 넣으세요. 공유 라이브러리를 따로 불러오는 빌드는 만든 컴퓨터에서만 돌고, --enable-nonfree로 빌드한 것(npm ffmpeg-static이 받는 macOS 파일)은 재배포할 수 없습니다.",
+            })}
+          </Docs.Alert>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A file the user picks reaches that server as a grant, never as a copy or a path, so a video of several
+                  gigabytes is not copied or uploaded. Add <code>file-picker</code> to the target's{" "}
+                  <code>native.plugins</code>, pick with <code>forServer: true</code>, hand the grant to an endpoint,
+                  and let the server exchange it with <code>NativeFile</code>: it gets the files the user picked and
+                  nothing else.
+                </span>
+              ),
+              ko: (
+                <span>
+                  사용자가 고른 파일은 복사본이나 경로가 아니라 허가(grant)로 서버에 전달됩니다. 그래서 수 GB 영상도
+                  복사하거나 업로드하지 않습니다. 타깃의 <code>native.plugins</code>에 <code>file-picker</code>를
+                  추가하고 <code>forServer: true</code>로 고른 뒤, grant를 엔드포인트에 넘기면 서버가{" "}
+                  <code>NativeFile</code>로 경로를 받습니다. 서버는 사용자가 고른 파일만 얻습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="page → server"
+            language="typescript"
+            code={`// webkit/usePickVideo.tsx (akanjs/client/native)
+const { files } = await filePicker.pickFiles({ types: ["video/*"], forServer: true });
+await fetch.trimVideo(files[0].grant, 0, 30);
+
+// lib/video/video.service.ts (akanjs/server)
+const input = await NativeFile.resolve(grant, "read");
+const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.saveFile({ name, forServer: true })`}
+          />
+          <Docs.Alert type="info">
+            {l.trans({
+              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.",
+              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume, Android는 미디어 볼륨), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 타깃의 native.plugins에 추가합니다. 빌트인 플러그인의 API는 모두 akanjs/client/native/<id>(akanjs/client/native/window, …/screen)에서, volume과 filePicker는 akanjs/client/native에서도 가져옵니다.",
+            })}
+          </Docs.Alert>
+          <Docs.SubSubTitle>{l.trans({ en: "An App Nobody Attends", ko: "지키는 사람이 없는 앱" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  A kiosk or a signage screen has nobody to click Reload. <code>desktop.recovery: "reload"</code> loads
+                  a page whose process ended again every time, waiting longer after each end in a row, and relaunches
+                  the app when the webview's browser process ends. <code>desktop.window</code> opens the main window
+                  fullscreen and without a taskbar button from its first frame, and <code>app.relaunch()</code> starts
+                  the app over in a new process on the desktop and Android. For remote support on Windows,{" "}
+                  <code>desktop.screenCapture: "auto"</code> answers <code>getDisplayMedia()</code> with the first
+                  screen, without the picker or a tap; it covers every media request, so leave it off in an app that
+                  asks for a camera or a microphone.
+                </span>
+              ),
+              ko: (
+                <span>
+                  키오스크나 전광판에는 새로고침을 누를 사람이 없습니다. <code>desktop.recovery: "reload"</code>는
+                  프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가
+                  끝나면 앱을 다시 띄웁니다. <code>desktop.window</code>는 주 창을 첫 프레임부터 전체화면, 작업 표시줄
+                  버튼 없이 열고, <code>app.relaunch()</code>는 데스크톱과 Android에서 앱을 새 프로세스로 다시
+                  시작합니다. Windows에서 원격 지원을 하려면 <code>desktop.screenCapture: "auto"</code>가{" "}
+                  <code>getDisplayMedia()</code>에 선택 창도 터치도 없이 첫 화면으로 답합니다. 모든 미디어 요청에
+                  적용되므로 카메라나 마이크를 요청하는 앱에서는 켜지 않습니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/board/akan.config.ts"
+            code={`mobile: {
+  targets: {
+    default: {
+      native: {
+        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+        android: { autoplay: true },
+      },
+    },
+  },
+},`}
+          />
+          <Docs.SubSubTitle>{l.trans({ en: "Installing On Windows", ko: "Windows에 설치하기" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>akan build-desktop myapp --installer true</code> on Windows adds a setup program next to the app
+                  folder (NSIS: <code>winget install NSIS.NSIS</code>). It installs for the current user, so updates
+                  swap the app without an administrator; <code>/S</code> installs silently and <code>/RUN</code> starts
+                  the app afterwards, which is what a remote install passes; a PC without the WebView2 Runtime gets it
+                  too. The program is not code-signed yet, so a copy downloaded in a browser meets a SmartScreen
+                  warning.
+                </span>
+              ),
+              ko: (
+                <span>
+                  Windows에서 <code>akan build-desktop myapp --installer true</code>를 실행하면 앱 폴더 옆에 설치
+                  프로그램이 생깁니다(NSIS: <code>winget install NSIS.NSIS</code>). 현재 사용자로 설치하므로 업데이트가
+                  관리자 권한 없이 앱을 바꿉니다. <code>/S</code>는 무인 설치, <code>/RUN</code>은 설치 뒤 실행으로,
+                  원격 설치가 넘기는 인자입니다. WebView2 Runtime이 없는 PC에는 함께 설치합니다. 아직 코드 서명이
+                  없어서, 브라우저로 받은 파일은 SmartScreen 경고를 만납니다.
+                </span>
+              ),
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The build follows the CPU of the Bun that runs it, so an ARM64 Windows machine builds an x64 PC's app
+                  when <code>akan</code> runs on an x64 Bun (<code>bun-windows-x64-baseline</code>, which also runs on
+                  CPUs without AVX2) after <code>rustup target add x86_64-pc-windows-msvc</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  빌드는 그것을 실행하는 Bun의 CPU를 따릅니다. 그래서 ARM64 Windows에서도{" "}
+                  <code>rustup target add x86_64-pc-windows-msvc</code> 뒤 x64 Bun(
+                  <code>bun-windows-x64-baseline</code>, AVX2가 없는 CPU에서도 도는 빌드)으로 <code>akan</code>을
+                  실행하면 x64 PC용 앱이 나옵니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Docs.SubSubTitle>{l.trans({ en: "Updates", ko: "업데이트" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An installed app updates itself from releases you sign. <code>akan update-keygen</code> makes the key
+                  once and prints its public half for <code>mobile.updates</code>; <code>akan publish-update</code>{" "}
+                  builds a release (the whole app on the desktop, the web bundle on a phone) into{" "}
+                  <code>.akan/mobile/&lt;target&gt;/updates</code>, which you upload to <code>updates.url</code>, the
+                  manifests last. A new release runs on trial until its first page mounts; when to check, download and
+                  apply is the app's call.
+                </span>
+              ),
+              ko: (
+                <span>
+                  설치된 앱은 직접 서명한 릴리스로 스스로 업데이트합니다. <code>akan update-keygen</code>이 키를 한 번
+                  만들고 <code>mobile.updates</code>에 넣을 공개 키를 출력합니다. <code>akan publish-update</code>는
+                  릴리스(데스크톱은 앱 전체, 폰은 웹 번들)를 <code>.akan/mobile/&lt;target&gt;/updates</code>에
+                  빌드하고, 그 폴더를 <code>updates.url</code>에 올리되 manifest를 마지막에 올립니다. 새 릴리스는 첫
+                  페이지가 마운트될 때까지 시험 실행이며, 언제 확인·다운로드·적용할지는 앱이 정합니다.
+                </span>
+              ),
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An app follows the channel <code>updates.channel</code> names, or else the <code>--env</code> it was
+                  built with, so it takes only releases published for its own env. <code>build-desktop</code> defaults
+                  to <code>debug</code> and <code>publish-update</code> to <code>main</code>: pass the same{" "}
+                  <code>--env</code> to both. What makes a desktop app itself — its install folder, uninstall entry,
+                  data folder, single running instance and update state — comes from the target's <code>appId</code> and
+                  name, not from the env, so two envs of one target on one computer share all of it. To install them
+                  side by side, give each env its own target with its own <code>appId</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱은 <code>updates.channel</code>이 정한 채널을, 없으면 빌드할 때의 <code>--env</code>를 따릅니다.
+                  그래서 자기 env로 게시한 릴리스만 받습니다. <code>build-desktop</code>의 기본값은 <code>debug</code>,{" "}
+                  <code>publish-update</code>는 <code>main</code>이므로 둘에 같은 <code>--env</code>를 줍니다. 설치
+                  폴더, 제거 항목, 데이터 폴더, 한 번에 하나만 뜨는 인스턴스, 업데이트 상태처럼 데스크톱 앱을 그 앱이게
+                  하는 것은 env가 아니라 타깃의 <code>appId</code>와 이름에서 나옵니다. 그래서 한 타깃의 두 env를 한
+                  컴퓨터에 두면 이것을 모두 함께 씁니다. 나란히 설치하려면 env마다 <code>appId</code>가 다른 타깃을 따로
+                  둡니다.
+                </span>
+              ),
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="webkit/useAppUpdates.tsx"
+            language="typescript"
+            code={`import { updates } from "akanjs/client/native";
+
+// e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
+const { available } = await updates.check();
+if (available) {
+  await updates.download();
+  await updates.apply();
+}`}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "Behind a CDN, the files under `app/` and `files/` are named by their hash and may be cached for long, but `<channel>.json` and `<channel>.json.sig` must not be cached, or must be invalidated together: a manifest paired with another release's signature fails verification, and every app stops updating until the caches expire. Upload `app/` and `files/` first, then those two files last, together.",
+              ko: "CDN으로 서빙할 때 `app/`과 `files/` 아래 파일은 해시로 이름이 붙으므로 오래 캐시해도 됩니다. 하지만 `<channel>.json`과 `<channel>.json.sig`는 캐시하지 않거나 둘을 함께 무효화해야 합니다. manifest가 다른 릴리스의 서명과 짝지어지면 검증에 실패하고, 캐시가 만료될 때까지 모든 앱이 업데이트를 멈춥니다. `app/`과 `files/`를 먼저 올리고, 두 파일은 마지막에 함께 올립니다.",
             })}
           </Docs.Alert>
         </Docs.Description>

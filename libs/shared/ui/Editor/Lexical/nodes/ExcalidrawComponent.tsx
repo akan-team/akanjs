@@ -19,6 +19,8 @@ import {
   RESET_WIDTH,
   renderPreview,
   sanitizeSceneFiles,
+  toLoadableFiles,
+  toStorableFiles,
 } from "./excalidrawNode.util";
 import { MediaFrame, MediaMenuButton } from "./shared";
 import type { MediaAlign } from "./shared.type";
@@ -115,7 +117,8 @@ export const ExcalidrawComponent = ({
             return { id: uploaded.id, url: uploaded.url, mimeType: uploaded.mimetype };
           }
         : undefined;
-      const sanitized = await sanitizeSceneFiles(latestSceneRef.current, uploadFn);
+      const latest = latestSceneRef.current;
+      const sanitized = await sanitizeSceneFiles({ ...latest, files: toStorableFiles(latest.files) }, uploadFn);
       const nextPreview = module ? await renderPreview(module, sanitized) : null;
       updateNodeByKey(editor, nodeKey, (node) => {
         if ($isExcalidrawNode(node)) {
@@ -245,7 +248,7 @@ export const ExcalidrawModal = ({
             initialData={{
               elements: scene.elements as never[],
               appState: scene.appState as never,
-              files: scene.files as never,
+              files: toLoadableFiles(scene.files) as never,
             }}
             onChange={(elements, appState, files) => {
               onChange({

@@ -74,6 +74,8 @@ name field
 
 The scaffold renders only the module's `name` field; swap in the fields you need.
 
+`akan create-module <module-name> [sys] [--page] [--format <markdown|json>]`
+
 Create a database module in an app or library. It writes the standard module files into `lib/<module>/`, and route files too with `--page`.
 
 Module name. Spaces are removed and the first letter is lowercased; asked for if left out.
@@ -98,6 +100,8 @@ same name
 
 A module that already has the name is overwritten file by file, so commit first.
 
+`akan create-service <service-name> [sys] [--format <markdown|json>]`
+
 Create a service module: behavior that is not centered on one stored model. It lands in `lib/_<service>/`, with no constant, document or UI files.
 
 Service name. Spaces and leading underscores are removed, and the first letter is lowercased.
@@ -110,6 +114,8 @@ Only the folder has the underscore: `lib/_noti/noti.service.ts`, `lib/_noti/noti
 
 A service module holds only Zone and Util files; write them by hand.
 
+`akan remove-module [sys:module]`
+
 Remove a database module from an app or library. It deletes the whole `lib/<module>/` folder at once, without asking.
 
 what stays
@@ -120,15 +126,21 @@ afterwards
 
 Run `akan sync <sys>` so the generated files drop the module.
 
+`akan create-view [sys:module] [--format <markdown|json>]`
+
 Write the View file of an existing module: the detail screen for one record. It is always a server component, so it never carries "use client".
 
 writes
 
 `lib/<module>/<Module>.View.tsx`, exporting `General`.
 
+`akan create-unit [sys:module] [--format <markdown|json>]`
+
 Write the Unit file of an existing module: one row or card in a list. It takes the module's Light data and, like View, is always a server component.
 
 `lib/<module>/<Module>.Unit.tsx`, exporting `Card`.
+
+`akan create-template [sys:module] [--format <markdown|json>]`
 
 Write the Template file of an existing module: its create and edit form. It is bound to the store's form state, so it is always a client component with "use client" on line 1.
 

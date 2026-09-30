@@ -340,6 +340,12 @@ Endpoint Actions
 
 Declare a custom endpoint and call it from a store action.
 
+Message and pubsub, end to end.
+
+Queueing
+
+Enqueue a process job and pick which replica runs it.
+
 ## Code Examples
 
 ### apps/blog/lib/story/story.signal.ts

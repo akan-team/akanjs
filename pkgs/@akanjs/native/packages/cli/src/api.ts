@@ -24,9 +24,18 @@ import {
   SigningError,
   WebBuildError,
   WebInputError,
+  type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { type UpdateManifest, webManifest, writeWebBundle } from "./lib/updates.ts";
+import { publishRelease } from "./lib/publish.ts";
+import {
+  assertChannel,
+  generateUpdateKey,
+  type UpdateManifest,
+  updateKeyPath,
+  webManifest,
+  writeWebBundle,
+} from "./lib/updates.ts";
 import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
@@ -42,10 +51,11 @@ export type {
   IosSigningResult,
   LogEvent,
   TargetPlatform,
+  WindowsBuild,
 };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.1.0";
+export const API_VERSION = "0.8.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -103,7 +113,7 @@ export interface TaskOptions {
 }
 
 export interface Artifact {
-  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web";
+  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   signing: "none" | "adhoc" | "debug" | "development" | "distribution";
   device?: "simulator" | "device";
@@ -147,18 +157,17 @@ export function validateConfig(config: AkanNativeConfig, options: { appDir: stri
 }
 
 /** Builds the app. Default profile release (like `akan-native build`). `ios.device`: an iPhone build (signed; release adds an .ipa). */
-export function build(options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild }): Promise<BuildResult> {
+export function build(
+  options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild; windows?: WindowsBuild },
+): Promise<BuildResult> {
   return task(
     options,
     async (warnings) =>
       (
-        await buildIn(
-          options,
-          options.profile ?? "release",
-          options.mode ?? "production",
-          warnings,
-          options.ios ? { ios: options.ios } : {},
-        )
+        await buildIn(options, options.profile ?? "release", options.mode ?? "production", warnings, {
+          ...(options.ios ? { ios: options.ios } : {}),
+          ...(options.windows ? { windows: options.windows } : {}),
+        })
       ).result,
   );
 }
@@ -237,6 +246,51 @@ export function packUpdate(
   });
 }
 
+export interface PublishResult {
+  build: BuildResult;
+  /** `<out>/<os>-<arch>` (desktop) or `<out>/<platform>` (a phone's web bundle): what to upload under updates.url. */
+  dir: string;
+  bundle: string;
+  channel: string;
+  files: number;
+  /** Bytes of the files the manifest names. */
+  size: number;
+}
+
+/**
+ * A signed release for the updates plugin (UP-1, UP-2): a release build, then `<channel>.json`, its signature and
+ * its files under `out` (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
+ */
+export function publishUpdate(
+  options: TaskOptions & { platform: Exclude<TargetPlatform, "web">; channel?: string; out?: string },
+): Promise<PublishResult> {
+  return task(options, async (warnings) => {
+    if (!options.config.updates)
+      throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
+    if (options.channel !== undefined) {
+      try {
+        assertChannel(options.channel);
+      } catch (error) {
+        throw toAkanNativeError(error, "CONFIG_INVALID");
+      }
+    }
+    const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings);
+    const channel = options.channel ?? ctx.project.config.updates?.channel ?? "production";
+    const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
+    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
+      throw toAkanNativeError(error, "CONFIG_INVALID");
+    });
+    return {
+      build: result,
+      dir,
+      bundle: manifest.bundle,
+      channel,
+      files: manifest.files.length,
+      size: manifest.files.reduce((n, f) => n + f.size, 0),
+    };
+  });
+}
+
 /**
  * Whether a web bundle can run in the binary a store release shipped (UP-3): `shipped` is that build's bundle.json,
  * `bundle` the one `packUpdate` wrote. Anything in `problems` means a new binary.
@@ -248,6 +302,19 @@ export function compareBundles(shipped: string, bundle: string): { compatible: b
       ? [`${shipped} is for ${before.app.id}, the bundle for ${now.app.id}`]
       : compatProblems(before.nativeApi.inputs, now.nativeApi.inputs);
   return { compatible: problems.length === 0, problems };
+}
+
+/**
+ * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
+ * then read. `publicKey` goes into the config's `updates.publicKey`; the key file never leaves the machine.
+ */
+export function updateKeygen(options: { config: AkanNativeConfig }): {
+  publicKey: string;
+  keyPath: string;
+  created: boolean;
+} {
+  const keyPath = updateKeyPath(options.config.app.id);
+  return { ...generateUpdateKey(keyPath), keyPath };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */
@@ -551,7 +618,7 @@ async function buildIn(
   profile: BuildProfile,
   mode: string,
   warnings: string[],
-  extra: Pick<BuildOptions, "android" | "ios" | "devServer" | "startPath"> = {},
+  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "devServer" | "startPath"> = {},
 ): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
   const started = performance.now();
   const appDir = resolve(options.appDir);

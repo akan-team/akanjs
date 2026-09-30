@@ -1,0 +1,14 @@
+{
+  "id": "volume",
+  "apiVersion": 1,
+  "methods": ["getVolume", "setVolume", "setMuted"],
+  "events": ["change"],
+  "codegen": true,
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": {
+    "sources": ["android/*.kt"],
+    "class": "com.akanjs.plugins.volume.VolumePlugin"
+  }
+}

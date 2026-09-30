@@ -1,5 +1,9 @@
 package com.akanjs.plugins.app
 
+import android.content.ComponentName
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import com.akanjs.runtime.AkanNativeActivity
 import com.akanjs.runtime.AkanNativeBackProgress
 import com.akanjs.runtime.AkanNativeLinks
@@ -40,6 +44,16 @@ class AppPlugin(private val context: AkanNativePluginContext) : AppPluginSpec {
     override fun exit(reply: AkanNativeVoidReply) {
         reply.resolve()
         context.activity.finishAndRemoveTask()
+    }
+
+    override fun relaunch(reply: AkanNativeVoidReply) {
+        val activity = context.activity
+        reply.resolve()
+        // The system starts the new task once this process is gone, in a new one (the answer reaches the page first).
+        Handler(Looper.getMainLooper()).postDelayed({
+            activity.startActivity(Intent.makeRestartActivityTask(ComponentName(activity, activity.javaClass)))
+            Runtime.getRuntime().exit(0)
+        }, 100)
     }
 
     override fun minimize(reply: AkanNativeVoidReply) {

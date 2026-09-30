@@ -27,8 +27,23 @@ export function appDataDir(
 }
 
 /**
+ * What is large and belongs to this PC: the webview's storage, the carried server's databases and logs.
+ *   Windows  %LOCALAPPDATA%\<id>    (never Roaming, which follows the user and may be a network share)
+ *   macOS, Linux  appDataDir
+ */
+export function appLocalDataDir(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+  env: Env = process.env,
+  home = homedir(),
+): string {
+  if (platform === "win32") return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), id);
+  return appDataDir(id, platform, env, home);
+}
+
+/**
  * The webview's own storage and caches (Windows, Linux; WKWebView chooses its own on macOS):
- *   Windows  %LOCALAPPDATA%\<id>\WebView2   (large and machine-specific: not Roaming)
+ *   Windows  %LOCALAPPDATA%\<id>\WebView2
  *   Linux    $XDG_DATA_HOME/<id>/webview
  * WebView2's default would be next to the .exe, which is not writable once installed.
  */
@@ -38,14 +53,28 @@ export function webviewDataDir(
   env: Env = process.env,
   home = homedir(),
 ): string | undefined {
-  if (platform === "win32") return join(env.LOCALAPPDATA || join(home, "AppData", "Local"), id, "WebView2");
+  if (platform === "win32") return join(appLocalDataDir(id, platform, env, home), "WebView2");
   if (platform === "linux") return join(appDataDir(id, platform, env, home), "webview");
   return undefined;
 }
 
 /**
+ * The carried server's folder (server.ts): <app local data>/server. A debug build has the release app's id, so
+ * its server keeps its own folder and never opens the databases of the release app on the same PC.
+ */
+export function serverDataDir(
+  id: string,
+  dev: boolean,
+  platform: NodeJS.Platform = process.platform,
+  env: Env = process.env,
+  home = homedir(),
+): string {
+  return join(appLocalDataDir(id, platform, env, home), dev ? "server-debug" : "server");
+}
+
+/**
  * Folders whose files no FileRef may serve (L4): the shell's and the plugins' own storage
- * (preferences, secure storage, databases, update bundles, window state, the webview's data). Only
+ * (preferences, secure storage, databases, update bundles, window state, the webview's data, the server's). Only
  * the filesystem plugin's `data` base (<app data>/files) is servable inside the app data folder.
  */
 export function reservedDirs(
@@ -55,6 +84,11 @@ export function reservedDirs(
   home = homedir(),
 ): { root: string; except: string[] }[] {
   const data = appDataDir(id, platform, env, home);
+  const local = appLocalDataDir(id, platform, env, home);
   const webview = webviewDataDir(id, platform, env, home);
-  return [{ root: data, except: [join(data, "files")] }, ...(webview ? [{ root: webview, except: [] }] : [])];
+  return [
+    { root: data, except: [join(data, "files")] },
+    ...(local !== data ? [{ root: local, except: [] }] : []),
+    ...(webview ? [{ root: webview, except: [] }] : []),
+  ];
 }

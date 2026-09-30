@@ -511,6 +511,7 @@ export async function buildAndroid(ctx: BuildContext): Promise<string> {
       // L0: schemes the app adds to what links and the opener may hand to the OS.
       externalSchemes: config.security?.shell?.externalSchemes ?? [],
       minWebViewVersion: config.android?.minWebViewVersion ?? MIN_WEBVIEW,
+      autoplay: config.android?.autoplay === true,
       // Before the page runs (O6-1): the keyboard mode keyboard.setResizeMode() changes later.
       keyboardResize: config.keyboard?.resize ?? "resize",
       // akan-native dev --hmr: pages come from the dev gateway (lib/hmr.ts). Never in release builds.

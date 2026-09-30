@@ -22,7 +22,10 @@ const appDir = "/repo/apps/portal";
 
 const fakeApp = (plugins: AkanPlugin[] = []) =>
   ({
+    name: "portal",
     cwdPath: appDir,
+    workspace: { workspaceRoot: "/repo" },
+    getScanInfo: () => ({ getLibs: () => [] }),
     dist: { cwdPath: "/repo/dist/apps/portal" },
     getConfig: async () => ({ i18n: { locales: ["en", "ko"] }, api: { prefix: "/api", websocketPrefix: "/ws" } }),
     collectPlugins: async () => plugins,
@@ -69,11 +72,21 @@ describe("NativeApp", () => {
       target({ basePath: undefined, permissions: ["push"] }),
     );
 
-    const { config, warnings } = await app.config("android");
+    const { config, warnings } = await app.config({ platform: "android" });
 
     expect(warnings).toEqual([]);
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);
     expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
+  });
+
+  test("follows the updates channel of the backend env it is built for", async () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: `${"a".repeat(43)}=` };
+    const built = async (env?: "debug" | "main") =>
+      (await new NativeApp(fakeApp(), target({ basePath: undefined, updates }), env).config({ platform: "android" }))
+        .config.updates;
+
+    expect(await built("main")).toEqual({ ...updates, channel: "main" });
+    expect(await built("debug")).toEqual({ ...updates, channel: "debug" });
   });
 
   test("a desktop app is this computer's platform", () => {

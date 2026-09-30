@@ -24,6 +24,11 @@ export interface AppApi {
   getLaunchUrl(): Promise<{ url: string | null }>;
   /** Ends the app without asking onBeforeQuit handlers. Android and desktop only (iOS apps must not quit themselves). */
   exit(): Promise<void>;
+  /**
+   * Ends the app and starts it again in a new process, without asking onBeforeQuit handlers: after a setting
+   * that takes a restart, or to recover an app nobody attends. The web reloads the page; iOS answers UNSUPPORTED.
+   */
+  relaunch(): Promise<void>;
   /** Sends the app to the background (Android) or minimizes its window (desktop). */
   minimize(): Promise<void>;
   /** Internal: the page's answer to a beforeQuit event. Use onBeforeQuit(). */
@@ -52,7 +57,7 @@ export interface AppEvents {
 }
 
 export const app = definePlugin<AppApi, AppEvents>("app", {
-  methods: ["getInfo", "getLaunchUrl", "exit", "minimize", "answerBeforeQuit", "setBackEnabled"],
+  methods: ["getInfo", "getLaunchUrl", "exit", "relaunch", "minimize", "answerBeforeQuit", "setBackEnabled"],
   events: ["urlOpen", "backButton", "beforeQuit", "backProgress"],
   web,
 });

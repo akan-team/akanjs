@@ -15,14 +15,20 @@
 // window over the app (conhost --headless).
 // The VM's address and user come from ~/.akan/native/vm/windows.json (written by serve-setup.ts) or
 // AKAN_NATIVE_VM_HOST / AKAN_NATIVE_VM_USER; the key is ~/.akan/native/vm/id_ed25519.
+// AKAN_NATIVE_VM_SRC copies another tree instead of this package (the akanjs monorepo, for an e2e that builds an
+// app), into C:\akan-native-work\<AKAN_NATIVE_VM_WORK_NAME>, so it never mixes with this package's copy.
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const REPO = resolve(import.meta.dir, "../..");
+const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? resolve(import.meta.dir, "../.."));
 const VM_DIR = join(homedir(), ".akan", "native", "vm");
 const WORK = "C:\\akan-native-work";
+const COPY = (process.env.AKAN_NATIVE_VM_WORK_NAME || "akan-native").replace(/[^A-Za-z0-9._-]/g, "");
+// robocopy /MIR onto the copy: a name that is empty or only dots would mirror onto the work root or above it.
+if (!/[A-Za-z0-9]/.test(COPY))
+  throw new Error(`AKAN_NATIVE_VM_WORK_NAME names no folder: ${JSON.stringify(process.env.AKAN_NATIVE_VM_WORK_NAME)}`);
 
 function target(): string {
   let host = process.env.AKAN_NATIVE_VM_HOST;
@@ -77,27 +83,27 @@ function ps(script: string, quiet = false): { code: number; out: string } {
 }
 
 function sync(): void {
-  const archive = join(tmpdir(), "akan-native-sync.tar.gz");
+  const archive = join(tmpdir(), `${COPY}-sync.tar.gz`);
   console.info("sync: packing the repository");
   const excludes = ["node_modules", "target", ".akan", "dist", ".DS_Store"].flatMap((e) => ["--exclude", e]);
   if (spawn(["tar", "-czf", archive, ...excludes, "-C", REPO, "."], { quiet: true }).code !== 0)
     throw new Error("tar failed");
-  if (spawn(["scp", ...SSH, "-q", archive, `${target()}:akan-native-sync.tar.gz`]).code !== 0)
+  if (spawn(["scp", ...SSH, "-q", archive, `${target()}:${COPY}-sync.tar.gz`]).code !== 0)
     throw new Error("scp failed");
   rmSync(archive, { force: true });
   // Mirror the sources, keeping what the VM built (node_modules, target, .akan, dist) for
   // incremental builds: robocopy /MIR leaves excluded folders alone. Exit codes below 8 are success.
   const r = ps(`
 $ErrorActionPreference = 'Stop'
-$staging = '${WORK}\\sync'
+$staging = '${WORK}\\sync-${COPY}'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $staging
-New-Item -ItemType Directory -Force -Path $staging, '${WORK}\\akan-native' | Out-Null
-tar.exe -xzf "$HOME\\akan-native-sync.tar.gz" -C $staging
-Remove-Item "$HOME\\akan-native-sync.tar.gz"
-robocopy.exe $staging '${WORK}\\akan-native' /MIR /XD node_modules target .akan dist /NFL /NDL /NJH /NJS /NP | Out-Null
+New-Item -ItemType Directory -Force -Path $staging, '${WORK}\\${COPY}' | Out-Null
+tar.exe -xzf "$HOME\\${COPY}-sync.tar.gz" -C $staging
+Remove-Item "$HOME\\${COPY}-sync.tar.gz"
+robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 Remove-Item -Recurse -Force $staging
-Set-Location '${WORK}\\akan-native'
+Set-Location '${WORK}\\${COPY}'
 if (-not (Test-Path node_modules)) { & "$HOME\\.bun\\bin\\bun.exe" install --silent | Out-Null }
 exit 0
 `);
@@ -108,7 +114,10 @@ exit 0
  * Runs `command` (PowerShell) in the signed-in desktop session and follows its output. `name` names
  * the task and its files, so a second one (a screenshot) can run while a test is running.
  */
-async function desktop(command: string, name = "desktop"): Promise<number> {
+async function desktop(
+  command: string,
+  name = COPY === "akan-native" ? "desktop" : `${COPY}-desktop`,
+): Promise<number> {
   const base = `${WORK}\\${name}`;
   // Continue: PowerShell 5.1 turns a native program's stderr lines into errors, which Stop would
   // make fatal. UTF-8: how PowerShell decodes native programs' output (the OEM code page otherwise).
@@ -117,7 +126,7 @@ async function desktop(command: string, name = "desktop"): Promise<number> {
 $ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $env:PATH = "$HOME\\.bun\\bin;$HOME\\.cargo\\bin;$env:PATH"
-Set-Location '${WORK}\\akan-native'
+Set-Location '${WORK}\\${COPY}'
 & { ${command} } *>&1 | ForEach-Object { Add-Content -Encoding utf8 -Path '${base}.log' -Value "$_" }
 exit $LASTEXITCODE
 `;
@@ -191,7 +200,7 @@ if (sub === "sync") sync();
 else if (sub === "ssh")
   process.exit(
     ps(
-      `$env:PATH = "$HOME\\.bun\\bin;$HOME\\.cargo\\bin;$env:PATH"; Set-Location '${WORK}\\akan-native'; ${rest.join(" ")}; exit $LASTEXITCODE`,
+      `$env:PATH = "$HOME\\.bun\\bin;$HOME\\.cargo\\bin;$env:PATH"; Set-Location '${WORK}\\${COPY}'; ${rest.join(" ")}; exit $LASTEXITCODE`,
     ).code,
   );
 else if (sub === "desktop") process.exit(await desktop(rest.join(" ")));

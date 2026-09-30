@@ -11,12 +11,16 @@
 //   APFS volume are clones. The app is not sandboxed: no security-scoped bookmarks are needed.
 // - Picked files are served as FileRefs of the copies; no path reaches the page. MIME types come
 //   from the OS (one `panel.mime` call per result), else the built-in table.
+// - forServer copies nothing: the FileRefs serve the originals, and each result carries a grant the
+//   app's server exchanges for the path (packages/desktop/src/grants.ts). A saveFile grant names where
+//   the user chose to save, and the server writes the file.
 // - One panel at a time (a second call rejects CANCELLED, as on the other platforms).
 import { randomBytes } from "node:crypto";
 import { constants, copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { AkanNativeError, mimeFor } from "../../../packages/core/src/index.ts";
+import { grantFile } from "../../../packages/desktop/src/grants.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
 import { base64ToBytes, checkFlag, checkLimit, checkName, checkObject, checkSaveSource, checkTypes } from "./common.ts";
 import type { DirectoryFile, FilePickerApi, PickedFile } from "./index.ts";
@@ -31,6 +35,11 @@ interface Staged {
   size: number;
   relative?: string;
 }
+
+//? A dev build without a server of its own serves `akan start`'s pages, and that server checks a signed dev grant. One
+//? that carries a server asks it over IPC, like a release build: the carried server runs in edge mode and refuses a
+//? dev grant.
+const devGrant = (ctx: DesktopContext) => ctx.dev && !ctx.server;
 
 /** Regular files under `dir`, depth first by name, without hidden files and folders (".*"). */
 export function listFiles(dir: string, limit: number): { files: string[]; truncated: boolean } {
@@ -118,11 +127,20 @@ export function createDesktopFilePicker() {
         const o = checkObject(options, true);
         const types = checkTypes(o.types);
         const multiple = checkFlag(o.multiple, "multiple");
+        const forServer = checkFlag(o.forServer, "forServer");
         return exclusive(async () => {
           const answer = (await ctx.shell("panel.open", { types, multiple })) as OpenAnswer;
           if ("cancelled" in answer) return { files: [] };
-          const dir = stageDir(ctx);
           const mime = await mimes(ctx, answer.paths);
+          if (forServer)
+            return {
+              files: answer.paths.map((p) => ({
+                ...ctx.registerFile(p, mime(p)),
+                name: basename(p),
+                grant: grantFile(p, "read", { dev: devGrant(ctx) }),
+              })),
+            };
+          const dir = stageDir(ctx);
           return { files: answer.paths.map((p, i) => toPicked(ctx, stage(dir, p, i, mime(p)))) };
         });
       },
@@ -130,6 +148,19 @@ export function createDesktopFilePicker() {
       async saveFile(options, ctx) {
         const o = checkObject(options, false);
         const name = checkName(o.name);
+        if (checkFlag(o.forServer, "forServer")) {
+          if (o.data !== undefined || o.url !== undefined)
+            throw new AkanNativeError("INVALID_ARGS", "forServer saves nothing itself; the server writes the file");
+          return exclusive(async () => {
+            const answer = (await ctx.shell("panel.save", { name })) as SaveAnswer;
+            if ("cancelled" in answer) return { saved: false };
+            return {
+              saved: true,
+              name: basename(answer.path),
+              grant: grantFile(answer.path, "write", { dev: devGrant(ctx) }),
+            };
+          });
+        }
         const source = checkSaveSource(o);
         if (source.kind === "url")
           throw new AkanNativeError(
@@ -155,13 +186,25 @@ export function createDesktopFilePicker() {
       async pickDirectory(options, ctx) {
         const o = checkObject(options, true);
         const limit = checkLimit(o.limit);
+        const forServer = checkFlag(o.forServer, "forServer");
         return exclusive(async () => {
           const answer = (await ctx.shell("panel.open", { directory: true })) as OpenAnswer;
           if ("cancelled" in answer || !answer.paths[0]) return { name: null, files: [], truncated: false };
           const picked = answer.paths[0];
           const { files, truncated } = listFiles(picked, limit);
-          const dir = stageDir(ctx);
           const mime = await mimes(ctx, files);
+          if (forServer)
+            return {
+              name: basename(picked),
+              grant: grantFile(picked, "folder", { dev: devGrant(ctx) }),
+              files: files.map((rel) => ({
+                ...ctx.registerFile(join(picked, rel), mime(rel)),
+                name: basename(rel),
+                path: rel,
+              })),
+              truncated,
+            };
+          const dir = stageDir(ctx);
           const out: DirectoryFile[] = files.map((rel, i) => ({
             ...toPicked(ctx, stage(dir, join(picked, rel), i, mime(rel))),
             path: rel,

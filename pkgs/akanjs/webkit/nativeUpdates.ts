@@ -1,11 +1,12 @@
 "use client";
 import { debugFrame } from "akanjs/client";
-import { appState, isAkanNativeError, isNativeApp, updates } from "akanjs/client/native";
+import { appState, isAkanNativeError, isNativeApp, isNativeShell, updates } from "akanjs/client/native";
 
-//* A native app's web bundle stays current on its own: a bundle on trial is confirmed once the first page is on
-//* screen, since an unconfirmed trial is rolled back at the next launch, and a newer bundle is fetched in the background
-//* at start and whenever the app comes back to the front. It runs from the next cold start; `updates.apply()` is for a
-//* screen that offers it now.
+//* A release on trial is confirmed once the first page is on screen, in every native shell, since an unconfirmed trial
+//* is rolled back at the next launch. A phone's web bundle also stays current on its own: a newer one is fetched in the
+//* background at start and whenever the app comes back to the front, and runs from the next cold start;
+//* `updates.apply()` is for a screen that offers it now. A desktop release is the whole app and a relaunch, so the app
+//* checks, downloads and applies it on its own schedule.
 export class NativeUpdates {
   static readonly recheckAfterMs = 10 * 60 * 1000;
   static #confirmed = false;
@@ -13,16 +14,17 @@ export class NativeUpdates {
   #checking = false;
 
   //? A dev build loads its pages through the dev gateway, where a downloaded bundle would only shadow the edited one.
+  static get #devBuild() {
+    return !!(globalThis as { __AKAN_NATIVE_DEV__?: unknown }).__AKAN_NATIVE_DEV__;
+  }
+
   static get enabled() {
-    return (
-      isNativeApp() &&
-      updates.isSupported("check") &&
-      !(globalThis as { __AKAN_NATIVE_DEV__?: unknown }).__AKAN_NATIVE_DEV__
-    );
+    return isNativeApp() && updates.isSupported("check") && !NativeUpdates.#devBuild;
   }
 
   static confirm() {
-    if (NativeUpdates.#confirmed || !NativeUpdates.enabled) return;
+    if (NativeUpdates.#confirmed || NativeUpdates.#devBuild) return;
+    if (!isNativeShell() || !updates.isSupported("notifyReady")) return;
     NativeUpdates.#confirmed = true;
     void updates
       .notifyReady()

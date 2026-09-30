@@ -1,5 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import { MediaFrame } from "./shared";
 import type { MediaAlign } from "./shared.type";
@@ -35,8 +36,8 @@ export const VideoComponent = ({ nodeKey, src, poster, width, height, align }: V
       onReset={() => setSize(RESET_WIDTH, height && width ? Math.round((RESET_WIDTH / width) * height) : 0)}
     >
       <video
-        src={src}
-        poster={poster}
+        src={resolveServerUrl(src)}
+        poster={poster ? resolveServerUrl(poster) : undefined}
         controls
         width={width || undefined}
         height={height || undefined}

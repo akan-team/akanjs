@@ -19,6 +19,8 @@ import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { AppInfo } from "./ops/appInfo";
 import type { OpsRoute } from "./ops/opsRoute";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
+import { HostAllowlist } from "./routing/hostAllowlist";
+import { SelfExec } from "./selfExec";
 import { resolveStaticPath } from "./staticPath";
 import { getWebConfigFromEnv } from "./types";
 
@@ -140,6 +142,7 @@ export class AkanApp {
   #logControl: LogControlSocket | null = null;
   #logStream: LogStreamRoute | null = null;
   #ops: OpsRoute | null = null;
+  #hostAllowlist = HostAllowlist.fromEnv();
   static readonly #ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
   #gatewayMetrics: AkanMetricsReport = {};
   #proxyHopCount = 0;
@@ -150,6 +153,7 @@ export class AkanApp {
   #stopping = false;
 
   constructor(serverPathOrOptions: string | AkanAppOptions = "./server", options: AkanAppOptions = {}) {
+    SelfExec.adopt();
     const resolvedOptions = typeof serverPathOrOptions === "string" ? options : serverPathOrOptions;
     const serverPath = typeof serverPathOrOptions === "string" ? serverPathOrOptions : "./server";
     this.#serverPath = AkanApp.#resolveServerPath(resolvedOptions.serverPath ?? serverPath);
@@ -588,6 +592,7 @@ export class AkanApp {
     this.#server = Bun.serve({
       idleTimeout: 0,
       port: this.#port,
+      hostname: process.env.AKAN_LISTEN_HOST || undefined,
       fetch: (req, server) => this.#handleFetch(req, server),
       websocket: {
         idleTimeout: 0,
@@ -604,6 +609,7 @@ export class AkanApp {
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
+    if (this.#hostAllowlist && !this.#hostAllowlist.allows(req)) return this.#hostAllowlist.refuse();
     const url = new URL(req.url);
     if (url.pathname === "/_akan/app/health") return Response.json(this.#getHealthStatus());
     if (url.pathname === "/_akan/app/metrics") return Response.json(this.#getMetricsStatus());

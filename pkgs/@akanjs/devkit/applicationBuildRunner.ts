@@ -30,6 +30,8 @@ export type BuildProgressReporter = ApplicationBuildProgressReporter;
 export interface ApplicationBuildRunnerOptions {
   fast?: boolean;
   reporter?: BuildProgressReporter;
+  /** The backend env the build is for, when it is not the workspace's own (a mobile or desktop build's `--env`). */
+  environment?: string;
 }
 export interface BuildOptions {
   spinner?: boolean;
@@ -77,14 +79,16 @@ export class ApplicationBuildRunner {
   #app: App;
   #fast: boolean;
   #reporter?: BuildProgressReporter;
+  #environment?: string;
   #spinner?: boolean;
   #startedAt = Date.now();
   #phases: BuildPhaseResult[] = [];
 
-  constructor(app: App, { fast = false, reporter }: ApplicationBuildRunnerOptions = {}) {
+  constructor(app: App, { fast = false, reporter, environment }: ApplicationBuildRunnerOptions = {}) {
     this.#app = app;
     this.#fast = fast;
     this.#reporter = reporter;
+    this.#environment = environment;
   }
 
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
@@ -220,7 +224,8 @@ export class ApplicationBuildRunner {
     } satisfies Omit<Bun.BuildConfig, "entrypoints">;
     const serverEnvPlugin = createServerEnvPlugin({
       envDir: path.join(this.#app.cwdPath, "env"),
-      environment: baseDevEnv.env,
+      //? The root .env wins over the shell in baseDevEnv, so a `--env` build names its own; a desktop app runs it.
+      environment: this.#environment ?? baseDevEnv.env,
       environments: ["local", "testing", ...branches],
     });
     const backendConfig = {

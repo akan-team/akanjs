@@ -66,7 +66,7 @@ Home route. A deep link opens on top of it, and Android back returns to it befor
 
 The client to open in a multi-client app. It must be a `basePath` declared in `routes`.
 
-Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, and `android.googleServices` for FCM.
+Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
 
 Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.
 
@@ -260,6 +260,8 @@ No
 
 Beyond the base set and the permissions, name only the plugins the app actually calls. In-app purchase, for example, has no permission of its own:
 
+Your Own Plugins
+
 Android Setup
 
 Prerequisites
@@ -306,7 +308,21 @@ It needs Rust through rustup, which installs the toolchain the build pins, plus 
 
 Open rustup
 
-start-desktop is for development and testing. A signed desktop package for distribution is not one of the akan commands yet.
+The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.
+
+start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.
+
+Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.
+
+Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.
+
+An App Nobody Attends
+
+Installing On Windows
+
+Updates
+
+Behind a CDN, the files under `app/` and `files/` are named by their hash and may be cached for long, but `<channel>.json` and `<channel>.json.sig` must not be cached, or must be invalidated together: a manifest paired with another release's signature fails verification, and every app stops updating until the caches expire. Upload `app/` and `files/` first, then those two files last, together.
 
 Verify Setup
 
@@ -386,6 +402,15 @@ mobile: {
 },
 ```
 
+### apps/myapp/native/kiosk
+
+```ts
+native-plugin.json   { "id": "kiosk", "apiVersion": 1, "methods": ["hideTaskbar"], "desktop": "./src/desktop.ts", … }
+src/index.ts         export const kiosk = definePlugin<KioskApi>("kiosk", { methods: ["hideTaskbar"] });
+src/desktop.ts       export default defineDesktopPlugin<KioskApi>({ id: "kiosk", methods: { hideTaskbar: … } });
+android/KioskPlugin.kt
+```
+
 ### Terminal
 
 ```bash
@@ -442,6 +467,68 @@ akan release-ios myapp --target default --env main
 akan start myapp
 akan start-desktop myapp
 akan start-desktop myapp --release true --env debug
+```
+
+### Terminal
+
+```bash
+akan start-desktop myapp --server true
+akan build-desktop myapp --server true --env main
+```
+
+### akan.config.ts
+
+```typescript
+const config: AppConfig = {
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": { url: "https://files.example.com/ffmpeg-lgpl-darwin-arm64.zip", sha256: "…", file: "bin/ffmpeg" },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+  trustedDependencies: ["rclnodejs"],
+};
+```
+
+### page → server
+
+```typescript
+// webkit/usePickVideo.tsx (akanjs/client/native)
+const { files } = await filePicker.pickFiles({ types: ["video/*"], forServer: true });
+await fetch.trimVideo(files[0].grant, 0, 30);
+
+// lib/video/video.service.ts (akanjs/server)
+const input = await NativeFile.resolve(grant, "read");
+const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.saveFile({ name, forServer: true })
+```
+
+### apps/board/akan.config.ts
+
+```ts
+mobile: {
+  targets: {
+    default: {
+      native: {
+        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+        android: { autoplay: true },
+      },
+    },
+  },
+},
+```
+
+### webkit/useAppUpdates.tsx
+
+```typescript
+import { updates } from "akanjs/client/native";
+
+// e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
+const { available } = await updates.check();
+if (available) {
+  await updates.download();
+  await updates.apply();
+}
 ```
 
 ## Agent Notes

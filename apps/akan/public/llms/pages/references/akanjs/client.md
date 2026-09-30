@@ -346,6 +346,100 @@ Stage
 
 Available
 
+Not available
+
+What render receives
+
+Each declared argument arrives already typed:
+
+A page that reads one path segment and two query keys:
+
+layout / rootLayout Stages
+
+`layout()` takes every `page()` stage except `.prompt()`, and its render also receives `children`. It may declare only the `[x]` segments it reads.
+
+layout() adds
+
+rootLayout() adds
+
+These are app-wide settings, so only the root `_layout.tsx` of an app or a basePath sets them.
+
+An app's root layout. `import "./styles.css";` stays its first line:
+
+A nested layout that reads one segment and draws a not-found screen for its subtree:
+
+PageConfig
+
+`PageConfig` is the object `.config()` takes. It sets how a route enters, how much room it keeps for the device edges, and how the server sends it.
+
+A playground page that slides up, pads for the notch, and never ships to production:
+
+prompt
+
+`.prompt(name, description)` publishes a page as an MCP prompt, so an agent can open the same screen a person sees. The description is the whole instruction the model gets, in English.
+
+Declaration
+
+A ticket board published as a prompt:
+
+What an agent gets back
+
+`prompts/get` runs the page body under the caller's token and renders nothing. What it answers depends on how the body went:
+
+resolveRouteModule / isRouteDefinition
+
+Every route loader reads route files through these two functions. App code never calls them; you need them only when you write a tool that loads route files itself.
+
+Function
+
+Unfolds a chain's default export into the named-export shape. A legacy module passes through.
+
+True when the value is a `page()`, `layout()` or `rootLayout()` chain.
+
+A script that loads one route file the way the server does:
+
+Font / createFont
+
+`Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads it.
+
+A Korean font in two weights, applied to the whole app:
+
+usePage / msg / Err
+
+Translation, toast messages and the error class. Import them from your app's `@apps/<app>/client`, where the keys are typed by your dictionary.
+
+Call
+
+`usePage()` works in a server View, so translated text never needs a client component:
+
+In a store, `msg` reports a failed check and confirms success:
+
+fetch / sig
+
+`fetch` calls the server's endpoints and slices; `sig` describes each model's signal so a store can be built from it. Import both from your app: `@apps/<app>/client` in UI, `../useClient` inside `lib/`.
+
+Member
+
+A store built from `sig.project` that archives a project and updates its list:
+
+getCookie / setCookie / getAccount / getAuthToken
+
+Read cookies and the signed-in account from any component, server or browser. The auth token sits in a cookie named per app.
+
+`libs/shared` builds `getSelf()` on top of `getAccount()`. Trimmed, it reads:
+
+setAuth / initAuth / resetAuth
+
+These three keep `fetch`, the cookie and client storage holding the same token. Call `setAuth` after sign-in; the framework already calls `initAuth` at startup.
+
+Refreshing the token in `libs/shared` is one call to the server and one `setAuth`:
+
+Device
+
+`Device` wraps what the native runtime exposes on a phone: platform, safe area, keyboard, haptics and scroll. The framework loads it once in the browser; read it with `Device.getDevice()`.
+
+A button that vibrates lightly before it acts:
+
 ## Code Examples
 
 ### apps/myapp/lib/project/project.store.ts

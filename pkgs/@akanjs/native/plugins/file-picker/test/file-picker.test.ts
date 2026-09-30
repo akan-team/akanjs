@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { installMockHost, type MockHost } from "../../../packages/core/src/testing.ts";
+import { resolveGrant } from "../../../packages/desktop/src/grants.ts";
 import type { DesktopContext } from "../../../packages/desktop/src/plugin.ts";
 import manifest from "../native-plugin.json";
 import { checkLimit, checkName, checkSaveSource, checkTypes, isFileRef } from "../src/common.ts";
@@ -135,6 +136,18 @@ describe("routing", () => {
     expect(seen.at(-1)).toEqual({ name: "a.csv", data: "77u/YSxi", encoding: "base64" });
   });
 
+  test("forServer is for a desktop app's server: a phone or the web refuses it before any dialog", async () => {
+    const seen: unknown[] = [];
+    host = installMockHost({
+      platform: "ios",
+      plugins: { "file-picker": { methods: { pickFiles: (args) => (seen.push(args), { files: [] }) } } },
+    });
+    expect(await code(filePicker.pickFiles({ forServer: true }))).toBe("UNSUPPORTED");
+    expect(await code(filePicker.pickDirectory({ forServer: true }))).toBe("UNSUPPORTED");
+    expect(await code(filePicker.saveFile({ name: "out.mp4", forServer: true }))).toBe("UNSUPPORTED");
+    expect(seen).toEqual([]);
+  });
+
   test("manifest: every platform has all three methods", () => {
     const plugin = { spec: "file-picker", dir: `${import.meta.dir}/..`, manifest: manifest as never };
     for (const platform of ["macos", "ios", "android"] as const) {
@@ -192,11 +205,16 @@ describe("desktop", () => {
   const registered: string[] = [];
 
   /** The plugin with a fake shell: the panel "answers" with `answer`; UTType gives these MIME types. */
-  const withAnswer = (answer: Record<string, unknown>) => {
+  const withAnswer = (
+    answer: Record<string, unknown>,
+    { dev = false, server = false }: { dev?: boolean; server?: boolean } = {},
+  ) => {
     const shellCalls: { op: string; args: Record<string, unknown> }[] = [];
     let release: (() => void) | null = null;
     const ctx = {
       app: { id: "dev.test.picker", name: "Test", version: "1.0.0" },
+      dev,
+      server: server ? { ready: Promise.resolve(true) } : null,
       appDataDir: join(root, "app"),
       registerFile(path: string, mime: string) {
         registered.push(path);
@@ -254,6 +272,74 @@ describe("desktop", () => {
     expect([...readFileSync(target)]).toEqual([0, 255]);
     expect(shellCalls[0]).toEqual({ op: "panel.save", args: { name: "export.csv" } });
     expect(await code(call("saveFile", { name: "x", url: "/__akan_native/file/a" }))).toBe("INVALID_ARGS");
+  });
+
+  test("forServer copies nothing: the originals are served and granted to the app's server", async () => {
+    const src = join(root, "footage");
+    mkdirSync(join(src, "day1"), { recursive: true });
+    writeFileSync(join(src, "trip.mov"), "moov");
+    writeFileSync(join(src, "day1", "a.mp4"), "mp4");
+    const picked = await withAnswer({ paths: [join(src, "trip.mov")] }).call("pickFiles", { forServer: true });
+    expect(registered.at(-1)).toBe(join(src, "trip.mov"));
+    expect(picked.files[0].name).toBe("trip.mov");
+    expect(resolveGrant(picked.files[0].grant)).toEqual({ path: join(src, "trip.mov"), mode: "read" });
+
+    const folder = await withAnswer({ paths: [src] }).call("pickDirectory", { forServer: true });
+    expect(resolveGrant(folder.grant)).toEqual({ path: src, mode: "folder" });
+    expect(folder.files.map((f: { path: string }) => f.path)).toEqual(["day1/a.mp4", "trip.mov"]);
+    expect(registered.slice(-2)).toEqual([join(src, "day1", "a.mp4"), join(src, "trip.mov")]);
+
+    const target = join(root, "export", "cut.mp4");
+    const saved = await withAnswer({ path: target }).call("saveFile", { name: "cut.mp4", forServer: true });
+    expect(saved).toMatchObject({ saved: true, name: "cut.mp4" });
+    expect(resolveGrant(saved.grant)).toEqual({ path: target, mode: "write" });
+    expect(await code(withAnswer({ path: target }).call("saveFile", { name: "x", data: "a", forServer: true }))).toBe(
+      "INVALID_ARGS",
+    );
+  });
+
+  test("a dev build's grant carries the path, since its server is not the shell's child", async () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-grant-home-"));
+    process.env.AKAN_NATIVE_DEV_GRANT_KEY = join(home, "dev-file-grant.key");
+    try {
+      mkdirSync(join(root, "grant-src"), { recursive: true });
+      writeFileSync(join(root, "grant-src", "b.txt"), "hello");
+      const picked = await withAnswer({ paths: [join(root, "grant-src", "b.txt")] }, { dev: true }).call("pickFiles", {
+        forServer: true,
+      });
+      const [head, mode, encoded, signature] = picked.files[0].grant.split(":");
+      expect([head, mode, Buffer.from(encoded, "base64url").toString()]).toEqual([
+        "dev",
+        "read",
+        join(root, "grant-src", "b.txt"),
+      ]);
+      expect(signature.length).toBeGreaterThan(40);
+      expect(resolveGrant(picked.files[0].grant)).toBeNull();
+    } finally {
+      delete process.env.AKAN_NATIVE_DEV_GRANT_KEY;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("a debug build that carries its server grants over IPC like a release build: that server refuses a dev grant", async () => {
+    mkdirSync(join(root, "grant-src"), { recursive: true });
+    writeFileSync(join(root, "grant-src", "c.txt"), "hello");
+    const withServer = { dev: true, server: true };
+    const picked = await withAnswer({ paths: [join(root, "grant-src", "c.txt")] }, withServer).call("pickFiles", {
+      forServer: true,
+    });
+    expect(picked.files[0].grant.startsWith("dev:")).toBe(false);
+    expect(resolveGrant(picked.files[0].grant)).toEqual({ path: join(root, "grant-src", "c.txt"), mode: "read" });
+    const folder = await withAnswer({ paths: [join(root, "grant-src")] }, withServer).call("pickDirectory", {
+      forServer: true,
+    });
+    expect(resolveGrant(folder.grant)).toEqual({ path: join(root, "grant-src"), mode: "folder" });
+    const target = join(root, "export", "debug.mp4");
+    const saved = await withAnswer({ path: target }, withServer).call("saveFile", {
+      name: "debug.mp4",
+      forServer: true,
+    });
+    expect(resolveGrant(saved.grant)).toEqual({ path: target, mode: "write" });
   });
 
   macOnly("pickDirectory returns a snapshot without hidden files", async () => {

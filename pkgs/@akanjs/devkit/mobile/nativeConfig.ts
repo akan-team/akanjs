@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type {
@@ -7,7 +8,9 @@ import type {
   MobileEnv,
   MobilePermission,
 } from "akanjs";
+import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
+import type { NativePluginFolder } from "./nativePluginFolders";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 
 export interface NativeConfigInput {
@@ -22,6 +25,12 @@ export interface NativeConfigInput {
   /** The backend the binary talks to; an updates channel left unnamed follows it. */
   env?: MobileEnv;
   platform: NativePlatform;
+  /** A desktop build that carries its server (`--server`). */
+  desktopServer?: DesktopServerBundle;
+  /** The plugins in the app's and its libs' `native/` folders. */
+  nativePlugins?: NativePluginFolder[];
+  /** A desktop build's staged `bin` executables (DesktopBin). */
+  desktopBin?: string;
 }
 
 export interface NativeConfigResult {
@@ -86,6 +95,9 @@ export class NativeConfig {
     locales,
     env,
     platform,
+    desktopServer,
+    nativePlugins = [],
+    desktopBin,
   }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
@@ -96,17 +108,29 @@ export class NativeConfig {
       return used;
     });
     const abs = (relative: string) => path.resolve(appPath, relative);
+    const updates = NativeConfig.#updates(target, env);
+    const folders = new Set(nativePlugins.map((plugin) => path.resolve(plugin.dir)));
+    //? A `native/<id>` folder ships by itself, and the same folder listed again by path would reach the runtime twice.
+    const listed = (target.native?.plugins ?? []).filter(
+      (spec) => NativeConfig.#isId(spec) || !folders.has(path.resolve(appPath, spec)),
+    );
     const plugins = [
       ...new Set([
         ...NativeConfig.basePlugins,
         //? Windows and Linux open a link by starting the app again; without the hand-over it runs as a second app and
         //? the instance whose auth-session start() waits for the callback never hears it.
         ...(target.deepLinks?.schemes?.length ? ["single-instance"] : []),
-        ...(target.updates ? ["updates"] : []),
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
-        ...(target.native?.plugins ?? []),
+        //? A second copy of the app would start a second server on the same data.
+        ...(desktopServer ? ["single-instance"] : []),
+        ...(updates ? ["updates"] : []),
+        ...listed,
+        ...nativePlugins.map((plugin) => plugin.dir),
       ]),
     ];
+    const pluginIds = plugins.map(
+      (spec) => nativePlugins.find((plugin) => plugin.dir === spec)?.id ?? NativeConfig.#pluginId(appPath, spec),
+    );
     const usageDescriptions = Object.fromEntries(
       Object.entries(
         toIosInfoPlistUsageDescriptions(
@@ -142,12 +166,13 @@ export class NativeConfig {
     const native = NativeConfig.#compact({ ios, android, resources });
     const googleServices = target.native?.android?.googleServices;
     const pushAndroid = target.native?.push?.android;
-    const updates = target.updates && {
-      url: target.updates.url,
-      publicKey: target.updates.publicKey,
-      ...((target.updates.channel ?? env) ? { channel: target.updates.channel ?? env } : {}),
-      ...(target.updates.readyTimeout !== undefined ? { readyTimeout: target.updates.readyTimeout } : {}),
-    };
+    const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
+      recovery: target.native?.desktop?.recovery,
+      screenCapture: target.native?.desktop?.screenCapture,
+      window: NativeConfig.#compact({ ...target.native?.desktop?.window }),
+      server: desktopServer,
+      bin: desktopBin,
+    });
     const config: AkanNativeConfig = {
       app: {
         id: resolveAppId(target.appId, platform),
@@ -164,7 +189,7 @@ export class NativeConfig {
         {
           identifier: "app",
           description: `The plugins ${target.appName} ships, each with its default permissions`,
-          permissions: plugins.map((plugin) => `${plugin}:default`),
+          permissions: pluginIds.map((id) => `${id}:default`),
         },
       ],
       ...(Object.keys(usageDescriptions).length ? { usageDescriptions } : {}),
@@ -182,8 +207,13 @@ export class NativeConfig {
         : {}),
       ...(target.native?.privacy ? { privacy: target.native.privacy } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
-      android: { debugAppIdSuffix: ".debug", ...(googleServices ? { googleServices: abs(googleServices) } : {}) },
+      android: {
+        debugAppIdSuffix: ".debug",
+        ...(googleServices ? { googleServices: abs(googleServices) } : {}),
+        ...(target.native?.android?.autoplay ? { autoplay: true } : {}),
+      },
       keyboard: { resize: "none" },
+      ...(desktop ? { desktop } : {}),
       ...(target.assets?.icon ? { icon: NativeConfig.#icon(target.assets.icon, abs) } : {}),
       ...(target.assets?.splash ? { splash: NativeConfig.#splash(target.assets.splash, abs) } : {}),
     };
@@ -205,9 +235,34 @@ export class NativeConfig {
     return { ...splash, ...(splash.image ? { image: abs(splash.image) } : {}) };
   }
 
+  //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
+  static #updates(
+    target: AkanMobileTargetConfig,
+    env?: MobileEnv,
+  ): NonNullable<AkanNativeConfig["updates"]> | undefined {
+    const { url, publicKey, channel = env, ...rest } = target.updates ?? {};
+    return url && publicKey ? { ...rest, url, publicKey, ...(channel ? { channel } : {}) } : undefined;
+  }
+
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */
   static fileNameOf(name: string) {
     return name.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "app";
+  }
+
+  //? A permission names a plugin by its id, and a plugin given by folder is named in its manifest; a spec the runtime
+  //? cannot read is left as it is for the runtime to report.
+  static #pluginId(appPath: string, spec: string) {
+    if (NativeConfig.#isId(spec)) return spec;
+    try {
+      const { id } = JSON.parse(readFileSync(path.join(path.resolve(appPath, spec), "native-plugin.json"), "utf8"));
+      return typeof id === "string" ? id : spec;
+    } catch {
+      return spec;
+    }
+  }
+
+  static #isId(spec: string) {
+    return !spec.startsWith(".") && !path.isAbsolute(spec);
   }
 
   /** Drops empty arrays and objects, and answers undefined when nothing is left. */

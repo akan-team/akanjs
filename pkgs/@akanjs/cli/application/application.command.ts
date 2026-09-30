@@ -17,6 +17,10 @@ const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to"
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = { enum: devEnvs, desc: "backend environment", default: "local" } as const;
+const serverOption = {
+  desc: "also carry the app's server in the desktop app (database mode single, API only, on loopback)",
+  default: false,
+};
 const releaseEnvOption = {
   enum: ["debug", "develop", "main", "local"],
   desc: "backend environment",
@@ -144,6 +148,27 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, target, env, debug, write) {
       await this.applicationScript.buildAndroid(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
+  buildDesktop: target({ short: true, desc: "Build the desktop app for this computer (macOS, Windows or Linux)" })
+    .with(App)
+    .option("target", String, mobileTargetOption)
+    .option("env", String, buildEnvOption)
+    .option("debug", Boolean, { desc: "debug build instead of release", default: false })
+    .option("server", Boolean, serverOption)
+    .option("installer", Boolean, {
+      desc: "Windows: also an NSIS setup program (per user, /S for a silent install)",
+      default: false,
+    })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .exec(async function (app, target, env, debug, server, installer, write) {
+      await this.applicationScript.buildDesktop(app, {
+        target,
+        env,
+        profile: debug ? "debug" : "release",
+        server,
+        installer,
+        write,
+      });
+    }),
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })
     .with(Apps)
     .option("plain", Boolean, { desc: "print prefixed lines instead of the full-screen view", default: false })
@@ -204,9 +229,19 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
+    .option("server", Boolean, {
+      ...serverOption,
+      desc: "with --release, carry the app's server in the app; without it, start `akan start` alongside",
+    })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, release, write) {
-      await this.applicationScript.startDesktop(app, { target, env, operation: release ? "release" : "local", write });
+    .exec(async function (app, target, env, release, server, write) {
+      await this.applicationScript.startDesktop(app, {
+        target,
+        env,
+        operation: release ? "release" : "local",
+        server,
+        write,
+      });
     }),
   releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
@@ -264,6 +299,43 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         env,
         out: out ?? undefined,
         against: against ?? undefined,
+        write,
+        allowLocalRelease,
+      });
+    }),
+  updateKeygen: target({ desc: "Make (once) the key an app's update releases are signed with; print its public key" })
+    .with(App)
+    .option("platform", String, {
+      enum: ["desktop", "android", "ios"],
+      default: "desktop",
+      desc: "the platform whose app id the key signs for (an appId may differ per platform)",
+    })
+    .option("target", String, mobileTargetOption)
+    .exec(async function (app, platform, target) {
+      await this.applicationScript.updateKeygen(app, platform as "desktop" | "android" | "ios", { target });
+    }),
+  publishUpdate: target({ desc: "Build and sign an update release installed apps take (desktop, android or ios)" })
+    .with(App)
+    .option("platform", String, {
+      enum: ["desktop", "android", "ios"],
+      default: "desktop",
+      desc: "desktop is this computer's OS and CPU; android and ios publish the web bundle",
+    })
+    .option("target", String, mobileTargetOption)
+    .option("env", String, releaseEnvOption)
+    .option("channel", String, {
+      desc: "the manifest to publish to (default: the target's updates.channel, else --env)",
+      nullable: true,
+    })
+    .option("server", Boolean, { ...serverOption, desc: "a desktop release that carries the app's server" })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
+    .exec(async function (app, platform, target, env, channel, server, write, allowLocalRelease) {
+      await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+        target,
+        env,
+        ...(channel ? { channel } : {}),
+        server,
         write,
         allowLocalRelease,
       });

@@ -6,6 +6,10 @@
 //   resources/boot.json         platform, plugins, app info
 //   resources/env.runtime.json  replaceable runtime env (ENV-4)
 //   resources/shell.json        window and shell settings for main.ts and the plugin host
+//   resources/server/           desktop.server.dir, when the app carries a server (packages/desktop/src/server.ts)
+//   resources/server.json       its entry and env
+//   resources/bin/              desktop.bin: executables put first on the app's PATH (packages/desktop/src/host.ts)
+//   resources/server.bunfig.toml  empty: the server's Bun reads it instead of a bunfig.toml in its data folder
 //
 // Where each OS puts the executable, the library and the resources: macos.ts, windows.ts, linux.ts
 // (and packages/desktop/src/ffi.ts resolvePaths, which must agree).
@@ -222,6 +226,18 @@ export function writeDesktopResources(
       updatesResource(config.updates, config.app, os, boot.nativeApi, ctx.dev),
     );
   writeFileSync(join(resources, "env.runtime.json"), JSON.stringify(ctx.env, null, 2));
+  const server = config.desktop.server;
+  if (server) {
+    if (!ctx.project.plugins.some((p) => p.manifest.id === "single-instance"))
+      log.warn(
+        "desktop.server without the single-instance plugin: every launch starts another server on the same data",
+      );
+    cpSync(server.dir, join(resources, "server"), { recursive: true, verbatimSymlinks: true });
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: server.entry, env: server.env }));
+    writeFileSync(join(resources, "server.bunfig.toml"), "");
+  }
+  if (config.desktop.bin)
+    cpSync(config.desktop.bin, join(resources, "bin"), { recursive: true, verbatimSymlinks: true });
   writeFileSync(
     join(resources, "shell.json"),
     JSON.stringify({
@@ -230,6 +246,10 @@ export function writeDesktopResources(
       backgroundColorDark: config.shell.backgroundColorDark,
       devtools: ctx.dev,
       quitOnLastWindowClosed: config.desktop.quitOnLastWindowClosed,
+      recovery: config.desktop.recovery,
+      screenCapture: config.desktop.screenCapture,
+      fullscreen: config.desktop.window.fullscreen,
+      skipTaskbar: config.desktop.window.skipTaskbar,
       // Windows and Linux register them at startup (packages/desktop/src/deeplinks.ts); macOS has Info.plist.
       deepLinks: config.deepLinks.schemes,
       // L0: schemes the app adds to what links and the opener may hand to the OS.

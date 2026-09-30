@@ -3,6 +3,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { LexicalTypeaheadMenuPlugin, useBasicTypeaheadTriggerMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { mergeRegister } from "@lexical/utils";
 import { buttonRecipe } from "@libs/util/ui";
+import { resolveServerUrl } from "akanjs/client";
 import { $getSelection, $setSelection, type BaseSelection, COMMAND_PRIORITY_EDITOR, type TextNode } from "lexical";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -237,7 +238,11 @@ export const MentionMenuList = ({
               onClick={() => onSelect(option)}
             >
               {option.candidate.imageUrl ? (
-                <img src={option.candidate.imageUrl} alt="" className="size-6 shrink-0 rounded-full object-cover" />
+                <img
+                  src={resolveServerUrl(option.candidate.imageUrl)}
+                  alt=""
+                  className="size-6 shrink-0 rounded-full object-cover"
+                />
               ) : null}
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-sm">{option.candidate.label}</span>

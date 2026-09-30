@@ -8,14 +8,14 @@ import { findAppDir, loadProject } from "../lib/project.ts";
 import { PLATFORM_TARGETS, TARGETS, type TargetPlatform } from "../platforms/index.ts";
 import { physicalIosDevice } from "../platforms/ios.ts";
 
-export const BOOLEAN_FLAGS = ["skip-web-build", "open", "release", "debug", "headless", "aab"];
+export const BOOLEAN_FLAGS = ["skip-web-build", "open", "release", "debug", "headless", "aab", "installer"];
 
 /** Flags of every build: the app, the env mode (.env.<mode>), the profile, the web build. */
-export const BUILD_FLAGS = ["app", "mode", "release", "debug", "skip-web-build", "aab", "device", "build"];
+export const BUILD_FLAGS = ["app", "mode", "release", "debug", "skip-web-build", "aab", "installer", "device", "build"];
 /** Flags of launching a build (web server, simulators, emulators). */
 export const LAUNCH_FLAGS = ["port", "host", "open", "headless", "device", "avd"];
 
-export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--device] [--build <n>]`;
+export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--installer] [--device] [--build <n>]`;
 export const RUN_USAGE = `akan-native run <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--release] [--skip-web-build] [--port <n>] [--open] [--headless] [--device <name>] [--avd <name>] [--start <path>]`;
 
 export interface BuildDefaults {
@@ -57,6 +57,7 @@ export async function buildFromArgs(
   if (project.plugins.length) log.info(dim(`plugins: ${project.plugins.map((p) => p.manifest.id).join(", ")}`));
 
   if (args.flags.aab === true && platform !== "android") throw new CliError("--aab is for android", 2);
+  if (args.flags.installer === true && platform !== "windows") throw new CliError("--installer is for windows", 2);
   // O1-2: an iPhone build for `build --device`, or for `run`/`dev --device <a paired iPhone>`.
   const device = args.flags.device;
   const iphone = platform === "ios" && typeof device === "string" ? await physicalIosDevice(device) : null;
@@ -69,6 +70,7 @@ export async function buildFromArgs(
     startPath: extra.startPath,
     // O1-5: the release key comes from AKAN_NATIVE_ANDROID_KEYSTORE… (android.ts signingKey).
     ...(args.flags.aab === true ? { android: { bundle: true } } : {}),
+    ...(args.flags.installer === true ? { windows: { installer: true } } : {}),
     // The identity and profile are found (lib/iossigning.ts chooseSigning), narrowed by AKAN_NATIVE_IOS_TEAM,
     // AKAN_NATIVE_IOS_IDENTITY, AKAN_NATIVE_IOS_PROFILE and AKAN_NATIVE_IOS_DISTRIBUTION=ad-hoc.
     ...(iosDevice

@@ -1999,6 +1999,14 @@ dev server
 
 Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
+Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.
+
+With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.
+
+carried server
+
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.
+
 one target
 
 Runs one mobile target at a time; with several, pass `--target <name>`.
@@ -2024,14 +2032,6 @@ List the files an app needs to move into a workspace of its own.
 Local Development
 
 Run the dev server for one or more apps.
-
-Start the local database containers.
-
-Stop the local database containers.
-
-Copy an app's data out of one database mode and into another.
-
-Run a file from the app's `script/` folder.
 
 ## Cloud CLI
 
@@ -2088,6 +2088,8 @@ where
 
 Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
 
+`akan login [--host <host>]`
+
 Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the browser and waits until you finish there.
 
 browser
@@ -2099,8 +2101,6 @@ time limit
 Gives up after 10 minutes without a sign-in, so run it again.
 
 already signed in
-
-Prints the account's nickname and exits without opening the browser.
 
 ## Code CLI
 
@@ -2154,6 +2154,8 @@ Any other call with a prompt
 
 Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
 
+`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
+
 Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open the full-screen session.
 
 What the agent should do. Left off on a terminal, the full-screen session opens.
@@ -2169,8 +2171,6 @@ Prints one event per line as JSON. The full-screen session then opens only with 
 Prints the model's reasoning alongside its output.
 
 Serves the agent over stdio as akan wire frames for another process. Wins over every other mode.
-
-Reopens a stored session by id in the full-screen session. Only `local` and `web` save sessions.
 
 ## Context
 
@@ -2215,6 +2215,8 @@ Let the editor's agent ask for context whenever it needs it.
 
 See exactly what one MCP tool returns.
 
+`akan context [--format <format>] [--app <app>] [--module <module>]`
+
 Prints the workspace structure in a form an agent can read. Use it when an external coding agent, CI job or IDE extension needs a summary of the workspace.
 
 Output format: `json` for tools, `markdown` for people or a chat prompt.
@@ -2235,13 +2237,11 @@ Privacy
 
 It never prints `.env` values or secrets.
 
+`akan doctor [--format <format>] [--strict <boolean>] [--ios <boolean>]`
+
 Reports where the workspace drifts from Akan conventions, such as stray files or missing module abstracts. Run it before and after an agent's change; `--format json` gives a machine-readable result.
 
 Output format. Use `json` for agent validation loops and CI.
-
-Turns recommended conventions into errors; today that is a missing module abstract.
-
-Checks only the mobile config instead, for a placeholder bundle id Apple has likely claimed.
 
 ## Guideline
 
@@ -2272,6 +2272,8 @@ The tool the `akan code` agent and editor agents on `akan mcp` use to fetch one 
 An MCP client finds one resource per guideline in its resource list.
 
 Copies `framework`, `conventions` and `workspaceOnboarding` into the `AGENTS.md` agents read.
+
+`akan guideline <action> [name]`
 
 Lists the guidelines bundled with the CLI, or prints one of them as Markdown. Use it when an agent, a documentation tool or a contributor needs more depth on one area than `AGENTS.md` carries.
 
@@ -2310,8 +2312,6 @@ When a `.tsx` file earns `"use client"`, and how to keep markup on the server.
 Web surfaces, route prefixes, processes, logging, the Docker image and shipped assets.
 
 Filters, slices and hydration, full-text search, and cascade removal.
-
-Guards on HTTP and websocket, socket identity and cleanup, binary pubsub, mutation verbs.
 
 ## Library
 
@@ -2356,6 +2356,8 @@ Delete the whole library folder.
 
 A library in `libs/`, such as `util`. Leave it out, or mistype it, to pick one from a list.
 
+`akan create-library <lib-name>`
+
 Create a new shared library in `libs/<lib-name>/` for code several apps reuse. It starts with the standard folders and one empty service module, then runs `sync-library`.
 
 Library name. It is lowercased and spaces become `-`; asked for if left out.
@@ -2376,11 +2378,9 @@ importing
 
 Apps import it as `@libs/<lib-name>/client` or `@libs/<lib-name>/server`; no config to add.
 
+`akan remove-library [lib]`
+
 Remove a library from the workspace by deleting its whole `libs/<lib>/` folder, without asking. Use it when no app should import the library, sync it or depend on it anymore.
-
-what stays
-
-Apps' `@libs/<lib>` imports stay, and so do the packages merged into the root `package.json`.
 
 ## Module
 
@@ -2564,6 +2564,8 @@ Check the dist folder before you publish it.
 
 A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
 
+`akan version`
+
 Print the `akanjs` version as one line, `akanjs@<version>`. Check it before a package release, an upgrade or framework maintenance work.
 
 default source
@@ -2578,6 +2580,8 @@ mismatch
 
 If the CLI and `node_modules/akanjs` differ, every command warns and suggests `akan update`.
 
+`akan create-package --name <name>`
+
 Create a new package folder at `pkgs/<name>/` and register its import path in the root `tsconfig.json`. The folder starts with only a `tsconfig.json`; add `package.json` and `index.ts` yourself.
 
 The package name, lowercased with spaces turned into `-`; asked for if left out.
@@ -2587,10 +2591,6 @@ The new `pkgs/<name>/tsconfig.json` extends the root one through `../../tsconfig
 scoped name
 
 For a name like `@scope/x`, change that `extends` to `../../../tsconfig.json` by hand.
-
-Adds `<name>` → `./pkgs/<name>/index.ts` and `<name>/*` → `./pkgs/<name>/*` to the root.
-
-Also adds `./pkgs/<name>/tsconfig.json` when the root `tsconfig.json` lists `references`.
 
 ## Page
 
@@ -2631,6 +2631,8 @@ The list of cards and the detail screen.
 
 The form body, shared by the create and edit pages.
 
+`akan create-crud-page [app] [sys:module] [--base-path <path>] [--single]`
+
 Create the list, create, detail and edit pages for an existing module. They go into `page/(<app>)/(public)/<module>/` unless `--base-path` names another folder.
 
 The app that gets the pages. Left out, the only app is used, or you pick one from a list.
@@ -2658,8 +2660,6 @@ existing file
 A file already at the path is overwritten with the scaffold, so commit first.
 
 Page CLI
-
-Words Used on This Page
 
 ## Primitive
 
@@ -2703,6 +2703,8 @@ afterwards
 
 Run `akan sync <app>` and then `akan lint <app>`.
 
+`akan create-ui --app <name> --module <name> [--surface <view|unit|template>] [--format <markdown|json>]`
+
 Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or a Template. It writes from the same template `akan create-module` uses, and touches no other file. It is the flag form of `akan create-view`, `create-unit` and `create-template`.
 
 Target module name, such as `icecreamOrder`.
@@ -2723,13 +2725,11 @@ existing file
 
 A file already at that path is overwritten with the scaffold, so commit first.
 
+`akan add-field --app <name> --module <name> --field <name> --type <type> [--default <value>] [--format <markdown|json>]`
+
 Add one field to a module's constant and dictionary. The field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`. For `Int` and `Float` it also adds the `akanjs/base` import.
 
 Target module, whose constant and dictionary files must both exist already.
-
-Field name; a name already in the Input class is refused.
-
-Field type or scalar name; lowercase aliases such as `int` are normalized as listed in Notes.
 
 ## Quality
 
@@ -2764,6 +2764,8 @@ One check, named `akan.<scope>.<name>`; every warning names the rule that raised
 The group a rule belongs to; there are six, and the output is sorted by scope name.
 
 Of the JSX elements in `ui/` and `lib/`, the percentage that renders on the server.
+
+`akan quality [action] [--format <text|json>]`
 
 Which report to print: `scan` covers everything, `ssr` the render balance alone.
 
@@ -2800,8 +2802,6 @@ The six render-balance rules, and the only scope `akan quality ssr` keeps.
 Absolute path of the workspace that was scanned.
 
 How many files were read.
-
-`rule`, `scope`, `severity`, `message` and `fix`, plus `file`, `line` and `locations` when known.
 
 ## Scalar
 
@@ -2854,6 +2854,8 @@ Fields such as `field(Price)` and imports in other modules. Neither command touc
 
 The app or library, such as `shop`. Leave it out to pick one from a list.
 
+`akan create-scalar <scalar-name> [sys] [--format <markdown|json>]`
+
 Create a scalar: a reusable value object or data shape that needs no table of its own. It writes four files into `lib/__scalar/<scalar>/` and prints what it wrote.
 
 Scalar name. Spaces are removed and the first letter is lowercased; asked for if left out.
@@ -2869,8 +2871,6 @@ names
 placeholder
 
 Replace the placeholder `field` in the constant and its label in the dictionary.
-
-existing file
 
 ## Tunnel CLI
 
@@ -2903,6 +2903,8 @@ The short name of a share. `--stop` takes it.
 The server that issues public hostnames and tracks shares. `akan login` signs in to it.
 
 How long a share lives before it expires on its own.
+
+`akan tunnel [app] [--list <boolean>] [--stop <code>] [--host <url>] [--port <number>] [--ttl <min>]`
 
 Share an app running on this machine on a public URL. The connection runs inside this command, so nothing needs installing before the URL appears. The share lives as long as the command does: Ctrl-C ends it and hands the address back.
 
@@ -2939,8 +2941,6 @@ Neither asks for an app. They act on the account's shares.
 not a deployment
 
 Requests reach the dev server as they are. No auth, cache or build step is added in front.
-
-Shares
 
 ## Workflow
 
@@ -3005,13 +3005,13 @@ Create
 
 Add to a module
 
+`akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>]`
+
 List, explain, plan, apply, or validate a workflow, or print an earlier run's report. `plan` and `explain` never write source. Only `apply` does, and only from a plan file.
 
 What to do. Left out, it is asked for at a prompt.
 
 Needed by every action but `list`. What it names depends on the action; see Notes.
-
-`markdown` is for a person; `json` is the report an MCP client receives.
 
 ## Workspace
 
@@ -3055,6 +3055,8 @@ Write the formatter and lint fixes. With `--fix false` it only reports.
 
 How many diagnostics Biome prints before it truncates. `0` removes the limit.
 
+`akan create-workspace <workspaceName> --app <app> [options]`
+
 Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
 
 Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
@@ -3080,8 +3082,6 @@ Any folder works, because this command creates the workspace root.
 MCP config files
 
 Cursor reads `.cursor/mcp.json`, Claude Code `.mcp.json`, and Codex `.codex/config.toml`.
-
-framework version
 
 ## Assets (public/ private/)
 

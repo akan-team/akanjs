@@ -4,6 +4,7 @@
 //   bun scripts/vm/linux.ts bun run akan-native test linux --app examples/sample
 //   bun scripts/vm/linux.ts --shell            an interactive shell in the container
 //   AKAN_NATIVE_LINUX_WORK=tray bun scripts/vm/linux.ts …   a separate copy (parallel runs must not share one)
+//   AKAN_NATIVE_LINUX_SRC=<dir> …               copy that tree instead of this package (the akanjs monorepo)
 //
 // The repository is mounted read-only and copied into a volume with rsync (without node_modules,
 // target, .akan and dist, which the container keeps its own of), so builds never write Linux files
@@ -13,7 +14,7 @@
 
 import { resolve } from "node:path";
 
-const REPO = resolve(import.meta.dir, "../..");
+const REPO = resolve(process.env.AKAN_NATIVE_LINUX_SRC ?? resolve(import.meta.dir, "../.."));
 const IMAGE = "akan-native-linux:latest";
 const HOME = "/home/akan-native";
 const WORK = process.env.AKAN_NATIVE_LINUX_WORK

@@ -2,7 +2,17 @@ import { isNative, platform } from "@akanjs/native/core";
 import { browser } from "@akanjs/native/plugins/browser";
 import { opener } from "@akanjs/native/plugins/opener";
 
-export { AkanNativeError, fileBlob, isAkanNativeError, releaseFile } from "@akanjs/native/core";
+export type { LiveValue, Plugin } from "@akanjs/native/core";
+export {
+  AkanNativeError,
+  createLiveValue,
+  definePlugin,
+  defineWebPlugin,
+  fileBlob,
+  isAkanNativeError,
+  releaseFile,
+  shallowEqual,
+} from "@akanjs/native/core";
 export { app } from "@akanjs/native/plugins/app";
 export { appState } from "@akanjs/native/plugins/app-state";
 export type { AuthSessionApi } from "@akanjs/native/plugins/auth-session";
@@ -12,6 +22,16 @@ export type { Contact } from "@akanjs/native/plugins/contacts";
 export type { DeviceInfo } from "@akanjs/native/plugins/device";
 export { device } from "@akanjs/native/plugins/device";
 export { dialog } from "@akanjs/native/plugins/dialog";
+export type {
+  DirectoryFile,
+  PickDirectoryOptions,
+  PickDirectoryResult,
+  PickedFile,
+  PickFilesOptions,
+  SaveFileOptions,
+  SaveFileResult,
+} from "@akanjs/native/plugins/file-picker";
+export { filePicker } from "@akanjs/native/plugins/file-picker";
 export type { Position } from "@akanjs/native/plugins/geolocation";
 export { haptics } from "@akanjs/native/plugins/haptics";
 export type { IapProduct, IapTransaction } from "@akanjs/native/plugins/iap";
@@ -26,7 +46,10 @@ export type {
 export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
 export type { UpdateCheck, UpdateProgress, UpdateState } from "@akanjs/native/plugins/updates";
-export { updates } from "@akanjs/native/plugins/updates";
+export { markReady, updates, useUpdateState } from "@akanjs/native/plugins/updates";
+export type { VolumeState } from "@akanjs/native/plugins/volume";
+export { volume } from "@akanjs/native/plugins/volume";
+export { useLiveValue, usePluginEvent } from "@akanjs/native/react";
 export { browser, opener };
 
 //* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for any.

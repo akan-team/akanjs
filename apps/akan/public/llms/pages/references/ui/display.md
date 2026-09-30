@@ -339,6 +339,32 @@ Output for one day ago
 
 Wording from
 
+A story byline that says "yesterday" rather than "a day ago", and a date after a week:
+
+Loading
+
+Six indicators, one per shape of thing that is waiting. Pick by what the reader is looking at:
+
+What is waiting
+
+Use
+
+An upload row with a spinner and a progress bar:
+
+Badge
+
+A job status badge. The enum maps to a variant through a module-scope table:
+
+Empty
+
+The standard "no data" state: an icon, a translated message, and room for a follow-up action below.
+
+An invoice table that pages locally and hides the amount on small screens:
+
+Pagination
+
+A photo grid that shows twelve items a page:
+
 ## Code Examples
 
 ### apps/koyo/lib/product/Product.Zone.tsx

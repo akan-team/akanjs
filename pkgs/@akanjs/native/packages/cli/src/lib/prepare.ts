@@ -26,6 +26,10 @@ const DEV_SERVER_PAGE = `<!doctype html>
 </html>
 `;
 
+export interface WindowsBuild {
+  installer?: boolean;
+}
+
 export interface BuildOptions {
   mode: string;
   profile: BuildProfile;
@@ -57,6 +61,8 @@ export interface BuildOptions {
   android?: AndroidRelease;
   /** iOS devices (akanjs readiness O1-2, O1-3). */
   ios?: IosBuild;
+  /** Windows: an NSIS setup program next to the app folder (platforms/windows-installer.ts). */
+  windows?: WindowsBuild;
 }
 
 /** Which identity and profile an iOS device build signs with; unset: found in the keychain and Xcode's profiles. */
@@ -138,8 +144,9 @@ export interface BuildContext {
   startPath?: string;
   android?: AndroidRelease;
   ios?: IosBuild;
-  /** Artifacts besides the one the builder returns (an .aab next to the .apk). */
-  artifacts: { kind: "aab" | "ipa"; path: string }[];
+  windows?: WindowsBuild;
+  /** Artifacts besides the one the builder returns (an .aab next to the .apk, a Windows setup program). */
+  artifacts: { kind: "aab" | "ipa" | "installer"; path: string }[];
   /** What the builder signed with, when it signs (Android: the app's release key or the debug key). */
   signedAs?: "debug" | "development" | "distribution";
   /** Called through the API (BuildOptions.api). */
@@ -274,6 +281,7 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     ...(options.profile === "debug" && options.startPath ? { startPath: checkStartPath(options.startPath) } : {}),
     ...(options.android ? { android: options.android } : {}),
     ...(options.ios ? { ios: options.ios } : {}),
+    ...(options.windows ? { windows: options.windows } : {}),
     artifacts: [],
   };
 }

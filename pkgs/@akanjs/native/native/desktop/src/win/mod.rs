@@ -22,6 +22,7 @@ pub mod open;
 pub mod power;
 pub mod registry;
 mod screen;
+mod volume;
 mod tray;
 
 use std::ffi::c_void;
@@ -43,12 +44,13 @@ pub fn shell_op(op: &str, cmd: &json::V, target: &EventLoopWindowTarget<UserEven
     .or_else(|| device::shell_op(op))
     // keychain.*: secure-storage (the Credential Manager)
     .or_else(|| keychain::shell_op(op, cmd))
-    // menu.*, tray.*, hotkey.*: global-shortcut; dock.*: dock and badge; screen.*
+    // menu.*, tray.*, hotkey.*: global-shortcut; dock.*: dock and badge; screen.*; volume.*
     .or_else(|| menu::shell_op(op, cmd, &shell.title))
     .or_else(|| tray::shell_op(op, cmd, &shell.app_dir, &shell.title))
     .or_else(|| hotkey::shell_op(op, cmd))
     .or_else(|| dock::shell_op(op, cmd))
     .or_else(|| screen::shell_op(op, target))
+    .or_else(|| volume::shell_op(op, cmd))
 }
 
 /// Ops on one window. None: not handled here.

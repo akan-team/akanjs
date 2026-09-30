@@ -7,6 +7,7 @@ import type { AkanNativeConfig } from "../config.ts";
 import { manifestPermissionProblems, type PermissionSet, resolveAcl } from "./acl.ts";
 import { unknownConfigKeys } from "./configkeys.ts";
 import { validateCsp, validateExternalSchemes } from "./csp.ts";
+import { type DesktopServerConfig, validateDesktopServer } from "./desktop-server.ts";
 import { type EnvConfig, validateEnvConfig } from "./env.ts";
 import { CliError } from "./log.ts";
 import { type PermissionsConfig, validatePermissions } from "./permissions.ts";
@@ -26,7 +27,15 @@ export interface ResolvedConfig extends Omit<AkanNativeConfig, "icon" | "splash"
   usageDescriptions: Record<string, string>;
   permissions: PermissionsConfig;
   deepLinks: { schemes: string[]; domains: { host: string; pathPrefixes: string[] }[] };
-  desktop: { quitOnLastWindowClosed: boolean };
+  desktop: {
+    quitOnLastWindowClosed: boolean;
+    recovery: "errorPage" | "reload";
+    window: { fullscreen: boolean; skipTaskbar: boolean };
+    screenCapture: "picker" | "auto";
+    server?: DesktopServerConfig;
+    /** Absolute. */
+    bin?: string;
+  };
   updates: UpdatesConfig | null;
   /** Absolute image path. */
   icon: { image: string; backgroundColor?: string } | null;
@@ -186,6 +195,23 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   if (raw.desktop?.quitOnLastWindowClosed !== undefined && typeof raw.desktop.quitOnLastWindowClosed !== "boolean") {
     problems.push("desktop.quitOnLastWindowClosed must be a boolean");
   }
+  const recovery = raw.desktop?.recovery;
+  if (recovery !== undefined && recovery !== "errorPage" && recovery !== "reload")
+    problems.push(`desktop.recovery must be "errorPage" or "reload" (got ${JSON.stringify(recovery)})`);
+  for (const key of ["fullscreen", "skipTaskbar"] as const) {
+    const value = raw.desktop?.window?.[key];
+    if (value !== undefined && typeof value !== "boolean") problems.push(`desktop.window.${key} must be a boolean`);
+  }
+  const screenCapture = raw.desktop?.screenCapture;
+  if (screenCapture !== undefined && screenCapture !== "picker" && screenCapture !== "auto")
+    problems.push(`desktop.screenCapture must be "picker" or "auto" (got ${JSON.stringify(screenCapture)})`);
+  if (raw.android?.autoplay !== undefined && typeof raw.android.autoplay !== "boolean")
+    problems.push("android.autoplay must be a boolean");
+  const bin = raw.desktop?.bin;
+  const binDir = typeof bin === "string" && bin ? resolve(appDir, bin) : null;
+  if (bin !== undefined && !(binDir && existsSync(binDir) && statSync(binDir).isDirectory()))
+    problems.push(`desktop.bin must be a folder (got ${JSON.stringify(bin)})`);
+  const desktopServer = validateDesktopServer(raw.desktop, appDir, problems);
   if (raw.keyboard?.resize !== undefined && raw.keyboard.resize !== "resize" && raw.keyboard.resize !== "none") {
     problems.push(`keyboard.resize must be "resize" or "none" (got ${JSON.stringify(raw.keyboard.resize)})`);
   }
@@ -245,7 +271,17 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
         typeof d === "string" ? { host: d, pathPrefixes: [] } : { host: d.host, pathPrefixes: d.pathPrefixes ?? [] },
       ),
     },
-    desktop: { quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true },
+    desktop: {
+      quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true,
+      recovery: raw.desktop?.recovery === "reload" ? "reload" : "errorPage",
+      screenCapture: raw.desktop?.screenCapture === "auto" ? "auto" : "picker",
+      window: {
+        fullscreen: raw.desktop?.window?.fullscreen === true,
+        skipTaskbar: raw.desktop?.window?.skipTaskbar === true,
+      },
+      ...(desktopServer ? { server: desktopServer } : {}),
+      ...(binDir ? { bin: binDir } : {}),
+    },
     updates,
     icon: icon ? { ...icon, image: resolve(appDir, icon.image) } : null,
     splash: {

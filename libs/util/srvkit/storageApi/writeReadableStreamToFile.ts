@@ -17,7 +17,7 @@ export async function writeReadableStreamToFile(
   readStream: ReadableStream,
   { onChunk, signal, stallTimeout = 0 }: WriteReadableStreamOptions = {},
 ) {
-  // Bun 의 파일 writer 는 없는 상위 폴더를 만들지 않고 ENOENT 로 실패한다
+  //? Unlike Bun.write, a FileSink does not create the folders on its way: a fresh data folder has none.
   await mkdir(dirname(localPath), { recursive: true });
   const reader = readStream.getReader();
   const writer = Bun.file(localPath).writer();

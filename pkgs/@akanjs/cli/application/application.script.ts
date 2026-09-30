@@ -22,6 +22,7 @@ import {
   type IosReleaseOptions,
   type LogsOptions,
   type MobileBuildOptions,
+  type MobilePublishOptions,
   type MobileStartOptions,
   type MobileTargetOptions,
   type MobileUpdatePackOptions,
@@ -59,6 +60,8 @@ interface MobileReleaseGate {
 export class ApplicationScript extends script("application", [ApplicationRunner, LibraryScript]) {
   /** Long enough for `docker compose down` on a healthy daemon, short enough that a wedged one still exits. */
   static dbShutdownTimeoutMs = 20_000;
+  /** A cold `akan start`: the base build, then the SSR registry's, before the first request is answered. */
+  static devServerReadyTimeoutMs = DevSupervisor.bootTimeoutMs;
   readonly #interrupt = new InterruptTeardown();
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
     return await confirm({
@@ -298,6 +301,10 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     await this.applicationRunner.buildMobile(app, "android", options);
   }
+  async buildDesktop(app: App, { write = true, ...options }: MobileBuildOptions & MobileWriteOptions = {}) {
+    await app.scanSync({ write });
+    await this.applicationRunner.buildDesktop(app, options);
+  }
   async startIos(app: App, { write = true, ...options }: MobileStartOptions & MobileWriteOptions = {}) {
     await app.scanSync({ write });
     await this.applicationRunner.startMobile(app, "ios", options);
@@ -308,10 +315,45 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async startDesktop(
     app: App,
-    { write = true, ...options }: Omit<MobileStartOptions, "device" | "teamId"> & MobileWriteOptions = {},
+    {
+      write = true,
+      server = false,
+      ...options
+    }: Omit<MobileStartOptions, "device" | "teamId" | "interrupt"> & MobileWriteOptions = {},
   ) {
     await app.scanSync({ write });
-    await this.applicationRunner.startDesktop(app, options);
+    if (!server || options.operation === "release")
+      return await this.applicationRunner.startDesktop(app, { ...options, server });
+    const upstream = `http://localhost:${await app.getDevPort()}`;
+    if (await ApplicationRunner.answers(upstream, app.name))
+      app.log(`The desktop app follows the dev server on ${upstream}.`);
+    else await this.#startDevServerFor(app, upstream);
+    try {
+      await this.applicationRunner.startDesktop(app, { ...options, interrupt: this.#interrupt });
+    } finally {
+      await this.#interrupt.runAll();
+    }
+  }
+  //* `akan start` in this process, as `--plain` runs it: the full-screen view would take the terminal from the app's logs.
+  async #startDevServerFor(app: App, upstream: string) {
+    app.log(`No dev server answers on ${upstream}; starting \`akan start ${app.name}\` for the desktop app.`);
+    let markReady = () => {};
+    const ready = new Promise<void>((resolve) => (markReady = resolve));
+    const appHost = await this.startOne(app, {
+      write: false,
+      onDevEvent: (event) => {
+        if ("state" in event && event.state === "ready") markReady();
+      },
+    });
+    this.#interrupt.add(async () => {
+      await appHost.stop();
+    }, "Abandoning the dev server shutdown; its processes may still be running.");
+    if (await DevSupervisor.timesOut(ready, ApplicationScript.devServerReadyTimeoutMs)) {
+      await this.#interrupt.runAll();
+      throw new Error(
+        `akan start ${app.name} did not answer within ${ApplicationScript.devServerReadyTimeoutMs / 1000}s; see its log above.`,
+      );
+    }
   }
   async releaseIos(
     app: App,
@@ -350,6 +392,22 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
     await this.applicationRunner.packUpdate(app, platform, options);
+  }
+  async updateKeygen(app: App, platform: "desktop" | "android" | "ios", { target }: { target?: string } = {}) {
+    await this.applicationRunner.updateKeygen(app, platform, target);
+  }
+  async publishUpdate(
+    app: App,
+    platform: "desktop" | "android" | "ios",
+    {
+      write = true,
+      allowLocalRelease = false,
+      ...options
+    }: MobilePublishOptions & MobileWriteOptions & MobileReleaseGate = {},
+  ) {
+    await app.scanSync({ write });
+    ApplicationScript.#assertReleaseEnv("publishUpdate", options.env ?? "main", allowLocalRelease);
+    await this.applicationRunner.publishUpdate(app, platform, options);
   }
   static #assertReleaseEnv(command: string, env: string, allowLocalRelease: boolean) {
     if (env === "local" && !allowLocalRelease)

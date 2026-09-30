@@ -152,3 +152,81 @@ describe("validation", () => {
     );
   });
 });
+
+describe("desktop.server", () => {
+  const dir = mkdtempSync(join(tmpdir(), "akan-native-server-config-"));
+  mkdirSync(join(dir, "web"), { recursive: true });
+  writeFileSync(join(dir, "web", "index.html"), "<!doctype html>");
+  mkdirSync(join(dir, "server", "node_modules", "addon", "build"), { recursive: true });
+  writeFileSync(join(dir, "server", "main.js"), "");
+  mkdirSync(join(dir, "server", "bin"), { recursive: true });
+  writeFileSync(join(dir, "server", "node_modules", "addon", "build", "addon.node"), "");
+  writeFileSync(join(dir, "server", "node_modules", "addon", "index.js"), "");
+  const base: AkanNativeConfig = { app: { id: "com.akanjs.x", name: "X", version: "1.0.0" }, web: { dir: "web" } };
+
+  test("a folder with its entry and string env values is a server the app can carry", () => {
+    expect(
+      validateConfig(
+        { ...base, desktop: { server: { dir: "server", entry: "main.js", env: { AKAN_PUBLIC_ENV: "main" } } } },
+        { appDir: dir },
+      ),
+    ).toEqual([]);
+  });
+
+  test("names a missing folder or entry, an entry outside the folder, and the variables the launcher owns", () => {
+    const problems = (server: unknown) =>
+      validateConfig({ ...base, desktop: { server } } as AkanNativeConfig, { appDir: dir });
+    expect(problems({ dir: "nowhere", entry: "main.js" })).toEqual([expect.stringContaining("is not a folder")]);
+    expect(problems({ dir: "server", entry: "missing.js" })).toEqual([expect.stringContaining("not found")]);
+    expect(problems({ dir: "server", entry: "../web/index.html" })).toEqual([
+      expect.stringContaining("must be a file inside desktop.server.dir"),
+    ]);
+    expect(problems({ dir: "server", entry: "main.js", env: { PORT: "8282", JWT_SECRET: "x", A: 1 } })).toEqual([
+      "desktop.server.env.PORT: the launcher sets it at every start",
+      "desktop.server.env.JWT_SECRET: the launcher sets it at every start",
+      "desktop.server.env.A must be a string",
+    ]);
+    expect(problems({ dir: "server", entry: "main.js", cwd: "/" })).toEqual([
+      expect.stringContaining("unknown key desktop.server.cwd"),
+    ]);
+  });
+
+  test("desktop.bin is a folder, with or without a server", () => {
+    const problems = (bin: unknown) =>
+      validateConfig({ ...base, desktop: { bin } } as AkanNativeConfig, { appDir: dir });
+    expect(problems("server/bin")).toEqual([]);
+    expect(problems("server/main.js")).toEqual([expect.stringContaining("desktop.bin must be a folder")]);
+    expect(problems("missing")).toEqual([expect.stringContaining("desktop.bin must be a folder")]);
+    expect(
+      validateConfig({ ...base, desktop: { server: { dir: "server", entry: "main.js", bin: "bin" } } } as never, {
+        appDir: dir,
+      }),
+    ).toEqual([expect.stringContaining("unknown key desktop.server.bin")]);
+  });
+
+  test("macOS signs every Mach-O file the server and bin carry, whatever its name, and nothing else", async () => {
+    const { carriedNativeCode } = await import("../src/platforms/macos.ts");
+    const resources = join(dir, "Resources");
+    mkdirSync(resources, { recursive: true });
+    expect(carriedNativeCode(resources)).toEqual([]);
+    const server = join(resources, "server");
+    const file = (rel: string, head: number[]) => {
+      mkdirSync(join(server, rel, ".."), { recursive: true });
+      writeFileSync(join(server, rel), Buffer.concat([Buffer.from(head), Buffer.alloc(64)]));
+    };
+    file("node_modules/addon/build/addon.node", [0xcf, 0xfa, 0xed, 0xfe]);
+    file("../bin/ffmpeg", [0xcf, 0xfa, 0xed, 0xfe]);
+    file("../bin/run.sh", [0x23, 0x21, 0x2f, 0x62]);
+    file("node_modules/tool/universal", [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]);
+    file("node_modules/addon/prebuilds/linux-x64/addon.node", [0x7f, 0x45, 0x4c, 0x46]);
+    file("node_modules/tool/Main.class", [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 52]);
+    file("main.js", [0xcf, 0xfa, 0xed, 0xfe]);
+    expect(carriedNativeCode(resources).sort()).toEqual(
+      [
+        join(resources, "bin", "ffmpeg"),
+        join(server, "node_modules", "addon", "build", "addon.node"),
+        join(server, "node_modules", "tool", "universal"),
+      ].sort(),
+    );
+  });
+});

@@ -1,7 +1,7 @@
 "use client";
 import { fetch, st } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
-import { cn, getAuthToken } from "akanjs/client";
+import { cn, getAuthToken, resolveServerUrl } from "akanjs/client";
 import { Image, Loading } from "akanjs/ui";
 import { lazy } from "akanjs/webkit";
 import { type ReactNode, useState } from "react";
@@ -36,7 +36,7 @@ export const ImageGallery = ({ srcs }: ImageGalleryProps) => {
       </div>
       {fileModal === "imageGallery" && (
         <ImageViewer
-          src={srcs}
+          src={srcs.map(resolveServerUrl)}
           currentIndex={imgIdx}
           onClose={() => {
             st.do.setFileModal(null);
@@ -62,7 +62,7 @@ export const Download = ({ className, onClick, url, filename, children }: Downlo
 
   return (
     <a
-      href={url}
+      href={resolveServerUrl(url)}
       download={filename}
       onClick={(e) => {
         if (loading) {

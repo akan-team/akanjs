@@ -255,7 +255,12 @@ function config(dir: string, extra: Partial<ResolvedConfig> = {}): ResolvedConfi
     usageDescriptions: {},
     permissions: {},
     deepLinks: { schemes: [], domains: [] },
-    desktop: { quitOnLastWindowClosed: true },
+    desktop: {
+      quitOnLastWindowClosed: true,
+      recovery: "errorPage",
+      window: { fullscreen: false, skipTaskbar: false },
+      screenCapture: "picker",
+    },
     updates: null,
     icon: { image: icon },
     splash: {

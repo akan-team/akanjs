@@ -12,6 +12,8 @@ import {
   doctor,
   type LogEvent,
   packUpdate,
+  publishUpdate,
+  updateKeygen,
   validateConfig,
 } from "../src/api.ts";
 import { ENV_TYPES_FILE } from "../src/lib/env.ts";
@@ -111,6 +113,53 @@ describe("programmatic API", () => {
     expect(problems).toEqual([
       'keyboard.resize must be "resize" or "none" (got "pan")',
       "ios.hideFormAccessoryBar must be a boolean",
+    ]);
+  });
+
+  test("updateKeygen makes the update key once and reads it after; publishUpdate needs updates first", async () => {
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "apitest.update.key");
+    try {
+      const made = updateKeygen({ config: config() });
+      expect(made).toMatchObject({ created: true, keyPath: process.env.AKAN_NATIVE_UPDATE_KEY });
+      expect(Buffer.from(made.publicKey, "base64")).toHaveLength(32);
+      expect(updateKeygen({ config: config() })).toEqual({ ...made, created: false });
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
+    const refused = await failure(publishUpdate({ appDir: app("publish"), config: config(), platform: "android" }));
+    expect(refused.code).toBe("CONFIG_INVALID");
+    const updates = { url: "https://updates.example.com", publicKey: Buffer.alloc(32, 1).toString("base64") };
+    const outside = await failure(
+      publishUpdate({ appDir: app("publish2"), config: config({ updates }), platform: "android", channel: "../x" }),
+    );
+    expect(outside.code).toBe("CONFIG_INVALID");
+    expect(outside.message).toContain('channel "../x"');
+  });
+
+  test("desktop.recovery, desktop.window, desktop.screenCapture and android.autoplay are checked", () => {
+    const kiosk = config({
+      desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+      android: { autoplay: true },
+    });
+    expect(validateConfig(kiosk, { appDir: app("kiosk") })).toEqual([]);
+    const problems = validateConfig(
+      config({
+        desktop: {
+          recovery: "always" as never,
+          window: { fullscreen: "yes" as never },
+          screenCapture: "silent" as never,
+        },
+        android: { autoplay: 1 as never },
+      }),
+      { appDir: app("kiosk2") },
+    );
+    expect(problems).toEqual([
+      'desktop.recovery must be "errorPage" or "reload" (got "always")',
+      "desktop.window.fullscreen must be a boolean",
+      'desktop.screenCapture must be "picker" or "auto" (got "silent")',
+      "android.autoplay must be a boolean",
     ]);
   });
 

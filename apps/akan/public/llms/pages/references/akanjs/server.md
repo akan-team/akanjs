@@ -339,6 +339,12 @@ Try
 
 The legacy shape, on a constructor-style client:
 
+Transaction
+
+`@Transaction()` is one more legacy method decorator from the same file, for server-side services. It is all or nothing: it commits when the method returns and rolls back when it throws.
+
+On a database service, two writes that must land together:
+
 ## Code Examples
 
 ### apps/myapp/main.ts

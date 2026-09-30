@@ -1,22 +1,13 @@
 // akan-native update keygen | publish <platform> | serve (UP-1, UP-2): signed releases for
 // @akanjs/native/plugins/updates. See packages/cli/src/lib/updates.ts for the layout and the rules.
 
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.ts";
-import { BUNDLE_FILE, readBundleInfo } from "../lib/compat.ts";
 import { bold, CliError, dim, log } from "../lib/log.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
-import {
-  generateUpdateKey,
-  hostArch,
-  signManifest,
-  type UpdateManifest,
-  updateKeyPath,
-  webManifest,
-  writeWebBundle,
-} from "../lib/updates.ts";
-import { publishAppUpdate } from "../platforms/desktop-update.ts";
+import { publishRelease } from "../lib/publish.ts";
+import { assertChannel, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
 import { BOOLEAN_FLAGS, buildFromArgs } from "./build.ts";
 
 export const UPDATE_USAGE =
@@ -47,47 +38,23 @@ async function publish(args: ParsedArgs): Promise<number> {
   const desktop = arg === "macos" || arg === "windows" || arg === "linux" ? arg : null;
   if (!desktop && arg !== "ios" && arg !== "android") throw new CliError(`usage: ${UPDATE_USAGE}`, 2);
   const platform = desktop ?? (arg as "ios" | "android");
+  const requested = stringFlag(args, "channel");
+  if (requested !== undefined) assertChannel(requested);
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
     { mode: "production", profile: "release" },
     platform,
   );
   const { config, appDir } = ctx.project;
-  if (!config.updates)
-    throw new CliError("akan-native.config.ts has no updates: { url, publicKey } (run `akan-native update keygen`)");
-  const channel = stringFlag(args, "channel") ?? config.updates.channel;
-  // A desktop app runs on one CPU: x64 and arm64 releases of the same OS live side by side.
-  const out = join(outDir(args, appDir), desktop ? `${desktop}-${hostArch()}` : platform);
-  const keyPath = updateKeyPath(config.app.id);
-  const sequence = Math.floor(Date.now() / 1000);
-
-  let manifest: UpdateManifest;
-  if (desktop) {
-    manifest = await publishAppUpdate(ctx, desktop, artifact, out, channel, sequence);
-  } else {
-    const info = readBundleInfo(join(ctx.outDir, BUNDLE_FILE));
-    const files = writeWebBundle(out, ctx.webDir, ctx.html, ctx.env);
-    manifest = webManifest({
-      app: config.app,
-      platform,
-      channel,
-      nativeApi: info.nativeApi.hash,
-      sequence,
-      bundle: `${sequence}-${info.web.hash.slice(0, 8)}`,
-      files,
-    });
-  }
-  const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, `${channel}.json`), bytes);
-  writeFileSync(join(out, `${channel}.json.sig`), `${signManifest(bytes, keyPath, config.updates.publicKey)}\n`);
+  const channel = requested ?? config.updates?.channel ?? "production";
+  const { dir, manifest } = await publishRelease(ctx, platform, artifact, outDir(args, appDir), channel);
   const size = manifest.files.reduce((n, f) => n + f.size, 0);
   log.ok(
-    `published ${bold(manifest.bundle)} to ${relative(process.cwd(), out) || out}/${channel}.json ${dim(`(${manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB${manifest.nativeApi ? `, native API ${manifest.nativeApi}` : ""})`)}`,
+    `published ${bold(manifest.bundle)} to ${relative(process.cwd(), dir) || dir}/${channel}.json ${dim(`(${manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB${manifest.nativeApi ? `, native API ${manifest.nativeApi}` : ""})`)}`,
   );
   log.info(
     dim(
-      `Upload ${relative(process.cwd(), join(out, ".."))} to ${config.updates.url} (or try it with \`akan-native update serve\`).`,
+      `Upload ${relative(process.cwd(), join(dir, ".."))} to ${config.updates?.url} (or try it with \`akan-native update serve\`).`,
     ),
   );
   return 0;

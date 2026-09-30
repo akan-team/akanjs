@@ -17,6 +17,8 @@ export type EmitTarget = { window: number } | "focused";
 
 export interface DesktopContext {
   app: AppInfo;
+  /** A dev build (boot.json `dev`): its pages come from a dev server the shell did not start. */
+  readonly dev: boolean;
   /**
    * The window whose page made this call (SH-6; 1 = the window the app opened). Only in method
    * calls; undefined in setup and event sources.
@@ -41,6 +43,17 @@ export interface DesktopContext {
   readonly document?: DocumentScope;
   /** Per-app data folder, e.g. ~/Library/Application Support/<app id>. Created on first access. */
   readonly appDataDir: string;
+  /**
+   * The executables the app carries (desktop.bin, akanjs `bin`), or null. The host puts the folder first on
+   * process.env.PATH, which node:child_process and `Bun.spawn(cmd, { env: process.env })` use; a Bun.spawn or
+   * Bun.which without `env` reads the environment the app started with, so name a file here or pass the env.
+   */
+  readonly binDir: string | null;
+  /**
+   * The server the app carries (desktop.server), or null. `ready` settles once per session: true when the server
+   * first answered ready, false when it could not start or gave up before that.
+   */
+  readonly server: DesktopServerStatus | null;
   /** Pushes an event of this plugin to the pages that listen. Returns the windows reached. */
   emit(event: string, data?: unknown, target?: EmitTarget): number[];
   /** Serves a local file at /__akan_native/file/<id> for the rest of the session (PL-7). */
@@ -102,6 +115,10 @@ export interface DesktopContext {
   };
 }
 
+export interface DesktopServerStatus {
+  readonly ready: Promise<boolean>;
+}
+
 /** Which page load ended. `id` is "" for a page that sends no document id (v1 callers, tests). */
 export interface DocumentInfo {
   window: number;
@@ -130,12 +147,18 @@ export interface LaunchWindow {
   width?: number;
   height?: number;
   maximized?: boolean;
+  /** Borderless fullscreen from the first frame, on the display x and y are on (else the primary one). */
+  fullscreen?: boolean;
+  /** No taskbar button (Windows, Linux; macOS has none). */
+  skipTaskbar?: boolean;
 }
 
 /** What the launch phase decided; sent to the main thread with "ready". */
 export interface Launch {
   window: LaunchWindow;
   exit?: number;
+  /** PUBLIC_* values for the page known only at launch (the carried server's URL), under AKAN_NATIVE_PUBLIC_*. */
+  env?: Record<string, string>;
 }
 
 export interface NativeEvent {

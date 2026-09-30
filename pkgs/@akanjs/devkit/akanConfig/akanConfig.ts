@@ -8,9 +8,11 @@ import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
 import type { BaseDevEnv, PackageJson } from "../types";
+import { AkanBin } from "./akanBin";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
+  type AkanBinConfig,
   type AkanDatabaseConfig,
   type AkanMobileConfig,
   type AkanMobileTargetConfig,
@@ -107,13 +109,19 @@ const normalizeDeepLinks = (deepLinks: DeepPartial<AkanMobileTargetConfig["deepL
   } satisfies AkanMobileTargetConfig["deepLinks"];
 };
 
-type AppConfigDeclaration = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+type AppConfigDeclaration = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
+  bin?: AkanBinConfig;
 };
+
+type LibConfigDeclaration = Omit<DeepPartial<LibConfigResult>, "bin"> & { bin?: AkanBinConfig };
 
 export interface LibContributions {
   externalLibs: string[];
+  trustedDependencies?: string[];
+  /** Per lib, since an app carries only the entries of the libs it depends on. */
+  bin?: { lib: string; bin: AkanBinConfig }[];
   docker: LibDockerConfig;
   /** Keep globs rewritten to the app's own `public/`, where `akan sync` mounts each lib's assets. */
   keepFonts?: string[];
@@ -121,9 +129,18 @@ export interface LibContributions {
 
 const emptyLibContributions = (): LibContributions => ({
   externalLibs: [],
+  trustedDependencies: [],
+  bin: [],
   docker: { preRuns: [], postRuns: [] },
   keepFonts: [],
 });
+
+const normalizePackageNames = (names: unknown, owner: string): string[] => {
+  if (names === undefined) return [];
+  if (!Array.isArray(names) || names.some((name) => typeof name !== "string" || !name.trim()))
+    throw new Error(`${owner}: trustedDependencies lists package names`);
+  return [...new Set(names.map((name: string) => name.trim()))];
+};
 
 const normalizeKeepFonts = (keepFonts: string[] | undefined) => [
   ...new Set((keepFonts ?? []).map((glob) => glob.trim().replace(/^\/+/, "")).filter(Boolean)),
@@ -145,6 +162,10 @@ export class AkanAppConfig implements AppConfigResult {
   database: AkanDatabaseConfig;
   web: AkanWebConfig;
   externalLibs: string[];
+  trustedDependencies: string[];
+  /** The app's own entries; the libs' are in `libBins`. */
+  bin: AkanBinConfig;
+  libBins: { lib: string; bin: AkanBinConfig }[];
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -183,6 +204,15 @@ export class AkanAppConfig implements AppConfigResult {
     this.#applyRoutes(config?.routes);
     this.database = AkanAppConfig.#database(app, config);
     this.externalLibs = [...new Set([...(config?.externalLibs ?? []), ...libContributions.externalLibs])];
+    const owner = `apps/${app.name}/akan.config.ts`;
+    this.trustedDependencies = [
+      ...new Set([
+        ...normalizePackageNames(config?.trustedDependencies, owner),
+        ...(libContributions.trustedDependencies ?? []),
+      ]),
+    ];
+    this.bin = AkanBin.parse(config?.bin, owner, app.cwdPath);
+    this.libBins = libContributions.bin ?? [];
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
       ...WORKSPACE_BARREL_FACETS.map((facet) => `@apps/${app.name}/${facet}`),
@@ -239,6 +269,7 @@ export class AkanAppConfig implements AppConfigResult {
     const buildNum = rawMobile.buildNum ?? 1;
     const files = AkanAppConfig.#resolveMobileFiles(rawMobile.files as AkanMobileConfig["files"], "mobile", configPath);
     const native = rawMobile.native as AkanMobileConfig["native"];
+    const updates = rawMobile.updates as AkanMobileConfig["updates"];
     const defaultTargetName = this.#defaultMobileTargetName(rawTargets);
     const targetEntries = Object.entries(
       rawTargets ?? {
@@ -263,10 +294,11 @@ export class AkanAppConfig implements AppConfigResult {
           configPath,
         );
         const fileName = (target.fileName ?? rawMobile.fileName) as string | undefined;
-        const updates =
-          rawMobile.updates || target.updates
-            ? ({ ...rawMobile.updates, ...target.updates } as AkanMobileTargetConfig["updates"])
-            : undefined;
+        const targetUpdates = updates || target.updates ? { ...updates, ...target.updates } : undefined;
+        if (targetUpdates && (!targetUpdates.url || !targetUpdates.publicKey))
+          throw new Error(
+            `${where}.updates in ${configPath} has no url or publicKey; give them in mobile.updates or the target's own.`,
+          );
         const resolved = {
           name,
           basePath,
@@ -283,7 +315,7 @@ export class AkanAppConfig implements AppConfigResult {
           ...(native || target.native
             ? { native: AkanAppConfig.#mergeNative(native, target.native as AkanMobileTargetConfig["native"]) }
             : {}),
-          ...(updates ? { updates } : {}),
+          ...(targetUpdates ? { updates: targetUpdates } : {}),
         } satisfies AkanMobileTargetConfig;
         return [name, resolved];
       }),
@@ -296,7 +328,7 @@ export class AkanAppConfig implements AppConfigResult {
       buildNum,
       ...(files ? { files } : {}),
       ...(native ? { native } : {}),
-      ...(rawMobile.updates ? { updates: rawMobile.updates as AkanMobileConfig["updates"] } : {}),
+      ...(updates ? { updates } : {}),
       targets,
     };
   }
@@ -359,12 +391,19 @@ export class AkanAppConfig implements AppConfigResult {
     }
     const pushAndroid = { ...base?.push?.android, ...override?.push?.android };
     const privacy = { ...base?.privacy, ...override?.privacy };
+    const window = { ...base?.desktop?.window, ...override?.desktop?.window };
+    const desktop = {
+      ...base?.desktop,
+      ...override?.desktop,
+      ...(Object.keys(window).length ? { window } : {}),
+    };
     return {
       ...(plugins.length ? { plugins } : {}),
       ...(Object.keys(ios).length ? { ios } : {}),
       ...(Object.keys(android).length ? { android } : {}),
       ...(Object.keys(pushAndroid).length ? { push: { android: pushAndroid } } : {}),
       ...(Object.keys(privacy).length ? { privacy } : {}),
+      ...(Object.keys(desktop).length ? { desktop } : {}),
     };
   }
   #defaultMobileTargetName(rawTargets: DeepPartial<AkanMobileConfig>["targets"] | undefined) {
@@ -416,18 +455,36 @@ export class AkanAppConfig implements AppConfigResult {
       command: docker?.command ?? ["bun", "main.js"],
     };
   }
+  /** What the built server runs with in its image; a desktop app's carried server starts from the same values. */
+  getProductionEnv(): Record<string, string> {
+    return {
+      PORT: "8282",
+      NODE_ENV: "production",
+      AKAN_PUBLIC_REPO_NAME: this.baseDevEnv.repoName,
+      AKAN_PUBLIC_SERVE_DOMAIN: this.baseDevEnv.serveDomain,
+      AKAN_PUBLIC_APP_NAME: this.app.name,
+      AKAN_PUBLIC_ENV: this.baseDevEnv.env,
+      ...(this.basePaths.size ? { AKAN_PUBLIC_BASE_PATHS: [...this.basePaths].join(",") } : {}),
+      AKAN_PUBLIC_DEFAULT_LOCALE: this.i18n.defaultLocale,
+      AKAN_PUBLIC_LOCALES: this.i18n.locales.join(","),
+      AKAN_PUBLIC_API_PREFIX: this.api.prefix,
+      AKAN_PUBLIC_WS_PREFIX: this.api.websocketPrefix,
+      AKAN_PUBLIC_OPERATION_MODE: "cloud",
+      AKAN_DATABASE_MODES: this.database.modes.join(","),
+      // File logging is off: a container's writable layer is ephemeral and stdout is the collection path.
+      AKAN_LOG_TO_FILE: "0",
+      // The web env matches what was built (a deployment can only narrow it).
+      ...(this.web.ssr ? {} : { AKAN_SSR: "false" }),
+      ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
+    };
+  }
   #makeDockerfile(): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
     const preRunScripts = this.#getDockerRunScripts(preRuns);
     const postRunScripts = this.#getDockerRunScripts(postRuns);
     const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
-    // The web env matches what was built (a deployment can only narrow it). File logging is off: a container's
-    // writable layer is ephemeral and stdout is the collection path.
-    const webEnvLines = [
-      ...(this.web.ssr ? [] : ["ENV AKAN_SSR=false"]),
-      ...(this.web.csr ? [] : ["ENV AKAN_CSR=false"]),
-    ].join("\n");
+    const envLines = Object.entries(this.getProductionEnv()).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
@@ -439,21 +496,7 @@ COPY ./package.json ./package.json
 RUN bun install --production
 ${postRunScripts.join("\n")}
 COPY . .
-ENV PORT=8282
-ENV NODE_ENV=production
-ENV AKAN_PUBLIC_REPO_NAME=${this.baseDevEnv.repoName}
-ENV AKAN_PUBLIC_SERVE_DOMAIN=${this.baseDevEnv.serveDomain}
-ENV AKAN_PUBLIC_APP_NAME=${this.app.name}
-ENV AKAN_PUBLIC_ENV=${this.baseDevEnv.env}
-${this.basePaths.size ? `ENV AKAN_PUBLIC_BASE_PATHS=${[...this.basePaths].join(",")}` : ""}
-ENV AKAN_PUBLIC_DEFAULT_LOCALE=${this.i18n.defaultLocale}
-ENV AKAN_PUBLIC_LOCALES=${this.i18n.locales.join(",")}
-ENV AKAN_PUBLIC_API_PREFIX=${this.api.prefix}
-ENV AKAN_PUBLIC_WS_PREFIX=${this.api.websocketPrefix}
-ENV AKAN_PUBLIC_OPERATION_MODE=cloud
-ENV AKAN_DATABASE_MODES=${this.database.modes.join(",")}
-ENV AKAN_LOG_TO_FILE=0
-${webEnvLines}
+${envLines.join("\n")}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   }
   static #importGeneration = 0;
@@ -496,6 +539,10 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     );
     return {
       externalLibs: libConfigs.flatMap((libConfig) => libConfig?.externalLibs ?? []),
+      trustedDependencies: libConfigs.flatMap((libConfig) => libConfig?.trustedDependencies ?? []),
+      bin: libConfigs.flatMap((libConfig) =>
+        libConfig && Object.keys(libConfig.bin).length ? [{ lib: libConfig.lib.name, bin: libConfig.bin }] : [],
+      ),
       docker: {
         preRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.preRuns ?? []),
         postRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.postRuns ?? []),
@@ -565,6 +612,7 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
           this.#resolveProductionDependencyVersion(lib),
         ]),
       ),
+      ...(this.trustedDependencies.length ? { trustedDependencies: this.trustedDependencies } : {}),
       ...data,
     };
   }
@@ -618,13 +666,18 @@ function mergeImageConfig(config: Partial<AkanImageConfig> = {}): AkanImageConfi
 export class AkanLibConfig implements LibConfigResult {
   lib: Lib;
   externalLibs: string[];
+  trustedDependencies: string[];
+  bin: AkanBinConfig;
   docker: LibDockerConfig;
   assets: LibAssetsConfig;
   /** Live-only: plugins declared in this lib's `akan.config.ts` (never serialized). */
   plugins: AkanPlugin[];
-  constructor(lib: Lib, config: DeepPartial<LibConfigResult>, plugins: AkanPlugin[] = []) {
+  constructor(lib: Lib, config: LibConfigDeclaration, plugins: AkanPlugin[] = []) {
     this.lib = lib;
     this.externalLibs = config?.externalLibs ?? [];
+    const owner = `libs/${lib.name}/akan.config.ts`;
+    this.trustedDependencies = normalizePackageNames(config?.trustedDependencies, owner);
+    this.bin = AkanBin.parse(config?.bin, owner, lib.cwdPath);
     this.docker = { preRuns: config?.docker?.preRuns ?? [], postRuns: config?.docker?.postRuns ?? [] };
     this.assets = { keepFonts: normalizeKeepFonts(config?.assets?.keepFonts as string[] | undefined) };
     this.plugins = plugins;
@@ -632,7 +685,7 @@ export class AkanLibConfig implements LibConfigResult {
   static async from(lib: Lib, { bustImportCache = false }: { bustImportCache?: boolean } = {}) {
     const configImp = await AkanAppConfig.importConfigModule(lib.cwdPath, { bustImportCache });
     const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
-    const { plugins, ...config } = (resolved ?? {}) as DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
+    const { plugins, ...config } = (resolved ?? {}) as LibConfigDeclaration & { plugins?: AkanPlugin[] };
     return new AkanLibConfig(lib, config, plugins ?? []);
   }
 }

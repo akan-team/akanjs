@@ -35,6 +35,7 @@ const PLUGINS = [
   "updates",
   "dock",
   "screen",
+  "volume",
   "autostart",
   "toast",
   "badge",

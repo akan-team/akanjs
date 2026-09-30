@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.1.0 | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.8.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰; 0.7.0: `desktop.screenCapture`; 0.8.0: `packUpdate`, `compareBundles`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -26,7 +26,7 @@
 ## 1. 모양
 
 ```ts
-import { build, run, dev, release, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
+import { build, run, dev, release, publishUpdate, updateKeygen, packUpdate, compareBundles, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
 ```
 
 - 함수마다 옵션 객체 하나를 받고 Promise를 돌려준다.
@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release" }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean } }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -99,8 +99,8 @@ interface IosSigningResult {
 }
 
 interface Artifact {
-  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더. 설치 프로그램(exe·deb·tar.gz)은 배포 작업 때 더한다 */
-  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web";
+  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer) */
+  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기), 배포 */
   signing: "none" | "adhoc" | "debug" | "development" | "distribution";
@@ -111,6 +111,7 @@ interface Artifact {
 
 - 기본 profile은 release다(CLI `akan-native build`와 같다). run과 dev는 debug로 빌드한다.
 - iOS: 기본은 시뮬레이터 .app이다. `ios: { device: true, signing? }`(아래 release와 같은 `IosSigning`)를 주면 실기기 .app(O1-2)을 만든다.
+- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치(끝내지 못하면 종료 코드 2), `/S /RUN`이면 설치 뒤 실행, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
 
 ### run — 빌드하고 띄우기
 
@@ -233,6 +234,16 @@ run·dev의 iPhone 빌드와 iOS release는 같은 규칙으로 인증서(identi
 - 버전: `config.app.version`이 versionName·CFBundleShortVersionString이고, `config.app.build`가 versionCode·CFBundleVersion이다.
 - 업로드(TestFlight, Play)는 별도 함수 `upload()`로 나중에 붙인다(O1-3, O1-6).
 
+### publishUpdate와 updateKeygen — 업데이트 릴리스 (UP-1, UP-2)
+
+```ts
+const { publicKey, keyPath, created } = updateKeygen({ config });
+const { dir, bundle, channel, files, size, build } = await publishUpdate({ appDir, config, platform: "windows", channel: "pilot", out });
+```
+- `updateKeygen`: 앱 id의 Ed25519 키를 한 번 만들고 그 뒤로는 읽는다(`AKAN_NATIVE_UPDATE_KEY`, 없으면 `~/.akan/native/keys/<app id>.update.key`). `publicKey`는 설정의 `updates.publicKey`로 간다.
+- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없으면 빌드 전에 `CONFIG_INVALID`.
+- akanjs: `akan update-keygen`, `akan publish-update`(devkit `NativeApp.updateKeygen`·`publishUpdate`).
+
 ### doctor와 devices
 
 ```ts
@@ -331,6 +342,12 @@ API는 설정을 그대로 받으므로, 새 기능은 설정 필드로 들어�
 | `keyboard.resize: "resize" \| "none"` | O6-1 | 첫 프레임부터의 키보드 모드(기본 "resize"). 두 셸이 shell.json에서 읽으므로, JS가 돌기 전에도 그 모드다. 실행 중에는 `keyboard.setResizeMode()`로 바꾼다. Android 매니페스트는 `adjustResize` 그대로다: 셸이 IME inset만큼 직접 줄이며, API 29는 `adjustResize`일 때만 IME inset을 준다 |
 | `push.android: { channel?: { id, name, importance?, description? }, smallIcon?, color? }` | N13 | Firebase가 앱이 앞에 없을 때 직접 띄우는 알림의 기본 채널·상태 표시줄 아이콘(흰색·투명 PNG)·색. 빌드가 매니페스트 meta-data와 리소스로 바꾸고, 플러그인이 시작할 때 채널을 만든다(사용자가 바꾼 중요도는 유지). 앞에서 띄우는 플러그인 자신의 알림도 같은 채널·아이콘·색을 쓴다. push 플러그인이 없으면 경고 |
 | `ios.hideFormAccessoryBar` | N18 | 폼 필드 키보드 위의 이전·다음·완료 막대를 숨긴다. 기본 false |
+| `desktop.recovery: "errorPage" \| "reload"` | 전광판(F3) | 페이지 프로세스가 끝났을 때(크래시, 멈춤, 메모리 부족). "errorPage"(기본)는 한 번 다시 불러오고 1분 안에 또 끝나면 오류 화면, WebView2 브라우저 프로세스가 끝나면 앱 종료. "reload"는 매번 다시 불러오되 연달아 끝날수록 오래 기다리고(1초부터 두 배씩, 최대 1분), 브라우저 프로세스가 끝나면 호스트가 앱을 다시 띄운다(못 하면 셸이 10초 뒤 종료). 지키는 사람이 없는 앱(키오스크, 전광판)용 |
+| `desktop.window: { fullscreen?, skipTaskbar? }` | 전광판(F6) | 첫 프레임부터의 주 창: 테두리 없는 전체화면(창이 열리는 디스플레이), 작업 표시줄 버튼 없음(Windows·Linux). 플러그인의 launch 단계(`ctx.launch.setWindow`)가 다르게 정할 수 있다 |
+| `desktop.screenCapture: "picker" \| "auto"` | 전광판(F5) | Windows: "auto"면 페이지의 `getDisplayMedia()`가 선택 창도 사용자 동작도 없이 첫 화면으로 답한다. 지키는 사람이 없는 화면의 원격 지원용. Chromium의 미디어 자동화 테스트용 스위치(`--use-fake-ui-for-media-stream`)이고 모든 미디어 요청에 쓰이므로, 카메라·마이크를 요청하지 않는 앱에만 켠다. 기본 "picker". macOS·Linux는 무시한다 |
+| `android.autoplay` | 전광판(F6) | 소리 있는 미디어를 터치 없이 재생한다(WebView `mediaPlaybackRequiresUserGesture` 끔). iOS·데스크톱은 원래 그렇다. 기본 false |
+| `desktop.server: { dir, entry, env? }` | akanjs `build-desktop --server` | 데스크톱 앱이 창 옆에서 띄우는 서버. 빌드가 `dir`을 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS 빌드는 `resources/server`와 `resources/bin`의 Mach-O 파일을 이름과 상관없이 모두 서명한다. 플러그인 호스트가 실행 파일 자신을 `BUN_BE_BUN=1`로 다시 띄워 `entry`를 돌리고(`--no-env-file`, `--no-install`, `--config`, `--use-system-ca`), 127.0.0.1의 빈 포트(지난 세션의 포트가 비어 있으면 그것)를 세션 동안 고정해 페이지 env `PUBLIC_AKAN_SERVER_URL`로 넘긴다. launcher가 정하는 키(`PORT`, `JWT_SECRET`, `AKAN_LISTEN_HOST`, `AKAN_ALLOWED_HOSTS`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`, `BUN_RUNTIME_TRANSPILER_CACHE_PATH`)는 `env`에 둘 수 없다. 데이터는 `<app local data>/server`(Windows `%LOCALAPPDATA%\<id>\server`, debug 빌드는 `server-debug`). single-instance 플러그인이 없으면 경고 |
+| `desktop.bin` | akanjs `bin` | 앱이 싣는 실행 파일 폴더. `resources/bin/`으로 복사되고, 플러그인 호스트가 시작할 때 `process.env.PATH` 맨 앞에 붙인다. 서버는 그 환경으로 뜨므로 이름으로 찾고, 플러그인은 `ctx.binDir`로 찾는다. Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽으므로 이름으로 실행하려면 `env: process.env`를 넘긴다(Bun 1.4.2에서 확인) |
 
 서명 정보는 설정에 넣지 않고 `release()`와 iPhone용 `run`·`dev`의 옵션으로만 받는다(파일로 남지 않게).
 

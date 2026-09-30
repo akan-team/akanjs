@@ -17,7 +17,7 @@ afterEach(() => {
   delete (globalThis as { __AKAN_NATIVE_DEV__?: unknown }).__AKAN_NATIVE_DEV__;
 });
 
-const installShell = (platform: "ios" | "android" | "web" = "android") => {
+const installShell = (platform: "ios" | "android" | "web" | "macos" | "windows" = "android") => {
   host = installMockHost({
     platform,
     plugins: {
@@ -45,12 +45,12 @@ const installShell = (platform: "ios" | "android" | "web" = "android") => {
 };
 
 describe("NativeUpdates", () => {
-  test("confirms the running bundle once, and never on the web or on a page the dev gateway served", async () => {
+  test("confirms the running release once in any native shell, and never on the web or on a dev gateway's page", async () => {
     const { NativeUpdates } = await import("./nativeUpdates");
     installShell("web");
     NativeUpdates.confirm();
     host?.uninstall();
-    installShell("android");
+    installShell("windows");
     (globalThis as { __AKAN_NATIVE_DEV__?: unknown }).__AKAN_NATIVE_DEV__ = { gateway: "http://localhost:5000" };
     NativeUpdates.confirm();
     await Bun.sleep(5);
@@ -84,5 +84,16 @@ describe("NativeUpdates", () => {
     await new NativeUpdates().check();
     expect(calls.check - before.check).toBe(1);
     expect(calls.download - before.download).toBe(0);
+  });
+
+  test("a desktop app looks for nothing by itself: its release is the whole app, applied when the app says", async () => {
+    const { NativeUpdates } = await import("./nativeUpdates");
+    const shell = installShell("macos");
+    const before = { ...calls };
+    const stop = new NativeUpdates().listen();
+    shell.emit("app-state", "change", { state: "active" });
+    await Bun.sleep(5);
+    expect(calls.check - before.check).toBe(0);
+    stop();
   });
 });

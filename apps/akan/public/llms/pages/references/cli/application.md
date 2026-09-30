@@ -40,6 +40,14 @@ dev server
 
 Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
+Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.
+
+With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.
+
+carried server
+
+The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.
+
 one target
 
 Runs one mobile target at a time; with several, pass `--target <name>`.
@@ -96,13 +104,21 @@ Build the native app on the native runtime.
 
 Build the app for an App Store or Play Store release.
 
+Sign and publish releases installed apps update themselves to.
+
+`akan create-application <appName> [--start <boolean>]`
+
 Create `apps/<appName>` from the app template, then sync it. With `--start` it also boots the dev server.
 
 App name. It is lowercased, and spaces become hyphens.
 
 Start the dev server and open the browser once the app is created.
 
+`akan remove-application <app>`
+
 Delete the `apps/<app>` folder, so the app drops out of sync, builds and deployment. Commit first if you may want it back.
+
+`akan sync <app|lib>`
 
 Rescan an app or library and rewrite its generated files. Run it after adding, renaming or deleting a file, or after changing its imports.
 
@@ -121,6 +137,8 @@ Also links lib assets into `public/libs` and, with `syncPageLibs`, lib routes in
 run for you
 
 `start`, `build`, `typecheck` and `test` run it first through `--write`.
+
+`akan plan-slice <app> [--format <text|json>]`
 
 Print the exact files an app needs to live in a workspace of its own. It only prints the plan and writes nothing.
 
@@ -141,6 +159,8 @@ Keeps only the packages the slice imports, at the workspace's own version specs.
 warnings
 
 Untracked files under the app or its libs are listed, because git would not carry them.
+
+`akan start [apps...] [--plain <boolean>] [--kill <boolean>] [--concurrency <number>] [--dbup <boolean>] [--open <boolean>] [--share <boolean>] [--write <boolean>]`
 
 Run the dev server, SSR frontend and backend together. Name apps space- or comma-separated, pass `all`, or leave them out to tick them in a checklist. Several apps share one session.
 
@@ -168,6 +188,8 @@ memory budget
 
 `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
+`akan dbup [--mode <mode>]`
+
 Start the local database services with Docker Compose: Redis for `multiple`, Redis and Postgres 18 for `cluster`. `akan start` already runs it unless `--dbup false`.
 
 Start one mode's services; `single` needs none. Left out, every mode the workspace's apps declare.
@@ -182,7 +204,11 @@ missing service
 
 An older compose file may lack one. Add it, or move the file aside to get the current template.
 
+`akan dbdown`
+
 Stop the local database with `docker compose down` in `local/`. Every service of that compose project stops, whichever app started it.
+
+`akan db-export <app> [--dir <dir>]`
 
 Write every model table of the app to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.
 
@@ -200,6 +226,8 @@ no traffic
 
 Boots the app without listening and without running cron or init jobs.
 
+`akan db-import <app> [--dir <dir>]`
+
 Read the files `db-export` wrote into the database of the mode the shell names. The app must declare that mode.
 
 Folder to read the files from, relative to the workspace root.
@@ -216,9 +244,13 @@ not moved
 
 Sessions and queued jobs stay behind, so users sign in again. Copy uploads in `local/` yourself.
 
+`akan script <app> [filename]`
+
 Sync the app, then run `apps/<app>/script/<filename>.ts` with Bun. Leave the filename out to pick one from a list.
 
 A file directly in `script/`; the `.ts` suffix is optional. Subfolder paths are refused.
+
+`akan console <app>`
 
 Open an interactive console for inspecting the app's services and data at runtime. `akan build` also writes `console.js` beside `main.js`, so the same console runs inside a container.
 
@@ -237,6 +269,8 @@ Run `AKAN_CONSOLE=1 bun console.js` inside a built container or pod.
 production
 
 Refused under `main` env, `cloud`/`edge` mode or `NODE_ENV=production` unless `AKAN_CONSOLE=1`.
+
+`akan logs <app> [--level <level>] [--grep <text>] [--endpoint <glob>] [--trace <traceId>] [--child <idx>] [--role <role>] [--origin <origin>] [--since <since>] [--replay <n>] [--json <boolean>] [--follow <boolean>] [--runtime-dir <dir>]`
 
 Follow a running app's logs through its `akan-control.sock`. Every record carries the traceId, endpoint and origin of its call, so you filter by call rather than by text alone.
 
@@ -268,15 +302,21 @@ in the console
 
 `akan console` has the same filters as `.tail` and `.trace <id>`.
 
+`akan typecheck <app> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>]`
+
 Typecheck the app with TypeScript. It reuses an incremental cache, which `--clean` clears first.
 
 Delete the incremental cache (`tsconfig.tsbuildinfo`) before checking.
 
 Reuse the TypeScript incremental cache.
 
+`akan test <app|lib|pkg> [--write <boolean>]`
+
 Prepare an app, library or package, then run its tests with `bun test --isolate` in that folder.
 
 Sync an app target first. Libraries and packages are always prepared.
+
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -288,17 +328,39 @@ web surfaces
 
 The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
+`akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
+
 Run the iOS app on a simulator or a paired iPhone. By default it is a debug build whose pages come from your local dev server; `--release` runs a release build of its own bundle instead.
+
+`akan start-android <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--write <boolean>]`
 
 Run the Android app on an emulator or a connected device. It works like `start-ios`: the dev server by default, a bundled release build with `--release`.
 
+`akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--server <boolean>] [--write <boolean>]`
+
 Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
 
+--server without --release
+
+A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
+
+`akan build-ios <app> [--target <target>] [--env <env>] [--debug <boolean>] [--write <boolean>]`
+
 Build the iOS app on the native runtime. It first makes a production web build against `--env`, then builds a simulator app for each target.
+
+`akan build-android <app> [--target <target>] [--env <env>] [--debug <boolean>] [--write <boolean>]`
 
 Build an APK of the Android app on the native runtime. Like `build-ios`, it makes a production web build against `--env` first.
 
 Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
+
+`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]`
+
+Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.
+
+Windows: also build `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`). It installs for the current user under `%LOCALAPPDATA%\Programs`, where updates can swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards; it installs the WebView2 Runtime where it is missing.
+
+`akan release-ios <app> [--target <target>] [--env <env>] [--team <team>] [--ad-hoc <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
 
 Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa`. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
 
@@ -306,9 +368,23 @@ Sign with an ad-hoc profile instead of an App Store one.
 
 The certificate and profile are found among the ones Xcode keeps on this Mac: the profile must cover the app id and every capability the app asks for. The command prints the one it used.
 
+`akan release-android <app> [--assemble-type <type>] [--target <target>] [--env <env>] [--write <boolean>] [--allow-local-release <boolean>]`
+
 Build and sign the Android app for a Play Store release, as an AAB or an APK. Like `release-ios`, it defaults to `main` and refuses `--env local` without `--allow-local-release`.
 
 `aab` for a Play Store upload, `apk` for direct installs.
+
+`akan update-keygen <app> [--target <target>]`
+
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.
+
+`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
+
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop app that carries its server publishes with `--server`, as it was built.
+
+`desktop` is this computer's own OS and CPU.
+
+Default `updates.channel`, else `--env`, the channel an app built with that env follows. Publish to a pilot channel first.
 
 Application CLI
 

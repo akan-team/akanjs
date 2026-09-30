@@ -28,6 +28,41 @@ export interface LibDockerConfig {
   postRuns: DockerRun[];
 }
 
+/** `${process.platform}-${process.arch}` of the computer a desktop app is built on, which is the one it runs on. */
+export const binPlatforms = [
+  "darwin-arm64",
+  "darwin-x64",
+  "linux-arm64",
+  "linux-x64",
+  "win32-arm64",
+  "win32-x64",
+] as const;
+export type BinPlatform = (typeof binPlatforms)[number];
+
+/** Downloaded when the desktop app is built; the file must hash to `sha256`, so plain http is as safe as https. */
+export interface AkanBinUrlSource {
+  url: string;
+  sha256: string;
+  /** The executable inside the archive `url` names (.zip, .tar.gz, .tgz, .tar.xz, .tar.bz2, .tar). */
+  file?: string;
+}
+
+/** A file on the building computer, relative to the `akan.config.ts` that declares it. */
+export interface AkanBinPathSource {
+  path: string;
+  /** The executable inside the archive `path` names. */
+  file?: string;
+}
+
+export type AkanBinSource = AkanBinUrlSource | AkanBinPathSource;
+
+/**
+ * Executables a desktop app carries, by the name its code spawns and then by platform. Their folder comes first on
+ * the app's PATH, so the carried server's `spawn("ffmpeg")` runs the carried file; a native plugin finds it in
+ * `ctx.binDir`.
+ */
+export type AkanBinConfig = Record<string, { [platform in BinPlatform]?: AkanBinSource }>;
+
 export interface AkanRouteDomains {
   main?: string[];
   develop?: string[];
@@ -74,21 +109,6 @@ export interface AkanMobileTargetAssets {
   splash?: string | NonNullable<AkanNativeConfig["splash"]>;
 }
 
-/**
- * Over-the-air web bundle updates. The app reads `<url>/<platform>/<channel>.json` and its `.sig`; `akan pack-update`
- * writes the files, and whoever holds the private key signs and uploads them.
- */
-export interface AkanMobileUpdatesConfig {
-  /** https in a release build. */
-  url: string;
-  /** The raw 32-byte Ed25519 public key, base64. */
-  publicKey: string;
-  /** Default: the backend env the binary is built for (`main`, `develop`, `debug`, `local`). */
-  channel?: string;
-  /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
-  readyTimeout?: number;
-}
-
 export interface AkanMobileTargetDeepLinks {
   schemes?: string[];
   domains?: string[];
@@ -124,11 +144,50 @@ export interface AkanMobileNativeConfig {
     activity?: string[];
     /** The Firebase project's google-services.json, relative to the app folder, for FCM push on Android. */
     googleServices?: string;
+    /** Media plays with sound without a tap first, as it does on iOS and the desktop: a signage screen. */
+    autoplay?: boolean;
   };
   /** Android's notification channel, status bar icon (relative to the app folder) and accent color. */
   push?: AkanNativeConfig["push"];
   /** The app's part of the iOS privacy manifest (PrivacyInfo.xcprivacy), which an App Store upload requires. */
   privacy?: AkanNativeConfig["privacy"];
+  desktop?: {
+    /**
+     * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
+     * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an
+     * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.
+     */
+    recovery?: "errorPage" | "reload";
+    /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
+    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+    /**
+     * Windows: `"auto"` answers getDisplayMedia() with the first screen at once, no picker or gesture — remote
+     * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
+     */
+    screenCapture?: "picker" | "auto";
+  };
+}
+
+/**
+ * Where an installed app looks for newer releases of itself (the native runtime's updates plugin): the whole app on a
+ * desktop, the web bundle on a phone. `akan publish-update` writes and signs a release with a key on this machine;
+ * `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign.
+ */
+export interface AkanMobileUpdatesConfig {
+  /**
+   * A static base URL, https in a release build: `<url>/<os>-<arch>/<channel>.json` (desktop) or `<url>/<platform>/…`
+   * (a phone's web bundle).
+   */
+  url: string;
+  /** The update key's public half, the raw 32-byte Ed25519 key in base64 (`akan update-keygen` prints it). */
+  publicKey: string;
+  /**
+   * The manifest the app follows, e.g. a "pilot" target's "pilot". Default: the backend env the app is built for
+   * (`main`, `develop`, `debug`, `local`).
+   */
+  channel?: string;
+  /** How long a newly applied release has to call notifyReady() before it is rolled back, ms. Default 10000. */
+  readyTimeout?: number;
 }
 
 /**
@@ -154,7 +213,8 @@ export interface AkanMobileTargetConfig {
   deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
-  updates?: AkanMobileUpdatesConfig;
+  /** Over mobile.updates, field by field: a pilot target names its own channel. */
+  updates?: Partial<AkanMobileUpdatesConfig>;
 }
 
 export interface AkanMobileConfig {
@@ -262,6 +322,10 @@ export interface AppConfigResult {
    */
   syncPageLibs?: string[] | boolean;
   externalLibs: string[];
+  /** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
+  trustedDependencies: string[];
+  /** Every desktop build, run and dev session carries these, server or not; the image installs through `docker`. */
+  bin: AkanBinConfig;
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -274,6 +338,9 @@ export interface AppConfigResult {
 
 export interface LibConfigResult {
   externalLibs: string[];
+  trustedDependencies: string[];
+  /** Carried by the desktop app of every app that depends on this lib; an app's own entry of the same name wins. */
+  bin: AkanBinConfig;
   /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
   docker: LibDockerConfig;
   /** Which of this lib's own public fonts every app that mounts it must keep. */
@@ -294,12 +361,16 @@ export interface LibConfigContext {
   readonly type: "lib";
 }
 
-export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web"> & {
+export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
+  bin?: AkanBinConfig;
   plugins?: AkanPlugin[];
 };
-export type LibConfigInput = DeepPartial<LibConfigResult> & { plugins?: AkanPlugin[] };
+export type LibConfigInput = Omit<DeepPartial<LibConfigResult>, "bin"> & {
+  bin?: AkanBinConfig;
+  plugins?: AkanPlugin[];
+};
 export interface SubspaceDeclaration {
   /** Short name used on the command line and as the git remote suffix. */
   name: string;

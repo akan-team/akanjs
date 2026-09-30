@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AppExecutor, WorkspaceExecutor } from "../executors";
 import type { PackageJson } from "../types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
-import type { DeepPartial, LibConfigResult } from "./types";
+import type { LibConfigInput } from "./types";
 
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),
@@ -170,6 +170,75 @@ describe("AkanAppConfig", () => {
     expect(apiOnly.dockerfile).toContain("ENV AKAN_CSR=false");
 
     expect(new AkanAppConfig(app, [], packageJson, { web: true }, baseDevEnv).web).toEqual({ ssr: true, csr: true });
+  });
+
+  test("writes the image env from getProductionEnv, one ENV line per key in its order", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { routes: [{ basePath: "admin", domains: {} }], web: false, database: { modes: ["single", "cluster"] } },
+      baseDevEnv,
+    );
+
+    expect(config.getProductionEnv()).toEqual({
+      PORT: "8282",
+      NODE_ENV: "production",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+      AKAN_PUBLIC_APP_NAME: "portal",
+      AKAN_PUBLIC_ENV: "debug",
+      AKAN_PUBLIC_BASE_PATHS: "admin",
+      AKAN_PUBLIC_DEFAULT_LOCALE: "en",
+      AKAN_PUBLIC_LOCALES: config.i18n.locales.join(","),
+      AKAN_PUBLIC_API_PREFIX: "/api",
+      AKAN_PUBLIC_WS_PREFIX: "/ws",
+      AKAN_PUBLIC_OPERATION_MODE: "cloud",
+      AKAN_DATABASE_MODES: "single,cluster",
+      AKAN_LOG_TO_FILE: "0",
+      AKAN_SSR: "false",
+      AKAN_CSR: "false",
+    });
+    const envBlock = Object.entries(config.getProductionEnv())
+      .map(([key, value]) => `ENV ${key}=${value}`)
+      .join("\n");
+    expect(config.dockerfile).toContain(`COPY . .\n${envBlock}\nCMD ["bun","main.js"]`);
+  });
+
+  test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
+    //? 9adfb95c's output for this config; only the blank lines its empty interpolations left are gone since.
+    const before = [
+      "FROM oven/bun:1-slim",
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
+      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+      "ARG TARGETARCH",
+      "",
+      "RUN mkdir -p /workspace",
+      "WORKDIR /workspace",
+      "COPY ./package.json ./package.json",
+      "RUN bun install --production",
+      "",
+      "COPY . .",
+      "ENV PORT=8282",
+      "ENV NODE_ENV=production",
+      "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
+      "ENV AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com",
+      "ENV AKAN_PUBLIC_APP_NAME=portal",
+      "ENV AKAN_PUBLIC_ENV=debug",
+      "",
+      "ENV AKAN_PUBLIC_DEFAULT_LOCALE=en",
+      "ENV AKAN_PUBLIC_LOCALES=en,ko",
+      "ENV AKAN_PUBLIC_API_PREFIX=/api",
+      "ENV AKAN_PUBLIC_WS_PREFIX=/ws",
+      "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
+      "ENV AKAN_DATABASE_MODES=single",
+      "ENV AKAN_LOG_TO_FILE=0",
+      "",
+      'CMD ["bun","main.js"]',
+    ];
+    const lines = (text: string) => text.split("\n").filter((line) => line !== "");
+
+    expect(lines(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile)).toEqual(lines(before.join("\n")));
   });
 
   test("refuses a csr-less build that ships a mobile app", () => {
@@ -458,6 +527,55 @@ describe("AkanAppConfig", () => {
     });
   });
 
+  test("gives every target the mobile-wide updates, a target overriding a field", () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: "key=" };
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          updates,
+          targets: { default: {}, pilot: { updates: { channel: "pilot" } } },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default?.updates).toEqual(updates);
+    expect(config.mobile.targets.pilot?.updates).toEqual({ ...updates, channel: "pilot" });
+    expect(
+      () =>
+        new AkanAppConfig(
+          app,
+          [],
+          packageJson,
+          { mobile: { targets: { pilot: { updates: { channel: "pilot" } } } } },
+          baseDevEnv,
+        ),
+    ).toThrow("mobile.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKey");
+  });
+
+  test("merges the desktop settings field by field, the target winning", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          native: { desktop: { recovery: "reload", window: { fullscreen: true } } },
+          targets: { default: { native: { desktop: { window: { skipTaskbar: true } } } } },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default?.native?.desktop).toEqual({
+      recovery: "reload",
+      window: { fullscreen: true, skipTaskbar: true },
+    });
+  });
+
   test("merges the mobile-wide updates, push and privacy into each target field by field, the target winning", () => {
     const publicKey = Buffer.alloc(32, 7).toString("base64");
     const config = new AkanAppConfig(
@@ -616,12 +734,73 @@ describe("AkanAppConfig lib docker runs", () => {
   });
 });
 
+describe("AkanAppConfig trustedDependencies and bin", () => {
+  const sha256 = "b".repeat(64);
+  const libBin = { ffmpeg: { "linux-x64": { url: "https://files.test/ffmpeg.tar.xz", sha256, file: "bin/ffmpeg" } } };
+
+  test("the production package.json trusts the app's and its libs' packages, and nothing when none are named", () => {
+    const withTrusted = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { trustedDependencies: [" rclnodejs ", "sharp"] },
+      baseDevEnv,
+      [],
+      {
+        externalLibs: [],
+        trustedDependencies: ["sharp", "@serialport/bindings-cpp"],
+        docker: { preRuns: [], postRuns: [] },
+      },
+    );
+    expect(withTrusted.getProductionPackageJson().trustedDependencies).toEqual([
+      "rclnodejs",
+      "sharp",
+      "@serialport/bindings-cpp",
+    ]);
+    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).getProductionPackageJson()).not.toHaveProperty(
+      "trustedDependencies",
+    );
+    expect(() => new AkanAppConfig(app, [], packageJson, { trustedDependencies: [""] }, baseDevEnv)).toThrow(
+      "apps/portal/akan.config.ts: trustedDependencies lists package names",
+    );
+  });
+
+  test("keeps the app's bin apart from each lib's, with paths made absolute where they were declared", () => {
+    const config = new AkanAppConfig(
+      { name: "portal", cwdPath: "/repo/apps/portal" } as never,
+      [],
+      packageJson,
+      { bin: { ffmpeg: { "darwin-arm64": { path: "tools/ffmpeg" } } } },
+      baseDevEnv,
+      [],
+      { externalLibs: [], docker: { preRuns: [], postRuns: [] }, bin: [{ lib: "media", bin: libBin }] },
+    );
+    expect(config.bin).toEqual({ ffmpeg: { "darwin-arm64": { path: "/repo/apps/portal/tools/ffmpeg" } } });
+    expect(config.libBins).toEqual([{ lib: "media", bin: libBin }]);
+    expect(
+      new AkanLibConfig({ name: "media", cwdPath: "/repo/libs/media" } as never, {
+        bin: { ffprobe: { "linux-x64": { path: "../../tools/ffprobe" } } },
+      }).bin,
+    ).toEqual({ ffprobe: { "linux-x64": { path: "/repo/tools/ffprobe" } } });
+  });
+
+  test("reads them off every workspace lib config on load", async () => {
+    const config = await loadExtAppConfig(
+      "akan-config-libbin-",
+      "export default { trustedDependencies: ['sharp'] };\n",
+      `export default { trustedDependencies: ['rclnodejs'], bin: ${JSON.stringify(libBin)} };\n`,
+    );
+    expect(config.trustedDependencies).toEqual(["sharp", "rclnodejs"]);
+    expect(config.libBins).toEqual([{ lib: "extlib", bin: libBin }]);
+  });
+});
+
 describe("AkanLibConfig", () => {
   test("uses empty external libs by default and preserves explicit libs", () => {
     const lib = { name: "shared" } as never;
     expect(new AkanLibConfig(lib, {}).externalLibs).toEqual([]);
 
-    const config: DeepPartial<LibConfigResult> = {
+    const config: LibConfigInput = {
       externalLibs: ["firebase-admin"],
     };
     expect(new AkanLibConfig(lib, config).externalLibs).toEqual(["firebase-admin"]);

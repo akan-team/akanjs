@@ -105,6 +105,8 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
 ```
 - Bun API와 macOS 명령(`Bun.spawn(["open", url])` 등)을 쓸 수 있다. Finder에서 띄운 앱은 PATH와 LANG이 최소라서 명령은 절대 경로로 부르고 로캘을 지정한다(clipboard, device 참고).
 - `ctx.appDataDir`, `ctx.emit(event, data)`, `ctx.registerFile(path, mime)`(MIME은 `@akanjs/native/core`의 `mimeFor(name)`), `ctx.quit(code)`.
+- `ctx.binDir`: 앱이 싣는 실행 파일 폴더(설정 `desktop.bin`, akanjs `bin`), 없으면 null. 호스트가 이 폴더를 `process.env.PATH` 맨 앞에 붙이지만, Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽는다(Bun 1.4.2). 이름으로 실행하려면 `Bun.spawn(["svcl", …], { env: process.env })`처럼 환경을 넘기거나 `join(ctx.binDir, "svcl.exe")`로 부른다. `node:child_process`는 바뀐 `process.env`를 쓴다.
+- `ctx.server`: 앱이 싣는 서버(`desktop.server`), 없으면 null. `ready`는 세션에 한 번 정해진다. 서버가 처음 ready를 보내면 true, 띄우지 못했거나 그 전에 포기했으면 false다.
 - 네이티브 셸: `ctx.shell("window.setTitle", { title })`(main 스레드에서 실행, 결과는 Promise), `ctx.onNativeEvent("window" | "opened" | "pageLoad", cb)`. 새 창 op가 필요하면 `native/desktop/src/lib.rs`의 `window_op`에 추가한다. 나중에 답하는 op(시트, 권한 요청)는 모듈 파일에 두고 요청 id로 `reply`한다(`panels.rs`: `panel.open`·`panel.save`·`alert.show`, 부른 창의 시트). macOS UI는 새 crate 없이 objc2·objc2-app-kit·block2, 그 밖의 Apple 프레임워크는 objc2 런타임(`msg_send!`)으로 부른다(plugins.md Q-P6).
 - 다중 창(SH-6): 앱에는 창이 여러 개일 수 있다(창 id, 1은 앱이 연 창).
   - 메서드 호출의 `ctx.window`는 부른 페이지의 창이다(setup·이벤트 소스에서는 undefined). 그 호출 안의 `ctx.shell`은 `args.window`가 없으면 그 창에 적용되므로, 창 op를 부르는 기존 플러그인은 부른 창을 대상으로 한다. 다른 창은 `ctx.shell(op, { window: 2 })`.
@@ -117,7 +119,7 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
   - `ctx.document.own(() => close())`: 부른 페이지(문서)가 끝날 때 닫을 자원. 끝난 뒤 늦게 `own`하면 바로 닫힌다. 반환 함수는 닫지 않고 잊는다(요청으로 이미 닫았을 때).
   - 모듈 최상위 변수는 App 범위다. 페이지·창별 상태는 `ctx.document`나 창별 표 + `onDocumentEnd`(플러그인 필드) / `ctx.onDocumentEnd(fn)`에 둔다.
 - launch 단계: `setup`은 창이 만들어지기 전에 불리고 async여도 된다. 호스트는 모든 플러그인의 `setup`을 기다린 뒤(플러그인마다 최대 3초, 넘으면 경고 후 진행) main 스레드에 창을 만들라고 알린다. 이 동안만 쓸 수 있는 것:
-  - `ctx.launch.setWindow({ x, y, width, height, maximized })`: 설정 크기 대신 이 bounds(논리 포인트, x·y는 바깥 프레임 왼쪽 위)로 창을 만든다. 제목 표시줄을 잡을 수 있는 디스플레이가 없으면 셸이 위치를 버리고 가운데에 연다(`plugins/window-state`).
+  - `ctx.launch.setWindow({ x, y, width, height, maximized, fullscreen, skipTaskbar })`: 설정 크기 대신 이 bounds(논리 포인트, x·y는 바깥 프레임 왼쪽 위)로 창을 만든다. `fullscreen`은 첫 프레임부터 x·y가 있는 디스플레이에서 테두리 없는 전체화면, `skipTaskbar`는 작업 표시줄 버튼 없음(Windows·Linux)이다. 둘 다 설정 `desktop.window`보다 우선한다. 제목 표시줄을 잡을 수 있는 디스플레이가 없으면 셸이 위치를 버리고 가운데에 연다(`plugins/window-state`).
   - `ctx.launch.exit(code)`: 창을 만들지 않고 종료한다. `onQuit` 훅은 돌지 않는다(`plugins/single-instance`).
   - `setup`이 끝난 뒤의 호출은 경고만 남기고 무시된다. launch 단계에서는 창이 없으므로 `ctx.shell`을 기다리지 않는다.
 - 종료 흐름(plugins.md D4, 등록 함수는 모두 해제 함수를 반환한다)
@@ -261,3 +263,22 @@ const host = installMockHost({ platform: "ios", plugins: { clipboard: { methods:
 host.uninstall();
 ```
 - web 구현은 DOM이 없는 `bun test`에서 부분만 테스트할 수 있다. 전체 동작은 샘플 앱의 자가 테스트(`examples/sample/src/selftest.ts`, `akan-native test all`)로 확인한다.
+
+## 9. akanjs 앱·lib이 가진 플러그인
+
+빌트인에 없는 장치 기능(키오스크의 부팅 수신, Windows 레지스트리 설정 같은 것)은 앱이 자기 플러그인으로 만든다. 폴더와 파일은 §1~§7과 같고, 두는 곳과 import 경로만 다르다.
+
+```
+apps/<app>/native/<id>/        (lib이면 libs/<lib>/native/<id>/)
+├─ native-plugin.json           id는 폴더 이름과 같다
+├─ src/index.ts                 definePlugin — akanjs/client/native
+├─ src/desktop.ts               defineDesktopPlugin — akanjs/native/desktop
+├─ android/<Name>Plugin.kt
+└─ ios/<Name>Plugin.swift
+```
+- 설정에 적지 않는다. akanjs가 `native/` 아래 폴더를 찾아 앱의 모든 모바일·데스크톱 타깃에 폴더 경로로 넘긴다(`pkgs/@akanjs/devkit/mobile/nativePluginFolders.ts`). 플랫폼마다 무엇이 도는지는 manifest가 정한다(null이면 그 플랫폼에서 `UNSUPPORTED`).
+- lib의 `native/` 플러그인은 그 lib에 의존하는 앱에만 들어간다. 앱이 같은 id의 플러그인을 가지면 앱 것이 쓰이고, 두 lib이 같은 id를 가지면 빌드가 멈춘다. 같은 id의 빌트인이 함께 들어가면 이 런타임이 "provided by both"로 거절한다.
+- 앱 쪽 코드는 `@akanjs/native`를 직접 import하지 않는다. 배포된 akanjs 안에 복사본(vendor)으로만 있어서, 앱의 작업 공간에서는 그 이름이 풀리지 않는다. 페이지 쪽은 `akanjs/client/native`(`definePlugin`, `defineWebPlugin`, `AkanNativeError`, `createLiveValue`, `useLiveValue`, `usePluginEvent`), 데스크톱 쪽은 `akanjs/native/desktop`(`defineDesktopPlugin`, `DesktopContext`, `AkanNativeError`, `createPageVeto`)에서 가져온다.
+- 페이지 API는 앱의 `webkit/` 훅이 `../native/<id>/src`에서 가져오고, 페이지와 컴포넌트는 그 훅을 부른다.
+- 린트: `native/` 폴더는 `no-throw-raw-error`(에러는 `AkanNativeError`로 던진다)와 `no-web-only-api-outside-webkit`의 범위 밖이다.
+- 예: `apps/minimal/native/probe`(데스크톱만). 데스크톱 E2E(`pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`)가 셸에 실렸는지 확인한다.

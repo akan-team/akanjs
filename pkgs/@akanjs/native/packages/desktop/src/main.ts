@@ -4,19 +4,30 @@
 // After akan_native_run no JavaScript runs on this thread again (not even worker.onerror), so every
 // failure that can be reported must be reported before that call.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInitScript } from "../../core/src/protocol.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
-import { webviewDataDir } from "./paths.ts";
+import { appLocalDataDir, webviewDataDir } from "./paths.ts";
 import type { Launch, LaunchWindow } from "./plugin.ts";
+import { READY_TIMEOUT } from "./server.ts";
 
 const ENV_OVERRIDE_PREFIX = "AKAN_NATIVE_PUBLIC_";
 
-/** env.runtime.json, overlaid with AKAN_NATIVE_PUBLIC_* process variables (ENV-1, highest precedence). */
-function runtimeEnv(resources: string): Record<string, string> {
-  const env = JSON.parse(readFileSync(join(resources, "env.runtime.json"), "utf8")) as Record<string, string>;
-  for (const [key, value] of Object.entries(process.env)) {
+/** How long the main thread waits for the launch phase: the plugins' setups, then the carried server. */
+const LAUNCH_TIMEOUT = 10_000 + READY_TIMEOUT;
+
+/**
+ * env.runtime.json, overlaid with what the launch phase learned (the carried server's URL), then with
+ * AKAN_NATIVE_PUBLIC_* process variables (ENV-1, highest precedence).
+ */
+export function runtimeEnv(
+  file: Record<string, string>,
+  launched: Record<string, string> = {},
+  processEnv: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const env = { ...file, ...launched };
+  for (const [key, value] of Object.entries(processEnv)) {
     if (key.startsWith(ENV_OVERRIDE_PREFIX) && value !== undefined) env[key.slice("AKAN_NATIVE_".length)] = value;
   }
   return env;
@@ -35,6 +46,13 @@ interface ShellConfig {
   startPath?: string;
   /** security.shell.externalSchemes (L0): schemes links may also hand to the OS. */
   externalSchemes?: string[];
+  /** desktop.recovery: what a window does when its page's process ends. */
+  recovery?: "errorPage" | "reload";
+  /** desktop.screenCapture (Windows): "auto" answers getDisplayMedia with the first screen. */
+  screenCapture?: "picker" | "auto";
+  /** desktop.window: the main window from its first frame, unless the launch phase says otherwise. */
+  fullscreen?: boolean;
+  skipTaskbar?: boolean;
 }
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -46,7 +64,25 @@ export function launchBounds(window: LaunchWindow): LaunchWindow {
   if (finite(window.width) && window.width >= 1) out.width = window.width;
   if (finite(window.height) && window.height >= 1) out.height = window.height;
   if (window.maximized === true) out.maximized = true;
+  if (typeof window.fullscreen === "boolean") out.fullscreen = window.fullscreen;
+  if (typeof window.skipTaskbar === "boolean") out.skipTaskbar = window.skipTaskbar;
   return out;
+}
+
+/**
+ * Windows renames no folder that is some process's working folder: an app started from its install folder (the
+ * installer, a shortcut, Explorer) would hand it to the webview's processes, and an update could never swap it
+ * (plugins/updates). Called after the launch phase, where single-instance forwards a second launch's folder.
+ */
+export function leaveInstallFolder(appId: string, platform: NodeJS.Platform = process.platform): void {
+  if (platform !== "win32" || !appId) return;
+  try {
+    const dir = appLocalDataDir(appId);
+    mkdirSync(dir, { recursive: true });
+    process.chdir(dir);
+  } catch (error) {
+    console.warn("[akan-native] cannot leave the install folder; an update may not apply", error);
+  }
 }
 
 function fail(message: string, error?: unknown): never {
@@ -57,13 +93,14 @@ function fail(message: string, error?: unknown): never {
 export async function startMain(workerUrl: string): Promise<never> {
   const paths = resolvePaths();
   let shell: ShellConfig;
-  let initJs: string;
+  let boot: string;
+  let fileEnv: Record<string, string>;
   let dev = false;
   let appId = "";
   try {
     shell = JSON.parse(readFileSync(join(paths.resources, "shell.json"), "utf8"));
-    const boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
-    initJs = renderInitScript(boot.trim(), JSON.stringify(runtimeEnv(paths.resources)));
+    boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
+    fileEnv = JSON.parse(readFileSync(join(paths.resources, "env.runtime.json"), "utf8")) as Record<string, string>;
     const parsed = JSON.parse(boot) as { dev?: boolean; app?: { id?: string } };
     dev = parsed.dev === true;
     appId = parsed.app?.id ?? "";
@@ -91,7 +128,7 @@ export async function startMain(workerUrl: string): Promise<never> {
   const worker = new Worker(workerUrl, { argv: process.argv.slice(2) } as WorkerOptions);
   // "ready" ends the plugins' launch phase (DesktopContext.launch): initial bounds, or exit.
   const launch = await new Promise<Launch>((resolve) => {
-    const timer = setTimeout(() => fail("plugin host did not start within 10 s"), 10_000);
+    const timer = setTimeout(() => fail(`plugin host did not start within ${LAUNCH_TIMEOUT / 1000} s`), LAUNCH_TIMEOUT);
     worker.addEventListener("error", (event) =>
       fail("plugin host failed to start", (event as ErrorEvent).message ?? event),
     );
@@ -99,7 +136,7 @@ export async function startMain(workerUrl: string): Promise<never> {
       const data = (event as MessageEvent).data as { type?: string } & Partial<Launch>;
       if (data?.type === "ready") {
         clearTimeout(timer);
-        resolve({ window: data.window ?? {}, exit: data.exit });
+        resolve({ window: data.window ?? {}, exit: data.exit, env: data.env });
       }
     });
   });
@@ -107,12 +144,21 @@ export async function startMain(workerUrl: string): Promise<never> {
     worker.terminate();
     process.exit(launch.exit);
   }
+  leaveInstallFolder(appId);
   const bounds = launchBounds(launch.window);
+  let initJs: string;
+  try {
+    initJs = renderInitScript(boot.trim(), JSON.stringify(runtimeEnv(fileEnv, launch.env)));
+  } catch (error) {
+    fail(`cannot render the page's init script from ${paths.resources}`, error);
+  }
 
   const config = {
     title: shell.title,
     width: shell.width ?? 1024,
     height: shell.height ?? 720,
+    fullscreen: shell.fullscreen === true,
+    skipTaskbar: shell.skipTaskbar === true,
     ...bounds,
     appDir: paths.appDir,
     initJs,
@@ -121,6 +167,8 @@ export async function startMain(workerUrl: string): Promise<never> {
     backgroundColor: shell.backgroundColor,
     backgroundColorDark: shell.backgroundColorDark,
     externalSchemes: shell.externalSchemes ?? [],
+    ...(shell.recovery ? { recovery: shell.recovery } : {}),
+    ...(shell.screenCapture ? { screenCapture: shell.screenCapture } : {}),
     // Tests start the app without stealing focus from the user.
     activation: process.env.AKAN_NATIVE_ACTIVATION ?? "regular",
     // Only a dev build may load its pages from elsewhere.

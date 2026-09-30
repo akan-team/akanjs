@@ -94,9 +94,10 @@ env.runtime.json = { PUBLIC_...: "..." }                                        
 ```
  Akan Native Sample.app  (프로세스 1개)
  ├─ main 스레드 ─ main-entry.ts → @akanjs/native/desktop main.ts (bun build --compile 결과물)
- │    1. Resources/boot.json·env.runtime.json(+AKAN_NATIVE_PUBLIC_*)·shell.json 읽기 → init.js 문자열
+ │    1. Resources/boot.json·env.runtime.json·shell.json 읽기
  │    2. dlopen(Frameworks/libakan_native_desktop.dylib)
- │    3. new Worker(host-entry.ts) → "ready" 대기 (10초, error 이벤트는 여기서만 볼 수 있다)
+ │    3. new Worker(host-entry.ts) → "ready" 대기 (18초 = 플러그인 10초 + 서버 8초, error 이벤트는 여기서만 볼 수 있다)
+ │       → init.js 문자열: env.runtime.json < ready의 env(내장 서버 URL) < AKAN_NATIVE_PUBLIC_*
  │    4. akan_native_run(configJson)  ← 반환하지 않음. TAO EventLoop가 main 스레드를 차지. 이후 main의 JS는 돌지 않는다
  │         └ WRY WebView: app://localhost (첫 로드가 끝날 때까지 창을 숨김, D2)
  │              ├ 정적 파일·/__akan_native/file/<id> → Rust가 백그라운드 스레드에서 읽고 main에서 응답
@@ -109,6 +110,8 @@ env.runtime.json = { PUBLIC_...: "..." }                                        
       drain(): while (frame = akan_native_poll(buf)) → dispatcher → akan_native_respond(reqId, JSON)  ← 즉시 반환, 응답은 main에서
       네이티브 이벤트(kind 2): pageLoad started → 그 창의 구독 초기화, window closeRequested → 종료 흐름(§12 D4)
       이벤트 push: 구독한 창마다 akan_native_emit(창 id, "window.__AKAN_NATIVE__.receive({...})") → EventLoopProxy → evaluate_script
+      내장 서버(desktop.server, server.ts): launch 단계 뒤 자식 프로세스로 띄운다 → IPC ready(최대 8초) → ready에 env
+         └ 자식 프로세스: 이 실행 파일 자신 + BUN_BE_BUN=1 → Resources/server/<entry>, 127.0.0.1:<세션 동안 고정한 포트>
 ```
 
 설계 근거 (검증: [research/desktop-macos.md](research/desktop-macos.md) §1)
@@ -127,6 +130,7 @@ Akan Native Sample.app/Contents/
 ├─ MacOS/akan-native-sample                bun build --compile gen/main-entry.ts gen/host-entry.ts (Worker 엔트리도 넘겨야 한다, Q2)
 ├─ Frameworks/libakan_native_desktop.dylib install_name @rpath/…, 절대 경로로 dlopen
 └─ Resources/ app/ · boot.json · env.runtime.json · shell.json
+             server/ · server.json · server.bunfig.toml   desktop.server가 있을 때(내장 서버, §12 "데스크톱 내장 서버")
 ```
 서명은 안쪽부터(`xattr -cr` → dylib → 번들, ad-hoc). 실행 파일은 약 62MB(Bun 런타임), dylib는 0.87MB.
 
@@ -205,6 +209,11 @@ Akan Native Sample.app/Contents/
   - WebView2의 브라우저 단축키는 모든 빌드에서 끈다(`with_browser_accelerator_keys(false)`). F12도 꺼지므로 dev 빌드의 DevTools는 메뉴의 "검사"로 연다.
 - 창 아이콘: CLI가 `resources/icon.rgba`([u32 w][u32 h][RGBA])를 쓰고, 셸이 `tao::window::Icon`으로 읽는다. 셸에 이미지 디코더를 넣지 않기 위해서다.
 - 카메라·마이크 권한 요청: WebView2는 자기 확인 창을 띄우고 답을 오리진별로 기억한다(Default). WebKitGTK는 답하지 않은 요청을 거부하고 Linux에는 OS 권한 창이 없어서, 셸이 허용한다.
+- 화면 공유(`getDisplayMedia`): WebView2는 Chromium의 선택 창을 띄운다. `desktop.screenCapture: "auto"`(2026-09-30, 전광판 원격 지원)는 브라우저 인자 `--use-fake-ui-for-media-stream`을 더해 선택 창과 사용자 동작 없이 첫 화면으로 답한다.
+  - VM에서 확인: `displaySurface: "monitor"` 트랙이 바로 오고, `--lang=ko`에서도 같다.
+  - `--auto-select-desktop-capture-source=<제목>`은 쓰지 않는다. 선택 창의 "Entire screen" 같은 제목이 UI 언어를 따라, `--lang=ko`에서는 맞지 않아 실패했다(확인).
+  - 이 스위치는 Chromium이 미디어 요청 전체에 쓰는 자동화 테스트용이다. 카메라·마이크 요청에서의 동작은 확인하지 않았으므로, 그런 요청을 하는 앱에는 켜지 않는다.
+  - `with_additional_browser_args`는 wry의 기본 인자를 대신하므로, 셸이 기본 인자(`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required`)를 다시 적는다. DevTools 포트(`AKAN_NATIVE_WEBVIEW2_DEBUG_PORT`, dev 빌드)도 같은 줄에 붙는다.
 - 종료 흐름(D4):
   - 창 닫기(Alt+F4 포함)와 `app.exit()`는 macOS와 같은 경로다.
   - Linux의 SIGTERM은 macOS와 같은 `sigterm` 모듈이 받는다.
@@ -230,7 +239,12 @@ Akan Native Sample.app/Contents/
   ```
   - Windows exe는 `bun build --compile --windows-hide-console`로 만들고, 아이콘(.ico)과 버전 정보를 넣는다.
   - DLL은 C 런타임을 정적으로 링크한다(`+crt-static`). 그래서 VC++ 재배포 패키지가 필요 없다.
-  - 설치 프로그램(MSI·deb·AppImage)과 서명은 CLI-9다.
+  - Windows 설치 프로그램은 `--installer`의 NSIS다(2026-09-30, `platforms/windows-installer.ts`). 사용자 단위로 설치해 업데이터가 관리자 권한 없이 폴더를 바꿀 수 있고, 제거 항목은 app id 키, 시작 메뉴 바로가기는 앱 이름이다. deb·AppImage와 서명은 CLI-9다.
+    - 설치 폴더는 앱의 것이다. 업데이트가 폴더를 통째로 바꾸므로 제거 프로그램은 폴더 밖, 옆에 둔다(`<폴더>.uninstall.exe`). 제거 프로그램은 제거 항목의 `InstallLocation`으로 폴더를 찾고, 폴더와 업데이트가 옆에 남긴 것(`.previous`, `.update-*`, `.failed-*`), 자기 자신까지 지운다. 다시 설치할 때와 제거할 때 앱 실행 파일이 있는 폴더는 통째로 지우고, 없으면 이 빌드가 만든 항목만 지운다. 그래서 `/D=`로 고른 폴더는 비어 있거나 이미 앱이 설치된 곳이어야 한다(아니면 거부).
+    - 바로가기의 시작 위치와 `/RUN`·완료 페이지로 띄운 앱의 작업 폴더는 설치 폴더가 아니라 `%LOCALAPPDATA%`다. Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못하므로, 설치 폴더에서 시작한 앱과 그 업데이트 도우미는 폴더를 교체하지 못한다(재시도 10초 뒤 실패). 탐색기에서 exe를 직접 여는 경우는 셸이 launch 단계 뒤, 창(WebView2 프로세스)을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮기는 것으로 막는다(`main.ts` `leaveInstallFolder`; launch 단계에서는 single-instance가 두 번째 실행의 작업 폴더를 넘긴다).
+    - `/RUN`은 `/S`일 때만 앱을 띄운다. 대화형 설치는 완료 페이지의 실행 체크로 띄우므로, 둘 다 띄우면 두 번 뜬다.
+    - `/S`에서 끝내지 못한 설치는 0이 아닌 종료 코드(2)로 끝난다: 파일을 쓰지 못함(`ManifestLongPathAware`는 PC가 긴 경로를 허용할 때만 효과가 있다), WebView2 부트스트래퍼 뒤에도 런타임이 없음(대화형이면 묻는다), 남의 파일이 있는 `/D=` 폴더. 빌드는 설치 뒤·업데이트 압축 해제 중 가장 긴 경로(사용자 이름 20자 가정)가 260자에 가까우면 경고한다.
+    - WebView2 부트스트래퍼는 런타임을 인터넷에서 받는다. 인터넷이 없는 PC(LTSC 전광판 등)에는 Evergreen Standalone 설치 파일을 따로 설치해 두어야 한다. 설치 프로그램에 넣는 선택지는 아직 없다.
 - 빌드는 그 OS에서만 한다(`requireHost`). Mac에서 테스트하는 방법(Linux는 Docker, Windows는 VM)은 [testing-windows-linux.md](testing-windows-linux.md)에 있다.
 
 ### 3.7 범위 모델 (App · Window · Document · Call)
@@ -600,6 +614,7 @@ akan-native.config.ts env.defaults
 - 명령마다 아는 플래그만 받는다. 모르는 플래그(`--relase` 같은 오타)는 오류다.
 - 데스크톱 컴파일: `bun build --compile`은 PATH의 bun이 아니라 CLI를 실행 중인 bun(`process.execPath`)을 쓰고, `--no-compile-autoload-dotenv --no-compile-autoload-bunfig`를 붙인다. Bun의 standalone 실행 파일은 기본으로 실행 폴더의 `.env`·`bunfig.toml`을 읽어서, 앱 옆의 `.env`가 환경을 바꿀 수 있었다(예전 `AKAN_NATIVE_LIB`로 다른 라이브러리를 로드시키는 것까지 재현됨). 앱은 환경 변수로 라이브러리·리소스 경로를 바꾸지 않는다(`resolvePaths`).
   - 알려진 한계: `BUN_BE_BUN=1`로 앱 실행 파일을 띄우면 Bun CLI처럼 동작해 임의 JS를 실행한다(Electron의 `ELECTRON_RUN_AS_NODE`와 같은 부류). Bun 1.4.2에는 끄는 옵션이 없다. 환경 변수를 정할 수 있는 쪽은 이미 그 사용자 권한으로 코드를 실행할 수 있으므로 경계를 넘지는 않지만, 서명된 앱의 신뢰를 빌리는 경로가 된다.
+  - 내장 서버(`desktop.server`)는 이 동작으로 서버를 띄운다. 런타임을 하나 더 넣으면 앱이 약 60MB 커진다. Bun CLI처럼 작업 폴더의 `.env`·`bunfig.toml`(preload 포함)을 읽고 없는 패키지를 설치하므로, `--no-env-file`, `--config=<Resources>/server.bunfig.toml`(빈 파일), `--no-install`로 모두 끈다(Bun 1.4.2에서 확인).
 - 데스크톱 플러그인 모듈 검사: 빌드와 `akan-native plugin check`가 desktop 모듈을 불러 manifest(또는 `desktop` subset)의 메서드·이벤트와 비교한다. 선언한 이벤트의 source가 없으면 페이지의 `$listen`이 NOT_FOUND가 된다. 이 검사로 updates의 `progress`(다운로드 진행률이 페이지에 가지 않았다), app의 `backButton`, browser의 쓰이지 않는 `close`를 고쳤다.
 
 ## 9. 데스크톱 FFI 경계 (C ABI v0.2)
@@ -752,8 +767,9 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 엔진별 신호: macOS는 wry `with_on_web_content_process_terminate_handler`, Windows는 WebView2 `ProcessFailed`, Linux는 `web-process-terminated`다.
   - 셸은 그 창의 대기 중인 IPC를 끝내고 `webview/processTerminated` 이벤트를 보낸다.
   - 호스트는 문서를 끝낸다(`dispatcher.reset`).
-  - 셸은 같은 페이지를 한 번 다시 불러온다. 1분 안에 또 죽으면 내장 오류 화면을 보여 준다.
+  - 셸은 같은 페이지를 한 번 다시 불러온다. 다시 불러온 뒤 1분 안에 또 죽으면 내장 오류 화면을 보여 준다.
   - WebView2 브라우저 프로세스가 죽으면 앱을 끝낸다. 알림과 크래시 표식을 남기는 fail-fast는 감독 단계에서 한다.
+  - `desktop.recovery: "reload"`(지키는 사람이 없는 앱, 2026-09-30): 오류 화면 대신 매번 다시 불러온다. 다시 불러온 뒤 1분 안에 또 죽으면 연달아 죽은 것으로 세고, 1초부터 두 배씩 최대 1분까지 기다렸다 불러온다(`lib.rs` `recovery_wait`). 브라우저 프로세스가 죽으면 호스트가 `relaunchAfterExit`(`packages/desktop/src/relaunch.ts`, 업데이터와 같은 도우미)로 앱을 다시 띄우고 종료한다. 창마다 오는 이벤트와 `app.relaunch()`를 합쳐 프로세스당 한 번만 띄운다. 다시 띄운 앱이 1분 안에 또 그러면 도우미가 1초부터 두 배씩 1분까지 기다렸다 띄우고(`<app local data>/akan-native-relaunch.json`), 연달아 10번이면 다시 띄우지 않고 코드 1로 끝난다. 호스트가 못 하면 셸이 10초 뒤 코드 1로 끝난다. Windows 도우미와 그것이 띄우는 앱의 작업 폴더는 임시 폴더다.
   - 셀프 테스트 "a page whose process ended loads again": dev 전용 `$host.crash`로 프로세스를 끝낸다. macOS는 `_killWebContentProcess`(dev 빌드만), Linux는 `terminate_web_process`를 쓴다. 다시 불러온 페이지가 호스트가 종료를 본 것을 확인한다. Windows는 자동 확인이 없다.
   - 같이 고친 것: 다시 불러온 페이지의 IPC가 `Referer: app://localhost`(끝 `/` 없음)로 거절되던 것. 이제 Referer가 오리진과 정확히 같아도 받는다.
   - 절전 복귀 알림(`app-state` `resumed`, `window.reloadWebview`)은 아직이다.
@@ -799,6 +815,24 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - macOS inner size는 WebView 프레임에서 읽는다. WRY가 contentView를 바꿔서 TAO `inner_size()`는 처음 크기에 머문다(Tauri도 같은 우회). 셸 op 응답은 TAO의 비동기 적용 때문에 요청한 크기·위치·최대화·전체 화면 값을 보고한다.
 - Bun Worker의 `process.argv`에는 실행 인자가 없다. main이 `new Worker(url, { argv: process.argv.slice(2) })`로 넘긴다.
 - Worker는 main이 막혀 있는 동안 SIGTERM 핸들러를 받지 못한다(확인). 그래서 셸이 SIGTERM을 받아(libc `signal` + self-pipe, `lib.rs` `sigterm`) `signal` 이벤트로 넘기고, 호스트는 veto 없이 `onQuit` 훅을 돌린 뒤 끝낸다. 두 번째 SIGTERM이나 5초 초과면 바로 종료한다.
+
+### 데스크톱 내장 서버 (desktop.server, akanjs `build-desktop --server`)
+- 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 Mach-O 파일을 이름과 상관없이(파일 머리로 판별) dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
+- 시작(`packages/desktop/src/server.ts`): 플러그인 호스트가 launch 단계(`dispatcher.launched`) 뒤에 띄운다. `exit`이면(다른 인스턴스로 넘겼으면) 띄우지 않는다. 두 번째 인스턴스가 서버를 잠깐이라도 띄우면 같은 DB와 cron을 건드린다.
+  - 포트: 지난 세션의 서버가 ready였던 포트(`<서버 데이터>/port`)가 비어 있으면 그것을, 아니면 127.0.0.1에서 0번 포트로 listen해 받은 번호를 쓴다. 등록해 둔 URL이 포트가 비어 있는 동안은 계속 맞는다(보장은 아니다). 첫 ready 전에 서버가 끝나고 페이지가 아직 URL을 받지 않았으면 새 포트로 다시 띄운다(고른 뒤 다른 프로그램이 먼저 잡은 경우). init.js가 포트를 담아 `akan_native_run`에 한 번 넘어간 뒤로는 세션 동안 바꾸지 않고, 재시작도 같은 포트로 한다.
+  - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개(프록시 `HTTP(S)_PROXY`·`NO_PROXY`, CA `NODE_EXTRA_CA_CERTS`·`NODE_USE_SYSTEM_CA`·`SSL_CERT_FILE` 포함) + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`, `BUN_RUNTIME_TRANSPILER_CACHE_PATH=<서버 데이터>/runtime/transpiler-cache`). launcher 값이 이긴다. akanjs는 부팅 때 `BUN_BE_BUN`을 `process.env`에서 빼고, 자기 실행 파일을 다시 띄울 때만(ops snapshot) 돌려준다.
+  - 인자: `--no-env-file --no-install --config=<빈 bunfig> --use-system-ca`. Bun은 기본으로 자기에게 든 CA 목록만 믿는다. 회사가 OS에 넣은 루트 CA(TLS 검사 프록시, 사설 CA)를 WebView는 믿고 서버는 믿지 않는 일이 없게 OS 저장소를 쓴다.
+  - PATH: 플러그인 호스트가 시작할 때 `resources/bin`(설정 `desktop.bin`, akanjs `bin`)을 자기 `process.env.PATH` 맨 앞에 붙이고(`host.ts`, 이미 맨 앞이면 다시 붙이지 않는다: 재실행한 앱은 붙인 PATH를 물려받는다), 서버는 그 PATH를 시스템 변수로 받는다. `server.json` env가 PATH를 정해도 bin을 다시 맨 앞에 둔다. 그래서 서버 코드의 `spawn("ffmpeg")`가 앱이 싣고 온 파일을 쓴다.
+  - 데이터: `<서버 데이터>` = `<app local data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret`, `port`). `<app local data>`는 Windows에서 `%LOCALAPPDATA%\<id>`(Roaming은 사용자를 따라 동기화되고 파일 서버로 리디렉션될 수 있어 SQLite WAL이 동작하지 않는다), macOS·Linux에서는 `<app data>`다. debug 빌드는 release와 같은 app id이므로 `server-debug`를 따로 쓴다. `jwt.secret`은 macOS·Linux에서 0600이고 이미 있는 파일도 좁힌다(Windows는 사용자 프로필의 ACL). FileRef가 서빙하지 않는 예약 폴더다(L4).
+  - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다. 포기가 정해지면(아래 크래시, 또는 데이터 폴더를 만들거나 `jwt.secret`을 읽지 못함) 기다리지 않는다.
+  - 서버를 띄우지 못해도 페이지에는 loopback URL을 넘긴다(`server.json`을 읽지 못하면 `http://127.0.0.1:0`). URL이 없으면 페이지가 빌드 때의 서버(cloud 주소)를 불러 다른 데이터를 읽고 쓰기 때문이다. 이때도 `alert.show`로 알린다.
+  - 플러그인은 `ctx.server`(서버를 싣지 않으면 null)의 `ready`로 서버가 떴는지 안다. file-picker는 서버를 실은 debug 빌드에도 IPC grant를 준다(실린 서버는 edge라 dev grant를 받지 않는다). updates는 서버가 ready가 된 뒤에만 확정한다.
+- 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다. 다시 띄우다 예외가 나면(실행 중에 데이터 폴더가 지워짐, 프로세스 한도) 실패 한 번으로 센다. 플러그인 호스트 Worker는 끝나지 않는다.
+- 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGKILL(서버의 `AKAN_SHUTDOWN_TIMEOUT_MS`는 1초라 그 안에 끝난다. SIGTERM은 핸들러가 있는 서버를 끝내지 못한다). 셸이 먼저 죽으면 macOS·Linux에서는 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). Windows에서는 Bun이 자식을 넣는 job object가 셸과 함께 서버를 바로 끝낸다(서버 로그에 종료 줄이 없다). SQLite WAL이 있어 데이터는 남는다.
+  - macOS·Linux: 서버는 자기 프로세스 그룹의 리더로 뜬다(`detached`). 서버가 끝나면(정상 종료든 크래시든) 그룹에 남은 프로세스(서버가 띄운 bin 도구 등)를 끝낸다. 크래시면 SIGTERM, 유예 뒤 SIGKILL. Windows는 job object가 같은 일을 한다. 서버가 터미널의 SIGINT를 직접 받지 않으므로 IPC `shutdown`으로 멈춘다.
+- 확인(E2E `pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`, 2026-09-29): macOS, Linux 컨테이너(WebKitGTK), Windows 11 ARM VM(WebView2) 모두 통과. 생성·목록·업로드와 되읽기, rebinding Host·외부 Origin·LAN 주소 거부, 두 번째 실행은 서버 없이 넘김, 종료(SIGTERM, Windows는 stdin quit) 뒤 graceful 종료와 데이터 유지, 강제 종료 뒤 서버도 내려감. 세 OS 모두 서버는 127.0.0.1에만 LISTEN하고 WebView(WebKit, msedgewebview2)가 그 포트에 연결한다. 네트워크 없는 Linux 컨테이너(`--network none`)에서도 동작했다.
+- 로그: 서버의 stdout·stderr를 줄마다 `[server] ` 접두사로 셸 stdout·stderr에 넘긴다. 파일 로그는 `<서버 데이터>/runtime/logs`.
+- 파일 허가(`packages/desktop/src/grants.ts`): file-picker `forServer`는 복사하지 않고, 원본을 FileRef로 서빙하며, 결과마다 불투명한 `grant`를 준다(읽기·쓰기·폴더). 서버가 IPC `file.resolve { id, grant }`를 보내면 셸이 `file.resolved { id, path, mode }`(모르는 grant면 `error`)로 답한다(akanjs `NativeFile`). 그래서 서버는 사용자가 고른 것만 얻고, 페이지는 경로를 갖지 않는다. 서버를 싣지 않은 dev 빌드의 서버는 셸의 자식이 아니므로(`akan start`) grant에 경로를 담고 `~/.akan/native/dev-file-grant.key`(0600)로 HMAC 서명한다. akanjs는 `operationMode` local에서만 그 서명을 확인해 받는다.
 
 ### macOS 네이티브 시트 (file-picker, dialog, D7)
 - 셸 op `panel.open`·`panel.save`·`panel.mime`·`panel.types`·`alert.show`는 `native/desktop/src/panels.rs`가 처리한다. 시트는 나중에 답하므로 이 op들은 요청 id를 받아 완료 핸들러에서 `reply`한다(`lib.rs`의 Shell 이벤트에서 notify·camera와 함께 먼저 분기). 창이 숨어 있으면 먼저 보인다(숨은 창의 시트는 뜨지 않고 핸들러도 불리지 않는다).
@@ -1048,6 +1082,9 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 앱은 `app/<tar sha>.tar.gz`와 직전 릴리스로부터의 `app/<from>-<to>.delta.gz`를 저장한다.
 
   `akan-native update serve`는 이 폴더를 `0.0.0.0:8790`에서 서빙한다. Android 에뮬레이터는 `adb reverse`를 거쳐 `127.0.0.1`로 들어온다.
+- 채널 이름은 설정 `updates.channel`과 같은 규칙(소문자·숫자·`.`·`_`·`-`, 42자까지)이어야 게시된다. `--channel`과 API `publishUpdate({ channel })`는 빌드 전에 확인한다. 대문자나 경로 구분자가 든 이름은 파일은 써져도 어떤 앱도 받지 못하거나 폴더 밖에 쓰인다.
+- `sequence`는 게시하는 컴퓨터의 시각(초)이다. 앱은 자기 것보다 큰 `sequence`만 받는데, 처음 설치된 앱의 기준은 그 앱을 빌드한 컴퓨터의 시각(`embeddedSequence`)이다. 그래서 게시하는 컴퓨터의 시계가 빌드한 컴퓨터보다 늦으면 새 릴리스가 오래된 것으로 보여 오류 없이 무시된다. 게시는 같은 폴더에 이미 있는 그 채널의 매니페스트보다 큰 값을 쓴다(`max(이전 + 1, 지금)`, 시계가 늦으면 경고). 다른 컴퓨터에서 빌드·게시할 때는 두 시계를 맞춘다.
+- 게시 폴더를 CDN으로 서빙할 때: `app/*`와 `files/*`는 내용의 해시가 이름이라 오래 캐시해도 된다. `<channel>.json`과 `<channel>.json.sig`는 따로 받는 두 파일이라, 캐시하지 않거나 둘을 함께 무효화한다. 새 매니페스트와 옛 서명(또는 반대)이 짝지어지면 모든 앱이 "the release signature does not match updates.publicKey"로 캐시가 만료될 때까지 업데이트를 멈춘다(키가 바뀐 것처럼 보인다). 올릴 때는 `app/*`·`files/*`를 먼저, 두 파일을 마지막에 함께 올린다. 앱의 `cache: "no-store"`는 앱 자신의 캐시만 끈다.
 - 서명 분리(웹 번들만): API `packUpdate`(akan은 `akan pack-update`)는 키 없이 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다. 템플릿은 위 매니페스트에서 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 것이다. 키를 가진 쪽이 게시할 때 지킬 계약:
   - `channel`: 바이너리의 `updates.channel`과 같아야 한다. 다르면 앱이 "made for another app, platform or channel"로 버린다.
   - `sequence`: 게시 시각(초, 양수). 그 채널에 이미 게시한 값과 바이너리 빌드 시각(`embeddedSequence`)보다 커야 받는다. 롤백은 이전 번들을 새 `sequence`로 다시 게시하는 것이다.
@@ -1087,8 +1124,10 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
         - `detached`로 띄우면 콘솔 없이(DETACHED_PROCESS) 뜨는데, 이때 powershell.exe는 스크립트를 실행하지 않고 바로 끝난다.
         - job은 자식이 띄운 손자가 빠져나가는 것(silent breakaway)을 허용하므로, `cmd.exe`의 자식인 도우미는 앱이 끝난 뒤에도 남는다.
       - 도우미는 새 앱을 `Start-Process -NoNewWindow`로 실행한다. 그래서 새 앱이 이전 앱의 표준 입출력을 물려받는다. macOS·Linux의 exec와 같다.
+      - 도우미와 새 앱의 작업 폴더는 임시 폴더다(`cmd.exe`의 `cwd`, `Start-Process -WorkingDirectory`). Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못한다. 설치 폴더에서 뜬 앱(설치 프로그램, 시작 메뉴, 탐색기)의 도우미가 그 폴더를 물려받으면 교체가 10초 재시도 끝에 실패하고, 옛 앱이 받은 릴리스를 버린 뒤 다음에 또 받는다(2026-09-30 리뷰 50번). 셸도 창을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮긴다.
+      - 설치 프로그램으로 설치한 앱(제거 항목의 `InstallLocation`이 이 앱 폴더)은 확정할 때 제거 항목의 `DisplayVersion`을 새 버전으로 고친다.
 - 시험 실행과 롤백(두 종류 공통):
-  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다.
+  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다. 서버를 싣는 데스크톱 앱은 그 서버가 ready를 보낸 뒤에만 확정한다(부팅 때 서버가 죽는 릴리스도 되돌린다).
   - 부르지 않거나, 확정 전에 한 번 더 실행되면(크래시·멈춤) 실패로 표시하고 이전 번들이나 `.previous` 앱으로 되돌린다.
   - 이전 것은 새 것이 확정될 때까지 지우지 않는다. Electrobun은 새 앱이 실행되자마자 `.previous`를 지우고(`extractor/main.zig:7811-7818`), Tauri는 마지막 rename이 실패하면 백업을 잃는다(`updater.rs:1429-1476`).
   - 데스크톱 보완(2026-09-26 검토 반영):

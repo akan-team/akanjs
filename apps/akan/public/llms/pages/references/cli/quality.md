@@ -37,6 +37,8 @@ The group a rule belongs to; there are six, and the output is sorted by scope na
 
 Of the JSX elements in `ui/` and `lib/`, the percentage that renders on the server.
 
+`akan quality [action] [--format <text|json>]`
+
 Which report to print: `scan` covers everything, `ssr` the render balance alone.
 
 Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.

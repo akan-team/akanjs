@@ -124,6 +124,79 @@ describe("ApiRouter.buildRoutes", () => {
     expect(await own?.text()).toBe("own");
     expect((routes["/mcp"] as unknown as MethodRoutes).OPTIONS).toBeUndefined();
   });
+
+  test("a host allowlist refuses every route, the socket upgrade and the preflight included, for a Host it does not name", async () => {
+    type MethodRoutes = Partial<Record<string, RouteFn>>;
+    const { HostAllowlist } = await import("./hostAllowlist");
+    let upgrades = 0;
+    const routes = await buildRoutes({
+      routes: { "/user/me": { GET: () => Response.json({ id: "u1" }) } } as unknown as HttpRoutes,
+      builtinRoutes: { "/_akan/app/health": () => new Response("up") } as HttpRoutes,
+      upgradeAppWs: () => {
+        upgrades++;
+        return true;
+      },
+      hostAllowlist: new HostAllowlist(["127.0.0.1:52345"]),
+    });
+    const at = (path: string, host: string, headers: Record<string, string> = {}) =>
+      new Request(`http://127.0.0.1:52345${path}`, { headers: { host, ...headers } });
+    const endpoint = routes["/api/user/me"] as unknown as MethodRoutes;
+    const rebound = "attacker.example:52345";
+
+    expect((await endpoint.GET?.(at("/api/user/me", rebound)))?.status).toBe(403);
+    expect((await endpoint.OPTIONS?.(at("/api/user/me", rebound, { origin: "app://localhost" })))?.status).toBe(403);
+    expect((await (routes["/_akan/app/health"] as RouteFn)(at("/_akan/app/health", rebound))).status).toBe(403);
+    expect((await (routes["/api/ws"] as RouteFn)(at("/api/ws", rebound)))?.status).toBe(403);
+    expect(upgrades).toBe(0);
+    expect((await endpoint.GET?.(at("/api/user/me", rebound, { "x-forwarded-host": "127.0.0.1:52345" })))?.status).toBe(
+      403,
+    );
+
+    expect(await (await endpoint.GET?.(at("/api/user/me", "127.0.0.1:52345")))?.json()).toEqual({ id: "u1" });
+    expect(
+      await (await (routes["/_akan/app/health"] as RouteFn)(at("/_akan/app/health", "127.0.0.1:52345"))).text(),
+    ).toBe("up");
+    await (routes["/api/ws"] as RouteFn)(at("/api/ws", "127.0.0.1:52345"));
+    expect(upgrades).toBe(1);
+  });
+
+  test("the socket upgrade refuses a cross-site Origin and admits same-site, native shell and Origin-less callers", async () => {
+    const { CrossSiteGuard } = await import("akanjs/signal");
+    const upgraded: string[] = [];
+    const routes = await buildRoutes({
+      upgradeAppWs: (req) => {
+        upgraded.push(req.headers.get("origin") ?? "none");
+        return true;
+      },
+    });
+    const open = (origin?: string, headers: Record<string, string> = {}) =>
+      (routes["/api/ws"] as RouteFn)(
+        new Request("http://127.0.0.1:52345/api/ws", {
+          headers: { host: "127.0.0.1:52345", ...(origin ? { origin } : {}), ...headers },
+        }),
+      );
+    const warn = CrossSiteGuard.logger.warn;
+    CrossSiteGuard.logger.warn = () => undefined;
+    try {
+      expect((await open("https://evil.example"))?.status).toBe(403);
+      expect((await open("null"))?.status).toBe(403);
+      expect(upgraded).toEqual([]);
+
+      for (const origin of ["http://127.0.0.1:52345", ...CrossSiteGuard.nativeOrigins]) {
+        expect(await open(origin)).toBeUndefined();
+      }
+      expect(await open()).toBeUndefined();
+      expect(await open("https://app.example.com", { "x-forwarded-host": "app.example.com" })).toBeUndefined();
+      expect(upgraded).toEqual([
+        "http://127.0.0.1:52345",
+        ...CrossSiteGuard.nativeOrigins,
+        "none",
+        "https://app.example.com",
+      ]);
+    } finally {
+      CrossSiteGuard.logger.warn = warn;
+    }
+  });
 });
 
 describe("ApiRouter.buildWebsocketHandlers", () => {

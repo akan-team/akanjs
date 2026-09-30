@@ -1,4 +1,4 @@
-# Runtime Rule — Serving, Processes, Logging, Image, Assets
+# Runtime Rule — Serving, Processes, Logging, Image, Desktop Server, Assets
 
 How an Akan app is built, what it serves, how many processes it runs, where its logs go, and what ends up in
 its image. Everything here is declared in `akan.config.ts` or narrowed by an env at boot; none of it is reached
@@ -183,6 +183,105 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+
+## A Desktop App's Server — `bin` And `trustedDependencies`
+
+`akan build-desktop --server` (and `start-desktop --release --server`) puts the backend `akan build` made into the
+app — the dist `.js`, `akan.build.json` and `private/` — and installs it on its own with `bun install --production`.
+A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
+on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
+it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
+server's adapter. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server` on Windows, never
+Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate store and takes the session's
+`HTTP(S)_PROXY` / `NO_PROXY` / `NODE_EXTRA_CA_CERTS`, and nothing else of the user's environment.
+
+**Everything it carries is on the user's computer, readable.** That is `private/` as it is, and the server env of
+the one environment the build is for (`--env`: `debug` for `build-desktop`, `main` for `publish-update`, unless
+named): the build keeps `env/env.server.<env>.ts` and swaps every other environment's file for exports that refuse to
+be read. Keep a key in that file only if every user of the app may hold it; a secret the server needs belongs to a
+cloud server its adapter calls. There is no `public/`: a file the server reads at runtime goes in `private/` and is
+read from `AKAN_APP_DIR` (the folder `server.js` sits in), never from `process.cwd()`, which is the app's data
+folder.
+
+**Nothing from `docker` reaches it.** `preRuns`, `postRuns` and a whole Dockerfile install into a Linux image the
+desktop app never runs in, and the build warns when an app has them and carries no `bin`. What the server needs
+from them comes one of two ways:
+
+```ts
+const config: AppConfig = {
+  trustedDependencies: ["rclnodejs"],
+  bin: {
+    ffmpeg: {
+      "darwin-arm64": {
+        url: "https://files.example.com/ffmpeg-7.1-lgpl-darwin-arm64.zip",
+        sha256: "…",
+        file: "ffmpeg-7.1/bin/ffmpeg",
+      },
+      "win32-x64": { url: "https://files.example.com/ffmpeg-7.1-lgpl-win64.zip", sha256: "…", file: "bin/ffmpeg.exe" },
+      "linux-x64": { path: "tools/linux-x64/ffmpeg" },
+    },
+  },
+};
+```
+
+- **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, with or without
+  `--server` — keyed by the name the code spawns and then by
+  `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
+  `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
+  to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
+  `{ path, file? }`, relative to the `akan.config.ts` that declares it. `file` is the executable inside an archive
+  (`.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.tar`), unpacked with the OS's own `tar` (`unzip` for a zip
+  on Linux).
+- Only the building computer's platform is fetched, and an entry without it fails the build instead of the user's
+  call. `build-desktop` and `start-desktop` copy the file into the app's `bin/` (keeping `.exe` on Windows), sign it
+  with the app on macOS, and put that folder first on the app's PATH. The server's `spawn("ffmpeg")` needs no change
+  and finds the carried file even in an app launched from the Finder, whose PATH is only
+  `/usr/bin:/bin:/usr/sbin:/sbin`. A native plugin finds the folder in `ctx.binDir`: Bun's own `spawn` and `which`
+  without `env` read the environment the app started with, so a plugin passes `env: process.env` to run one by name.
+  The server passes it too when it spawns a carried `bun build --compile` executable: the shell starts the server as
+  Bun with `BUN_BE_BUN=1`, which akanjs takes out of `process.env` at boot, and a child spawned without `env` still
+  inherits it and runs as Bun's own CLI instead of the tool.
+- **One file per entry, so carry a static build.** A build that loads its own shared libraries — a `-shared`
+  archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
+- **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the
+  same name wins, and two libs that declare one name differently fail the build.
+- **The image does not read `bin`.** Keep installing through `docker.preRuns` there.
+- **A package that builds itself at install goes in `trustedDependencies`.** `bun install --production` runs no
+  dependency's install or postinstall script unless the package is trusted, so an addon with no prebuild arrives
+  unbuilt and fails at its first call. The list lands in the built `package.json`, so it applies to the image and to
+  the desktop server alike, and a lib's list reaches every app, like its `externalLibs`.
+
+**Carry an LGPL ffmpeg.** A build configured with `--enable-nonfree` may not be redistributed at all — the macOS
+binary npm's `ffmpeg-static` downloads is one — and a `--enable-gpl` build obliges you to offer its source. An LGPL
+build has no `libx264`, so encode H.264 through the OS's encoder: `h264_videotoolbox` on macOS, `h264_mf` on
+Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settle before shipping.
+
+**A server bound to its machine stays a service.** A server that needs a whole environment — ROS, system services,
+root to change the network or the clock — runs as a service on that machine (the image), and the desktop app ships
+without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
+user and stops with the app, and so does what it started: on macOS and Linux the server leads its own process
+group, which ends with it; on Windows the job object does the same.
+
+**A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
+["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
+from `akanjs/client/native`) copies nothing, whatever the size: its FileRefs serve the originals for a preview, and
+each result carries a `grant`. The page hands the grant to an endpoint, and the server exchanges it:
+
+```ts
+const input = await NativeFile.resolve(grant, "read"); // "write" for a saveFile grant, "folder" for pickDirectory
+const clip = await NativeFile.resolveIn(folderGrant, "day1/a.mp4"); // refused if it climbs out of the folder
+```
+
+The carried server asks the shell that showed the dialog over its IPC channel, so it reaches what the user picked
+and nothing else, and no page ever holds a path. Behind a dev build `akan start` checks the grant's signature
+against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
+
+**Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
+(`window`), the system volume and mute (`volume`), global shortcuts, keep-awake and launch at login are native
+runtime plugins, each added to the target's `native.plugins`. Every builtin plugin's page API is
+`akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
+hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
+lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
 
 ## Database Modes — `database` In `akan.config.ts`
 

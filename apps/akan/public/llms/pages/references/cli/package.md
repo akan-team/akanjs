@@ -44,6 +44,8 @@ Check the dist folder before you publish it.
 
 A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
 
+`akan version`
+
 Print the `akanjs` version as one line, `akanjs@<version>`. Check it before a package release, an upgrade or framework maintenance work.
 
 default source
@@ -57,6 +59,8 @@ A separate flag that prints the CLI's own version instead.
 mismatch
 
 If the CLI and `node_modules/akanjs` differ, every command warns and suggests `akan update`.
+
+`akan create-package --name <name>`
 
 Create a new package folder at `pkgs/<name>/` and register its import path in the root `tsconfig.json`. The folder starts with only a `tsconfig.json`; add `package.json` and `index.ts` yourself.
 
@@ -72,6 +76,8 @@ Adds `<name>` → `./pkgs/<name>/index.ts` and `<name>/*` → `./pkgs/<name>/*` 
 
 Also adds `./pkgs/<name>/tsconfig.json` when the root `tsconfig.json` lists `references`.
 
+`akan remove-package [pkg]`
+
 Delete the whole `pkgs/<pkg>/` folder without asking, and drop its entries from the root `tsconfig.json`. Use it when a package should no longer be synced, built or verified.
 
 Removes `<pkg>` and `<pkg>/*` from `paths`, and its entry from `references`.
@@ -79,6 +85,8 @@ Removes `<pkg>` and `<pkg>/*` from `paths`, and its entry from `references`.
 what stays
 
 The old build in `dist/pkgs/<pkg>/` and any imports of the package in other code.
+
+`akan sync-package [pkg]`
 
 Scan one package's imports to find the npm packages and sibling packages it uses. It changes no files and prints only whether the scan passed, so use it as a quick check after editing imports.
 
@@ -89,6 +97,8 @@ An import counts only when the root `package.json` lists it in `dependencies` or
 writing them
 
 `build-package` is the step that writes dependencies into `pkgs/<pkg>/package.json`.
+
+`akan build-package [pkg]`
 
 Build one package into `dist/pkgs/<pkg>/`, the folder you publish or other packages use locally. Run it after you change the package, before anything relies on its build output.
 
@@ -125,6 +135,8 @@ generated manifest
 Adds `type: module`, an `index.ts` root export and `engines.bun`, and is copied back to the source.
 
 Copies `README.md` and `README.ko.md` into dist when they exist.
+
+`akan verify-dist-package [pkg]`
 
 Check a package's build output in `dist/pkgs/<pkg>/`, then measure it with an `npm pack` dry run. Run it after `build-package` and before publishing, so a broken export map is caught here and not by the first person to install it.
 

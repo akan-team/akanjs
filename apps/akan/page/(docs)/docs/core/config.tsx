@@ -102,6 +102,20 @@ const configKeys = [
     ko: "번들에 넣지 않고 프로덕션 런타임 의존성으로 유지할 패키지입니다.",
   },
   {
+    key: "trustedDependencies",
+    type: "string[]",
+    default: "[]",
+    en: "Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.",
+    ko: "bun install --production이 설치 스크립트를 실행할 패키지이며, 이미지와 데스크톱 앱의 서버 모두에 적용됩니다.",
+  },
+  {
+    key: "bin",
+    type: "Record<string, { [platform]: AkanBinSource }>",
+    default: "{}",
+    en: "Executables every desktop build carries, per platform, first on its PATH; the image ignores it.",
+    ko: "모든 데스크톱 빌드가 싣고 가는 실행 파일이며 플랫폼마다 적고, PATH 맨 앞에 놓입니다. 이미지는 읽지 않습니다.",
+  },
+  {
     key: "barrelImports",
     type: "string[]",
     default: "akanjs + workspace",
@@ -228,9 +242,21 @@ const mobileFields = [
   },
   {
     key: "native.android",
-    type: "{ manifest, application, activity, googleServices }",
-    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), and the google-services.json path FCM push reads.",
-    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움)과 FCM 푸시가 읽는 google-services.json 경로입니다.",
+    type: "{ manifest, application, activity, googleServices, autoplay }",
+    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.",
+    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움), FCM 푸시가 읽는 google-services.json 경로, 그리고 autoplay입니다. autoplay를 켜면 iOS·데스크톱처럼 소리 있는 미디어가 터치 없이 재생됩니다.",
+  },
+  {
+    key: "native.desktop",
+    type: '{ recovery?: "errorPage" | "reload", window?: { fullscreen?, skipTaskbar? }, screenCapture?: "picker" | "auto" }',
+    en: 'For a desktop app nobody attends, such as a kiosk or a signage screen. recovery "reload" loads a page whose process ended again every time, waiting longer after each end in a row, and relaunches the app when the webview\'s browser process ends; the default "errorPage" reloads once, then shows an error page. window opens the main window fullscreen and without a taskbar button from its first frame. screenCapture "auto" (Windows) answers getDisplayMedia() with the first screen, without the picker or a tap, for remote support on a screen nobody attends; it covers every media request, so leave it off in an app that asks for a camera or a microphone.',
+    ko: '키오스크나 전광판처럼 지키는 사람이 없는 데스크톱 앱용입니다. recovery "reload"는 프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가 끝나면 앱을 다시 띄웁니다. 기본값 "errorPage"는 한 번 다시 불러온 뒤 오류 화면을 보여 줍니다. window는 주 창을 첫 프레임부터 전체화면, 작업 표시줄 버튼 없이 엽니다. screenCapture "auto"(Windows)는 getDisplayMedia()에 선택 창도 터치도 없이 첫 화면으로 답합니다. 지키는 사람이 없는 화면의 원격 지원용이며, 모든 미디어 요청에 적용되므로 카메라나 마이크를 요청하는 앱에서는 켜지 않습니다.',
+  },
+  {
+    key: "updates",
+    type: "{ url, publicKey, channel?, readyTimeout? }",
+    en: "Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default the --env it is built with, so it takes only releases of its own env; a pilot target names its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does; when to check, download and apply is the app's own call through updates from akanjs/client/native.",
+    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳입니다. akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등), akan update-keygen이 출력한 공개 키, 앱이 따르는 채널(기본값은 빌드할 때의 --env라 자기 env의 릴리스만 받음, pilot 타깃은 자기 채널)을 적습니다. root와 target을 필드별로 병합합니다. 새 릴리스는 첫 페이지가 마운트될 때까지 시험 실행이고, 끝내 마운트되지 않으면 되돌립니다. 언제 확인·다운로드·적용할지는 akanjs/client/native의 updates로 앱이 정합니다.",
   },
 ];
 
@@ -241,6 +267,20 @@ const buildFields = [
     default: "[]",
     en: "Unbundled packages, installed in production at the workspace-pinned version.",
     ko: "번들하지 않는 패키지이며, 프로덕션에서 워크스페이스가 고정한 버전으로 설치됩니다.",
+  },
+  {
+    key: "trustedDependencies",
+    type: "string[]",
+    default: "[]",
+    en: "Packages allowed to run their install scripts, for an addon that builds itself at install.",
+    ko: "설치 스크립트 실행을 허용할 패키지이며, 설치하면서 스스로 빌드하는 애드온에 씁니다.",
+  },
+  {
+    key: "bin",
+    type: "Record<string, { [platform]: AkanBinSource }>",
+    default: "{}",
+    en: "{ url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.",
+    ko: "플랫폼마다 { url, sha256, file? } 또는 { path, file? }이며, 데스크톱 앱에 실려 그 PATH 맨 앞에 놓입니다.",
   },
   {
     key: "optimizeImports",
@@ -886,6 +926,13 @@ export default config;`}
 
 const config: AppConfig = {
   externalLibs: ["shiki"],
+  trustedDependencies: ["rclnodejs"],
+  bin: {
+    ffmpeg: {
+      "linux-x64": { url: "https://files.example.com/ffmpeg-lgpl-linux64.tar.xz", sha256: "…", file: "bin/ffmpeg" },
+      "darwin-arm64": { path: "tools/darwin-arm64/ffmpeg" },
+    },
+  },
   optimizeImports: ["custom-icons"],
   barrelImports: ["@acme/ui"],
   database: { modes: ["single", "cluster"] },
@@ -910,8 +957,8 @@ const config: AppConfig = {
         />
         <div>
           {l.trans({
-            en: "A library contributes to three of these: its own externalLibs, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.",
-            ko: "라이브러리가 이 중 셋에 값을 더합니다. 라이브러리 자신의 externalLibs, docker.preRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에 함께 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
+            en: "A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.",
+            ko: "라이브러리가 이 중 다섯에 값을 더합니다. 라이브러리 자신의 externalLibs, trustedDependencies, docker.preRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에, bin은 그 라이브러리에 의존하는 앱에 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
           })}
         </div>
         <ul className="my-4 list-disc space-y-2 pl-5">
@@ -945,6 +992,28 @@ const config: AppConfig = {
                 <span>
                   <strong>libSQL은 직접 켭니다.</strong> 어느 모드도 <code>@libsql/client</code>를 싣지 않으므로,{" "}
                   <code>LibsqlDatabase</code>를 직접 적용하는 앱은 이를 <code>externalLibs</code>에 적습니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
+                  <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
+                  plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and
+                  in a plugin's <code>ctx.binDir</code>. Carry a static LGPL build: a <code>--enable-nonfree</code>{" "}
+                  build may not be redistributed.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 데스크톱 앱에는 이미지의{" "}
+                  <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 서버나
+                  네이티브 플러그인이 실행하는 파일을 빌드하는 컴퓨터용으로 모든 데스크톱 빌드에 넣고, 앱의 PATH 맨 앞과
+                  플러그인의 <code>ctx.binDir</code>에 둡니다. 정적 LGPL 빌드를 넣으세요. <code>--enable-nonfree</code>
+                  로 빌드한 것은 재배포할 수 없습니다.
                 </span>
               ),
             })}

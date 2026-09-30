@@ -1,0 +1,10 @@
+{
+  "id": "probe",
+  "apiVersion": 1,
+  "methods": ["ping"],
+  "events": [],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

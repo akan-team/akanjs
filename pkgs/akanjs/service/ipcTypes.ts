@@ -163,6 +163,9 @@ export type AkanIpcMessage =
   /** Hub → child: the lowest severity any subscriber wants; `null` tells the child to stop forwarding. */
   | { type: "log.level"; minSev: number | null }
   | { type: "shutdown"; signal?: string }
+  /** Desktop server → the shell that started it: the path behind a file picker grant (forServer). */
+  | { type: "file.resolve"; id: string; grant: string }
+  | { type: "file.resolved"; id: string; path?: string; mode?: "read" | "write" | "folder"; error?: string }
   | { type: "error"; message: string; stack?: string; pid?: number };
 
 export const sendAkanIpc = (message: AkanIpcMessage) => {

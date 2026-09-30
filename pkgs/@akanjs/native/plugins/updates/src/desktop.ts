@@ -15,12 +15,12 @@
 //   started through cmd.exe to outlive the app) waits for the app to exit, does the renames and
 //   starts the result (moveThenRelaunch).
 // - The new app runs on trial. notifyReady() within updates.readyTimeout confirms it and removes
-//   .previous; a timeout, or a second launch without confirming, swaps .previous back and relaunches
-//   it. Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
+//   .previous (an app that carries a server confirms only once that server answered ready); a
+//   timeout, or a second launch without confirming, swaps .previous back and relaunches it.
+//   Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
 //   drops its backup when the final rename fails (updater.rs:1429-1476); here the old app stays
 //   until the new one said it works.
 
-import { spawn } from "node:child_process";
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -28,6 +28,7 @@ import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import { isBundleId } from "../../../packages/core/src/kernel.ts";
 import { applyDelta } from "../../../packages/desktop/src/delta.ts";
 import { type DesktopContext, type DesktopPlugin, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
+import { relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
 import type { UpdateCheck, UpdateState, UpdatesApi, UpdatesEvents } from "./index.ts";
 
 interface Config {
@@ -108,6 +109,28 @@ const resourcesOf = (app: string) => (mac ? join(app, "Contents", "Resources") :
 const executableIn = (app: string) =>
   mac ? join(app, "Contents", "MacOS", basename(process.execPath)) : join(app, basename(process.execPath));
 
+/**
+ * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the
+ * key). A copy of the app elsewhere leaves the installed one's entry alone. Best effort: the update stands anyway.
+ */
+async function recordInstalledVersion(appId: string, app: string | null, version: string): Promise<void> {
+  if (!app || !version) return;
+  const key = `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${appId}`;
+  const reg = async (args: string[]) => {
+    const p = Bun.spawn(["reg.exe", ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore", windowsHide: true });
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+    return code === 0 ? out : null;
+  };
+  try {
+    const query = await reg(["query", key, "/v", "InstallLocation"]);
+    const location = query && /InstallLocation\s+REG_\w+\s+(.+?)\s*$/m.exec(query)?.[1];
+    if (!location || location.replace(/[\\/]+$/, "").toLowerCase() !== app.replace(/[\\/]+$/, "").toLowerCase()) return;
+    await reg(["add", key, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", version, "/f"]);
+  } catch (error) {
+    console.warn("[akan-native] updates: cannot record the installed version", error);
+  }
+}
+
 function readConfig(): Config | null {
   const app = appPath();
   const path = app ? join(resourcesOf(app), "updates.json") : "";
@@ -150,92 +173,7 @@ export default defineDesktopPlugin<UpdatesApi, UpdatesEvents>(
     /** The running app is this release (installed by an update), not another build. */
     const runningIs = (entry: Entry | undefined) => !!entry && !!config && entry.build === config.embeddedSequence;
 
-    /**
-     * Once this process has exited (single-instance, locks): renames `moves` in order and starts
-     * `app` with this environment. macOS and Linux rename a running app's folder right away, so only
-     * the start waits; Windows refuses that, so a helper does the renames too (and on a failed
-     * rename puts back what it moved, so there is always an app to start).
-     */
-    const moveThenRelaunch = (moves: [string, string][], app: string): Promise<void> => {
-      const exe = executableIn(app);
-      if (!windows) {
-        for (const [from, to] of moves) renameSync(from, to);
-        const child = spawn(
-          "/bin/sh",
-          ["-c", 'while kill -0 "$AKAN_NATIVE_PARENT" 2>/dev/null; do sleep 0.2; done; exec "$AKAN_NATIVE_EXE"'],
-          {
-            detached: true,
-            stdio: "inherit",
-            env: { ...process.env, AKAN_NATIVE_PARENT: String(process.pid), AKAN_NATIVE_EXE: exe },
-          },
-        );
-        child.unref();
-        return Promise.resolve();
-      }
-      // Paths go in environment variables, so no quoting of them is involved. Files of the exiting
-      // app can stay locked for a moment after its exit (antivirus, WebView2): retry the renames.
-      // -NoNewWindow: the new app gets this app's standard handles, as with exec on macOS and Linux.
-      const script = `
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-Wait-Process -Id $env:AKAN_NATIVE_PARENT -ErrorAction SilentlyContinue
-$moves = $env:AKAN_NATIVE_MOVES | ConvertFrom-Json
-$done = @()
-try {
-  foreach ($m in $moves) {
-    for ($i = 0; ; $i++) { try { Move-Item -LiteralPath $m[0] -Destination $m[1]; break } catch { if ($i -ge 40) { throw }; Start-Sleep -Milliseconds 250 } }
-    $done = ,$m + $done
-  }
-} catch {
-  foreach ($m in $done) { try { Move-Item -LiteralPath $m[1] -Destination $m[0] } catch {} }
-}
-Start-Process -NoNewWindow -FilePath $env:AKAN_NATIVE_EXE
-`;
-      // Bun (libuv) puts its children in a job object that ends them when this app exits, and a
-      // detached child (DETACHED_PROCESS, no console) is powershell.exe exiting at once without
-      // running anything (Windows 11 26200). The job lets a child's own children break away, so a
-      // windowless cmd.exe starts the helper with `start /b` and returns; the app waits for that, or
-      // its exit would end cmd.exe before the helper started. -EncodedCommand: base64, nothing in it
-      // for cmd to parse.
-      const encoded = Buffer.from(script, "utf16le").toString("base64");
-      const env = {
-        ...process.env,
-        AKAN_NATIVE_PARENT: String(process.pid),
-        AKAN_NATIVE_EXE: exe,
-        AKAN_NATIVE_MOVES: JSON.stringify(moves),
-      };
-      const args = [
-        "/d",
-        "/c",
-        "start",
-        "/b",
-        "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-WindowStyle",
-        "Hidden",
-        "-EncodedCommand",
-        encoded,
-      ];
-      let child: ReturnType<typeof spawn>;
-      try {
-        child = spawn("cmd.exe", args, { stdio: "inherit", windowsHide: true, env });
-      } catch {
-        child = spawn("cmd.exe", args, { stdio: "ignore", windowsHide: true, env }); // an app without standard handles
-      }
-      return new Promise((resolve) => {
-        const done = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-        const timeout = setTimeout(done, 2_500); // within the plugin setup's 3 s (a rollback at launch)
-        child.once("exit", done);
-        child.once("error", (error) => {
-          console.error("[akan-native] updates: cannot start the relaunch helper", error);
-          done();
-        });
-      });
-    };
+    const moveThenRelaunch = (moves: [string, string][], app: string) => relaunchAfterExit(executableIn(app), moves);
 
     /** Puts .previous back, marks the trial failed and relaunches the old app. */
     const rollBack = async (state: State, quit: (code: number) => void, why: string): Promise<void> => {
@@ -563,8 +501,12 @@ Start-Process -NoNewWindow -FilePath $env:AKAN_NATIVE_EXE
           setTimeout(() => ctx.quit(0), 50); // answer first
         },
 
-        async notifyReady() {
-          need();
+        async notifyReady(_args, ctx) {
+          const c = need();
+          if (!onTrial) return;
+          //? A release whose server never comes up is as broken as one whose page never renders: it is not
+          //? confirmed, and the trial's timeout rolls it back.
+          if (ctx.server && !(await ctx.server.ready)) return;
           if (!onTrial) return;
           clearTimeout(timer);
           onTrial = false;
@@ -577,6 +519,7 @@ Start-Process -NoNewWindow -FilePath $env:AKAN_NATIVE_EXE
           state.rolledBack = undefined;
           writeState(state);
           rmSync(previous, { recursive: true, force: true });
+          if (windows) void recordInstalledVersion(c.app, appPath(), entry.version);
         },
 
         async reset() {

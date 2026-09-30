@@ -84,7 +84,7 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 ```
 
 1. 샘플을 debug로 빌드해(`--debug`, 페이지 로그와 `PUBLIC_UPDATE_PROBE`가 필요하다) 임시 "설치" 폴더에 복사한다. 릴리스도 `--debug`로 게시한다. 경로는 `<os>-<arch>/`다.
-2. 릴리스 A를 게시하고 앱을 `PUBLIC_UPDATE_PROBE=apply`로 실행한다. check → download(전체) → apply → trial → 확정까지 간다.
+2. 릴리스 A를 게시하고 앱을 `PUBLIC_UPDATE_PROBE=apply`로 실행한다. check → download(전체) → apply → trial → 확정까지 간다. 앱은 탐색기에서 연 것처럼 자기 폴더를 작업 폴더로 띄운다. Windows는 작업 폴더인 폴더의 이름을 바꾸지 못하므로, 그 경우에도 교체되는지 본다.
 3. 릴리스 B(A에서의 delta)를 `no-ready`로 실행한다. B는 확정하지 않으므로 A로 롤백되고, B를 다시 받지 않아야 한다.
 4. 앱 옆에 남은 폴더가 없는지 본다.
 
@@ -93,6 +93,33 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 확인 결과(2026-09-25): Windows 11 ARM VM과 Linux 컨테이너 모두 통과했다(A 전체 → 확정, B delta → 롤백, 남은 폴더 없음). 2026-09-26 검토 반영 뒤에도 macOS·Linux·Windows 모두 통과했다.
 
 주의: 확인이 도중에 실패하면 임시 폴더에 설치한 앱이 남아 있을 수 있다. 그러면 다음 실행의 앱이 single-instance로 넘기고 바로 끝나서 확인이 멈춘다. Windows에서는 `bun scripts/vm/windows.ts ssh 'Get-Process | Where-Object { $_.Path -like "*akan-native-update-check*" } | Stop-Process -Force'`로 먼저 끝낸다.
+
+## ARM64 Windows에서 x64 앱 빌드
+
+데스크톱 빌드는 실행 중인 Bun의 CPU를 따른다. Rust 타깃을 Bun의 `process.arch`로 고르고(`platforms/desktop.ts` `libraryTarget`), `bun build --compile`도 그 Bun을 앱에 넣는다. 그래서 ARM64 VM에서 x64 Bun으로 CLI를 돌리면 코드 변경 없이 x64 앱이 나온다.
+
+```powershell
+rustup target add x86_64-pc-windows-msvc          # native\desktop 폴더에서 (고정한 툴체인에)
+C:\bun-x64\bun.exe packages/cli/src/index.ts build windows --app examples/sample
+C:\bun-x64\bun.exe run akan build-desktop <app> --installer   # akanjs 앱: <file>-<version>-x64-setup.exe
+```
+
+- x64 Bun은 `bun-windows-x64-baseline`을 쓴다. 앱에 그대로 들어가므로 AVX2가 없는 오래된 x64 CPU에서도 돈다. windows-setup.ps1이 ARM64 VM에 `C:\bun-x64\bun.exe`로 설치한다.
+- Visual Studio Build Tools의 ARM64 호스트용 x64 도구(`Hostarm64\x64\link.exe`)와 x64 라이브러리를 쓴다. windows-setup.ps1이 설치하는 구성에 들어 있다.
+- Windows 11 ARM은 x64 프로그램을 에뮬레이션(Prism)으로 돌리므로 확인도 같은 VM에서 한다. 확인 결과(2026-09-30): 샘플의 x64 빌드(exe·DLL 모두 PE machine 0x8664)가 자체 테스트 73/73. 현장 투입 전에는 실제 x64 PC에서 한 번 더 본다.
+
+## 설치 프로그램과 무인 운영 확인
+
+```sh
+bun scripts/vm/windows.ts desktop 'bun scripts/vm/installer-check.ts'   # NSIS가 필요하다(windows-setup.ps1이 설치)
+bun scripts/vm/windows.ts desktop 'bun scripts/vm/kiosk-check.ts'
+```
+
+- installer-check: 샘플을 `--installer`로(일회용 업데이트 키, 127.0.0.1의 릴리스 서버) 빌드하고 다음 패치 버전의 릴리스 A를 게시한 뒤, `/S /RUN`으로 설치(폴더, 폴더 옆 제거 프로그램, 시작 메뉴, 제거 항목, 앱 실행) → 설치 프로그램이 띄운 앱이 A를 받아 확정(제거 프로그램이 남고 제거 항목 버전이 A) → 실행 중인 앱 위로 다시 설치(설치 폴더에서 도는 앱을 먼저 멈춤) → `/S` 제거(폴더, 옆에 남긴 `.previous`·`.update-*`·`.failed-*`, 제거 프로그램, 바로가기, 항목)까지 본다.
+  - NSIS 설치 프로그램은 32비트라 그 PowerShell도 32비트다. 32비트 프로세스는 64비트 프로세스의 경로를 읽지 못해(`Get-Process`의 Path가 빈다) 앱을 WMI(`Win32_Process.ExecutablePath`)로 찾는다.
+- kiosk-check: `desktop.recovery: "reload"`, `desktop.window { fullscreen, skipTaskbar }`, `desktop.screenCapture: "auto"`로 빌드해 DevTools 포트로 확인한다. 첫 화면부터 전체화면, 페이지를 연달아 죽이면(`Page.crash`) 즉시·1초·2초 뒤 다시 불러오기, `app.relaunch()`, WebView2 브라우저 프로세스를 끝내면 앱 재실행, `getDisplayMedia()`가 선택 창 없이 `displaySurface: "monitor"` 트랙으로 답하기.
+- 확인 결과(2026-09-30): Windows 11 ARM VM에서 둘 다 통과. `skipTaskbar`는 전체화면이 작업 표시줄을 가리므로 따로 스크린샷으로 비교했다.
+- macOS에서 update-check는 화면이 잠겨 있으면 멈춘다. 샘플이 `requestAnimationFrame` 안에서 업데이트 확인을 시작하는데, 잠긴 화면에서는 프레임이 오지 않는다.
 
 ## 공통 벡터 (architecture.md §5)
 

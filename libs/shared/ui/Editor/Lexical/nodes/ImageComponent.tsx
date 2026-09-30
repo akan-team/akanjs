@@ -1,5 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import type { SyntheticEvent } from "react";
 import { $isImageNode, RESET_WIDTH } from "./imageNode.util";
@@ -49,7 +50,7 @@ export const ImageComponent = ({ nodeKey, src, alt, width, height, align, fit, b
       onReset={() => setSize(RESET_WIDTH, height && width ? Math.round((RESET_WIDTH / width) * height) : 0)}
     >
       <img
-        src={src}
+        src={resolveServerUrl(src)}
         alt={alt}
         width={width || undefined}
         height={height || undefined}

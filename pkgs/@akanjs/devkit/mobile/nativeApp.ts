@@ -4,6 +4,8 @@ import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { MobileEnv } from "akanjs";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
+import { DesktopBin } from "./desktopBin";
+import type { DesktopServerBundle } from "./desktopServerStage";
 import {
   type DesktopPlatform,
   type MobilePlatform,
@@ -14,6 +16,7 @@ import {
 import { NativeApi, type NativeBuildApiModule } from "./nativeApi";
 import { NativeAppLine, type NativeAppLineRead } from "./nativeAppLine";
 import { NativeConfig } from "./nativeConfig";
+import { NativePluginFolders } from "./nativePluginFolders";
 import { NativeWebDir } from "./nativeWebDir";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
@@ -30,6 +33,14 @@ export interface NativeRunOptions {
 interface NativeDevBoot {
   steps: string[];
   lines: NativeAppLineRead[];
+}
+
+export interface NativeBuildOptions {
+  profile?: "debug" | "release";
+  /** The server a desktop app carries (`--server`), staged by DesktopServerStage. */
+  server?: DesktopServerBundle;
+  /** Windows: an NSIS setup program beside the app folder. */
+  installer?: boolean;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -69,8 +80,19 @@ export class NativeApp {
     });
   }
 
-  async config(platform: NativePlatform) {
-    const [appConfig, plugins] = await Promise.all([this.app.getConfig(), this.app.collectPlugins()]);
+  /** Where a desktop build stages the executables it carries (akan.config.ts `bin`). */
+  get binDir() {
+    return path.join(this.targetRoot, "bin");
+  }
+
+  async config({ server, platform }: { server?: DesktopServerBundle; platform: NativePlatform }) {
+    const [appConfig, plugins, nativePlugins] = await Promise.all([
+      this.app.getConfig(),
+      this.app.collectPlugins(),
+      NativePluginFolders.of(this.app),
+    ]);
+    const desktop = platform === "macos" || platform === "windows" || platform === "linux";
+    const carried = desktop ? await new DesktopBin(this.app, appConfig).stage(this.binDir) : [];
     return NativeConfig.build({
       appPath: this.app.cwdPath,
       target: this.target.config,
@@ -79,12 +101,18 @@ export class NativeApp {
       locales: appConfig.i18n.locales,
       env: this.env,
       platform,
+      nativePlugins,
+      ...(server ? { desktopServer: server } : {}),
+      ...(carried.length ? { desktopBin: this.binDir } : {}),
     });
   }
 
   /** The API and the config it is about to build, refused here when the runtime would refuse it later. */
-  async prepare(platform: NativePlatform) {
-    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config(platform)]);
+  async prepare(platform: NativePlatform, server?: DesktopServerBundle) {
+    const [api, { config, warnings }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, ...(server ? { server } : {}) }),
+    ]);
     for (const warning of warnings) this.app.logger.warn(warning);
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
@@ -120,18 +148,25 @@ export class NativeApp {
     };
   }
 
-  async build(platform: NativePlatform, { profile = "release" }: { profile?: "debug" | "release" } = {}) {
+  async build(platform: NativePlatform, { profile = "release", server, installer = false }: NativeBuildOptions = {}) {
+    NativeApp.#assertServerPlatform(platform, server);
+    if (installer && platform !== "windows") throw new Error(`An installer is built for Windows, not for ${platform}.`);
     await this.assembleWeb();
-    const { api, config } = await this.prepare(platform);
-    return await api.build({ ...this.#task(platform, config), profile });
+    const { api, config } = await this.prepare(platform, server);
+    return await api.build({
+      ...this.#task(platform, config),
+      profile,
+      ...(installer ? { windows: { installer } } : {}),
+    });
   }
 
   async run(
     platform: NativePlatform,
-    { device, teamId, profile = "debug" }: NativeRunOptions & { profile?: "debug" | "release" } = {},
+    { device, teamId, profile = "debug", server }: NativeRunOptions & NativeBuildOptions = {},
   ) {
+    NativeApp.#assertServerPlatform(platform, server);
     await this.assembleWeb();
-    const { api, config } = await this.prepare(platform);
+    const { api, config } = await this.prepare(platform, server);
     return await api.run({
       ...this.#task(platform, config),
       profile,
@@ -198,6 +233,37 @@ export class NativeApp {
     });
   }
 
+  /** Where publishUpdate writes: upload this folder as the target's updates.url. */
+  get updatesDir() {
+    return path.join(this.targetRoot, "updates");
+  }
+
+  /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */
+  async publishUpdate(
+    platform: NativePlatform,
+    { channel, server }: { channel?: string; server?: DesktopServerBundle } = {},
+  ) {
+    NativeApp.#assertServerPlatform(platform, server);
+    if (!this.target.config.updates)
+      throw new Error(
+        `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
+      );
+    await this.assembleWeb();
+    const { api, config } = await this.prepare(platform, server);
+    return await api.publishUpdate({
+      ...this.#task(platform, config),
+      platform,
+      out: this.updatesDir,
+      ...(channel ? { channel } : {}),
+    });
+  }
+
+  /** The key update releases of this target's app id on `platform` are signed with: made once, then read. */
+  async updateKeygen(platform: NativePlatform) {
+    const [api, { config }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config({ platform })]);
+    return api.updateKeygen({ config });
+  }
+
   async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
     const signing = NativeApp.androidSigning();
     await this.assembleWeb();
@@ -255,6 +321,12 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
+  }
+
+  //? A phone runs no Bun, so only a desktop app can carry the server.
+  static #assertServerPlatform(platform: NativePlatform, server: DesktopServerBundle | undefined) {
+    if (server && (platform === "ios" || platform === "android"))
+      throw new Error(`Only a desktop app carries its server; ${platform} cannot run one.`);
   }
 
   //* A desktop app builds only on its own OS, so the platform is this computer's.

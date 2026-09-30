@@ -7,15 +7,18 @@ import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/comm
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import {
+  DesktopServerStage,
   type MobilePlatform,
   NativeApp,
   type NativePlatform,
   type ResolvedMobileTarget,
+  resolveAppId,
   resolveMobileTargets,
 } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
+import type { InterruptTeardown } from "./interruptTeardown";
 
 export interface LogsOptions {
   level?: string | null;
@@ -40,8 +43,18 @@ export interface MobileUpdatePackOptions extends MobileTargetOptions {
   /** The bundle.json of the store build the update is for; a bundle it cannot run fails the pack. */
   against?: string;
 }
+export interface MobilePublishOptions extends MobileTargetOptions {
+  /** The manifest to publish to; default the target's updates.channel, else the backend env it is built for. */
+  channel?: string;
+  /** A desktop release that carries the app's server, as the installed app does (`build-desktop --server`). */
+  server?: boolean;
+}
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
+  /** A desktop build that carries the app's server. */
+  server?: boolean;
+  /** A Windows build's setup program too. */
+  installer?: boolean;
 }
 export interface MobileStartOptions extends MobileTargetOptions {
   operation?: "local" | "release";
@@ -49,6 +62,10 @@ export interface MobileStartOptions extends MobileTargetOptions {
   device?: string;
   /** Narrows an iPhone's signing to one Apple team. */
   teamId?: string;
+  /** A desktop release build that carries the app's server. */
+  server?: boolean;
+  /** Stops a dev session along with what the caller started for it, instead of this command's own Ctrl+C exit. */
+  interrupt?: InterruptTeardown;
 }
 export interface IosReleaseOptions extends MobileTargetOptions {
   teamId?: string;
@@ -272,21 +289,36 @@ try {
 
   async buildMobile(
     app: App,
-    platform: MobilePlatform,
-    { target, env = "debug", profile = "release" }: MobileBuildOptions = {},
+    platform: NativePlatform,
+    { target, env = "debug", profile = "release", server = false, installer = false }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
+    if (installer && platform !== "windows")
+      throw new Error(`--installer builds a Windows setup program; this computer builds for ${platform}.`);
+    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
     await this.#buildMobileCsr(app, env);
+    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget, env).build(platform, { profile }));
+      this.#reportBuild(
+        app,
+        mobileTarget,
+        await new NativeApp(app, mobileTarget, env).build(platform, {
+          profile,
+          ...(carried ? { server: carried } : {}),
+          ...(installer ? { installer } : {}),
+        }),
+      );
     });
+  }
+  async buildDesktop(app: App, options: MobileBuildOptions = {}) {
+    await this.buildMobile(app, NativeApp.desktopPlatform(), options);
   }
 
   //* A dev build loads its pages from `akan start`, so it follows every save; a release build carries its own bundle.
   async startMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "local", operation = "local", device, teamId }: MobileStartOptions = {},
+    { target, env = "local", operation = "local", device, teamId, server = false, interrupt }: MobileStartOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
@@ -297,34 +329,49 @@ try {
     const nativeApp = new NativeApp(app, mobileTarget, env);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
+      if (server) DesktopServerStage.assertCarriable(await app.getConfig());
       await this.#buildMobileCsr(app, env);
-      const running = await nativeApp.run(platform, { ...selection, profile: "release" });
+      const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+      const running = await nativeApp.run(platform, {
+        ...selection,
+        profile: "release",
+        ...(carried ? { server: carried } : {}),
+      });
       await running.exited;
       return;
     }
     const upstream = `http://localhost:${await app.getDevPort()}`;
-    if (!(await ApplicationRunner.#answers(upstream)))
+    if (!(await ApplicationRunner.answers(upstream, app.name)))
       throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
     const { i18n } = await app.getConfig();
     const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
-    process.once("SIGINT", () => {
-      void session.stop().finally(() => process.exit(130));
-    });
+    if (interrupt)
+      interrupt.add(async () => await session.stop(), "Abandoning the app's shutdown; its window may stay open.", 130);
+    else
+      process.once("SIGINT", () => {
+        void session.stop().finally(() => process.exit(130));
+      });
     await session.exited;
   }
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
-  //? The health route, not the page: a dev server whose builder idled out renders `/` only after waking it, which
-  //? outlasts the timeout, and any answer at all says a server is there.
-  static async #answers(url: string) {
-    try {
-      await fetch(new URL("/_akan/app/health", url), { signal: AbortSignal.timeout(3_000) });
-      return true;
-    } catch {
-      // Nothing listening, which the caller turns into what to run.
-      return false;
-    }
+  //? The health and info routes, not the page: the gateway answers them itself, while `/` waits for a cold render (or a
+  //? builder that idled out) past these 3 s. Another app's dev server may hold the port, so the name has to match.
+  static async answers(url: string, appName: string) {
+    const signal = AbortSignal.timeout(3_000);
+    // Nothing listening, which the caller turns into what to run.
+    if (!(await fetch(new URL("/_akan/app/health", url), { signal }).catch(() => null))) return false;
+    const info = (await fetch(new URL("/_akan/app/info", url), { signal })
+      .then(async (res) => (res.ok ? await res.json() : null))
+      .catch(() => null)) as { appName?: unknown } | null;
+    if (info?.appName === appName) return true;
+    const moveIt = `give ${appName} another port with AKAN_DEV_PORT`;
+    throw new Error(
+      typeof info?.appName === "string"
+        ? `${url} is the dev server of ${info.appName}, not ${appName}. Stop it (\`akan start ${appName} --kill\` takes the port over) or ${moveIt}.`
+        : `${url} answers, but not as an akan dev server; ${moveIt}.`,
+    );
   }
 
   async releaseIos(app: App, { target, env = "main", teamId, adHoc = false }: IosReleaseOptions = {}) {
@@ -372,6 +419,53 @@ try {
     app.logger.info(`runs in the store build of ${against}`);
   }
 
+  //* A target that shares its app id with another shares its key too, so each id is answered once.
+  async updateKeygen(app: App, platform: "desktop" | "android" | "ios", target?: string) {
+    const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    const seen = new Set<string>();
+    for (const mobileTarget of await resolveMobileTargets(app, target ?? "all")) {
+      const appId = resolveAppId(mobileTarget.config.appId, nativePlatform);
+      if (seen.has(appId)) continue;
+      seen.add(appId);
+      const { publicKey, keyPath, created } = await new NativeApp(app, mobileTarget).updateKeygen(nativePlatform);
+      app.log(
+        `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
+      );
+      app.log(`  mobile: { updates: { url: "https://…/${app.name}", publicKey: ${JSON.stringify(publicKey)} } }`);
+      const declared = mobileTarget.config.updates?.publicKey;
+      if (declared && declared !== publicKey)
+        app.logger.warn(
+          `mobile.targets.${mobileTarget.name}.updates.publicKey is another key's; releases would not verify.`,
+        );
+    }
+  }
+
+  async publishUpdate(
+    app: App,
+    platform: "desktop" | "android" | "ios",
+    { target, env = "main", channel, server = false }: MobilePublishOptions = {},
+  ) {
+    if (server && platform !== "desktop")
+      throw new Error(`Only a desktop app carries its server; --server does not apply to ${platform}.`);
+    const targets = await resolveMobileTargets(app, target);
+    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
+    await this.#buildMobileCsr(app, env);
+    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+    const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    for (const mobileTarget of targets) {
+      const nativeApp = new NativeApp(app, mobileTarget, env);
+      const published = await nativeApp.publishUpdate(nativePlatform, {
+        ...(channel ? { channel } : {}),
+        ...(carried ? { server: carried } : {}),
+      });
+      this.#reportBuild(app, mobileTarget, published.build);
+      app.log(
+        `${app.name}/${mobileTarget.name} ${published.bundle}: ${published.dir}/${published.channel}.json, ${published.files} files, ${Math.round(published.size / 1024)} KiB`,
+      );
+      app.log(`Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last.`);
+    }
+  }
+
   #reportBuild(
     app: App,
     mobileTarget: ResolvedMobileTarget,
@@ -394,7 +488,7 @@ try {
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env }).build({ spinner: true });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];

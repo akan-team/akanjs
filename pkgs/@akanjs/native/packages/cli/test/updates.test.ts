@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, statSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { nextSequence } from "../src/lib/publish.ts";
 import {
+  assertChannel,
   generateUpdateKey,
   signManifest,
   updateKeyPath,
@@ -76,6 +78,26 @@ describe("updates config (UP-1, UP-2)", () => {
       readyTimeout: 3000,
     });
     expect(Math.abs(resource.embeddedSequence - Date.now() / 1000)).toBeLessThan(5);
+  });
+});
+
+describe("publishing a release", () => {
+  test("takes only a channel an app could be configured for", () => {
+    for (const channel of ["production", "pilot", "main", "beta-2", "v1.2"])
+      expect(() => assertChannel(channel)).not.toThrow();
+    for (const channel of ["../x", "Pilot", "", "a/b", "a\\b", ".hidden", "x".repeat(42)])
+      expect(() => assertChannel(channel)).toThrow("is not a short lowercase name");
+  });
+
+  test("numbers a release past the one already published here, whatever this computer's clock says", () => {
+    const dir = mkdtempSync(join(tmpdir(), "akan-native-sequence-"));
+    expect(nextSequence(dir, "production", 1000)).toBe(1000);
+    writeFileSync(join(dir, "production.json"), JSON.stringify({ sequence: 900 }));
+    expect(nextSequence(dir, "production", 1000)).toBe(1000);
+    writeFileSync(join(dir, "production.json"), JSON.stringify({ sequence: 1200 }));
+    expect(nextSequence(dir, "production", 1000)).toBe(1201);
+    expect(nextSequence(dir, "production", 1200)).toBe(1201);
+    expect(nextSequence(dir, "pilot", 1000)).toBe(1000);
   });
 });
 

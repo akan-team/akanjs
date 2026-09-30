@@ -4,17 +4,25 @@
 "@akanjs/cli": minor
 ---
 
-A mobile app updates its web bundle over the air, signed by whoever holds the key.
+An installed app updates itself: a phone its web bundle over the air, a desktop app the whole app.
 
 - `mobile.updates: { url, publicKey, channel?, readyTimeout? }` in `akan.config.ts`, per target too, the target's
   fields winning. It brings the runtime's `updates` plugin. A channel left unnamed is the backend env the binary is
-  built for (`main`, `develop`, …).
-- The CSR frame keeps the bundle current by itself: it confirms a bundle on trial once the first page is on screen
-  (an unconfirmed one is rolled back at the next launch), and at start and on each return to the front it looks for
-  a newer one and downloads it; it runs from the next cold start. A dev build's pages are left alone.
-  `akanjs/client/native` exports `updates` for a screen that applies one now.
-- `akan pack-update <app> --platform ios|android [--target] [--env] [--out]` writes an unsigned update:
-  `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle`
-  left for the signer. `--against <store bundle.json>` also checks the bundle runs in that store build, writes
-  `compat.json`, and fails when it needs a new binary. The signing contract is in the native runtime's
-  architecture notes: fill the three fields, sign exactly the bytes you upload, upload `files/` first.
+  built for (`main`, `develop`, `debug`, …), so a `build-desktop` app (`debug` unless `--env` names another) takes
+  only the releases published for that env.
+- The CSR frame confirms a release on trial once the first page is on screen, in every native shell (an unconfirmed
+  one is rolled back at the next launch). On a phone it also keeps the bundle current by itself: at start and on each
+  return to the front it looks for a newer one and downloads it, and it runs from the next cold start. A desktop
+  release is the whole app and a relaunch, so the app checks, downloads and applies it on its own schedule. A dev
+  build's pages are left alone. `akanjs/client/native` exports `updates`, `markReady` and `useUpdateState`.
+- `akan update-keygen <app> [--platform]` makes the signing key of the app's id once and prints its public half.
+  `akan publish-update <app>` builds a release on this machine and signs it: the whole app for this computer's desktop
+  OS and CPU (`--server` carries the app's server, as `build-desktop --server` does), or the web bundle for
+  `--platform android|ios`. It writes the manifest and its files under `.akan/mobile/<target>/updates`, to upload to
+  `updates.url`, on the channel of its `--env` (`main` unless named); `--channel` publishes to a pilot channel first.
+- `akan pack-update <app> --platform ios|android [--target] [--env] [--out]` writes an unsigned phone update instead,
+  for a signer that keeps the key elsewhere: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the
+  manifest with `channel`, `sequence` and `bundle` left for the signer. `--against <store bundle.json>` also checks
+  the bundle runs in that store build, writes `compat.json`, and fails when it needs a new binary. The signing
+  contract is in the native runtime's architecture notes: fill the three fields, sign exactly the bytes you upload,
+  upload `files/` first.

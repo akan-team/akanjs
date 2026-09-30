@@ -306,6 +306,11 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
       if (text?.en) texts.push(text.en);
     }
 
+    if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === "signature") {
+      const signature = getStringValue(node.initializer, sourceFile);
+      if (signature) texts.push(`\`${signature}\``);
+    }
+
     if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) return;
 
     const tagName = node.tagName.getText(sourceFile);
@@ -341,7 +346,7 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
     title,
     priority: priorityFromHref(href),
     headings,
-    body: unique([title, ...texts]).slice(0, 160),
+    body: unique([title, ...texts]),
     codeBlocks,
   };
 };

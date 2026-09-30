@@ -46,6 +46,8 @@ Delete the whole library folder.
 
 A library in `libs/`, such as `util`. Leave it out, or mistype it, to pick one from a list.
 
+`akan create-library <lib-name>`
+
 Create a new shared library in `libs/<lib-name>/` for code several apps reuse. It starts with the standard folders and one empty service module, then runs `sync-library`.
 
 Library name. It is lowercased and spaces become `-`; asked for if left out.
@@ -66,6 +68,8 @@ importing
 
 Apps import it as `@libs/<lib-name>/client` or `@libs/<lib-name>/server`; no config to add.
 
+`akan remove-library [lib]`
+
 Remove a library from the workspace by deleting its whole `libs/<lib>/` folder, without asking. Use it when no app should import the library, sync it or depend on it anymore.
 
 what stays
@@ -75,6 +79,8 @@ Apps' `@libs/<lib>` imports stay, and so do the packages merged into the root `p
 afterwards
 
 Delete those imports, then run `akan sync <app>` for each app that used the library.
+
+`akan sync-library [lib]`
 
 Regenerate one library's generated files and refresh its dependency list. Run it after you add or rename files, change packages, or edit the library's config.
 
@@ -89,6 +95,8 @@ Each package the library imports is written into its `package.json` at the root 
 used libraries
 
 The libraries it imports get their generated files refreshed too.
+
+`akan install-library <lib-name>`
 
 Install a ready-made library template such as `shared` or `util` into `libs/<lib-name>/`. You can run it again: the copy overwrites the library source and leaves your testing env alone.
 
@@ -113,6 +121,8 @@ git commits
 Commits the copy if anything changed, then the merge; each runs `git add .` on the whole tree.
 
 `shared` imports `util`, so install `util` first, as `create-workspace --libs true` does.
+
+`akan library-status [--format <text|json>]`
 
 Report whether each library still matches the source it was installed from. It checks every library in `libs/` and marks each one `clean`, `drifted` or `unstamped`.
 

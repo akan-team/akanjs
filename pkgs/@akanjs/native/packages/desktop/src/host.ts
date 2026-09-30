@@ -19,8 +19,10 @@ import { linkArguments, registerDeepLinks } from "./deeplinks.ts";
 import { createDispatcher } from "./dispatcher.ts";
 import { cstr, FRAME_EVENT, FRAME_HEADER, FRAME_IPC, openNative, resolvePaths } from "./ffi.ts";
 import { createLifecycle } from "./lifecycle.ts";
-import { appDataDir, reservedDirs } from "./paths.ts";
+import { appDataDir, appLocalDataDir, reservedDirs, serverDataDir } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
+import { nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
+import { createDesktopServer, pathWithFirst, readServerManifest, type ServerManifest } from "./server.ts";
 
 declare const self: Worker;
 
@@ -56,6 +58,10 @@ export function shellError(message: string): AkanNativeError {
 
 export function startHost(plugins: DesktopPlugin[]): void {
   const paths = resolvePaths();
+  //? A Worker keeps its own copy of process.env, and Bun.spawn without `env` ignores it anyway: the server launcher
+  //? and plugins that pass process.env get the app's executables first.
+  const binDir = existsSync(join(paths.resources, "bin")) ? join(paths.resources, "bin") : null;
+  if (binDir) process.env.PATH = pathWithFirst(binDir, process.env.PATH);
   const lib = openNative(paths.lib);
   const native = lib.symbols;
   // One limit for every external open (L0): the page's links (shell) and the plugins' (here).
@@ -113,6 +119,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
     quitOnLastWindowClosed?: boolean;
     deepLinks?: string[];
     externalSchemes?: string[];
+    recovery?: "errorPage" | "reload";
   };
   const deepLinkSchemes = (shellConfig.deepLinks ?? []).map((s) => s.toLowerCase());
   // D6 on Windows and Linux (deeplinks.ts): a link is a launch argument, delivered like macOS's Event::Opened.
@@ -133,11 +140,25 @@ export function startHost(plugins: DesktopPlugin[]): void {
   });
 
   const reserved = reservedDirs(boot.app.id);
+  // Read before the plugins' setup, which may ask whether the app carries a server (ctx.server).
+  let manifest: ServerManifest | null = null;
+  let manifestProblem: unknown;
+  try {
+    manifest = readServerManifest(paths.resources);
+  } catch (error) {
+    manifestProblem = error;
+  }
+  const carriesServer = manifest !== null || manifestProblem !== undefined;
+  let settleServer = (_ready: boolean) => {};
+  const serverReady = new Promise<boolean>((resolve) => (settleServer = resolve));
   const dispatcher = createDispatcher(
     plugins,
     {
       app: boot.app,
+      dev: boot.dev === true,
       appDataDir: appDataDir(boot.app.id),
+      binDir,
+      server: carriesServer ? { ready: serverReady } : null,
       emit(window, message) {
         emitJs(window, `window.__AKAN_NATIVE__&&window.__AKAN_NATIVE__.receive(${JSON.stringify(message)})`);
       },
@@ -262,6 +283,22 @@ export function startHost(plugins: DesktopPlugin[]): void {
     respond(reqId, 200, await dispatcher.handle(decoder.decode(body), window));
   };
 
+  // Once per process: the browser process ends for every window at once, and each window reports it.
+  let browserExitHandled = false;
+  const relaunchAfterBrowserExit = () => {
+    if (browserExitHandled) return;
+    browserExitHandled = true;
+    const delayMs = nextRelaunchDelay(join(appLocalDataDir(boot.app.id), "akan-native-relaunch.json"));
+    if (delayMs === null) {
+      console.error("[akan-native] the webview's browser process kept ending after each relaunch; the app stops here");
+      void lifecycle.quit(1);
+      return;
+    }
+    relaunchAfterExit(process.execPath, [], { delayMs })
+      .then(() => lifecycle.quit(0))
+      .catch((error: unknown) => console.error("[akan-native] cannot relaunch the app", error));
+  };
+
   const onEvent = (event: NativeEvent) => {
     if (event.type === "shellReply" && typeof event.id === "number") {
       const pending = shellPending.get(event.id);
@@ -286,6 +323,8 @@ export function startHost(plugins: DesktopPlugin[]): void {
       gone++;
       console.error(`[akan-native] window ${window}: the page's process ended (${String(event.reason)})`);
       dispatcher.reset(window);
+      // desktop.recovery "reload": every window lost its page for good; the shell quits by itself if this fails.
+      if (event.reason === "browserExited" && shellConfig.recovery === "reload") relaunchAfterBrowserExit();
     } else if (event.type === "window" && event.event === "destroyed") dispatcher.reset(window);
     else if (event.type === "window" && event.event === "closeRequested") void lifecycle.closeRequested(window);
     else if (event.type === "quitRequested")
@@ -360,14 +399,51 @@ export function startHost(plugins: DesktopPlugin[]): void {
   }
   // JSCallback does not keep the event loop alive.
   setInterval(() => {}, 2 ** 31 - 1);
-  // The main thread creates the window (or exits) once the launch phase is over.
-  void dispatcher.launched.then((launch) => {
-    self.postMessage({ type: "ready", ...launch });
-    if (typeof launch.exit === "number") return;
-    // A cold start by deep link (Windows, Linux); the app plugin keeps it for the page (C2).
-    openLinks(process.argv.slice(2));
-    registerDeepLinks(boot.app, deepLinkSchemes).catch((error) =>
-      console.warn("[akan-native] cannot register the deep link schemes", error),
-    );
-  });
+  const serverAlert = (message: string) =>
+    void shell("alert.show", {
+      title: boot.app.name,
+      message,
+      buttons: [{ title: "OK" }],
+      tag: "akan-server",
+    }).catch((error: unknown) => console.error("[akan-native] cannot show the server alert", error));
+  //? A page of an app that carries a server always gets a loopback URL, even one nothing answers: without it the page
+  //? would call the backend its bundle was built for, and a desktop app would read and write another copy's data.
+  const startServer = async (): Promise<Record<string, string> | undefined> => {
+    if (!carriesServer) return undefined;
+    const dataDir = serverDataDir(boot.app.id, boot.dev === true);
+    try {
+      if (!manifest) throw manifestProblem;
+      const server = createDesktopServer({
+        resources: paths.resources,
+        dataDir,
+        manifest,
+        binDir,
+        onGiveUp: serverAlert,
+      });
+      void server.ready.then(settleServer);
+      lifecycle.onQuit(() => server.stop());
+      const { url, ready } = await server.start();
+      console.info(`[akan-native] server ${ready ? "ready" : "still starting"} on ${url}`);
+      return { PUBLIC_AKAN_SERVER_URL: url };
+    } catch (error) {
+      console.error("[akan-native] the app's server could not start", error);
+      settleServer(false);
+      serverAlert(`The app's server cannot start: ${error instanceof Error ? error.message : String(error)}`);
+      return { PUBLIC_AKAN_SERVER_URL: "http://127.0.0.1:0" };
+    }
+  };
+  // The main thread creates the window (or exits) once the launch phase is over. The server starts
+  // after it: a second instance handing over to the first (single-instance) must not open its data.
+  void dispatcher.launched
+    .then(async (launch) => {
+      const env = typeof launch.exit === "number" ? undefined : await startServer();
+      self.postMessage({ type: "ready", ...launch, ...(env ? { env } : {}) });
+      if (typeof launch.exit === "number") return;
+      // A cold start by deep link (Windows, Linux); the app plugin keeps it for the page (C2).
+      openLinks(process.argv.slice(2));
+      registerDeepLinks(boot.app, deepLinkSchemes).catch((error) =>
+        console.warn("[akan-native] cannot register the deep link schemes", error),
+      );
+    })
+    .catch((error: unknown) => console.error("[akan-native] the launch phase failed", error));
 }

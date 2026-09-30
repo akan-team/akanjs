@@ -261,12 +261,138 @@ describe("NativeConfig.build", () => {
     }
   });
 
+  test("ships the app's own native plugins by folder and names each by its id in the capability", async () => {
+    const root = await makeTempRoot();
+    const kiosk = await writeManifest(path.join(root, "native", "kiosk"), "kiosk");
+    await writeManifest(path.join(root, "vendor", "led-panel"), "led-panel");
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: { ...minimalTarget, permissions: [], native: { plugins: ["./vendor/led-panel"] }, deepLinks: undefined },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      platform: "macos",
+      nativePlugins: [{ id: "kiosk", dir: kiosk, owner: "apps/board" }],
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, "./vendor/led-panel", kiosk]);
+    expect(config.capabilities?.[0]?.permissions).toEqual(
+      [...NativeConfig.basePlugins, "led-panel", "kiosk"].map((id) => `${id}:default`),
+    );
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    const api = await NativeApi.load(repoApp);
+    expect(api.validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
+  test("ships a native/ folder once when the target also lists it by path", async () => {
+    const root = await makeTempRoot();
+    const kiosk = await writeManifest(path.join(root, "native", "kiosk"), "kiosk");
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        native: { plugins: ["./native/kiosk/", "haptics"] },
+        deepLinks: undefined,
+      },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      platform: "macos",
+      nativePlugins: [{ id: "kiosk", dir: kiosk, owner: "apps/board" }],
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, kiosk]);
+  });
+
+  test("hands an unattended app's settings on: page recovery, a kiosk window, screen capture and Android autoplay", async () => {
+    const root = await makeTempRoot();
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        deepLinks: undefined,
+        native: {
+          android: { autoplay: true },
+          desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+        },
+      },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      platform: "macos",
+      desktopBin: root,
+    });
+
+    expect(config.desktop).toEqual({
+      recovery: "reload",
+      window: { fullscreen: true, skipTaskbar: true },
+      screenCapture: "auto",
+      bin: root,
+    });
+    expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
+  test("an app with updates ships the updates plugin and its settings", () => {
+    const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=`, channel: "pilot" };
+    const { config } = NativeConfig.build({
+      appPath: "/repo/apps/board",
+      target: { ...minimalTarget, permissions: [], deepLinks: undefined, native: undefined, updates },
+      webDir: "/web",
+      contributions: [],
+      locales: ["en"],
+      platform: "macos",
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, "updates"]);
+    expect(config.updates).toEqual(updates);
+  });
+
+  test("an updates channel left unnamed is the backend env the binary is built for", () => {
+    const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=` };
+    const build = (env?: "debug" | "main", channel?: string) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/board",
+        target: {
+          ...minimalTarget,
+          permissions: [],
+          deepLinks: undefined,
+          native: undefined,
+          updates: { ...updates, ...(channel ? { channel } : {}) },
+        },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "macos",
+        ...(env ? { env } : {}),
+      }).config.updates;
+
+    expect(build("debug")).toEqual({ ...updates, channel: "debug" });
+    expect(build("main")).toEqual({ ...updates, channel: "main" });
+    expect(build("debug", "pilot")).toEqual({ ...updates, channel: "pilot" });
+    expect(build()).toEqual(updates);
+  });
+
   test("keeps a file name the runtime accepts", () => {
     expect(NativeConfig.fileNameOf("minimal")).toBe("minimal");
     expect(NativeConfig.fileNameOf("my app!")).toBe("my-app");
     expect(NativeConfig.fileNameOf("...")).toBe("app");
   });
 });
+
+const writeManifest = async (dir: string, id: string) => {
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "native-plugin.json"),
+    JSON.stringify({ id, apiVersion: 1, methods: [], events: [], web: null, desktop: null, ios: null, android: null }),
+  );
+  return dir;
+};
 
 const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 

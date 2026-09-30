@@ -112,6 +112,31 @@ export default page().render(() => {
       ko: "`--release` 없이 실행하면 앱이 dev gateway를 거쳐 `akan start <app>`에서 화면을 불러오므로 저장할 때마다 반영됩니다. 개발 서버를 켜 두세요. 꺼져 있으면 명령이 그렇게 알리고 멈춥니다.",
     }),
   };
+  const carryServerOption: ReferenceRow = {
+    name: "--server",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.",
+      ko: "앱의 서버를 데스크톱 앱에 넣습니다. 창과 함께 loopback 포트로 떠서 페이지가 그 서버를 부릅니다.",
+    }),
+  };
+  const startServerOption: ReferenceRow = {
+    name: "--server",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.",
+      ko: "`--release`와 함께 주면 `build-desktop --server`처럼 앱의 서버를 앱에 넣습니다. `--release` 없이 주면 응답하는 개발 서버가 없을 때 같은 명령에서 `akan start <app>`을 띄웁니다.",
+    }),
+  };
+  const carriedServerNote: ReferenceRow = {
+    name: l.trans({ en: "carried server", ko: "내장 서버" }),
+    desc: l.trans({
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `--env` 환경의 `env.server.<env>.ts` 하나만, 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+    }),
+  };
   const oneTargetNote: ReferenceRow = {
     name: l.trans({ en: "one target", ko: "타깃 하나" }),
     desc: l.trans({
@@ -270,8 +295,8 @@ export default page().render(() => {
           }),
         },
         {
-          name: ["build-ios", "build-android"],
-          href: ["#build-ios", "#build-android"],
+          name: ["build-ios", "build-android", "build-desktop"],
+          href: ["#build-ios", "#build-android", "#build-desktop"],
           desc: l.trans({
             en: "Build the native app on the native runtime.",
             ko: "네이티브 런타임으로 네이티브 앱을 빌드합니다.",
@@ -285,6 +310,14 @@ export default page().render(() => {
             ko: "App Store나 Play Store 출시용으로 앱을 빌드합니다.",
           }),
         },
+        {
+          name: ["update-keygen", "publish-update"],
+          href: ["#update-keygen", "#publish-update"],
+          desc: l.trans({
+            en: "Sign and publish releases installed apps update themselves to.",
+            ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시합니다.",
+          }),
+        },
       ],
     },
   ];
@@ -295,6 +328,7 @@ export default page().render(() => {
     { alias: "akan s", command: "akan start" },
     { alias: "akan bi", command: "akan build-ios" },
     { alias: "akan ba", command: "akan build-android" },
+    { alias: "akan bd", command: "akan build-desktop" },
     { alias: "akan si", command: "akan start-ios" },
     { alias: "akan sa", command: "akan start-android" },
     { alias: "akan sd", command: "akan start-desktop" },
@@ -974,15 +1008,29 @@ akan start-android myapp --device Pixel_10`,
     },
     {
       name: "start-desktop",
-      signature: "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]",
+      signature:
+        "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--server <boolean>] [--write <boolean>]",
       desc: l.trans({
         en: "Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.",
         ko: "모바일 타깃을 이 컴퓨터에서 데스크톱 앱으로 실행합니다. 데스크톱 앱은 자기 OS에서만 빌드되므로 macOS, Windows, Linux 중 지금 컴퓨터의 것을 씁니다. `start-ios`와 같이 동작하며, 고를 기기나 팀은 없습니다.",
       }),
-      options: [targetOption, localEnvOption, releaseModeOption, writeOption],
-      notes: [aliasNote("sd"), devServerNote, oneTargetNote],
+      options: [targetOption, localEnvOption, releaseModeOption, startServerOption, writeOption],
+      notes: [
+        aliasNote("sd"),
+        devServerNote,
+        {
+          name: l.trans({ en: "--server without --release", ko: "--release 없는 --server" }),
+          desc: l.trans({
+            en: "A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
+            ko: "앱의 개발 포트에서 이미 응답하는 개발 서버가 있으면 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
+          }),
+        },
+        carriedServerNote,
+        oneTargetNote,
+      ],
       examples: `akan start-desktop myapp --target default
-akan start-desktop myapp --release true --env debug`,
+akan start-desktop myapp --server true
+akan start-desktop myapp --release true --server true --env debug`,
     },
     {
       name: "build-ios",
@@ -1015,6 +1063,35 @@ akan start-desktop myapp --release true --env debug`,
         outputNote("android"),
       ],
       examples: "akan build-android myapp --target all --env debug",
+    },
+    {
+      name: "build-desktop",
+      signature:
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]",
+      desc: l.trans({
+        en: "Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
+        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더이며, ad hoc 또는 개발용 인증서로 서명합니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
+      }),
+      options: [
+        targetOption,
+        debugEnvOption,
+        debugBuildOption,
+        carryServerOption,
+        {
+          name: "--installer",
+          type: "Boolean",
+          defaultValue: "false",
+          desc: l.trans({
+            en: "Windows: also build `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`). It installs for the current user under `%LOCALAPPDATA%\\Programs`, where updates can swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards; it installs the WebView2 Runtime where it is missing.",
+            ko: "Windows: NSIS로 `<file>-<version>-<arch>-setup.exe`도 만듭니다(`winget install NSIS.NSIS`). 현재 사용자로 `%LOCALAPPDATA%\\Programs` 아래에 설치하므로 업데이트가 관리자 권한 없이 앱을 바꿀 수 있습니다. `/S`는 무인 설치, `/RUN`은 설치 뒤 실행이며, WebView2 Runtime이 없는 PC에는 함께 설치합니다.",
+          }),
+        },
+        writeOption,
+      ],
+      notes: [aliasNote("bd"), carriedServerNote, outputNote("<macos|windows|linux>")],
+      examples: `akan build-desktop myapp --target default
+akan build-desktop myapp --server true --env main
+akan build-desktop myapp --installer true --env main`,
     },
     {
       name: "release-ios",
@@ -1080,6 +1157,53 @@ akan release-ios myapp --target default --ad-hoc true`,
       notes: [androidSigningNote, outputNote("android")],
       examples: `akan release-android myapp --target all --env main
 akan release-android myapp --assemble-type apk --target all --env main`,
+    },
+    {
+      name: "update-keygen",
+      signature: "akan update-keygen <app> [--target <target>]",
+      desc: l.trans({
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `mobile.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다.",
+      }),
+      options: [targetOption],
+      examples: "akan update-keygen myapp",
+    },
+    {
+      name: "publish-update",
+      signature:
+        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
+      desc: l.trans({
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop app that carries its server publishes with `--server`, as it was built.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 데스크톱 앱은 빌드할 때처럼 `--server`로 게시합니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          defaultValue: "desktop",
+          enumOrFlag: "desktop | android | ios",
+          desc: l.trans({
+            en: "`desktop` is this computer's own OS and CPU.",
+            ko: "`desktop`은 이 컴퓨터의 OS와 CPU입니다.",
+          }),
+        },
+        targetOption,
+        releaseEnvOption,
+        {
+          name: "--channel",
+          type: "String",
+          desc: l.trans({
+            en: "Default `updates.channel`, else `--env`, the channel an app built with that env follows. Publish to a pilot channel first.",
+            ko: "기본값은 `updates.channel`, 없으면 그 env로 빌드한 앱이 따르는 `--env`입니다. pilot 채널에 먼저 게시합니다.",
+          }),
+        },
+        carryServerOption,
+        writeOption,
+        allowLocalReleaseOption,
+      ],
+      examples: `akan publish-update myapp --env main
+akan publish-update myapp --target pilot --env main
+akan publish-update myapp --platform android --env main`,
     },
   ];
 
