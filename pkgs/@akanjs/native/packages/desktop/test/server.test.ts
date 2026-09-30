@@ -83,8 +83,8 @@ describe("the server a desktop app carries", () => {
       "--no-env-file",
       "--no-install",
       "--use-system-ca",
-      "--config=/app/Resources/server.bunfig.toml",
-      "/app/Resources/server/main.js",
+      `--config=${join("/app/Resources", "server.bunfig.toml")}`,
+      join("/app/Resources", "server", "main.js"),
     ]);
   });
 

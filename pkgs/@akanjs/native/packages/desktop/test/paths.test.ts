@@ -11,14 +11,14 @@ describe("app folders", () => {
       join(winEnv.LOCALAPPDATA, "dev.x", "server"),
     );
     expect(serverDataDir("dev.x", false, "darwin", {}, "/Users/u")).toBe(
-      "/Users/u/Library/Application Support/dev.x/server",
+      join("/Users/u/Library/Application Support/dev.x/server"),
     );
-    expect(serverDataDir("dev.x", false, "linux", {}, "/home/u")).toBe("/home/u/.local/share/dev.x/server");
+    expect(serverDataDir("dev.x", false, "linux", {}, "/home/u")).toBe(join("/home/u/.local/share/dev.x/server"));
   });
 
   test("a debug build's server keeps its own folder beside the release app's", () => {
     expect(serverDataDir("dev.x", true, "darwin", {}, "/Users/u")).toBe(
-      "/Users/u/Library/Application Support/dev.x/server-debug",
+      join("/Users/u/Library/Application Support/dev.x/server-debug"),
     );
   });
 
