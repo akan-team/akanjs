@@ -610,8 +610,9 @@ export const privateFile = (relativePath: string) => {
                       <code>AKAN_APP_DIR</code> is the app folder everywhere.
                     </strong>{" "}
                     It is <code>apps/myapp</code> under <code>akan start</code> and <code>dist/apps/myapp</code> in a
-                    build. A single-process server, such as the one a desktop app carries, may leave it unset, which is
-                    why the helper falls back to the folder of <code>Bun.main</code>.
+                    build, and the server sets it before any app module loads, a desktop app's included. A script run
+                    outside the server has none, which is why the helper falls back to the folder of{" "}
+                    <code>Bun.main</code>.
                   </span>
                 ),
                 ko: (
@@ -620,8 +621,8 @@ export const privateFile = (relativePath: string) => {
                       <code>AKAN_APP_DIR</code> 값은 어디서나 앱 폴더입니다.
                     </strong>{" "}
                     <code>akan start</code>에서는 <code>apps/myapp</code>, 빌드에서는 <code>dist/apps/myapp</code>
-                    입니다. 데스크톱 앱에 넣은 서버처럼 프로세스 하나로 도는 서버에는 값이 없을 수 있어서, 헬퍼가{" "}
-                    <code>Bun.main</code>의 폴더로 대신합니다.
+                    입니다. 서버는 앱 모듈을 불러오기 전에 이 값을 정하며, 데스크톱 앱에 넣은 서버도 같습니다. 서버
+                    밖에서 도는 스크립트에는 값이 없어서 헬퍼가 <code>Bun.main</code>의 폴더로 대신합니다.
                   </span>
                 ),
               })}
