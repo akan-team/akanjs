@@ -133,8 +133,8 @@ export default page().render(() => {
   const carriedServerNote: ReferenceRow = {
     name: l.trans({ en: "carried server", ko: "내장 서버" }),
     desc: l.trans({
-      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
-      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/`. Only the `--env` environment's `env.server.<env>.ts` ships, in plain text that anyone with the app can read, so keep deployment secrets out of it. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다. `--env` 환경의 `env.server.<env>.ts` 하나만, 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
     }),
   };
   const oneTargetNote: ReferenceRow = {
@@ -1173,8 +1173,8 @@ akan release-android myapp --assemble-type apk --target all --env main`,
       signature:
         "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, the manifests last. A desktop app that carries its server publishes with `--server`, as it was built.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 manifest를 마지막에 올립니다. 서버를 싣는 데스크톱 앱은 빌드할 때처럼 `--server`로 게시합니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop app that carries its server publishes with `--server`, as it was built.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 데스크톱 앱은 빌드할 때처럼 `--server`로 게시합니다.",
       }),
       options: [
         {
@@ -1193,8 +1193,8 @@ akan release-android myapp --assemble-type apk --target all --env main`,
           name: "--channel",
           type: "String",
           desc: l.trans({
-            en: "The manifest to publish to; default the target's `updates.channel`. Publish to a pilot channel first, then to the one everyone follows.",
-            ko: "게시할 manifest이며 기본값은 타깃의 `updates.channel`입니다. pilot 채널에 먼저 내고, 모두가 따르는 채널로 올립니다.",
+            en: "Default `updates.channel`, else `--env`, the channel an app built with that env follows. Publish to a pilot channel first.",
+            ko: "기본값은 `updates.channel`, 없으면 그 env로 빌드한 앱이 따르는 `--env`입니다. pilot 채널에 먼저 게시합니다.",
           }),
         },
         carryServerOption,

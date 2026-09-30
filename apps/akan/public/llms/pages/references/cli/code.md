@@ -55,6 +55,8 @@ Any other call with a prompt
 
 Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
 
+`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
+
 Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open the full-screen session.
 
 What the agent should do. Left off on a terminal, the full-screen session opens.

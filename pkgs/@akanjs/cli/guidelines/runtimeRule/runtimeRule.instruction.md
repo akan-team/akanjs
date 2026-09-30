@@ -189,7 +189,19 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
 `akan build-desktop --server` (and `start-desktop --release --server`) puts the backend `akan build` made into the
 app — the dist `.js`, `akan.build.json` and `private/` — and installs it on its own with `bun install --production`.
 A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
-on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks.
+on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
+it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
+server's adapter. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server` on Windows, never
+Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate store and takes the session's
+`HTTP(S)_PROXY` / `NO_PROXY` / `NODE_EXTRA_CA_CERTS`, and nothing else of the user's environment.
+
+**Everything it carries is on the user's computer, readable.** That is `private/` as it is, and the server env of
+the one environment the build is for (`--env`: `debug` for `build-desktop`, `main` for `publish-update`, unless
+named): the build keeps `env/env.server.<env>.ts` and swaps every other environment's file for exports that refuse to
+be read. Keep a key in that file only if every user of the app may hold it; a secret the server needs belongs to a
+cloud server its adapter calls. There is no `public/`: a file the server reads at runtime goes in `private/` and is
+read from `AKAN_APP_DIR` (the folder `server.js` sits in), never from `process.cwd()`, which is the app's data
+folder.
 
 **Nothing from `docker` reaches it.** `preRuns`, `postRuns` and a whole Dockerfile install into a Linux image the
 desktop app never runs in, and the build warns when an app has them and carries no `bin`. What the server needs
@@ -226,6 +238,9 @@ const config: AppConfig = {
   and finds the carried file even in an app launched from the Finder, whose PATH is only
   `/usr/bin:/bin:/usr/sbin:/sbin`. A native plugin finds the folder in `ctx.binDir`: Bun's own `spawn` and `which`
   without `env` read the environment the app started with, so a plugin passes `env: process.env` to run one by name.
+  The server passes it too when it spawns a carried `bun build --compile` executable: the shell starts the server as
+  Bun with `BUN_BE_BUN=1`, which akanjs takes out of `process.env` at boot, and a child spawned without `env` still
+  inherits it and runs as Bun's own CLI instead of the tool.
 - **One file per entry, so carry a static build.** A build that loads its own shared libraries — a `-shared`
   archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
 - **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the
@@ -244,7 +259,8 @@ Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settl
 **A server bound to its machine stays a service.** A server that needs a whole environment — ROS, system services,
 root to change the network or the clock — runs as a service on that machine (the image), and the desktop app ships
 without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
-user and stops with the app.
+user and stops with the app, and so does what it started: on macOS and Linux the server leads its own process
+group, which ends with it; on Windows the job object does the same.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
 ["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,

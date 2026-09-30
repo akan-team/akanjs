@@ -42,6 +42,8 @@ The list of cards and the detail screen.
 
 The form body, shared by the create and edit pages.
 
+`akan create-crud-page [app] [sys:module] [--base-path <path>] [--single]`
+
 Create the list, create, detail and edit pages for an existing module. They go into `page/(<app>)/(public)/<module>/` unless `--base-path` names another folder.
 
 The app that gets the pages. Left out, the only app is used, or you pick one from a list.

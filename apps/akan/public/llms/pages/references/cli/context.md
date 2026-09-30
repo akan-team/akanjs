@@ -46,6 +46,8 @@ Let the editor's agent ask for context whenever it needs it.
 
 See exactly what one MCP tool returns.
 
+`akan context [--format <format>] [--app <app>] [--module <module>]`
+
 Prints the workspace structure in a form an agent can read. Use it when an external coding agent, CI job or IDE extension needs a summary of the workspace.
 
 Output format: `json` for tools, `markdown` for people or a chat prompt.
@@ -66,6 +68,8 @@ Privacy
 
 It never prints `.env` values or secrets.
 
+`akan doctor [--format <format>] [--strict <boolean>] [--ios <boolean>]`
+
 Reports where the workspace drifts from Akan conventions, such as stray files or missing module abstracts. Run it before and after an agent's change; `--format json` gives a machine-readable result.
 
 Output format. Use `json` for agent validation loops and CI.
@@ -85,6 +89,8 @@ Generated-file freshness, a repair command per problem, and the validation comma
 Boolean options
 
 `--strict` alone means `--strict true`.
+
+`akan mcp [--mode <readonly|plan|apply>]`
 
 Starts the Akan MCP server over stdio. An MCP-aware coding agent asks it for workspace and module context, guidelines, command explanations and diagnostics. `--mode` decides how far the agent may go, and the default is the narrowest.
 
@@ -110,6 +116,8 @@ Where to run
 
 Start it from the workspace root; the server reads the workspace from its current folder.
 
+`akan mcp-install [target] [--force <boolean>] [--mode <readonly|plan|apply>]`
+
 Registers the Akan MCP server in the project config of Cursor, Claude Code and Codex. Other servers in those files are kept; only the `akan` entry is written.
 
 Which tool to register. Leave it off to register all three.
@@ -127,6 +135,8 @@ Writes `.codex/config.toml`. Start Codex from the workspace root, since the entr
 New workspaces
 
 `akan create-workspace` runs this for all three with `--force`, so it starts in `apply` mode.
+
+`akan mcp-call <tool> [--mode <readonly|plan|apply>] [--args <json>] [--format json]`
 
 Calls one Akan MCP tool from the terminal and prints its JSON result. It runs the same code as the server without the stdio protocol, so it shows exactly what an agent would get.
 

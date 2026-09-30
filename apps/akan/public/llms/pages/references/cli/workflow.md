@@ -66,6 +66,8 @@ Create
 
 Add to a module
 
+`akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>]`
+
 List, explain, plan, apply, or validate a workflow, or print an earlier run's report. `plan` and `explain` never write source. Only `apply` does, and only from a plan file.
 
 What to do. Left out, it is asked for at a prompt.
@@ -105,6 +107,8 @@ Plan input for `add-slice`: the slice or query name.
 `workflow` is a plan path, a run artifact path, or a runId, and validation is recorded as a run too.
 
 `workflow` is a runId whose report is printed again, whether apply, dry run, validate or repair.
+
+`akan repair <kind> [--format <markdown|json>] [--app <name>] [--module <name>] [--target <name>]`
 
 Run one narrow repair and print a structured report. Each kind is a known remedy for a known problem. `dictionary` and `module-shape` change nothing: they read `akan doctor --strict`, keep your module's findings, and name the command that fixes them.
 

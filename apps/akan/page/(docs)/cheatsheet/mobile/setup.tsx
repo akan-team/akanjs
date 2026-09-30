@@ -1593,7 +1593,12 @@ akan start-desktop myapp --release true --env debug`}
                   elsewhere. With <code>--server</code>, <code>akan start-desktop</code> starts <code>akan start</code>{" "}
                   in the same command when none is running, and <code>akan build-desktop</code> builds the app with the
                   server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
-                  SQLite data in the app data folder's <code>server/</code>.
+                  SQLite data in the app data folder's <code>server/</code> (on Windows under{" "}
+                  <code>%LOCALAPPDATA%</code>; a <code>--debug</code> build keeps its own <code>server-debug/</code>).
+                  It trusts the certificates the operating system trusts and follows the proxy variables of the user's
+                  session, as the page does. The port is usually the one it had last time but is not guaranteed, so a
+                  sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not
+                  through the carried server.
                 </span>
               ),
               ko: (
@@ -1602,7 +1607,10 @@ akan start-desktop myapp --release true --env debug`}
                   <code>--server</code>를 주면 <code>akan start-desktop</code>은 떠 있는 개발 서버가 없을 때 같은
                   명령에서 <code>akan start</code>를 띄우고, <code>akan build-desktop</code>은 서버를 넣은 앱을
                   빌드합니다. 이 서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
-                  <code>server/</code>에 둡니다.
+                  <code>server/</code>에 둡니다(Windows는 <code>%LOCALAPPDATA%</code> 아래, <code>--debug</code> 빌드는
+                  따로 <code>server-debug/</code>). 운영체제가 믿는 인증서를 믿고, 페이지처럼 사용자 세션의 프록시
+                  변수를 따릅니다. 포트는 대개 지난번과 같지만 보장되지 않습니다. 그래서 redirect URI가 정확히 같아야
+                  하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의 adapter로 받습니다.
                 </span>
               ),
             })}
@@ -1616,24 +1624,25 @@ akan build-desktop myapp --server true --env main`}
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "The server needs `single` in `database.modes`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets such as cloud keys out of it.",
-              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. `env.server.<env>.ts`는 앱 안에 평문으로 들어가므로 클라우드 키 같은 배포용 비밀을 두지 마세요.",
+              en: "The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.",
+              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나만, 평문으로 실립니다. 앱을 가진 사람은 누구나 그 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀은 그 파일에 두지 마세요.",
             })}
           </Docs.Alert>
           <Docs.Alert type="info">
             {l.trans({
-              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer signed ad hoc. Distribution signing, notarization and installers are not akan commands yet.",
-              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용으로 ad hoc 서명한 앱을 만듭니다. 배포 서명, 공증, 설치 프로그램은 아직 akan 명령에 없습니다.",
+              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.",
+              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용 앱을 ad hoc 또는 개발용 인증서로 서명해 만듭니다. 배포 서명과 공증은 아직 akan 명령에 없고, Windows에서는 --installer가 서명하지 않은 현재 사용자용 설치 프로그램을 만듭니다.",
             })}
           </Docs.Alert>
           <div>
             {l.trans({
               en: (
                 <span>
-                  The carried server gets none of the image's <code>docker</code> steps. An executable its code spawns,
-                  such as ffmpeg, goes in <code>bin</code> in <code>akan.config.ts</code>: per platform, a download
-                  checked against its <code>sha256</code> or a file next to the config. The build fetches the one for
-                  this computer, puts it in the app and its folder first on the app's PATH, so the server's{" "}
+                  The carried server gets none of the image's <code>docker</code> steps. An executable the server or a
+                  native plugin spawns, such as ffmpeg, goes in <code>bin</code> in <code>akan.config.ts</code>: per
+                  platform, a download checked against its <code>sha256</code> or a file next to the config. Every
+                  desktop build, run and dev carries it, with a server or without: the build fetches the one for this
+                  computer, puts it in the app and its folder first on the app's PATH, so the server's{" "}
                   <code>spawn("ffmpeg")</code> runs it and the user installs nothing; a native plugin finds it in{" "}
                   <code>ctx.binDir</code>. A package that builds itself at install goes in{" "}
                   <code>trustedDependencies</code>.
@@ -1641,12 +1650,13 @@ akan build-desktop myapp --server true --env main`}
               ),
               ko: (
                 <span>
-                  앱에 넣은 서버에는 이미지의 <code>docker</code> 단계가 하나도 들어가지 않습니다. 서버 코드가 실행하는
-                  ffmpeg 같은 실행 파일은 <code>akan.config.ts</code>의 <code>bin</code>에 적습니다. 플랫폼마다{" "}
-                  <code>sha256</code>로 확인하는 다운로드나 설정 파일 옆의 파일을 적으면, 빌드가 이 컴퓨터용 파일을 앱에
-                  넣고 그 폴더를 앱의 PATH 맨 앞에 둡니다. 그래서 서버의 <code>spawn("ffmpeg")</code>가 그 파일을
-                  실행하고 사용자는 아무것도 설치하지 않으며, 네이티브 플러그인은 <code>ctx.binDir</code>에서 찾습니다.
-                  설치하면서 스스로 빌드하는 패키지는 <code>trustedDependencies</code>에 적습니다.
+                  앱에 넣은 서버에는 이미지의 <code>docker</code> 단계가 하나도 들어가지 않습니다. 서버나 네이티브
+                  플러그인이 실행하는 ffmpeg 같은 실행 파일은 <code>akan.config.ts</code>의 <code>bin</code>에 적습니다.
+                  플랫폼마다 <code>sha256</code>로 확인하는 다운로드나 설정 파일 옆의 파일을 적습니다. 서버가 있든 없든
+                  모든 데스크톱 빌드·실행·개발이 이 파일을 싣습니다. 빌드가 이 컴퓨터용 파일을 앱에 넣고 그 폴더를 앱의
+                  PATH 맨 앞에 두므로, 서버의 <code>spawn("ffmpeg")</code>가 그 파일을 실행하고 사용자는 아무것도
+                  설치하지 않으며, 네이티브 플러그인은 <code>ctx.binDir</code>에서 찾습니다. 설치하면서 스스로 빌드하는
+                  패키지는 <code>trustedDependencies</code>에 적습니다.
                 </span>
               ),
             })}
@@ -1820,6 +1830,32 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
               ),
             })}
           </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An app follows the channel <code>updates.channel</code> names, or else the <code>--env</code> it was
+                  built with, so it takes only releases published for its own env. <code>build-desktop</code> defaults
+                  to <code>debug</code> and <code>publish-update</code> to <code>main</code>: pass the same{" "}
+                  <code>--env</code> to both. What makes a desktop app itself — its install folder, uninstall entry,
+                  data folder, single running instance and update state — comes from the target's <code>appId</code> and
+                  name, not from the env, so two envs of one target on one computer share all of it. To install them
+                  side by side, give each env its own target with its own <code>appId</code>.
+                </span>
+              ),
+              ko: (
+                <span>
+                  앱은 <code>updates.channel</code>이 정한 채널을, 없으면 빌드할 때의 <code>--env</code>를 따릅니다.
+                  그래서 자기 env로 게시한 릴리스만 받습니다. <code>build-desktop</code>의 기본값은 <code>debug</code>,{" "}
+                  <code>publish-update</code>는 <code>main</code>이므로 둘에 같은 <code>--env</code>를 줍니다. 설치
+                  폴더, 제거 항목, 데이터 폴더, 한 번에 하나만 뜨는 인스턴스, 업데이트 상태처럼 데스크톱 앱을 그 앱이게
+                  하는 것은 env가 아니라 타깃의 <code>appId</code>와 이름에서 나옵니다. 그래서 한 타깃의 두 env를 한
+                  컴퓨터에 두면 이것을 모두 함께 씁니다. 나란히 설치하려면 env마다 <code>appId</code>가 다른 타깃을 따로
+                  둡니다.
+                </span>
+              ),
+            })}
+          </div>
           <Code.Snippet
             className="w-full"
             title="webkit/useAppUpdates.tsx"
@@ -1833,6 +1869,12 @@ if (available) {
   await updates.apply();
 }`}
           />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "Behind a CDN, the files under `app/` and `files/` are named by their hash and may be cached for long, but `<channel>.json` and `<channel>.json.sig` must not be cached, or must be invalidated together: a manifest paired with another release's signature fails verification, and every app stops updating until the caches expire. Upload `app/` and `files/` first, then those two files last, together.",
+              ko: "CDN으로 서빙할 때 `app/`과 `files/` 아래 파일은 해시로 이름이 붙으므로 오래 캐시해도 됩니다. 하지만 `<channel>.json`과 `<channel>.json.sig`는 캐시하지 않거나 둘을 함께 무효화해야 합니다. manifest가 다른 릴리스의 서명과 짝지어지면 검증에 실패하고, 캐시가 만료될 때까지 모든 앱이 업데이트를 멈춥니다. `app/`과 `files/`를 먼저 올리고, 두 파일은 마지막에 함께 올립니다.",
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

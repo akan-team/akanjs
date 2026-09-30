@@ -33,6 +33,8 @@ An MCP client finds one resource per guideline in its resource list.
 
 Copies `framework`, `conventions` and `workspaceOnboarding` into the `AGENTS.md` agents read.
 
+`akan guideline <action> [name]`
+
 Lists the guidelines bundled with the CLI, or prints one of them as Markdown. Use it when an agent, a documentation tool or a contributor needs more depth on one area than `AGENTS.md` carries.
 
 `list` prints every guideline name, one per line; `show` prints one guideline.

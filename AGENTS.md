@@ -374,6 +374,8 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   that builds itself at install goes in `trustedDependencies`, which the image honours too. Carry a static LGPL ffmpeg: a `--enable-nonfree` build may
   not be redistributed. A file the user picks with `filePicker.pickFiles({ forServer: true })` reaches it as a
   grant, never a copy or a path: `NativeFile.resolve(grant, "read")` in `akanjs/server` asks the shell for it.
+  What it carries is readable on the user's computer — `private/` and the one `env.server.<env>.ts` of its
+  `--env` — and it has no `public/`: read runtime files from `AKAN_APP_DIR`, never `process.cwd()`.
 - **`assets: { pruneFonts, keepFonts }`** trims from the `dist` copy of `public/` the fonts nothing reads; source
   trees are never touched. A font with `optimize` on is a build input, not a runtime asset. `keepFonts` belongs to
   the `akan.config.ts` that owns the font, written against that scope's own `public/`.

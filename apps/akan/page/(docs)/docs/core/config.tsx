@@ -112,8 +112,8 @@ const configKeys = [
     key: "bin",
     type: "Record<string, { [platform]: AkanBinSource }>",
     default: "{}",
-    en: "Executables a desktop app's server carries, per platform; the image does not read it.",
-    ko: "데스크톱 앱의 서버가 싣고 가는 실행 파일이며 플랫폼마다 적습니다. 이미지는 이 값을 읽지 않습니다.",
+    en: "Executables every desktop build carries, per platform, first on its PATH; the image ignores it.",
+    ko: "모든 데스크톱 빌드가 싣고 가는 실행 파일이며 플랫폼마다 적고, PATH 맨 앞에 놓입니다. 이미지는 읽지 않습니다.",
   },
   {
     key: "barrelImports",
@@ -255,8 +255,8 @@ const mobileFields = [
   {
     key: "updates",
     type: "{ url, publicKey, channel?, readyTimeout? }",
-    en: "Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default production, a pilot target naming its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does; when to check, download and apply is the app's own call through updates from akanjs/client/native.",
-    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳입니다. akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등), akan update-keygen이 출력한 공개 키, 앱이 따르는 채널(기본 production, pilot 타깃은 자기 채널)을 적습니다. root와 target을 필드별로 병합합니다. 새 릴리스는 첫 페이지가 마운트될 때까지 시험 실행이고, 끝내 마운트되지 않으면 되돌립니다. 언제 확인·다운로드·적용할지는 akanjs/client/native의 updates로 앱이 정합니다.",
+    en: "Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default the --env it is built with, so it takes only releases of its own env; a pilot target names its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does; when to check, download and apply is the app's own call through updates from akanjs/client/native.",
+    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳입니다. akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등), akan update-keygen이 출력한 공개 키, 앱이 따르는 채널(기본값은 빌드할 때의 --env라 자기 env의 릴리스만 받음, pilot 타깃은 자기 채널)을 적습니다. root와 target을 필드별로 병합합니다. 새 릴리스는 첫 페이지가 마운트될 때까지 시험 실행이고, 끝내 마운트되지 않으면 되돌립니다. 언제 확인·다운로드·적용할지는 akanjs/client/native의 updates로 앱이 정합니다.",
   },
 ];
 
@@ -1000,18 +1000,20 @@ const config: AppConfig = {
             {l.trans({
               en: (
                 <span>
-                  <strong>A desktop app carries its own executables.</strong> Its server gets none of the image's{" "}
-                  <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else the app spawns, into the
-                  app for the computer it is built on and first on the app's PATH. Carry a static LGPL build: a{" "}
-                  <code>--enable-nonfree</code> build may not be redistributed.
+                  <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
+                  <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
+                  plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and
+                  in a plugin's <code>ctx.binDir</code>. Carry a static LGPL build: a <code>--enable-nonfree</code>{" "}
+                  build may not be redistributed.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 앱 안의 서버에는 이미지의{" "}
-                  <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 앱이
-                  실행하는 파일을 빌드하는 컴퓨터용으로 앱에 넣고 앱의 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
-                  <code>--enable-nonfree</code>로 빌드한 것은 재배포할 수 없습니다.
+                  <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 데스크톱 앱에는 이미지의{" "}
+                  <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 서버나
+                  네이티브 플러그인이 실행하는 파일을 빌드하는 컴퓨터용으로 모든 데스크톱 빌드에 넣고, 앱의 PATH 맨 앞과
+                  플러그인의 <code>ctx.binDir</code>에 둡니다. 정적 LGPL 빌드를 넣으세요. <code>--enable-nonfree</code>
+                  로 빌드한 것은 재배포할 수 없습니다.
                 </span>
               ),
             })}

@@ -96,6 +96,8 @@ MCP Server
 
 Answers live questions, and in apply mode runs the workflows the rules point at.
 
+`akan agent install [target] [--force]`
+
 Write the agent guide and its pointers into the workspace. Run it again after upgrading Akan: only the managed block of `AGENTS.md` is rewritten, so your own text stays.
 
 Always `install`, the only action. Left out, the CLI asks for it; any other value is an error.

@@ -45,6 +45,8 @@ afterwards
 
 Run `akan sync <app>` and then `akan lint <app>`.
 
+`akan create-ui --app <name> --module <name> [--surface <view|unit|template>] [--format <markdown|json>]`
+
 Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or a Template. It writes from the same template `akan create-module` uses, and touches no other file. It is the flag form of `akan create-view`, `create-unit` and `create-template`.
 
 Target module name, such as `icecreamOrder`.
@@ -64,6 +66,8 @@ The scaffold renders only the module's `name` field; swap in the fields you need
 existing file
 
 A file already at that path is overwritten with the scaffold, so commit first.
+
+`akan add-field --app <name> --module <name> --field <name> --type <type> [--default <value>] [--format <markdown|json>]`
 
 Add one field to a module's constant and dictionary. The field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`. For `Int` and `Float` it also adds the `akanjs/base` import.
 
@@ -104,6 +108,8 @@ The Korean label is filled in only for common words like `status`; otherwise it 
 components
 
 No component is edited, so add the field to the Template form yourself.
+
+`akan add-enum-field --app <name> --module <name> --field <name> --values <a,b,c> [--default <value>] [--format <markdown|json>]`
 
 Add a field that takes one value from a fixed set. First it declares the enum: an `enumOf` class named `<Module><Field>` in the constant, with the `enumOf` import added, and its options in the dictionary's `.enum` stage. Then it adds the field, typed as that class, exactly as `add-field` does.
 

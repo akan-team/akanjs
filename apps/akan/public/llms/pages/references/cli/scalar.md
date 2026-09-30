@@ -54,6 +54,8 @@ Fields such as `field(Price)` and imports in other modules. Neither command touc
 
 The app or library, such as `shop`. Leave it out to pick one from a list.
 
+`akan create-scalar <scalar-name> [sys] [--format <markdown|json>]`
+
 Create a scalar: a reusable value object or data shape that needs no table of its own. It writes four files into `lib/__scalar/<scalar>/` and prints what it wrote.
 
 Scalar name. Spaces are removed and the first letter is lowercased; asked for if left out.
@@ -73,6 +75,8 @@ Replace the placeholder `field` in the constant and its label in the dictionary.
 existing file
 
 A file already at the path keeps its content; only the formatter may tidy it.
+
+`akan remove-scalar <scalar-name> [sys]`
 
 Remove a scalar from an app or library. It deletes the whole `lib/__scalar/<scalar>/` folder at once, without asking.
 

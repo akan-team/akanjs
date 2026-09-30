@@ -308,9 +308,9 @@ It needs Rust through rustup, which installs the toolchain the build pins, plus 
 
 Open rustup
 
-The server needs `single` in `database.modes`. `env.server.<env>.ts` ships inside the app in plain text, so keep deployment secrets such as cloud keys out of it.
+The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, in plain text: anyone who has the app can read every value in it. Keep deployment secrets such as cloud keys out of that file.
 
-start-desktop is for development and testing, and build-desktop makes an app for this computer signed ad hoc. Distribution signing, notarization and installers are not akan commands yet.
+start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.
 
 Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.
 
@@ -321,6 +321,8 @@ An App Nobody Attends
 Installing On Windows
 
 Updates
+
+Behind a CDN, the files under `app/` and `files/` are named by their hash and may be cached for long, but `<channel>.json` and `<channel>.json.sig` must not be cached, or must be invalidated together: a manifest paired with another release's signature fails verification, and every app stops updating until the caches expire. Upload `app/` and `files/` first, then those two files last, together.
 
 Verify Setup
 

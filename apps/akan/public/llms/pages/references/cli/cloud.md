@@ -58,6 +58,8 @@ where
 
 Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
 
+`akan login [--host <host>]`
+
 Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the browser and waits until you finish there.
 
 browser
@@ -84,6 +86,8 @@ used by
 
 `akan tunnel` and `akan start --share` need it, while the env commands sign in on their own.
 
+`akan logout [--host <host>]`
+
 Sign out of Akan Cloud on this machine. Use it to switch accounts, or to take this machine's cloud access away.
 
 clears
@@ -93,6 +97,8 @@ Only the session saved for that `--host`, leaving other hosts signed in.
 not signed in
 
 Prints that no session was found and changes nothing.
+
+`akan update [--tag <tag>] [--registry <npm|local>]`
 
 Move the global `akan` CLI and this workspace's Akan.js packages to the newest version of a release tag. Use `latest` for normal updates, and `beta`, `rc` or `canary` only when you mean to test that channel.
 
@@ -112,6 +118,8 @@ framework repo
 
 With `USE_AKANJS_PKGS=true`, `--registry` has no default, so the CLI asks.
 
+`akan download-env [--host <host>]`
+
 Download the env values of every app and library in this workspace. Run it after cloning and whenever someone uploads a change, because env values are never committed.
 
 files
@@ -125,6 +133,8 @@ Asks for a server name and host, plus an optional username and SSH port.
 server list
 
 Kept in `~/.akan/config.json`, so later runs let you pick, add or remove a server.
+
+`akan upload-env [--host <host>]`
 
 Upload the env values of every app and library to where `download-env` reads from. The stored archive is replaced whole, so download first instead of uploading a stale local copy.
 

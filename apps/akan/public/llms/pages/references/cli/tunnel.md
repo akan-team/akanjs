@@ -35,6 +35,8 @@ The server that issues public hostnames and tracks shares. `akan login` signs in
 
 How long a share lives before it expires on its own.
 
+`akan tunnel [app] [--list <boolean>] [--stop <code>] [--host <url>] [--port <number>] [--ttl <min>]`
+
 Share an app running on this machine on a public URL. The connection runs inside this command, so nothing needs installing before the URL appears. The share lives as long as the command does: Ctrl-C ends it and hands the address back.
 
 App to share. Taken as is when there is only one app, and picked from a list when there are several.
