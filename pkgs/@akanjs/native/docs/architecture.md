@@ -534,7 +534,7 @@ export function useCamera() { /* camera API를 감싼 hook */ }
 // desktop: src/desktop.ts  (Bun Worker)
 export default defineDesktopPlugin({
   id: "preferences",
-  methods: { async get({ key }, ctx) { ... } },   // ctx: emit, registerFile, appDataDir
+  methods: { async get({ key }, ctx) { ... } },   // ctx: emit, registerFile, appDataDir, appLocalDataDir
 });
 ```
 ```swift
@@ -820,16 +820,16 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 Mach-O 파일을 이름과 상관없이(파일 머리로 판별) dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
 - 시작(`packages/desktop/src/server.ts`): 플러그인 호스트가 launch 단계(`dispatcher.launched`) 뒤에 띄운다. `exit`이면(다른 인스턴스로 넘겼으면) 띄우지 않는다. 두 번째 인스턴스가 서버를 잠깐이라도 띄우면 같은 DB와 cron을 건드린다.
   - 포트: 지난 세션의 서버가 ready였던 포트(`<서버 데이터>/port`)가 비어 있으면 그것을, 아니면 127.0.0.1에서 0번 포트로 listen해 받은 번호를 쓴다. 등록해 둔 URL이 포트가 비어 있는 동안은 계속 맞는다(보장은 아니다). 첫 ready 전에 서버가 끝나고 페이지가 아직 URL을 받지 않았으면 새 포트로 다시 띄운다(고른 뒤 다른 프로그램이 먼저 잡은 경우). init.js가 포트를 담아 `akan_native_run`에 한 번 넘어간 뒤로는 세션 동안 바꾸지 않고, 재시작도 같은 포트로 한다.
-  - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개(프록시 `HTTP(S)_PROXY`·`NO_PROXY`, CA `NODE_EXTRA_CA_CERTS`·`NODE_USE_SYSTEM_CA`·`SSL_CERT_FILE`, 서버가 띄우는 도구가 화면·오디오·세션 버스에 닿는 데스크톱 세션 변수 `DISPLAY`·`WAYLAND_DISPLAY`·`DBUS_SESSION_BUS_ADDRESS`·`PULSE_SERVER`·`XDG_*`, Windows의 `ProgramFiles`·`ComSpec`·`PATHEXT` 등 포함) + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`, `BUN_RUNTIME_TRANSPILER_CACHE_PATH=<서버 데이터>/runtime/transpiler-cache`). launcher 값이 이긴다. akanjs는 부팅 때 `BUN_BE_BUN`을 `process.env`에서 빼고, 자기 실행 파일을 다시 띄울 때만(ops snapshot) 돌려준다.
+  - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개(프록시 `HTTP(S)_PROXY`·`NO_PROXY`, CA `NODE_EXTRA_CA_CERTS`·`NODE_USE_SYSTEM_CA`·`SSL_CERT_FILE`, 서버가 띄우는 도구가 화면·오디오·세션 버스에 닿는 데스크톱 세션 변수 `DISPLAY`·`XAUTHORITY`(GDM 세션의 X 서버는 쿠키 없는 클라이언트를 거부한다)·`WAYLAND_DISPLAY`·`DBUS_SESSION_BUS_ADDRESS`·`PULSE_SERVER`·`PULSE_COOKIE`·`PULSE_RUNTIME_PATH`·`XDG_*`, Windows의 `ProgramFiles`·`ComSpec`·`PATHEXT` 등 포함) + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`, `BUN_RUNTIME_TRANSPILER_CACHE_PATH=<서버 데이터>/runtime/transpiler-cache`). launcher 값이 이긴다. akanjs는 부팅 때 `BUN_BE_BUN`을 `process.env`에서 빼고, 자기 실행 파일을 다시 띄울 때만(ops snapshot) 돌려준다.
   - 인자: `--no-env-file --no-install --config=<빈 bunfig> --use-system-ca`. Bun은 기본으로 자기에게 든 CA 목록만 믿는다. 회사가 OS에 넣은 루트 CA(TLS 검사 프록시, 사설 CA)를 WebView는 믿고 서버는 믿지 않는 일이 없게 OS 저장소를 쓴다.
   - PATH: 플러그인 호스트가 시작할 때 `resources/bin`(설정 `desktop.bin`, akanjs `bin`)을 자기 `process.env.PATH` 맨 앞에 붙이고(`host.ts`, 이미 맨 앞이면 다시 붙이지 않는다: 재실행한 앱은 붙인 PATH를 물려받는다), 서버는 그 PATH를 시스템 변수로 받는다. `server.json` env가 PATH를 정해도 bin을 다시 맨 앞에 둔다. 그래서 서버 코드의 `spawn("ffmpeg")`가 앱이 싣고 온 파일을 쓴다.
   - 데이터: `<서버 데이터>` = `<app local data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret`, `port`). `<app local data>`는 Windows에서 `%LOCALAPPDATA%\<id>`(Roaming은 사용자를 따라 동기화되고 파일 서버로 리디렉션될 수 있어 SQLite WAL이 동작하지 않는다), macOS·Linux에서는 `<app data>`다. debug 빌드는 release와 같은 app id이므로 `server-debug`를 따로 쓴다. `jwt.secret`은 macOS·Linux에서 0600이고 이미 있는 파일도 좁힌다(Windows는 사용자 프로필의 ACL). FileRef가 서빙하지 않는 예약 폴더다(L4).
   - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다. 포기가 정해지면(아래 크래시, 또는 데이터 폴더를 만들거나 `jwt.secret`을 읽지 못함) 기다리지 않는다.
-  - 서버를 띄우지 못해도 페이지에는 loopback URL을 넘긴다(`server.json`을 읽지 못하면 `http://127.0.0.1:0`). URL이 없으면 페이지가 빌드 때의 서버(cloud 주소)를 불러 다른 데이터를 읽고 쓰기 때문이다. 이때도 `alert.show`로 알린다. 셸은 `akan_native_run` 전에는 op를 받지 않으므로, launch 단계에서 난 알림은 셸이 첫 이벤트를 보낼 때까지 호스트가 들고 있다.
-  - 플러그인은 `ctx.server`(서버를 싣지 않으면 null)의 `ready`로 서버가 떴는지 안다. file-picker는 서버를 실은 debug 빌드에도 IPC grant를 준다(실린 서버는 edge라 dev grant를 받지 않는다). updates는 서버가 ready가 된 뒤에만 확정한다.
-- 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다. 다시 띄우다 예외가 나면(실행 중에 데이터 폴더가 지워짐, 프로세스 한도) 실패 한 번으로 센다. 플러그인 호스트 Worker는 끝나지 않는다.
+  - 서버를 띄우지 못해도 페이지에는 loopback URL을 넘긴다(`server.json`을 읽지 못하면 `http://127.0.0.1:0`). URL이 없으면 페이지가 빌드 때의 서버(cloud 주소)를 불러 다른 데이터를 읽고 쓰기 때문이다. 이때도 `alert.show`로 알린다. 셸은 `akan_native_run` 전에는 op를 받지 않으므로, launch 단계에서 난 알림은 `drain`이 셸의 첫 프레임을 받을 때까지 호스트가 들고 있다. 호스트가 스스로 만드는 이벤트(콜드 스타트 딥 링크의 `openLinks`)는 `akan_native_run` 전에 올 수 있어 세지 않는다(예전에는 이것이 알림을 먼저 풀어 대화상자 없이 사라졌다. 2026-09-30 08 리뷰).
+  - 플러그인은 `ctx.server`(서버를 싣지 않으면 null)의 `ready`로 서버가 떴는지 안다. file-picker는 서버를 실은 debug 빌드에도 IPC grant를 준다(실린 서버는 edge라 dev grant를 받지 않는다). updates는 서버가 ready가 된 뒤에만 확정한다. ready도 종료도 없이 부팅 중에 멈춘 서버는 `SERVER_BOOT_ALLOWANCE`(120초) 뒤 실패로 본다.
+- 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 한 번도 ready가 되지 않은 서버는 250ms 간격(`BOOT_RESTART_DELAY`)으로 다시 띄운다. 부팅 때 죽는 서버의 포기가 창이 기다리는 8초 안에 정해져 창이 알림과 함께 뜬다(1·2·4·8초였을 때는 포기가 약 15초에 와서, 창은 8초 뒤 아무도 답하지 않는 URL로 떴다). 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다. 다시 띄우다 예외가 나면(실행 중에 데이터 폴더가 지워짐, 프로세스 한도) 실패 한 번으로 센다. 플러그인 호스트 Worker는 끝나지 않는다.
 - 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGKILL(서버의 `AKAN_SHUTDOWN_TIMEOUT_MS`는 1초라 그 안에 끝난다. SIGTERM은 핸들러가 있는 서버를 끝내지 못한다). 셸이 먼저 죽으면 macOS·Linux에서는 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). Windows에서는 Bun이 자식을 넣는 job object가 셸과 함께 서버를 바로 끝낸다(서버 로그에 종료 줄이 없다). SQLite WAL이 있어 데이터는 남는다.
-  - macOS·Linux: 서버는 자기 프로세스 그룹의 리더로 뜬다(`detached`). 서버가 끝나면(정상 종료든 크래시든) 그룹에 남은 프로세스(서버가 띄운 bin 도구 등)를 끝낸다. 크래시면 SIGTERM, 유예 뒤 SIGKILL. Windows는 job object가 같은 일을 한다. 서버가 터미널의 SIGINT를 직접 받지 않으므로 IPC `shutdown`으로 멈춘다.
+  - macOS·Linux: 서버는 자기 프로세스 그룹의 리더로 뜬다(`detached`). 서버가 끝나면(정상 종료든 크래시든) 그룹에 남은 프로세스(서버가 띄운 bin 도구 등)를 끝낸다. 크래시면 SIGTERM, 유예 뒤 SIGKILL. 유예 안에 앱이 끝나면 `stop()`이 그 SIGKILL을 바로 보낸다(SIGTERM을 무시하는 도구가 남지 않게). Windows는 job object가 같은 일을 한다. 서버가 터미널의 SIGINT를 직접 받지 않으므로 IPC `shutdown`으로 멈춘다.
 - 확인(E2E `pkgs/@akanjs/cli/application/desktopServer.e2e.test.ts`, 2026-09-29): macOS, Linux 컨테이너(WebKitGTK), Windows 11 ARM VM(WebView2) 모두 통과. 생성·목록·업로드와 되읽기, rebinding Host·외부 Origin·LAN 주소 거부, 두 번째 실행은 서버 없이 넘김, 종료(SIGTERM, Windows는 stdin quit) 뒤 graceful 종료와 데이터 유지, 강제 종료 뒤 서버도 내려감. 세 OS 모두 서버는 127.0.0.1에만 LISTEN하고 WebView(WebKit, msedgewebview2)가 그 포트에 연결한다. 네트워크 없는 Linux 컨테이너(`--network none`)에서도 동작했다.
 - 로그: 서버의 stdout·stderr를 줄마다 `[server] ` 접두사로 셸 stdout·stderr에 넘긴다. 파일 로그는 `<서버 데이터>/runtime/logs`.
 - 파일 허가(`packages/desktop/src/grants.ts`): file-picker `forServer`는 복사하지 않고, 원본을 FileRef로 서빙하며, 결과마다 불투명한 `grant`를 준다(읽기·쓰기·폴더). 서버가 IPC `file.resolve { id, grant }`를 보내면 셸이 `file.resolved { id, path, mode }`(모르는 grant면 `error`)로 답한다(akanjs `NativeFile`). 그래서 서버는 사용자가 고른 것만 얻고, 페이지는 경로를 갖지 않는다. 서버를 싣지 않은 dev 빌드의 서버는 셸의 자식이 아니므로(`akan start`) grant에 경로를 담고 `~/.akan/native/dev-file-grant.key`(0600)로 HMAC 서명한다. akanjs는 `operationMode` local에서만 그 서명을 확인해 받는다.
@@ -1107,13 +1107,14 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
     - `apply`: 지금 새 번들로 다시 로드한다.
     - `notifyReady`, `reset`
 - 앱(UP-1, macOS·Windows·Linux): 데스크톱 플러그인(Bun Worker)이 앱 전체를 바꾼다. macOS는 `.app`, Windows·Linux는 앱 폴더다.
+  - 상태(`state.json`)와 다음 delta의 기준 tar는 `<app local data>/akan-native-updates`에 둔다(`ctx.appLocalDataDir`, Windows `%LOCALAPPDATA%\<id>`). 기준 tar는 앱 전체이고 trial은 이 PC의 설치에 속하므로, 사용자를 따라 옮겨 다니는 Roaming에 두지 않는다(2026-09-30 08 리뷰, 배포한 적 없는 위치라 옮기지 않았다).
   - 릴리스는 tar다. macOS는 `/usr/bin/tar --no-mac-metadata`, Windows는 Windows 10부터 들어 있는 bsdtar(`tar.exe`)로 만든다. 받은 뒤의 tar sha256이 매니페스트와 맞아야 한다.
   - 자기 릴리스의 tar를 가진 앱(업데이트로 설치된 앱)은 delta만 받는다(`packages/desktop/src/delta.ts`). 처음 설치된 앱은 전체를 받는다. 직전 릴리스로부터의 패치만 게시하는 방식은 Electrobun과 같다(`electrobun-v1/package/src/cli/index.ts:3788-3927`).
   - delta 방식: bsdiff 대신 rsync식 블록 매칭(8 KiB 블록, 롤링 체크섬 + 강한 해시)을 쓴다.
     - bsdiff는 옛 파일 전체의 접미사 배열(크기의 약 8배 메모리)을 만든다. JS로 62 MB bun 실행 파일을 처리하면 수 분이 걸린다.
     - 릴리스 사이의 변화는 대부분 블록 단위(런타임 뒤에 붙은 앱 JS, 리소스)라서 한 번의 스캔으로 찾을 수 있다.
     - 측정: 샘플 앱 두 릴리스 사이 delta는 gzip 33 KiB(전체 26 MiB)이고, 만드는 데 0.6초, 적용에 약 40 ms가 걸렸다. 적용할 때 원본과 결과의 sha256을 모두 확인한다.
-  - 적용 전 검사: 앱 옆(`<App>.app.update-<id>`, 같은 볼륨이라 rename 가능)에 풀고 앱 id를 확인한다.
+  - 적용 전 검사: 앱 옆(`<App>.app.update-<id>`, 같은 볼륨이라 rename 가능)에 풀고 앱 id를 확인한다. 릴리스의 앱은 tar의 최상위 항목 하나다. 이름은 빌드의 것(`app.name`, `<Name>.app`)이고 교체가 설치된 앱의 이름을 준다. 그래서 `/D=`로 다른 이름의 폴더에 설치한 앱과 이름을 바꾼 `.app`도 업데이트된다.
     - macOS: bundle id와 `codesign --verify --deep --strict`
     - Windows·Linux: `resources/boot.json`의 app id. Authenticode와 패키지 서명은 CLI-9다. 바이트는 매니페스트 서명이 이미 보증한다.
   - 교체 순서: `apply()`가 `<App>.app → .previous`, 새 앱 → `<App>.app`으로 rename한 뒤 재실행한다.
@@ -1124,15 +1125,17 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
         - `detached`로 띄우면 콘솔 없이(DETACHED_PROCESS) 뜨는데, 이때 powershell.exe는 스크립트를 실행하지 않고 바로 끝난다.
         - job은 자식이 띄운 손자가 빠져나가는 것(silent breakaway)을 허용하므로, `cmd.exe`의 자식인 도우미는 앱이 끝난 뒤에도 남는다.
       - 도우미는 새 앱을 `Start-Process -NoNewWindow`로 실행한다. 그래서 새 앱이 이전 앱의 표준 입출력을 물려받는다. macOS·Linux의 exec와 같다.
-      - 도우미와 새 앱의 작업 폴더는 임시 폴더다(`cmd.exe`의 `cwd`, `Start-Process -WorkingDirectory`). Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못한다. 설치 폴더에서 뜬 앱(설치 프로그램, 시작 메뉴, 탐색기)의 도우미가 그 폴더를 물려받으면 교체가 10초 재시도 끝에 실패하고, 옛 앱이 받은 릴리스를 버린 뒤 다음에 또 받는다(2026-09-30 리뷰 50번). 셸도 창을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮긴다.
+      - 도우미와 새 앱의 작업 폴더는 임시 폴더다(`cmd.exe`의 `cwd`, `Start-Process -WorkingDirectory`). Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못한다. 설치 폴더에서 뜬 앱(설치 프로그램, 시작 메뉴, 탐색기)의 도우미가 그 폴더를 물려받으면 교체가 10초 재시도 끝에 실패한다(2026-09-30 리뷰 50번. 그때는 옛 앱이 받은 릴리스를 버리고 다음에 또 받았고, 지금은 그 릴리스를 `failed`에 넣는다). 셸도 창을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮긴다.
       - 설치 프로그램으로 설치한 앱(폴더 옆에 `<폴더>.uninstall.exe`가 있음)은 확정할 때 제거 항목의 `DisplayVersion`을 새 버전으로 고친다. `reg.exe` 출력은 OEM 코드 페이지라 경로를 비교하지 않고 종료 코드만 본다.
 - 시험 실행과 롤백(두 종류 공통):
-  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다. 서버를 싣는 데스크톱 앱은 그 서버가 ready를 보낸 뒤에만 확정한다(부팅 때 서버가 죽는 릴리스도 되돌린다). 그런 앱의 `readyTimeout` 시계는 서버가 ready가 되거나 포기한 뒤에 시작한다. 새 릴리스의 첫 실행에서 백신 검사로 서버가 늦게 떠도 정상 릴리스를 되돌리지 않는다.
+  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다. 서버를 싣는 데스크톱 앱은 그 서버가 ready를 보낸 뒤에만 확정한다(부팅 때 서버가 죽는 릴리스도 되돌린다). 그런 앱의 `readyTimeout` 시계는 서버가 ready가 되거나, 포기하거나, 앱이 시작한 뒤 `SERVER_BOOT_ALLOWANCE`(120초)가 지나면 시작한다. 새 릴리스의 첫 실행에서 백신 검사로 서버가 늦게 떠도 정상 릴리스를 되돌리지 않고, ready도 종료도 없이 부팅 중에 멈춘 서버의 릴리스는 되돌린다(상한이 없으면 확정도 롤백도 되지 않아 계속 켜 두는 전광판이 깨진 릴리스로 돌았다. 2026-09-30 08 리뷰 P1).
   - 부르지 않거나, 확정 전에 한 번 더 실행되면(크래시·멈춤) 실패로 표시하고 이전 번들이나 `.previous` 앱으로 되돌린다.
   - 이전 것은 새 것이 확정될 때까지 지우지 않는다. Electrobun은 새 앱이 실행되자마자 `.previous`를 지우고(`extractor/main.zig:7811-7818`), Tauri는 마지막 rename이 실패하면 백업을 잃는다(`updater.rs:1429-1476`).
   - 데스크톱 보완(2026-09-26 검토 반영):
     - trial에 실행 중인 PID를 기록한다. trial 도중 두 번째 인스턴스가 뜨면(Windows·Linux는 딥 링크가 새 프로세스를 띄운다) 예전에는 그 인스턴스가 시도 횟수를 올리고 실행 중인 정상 앱을 `.failed-*`로 옮겼다. 지금은 기록된 PID가 살아 있으면 trial을 건드리지 않는다.
     - macOS·Linux `apply()`는 교체 전에 trial을 기록한다. 교체 도중 멈추면, 앱이 바뀌지 않은 trial은 다음 시작에 버려진다(바뀐 앱이 trial 없이 남지 않는다). rename이 실패하면 pending을 되돌린다. Windows는 원래 도우미가 교체하기 전에 기록했다.
+    - 재설치(2026-09-30 08 리뷰): 지금 설치된 빌드보다 새롭지 않은 pending(재설치 전에 받아 둔 것)은 시작할 때 버리고, `apply()`도 적용하지 않는다. 그대로 두면 새로 설치한 앱이 옛 릴리스로 내려간다.
+    - Windows 도우미가 교체하지 못하고 옛 앱을 되살리면(잠금이 10초 재시도를 넘김) 그 릴리스를 `failed`에 넣는다. trial에 적용한 빌드(`from`)를 남겨, 다음 시작에 여전히 그 빌드가 돌면 교체 실패로 본다. 넣지 않으면 받기·적용·재실행을 되풀이한다. 다른 빌드가 설치돼 trial의 앱이 없어진 경우는 실패로 보지 않는다. 다시 받게 하려면 `reset()`.
     - 알려진 한계: 새 앱이 JS setup에 닿기 전에 죽으면(네이티브 크래시) 롤백하는 코드가 돌지 않는다. 재실행 도우미가 "setup 도달"을 기다리게 하는 방법이 있으나 아직 하지 않았다.
 - 개발 빌드: Android 개발 빌드는 localhost·127.0.0.1·10.0.2.2로의 평문 HTTP만 허용한다(network security config). release 빌드는 기본 정책 그대로다.
 - 2026-09-26 다시 확인(`<os>-<arch>` 경로, 크기 상한, trial PID): macOS·Linux·Windows 모두 A 전체 → 확정, B delta → 롤백, 남은 폴더 없음. 확인 스크립트는 이제 `--debug`로 빌드·게시한다(`akan-native build`가 모드와 상관없이 release가 됐기 때문). Windows에서 한 번은 B 게시 단계에서 출력 없이 끝났고(원인 미확인), 다시 돌리자 통과했다. 실패한 실행은 임시 폴더의 앱을 남겨 다음 실행이 single-instance로 넘겨 버리므로, 그런 프로세스를 먼저 끝내야 한다.

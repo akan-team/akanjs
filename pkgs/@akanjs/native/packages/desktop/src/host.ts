@@ -157,6 +157,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       app: boot.app,
       dev: boot.dev === true,
       appDataDir: appDataDir(boot.app.id),
+      appLocalDataDir: appLocalDataDir(boot.app.id),
       binDir,
       server: carriesServer ? { ready: serverReady } : null,
       emit(window, message) {
@@ -284,9 +285,14 @@ export function startHost(plugins: DesktopPlugin[]): void {
   };
 
   //? The shell takes an op only once akan_native_run runs, after the launch phase: an alert raised before that (a
-  //? server that cannot start) waits for the first event the shell sends.
+  //? server that cannot start) waits for the first frame the shell sends. An event the host makes itself (a cold
+  //? start's deep link, openLinks) may come before akan_native_run and says nothing about the shell.
   let shellRunning = false;
   const heldAlerts: string[] = [];
+  const shellStarted = () => {
+    shellRunning = true;
+    for (const message of heldAlerts.splice(0)) serverAlert(message);
+  };
 
   // Once per process: the browser process ends for every window at once, and each window reports it.
   let browserExitHandled = false;
@@ -305,10 +311,6 @@ export function startHost(plugins: DesktopPlugin[]): void {
   };
 
   const onEvent = (event: NativeEvent) => {
-    if (!shellRunning) {
-      shellRunning = true;
-      for (const message of heldAlerts.splice(0)) serverAlert(message);
-    }
     if (event.type === "shellReply" && typeof event.id === "number") {
       const pending = shellPending.get(event.id);
       shellPending.delete(event.id);
@@ -364,6 +366,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
         buffer = new Uint8Array(Math.max(size, buffer.length * 2));
         continue;
       }
+      if (!shellRunning) shellStarted();
       const view = new DataView(buffer.buffer, buffer.byteOffset, size);
       const kind = view.getUint8(0);
       const reqId = view.getBigUint64(1, true);

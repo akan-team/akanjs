@@ -5,11 +5,14 @@ import { delimiter, join } from "node:path";
 import { grantFile } from "../src/grants.ts";
 import { runtimeEnv } from "../src/main.ts";
 import {
+  BOOT_RESTART_DELAY,
   createDesktopServer,
   type DesktopServerOptions,
   jwtSecret,
   lastPort,
+  MAX_FAILURES,
   pathWithFirst,
+  READY_TIMEOUT,
   readServerManifest,
   restartDelay,
   type ServerProcess,
@@ -199,8 +202,23 @@ describe("the server a desktop app carries", () => {
     expect(gaveUp).toEqual([]);
   });
 
-  test("backs off 1 s, 2 s, 4 s … up to 30 s between restarts", () => {
-    expect([1, 2, 3, 4, 5, 6, 9].map(restartDelay)).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+  test("backs off 1 s, 2 s, 4 s … up to 30 s between restarts once it was ready, and restarts a booting one soon", () => {
+    expect([1, 2, 3, 4, 5, 6, 9].map((n) => restartDelay(n))).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+    expect(restartDelay(4, false)).toBe(BOOT_RESTART_DELAY);
+    expect(BOOT_RESTART_DELAY * MAX_FAILURES).toBeLessThan(READY_TIMEOUT / 2);
+  });
+
+  test("a server that crashes while it boots gives up before the window stops waiting for it", async () => {
+    const { server, children, gaveUp } = setup({ restartDelay: undefined, readyTimeout: READY_TIMEOUT });
+    const at = performance.now();
+    const started = server.start();
+    for (let n = 1; n <= MAX_FAILURES; n++) {
+      for (let i = 0; i < 200 && children.length < n; i++) await Bun.sleep(10);
+      children[n - 1]?.exit(1);
+    }
+    expect(await started).toEqual({ url: "http://127.0.0.1:52345", ready: false });
+    expect(performance.now() - at).toBeLessThan(READY_TIMEOUT / 2);
+    expect(gaveUp).toHaveLength(1);
   });
 
   test("stop asks over IPC, then SIGKILL when the server outlasts the grace; no restart after it", async () => {
@@ -249,7 +267,7 @@ describe("the server a desktop app carries", () => {
     expect(pathWithFirst(bin, undefined)).toBe(bin);
   });
 
-  test("passes the proxy and CA variables, one of each name on Windows", () => {
+  test("passes the proxy, CA and desktop session variables, one of each name on Windows", () => {
     const env = {
       PATH: "/usr/bin",
       HTTPS_PROXY: "http://proxy:3128",
@@ -258,6 +276,9 @@ describe("the server a desktop app carries", () => {
       SSL_CERT_FILE: "/certs.pem",
       NODE_USE_SYSTEM_CA: "1",
       NO_PROXY: "localhost",
+      XAUTHORITY: "/run/user/1000/gdm/Xauthority",
+      PULSE_COOKIE: "/home/me/.config/pulse/cookie",
+      XDG_DATA_DIRS: "/usr/share",
     };
     const manifest = { entry: "main.js", env: {} };
     const posix = serverEnv(manifest, { port: 1, secret: "s", dataDir: "/d", env, platform: "linux" });
@@ -268,6 +289,9 @@ describe("the server a desktop app carries", () => {
       SSL_CERT_FILE: "/certs.pem",
       NODE_USE_SYSTEM_CA: "1",
       NO_PROXY: "localhost",
+      XAUTHORITY: "/run/user/1000/gdm/Xauthority",
+      PULSE_COOKIE: "/home/me/.config/pulse/cookie",
+      XDG_DATA_DIRS: "/usr/share",
     });
     const windows = serverEnv(manifest, { port: 1, secret: "s", dataDir: "/d", env, platform: "win32" });
     expect(Object.keys(windows).filter((key) => key.toUpperCase() === "HTTPS_PROXY")).toEqual(["HTTPS_PROXY"]);
@@ -398,15 +422,17 @@ const alive = (pid: number) => {
 };
 
 describe.skipIf(process.platform === "win32")("a real server process (macOS, Linux)", () => {
-  const realServer = (mode: "clean" | "stuck") => {
+  const realServer = (mode: "clean" | "stuck" | "crash", stopGrace = 300) => {
     const root = mkdtempSync(join(tmpdir(), "akan-native-real-server-"));
     const resources = join(root, "Resources");
     mkdirSync(join(resources, "server"), { recursive: true });
     writeFileSync(join(resources, "server.bunfig.toml"), "");
     writeFileSync(
       join(resources, "server", "main.js"),
-      `const tool = Bun.spawn(["sleep", "300"], { stdio: ["ignore", "ignore", "ignore"] });
+      `const deaf = process.env.MODE === "crash";
+const tool = Bun.spawn(deaf ? ["/bin/sh", "-c", "trap '' TERM; sleep 300"] : ["sleep", "300"], { stdio: ["ignore", "ignore", "ignore"] });
 require("node:fs").writeFileSync(process.env.TOOL_PID, String(tool.pid) + " " + process.pid);
+if (deaf) setTimeout(() => process.exit(1), 200);
 process.on("SIGTERM", () => {});
 process.on("message", (m) => {
   if (m?.type !== "shutdown") return;
@@ -422,7 +448,7 @@ process.send({ type: "ready" });
       dataDir: join(root, "data"),
       manifest: { entry: "main.js", env: { TOOL_PID: pids, MODE: mode } },
       execPath: process.execPath,
-      stopGrace: 300,
+      stopGrace,
     });
     return {
       server,
@@ -443,6 +469,21 @@ process.send({ type: "ready" });
       expect(alive(tool)).toBe(true);
       await server.stop();
       expect(await gone(main)).toBe(true);
+      expect(await gone(tool)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 15_000);
+
+  test("a tool deaf to SIGTERM that a crashed server left is killed when the app quits before the grace ends", async () => {
+    const { server, pids, cleanup } = realServer("crash", 30_000);
+    try {
+      expect((await server.start()).ready).toBe(true);
+      const [tool, main] = pids();
+      expect(await gone(main)).toBe(true);
+      await Bun.sleep(200);
+      expect(alive(tool)).toBe(true);
+      await server.stop();
       expect(await gone(tool)).toBe(true);
     } finally {
       cleanup();

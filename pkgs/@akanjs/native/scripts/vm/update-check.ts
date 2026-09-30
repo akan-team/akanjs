@@ -3,7 +3,7 @@
 //   bun scripts/vm/update-check.ts [linux|windows|macos]
 //
 // 1. builds the sample (a debug build: the page console reaches stdout) and copies it to a
-//    scratch "install" folder
+//    scratch "install" folder, under another name than the build's (an installer's /D=, a renamed .app)
 // 2. publishes release A, serves it, and starts the installed app with PUBLIC_UPDATE_PROBE=apply:
 //    check → download (full archive) → apply → the new app runs on trial and confirms
 // 3. publishes release B and starts the app with PUBLIC_UPDATE_PROBE=no-ready: B (a delta from A)
@@ -49,7 +49,7 @@ const dataDir =
   os === "macos"
     ? join(homedir(), "Library", "Application Support", appId)
     : os === "windows"
-      ? join(process.env.APPDATA ?? "", appId)
+      ? join(process.env.LOCALAPPDATA ?? "", appId)
       : join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), appId);
 const out = join(scratch, "updates");
 let server: ReturnType<typeof Bun.spawn> | undefined;
@@ -61,8 +61,9 @@ try {
   const built = join(sample, ".akan", "native", "build", os);
   const name = readdirSync(built).find((n) => n !== "gen" && !n.endsWith(".json"))!;
   const install = join(scratch, "install");
-  cpSync(join(built, name), join(install, name), { recursive: true });
-  const app = join(install, name);
+  const installed = os === "macos" ? name.replace(/\.app$/, " Installed.app") : `${name} Installed`;
+  cpSync(join(built, name), join(install, installed), { recursive: true });
+  const app = join(install, installed);
   const exe =
     os === "macos"
       ? join(app, "Contents", "MacOS", readdirSync(join(app, "Contents", "MacOS"))[0]!)
@@ -149,7 +150,7 @@ try {
   if (!b.some((l) => /running \S+ trial=true/.test(l))) throw new Error("B did not run on trial");
 
   step("leftovers next to the app");
-  const left = readdirSync(install).filter((n) => n !== name);
+  const left = readdirSync(install).filter((n) => n !== installed);
   if (left.length) throw new Error(`left behind: ${left.join(", ")}`);
   console.info("  none");
   console.info(`\n✓ UP-1 on ${os}: update, confirm, rollback`);

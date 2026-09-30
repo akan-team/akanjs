@@ -44,6 +44,11 @@ export interface DesktopContext {
   /** Per-app data folder, e.g. ~/Library/Application Support/<app id>. Created on first access. */
   readonly appDataDir: string;
   /**
+   * For what is large and belongs to this PC (caches, downloads, databases): %LOCALAPPDATA%\<app id> on Windows,
+   * where appDataDir roams with the user; appDataDir on macOS and Linux. Created on first access.
+   */
+  readonly appLocalDataDir: string;
+  /**
    * The executables the app carries (desktop.bin, akanjs `bin`), or null. The host puts the folder first on
    * process.env.PATH, which node:child_process and `Bun.spawn(cmd, { env: process.env })` use; a Bun.spawn or
    * Bun.which without `env` reads the environment the app started with, so name a file here or pass the env.

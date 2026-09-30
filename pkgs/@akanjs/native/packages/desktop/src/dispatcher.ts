@@ -43,6 +43,8 @@ export interface HostServices {
   app: AppInfo;
   dev?: boolean;
   appDataDir: string;
+  /** paths.ts appLocalDataDir; appDataDir when not given. */
+  appLocalDataDir?: string;
   /** desktop.bin in the app's resources, or null. */
   binDir?: string | null;
   /** The carried server (resources/server.json), or null. */
@@ -209,6 +211,7 @@ export function createDispatcher(
 ): Dispatcher {
   const byId = new Map(plugins.map((p) => [p.id, p]));
   let dataDirReady = false;
+  let localDataDirReady = false;
   const launch: Launch = { window: {} };
   let launching = true;
   const duringLaunch = (plugin: DesktopPlugin, what: string, apply: () => void) => {
@@ -228,6 +231,14 @@ export function createDispatcher(
             dataDirReady = true;
           }
           return services.appDataDir;
+        },
+        get appLocalDataDir() {
+          const dir = services.appLocalDataDir ?? services.appDataDir;
+          if (!localDataDirReady) {
+            mkdirSync(dir, { recursive: true });
+            localDataDirReady = true;
+          }
+          return dir;
         },
         binDir: services.binDir ?? null,
         server: services.server ?? null,

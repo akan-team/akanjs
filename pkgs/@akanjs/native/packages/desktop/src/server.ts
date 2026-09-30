@@ -13,7 +13,9 @@
 // - The port of the last session comes first, so a URL registered somewhere stays valid while it is
 //   free. A server that exits before its first ready, while the page has not been handed its URL,
 //   is started again on a fresh port: another program may have taken the one picked.
-// - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up.
+// - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up. Before its first
+//   ready it is restarted BOOT_RESTART_DELAY apart, so a server that cannot boot gives up while the window
+//   still waits for it (READY_TIMEOUT) and the page opens with the alert, not with a URL nobody answers.
 // - A `file.resolve` request names a grant the file picker gave the page (forServer); the answer is
 //   the path the user picked, or an error for a grant this app never gave (grants.ts).
 // - Quit: an IPC shutdown, then SIGKILL after STOP_GRACE. If the shell dies first, the child sees its
@@ -63,16 +65,21 @@ const SYSTEM_ENV_KEYS = [
   "APPDATA",
   "LOCALAPPDATA",
   "XDG_RUNTIME_DIR",
-  //? The desktop session, for a `bin` tool that opens the screen, the audio server or the session bus.
+  //? The desktop session, for a `bin` tool that opens the screen, the audio server or the session bus. An X
+  //? display of a GDM session refuses a client without its XAUTHORITY cookie.
   "DISPLAY",
+  "XAUTHORITY",
   "WAYLAND_DISPLAY",
   "DBUS_SESSION_BUS_ADDRESS",
   "PULSE_SERVER",
+  "PULSE_COOKIE",
+  "PULSE_RUNTIME_PATH",
   "XDG_SESSION_TYPE",
   "XDG_CURRENT_DESKTOP",
   "XDG_CONFIG_HOME",
   "XDG_CACHE_HOME",
   "XDG_DATA_HOME",
+  "XDG_DATA_DIRS",
   "SystemDrive",
   "ProgramData",
   "ProgramFiles",
@@ -103,6 +110,8 @@ export const READY_TIMEOUT = 8000;
 /** Within the onQuit budget (lifecycle.ts QUIT_HOOK_TIMEOUT, 2 s). */
 export const STOP_GRACE = 1500;
 export const MAX_FAILURES = 5;
+/** Between restarts of a server that has not been ready yet: MAX_FAILURES of them end well within READY_TIMEOUT. */
+export const BOOT_RESTART_DELAY = 250;
 /** A run that stayed up this long was healthy: its crash starts the count again. */
 export const HEALTHY_RUN = 60_000;
 
@@ -137,7 +146,7 @@ export interface DesktopServerOptions {
   onGiveUp?(message: string): void;
   readyTimeout?: number;
   stopGrace?: number;
-  restartDelay?(failures: number): number;
+  restartDelay?(failures: number, everReady: boolean): number;
   now?(): number;
 }
 
@@ -253,8 +262,8 @@ export function jwtSecret(dataDir: string): string {
   return secret;
 }
 
-export function restartDelay(failures: number): number {
-  return Math.min(1000 * 2 ** (failures - 1), 30_000);
+export function restartDelay(failures: number, everReady = true): number {
+  return everReady ? Math.min(1000 * 2 ** (failures - 1), 30_000) : BOOT_RESTART_DELAY;
 }
 
 const listenOn = (port: number) =>
@@ -358,6 +367,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
   let handedOut = false;
   let failures = 0;
   let restartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Groups of servers that crashed, until their SIGKILL: stop() sends it at once. */
+  const crashedGroups = new Set<NonNullable<ServerProcess["killGroup"]>>();
   let settleReady = (_ready: boolean) => {};
   const ready = new Promise<boolean>((resolve) => (settleReady = resolve));
 
@@ -388,7 +399,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       return giveUp(
         `The app's server stopped ${MAX_FAILURES} times in a row and is not restarted again. Its logs are in ${logs}.`,
       );
-    restartTimer = setTimeout(() => void launch(), (options.restartDelay ?? restartDelay)(failures));
+    restartTimer = setTimeout(() => void launch(), (options.restartDelay ?? restartDelay)(failures, everReady));
   };
 
   const run = () => {
@@ -420,7 +431,13 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
         child.killGroup?.(stopping ? "SIGKILL" : "SIGTERM");
         if (stopping) return;
         const group = child.killGroup;
-        if (group) setTimeout(() => group("SIGKILL"), grace).unref?.();
+        if (group) {
+          crashedGroups.add(group);
+          setTimeout(() => {
+            crashedGroups.delete(group);
+            group("SIGKILL");
+          }, grace).unref?.();
+        }
         if (readyAt !== null && now() - readyAt >= HEALTHY_RUN) failures = 0;
         failed(`exited with ${code}`);
       },
@@ -484,6 +501,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       stopping = true;
       clearTimeout(restartTimer);
       settleReady(false);
+      for (const group of crashedGroups) group("SIGKILL");
+      crashedGroups.clear();
       const child = proc;
       if (!child) return;
       try {
