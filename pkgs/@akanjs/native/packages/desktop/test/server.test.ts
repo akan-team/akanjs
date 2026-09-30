@@ -295,6 +295,11 @@ describe("the server a desktop app carries", () => {
     });
     const windows = serverEnv(manifest, { port: 1, secret: "s", dataDir: "/d", env, platform: "win32" });
     expect(Object.keys(windows).filter((key) => key.toUpperCase() === "HTTPS_PROXY")).toEqual(["HTTPS_PROXY"]);
+    const own = serverEnv(
+      { entry: "main.js", env: { Temp: "C:\\app-temp" } },
+      { port: 1, secret: "s", dataDir: "/d", env: { TEMP: "C:\\Temp" }, platform: "win32" },
+    );
+    expect(Object.entries(own).filter(([key]) => key.toUpperCase() === "TEMP")).toEqual([["Temp", "C:\\app-temp"]]);
   });
 
   test("tries the last session's port first, and keeps the one it was ready on", async () => {

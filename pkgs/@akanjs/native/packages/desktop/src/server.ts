@@ -224,6 +224,9 @@ export function serverEnv(
     if (platform === "win32" && Object.keys(system).some((k) => k.toUpperCase() === key.toUpperCase())) continue;
     system[key] = value;
   }
+  if (platform === "win32")
+    for (const key of Object.keys(manifest.env))
+      for (const name of Object.keys(system)) if (name.toUpperCase() === key.toUpperCase()) delete system[name];
   const merged = { ...system, ...manifest.env };
   return {
     ...merged,
