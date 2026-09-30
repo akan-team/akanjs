@@ -36,13 +36,11 @@ Backend environment the app connects to.
 
 - dev server: Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
-- --server (Boolean, default false): Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.
-
-- --server (Boolean, default false): With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.
+- desktop.server: A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
 - carried server: The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/`, the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.
 
-- bin: An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, with or without `--server`: it is first on the app's PATH, so the carried server's `spawn("ffmpeg")` runs it, and a native plugin finds it in `ctx.binDir`.
+- bin: An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, whether or not it carries a server: it is first on the app's PATH, so the carried server's `spawn("ffmpeg")` runs it, and a native plugin finds it in `ctx.binDir`.
 
 - one target: Runs one mobile target at a time; with several, pass `--target <name>`.
 
@@ -244,11 +242,11 @@ Run the iOS app on a simulator or a paired iPhone. By default it is a debug buil
 
 Run the Android app on an emulator or a connected device. It works like `start-ios`: the dev server by default, a bundled release build with `--release`.
 
-`akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--server <boolean>] [--write <boolean>]`
+`akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]`
 
 Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
 
-- --server without --release: A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
+- a server without --release: For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
 
 `akan build-ios <app> [--target <target>] [--env <env>] [--debug <boolean>] [--write <boolean>]`
 
@@ -260,7 +258,7 @@ Build an APK of the Android app on the native runtime. Like `build-ios`, it make
 
 - signing: Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
 
-`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]`
+`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--write <boolean>]`
 
 Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.
 
@@ -286,9 +284,9 @@ Make, once per app id, the Ed25519 key update releases are signed with, and prin
 
 - --platform (String, default desktop, desktop | android | ios): The platform whose app id the key signs for.
 
-`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
+`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop app that carries its server publishes with `--server`, as it was built.
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.
 
 - --platform (String, default desktop, desktop | android | ios): `desktop` is this computer's own OS and CPU.
 
@@ -479,8 +477,8 @@ akan start-android myapp --device Pixel_10
 
 ```bash
 akan start-desktop myapp --target default
-akan start-desktop myapp --server true
-akan start-desktop myapp --release true --server true --env debug
+akan start-desktop myapp --target kiosk
+akan start-desktop myapp --target kiosk --release true --env debug
 ```
 
 ### build-ios
@@ -499,7 +497,7 @@ akan build-android myapp --target all --env debug
 
 ```bash
 akan build-desktop myapp --target default
-akan build-desktop myapp --server true --env main
+akan build-desktop myapp --target kiosk --env main
 akan build-desktop myapp --installer true --env main
 ```
 

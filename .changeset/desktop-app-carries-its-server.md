@@ -4,8 +4,9 @@
 "@akanjs/cli": minor
 ---
 
-A desktop app can carry the app's own server: `akan build-desktop --server` and `akan start-desktop --release
---server` put the backend `akan build` made into the app, so it works on one computer with no backend elsewhere.
+A desktop app can carry the app's own server: for a mobile target with `native: { desktop: { server: true } }`,
+`akan build-desktop`, `akan start-desktop --release` and `akan publish-update` put the backend `akan build` made into
+the app, so it works on one computer with no backend elsewhere.
 
 - The build stages `main.js`, `server.js`, the chunks, `akan.build.json` and `private/` into
   `apps/<app>/.akan/desktop/server` and installs its packages there (`bun install --production`), without the RSC
@@ -37,18 +38,23 @@ A desktop app can carry the app's own server: `akan build-desktop --server` and 
   itself rather than as the Bun CLI. A child started with `Bun.spawn` and no `env` still gets the environment the
   process started with, so pass `env: process.env`.
 - A crash restarts it on the same port (1 s doubling to 30 s; the fifth in a row gives up with an alert). A server that
-  exits before its first ready starts again on a fresh port, and one that gave up opens the window at once. A server
+  exits before its first ready starts again on a fresh port 250 ms later, so one that cannot boot gives up while the
+  window still waits for it and the window opens at once with the alert. A server
   that cannot start at all (an unreadable `jwt.secret`, a data folder that cannot be made) still hands the page a
   loopback URL and shows the same alert once the window is up, so the page never falls back to the backend its bundle
   was built for. A restart that throws counts as one failure.
 - Quitting the app stops it within its 1 s shutdown budget, inside the launcher's 1.5 s grace. On macOS and Linux it
   leads its own process group, so whatever it started and left running ends with it, and a server still there after
-  the grace is killed. A second launch that hands over to the first starts none. The single-instance plugin comes with
+  the grace is killed. When the app itself was killed or crashed, the server ends its group on its own once it stops.
+- It runs in one process: a `main.ts` asking for replicas (`replica`, `solo: false`) does not boot in the app.
+- `XAUTHORITY`, `PULSE_COOKIE`, `PULSE_RUNTIME_PATH` and `XDG_DATA_DIRS` reach it too. On Windows a key of
+  `desktop.server.env` replaces the system variable of the same name in any case, and the launcher's own keys are
+  refused in any case. A second launch that hands over to the first starts none. The single-instance plugin comes with
   it.
-- `akan start-desktop --server` without `--release` follows a dev server already answering on the app's dev port, or
-  starts `akan start` in the same command and opens the app once it serves; it asks for one target before it starts
-  one. Ctrl+C or closing the app stops the app, then the dev server it started, then the local database, one after
-  another, and exits 130.
-- `akan start-desktop --release --server` shows the carried server's lines at the level its logger wrote them.
+- `akan start-desktop` without `--release`, for such a target, follows a dev server already answering on the app's dev
+  port, or starts `akan start` in the same command and opens the app once it serves; it asks for one target before it
+  starts one. Ctrl+C or closing the app stops the app, then the dev server it started, then the local database, one
+  after another, and exits 130.
+- `akan start-desktop --release` of such a target shows the carried server's lines at the level its logger wrote them.
 - `AkanAppConfig.getProductionEnv()` is the env the image runs with; the Dockerfile's `ENV` lines come from it (same
   keys and order, without the two blank lines the template used to leave).

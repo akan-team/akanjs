@@ -350,7 +350,7 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   assembles one from; the string form takes no contributions. The generated image installs `ca-certificates` and
   `tzdata` and nothing else, so an app needing `ffmpeg` or Chromium declares it in `preRuns` / `postRuns`. A lib
   declares the steps its own runtime needs and every mounting app inherits them.
-- **A desktop app's server (`build-desktop --server`) gets nothing from `docker`.** An executable the app spawns
+- **A desktop app's server (`native.desktop.server: true` on its target) gets nothing from `docker`.** An executable the app spawns
   goes in `bin` — per platform, a download checked against its `sha256` or a file beside the config, put first on
   the app's PATH so the server's `spawn("ffmpeg")` finds it, and in `ctx.binDir` for a native plugin — and a package
   that builds itself at install goes in `trustedDependencies`, which the image honours too. Carry a static LGPL ffmpeg: a `--enable-nonfree` build may

@@ -37,7 +37,7 @@ interface NativeDevBoot {
 
 export interface NativeBuildOptions {
   profile?: "debug" | "release";
-  /** The server a desktop app carries (`--server`), staged by DesktopServerStage. */
+  /** The server a desktop app carries (the target's `native.desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
   /** Windows: an NSIS setup program beside the app folder. */
   installer?: boolean;

@@ -186,8 +186,12 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
-`akan build-desktop --server` (and `start-desktop --release --server`) puts the backend `akan build` made into the
-app — the dist `.js`, `akan.build.json` and `private/` — and installs it on its own with `bun install --production`.
+A mobile target that declares `native: { desktop: { server: true } }` carries the app's server: `akan build-desktop`,
+`start-desktop --release` and `publish-update` put the backend `akan build` made into the app — the dist `.js`,
+`akan.build.json` and `private/` — and install it on their own with `bun install --production`, and `start-desktop`
+without `--release` starts `akan start` beside the app when no dev server answers. The setting is the app's backend,
+so it does not change under an installed app: an update whose release carries a server when the app has none, or
+none when it has one, is refused, and switching means a reinstall.
 A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
 on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
@@ -226,8 +230,8 @@ const config: AppConfig = {
 };
 ```
 
-- **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, with or without
-  `--server` — keyed by the name the code spawns and then by
+- **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, whether or not
+  it carries a server — keyed by the name the code spawns and then by
   `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
   `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
   to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
@@ -259,10 +263,11 @@ build has no `libx264`, so encode H.264 through the OS's encoder: `h264_videotoo
 Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settle before shipping.
 
 **A server bound to its machine stays a service.** A server that needs a whole environment — ROS, system services,
-root to change the network or the clock — runs as a service on that machine (the image), and the desktop app ships
-without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
-user and stops with the app, and so does what it started: on macOS and Linux the server leads its own process
-group, which ends with it, also when the app was killed or crashed; on Windows the job object does the same.
+root to change the network or the clock — runs as a service on that machine (the image), and the desktop app's
+target leaves `desktop.server` off, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs
+as the signed-in user and stops with the app, and so does what it started: on macOS and Linux the server leads its
+own process group, which ends with it, also when the app was killed or crashed; on Windows the job object does the
+same.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
 ["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,

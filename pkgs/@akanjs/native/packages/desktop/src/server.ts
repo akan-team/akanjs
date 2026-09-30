@@ -1,4 +1,4 @@
-// The server a desktop app carries (akanjs `build-desktop --server`; docs/architecture.md §3.3).
+// The server a desktop app carries (akanjs `native.desktop.server`; docs/architecture.md §3.3).
 // resources/server holds its files and resources/server.json its entry and env. The plugin host
 // starts it as a child of this executable run as Bun (BUN_BE_BUN), on a loopback port fixed for the
 // session: the page's init script names the port and is fixed at akan_native_run. The main thread

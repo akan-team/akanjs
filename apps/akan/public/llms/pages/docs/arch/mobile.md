@@ -21,7 +21,7 @@ Akan ships the same product to the web and to the app stores, and you do not wri
 
 Concretely, Akan mobile apps are CSR web clients running inside a native shell that akanjs's own runtime, @akanjs/native, generates. The product screen is still built with Akan page, UI, state, and service patterns; the runtime supplies the shell, app identity, store package, and device bridge from what akan.config.ts declares.
 
-The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, built with akan build-desktop --server, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.
+The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, when the target sets native.desktop.server, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.
 
 Akan mobile architecture
 
@@ -47,7 +47,7 @@ Who owns what
 
 - Native shell boundary — What the native runtime generates — Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
 
-- Shared backend — The server you already run — Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains. A desktop app built with --server calls the copy of that server it carries instead.
+- Shared backend — The server you already run — Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains. A desktop app whose target carries the server calls the copy of that server it carries instead.
 
 Mobile Targets
 

@@ -72,7 +72,7 @@ The `mobile` block in `akan.config.ts` describes the native app: its name, ID, v
 
 - string — The client to open in a multi-client app. It must be a `basePath` declared in `routes`.
 
-- { plugins?, ios?, android?, desktop? } — Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
+- { plugins?, ios?, android?, desktop? } — Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
 
 - Record<string, string> — Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.
 
@@ -274,7 +274,7 @@ Open rustup
 
 - Linux: A C compiler, pkg-config, and the WebKitGTK 4.1, GTK 3 and libsoup 3 development packages.
 
-A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. With `--server`, `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` builds the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server.
+A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. Turn it on for a target with `native: { desktop: { server: true } }`. Then `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` and `akan publish-update` build the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server. An installed app refuses an update that adds or drops the server, so switching it for an app already out there takes a reinstall.
 
 The server needs `single` in `database.modes`. The app carries the server's `private/` folder, `env.server.<env>.ts` of the `--env` it is built with and no other environment's file, and the defaults each lib it uses exports as its server env (the lib's `env.server.testing.ts`), all in plain text: anyone who has the app can read every file and value in them. Keep deployment secrets such as cloud keys, and license files, out of them. The carried server has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`.
 
@@ -478,8 +478,8 @@ akan start-desktop myapp --release true --env debug
 ### Terminal
 
 ```bash
-akan start-desktop myapp --server true
-akan build-desktop myapp --server true --env main
+akan start-desktop myapp --target kiosk
+akan build-desktop myapp --target kiosk --env main
 ```
 
 ### akan.config.ts

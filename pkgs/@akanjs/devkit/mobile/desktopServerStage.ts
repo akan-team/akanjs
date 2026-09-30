@@ -30,7 +30,7 @@ export class DesktopServerStage {
   static assertCarriable(config: AkanAppConfig) {
     if (!config.database.modes.includes("single"))
       throw new Error(
-        `--server puts the server in the app, where only database mode single runs (no Redis or Postgres); apps/${config.app.name}/akan.config.ts declares ${config.database.modes.join(", ")}.`,
+        `native.desktop.server puts the server in the app, where only database mode single runs (no Redis or Postgres); apps/${config.app.name}/akan.config.ts declares ${config.database.modes.join(", ")}.`,
       );
   }
 

@@ -79,7 +79,7 @@ Widths, formats, qualities and the remote hosts the optimizer may fetch.
 
 Private Assets
 
-Files under `private/` are never served, so no URL reaches them. Server code reads them from disk to load data, run inference or start a service. They are not secret from whoever holds the server's files, though: a desktop app built with `--server` carries them in plain text, so keep keys and license files that must stay yours out of such an app.
+Files under `private/` are never served, so no URL reaches them. Server code reads them from disk to load data, run inference or start a service. They are not secret from whoever holds the server's files, though: a desktop app that carries the server (`native.desktop.server`) holds them in plain text, so keep keys and license files that must stay yours out of such an app.
 
 - File
 
@@ -95,7 +95,7 @@ Read from the app folder
 
 Build the path from `AKAN_APP_DIR`, the app's own folder, with one small helper in `srvkit/`:
 
-**`AKAN_APP_DIR` is the app folder everywhere.** It is `apps/myapp` under `akan start` and `dist/apps/myapp` in a build. A single-process server, such as the one a desktop app carries, may leave it unset, which is why the helper falls back to the folder of `Bun.main`.
+**`AKAN_APP_DIR` is the app folder everywhere.** It is `apps/myapp` under `akan start` and `dist/apps/myapp` in a build, and the server sets it before any app module loads, a desktop app's included. A script run outside the server has none, which is why the helper falls back to the folder of `Bun.main`.
 
 **It lives in `srvkit/`.** Code that touches `Bun` or `process.env` belongs there, never in a page or a client file.
 

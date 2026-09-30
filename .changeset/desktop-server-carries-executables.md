@@ -17,5 +17,5 @@ started with, so a plugin passes `env: process.env` to run one by name. A lib's 
 it, and an app's own entry of the same name wins. macOS builds sign every executable the app carries. The image does
 not read `bin`: it still installs through `docker`.
 
-`build-desktop --server` now warns when the image runs `docker` steps (or the app writes its own Dockerfile) and the app
-carries no `bin`, since the carried server runs none of those steps.
+`build-desktop` of a target that carries its server now warns when the image runs `docker` steps (or the app writes
+its own Dockerfile) and the app carries no `bin`, since the carried server runs none of those steps.

@@ -177,8 +177,8 @@ export default page().render(() => {
       key: "targets.*.native",
       type: "{ plugins?, ios?, android?, desktop? }",
       desc: l.trans({
-        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.",
-        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`·`desktop.screenCapture`를 적습니다.",
+        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.",
+        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 앱의 서버를 싣는 데스크톱 앱용 `desktop.server`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`·`desktop.screenCapture`를 적습니다.",
       }),
     },
     {
@@ -1590,27 +1590,31 @@ akan start-desktop myapp --release true --env debug`}
               en: (
                 <span>
                   A desktop app can also carry the app's own server, so it works on one computer with no backend
-                  elsewhere. With <code>--server</code>, <code>akan start-desktop</code> starts <code>akan start</code>{" "}
-                  in the same command when none is running, and <code>akan build-desktop</code> builds the app with the
-                  server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
+                  elsewhere. Turn it on for a target with <code>{"native: { desktop: { server: true } }"}</code>. Then{" "}
+                  <code>akan start-desktop</code> starts <code>akan start</code> in the same command when none is
+                  running, and <code>akan build-desktop</code> and <code>akan publish-update</code> build the app with
+                  the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
                   SQLite data in the app data folder's <code>server/</code> (on Windows under{" "}
                   <code>%LOCALAPPDATA%</code>; a <code>--debug</code> build keeps its own <code>server-debug/</code>).
                   It trusts the certificates the operating system trusts and follows the proxy variables of the user's
                   session, as the page does. The port is usually the one it had last time but is not guaranteed, so a
                   sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not
-                  through the carried server.
+                  through the carried server. An installed app refuses an update that adds or drops the server, so
+                  switching it for an app already out there takes a reinstall.
                 </span>
               ),
               ko: (
                 <span>
-                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.{" "}
-                  <code>--server</code>를 주면 <code>akan start-desktop</code>은 떠 있는 개발 서버가 없을 때 같은
-                  명령에서 <code>akan start</code>를 띄우고, <code>akan build-desktop</code>은 서버를 넣은 앱을
-                  빌드합니다. 이 서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
+                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.
+                  타깃에 <code>{"native: { desktop: { server: true } }"}</code>를 주면 <code>akan start-desktop</code>은
+                  떠 있는 개발 서버가 없을 때 같은 명령에서 <code>akan start</code>를 띄우고,{" "}
+                  <code>akan build-desktop</code>과 <code>akan publish-update</code>는 서버를 넣은 앱을 빌드합니다. 이
+                  서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
                   <code>server/</code>에 둡니다(Windows는 <code>%LOCALAPPDATA%</code> 아래, <code>--debug</code> 빌드는
                   따로 <code>server-debug/</code>). 운영체제가 믿는 인증서를 믿고, 페이지처럼 사용자 세션의 프록시
                   변수를 따릅니다. 포트는 대개 지난번과 같지만 보장되지 않습니다. 그래서 redirect URI가 정확히 같아야
-                  하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의 adapter로 받습니다.
+                  하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의 adapter로 받습니다. 설치된 앱은 서버를
+                  더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서 바꾸려면 다시 설치해야 합니다.
                 </span>
               ),
             })}
@@ -1619,8 +1623,8 @@ akan start-desktop myapp --release true --env debug`}
             className="w-full"
             title="Terminal"
             language="bash"
-            code={`akan start-desktop myapp --server true
-akan build-desktop myapp --server true --env main`}
+            code={`akan start-desktop myapp --target kiosk
+akan build-desktop myapp --target kiosk --env main`}
           />
           <Docs.Alert type="warning">
             {l.trans({

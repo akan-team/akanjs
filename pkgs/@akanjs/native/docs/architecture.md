@@ -816,7 +816,7 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - Bun Worker의 `process.argv`에는 실행 인자가 없다. main이 `new Worker(url, { argv: process.argv.slice(2) })`로 넘긴다.
 - Worker는 main이 막혀 있는 동안 SIGTERM 핸들러를 받지 못한다(확인). 그래서 셸이 SIGTERM을 받아(libc `signal` + self-pipe, `lib.rs` `sigterm`) `signal` 이벤트로 넘기고, 호스트는 veto 없이 `onQuit` 훅을 돌린 뒤 끝낸다. 두 번째 SIGTERM이나 5초 초과면 바로 종료한다.
 
-### 데스크톱 내장 서버 (desktop.server, akanjs `build-desktop --server`)
+### 데스크톱 내장 서버 (desktop.server, akanjs 타깃의 `native.desktop.server`)
 - 빌드: `desktop.server.dir`를 `resources/server/`로 복사하고 `server.json`(entry, env)과 빈 `server.bunfig.toml`을 쓴다. macOS는 그 안의 Mach-O 파일을 이름과 상관없이(파일 머리로 판별) dylib보다 먼저 서명한다. single-instance가 없으면 경고한다.
 - 시작(`packages/desktop/src/server.ts`): 플러그인 호스트가 launch 단계(`dispatcher.launched`) 뒤에 띄운다. `exit`이면(다른 인스턴스로 넘겼으면) 띄우지 않는다. 두 번째 인스턴스가 서버를 잠깐이라도 띄우면 같은 DB와 cron을 건드린다.
   - 포트: 지난 세션의 서버가 ready였던 포트(`<서버 데이터>/port`)가 비어 있으면 그것을, 아니면 127.0.0.1에서 0번 포트로 listen해 받은 번호를 쓴다. 등록해 둔 URL이 포트가 비어 있는 동안은 계속 맞는다(보장은 아니다). 첫 ready 전에 서버가 끝나고 페이지가 아직 URL을 받지 않았으면 새 포트로 다시 띄운다(고른 뒤 다른 프로그램이 먼저 잡은 경우). init.js가 포트를 담아 `akan_native_run`에 한 번 넘어간 뒤로는 세션 동안 바꾸지 않고, 재시작도 같은 포트로 한다.
@@ -1117,6 +1117,7 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 적용 전 검사: 앱 옆(`<App>.app.update-<id>`, 같은 볼륨이라 rename 가능)에 풀고 앱 id를 확인한다. 릴리스의 앱은 tar의 최상위 항목 하나다. 이름은 빌드의 것(`app.name`, `<Name>.app`)이고 교체가 설치된 앱의 이름을 준다. 그래서 `/D=`로 다른 이름의 폴더에 설치한 앱과 이름을 바꾼 `.app`도 업데이트된다.
     - macOS: bundle id와 `codesign --verify --deep --strict`
     - Windows·Linux: `resources/boot.json`의 app id. Authenticode와 패키지 서명은 CLI-9다. 바이트는 매니페스트 서명이 이미 보증한다.
+    - 서버를 싣는지(`resources/server.json`)가 설치된 앱과 같아야 한다. 다르면 받은 것을 지우고 그 릴리스를 `failed`에 넣은 뒤 `NOT_ALLOWED`로 거부한다. 서버를 빼면 페이지가 빌드 때의 백엔드 주소로 붙고, 더하면 빈 로컬 DB로 시작해 어느 쪽이든 앱의 데이터가 자리를 옮긴다. akanjs 타깃의 `native.desktop.server`를 바꾼 앱은 다시 설치한다(2026-09-30 08 리뷰 P1-3).
   - 교체 순서: `apply()`가 `<App>.app → .previous`, 새 앱 → `<App>.app`으로 rename한 뒤 재실행한다.
     - macOS·Linux: 실행 중인 앱의 폴더도 rename된다. 재실행은 `/bin/sh`가 이전 PID가 끝나기를 기다렸다가 새 실행 파일을 exec하는 방식이다. 그래서 single-instance, 잠금, 환경이 이어진다.
     - Windows: 실행 중인 프로그램의 폴더는 rename되지 않는다. 그래서 숨긴 PowerShell 도우미가 앱이 끝나기를 기다렸다가 rename하고 실행한다. 경로는 환경 변수로 넘긴다. 잠금이 풀릴 때까지 다시 시도하고, 실패하면 옮긴 것을 되돌린다. 롤백도 같은 도우미로 한다.

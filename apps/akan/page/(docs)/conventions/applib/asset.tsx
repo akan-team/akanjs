@@ -556,16 +556,16 @@ export const HeroImage = ({ className }: HeroImageProps) => {
                 <span>
                   Files under <code>private/</code> are never served, so no URL reaches them. Server code reads them
                   from disk to load data, run inference or start a service. They are not secret from whoever holds the
-                  server's files, though: a desktop app built with <code>--server</code> carries them in plain text, so
-                  keep keys and license files that must stay yours out of such an app.
+                  server's files, though: a desktop app that carries the server (<code>native.desktop.server</code>)
+                  holds them in plain text, so keep keys and license files that must stay yours out of such an app.
                 </span>
               ),
               ko: (
                 <span>
                   <code>private/</code> 아래 파일은 서빙되지 않으므로 어떤 URL로도 접근할 수 없습니다. 서버 코드가
                   디스크에서 읽어 데이터를 불러오고, 추론을 돌리고, 서비스를 초기화하는 데 씁니다. 다만 서버 파일을 가진
-                  사람에게는 비밀이 아닙니다. <code>--server</code>로 빌드한 데스크톱 앱은 이 파일을 평문으로 싣으므로,
-                  남에게 보이면 안 되는 키와 라이선스 파일은 그런 앱에 두지 않습니다.
+                  사람에게는 비밀이 아닙니다. 서버를 싣는 데스크톱 앱(<code>native.desktop.server</code>)은 이 파일을
+                  평문으로 싣으므로, 남에게 보이면 안 되는 키와 라이선스 파일은 그런 앱에 두지 않습니다.
                 </span>
               ),
             })}

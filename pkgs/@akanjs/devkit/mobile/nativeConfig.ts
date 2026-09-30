@@ -25,7 +25,7 @@ export interface NativeConfigInput {
   /** The backend the binary talks to; an updates channel left unnamed follows it. */
   env?: MobileEnv;
   platform: NativePlatform;
-  /** A desktop build that carries its server (`--server`). */
+  /** A desktop build that carries its server (the target's `native.desktop.server`). */
   desktopServer?: DesktopServerBundle;
   /** The plugins in the app's and its libs' `native/` folders. */
   nativePlugins?: NativePluginFolder[];

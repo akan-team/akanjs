@@ -17,3 +17,5 @@ An app image carries the server env of the environment it runs and no other.
   imports `./env/env.server.testing` instead. A lib's `server.ts` still exports it, since each app's
   `env.server.type.ts` spreads it as the lib's defaults.
 - Keys that already shipped in an image stay readable in it. Rotate them.
+- A build for a named `--env` (a mobile or desktop build) writes that env into the Dockerfile too, so the image boots
+  the environment its `server.js` carries.

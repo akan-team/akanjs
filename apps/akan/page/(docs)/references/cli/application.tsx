@@ -112,22 +112,11 @@ export default page().render(() => {
       ko: "`--release` 없이 실행하면 앱이 dev gateway를 거쳐 `akan start <app>`에서 화면을 불러오므로 저장할 때마다 반영됩니다. 개발 서버를 켜 두세요. 꺼져 있으면 명령이 그렇게 알리고 멈춥니다.",
     }),
   };
-  const carryServerOption: ReferenceRow = {
-    name: "--server",
-    type: "Boolean",
-    defaultValue: "false",
+  const serverSwitchNote: ReferenceRow = {
+    name: "desktop.server",
     desc: l.trans({
-      en: "Carry the app's server in the desktop app: it starts beside the window on a loopback port and the pages call it.",
-      ko: "앱의 서버를 데스크톱 앱에 넣습니다. 창과 함께 loopback 포트로 떠서 페이지가 그 서버를 부릅니다.",
-    }),
-  };
-  const startServerOption: ReferenceRow = {
-    name: "--server",
-    type: "Boolean",
-    defaultValue: "false",
-    desc: l.trans({
-      en: "With `--release`, carry the app's server in the app as `build-desktop --server` does. Without it, start `akan start <app>` in the same command when no dev server answers yet.",
-      ko: "`--release`와 함께 주면 `build-desktop --server`처럼 앱의 서버를 앱에 넣습니다. `--release` 없이 주면 응답하는 개발 서버가 없을 때 같은 명령에서 `akan start <app>`을 띄웁니다.",
+      en: "A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.",
+      ko: "`akan.config.ts`에서 `native: { desktop: { server: true } }`를 준 타깃은 앱의 서버를 싣습니다. 서버는 창과 함께 loopback 포트로 뜨고, 페이지는 그 서버만 부릅니다. `build-desktop`, `start-desktop --release`, `publish-update`가 모두 이 값을 읽습니다. 설치된 앱은 서버를 더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서 켜거나 끄려면 다시 설치해야 합니다.",
     }),
   };
   const carriedServerNote: ReferenceRow = {
@@ -140,8 +129,8 @@ export default page().render(() => {
   const binNote: ReferenceRow = {
     name: "bin",
     desc: l.trans({
-      en: "An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, with or without `--server`: it is first on the app's PATH, so the carried server's `spawn(\"ffmpeg\")` runs it, and a native plugin finds it in `ctx.binDir`.",
-      ko: '`akan.config.ts`의 `bin`에 적은 실행 파일은 이 컴퓨터용으로 받아 `--server` 여부와 상관없이 모든 데스크톱 앱에 들어갑니다. 앱의 PATH 맨 앞에 있으므로 내장 서버의 `spawn("ffmpeg")`가 그 파일을 실행하고, 네이티브 플러그인은 `ctx.binDir`에서 찾습니다.',
+      en: "An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, whether or not it carries a server: it is first on the app's PATH, so the carried server's `spawn(\"ffmpeg\")` runs it, and a native plugin finds it in `ctx.binDir`.",
+      ko: '`akan.config.ts`의 `bin`에 적은 실행 파일은 이 컴퓨터용으로 받아 서버를 싣는지와 상관없이 모든 데스크톱 앱에 들어갑니다. 앱의 PATH 맨 앞에 있으므로 내장 서버의 `spawn("ffmpeg")`가 그 파일을 실행하고, 네이티브 플러그인은 `ctx.binDir`에서 찾습니다.',
     }),
   };
   const oneTargetNote: ReferenceRow = {
@@ -1015,30 +1004,30 @@ akan start-android myapp --device Pixel_10`,
     },
     {
       name: "start-desktop",
-      signature:
-        "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--server <boolean>] [--write <boolean>]",
+      signature: "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]",
       desc: l.trans({
         en: "Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.",
         ko: "모바일 타깃을 이 컴퓨터에서 데스크톱 앱으로 실행합니다. 데스크톱 앱은 자기 OS에서만 빌드되므로 macOS, Windows, Linux 중 지금 컴퓨터의 것을 씁니다. `start-ios`와 같이 동작하며, 고를 기기나 팀은 없습니다.",
       }),
-      options: [targetOption, localEnvOption, releaseModeOption, startServerOption, writeOption],
+      options: [targetOption, localEnvOption, releaseModeOption, writeOption],
       notes: [
         aliasNote("sd"),
         devServerNote,
         {
-          name: l.trans({ en: "--server without --release", ko: "--release 없는 --server" }),
+          name: l.trans({ en: "a server without --release", ko: "--release 없이 서버를 싣는 타깃" }),
           desc: l.trans({
-            en: "A dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
-            ko: "앱의 개발 포트에서 이미 응답하는 개발 서버가 있으면 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
+            en: "For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
+            ko: "서버를 싣는 타깃이면, 앱의 개발 포트에서 이미 응답하는 개발 서버가 있을 때 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
           }),
         },
+        serverSwitchNote,
         carriedServerNote,
         binNote,
         oneTargetNote,
       ],
       examples: `akan start-desktop myapp --target default
-akan start-desktop myapp --server true
-akan start-desktop myapp --release true --server true --env debug`,
+akan start-desktop myapp --target kiosk
+akan start-desktop myapp --target kiosk --release true --env debug`,
     },
     {
       name: "build-ios",
@@ -1075,7 +1064,7 @@ akan start-desktop myapp --release true --server true --env debug`,
     {
       name: "build-desktop",
       signature:
-        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]",
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--write <boolean>]",
       desc: l.trans({
         en: "Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
         ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 ad hoc 또는 개발용 인증서로 서명한 `.app`, Windows와 Linux는 서명하지 않은 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
@@ -1084,7 +1073,6 @@ akan start-desktop myapp --release true --server true --env debug`,
         targetOption,
         debugEnvOption,
         debugBuildOption,
-        carryServerOption,
         {
           name: "--installer",
           type: "Boolean",
@@ -1096,9 +1084,9 @@ akan start-desktop myapp --release true --server true --env debug`,
         },
         writeOption,
       ],
-      notes: [aliasNote("bd"), carriedServerNote, binNote, outputNote("<macos|windows|linux>")],
+      notes: [aliasNote("bd"), serverSwitchNote, carriedServerNote, binNote, outputNote("<macos|windows|linux>")],
       examples: `akan build-desktop myapp --target default
-akan build-desktop myapp --server true --env main
+akan build-desktop myapp --target kiosk --env main
 akan build-desktop myapp --installer true --env main`,
     },
     {
@@ -1192,10 +1180,10 @@ akan update-keygen myapp --platform android`,
     {
       name: "publish-update",
       signature:
-        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--server <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
+        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop app that carries its server publishes with `--server`, as it was built.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 데스크톱 앱은 빌드할 때처럼 `--server`로 게시합니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1218,11 +1206,11 @@ akan update-keygen myapp --platform android`,
             ko: "기본값은 `updates.channel`, 없으면 `--env`입니다. 쓸 매니페스트만 정하고, 릴리스가 따르는 채널은 바꾸지 않습니다.",
           }),
         },
-        carryServerOption,
         writeOption,
         allowLocalReleaseOption,
       ],
       notes: [
+        serverSwitchNote,
         {
           name: "--env",
           desc: l.trans({
