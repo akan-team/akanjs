@@ -20,6 +20,7 @@ import { AppInfo } from "./ops/appInfo";
 import type { OpsRoute } from "./ops/opsRoute";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { SelfExec } from "./selfExec";
 import { resolveStaticPath } from "./staticPath";
 import { getWebConfigFromEnv } from "./types";
 
@@ -152,6 +153,7 @@ export class AkanApp {
   #stopping = false;
 
   constructor(serverPathOrOptions: string | AkanAppOptions = "./server", options: AkanAppOptions = {}) {
+    SelfExec.adopt();
     const resolvedOptions = typeof serverPathOrOptions === "string" ? options : serverPathOrOptions;
     const serverPath = typeof serverPathOrOptions === "string" ? serverPathOrOptions : "./server";
     this.#serverPath = AkanApp.#resolveServerPath(resolvedOptions.serverPath ?? serverPath);
