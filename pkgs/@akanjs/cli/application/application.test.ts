@@ -413,10 +413,12 @@ describe("ApplicationScript desktop", () => {
     );
     const saved = {
       answers: ApplicationRunner.answers,
+      startTarget: ApplicationRunner.startTarget,
       startOne: script.startOne,
       startDesktop: script.applicationRunner.startDesktop,
       timeout: ApplicationScript.devServerReadyTimeoutMs,
     };
+    ApplicationRunner.startTarget = async () => ({}) as never;
     ApplicationRunner.answers = async (url: string) => {
       recorder.record("answers", url);
       return answers;
@@ -426,6 +428,7 @@ describe("ApplicationScript desktop", () => {
     };
     const restore = () => {
       ApplicationRunner.answers = saved.answers;
+      ApplicationRunner.startTarget = saved.startTarget;
       script.startOne = saved.startOne;
       script.applicationRunner.startDesktop = saved.startDesktop;
       ApplicationScript.devServerReadyTimeoutMs = saved.timeout;
@@ -489,6 +492,26 @@ describe("ApplicationScript desktop", () => {
     }
 
     expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
+  });
+
+  test("start-desktop --server asks for one target before it starts a dev server", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    ApplicationRunner.startTarget = async () => {
+      throw new Error("start-desktop runs one mobile target at a time; pass --target <name>.");
+    };
+    script.startOne = async () => {
+      recorder.record("startOne");
+      return undefined as never;
+    };
+    try {
+      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+        "start-desktop runs one mobile target at a time",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual([]);
   });
 
   test("start-desktop --release --server builds the server into the app instead", async () => {

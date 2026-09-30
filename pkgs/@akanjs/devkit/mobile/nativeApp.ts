@@ -85,14 +85,23 @@ export class NativeApp {
     return path.join(this.targetRoot, "bin");
   }
 
-  async config({ server, platform }: { server?: DesktopServerBundle; platform: NativePlatform }) {
+  /** `stageBin: false` for a config nothing is built from (the update key's): staging downloads the `bin` sources. */
+  async config({
+    server,
+    platform,
+    stageBin = true,
+  }: {
+    server?: DesktopServerBundle;
+    platform: NativePlatform;
+    stageBin?: boolean;
+  }) {
     const [appConfig, plugins, nativePlugins] = await Promise.all([
       this.app.getConfig(),
       this.app.collectPlugins(),
       NativePluginFolders.of(this.app),
     ]);
     const desktop = platform === "macos" || platform === "windows" || platform === "linux";
-    const carried = desktop ? await new DesktopBin(this.app, appConfig).stage(this.binDir) : [];
+    const carried = desktop && stageBin ? await new DesktopBin(this.app, appConfig).stage(this.binDir) : [];
     return NativeConfig.build({
       appPath: this.app.cwdPath,
       target: this.target.config,
@@ -260,7 +269,10 @@ export class NativeApp {
 
   /** The key update releases of this target's app id on `platform` are signed with: made once, then read. */
   async updateKeygen(platform: NativePlatform) {
-    const [api, { config }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config({ platform })]);
+    const [api, { config }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, stageBin: false }),
+    ]);
     return api.updateKeygen({ config });
   }
 

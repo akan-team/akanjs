@@ -320,12 +320,7 @@ try {
     platform: NativePlatform,
     { target, env = "local", operation = "local", device, teamId, server = false, interrupt }: MobileStartOptions = {},
   ) {
-    const targets = await resolveMobileTargets(app, target);
-    const [mobileTarget] = targets;
-    if (!mobileTarget || targets.length > 1)
-      throw new Error(
-        `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
-      );
+    const mobileTarget = await ApplicationRunner.startTarget(app, platform, target);
     const nativeApp = new NativeApp(app, mobileTarget, env);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
@@ -355,6 +350,16 @@ try {
   }
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
+  }
+  /** The one mobile target a `start-*` session runs; `platform` defaults to this computer's desktop. */
+  static async startTarget(app: App, platform: NativePlatform = NativeApp.desktopPlatform(), target?: string) {
+    const targets = await resolveMobileTargets(app, target);
+    const [mobileTarget] = targets;
+    if (!mobileTarget || targets.length > 1)
+      throw new Error(
+        `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
+      );
+    return mobileTarget;
   }
   //? The health and info routes, not the page: the gateway answers them itself, while `/` waits for a cold render (or a
   //? builder that idled out) past these 3 s. Another app's dev server may hold the port, so the name has to match.

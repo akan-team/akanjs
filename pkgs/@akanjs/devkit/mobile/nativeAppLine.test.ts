@@ -24,6 +24,13 @@ describe("NativeAppLine", () => {
     });
   });
 
+  test("a carried server's line keeps the level its logger wrote, and one without a level stays visible", () => {
+    const line = "[server] [minimal] 81 - 09/30/2026, 12:30:06 PM   ERROR  boom +2ms";
+    expect(NativeAppLine.read(line)).toEqual({ level: "error", message: line });
+    expect(NativeAppLine.read("[server] \u001b[32m[minimal] 81 -\u001b[39m WARN  slow").level).toBe("warn");
+    expect(NativeAppLine.read("[server]     at run (main.js:1:2)").level).toBe("info");
+  });
+
   test("a second window is named, the first is not", () => {
     expect(NativeAppLine.read("[page#2 info] [App] ready")).toEqual({ level: "info", message: "[page#2:App] ready" });
   });

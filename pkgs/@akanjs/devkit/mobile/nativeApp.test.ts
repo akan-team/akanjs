@@ -79,6 +79,14 @@ describe("NativeApp", () => {
     expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
   });
 
+  test("a config nothing is built from (the update key's) stages no desktop bin", async () => {
+    const { config } = await new NativeApp(fakeApp(), target({ basePath: undefined })).config({
+      platform: "macos",
+      stageBin: false,
+    });
+    expect(config.desktop?.bin).toBeUndefined();
+  });
+
   test("follows the updates channel of the backend env it is built for", async () => {
     const updates = { url: "https://releases.example.com/portal", publicKey: `${"a".repeat(43)}=` };
     const built = async (env?: "debug" | "main") =>

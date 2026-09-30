@@ -324,6 +324,8 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     if (!server || options.operation === "release")
       return await this.applicationRunner.startDesktop(app, { ...options, server });
+    //? Before a dev server boots for nothing: an app with several targets names one.
+    await ApplicationRunner.startTarget(app, undefined, options.target);
     const upstream = `http://localhost:${await app.getDevPort()}`;
     if (await ApplicationRunner.answers(upstream, app.name))
       app.log(`The desktop app follows the dev server on ${upstream}.`);

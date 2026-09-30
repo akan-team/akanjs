@@ -13,6 +13,10 @@ export class NativeAppLine {
   static readonly #page = /^\[page(\+)?(?:#(\d+))? (trace|verbose|debug|log|info|warn|error)\] ?(.*)$/;
   static readonly #logcat = /^([VDIWEFA])\/([^(]+?)\s*\(\s*\d+\):\s?(.*)$/;
   static readonly #named = /^\[([^\]\s]+)\] ([\s\S]*)$/;
+  //? A server the desktop app carries (host server.ts): `[server] <its own log line>`, whose level word the akan logger
+  //? wrote; a line without one (a crash's stack) is still the app's and stays visible.
+  static readonly #server = /^\[server\] /;
+  static readonly #serverLevel = /\b(TRACE|VERBOSE|DEBUG|INFO|WARN|ERROR)\b/;
   static readonly #logcatLevels: { [priority: string]: LogLevel } = {
     V: "verbose",
     D: "debug",
@@ -42,6 +46,10 @@ export class NativeAppLine {
       });
     }
     if (line.startsWith("[akan-native")) return NativeAppLine.#hostLine(line, "info");
+    if (NativeAppLine.#server.test(line)) {
+      const word = NativeAppLine.#serverLevel.exec(Bun.stripANSI(line))?.[1];
+      return { level: word ? (word.toLowerCase() as LogLevel) : "info", message: line };
+    }
     return { level: verbose ? "info" : "debug", message: line };
   }
 

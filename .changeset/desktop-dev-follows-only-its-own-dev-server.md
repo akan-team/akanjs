@@ -12,3 +12,7 @@ fix: `start-desktop --server`, `start-ios` and `start-android` follow only their
   another instead of all at once, and exits 130 as it does without `--server`.
 - `publish-update --platform android|ios --server` stops before it builds anything: only a desktop app carries its
   server.
+- `start-desktop --server` asks for one target before it starts a dev server, not after.
+- A carried server's lines in `start-desktop --release --server` show at the level its logger wrote them; they had
+  become debug-only.
+- `update-keygen` takes `--platform` (an `appId` may differ per platform) and downloads no desktop `bin` to make a key.
