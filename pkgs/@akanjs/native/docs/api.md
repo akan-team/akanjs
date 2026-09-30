@@ -42,7 +42,7 @@ interface TaskOptions {
   /** akan-native.config.ts가 default export하는 것과 같은 모양(AkanNativeConfig). 파일을 읽지 않는다. */
   config: AkanNativeConfig;
   platform: "web" | "macos" | "windows" | "linux" | "ios" | "android";
-  /** 산출물 폴더. 기본 <appDir>/.akan/native/build/<platform>. akanjs: .akan/mobile/<target>/akan-native/<platform> */
+  /** 산출물 폴더. 기본 <appDir>/.akan/native/build/<platform>. akanjs: .akan/mobile/<target>/native/<platform> */
   outDir?: string;
   /** .env.<mode>를 고른다. 기본 build·release는 "production", run·dev는 "development". */
   mode?: string;

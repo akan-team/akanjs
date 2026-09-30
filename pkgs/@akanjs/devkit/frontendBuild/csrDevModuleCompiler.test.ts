@@ -117,6 +117,27 @@ describe("CsrDevModuleCompiler", () => {
         "",
       ].join("\n"),
     );
+    //? The shape of an app's useClient.ts: a macro whose module graph reaches server code that reads import.meta.
+    await Bun.write(
+      file("apps/demo/lib/macroDep.ts"),
+      'import { createRequire } from "node:module";\nconst req = createRequire(import.meta.url);\nexport const depUrl = import.meta.url;\nexport const hasRequire = typeof req;\n',
+    );
+    await Bun.write(
+      file("apps/demo/lib/macro.ts"),
+      'import { depUrl, hasRequire } from "./macroDep";\nexport const serialized = () => ({ depUrl, hasRequire });\n',
+    );
+    await Bun.write(
+      file("apps/demo/lib/useClient.ts"),
+      [
+        'import { used } from "barrel";',
+        'import { serialized } from "./macro" with { type: "macro" };',
+        "export const signal = serialized();",
+        "export const own = import.meta.url;",
+        'export const label = "import.meta.url";',
+        "export const barrel = used;",
+        "",
+      ].join("\n"),
+    );
     await Bun.write(file("node_modules/with-bin/index.mjs"), "#!/usr/bin/env node\nexport const a = 1;\n");
     await Bun.write(file("node_modules/awaits/index.mjs"), "export const a = await Promise.resolve(1);\n");
     await Bun.write(file("apps/demo/ui/awaits.ts"), "export const a = await Promise.resolve(1);\n");
@@ -210,6 +231,17 @@ describe("CsrDevModuleCompiler", () => {
       env: undefined,
       asset: `${origin}/apps/demo/ui/x.wasm`,
       label: "import.meta.env",
+    });
+  });
+
+  test("a macro runs with its modules' own import.meta, and the file importing it still reads the browser's", async () => {
+    const { modules } = await compile("apps/demo/lib/useClient.ts", { prepass: true });
+    const module = modules.find((compiled) => compiled.id === "apps/demo/lib/useClient.ts");
+    expect(module?.deps.some((dep) => dep.includes("node_modules/barrel/"))).toBe(true);
+    expect(run(module)).toMatchObject({
+      signal: { depUrl: Bun.pathToFileURL(file("apps/demo/lib/macroDep.ts")).href, hasRequire: "function" },
+      own: `${origin}/apps/demo/lib/useClient.ts`,
+      label: "import.meta.url",
     });
   });
 

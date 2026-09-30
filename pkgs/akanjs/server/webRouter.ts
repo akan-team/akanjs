@@ -1182,9 +1182,9 @@ export class WebRouter {
     const associations = artifact.deepLinkAssociations ?? [];
     if (pathname === APPLE_APP_SITE_ASSOCIATION_PATH) {
       const details = associations
-        .filter((association) => association.domains.length > 0 && association.iosTeamId)
+        .filter((association) => association.domains.length > 0 && association.iosTeamId && association.iosAppId)
         .map((association) => ({
-          appIDs: [`${association.iosTeamId}.${association.appId}`],
+          appIDs: [`${association.iosTeamId}.${association.iosAppId}`],
           components: [{ "/": "/*" }],
         }));
       if (details.length === 0) return null;
@@ -1194,14 +1194,17 @@ export class WebRouter {
     const packageSuffixes = process.env.AKAN_PUBLIC_ENV === "main" ? [""] : ["", ".debug"];
     const assetLinks = associations
       .filter(
-        (association) => association.domains.length > 0 && (association.androidSha256CertFingerprints?.length ?? 0) > 0,
+        (association) =>
+          association.domains.length > 0 &&
+          !!association.androidAppId &&
+          (association.androidSha256CertFingerprints?.length ?? 0) > 0,
       )
       .flatMap((association) =>
         packageSuffixes.map((suffix) => ({
           relation: ["delegate_permission/common.handle_all_urls"],
           target: {
             namespace: "android_app",
-            package_name: `${association.appId}${suffix}`,
+            package_name: `${association.androidAppId}${suffix}`,
             sha256_cert_fingerprints: association.androidSha256CertFingerprints,
           },
         })),

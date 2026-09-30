@@ -2,9 +2,11 @@ import { isNative, platform } from "@akanjs/native/core";
 import { browser } from "@akanjs/native/plugins/browser";
 import { opener } from "@akanjs/native/plugins/opener";
 
-export { AkanNativeError, fileBlob, releaseFile } from "@akanjs/native/core";
+export { AkanNativeError, fileBlob, isAkanNativeError, releaseFile } from "@akanjs/native/core";
 export { app } from "@akanjs/native/plugins/app";
 export { appState } from "@akanjs/native/plugins/app-state";
+export type { AuthSessionApi } from "@akanjs/native/plugins/auth-session";
+export { authSession } from "@akanjs/native/plugins/auth-session";
 export type { Photo } from "@akanjs/native/plugins/camera";
 export type { Contact } from "@akanjs/native/plugins/contacts";
 export type { DeviceInfo } from "@akanjs/native/plugins/device";
@@ -23,6 +25,8 @@ export type {
 } from "@akanjs/native/plugins/push";
 export { push } from "@akanjs/native/plugins/push";
 export { secureStorage } from "@akanjs/native/plugins/secure-storage";
+export type { UpdateCheck, UpdateProgress, UpdateState } from "@akanjs/native/plugins/updates";
+export { updates } from "@akanjs/native/plugins/updates";
 export { browser, opener };
 
 //* Kept out of the page's first chunk: a photo is re-encoded in the page on the web, and few screens ask for any.
@@ -33,6 +37,9 @@ export const loadIap = () => import("@akanjs/native/plugins/iap");
 
 /** Inside an iOS or Android shell of the native runtime; a mobile target opened in a browser is not. */
 export const isNativeApp = () => isNative && (platform === "ios" || platform === "android");
+
+/** Inside any shell of the native runtime, desktop included. */
+export const isNativeShell = () => isNative;
 
 export const nativePlatform = () => (isNativeApp() ? (platform as "ios" | "android") : null);
 

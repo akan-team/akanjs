@@ -1,6 +1,13 @@
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
-import type { AkanMobileTargetConfig, AkanNativeValue, AkanPluginNativeConfig, MobilePermission } from "akanjs";
+import type {
+  AkanMobileTargetConfig,
+  AkanNativeValue,
+  AkanPluginNativeConfig,
+  MobileEnv,
+  MobilePermission,
+} from "akanjs";
+import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 
 export interface NativeConfigInput {
@@ -12,6 +19,9 @@ export interface NativeConfigInput {
   /** What the app's and its libs' plugins declare. */
   contributions: AkanPluginNativeConfig[];
   locales: readonly string[];
+  /** The backend the binary talks to; an updates channel left unnamed follows it. */
+  env?: MobileEnv;
+  platform: NativePlatform;
 }
 
 export interface NativeConfigResult {
@@ -68,7 +78,15 @@ export class NativeConfig {
     speech: { permission: "speech" },
   };
 
-  static build({ appPath, target, webDir, contributions, locales }: NativeConfigInput): NativeConfigResult {
+  static build({
+    appPath,
+    target,
+    webDir,
+    contributions,
+    locales,
+    env,
+    platform,
+  }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
       const claimed = contributions.filter((contribution) => contribution.permission === permission);
@@ -81,6 +99,10 @@ export class NativeConfig {
     const plugins = [
       ...new Set([
         ...NativeConfig.basePlugins,
+        //? Windows and Linux open a link by starting the app again; without the hand-over it runs as a second app and
+        //? the instance whose auth-session start() waits for the callback never hears it.
+        ...(target.deepLinks?.schemes?.length ? ["single-instance"] : []),
+        ...(target.updates ? ["updates"] : []),
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
         ...(target.native?.plugins ?? []),
       ]),
@@ -119,9 +141,16 @@ export class NativeConfig {
     const resources = Object.entries(target.files ?? {}).map(([to, from]) => ({ from: abs(from), to }));
     const native = NativeConfig.#compact({ ios, android, resources });
     const googleServices = target.native?.android?.googleServices;
+    const pushAndroid = target.native?.push?.android;
+    const updates = target.updates && {
+      url: target.updates.url,
+      publicKey: target.updates.publicKey,
+      ...((target.updates.channel ?? env) ? { channel: target.updates.channel ?? env } : {}),
+      ...(target.updates.readyTimeout !== undefined ? { readyTimeout: target.updates.readyTimeout } : {}),
+    };
     const config: AkanNativeConfig = {
       app: {
-        id: target.appId,
+        id: resolveAppId(target.appId, platform),
         name: target.appName,
         fileName: target.fileName ?? NativeConfig.fileNameOf(path.basename(appPath)),
         version: target.version,
@@ -143,13 +172,37 @@ export class NativeConfig {
         ? { deepLinks: NativeConfig.#deepLinks(target, locales) }
         : {}),
       ...(native ? { native } : {}),
+      ...(updates ? { updates } : {}),
+      ...(pushAndroid
+        ? {
+            push: {
+              android: { ...pushAndroid, ...(pushAndroid.smallIcon ? { smallIcon: abs(pushAndroid.smallIcon) } : {}) },
+            },
+          }
+        : {}),
+      ...(target.native?.privacy ? { privacy: target.native.privacy } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
       android: { debugAppIdSuffix: ".debug", ...(googleServices ? { googleServices: abs(googleServices) } : {}) },
       keyboard: { resize: "none" },
-      ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
-      ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
+      ...(target.assets?.icon ? { icon: NativeConfig.#icon(target.assets.icon, abs) } : {}),
+      ...(target.assets?.splash ? { splash: NativeConfig.#splash(target.assets.splash, abs) } : {}),
     };
     return { config, warnings };
+  }
+
+  static #icon(
+    icon: NonNullable<NonNullable<AkanMobileTargetConfig["assets"]>["icon"]>,
+    abs: (relative: string) => string,
+  ): NonNullable<AkanNativeConfig["icon"]> {
+    return typeof icon === "string" ? abs(icon) : { ...icon, image: abs(icon.image) };
+  }
+
+  static #splash(
+    splash: NonNullable<NonNullable<AkanMobileTargetConfig["assets"]>["splash"]>,
+    abs: (relative: string) => string,
+  ): NonNullable<AkanNativeConfig["splash"]> {
+    if (typeof splash === "string") return { image: abs(splash) };
+    return { ...splash, ...(splash.image ? { image: abs(splash.image) } : {}) };
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */

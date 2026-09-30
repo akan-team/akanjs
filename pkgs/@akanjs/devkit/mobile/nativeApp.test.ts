@@ -69,7 +69,7 @@ describe("NativeApp", () => {
       target({ basePath: undefined, permissions: ["push"] }),
     );
 
-    const { config, warnings } = await app.config();
+    const { config, warnings } = await app.config("android");
 
     expect(warnings).toEqual([]);
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);

@@ -458,6 +458,35 @@ describe("AkanAppConfig", () => {
     });
   });
 
+  test("merges the mobile-wide updates, push and privacy into each target field by field, the target winning", () => {
+    const publicKey = Buffer.alloc(32, 7).toString("base64");
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        mobile: {
+          updates: { url: "https://updates.example.com/portal", publicKey },
+          native: { push: { android: { color: "#ff5a5f" } }, privacy: { tracking: false } },
+          targets: {
+            default: {},
+            beta: {
+              updates: { channel: "beta" },
+              native: { push: { android: { smallIcon: "assets/noti.png" } } },
+            },
+          },
+        },
+      } as never,
+      baseDevEnv,
+    );
+
+    expect(config.mobile.targets.default?.updates).toEqual({ url: "https://updates.example.com/portal", publicKey });
+    expect(config.mobile.targets.beta).toMatchObject({
+      updates: { url: "https://updates.example.com/portal", publicKey, channel: "beta" },
+      native: { push: { android: { color: "#ff5a5f", smallIcon: "assets/noti.png" } }, privacy: { tracking: false } },
+    });
+  });
+
   test("refuses the Capacitor-era keys with the setting that replaces them", () => {
     const make = (mobile: Record<string, unknown>) => () =>
       new AkanAppConfig(app, [], packageJson, { mobile } as never, baseDevEnv);

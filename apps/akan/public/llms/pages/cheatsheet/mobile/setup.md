@@ -76,15 +76,19 @@ Camera and photo library usage texts
 
 None: the system camera and photo picker need no permission
 
-None yet: the app ships without it
+`contacts` (read-only)
 
-What a lib's plugin declares
+Contacts usage text
 
 Location usage texts, for always and while in use
 
 Remote-notification background mode and the `aps-environment` entitlement
 
 `POST_NOTIFICATIONS` and the FCM module (needs `native.android.googleServices`)
+
+None yet: the app ships without it
+
+What a lib's plugin declares
 
 Always
 
@@ -176,6 +180,10 @@ The target does not ship that plugin. Add its permission, or name it in `native.
 
 A dev build loads its pages from `akan start myapp`. Start it first, or pass `--release`.
 
+A save reloads the whole app instead of updating it in place
+
+A component, store, page or layout edit applies in place and keeps state; a `*.constant.ts` change, an added or removed route, or a new npm dependency reloads. `AKAN_DEV_CSR=artifact` on `akan start` brings back the single-file dev bundle, which reloads on every save.
+
 No permission prompt, or an iOS crash on first use
 
 Add the feature to `permissions` and rerun, so the usage text and native entries are written.
@@ -234,7 +242,7 @@ Mobile Config
 
 What each permission adds
 
-A permission brings the feature's plugin and writes its native settings on the next run. For contacts and speech the runtime has no plugin yet: the build says so and ships without it, and a lib that claims the permission adds only its own entries.
+A permission brings the feature's plugin and writes its native settings on the next run. For speech the runtime has no plugin yet: the build says so and ships without it, and a lib that claims the permission adds only its own entries.
 
 Permission
 

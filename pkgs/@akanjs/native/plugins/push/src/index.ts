@@ -39,6 +39,16 @@ export interface PushPresentation {
   list?: boolean;
   sound?: boolean;
   badge?: boolean;
+  /**
+   * Not shown when its `data[key]` is one of `values`, e.g. the chat room on screen: `{ key: "url", values: [path] }`.
+   * It still arrives as "received".
+   */
+  except?: PushPresentationExcept;
+}
+
+export interface PushPresentationExcept {
+  key: string;
+  values: string[];
 }
 
 export interface PushApi {

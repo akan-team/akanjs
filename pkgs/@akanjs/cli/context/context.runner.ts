@@ -27,7 +27,7 @@ import {
 } from "@akanjs/devkit/akanMcpContract";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
-import { getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
+import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
 import { Prompter } from "@akanjs/devkit/prompter";
 import { createWorkflowBaselineSummary, jsonText } from "@akanjs/devkit/workflow";
 import { RepairRunner } from "../repair/repair.runner";
@@ -112,12 +112,13 @@ export class ContextRunner extends runner("context") {
           });
       }
       for (const { name, config: target } of await getMobileTargets(app)) {
-        if (!isPlaceholderAppId(target.appId)) continue;
+        const placeholder = appIdsOf(target.appId).find(isPlaceholderAppId);
+        if (!placeholder) continue;
         diagnostics.push({
           severity: "warning",
           code: "mobile-appid-placeholder",
           path: `apps/${appName}/akan.config.ts`,
-          message: `Mobile target '${name}' uses placeholder bundle id '${target.appId}'. Apple's developer portal almost always already claims it, so signing to a physical device fails with "cannot be registered to your development team". Set a unique mobile.appId (reverse-DNS of your org).`,
+          message: `Mobile target '${name}' uses placeholder bundle id '${placeholder}'. Apple's developer portal almost always already claims it, so signing to a physical device fails with "cannot be registered to your development team". Set a unique mobile.appId (reverse-DNS of your org).`,
         });
       }
     }

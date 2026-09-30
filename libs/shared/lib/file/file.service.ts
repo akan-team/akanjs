@@ -18,6 +18,8 @@ export interface SaveImageFromUriOptions {
   signal?: AbortSignal;
   /** 무응답 한도(ms) */
   stallTimeout?: number;
+  /** 리다이렉트 처리. 호출자가 고른 주소만 받아야 할 때 `"error"`로 막는다 */
+  redirect?: RequestRedirect;
 }
 export interface AddFileFromUriOptions extends SaveImageFromUriOptions {
   fileId?: string;
@@ -88,17 +90,26 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
       onProgress,
       signal,
       stallTimeout,
+      redirect,
       throwOnError = false,
       cleanupLocalFile = false,
     }: AddFileFromUriOptions = {},
   ): Promise<db.File | null> {
     try {
       const requestedFile = fileId ? await this.loadFile(fileId) : null;
-      if (requestedFile && !force) return requestedFile;
+      // A copy whose earlier download died midway has no url; handing it back would make it permanent.
+      if (requestedFile?.status === "active" && requestedFile.url && !force) return requestedFile;
       const isDataUri = uri.startsWith("data:");
       const file = isDataUri ? null : await this.fileModel.findByOrigin(uri);
       if (file && !force && (!fileId || file.id === fileId)) return file;
-      const localFile = await this.saveImageFromUri(uri, { header, rename, onProgress, signal, stallTimeout });
+      const localFile = await this.saveImageFromUri(uri, {
+        header,
+        rename,
+        onProgress,
+        signal,
+        stallTimeout,
+        redirect,
+      });
       try {
         return await this.addFileFromLocal(localFile, purpose, group, { origin: uri, fileId });
       } finally {
@@ -189,10 +200,8 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     const imageSize = localFile.mimetype.startsWith("image/") ? await getImageSize(localFile.localPath) : [0, 0];
     const data = { ...localFile, url: "", imageSize, origin, size };
     // An edge or station copying a file down from the cloud keeps the source's id so both sides
-    // resolve the same reference; generateFile is the only path that accepts one.
-    const file = fileId
-      ? await this.fileModel.generateFile({ id: fileId, ...data })
-      : await this.fileModel.createFile(data);
+    // resolve the same reference.
+    const file = fileId ? await this._writeFileWithId(fileId, data) : await this.fileModel.createFile(data);
     const path = `${purpose.length ? purpose : "default"}/${group?.length ? group : "default"}/${this._convertFileName(file)}`;
     const url = await this.storageApi.uploadDataFromLocal({
       path,
@@ -202,15 +211,21 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
     await this.fileModel.finishUpload(file.id, url, abstract);
     return file.set({ status: "active", progress: 100, url, ...abstract });
   }
+  private async _writeFileWithId(fileId: string, data: Partial<db.File>) {
+    const existingFile = await this.fileModel.loadFile(fileId);
+    if (existingFile) return await existingFile.set(data).save();
+    //? A document built with an id counts as stored and saves as an update; create inserts under the given id.
+    return await this.fileModel.createFile({ ...data, id: fileId } as unknown as db.FileInput);
+  }
   async saveImageFromUri(
     uri: string,
-    { cache, rename, header, onProgress, signal, stallTimeout }: SaveImageFromUriOptions = {},
+    { cache, rename, header, onProgress, signal, stallTimeout, redirect }: SaveImageFromUriOptions = {},
   ): Promise<LocalFile> {
     const dirname = `${this.localDir}/uriDownload`;
     if (uri.startsWith("data:")) return await FileManager.saveEncodedData(uri, dirname);
     const { readStream, totalBytes } = await FileManager.readUrlAsStreamWithSize(
       uri.startsWith("ipfs://") ? this.ipfsApi.getHttpsUri(uri) : uri,
-      { headers: header, signal },
+      { headers: header, signal, redirect },
     );
     const filename = rename ?? this._filenameFromUri(uri);
     const localPath = `${dirname}/${filename}`;

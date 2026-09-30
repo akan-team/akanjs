@@ -33,6 +33,25 @@ export class NativeNavigation {
 
   constructor(readonly options: NativeNavigationOptions) {}
 
+  //? A push that opens the page on screen is not shown in front: the chat a person is reading does not banner its own
+  //? messages. A push names its page as `data.url`, spelled with or without the locale and the target's basePath.
+  showPushesExcept(pathname: string) {
+    if (!isNativeApp() || !push.isSupported("setForegroundPresentation")) return;
+    const withoutLang = pathname.replace(/^\/[^/]+/, "") || "/";
+    const basePath = window.__AKAN_MOBILE_TARGET__?.basePath?.replace(/^\/+|\/+$/g, "");
+    const withoutBasePath =
+      basePath && withoutLang.startsWith(`/${basePath}`) ? withoutLang.slice(basePath.length + 1) || "/" : withoutLang;
+    void push
+      .setForegroundPresentation({
+        banner: true,
+        list: true,
+        sound: true,
+        badge: true,
+        except: { key: "url", values: [...new Set([pathname, withoutLang, withoutBasePath])] },
+      })
+      .catch(() => undefined);
+  }
+
   listen() {
     //? WebView2 walks history on Alt+← and the mouse back button by itself; WKWebView leaves both to the app.
     if (desktopPlatform() === "macos") return this.#listenMacBack();

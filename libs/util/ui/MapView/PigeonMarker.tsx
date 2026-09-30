@@ -6,6 +6,9 @@ import { type MouseEvent, type ReactNode, useContext, useEffect, useRef } from "
 
 import { PigeonMapPropsContext } from "./context";
 
+const CLICK_TOLERANCE_PX = 5;
+const DRAG_THRESHOLD_PX = 20;
+
 interface MarkerProps extends PigeonProps {
   className?: string;
   coordinate: cnst.Coordinate;
@@ -62,7 +65,7 @@ export default function Marker({ className, children, coordinate, style, onClick
               (mouseUpPosition[1] - mouseDownPosition.current[1]) ** 2,
           );
 
-          if (delta < 5) onClick?.();
+          if (delta < CLICK_TOLERANCE_PX) onClick?.();
           mouseDownPosition.current = null;
         }}
         onMouseMove={(e) => {
@@ -70,7 +73,7 @@ export default function Marker({ className, children, coordinate, style, onClick
           const delta = Math.sqrt(
             (e.clientX - mouseDownPosition.current[0]) ** 2 + (e.clientY - mouseDownPosition.current[1]) ** 2,
           );
-          if (delta < 5) return;
+          if (delta < DRAG_THRESHOLD_PX) return;
           onDrag?.(e);
         }}
         onClick={(e) => {

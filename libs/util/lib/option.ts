@@ -102,14 +102,17 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
         ? `http://localhost:${process.env.PORT ?? options.port ?? 8282}/api/localFile/getBlob`
         : "/api/localFile/getBlob",
   });
-  if (!options.objectStorage) BlobStorage.assertShared("Without `objectStorage`, libs/util storage");
-  const storageApi = options.objectStorage ? new ObjectStorageApi(env.appName, options.objectStorage) : blobStorageApi;
+  // A closed-network kit has no route to the object store, and CI replaces an app's env file with its own, so the
+  // deployment's STORAGE_MODE=local is what keeps its files on the local blob storage whatever the env configures.
+  const isLocalStorageOnly = process.env.STORAGE_MODE === "local";
+  const objectStorage = isLocalStorageOnly ? undefined : options.objectStorage;
+  const privateStorage = isLocalStorageOnly ? undefined : options.privateStorage;
+  if (!objectStorage) BlobStorage.assertShared("Without `objectStorage`, libs/util storage");
+  const storageApi = objectStorage ? new ObjectStorageApi(env.appName, objectStorage) : blobStorageApi;
   // Private-only storage. On R2/S3 access control is bucket-level (R2 ignores per-object ACL),
   // so private files must live in a separate bucket that has NO public access configured.
   // Falls back to the public storageApi when `privateStorage` is not configured (e.g. local blob backend).
-  const privStorageApi = options.privateStorage
-    ? new ObjectStorageApi(env.appName, options.privateStorage)
-    : storageApi;
+  const privStorageApi = privateStorage ? new ObjectStorageApi(env.appName, privateStorage) : storageApi;
   assertJwtSecretConfigured({ operationMode: env.operationMode, configuredSecret: options.security?.jwtSecret });
   return {
     cloudflareApi: options.cloudflare ? new CloudflareApi(options.cloudflare) : null,

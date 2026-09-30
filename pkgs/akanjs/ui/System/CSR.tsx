@@ -17,6 +17,7 @@ import { st } from "akanjs/store";
 import { animated } from "akanjs/ui";
 import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
 
 import { FontFace } from "../FontFace";
@@ -394,6 +395,9 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
     () => [...pathRoute.renderLayouts, pathRoute.renderPage],
     [pathRoute.renderLayouts, pathRoute.renderPage],
   );
+  useEffect(() => {
+    if (pageType === "current") NativeUpdates.confirm();
+  }, [pageType]);
   const pageContainers = document.getElementById("pageContainers");
   if (!pageContainers) return null;
   const { page, pageContentRef, pageClassName, pageBind } =

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { optimize } from "@tailwindcss/node";
-import type { AkanWebConfig } from "akanjs";
+import type { AkanMobileAppId, AkanWebConfig } from "akanjs";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
@@ -89,7 +89,8 @@ export class SsrBaseArtifactBuilder {
         .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
         .map((target) => ({
           targetName: target.name,
-          appId: target.appId,
+          iosAppId: SsrBaseArtifactBuilder.#appIdOn(target.appId, "ios"),
+          androidAppId: SsrBaseArtifactBuilder.#appIdOn(target.appId, "android"),
           domains: target.deepLinks?.domains ?? [],
           iosTeamId: target.deepLinks?.ios?.teamId,
           androidSha256CertFingerprints: target.deepLinks?.android?.sha256CertFingerprints,
@@ -223,6 +224,10 @@ export class SsrBaseArtifactBuilder {
   }
 
   // Checked against the written asset, not the compiled text: it is the only stylesheet an SSR render serves.
+  static #appIdOn(appId: AkanMobileAppId, platform: "ios" | "android"): string | null {
+    return typeof appId === "string" ? appId : (appId[platform] ?? appId.default ?? null);
+  }
+
   static #warnDroppedImports(app: App, cssRelPath: string, css: string, imported: ImportedStylesheet[]) {
     for (const { cssPath, declaredNames } of imported) {
       if (declaredNames.length === 0 || declaredNames.some((name) => css.includes(`${name}:`))) continue;

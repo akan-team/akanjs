@@ -45,26 +45,29 @@ const adminTarget: AkanMobileTargetConfig = {
   },
 };
 
+const updatesKey = Buffer.alloc(32, 7).toString("base64");
+
 describe("NativeConfig.build", () => {
-  test("turns the minimal app's push target into the runtime's config", () => {
+  test("turns the minimal app's push target into the runtime's config, single-instance carrying its link scheme", () => {
     const { config, warnings } = NativeConfig.build({
       appPath: "/repo/apps/minimal",
       target: minimalTarget,
       webDir: "/repo/apps/minimal/.akan/mobile/default/web",
       contributions: [{ permission: "push", plugins: ["push"] }],
       locales: ["en", "ko"],
+      platform: "android",
     });
 
     expect(warnings).toEqual([]);
     expect(config).toEqual({
       app: { id: "com.minimal.dev.app", name: "minimal", fileName: "minimal", version: "0.0.1", build: 1 },
       web: { dir: "/repo/apps/minimal/.akan/mobile/default/web" },
-      plugins: [...NativeConfig.basePlugins, "push"],
+      plugins: [...NativeConfig.basePlugins, "single-instance", "push"],
       capabilities: [
         {
           identifier: "app",
           description: "The plugins minimal ships, each with its default permissions",
-          permissions: [...NativeConfig.basePlugins, "push"].map((plugin) => `${plugin}:default`),
+          permissions: [...NativeConfig.basePlugins, "single-instance", "push"].map((plugin) => `${plugin}:default`),
         },
       ],
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
@@ -83,6 +86,7 @@ describe("NativeConfig.build", () => {
       webDir: "/repo/apps/portal/.akan/mobile/admin/web",
       contributions: [],
       locales: ["en", "ko"],
+      platform: "android",
     });
 
     expect(warnings).toEqual(["Permission 'speech' has no native plugin yet; the app ships without it."]);
@@ -138,6 +142,7 @@ describe("NativeConfig.build", () => {
         { permission: "push", plugins: ["push"] },
       ],
       locales: ["en"],
+      platform: "android",
     });
 
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "camera"]);
@@ -152,6 +157,75 @@ describe("NativeConfig.build", () => {
     });
   });
 
+  test("updates bring their plugin and follow the binary's backend unless a channel is named", () => {
+    const build = (updates: AkanMobileTargetConfig["updates"], env?: "main" | "develop") =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: { ...adminTarget, updates },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "android",
+        env,
+      }).config;
+    const url = "https://updates.example.com/portal";
+    expect(build({ url, publicKey: updatesKey }, "develop").updates).toEqual({
+      url,
+      publicKey: updatesKey,
+      channel: "develop",
+    });
+    expect(build({ url, publicKey: updatesKey, channel: "beta", readyTimeout: 15_000 }, "main").updates).toEqual({
+      url,
+      publicKey: updatesKey,
+      channel: "beta",
+      readyTimeout: 15_000,
+    });
+    expect(build({ url, publicKey: updatesKey }).updates).toEqual({ url, publicKey: updatesKey });
+    expect(build({ url, publicKey: updatesKey }, "main").plugins).toContain("updates");
+    expect(build(undefined, "main").plugins).not.toContain("updates");
+  });
+
+  test("push, privacy and the icon and splash objects reach the runtime, paths from the app folder", () => {
+    const { config } = NativeConfig.build({
+      appPath: "/repo/apps/portal",
+      target: {
+        ...adminTarget,
+        assets: {
+          icon: { image: "assets/icon.png", backgroundColor: "#ffffff" },
+          splash: { backgroundColor: { light: "#ffffff", dark: "#000000" }, autoHide: false },
+        },
+        native: {
+          push: { android: { smallIcon: "assets/noti.png", color: "#ff5a5f", channel: { id: "chat", name: "Chat" } } },
+          privacy: { tracking: false, accessedApis: { DiskSpace: ["E174.1"] } },
+        },
+      },
+      webDir: "/web",
+      contributions: [],
+      locales: ["en"],
+      platform: "android",
+    });
+    const abs = (relative: string) => path.resolve("/repo/apps/portal", relative);
+    expect(config.icon).toEqual({ image: abs("assets/icon.png"), backgroundColor: "#ffffff" });
+    expect(config.splash).toEqual({ backgroundColor: { light: "#ffffff", dark: "#000000" }, autoHide: false });
+    expect(config.push).toEqual({
+      android: { smallIcon: abs("assets/noti.png"), color: "#ff5a5f", channel: { id: "chat", name: "Chat" } },
+    });
+    expect(config.privacy).toEqual({ tracking: false, accessedApis: { DiskSpace: ["E174.1"] } });
+  });
+
+  test("an app id per platform gives each build its own", () => {
+    const idOn = (platform: "ios" | "android") =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: { ...adminTarget, appId: { ios: "com.puffinplanet.admin", android: "com.portal.admin" } },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform,
+      }).config.app.id;
+    expect([idOn("ios"), idOn("android")]).toEqual(["com.puffinplanet.admin", "com.portal.admin"]);
+  });
+
   test("the runtime accepts both configs as they are", async () => {
     const root = await makeTempRoot();
     for (const file of ["secrets/google-services.json", "assets/chime.mp3"])
@@ -164,13 +238,24 @@ describe("NativeConfig.build", () => {
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
     const api = await NativeApi.load(repoApp);
 
-    for (const target of [minimalTarget, adminTarget]) {
+    const adminWithEverything: AkanMobileTargetConfig = {
+      ...adminTarget,
+      updates: { url: "https://updates.example.com/portal", publicKey: updatesKey },
+      native: {
+        ...adminTarget.native,
+        push: { android: { smallIcon: "assets/icon.png", color: "#ff5a5f" } },
+        privacy: { tracking: false },
+      },
+    };
+    for (const target of [minimalTarget, adminWithEverything]) {
       const { config } = NativeConfig.build({
         appPath: root,
+        env: "main",
         target,
         webDir: path.join(root, "web"),
         contributions: [],
         locales: ["en", "ko"],
+        platform: "android",
       });
       expect(api.validateConfig(config, { appDir: root })).toEqual([]);
     }

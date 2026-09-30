@@ -241,6 +241,33 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         allowLocalRelease,
       });
     }),
+  packUpdate: target({
+    desc: "Pack an unsigned over-the-air update of the mobile web bundle, for the signer to publish",
+  })
+    .with(App)
+    .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
+    .option("target", String, mobileTargetOption)
+    .option("env", String, releaseEnvOption)
+    .option("out", String, {
+      desc: "output folder (default: .akan/mobile/<target>/updates/<platform>)",
+      nullable: true,
+    })
+    .option("against", String, {
+      desc: "bundle.json of the store build it must run in; fails when it needs a new one",
+      nullable: true,
+    })
+    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow packing with --env local", default: false })
+    .exec(async function (app, platform, target, env, out, against, write, allowLocalRelease) {
+      await this.applicationScript.packUpdate(app, platform as "ios" | "android", {
+        target,
+        env,
+        out: out ?? undefined,
+        against: against ?? undefined,
+        write,
+        allowLocalRelease,
+      });
+    }),
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
     .option("mode", String, {

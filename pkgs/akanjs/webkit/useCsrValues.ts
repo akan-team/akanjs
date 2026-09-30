@@ -24,7 +24,9 @@ import {
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CsrStack } from "./CsrStack";
+import { CsrFrameDump } from "./csrFrameDump";
 import { type NativeBackProgress, NativeNavigation } from "./nativeNavigation";
+import { NativeUpdates } from "./nativeUpdates";
 import {
   createFrameSnapshot,
   createTransitionPlan,
@@ -682,6 +684,24 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     ...entry,
     location: resolveLocationWithFrameState(entry.location, resolvedPathRouteMap) ?? entry.location,
   }));
+  const frameDumpRef = useRef({ phase, location, prevLocation, pendingLocation, stackEntries });
+  frameDumpRef.current = { phase, location, prevLocation, pendingLocation, stackEntries };
+  useEffect(() => {
+    CsrFrameDump.watchFrame(() => {
+      const frame = frameDumpRef.current;
+      return {
+        phase: frame.phase,
+        location: frame.location.href,
+        prevLocation: frame.prevLocation?.href ?? null,
+        pendingLocation: frame.pendingLocation?.href ?? null,
+        stack: frame.stackEntries.map(({ key, location: entry, pageType }) => ({
+          key,
+          path: entry.pathRoute.path,
+          pageType,
+        })),
+      };
+    });
+  }, []);
   const platformProfile = getFramePlatformProfile();
   const accessoryHeight = resolveKeyboardAccessoryHeight(resolvedLocation.pathRoute.path, frameSlots);
   const shouldAnchorContentBottom = hasBottomAnchoredKeyboardSlot(resolvedLocation.pathRoute.path, frameSlots);
@@ -1228,6 +1248,10 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   }, []);
 
   useEffect(() => {
+    nativeNavigation.current?.showPushesExcept(location.pathname);
+  }, [location.pathname]);
+
+  useEffect(() => {
     nativeBackStateRef.current = {
       path: resolvedLocation.pathRoute.path,
       keyboardHeight: keyboardFrame.height,
@@ -1272,8 +1296,11 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     });
     nativeNavigation.current = navigation;
     const stop = navigation.listen();
+    navigation.showPushesExcept(getCurrentLocation().pathname);
+    const stopUpdates = new NativeUpdates().listen();
     return () => {
       stop();
+      stopUpdates();
       nativeNavigation.current = null;
     };
   }, []);

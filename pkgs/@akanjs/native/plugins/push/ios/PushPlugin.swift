@@ -19,6 +19,7 @@ final class PushPlugin: PushPluginSpec {
     private let context: AkanNativePluginContext
     private lazy var events = PushEvents(context)
     private var presentation: UNNotificationPresentationOptions = []
+    private var except: PushPresentationExcept?
     private var waiting: [AkanNativeReply<PushToken>] = []
     private var lastToken: String?
     /// A token change no page heard yet: delivered to the first "token" listener (C2), the latest only.
@@ -38,6 +39,8 @@ final class PushPlugin: PushPluginSpec {
             willPresent: { [weak self] notification in
                 guard let self else { return [] }
                 self.events.received(Self.message(notification.request))
+                if let except = self.except, let value = notification.request.content.userInfo[except.key] as? String,
+                   except.values.contains(value) { return [] }
                 return self.presentation
             },
             didReceive: { [weak self] response in
@@ -117,6 +120,7 @@ final class PushPlugin: PushPluginSpec {
         if args.sound == true { options.insert(.sound) }
         if args.badge == true { options.insert(.badge) }
         presentation = options
+        except = args.except
         reply.resolve()
     }
 

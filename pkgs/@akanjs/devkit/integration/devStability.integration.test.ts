@@ -153,6 +153,41 @@ describe("dev stability integration harness", () => {
     hmr?.close();
   });
 
+  integrationTest(
+    "server edits landing while a restart stops the backend leave the port to the backend it tracks",
+    async () => {
+      const harness = await createHarness();
+      const host = await harness.startHost();
+      const port = await harness.resolvePort();
+      const writeMarker = (label: string) =>
+        harness.writeFile("srvkit/backendMarker.ts", `export const backendMarker = "${label}";\n`);
+
+      const { mark } = await harness.editUntilSeen(host, (attempt) => writeMarker(`burst-first-${attempt}`), {
+        evidence: /stopping backend pid=\d+/,
+      });
+      // Each lands past the 120ms debounce, so a restart timer fires while the one before still waits for its exit.
+      for (let idx = 0; idx < 8; idx++) {
+        await writeMarker(`burst-${idx}`);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      const trackedPid = () =>
+        [
+          ...host.logs
+            .join("")
+            .slice(mark)
+            .matchAll(/backend spawned pid=(\d+)/g),
+        ].at(-1)?.[1];
+      const settled = await waitForGatewayHealth(
+        port,
+        (health) => String(health.pid) === trackedPid() && health.children.some((child) => child.ready),
+      );
+      expect(String(settled.pid)).toBe(trackedPid() ?? "");
+      const since = host.logs.join("").slice(mark);
+      expect(since).not.toMatch(/already in use|not starting a second one/);
+    },
+  );
+
   integrationTest("client-only valid edits refresh browser state without backend restart", async () => {
     const harness = await createHarness();
     const host = await harness.startHost();

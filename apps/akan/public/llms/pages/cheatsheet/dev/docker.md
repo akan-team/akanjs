@@ -42,7 +42,7 @@ The base domain the app derives its own origins from.
 
 from the build (debug)
 
-Which deployment this is. The Helm chart sets it per namespace.
+Which deployment this is. The Helm chart sets it per namespace. An image carries only the server env it was built with, so it runs that environment and no other.
 
 cloud in the image
 

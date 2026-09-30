@@ -1048,6 +1048,13 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 앱은 `app/<tar sha>.tar.gz`와 직전 릴리스로부터의 `app/<from>-<to>.delta.gz`를 저장한다.
 
   `akan-native update serve`는 이 폴더를 `0.0.0.0:8790`에서 서빙한다. Android 에뮬레이터는 `adb reverse`를 거쳐 `127.0.0.1`로 들어온다.
+- 서명 분리(웹 번들만): API `packUpdate`(akan은 `akan pack-update`)는 키 없이 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다. 템플릿은 위 매니페스트에서 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 것이다. 키를 가진 쪽이 게시할 때 지킬 계약:
+  - `channel`: 바이너리의 `updates.channel`과 같아야 한다. 다르면 앱이 "made for another app, platform or channel"로 버린다.
+  - `sequence`: 게시 시각(초, 양수). 그 채널에 이미 게시한 값과 바이너리 빌드 시각(`embeddedSequence`)보다 커야 받는다. 롤백은 이전 번들을 새 `sequence`로 다시 게시하는 것이다.
+  - `bundle`: `[A-Za-z0-9_.-]{1,80}`, `.`로 시작하지 않는다. 관례는 `<sequence>-<bundle.json web.hash 앞 8자>`.
+  - 바이트: 채운 매니페스트를 직렬화한 바이트 그대로를 `<platform>/<channel>.json`으로 올리고, 그 바이트에 대한 Ed25519 서명(64바이트)의 base64를 `<channel>.json.sig`로 올린다. 앱은 받은 바이트로 검증한 뒤에 파싱하므로 키 순서·공백은 자유다. `update publish`는 `JSON.stringify(m, null, 2) + "\n"`을 쓴다. 서명 파일 앞뒤 공백은 무시한다.
+  - 순서: `files/`를 먼저 올리고 매니페스트와 서명을 마지막에 올린다. 매니페스트가 먼저 보이면 아직 없는 파일을 받으려다 실패한다.
+  - 스토어 판정: `compareBundles(<스토어 빌드의 bundle.json>, <pack의 bundle.json>)`에 문제가 있으면 그 번들은 새 바이너리가 필요하다(`akan pack-update --against`).
 - release 빌드의 `updates.url`은 https여야 한다(이 기기의 http, 즉 localhost·127.x만 예외). 서명이 내용을 지키더라도 평문은 경로 위의 누구나 업데이트를 막거나 큰 매니페스트를 보낼 수 있게 한다.
 - 받는 크기 상한(세 플랫폼): 매니페스트 1 MiB, 서명 1 KiB, 파일은 매니페스트에 서명된 크기까지. Content-Length가 넘거나 받는 도중 넘으면 멈춘다. 매니페스트와 서명은 검증 전에 받으므로 필요하다. iOS와 Android는 파일을 메모리가 아니라 디스크로 받으며 해시한다(iOS `URLSession.download`, Android 64 KiB씩 쓰며 `MessageDigest`). Android worker는 `OutOfMemoryError`도 잡아 호출에 답한다.
 - 서명 범위: Tauri는 산출물만 서명하고 매니페스트는 열어 둔다. 그래서 다운그레이드를 막으려고 서명된 버전 문자열을 따로 비교한다(`tauri-plugins-workspace/plugins/updater/src/updater.rs:1661-1708`). Electrobun은 해시를 식별자로만 쓰고 HTTPS를 믿는다(`electrobun/package/src/sdks/main/core/Updater.ts:1426-1460`). akan-native는 매니페스트 전체를 서명한다. 서명된 `sequence`(게시 시각)가 커져야만 받아들이므로 오래된 정상 서명 릴리스를 다시 보내는 공격이 통하지 않는다. 서명이 맞기 전에는 매니페스트의 어떤 필드도 쓰지 않는다.

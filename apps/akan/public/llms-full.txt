@@ -1865,11 +1865,17 @@ Locks `document.body` scrolling while `active`. Overlays share one count.
 
 Calls `onEscape` on Escape while `active`. Only the topmost open surface gets the key.
 
+Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
+
+`{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.
+
+`"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
+
 Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
-Start the CSR (mobile) bundle and hold its router state. The generated entry calls them.
+Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
 
 Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
 
@@ -1886,12 +1892,6 @@ Server HTML
 While the chunk loads
 
 No option
-
-The component itself.
-
-The nearest boundary, usually the whole route, shows its fallback.
-
-The component, sent after the shell in stream mode.
 
 ## Agent
 
@@ -5149,7 +5149,7 @@ The base domain the app derives its own origins from.
 
 from the build (debug)
 
-Which deployment this is. The Helm chart sets it per namespace.
+Which deployment this is. The Helm chart sets it per namespace. An image carries only the server env it was built with, so it runs that environment and no other.
 
 ## Documentation
 

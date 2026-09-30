@@ -44,6 +44,7 @@ export interface CsrDevCompileResult {
 //* modules it changed instead of reloading one scope-hoisted file.
 export class CsrDevModuleCompiler {
   static readonly #storeRoot = /(?:^|\/)lib\/st\.ts$/;
+  static readonly #macroImport = /\b(?:with|assert)\s*\{\s*type\s*:\s*["']macro["']/;
   static readonly #factoryArgument =
     /(?<![\w$.])(?:require|module|exports|__akanImport|\$RefreshReg\$|\$RefreshSig\$)(?![\w$]|\s*:)/;
   static readonly #helperPatches = [
@@ -140,6 +141,7 @@ export class CsrDevModuleCompiler {
       ),
     );
     const misses: string[] = [];
+    const macroOutputs = vendor ? new Map<string, string>() : await this.#evaluateMacros(files);
     let result: Awaited<ReturnType<typeof Bun.build>>;
     try {
       result = await Bun.build({
@@ -157,7 +159,7 @@ export class CsrDevModuleCompiler {
         //? down, and Bun's cjs output keeps `import.meta.env` and spells `import.meta.url` as this disk's `file://` path.
         define: { ...this.#context.define, "import.meta": "__akanMeta" },
         optimizeImports: this.#context.optimizeImports,
-        plugins: [this.#registryPlugin(vendor, misses)],
+        plugins: [this.#registryPlugin(vendor, misses, macroOutputs)],
       });
     } catch (error) {
       if (vendor && error instanceof AggregateError) return await this.#withoutFailed(files, error);
@@ -254,11 +256,52 @@ export class CsrDevModuleCompiler {
     };
   }
 
-  #registryPlugin(vendor: boolean, misses: string[]): BunPlugin {
+  //? Bun applies `define` to the modules a macro imports too, and runs them in this process, where the `import.meta`
+  //? rewrite leaves a free `__akanMeta` that no factory header declares. So a file importing a macro has its macros run
+  //? first by a build of its own, with every other import left as written, and the module build reads that output.
+  async #evaluateMacros(files: string[]): Promise<Map<string, string>> {
+    const sources = await Promise.all(files.map(async (file) => [file, await Bun.file(file).text()] as const));
+    const importers = sources.filter(([, source]) => CsrDevModuleCompiler.#macroImport.test(source));
+    const outputs = await Promise.all(
+      importers.map(async ([file]) => {
+        const result = await Bun.build({
+          entrypoints: [file],
+          target: "browser",
+          format: "esm",
+          plugins: [
+            {
+              name: "akan-csr-macro-pass",
+              setup: (build) =>
+                void build.onResolve({ filter: /.*/ }, (args) =>
+                  args.importer ? { path: args.path, external: true } : undefined,
+                ),
+            },
+          ],
+        });
+        const [output] = result.outputs;
+        if (!output) throw new Error(`[csr-dev] ${this.#paths.idOf(file)}: its macro pass wrote no output`);
+        const text = await output.text();
+        return [
+          [file, text],
+          [CsrDevPaths.realpath(file), text],
+        ] as const;
+      }),
+    );
+    return new Map(outputs.flat());
+  }
+
+  #registryPlugin(vendor: boolean, misses: string[], macroOutputs: Map<string, string>): BunPlugin {
     return {
       name: "akan-csr-registry",
       setup: (build) => {
         build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }));
+        if (macroOutputs.size > 0) {
+          const exact = [...macroOutputs.keys()].map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+          build.onLoad({ filter: new RegExp(`^(?:${exact.join("|")})$`) }, (args) => {
+            const contents = macroOutputs.get(args.path);
+            return contents === undefined ? undefined : { contents, loader: "js" };
+          });
+        }
         if (!vendor)
           build.onLoad({ filter: /\.tsx$/ }, async (args) => {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;

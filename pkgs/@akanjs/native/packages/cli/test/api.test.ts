@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,13 +8,16 @@ import {
   AkanNativeError,
   API_VERSION,
   build,
+  compareBundles,
   doctor,
   type LogEvent,
+  packUpdate,
   validateConfig,
 } from "../src/api.ts";
 import { ENV_TYPES_FILE } from "../src/lib/env.ts";
 import { prepare, WebInputError } from "../src/lib/prepare.ts";
 import { projectFromConfig } from "../src/lib/project.ts";
+import { verifyManifest } from "../src/lib/updates.ts";
 
 // docs/api.md: an in-memory config, structured results and errors, the log only in the caller's sink.
 
@@ -188,6 +192,41 @@ describe("programmatic API", () => {
         api: true,
       }),
     ).rejects.toBeInstanceOf(WebInputError);
+  });
+
+  test("packUpdate writes an unsigned manifest template, its files and bundle.json, and a signer completes it", async () => {
+    const dir = app("pack", "<!doctype html><html><head></head><body>v2</body></html>");
+    writeFileSync(join(dir, "web", "app.js"), "console.info('v2')");
+    const publicKey = Buffer.alloc(32, 7).toString("base64");
+    const out = join(dir, "pack-out");
+    const { manifest } = await packUpdate({
+      appDir: dir,
+      config: config({ updates: { url: "https://updates.example.com/app", publicKey } }),
+      platform: "android",
+      out,
+      log: () => {},
+    });
+    const template = JSON.parse(readFileSync(join(out, "manifest.template.json"), "utf8"));
+    expect(template).toEqual(manifest);
+    expect(template).toMatchObject({ schema: 1, kind: "web", app: "com.akanjs.apitest", platform: "android" });
+    expect([template.channel, template.sequence, template.bundle]).toEqual(["", 0, ""]);
+    expect(template.nativeApi).toBe(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).nativeApi.hash);
+    const paths = template.files.map((file: { path: string }) => file.path);
+    expect(paths).toEqual(expect.arrayContaining(["index.html", "app.js", "env.runtime.json"]));
+    for (const file of template.files as { sha256: string; size: number }[])
+      expect(readFileSync(join(out, "files", file.sha256)).length).toBe(file.size);
+
+    //? The contract a signer follows: fill the three fields, sign exactly the bytes it uploads.
+    const { privateKey, publicKey: spki } = generateKeyPairSync("ed25519");
+    const raw = spki.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
+    const bytes = new TextEncoder().encode(
+      `${JSON.stringify({ ...template, channel: "main", sequence: 1_790_700_000, bundle: "1790700000-a1b2c3d4" }, null, 2)}\n`,
+    );
+    expect(verifyManifest(bytes, sign(null, bytes, privateKey).toString("base64"), raw)).toBe(true);
+    expect(compareBundles(join(out, "bundle.json"), join(out, "bundle.json"))).toEqual({
+      compatible: true,
+      problems: [],
+    });
   });
 
   test("doctor: the CLI's checks as data", async () => {

@@ -523,14 +523,16 @@ describe("WebRouter deep link associations", () => {
     deepLinkAssociations: [
       {
         targetName: "default",
-        appId: "com.minimal.app",
+        iosAppId: "com.minimal.app",
+        androidAppId: "com.minimal.app",
         domains: ["minimal.app"],
         iosTeamId: "TEAMID",
         androidSha256CertFingerprints: ["AA:BB"],
       },
       {
         targetName: "admin",
-        appId: "com.minimal.admin",
+        iosAppId: "com.puffinplanet.admin",
+        androidAppId: "com.minimal.admin",
         domains: ["minimal.app"],
         iosTeamId: "ADMINTEAM",
         androidSha256CertFingerprints: ["CC:DD"],
@@ -538,7 +540,7 @@ describe("WebRouter deep link associations", () => {
     ],
   });
 
-  test("serves apple app site association from deep link metadata", async () => {
+  test("serves apple app site association from deep link metadata, each target under its iOS id", async () => {
     await withFullSsrCacheHarness(
       async ({ renderEnvRoutes }) => {
         const response = await renderEnvRoutes["/.well-known/apple-app-site-association"](
@@ -550,7 +552,7 @@ describe("WebRouter deep link associations", () => {
             apps: [],
             details: [
               { appIDs: ["TEAMID.com.minimal.app"], components: [{ "/": "/*" }] },
-              { appIDs: ["ADMINTEAM.com.minimal.admin"], components: [{ "/": "/*" }] },
+              { appIDs: ["ADMINTEAM.com.puffinplanet.admin"], components: [{ "/": "/*" }] },
             ],
           },
         });

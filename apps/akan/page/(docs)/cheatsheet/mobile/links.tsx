@@ -484,21 +484,8 @@ export default config;`}
           </Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "The surest way is to ask Gradle. It prints the SHA-256 of the key each build variant actually signs with:",
-              ko: "가장 확실한 방법은 Gradle에 묻는 것입니다. 빌드 variant마다 실제로 서명하는 키의 SHA-256을 보여 줍니다:",
-            })}
-          </div>
-          <Code.Snippet
-            className="w-full"
-            title="Terminal"
-            language="bash"
-            code={`cd apps/myapp/android
-./gradlew signingReport`}
-          />
-          <div>
-            {l.trans({
-              en: "You can also read it straight from a keystore. The default Android debug keystore already exists on any machine set up for Android development:",
-              ko: "keystore에서 직접 읽어도 됩니다. 기본 Android debug keystore는 Android 개발 환경이 있는 기기라면 이미 있습니다:",
+              en: "Read it from the keystore that signs the build. Debug builds are signed with the runtime's own debug keystore, created by the first Android build:",
+              ko: "빌드를 서명하는 keystore에서 읽습니다. debug 빌드는 첫 Android 빌드가 만든 런타임 전용 debug keystore로 서명합니다:",
             })}
           </div>
           <Code.Snippet
@@ -506,47 +493,39 @@ export default config;`}
             title="Terminal"
             language="bash"
             code={`keytool -list -v \\
-  -keystore ~/.android/debug.keystore \\
+  -keystore ~/.akan/native/debug.keystore \\
   -alias androiddebugkey \\
-  -storepass android \\
-  -keypass android`}
+  -storepass android`}
+          />
+          <div>
+            {l.trans({
+              en: "Release builds are signed with the upload key akan release-android reads from the environment:",
+              ko: "release 빌드는 akan release-android가 환경 변수에서 읽는 upload key로 서명합니다:",
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="Terminal"
+            language="bash"
+            code={`keytool -list -v \\
+  -keystore "$MYAPP_RELEASE_STORE_FILE" \\
+  -alias "$MYAPP_RELEASE_KEY_ALIAS"`}
           />
           <ul className="my-4 list-disc space-y-2 pl-5">
             <li>
               {l.trans({
                 en: (
                   <span>
-                    <strong>
-                      After <code>akan build-android</code>, the app has its own debug keystore.
-                    </strong>{" "}
-                    A project that ran it or <code>akan release-android</code> signs debug builds with{" "}
-                    <code>apps/myapp/android/app/debug.keystore</code>, so point <code>-keystore</code> there.
+                    <strong>With Play App Signing, add Google's key too.</strong> Play re-signs what you upload, so the
+                    installed app carries the app signing key: copy its SHA-256 from Play Console (Setup, App signing)
+                    and list it next to the upload and debug ones.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>
-                      <code>akan build-android</code> 뒤에는 앱 전용 debug keystore를 씁니다.
-                    </strong>{" "}
-                    이 명령이나 <code>akan release-android</code>를 실행한 프로젝트는{" "}
-                    <code>apps/myapp/android/app/debug.keystore</code>로 debug 빌드를 서명하므로, <code>-keystore</code>
-                    를 이 경로로 바꿉니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>Add the release fingerprint too.</strong> Take it from whatever keystore Play signing uses
-                    and list it next to the debug one.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>release fingerprint도 함께 적습니다.</strong> Play signing이 쓰는 keystore에서 따로 가져와
-                    debug fingerprint 옆에 적습니다.
+                    <strong>Play App Signing을 쓰면 Google의 키도 적습니다.</strong> Play가 업로드한 빌드를 다시
+                    서명하므로 설치된 앱은 앱 서명 키를 씁니다. Play Console(설정 › 앱 서명)에서 SHA-256을 복사해 upload
+                    key, debug key 옆에 적습니다.
                   </span>
                 ),
               })}

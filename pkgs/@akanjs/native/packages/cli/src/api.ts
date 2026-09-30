@@ -2,9 +2,12 @@
 // another tool (the akanjs devkit first). The config is an object, results and failures are values,
 // and output goes to the caller's log sink; nothing prints, exits or depends on the working folder.
 
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { type DoctorCheck, doctorChecks, hostPlatforms, runFixes } from "./commands/doctor.ts";
 import type { AkanNativeConfig } from "./config.ts";
+import { makeNativeBoot } from "./lib/boot.ts";
+import { BUNDLE_FILE, compatProblems, readBundleInfo } from "./lib/compat.ts";
 import { CancelledError, withSignal } from "./lib/exec.ts";
 import { type HmrContext, lanAddress, resolveDevEntry, startHmrServer } from "./lib/hmr.ts";
 import type { Device, DeviceSelector, Launched } from "./lib/launch.ts";
@@ -23,6 +26,7 @@ import {
   WebInputError,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
+import { type UpdateManifest, webManifest, writeWebBundle } from "./lib/updates.ts";
 import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
@@ -184,6 +188,66 @@ export function release(
     const android = { signing: options.signing, bundle: formats.includes("aab") };
     return (await buildIn(options, "release", options.mode ?? "production", warnings, { android })).result;
   });
+}
+
+/**
+ * An unsigned web bundle update (UP-2), for a signer that keeps the key off the build machine. Writes
+ * `<out>/files/<sha256>`, `<out>/manifest.template.json` (the manifest with `channel`, `sequence` and `bundle` left
+ * empty for the signer) and `<out>/bundle.json` (the native API the bundle needs, UP-3). Prepares the web bundle as a
+ * release build does, without building the native app.
+ */
+export function packUpdate(
+  options: TaskOptions & { platform: "ios" | "android"; out: string },
+): Promise<{ manifest: UpdateManifest; out: string }> {
+  return task(options, async () => {
+    const appDir = resolve(options.appDir);
+    let project: Project;
+    try {
+      project = projectFromConfig(options.config, appDir, { resolveFrom: options.resolveFrom });
+    } catch (error) {
+      throw toAkanNativeError(error, "CONFIG_INVALID");
+    }
+    //? Not the build folder: its bundle.json is the store build's, which `compareBundles` checks an update against.
+    const out = resolve(options.out);
+    mkdirSync(out, { recursive: true });
+    const ctx = await prepare(project, options.platform, {
+      mode: options.mode ?? "production",
+      profile: "release",
+      skipWebBuild: options.skipWebBuild ?? false,
+      outDir: out,
+      envFiles: options.envFiles,
+      env: options.env,
+      api: true,
+    }).catch((error) => {
+      throw toAkanNativeError(error, "CONFIG_INVALID");
+    });
+    makeNativeBoot(ctx, options.platform);
+    const info = readBundleInfo(join(out, BUNDLE_FILE));
+    const manifest = webManifest({
+      app: project.config.app,
+      platform: options.platform,
+      channel: "",
+      nativeApi: info.nativeApi.hash,
+      sequence: 0,
+      bundle: "",
+      files: writeWebBundle(out, ctx.webDir, ctx.html, ctx.env),
+    });
+    writeFileSync(join(out, "manifest.template.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    return { manifest, out };
+  });
+}
+
+/**
+ * Whether a web bundle can run in the binary a store release shipped (UP-3): `shipped` is that build's bundle.json,
+ * `bundle` the one `packUpdate` wrote. Anything in `problems` means a new binary.
+ */
+export function compareBundles(shipped: string, bundle: string): { compatible: boolean; problems: string[] } {
+  const [before, now] = [readBundleInfo(resolve(shipped)), readBundleInfo(resolve(bundle))];
+  const problems =
+    before.app.id !== now.app.id
+      ? [`${shipped} is for ${before.app.id}, the bundle for ${now.app.id}`]
+      : compatProblems(before.nativeApi.inputs, now.nativeApi.inputs);
+  return { compatible: problems.length === 0, problems };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */

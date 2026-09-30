@@ -263,6 +263,10 @@ export class AkanAppConfig implements AppConfigResult {
           configPath,
         );
         const fileName = (target.fileName ?? rawMobile.fileName) as string | undefined;
+        const updates =
+          rawMobile.updates || target.updates
+            ? ({ ...rawMobile.updates, ...target.updates } as AkanMobileTargetConfig["updates"])
+            : undefined;
         const resolved = {
           name,
           basePath,
@@ -279,6 +283,7 @@ export class AkanAppConfig implements AppConfigResult {
           ...(native || target.native
             ? { native: AkanAppConfig.#mergeNative(native, target.native as AkanMobileTargetConfig["native"]) }
             : {}),
+          ...(updates ? { updates } : {}),
         } satisfies AkanMobileTargetConfig;
         return [name, resolved];
       }),
@@ -291,10 +296,11 @@ export class AkanAppConfig implements AppConfigResult {
       buildNum,
       ...(files ? { files } : {}),
       ...(native ? { native } : {}),
+      ...(rawMobile.updates ? { updates: rawMobile.updates as AkanMobileConfig["updates"] } : {}),
       targets,
     };
   }
-  static readonly #mobileKeys = ["appName", "appId", "fileName", "version", "buildNum", "files", "native"];
+  static readonly #mobileKeys = ["appName", "appId", "fileName", "version", "buildNum", "files", "native", "updates"];
   static readonly #targetKeys = [
     "basePath",
     "indexPath",
@@ -308,6 +314,7 @@ export class AkanAppConfig implements AppConfigResult {
     "deepLinks",
     "files",
     "native",
+    "updates",
   ];
   //* The Capacitor keys used to pass straight through; the native runtime takes typed ones, so a leftover is refused.
   static #assertMobileKeys(section: object, known: string[], where: string, configPath: string) {
@@ -350,10 +357,14 @@ export class AkanAppConfig implements AppConfigResult {
       if (merged.length) android[key] = merged;
       else delete android[key];
     }
+    const pushAndroid = { ...base?.push?.android, ...override?.push?.android };
+    const privacy = { ...base?.privacy, ...override?.privacy };
     return {
       ...(plugins.length ? { plugins } : {}),
       ...(Object.keys(ios).length ? { ios } : {}),
       ...(Object.keys(android).length ? { android } : {}),
+      ...(Object.keys(pushAndroid).length ? { push: { android: pushAndroid } } : {}),
+      ...(Object.keys(privacy).length ? { privacy } : {}),
     };
   }
   #defaultMobileTargetName(rawTargets: DeepPartial<AkanMobileConfig>["targets"] | undefined) {

@@ -74,8 +74,8 @@ export default page().render(() => {
       type: "local | testing | debug | develop | main",
       default: l.trans({ en: "from the build (debug)", ko: "빌드 값 (debug)" }),
       desc: l.trans({
-        en: "Which deployment this is. The Helm chart sets it per namespace.",
-        ko: "어느 배포인지입니다. Helm chart는 네임스페이스마다 이 값을 넣습니다.",
+        en: "Which deployment this is. The Helm chart sets it per namespace. An image carries only the server env it was built with, so it runs that environment and no other.",
+        ko: "어느 배포인지입니다. Helm chart는 네임스페이스마다 이 값을 넣습니다. 이미지에는 빌드할 때 고른 환경의 서버 env만 들어 있으므로, 그 환경으로만 실행됩니다.",
       }),
     },
     {

@@ -35,6 +35,11 @@ export interface MobileTargetOptions {
   target?: string;
   env?: MobileEnv;
 }
+export interface MobileUpdatePackOptions extends MobileTargetOptions {
+  out?: string;
+  /** The bundle.json of the store build the update is for; a bundle it cannot run fails the pack. */
+  against?: string;
+}
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
 }
@@ -273,7 +278,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
-      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).build(platform, { profile }));
+      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget, env).build(platform, { profile }));
     });
   }
 
@@ -289,7 +294,7 @@ try {
       throw new Error(
         `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
       );
-    const nativeApp = new NativeApp(app, mobileTarget);
+    const nativeApp = new NativeApp(app, mobileTarget, env);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
       await this.#buildMobileCsr(app, env);
@@ -326,7 +331,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     for (const mobileTarget of targets)
-      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).releaseIos({ teamId, adHoc }));
+      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget, env).releaseIos({ teamId, adHoc }));
   }
 
   async releaseAndroid(app: App, format: "apk" | "aab", { target, env = "main" }: MobileTargetOptions = {}) {
@@ -337,8 +342,34 @@ try {
       this.#reportBuild(
         app,
         mobileTarget,
-        await new NativeApp(app, mobileTarget).releaseAndroid({ formats: [format] }),
+        await new NativeApp(app, mobileTarget, env).releaseAndroid({ formats: [format] }),
       );
+  }
+
+  async packUpdate(
+    app: App,
+    platform: MobilePlatform,
+    { target, env = "main", out, against }: MobileUpdatePackOptions,
+  ) {
+    const targets = await resolveMobileTargets(app, target);
+    const [mobileTarget] = targets;
+    if (!mobileTarget || targets.length > 1)
+      throw new Error("pack-update packs one mobile target at a time; pass --target <name>.");
+    await this.#buildMobileCsr(app, env);
+    const packed = await new NativeApp(app, mobileTarget, env).packUpdate(platform, { out });
+    const size = packed.manifest.files.reduce((sum, file) => sum + file.size, 0);
+    app.logger.info(
+      `packed ${mobileTarget.name} ${platform} for channel '${packed.channel}' to ${packed.out}: ${packed.manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB, native API ${packed.manifest.nativeApi}`,
+    );
+    if (!against) return;
+    const bundle = path.join(packed.out, "bundle.json");
+    const compat = await NativeApp.compareBundles(app.cwdPath, against, bundle);
+    await Bun.write(path.join(packed.out, "compat.json"), `${JSON.stringify({ against, ...compat }, null, 2)}\n`);
+    if (!compat.compatible)
+      throw new Error(
+        `This bundle needs a new store build; the one ${against} came from provides another native API:\n- ${compat.problems.join("\n- ")}`,
+      );
+    app.logger.info(`runs in the store build of ${against}`);
   }
 
   #reportBuild(

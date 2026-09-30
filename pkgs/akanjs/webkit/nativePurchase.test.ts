@@ -96,6 +96,32 @@ describe("NativePurchase", () => {
     expect(state.finished).toEqual([{ transactionId: "2000000001", consume: true }]);
   });
 
+  test("the app's own verify replaces the server call: it gets the store's proof, and a falsy answer refuses", async () => {
+    installShell("android");
+    const asked: unknown[] = [];
+    const delivered: unknown[] = [];
+    const flow = new NativePurchase({
+      productInfo,
+      verify: async (data, transaction) => {
+        asked.push([data.receipt, transaction.verification.purchaseToken, data.packageName]);
+        return data.receipt === "refused" ? null : { credited: data.productId };
+      },
+      onPay: (transaction, verified) => {
+        delivered.push([transaction.id, verified]);
+      },
+    });
+
+    expect(await flow.settle(androidPurchase("token-1", "coins_100"))).toBe("finished");
+    expect(await flow.settle(androidPurchase("refused", "coins_100"))).toBe("unverified");
+    expect(asked).toEqual([
+      ["token-1", "token-1", "com.example.app"],
+      ["refused", "refused", "com.example.app"],
+    ]);
+    expect(delivered).toEqual([["token-1", { credited: "coins_100" }]]);
+    expect(state.verified).toEqual([]);
+    expect(state.finished).toEqual([{ transactionId: "token-1", consume: true }]);
+  });
+
   test("Android: the purchase token and order id; only a consumable is consumed, a subscription goes to onSubscribe", async () => {
     installShell("android");
     const paid: string[] = [];

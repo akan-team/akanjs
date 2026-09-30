@@ -176,6 +176,71 @@ describe.skipIf(!CsrE2eHarness.enabled)("CSR page stack (minimal, /e2e/stack)", 
     expect(await csr.ticksOver("tab-a")).toBeGreaterThan(0);
   }, 60_000);
 
+  test("a page that redirects after an await lands on the target, inside the target's own async layout", async () => {
+    await csr.open(TAB_B);
+    await csr.evaluate((next: string) => {
+      window.dispatchEvent(new CustomEvent("akan:sync-navigation", { detail: { href: next, kind: "push" } }));
+    }, "/e2e/stack/redirect?delay=120");
+    await csr.waitFor((pathname: string) => location.pathname.endsWith(pathname), {
+      args: ["/e2e/tabbed/home"],
+      timeout: 10_000,
+    });
+    await csr.waitFor(() => document.querySelectorAll('[data-e2e="tabbar"]').length === 1, { timeout: 10_000 });
+    await csr.waitFor(
+      () =>
+        (window as unknown as { __akanE2eProbes?: Record<string, { mounted?: boolean }> }).__akanE2eProbes?.home
+          ?.mounted,
+      { timeout: 10_000 },
+    );
+    expect(await csr.probe("home")).toMatchObject({ activity: "current", mounted: true });
+    expect(await csr.reloaded()).toBe(false);
+  }, 60_000);
+
+  test("an async render that throws is logged with its route instead of leaving a blank page in silence", async () => {
+    await csr.open("/e2e/stack/broken");
+    await csr.waitFor(() => true);
+    await Bun.sleep(500);
+    expect(
+      csr.consoleMessages().some((line) => /render of page \d+ of \S*\/e2e\/stack\/broken failed/.test(line)),
+    ).toBe(true);
+  }, 60_000);
+
+  test("the memory frame trace records navigation without writing it to the console", async () => {
+    await csr.open(TAB_A);
+    await csr.evaluate(() => localStorage.setItem("akan:debug:frame", "memory"));
+    try {
+      await csr.open(TAB_A);
+      await csr.navigate(item("71"));
+      const events = await csr.evaluate(() =>
+        ((window as { __AKAN_FRAME_TRACE__?: { event: string }[] }).__AKAN_FRAME_TRACE__ ?? []).map(
+          (entry) => entry.event,
+        ),
+      );
+      expect(events).toContain("router.push");
+      expect(events).toContain("navigation.commit");
+      expect(csr.consoleMessages().some((line) => line.includes("[akan:frame:"))).toBe(false);
+    } finally {
+      await csr.evaluate(() => localStorage.removeItem("akan:debug:frame"));
+    }
+  }, 60_000);
+
+  test("a cached page whose layout redirected renders that layout again when it is back on screen", async () => {
+    await csr.evaluate(() => {
+      (globalThis as { __e2eSignedIn?: boolean }).__e2eSignedIn = false;
+    });
+    await csr.open("/e2e/gate/home");
+    await csr.waitFor((pathname: string) => location.pathname.endsWith(pathname), {
+      args: [TAB_B],
+      timeout: 10_000,
+    });
+    await csr.evaluate(() => {
+      (globalThis as { __e2eSignedIn?: boolean }).__e2eSignedIn = true;
+    });
+    await csr.navigate("/e2e/gate/home", "replace");
+    await csr.waitFor(() => document.querySelectorAll('[data-e2e="gate-tabbar"]').length === 1, { timeout: 10_000 });
+    expect(await csr.probe("gate-home")).toMatchObject({ activity: "current", mounted: true });
+  }, 60_000);
+
   test("back returns to the previous entry without a reload", async () => {
     await csr.open(TAB_A);
     await csr.navigate(item("6"));

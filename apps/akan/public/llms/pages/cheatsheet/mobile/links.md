@@ -87,9 +87,9 @@ Open Android App Links docs
 
 Getting The Android Fingerprint
 
-The surest way is to ask Gradle. It prints the SHA-256 of the key each build variant actually signs with:
+Read it from the keystore that signs the build. Debug builds are signed with the runtime's own debug keystore, created by the first Android build:
 
-You can also read it straight from a keystore. The default Android debug keystore already exists on any machine set up for Android development:
+Release builds are signed with the upload key akan release-android reads from the environment:
 
 ## Code Examples
 
@@ -123,18 +123,18 @@ export default config;
 ### Terminal
 
 ```bash
-cd apps/myapp/android
-./gradlew signingReport
+keytool -list -v \
+  -keystore ~/.akan/native/debug.keystore \
+  -alias androiddebugkey \
+  -storepass android
 ```
 
 ### Terminal
 
 ```bash
 keytool -list -v \
-  -keystore ~/.android/debug.keystore \
-  -alias androiddebugkey \
-  -storepass android \
-  -keypass android
+  -keystore "$MYAPP_RELEASE_STORE_FILE" \
+  -alias "$MYAPP_RELEASE_KEY_ALIAS"
 ```
 
 ## Agent Notes

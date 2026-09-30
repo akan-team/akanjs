@@ -24,6 +24,7 @@ import {
   type MobileBuildOptions,
   type MobileStartOptions,
   type MobileTargetOptions,
+  type MobileUpdatePackOptions,
 } from "./application.runner";
 import { DevPortReclaimer } from "./devPortReclaimer";
 import { DevStreamView } from "./devStreamView";
@@ -336,6 +337,19 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("releaseAndroid", options.env ?? "main", allowLocalRelease);
     await this.applicationRunner.releaseAndroid(app, format, options);
+  }
+  async packUpdate(
+    app: App,
+    platform: "ios" | "android",
+    {
+      write = true,
+      allowLocalRelease = false,
+      ...options
+    }: MobileUpdatePackOptions & MobileWriteOptions & MobileReleaseGate = {},
+  ) {
+    await app.scanSync({ write });
+    ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
+    await this.applicationRunner.packUpdate(app, platform, options);
   }
   static #assertReleaseEnv(command: string, env: string, allowLocalRelease: boolean) {
     if (env === "local" && !allowLocalRelease)

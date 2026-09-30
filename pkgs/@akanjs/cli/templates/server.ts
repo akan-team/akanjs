@@ -30,7 +30,7 @@ ${scalarModules.map(([model]) => `    { constant: cnst.${model}, database: db.${
 
 ${scanInfo.type === "app" ? `export const server = new AkanServer("${scanInfo.name}", env, undefined${libs.length ? `, ${libs.join(", ")}` : ""}, lib);` : ""}
 
-export { env } from "./env/env.server.testing";
+${scanInfo.type === "lib" ? `export { env } from "./env/env.server.testing";` : ""}
 export * as db from "./lib/db";
 export * as srv from "./lib/srv";
 export * as sig from "./lib/sig";

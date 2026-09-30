@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { AkanMobileTargetConfig } from "../akanConfig";
 import type { App } from "../commandDecorators";
-import { getMobileTargetChoices, resolveMobilePath, resolveMobileTargets, targetHtmlFilename } from "./mobileTarget";
+import {
+  appIdsOf,
+  getMobileTargetChoices,
+  resolveAppId,
+  resolveMobilePath,
+  resolveMobileTargets,
+  targetHtmlFilename,
+} from "./mobileTarget";
 
 const target = {
   name: "akanjs",
@@ -19,6 +26,17 @@ describe("mobile target helpers", () => {
     expect(resolveMobilePath({ ...target, basePath: undefined }, "/order/123")).toBe("/order/123");
   });
 
+  test("an app id per platform falls back to default, and a platform with neither is refused", () => {
+    const appId = { default: "com.yeollege", ios: "com.puffinplanet.yeollege" };
+    expect(resolveAppId(appId, "ios")).toBe("com.puffinplanet.yeollege");
+    expect(resolveAppId(appId, "android")).toBe("com.yeollege");
+    expect(resolveAppId("com.one.app", "macos")).toBe("com.one.app");
+    expect(() => resolveAppId({ ios: "com.puffinplanet.yeollege" }, "android")).toThrow(
+      "mobile.appId names no id for android",
+    );
+    expect(appIdsOf(appId)).toEqual(["com.yeollege", "com.puffinplanet.yeollege"]);
+  });
+
   test("selects the self-contained html file for a target", () => {
     expect(targetHtmlFilename(target)).toBe("akanjs.html");
     expect(targetHtmlFilename({ ...target, basePath: undefined })).toBe("index.html");
@@ -34,6 +52,37 @@ describe("mobile target helpers", () => {
 
     await expect(getMobileTargetChoices(app)).resolves.toEqual(["akanjs"]);
     await expect(resolveMobileTargets(app, undefined)).resolves.toEqual([{ name: "akanjs", config: target }]);
+  });
+
+  test("a target naming no basePath is a template in an app with basePaths, never a page of its own", async () => {
+    const template = { ...target, name: "default", basePath: undefined };
+    const appWith = (basePaths: string[]) =>
+      ({
+        name: "angelo",
+        getConfig: async () => ({ basePaths: new Set(basePaths), mobile: { targets: { default: template } } }),
+      }) as unknown as App;
+
+    const two = appWith(["soft", "office"]);
+    await expect(getMobileTargetChoices(two)).resolves.toEqual(["soft", "office"]);
+    await expect(resolveMobileTargets(two, undefined)).rejects.toThrow(
+      "Multiple mobile targets found for angelo. Pass --target <soft|office|all>.",
+    );
+    await expect(resolveMobileTargets(two, "office")).resolves.toEqual([
+      { name: "office", config: { ...template, name: "office", basePath: "office" } },
+    ]);
+    await expect(resolveMobileTargets(two, "all")).resolves.toEqual([
+      { name: "soft", config: { ...template, name: "soft", basePath: "soft" } },
+      { name: "office", config: { ...template, name: "office", basePath: "office" } },
+    ]);
+
+    const one = appWith(["soft"]);
+    const soft = [{ name: "soft", config: { ...template, name: "soft", basePath: "soft" } }];
+    await expect(resolveMobileTargets(one, undefined)).resolves.toEqual(soft);
+    await expect(resolveMobileTargets(one, "all")).resolves.toEqual(soft);
+
+    await expect(resolveMobileTargets(appWith([]), undefined)).resolves.toEqual([
+      { name: "default", config: template },
+    ]);
   });
 
   test("resolves a route base path onto the default mobile target config", async () => {

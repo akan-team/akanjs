@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
+import type { MobileEnv } from "akanjs";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import {
@@ -48,6 +49,7 @@ export class NativeApp {
   constructor(
     readonly app: App,
     readonly target: ResolvedMobileTarget,
+    readonly env?: MobileEnv,
   ) {
     this.targetRoot = path.join(app.cwdPath, ".akan", "mobile", target.name);
     this.web = new NativeWebDir(path.join(this.targetRoot, "web"));
@@ -67,7 +69,7 @@ export class NativeApp {
     });
   }
 
-  async config() {
+  async config(platform: NativePlatform) {
     const [appConfig, plugins] = await Promise.all([this.app.getConfig(), this.app.collectPlugins()]);
     return NativeConfig.build({
       appPath: this.app.cwdPath,
@@ -75,12 +77,14 @@ export class NativeApp {
       webDir: this.web.dir,
       contributions: plugins.flatMap((plugin) => (plugin.native ? [plugin.native] : [])),
       locales: appConfig.i18n.locales,
+      env: this.env,
+      platform,
     });
   }
 
   /** The API and the config it is about to build, refused here when the runtime would refuse it later. */
-  async prepare() {
-    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config()]);
+  async prepare(platform: NativePlatform) {
+    const [api, { config, warnings }] = await Promise.all([NativeApi.load(this.app.cwdPath), this.config(platform)]);
     for (const warning of warnings) this.app.logger.warn(warning);
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
@@ -118,7 +122,7 @@ export class NativeApp {
 
   async build(platform: NativePlatform, { profile = "release" }: { profile?: "debug" | "release" } = {}) {
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare(platform);
     return await api.build({ ...this.#task(platform, config), profile });
   }
 
@@ -127,7 +131,7 @@ export class NativeApp {
     { device, teamId, profile = "debug" }: NativeRunOptions & { profile?: "debug" | "release" } = {},
   ) {
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare(platform);
     return await api.run({
       ...this.#task(platform, config),
       profile,
@@ -137,21 +141,22 @@ export class NativeApp {
     });
   }
 
-  //* The gateway serves the page and its HMR socket on the app origin; API calls go to the dev server itself (baseEnv),
-  //* which an Android device reaches through the reversed port.
+  //* The gateway serves the page, its HMR socket and its API calls on the app origin. The dev server's own port is
+  //* reversed too: a browser the app hands off to (auth-session) opens it directly (baseEnv getServerOrigin).
   async dev(platform: NativePlatform, { upstream, lang, device, teamId }: NativeDevOptions) {
     const startedAt = performance.now();
     const boot: NativeDevBoot = { steps: [], lines: [] };
     this.#boot = boot;
     try {
       await mkdir(this.web.dir, { recursive: true });
-      const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(), this.app.getConfig()]);
+      const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(platform), this.app.getConfig()]);
       const session = await api.dev({
         ...this.#task(platform, config),
         upstream,
         hmrPath: "/_akan/hmr",
         //? A dev page calls its own origin (akanjs baseEnv), so the gateway relays the socket it opens for the API too.
         wsPaths: [`${routes.prefix}${routes.websocketPrefix}`],
+        reversePorts: [Number(new URL(upstream).port)],
         onLine: this.#appLine,
         startPath: this.startPath(lang),
         ...(device ? { device } : {}),
@@ -185,7 +190,7 @@ export class NativeApp {
 
   async releaseIos({ teamId, adHoc = false }: { teamId?: string; adHoc?: boolean } = {}) {
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare("ios");
     return await api.release({
       ...this.#task("ios", config),
       platform: "ios",
@@ -196,8 +201,28 @@ export class NativeApp {
   async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
     const signing = NativeApp.androidSigning();
     await this.assembleWeb();
-    const { api, config } = await this.prepare();
+    const { api, config } = await this.prepare("android");
     return await api.release({ ...this.#task("android", config), platform: "android", signing, formats });
+  }
+
+  /** An unsigned OTA update of this target's web bundle for `platform`, and the channel its binary follows. */
+  async packUpdate(platform: MobilePlatform, { out }: { out?: string } = {}) {
+    await this.assembleWeb();
+    const { api, config } = await this.prepare(platform);
+    if (!config.updates)
+      throw new Error(
+        `Mobile target '${this.target.name}' takes no updates: add mobile.updates: { url, publicKey } to akan.config.ts first.`,
+      );
+    const packed = await api.packUpdate({
+      ...this.#task(platform, config),
+      platform,
+      out: out ?? path.join(this.targetRoot, "updates", platform),
+    });
+    return { ...packed, channel: config.updates.channel ?? "production" };
+  }
+
+  static async compareBundles(appDir: string, shipped: string, bundle: string) {
+    return (await NativeApi.load(appDir)).compareBundles(shipped, bundle);
   }
 
   //* The names the Gradle build read, so a CI that already holds these secrets keeps working.

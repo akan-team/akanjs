@@ -7,12 +7,12 @@ there is nothing to mirror a rule change into. The section between the `akan:age
 by `akan agent install`; edit anything outside the markers freely.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.0.0-beta.20 -->
+<!-- akan:agent:version 3.0.0-beta.27 -->
 
 ## Workspace
 
 - Repo: akanjs
-- Apps: akan, minimal
+- Apps: akan, groupedroot, minimal
 - Libraries: shared, util
 - Packages: @akanjs/cli, @akanjs/devkit, @akanjs/native, akanjs, create-akan-workspace, use-agentic
 
@@ -890,6 +890,12 @@ shape, so `cascade` never means "related" — it means one of exactly these:
   `.layoutStyle()` on the root layout; `.prompt()` on a page. A named export beside the chain, or `page()` in a
   `_layout.tsx`, fails the build. `.head()` takes JSX — `<title>`, `<meta>`, `<link>` — or a function of the
   route's args returning it; there is no metadata object, and analytics is the app's own script, not a stage.
+- **A CSR bundle (a native app, `?csr=true`) never shows a root layout's own markup.** Pages render into the
+  frame, and what the root layout draws around `{children}` stays in a hidden container, so its wrappers cannot
+  stack a second screen beside the frame. Its components still mount and their effects run (`<Auth.User />` works).
+  Anything a person must see from a root layout — an overlay, a gate, a banner — renders through
+  `createPortal(…, document.body)`, as `<Agent.Chat />` and the dialogs already do. A non-root `_layout.tsx` has no
+  such limit.
 - **A page names every `[x]` segment of its path with `.param("x", Type)`** and reads a query key only through
   `.search("k", Type)`. Values arrive typed — `ID`/`String` → string, `Int`/`Float` → number, `Boolean`, `Date` →
   Dayjs, an `enumOf` class → its union, `[T]` → array — a path value the type refuses answers not-found, and a

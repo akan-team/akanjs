@@ -168,6 +168,22 @@ describe("NativeNavigation", () => {
     stop();
   });
 
+  test("a push for the page on screen is not shown in front, however its url spells the page", async () => {
+    installShell("android", { withPush: true });
+    const navigation = await navigationOf();
+    navigation.showPushesExcept("/en/admin/chatRoom/7");
+    await settle();
+    expect(presentations).toEqual([
+      {
+        banner: true,
+        list: true,
+        sound: true,
+        badge: true,
+        except: { key: "url", values: ["/en/admin/chatRoom/7", "/admin/chatRoom/7", "/chatRoom/7"] },
+      },
+    ]);
+  });
+
   test("a shell built without push is asked nothing about it", async () => {
     installShell("android");
     const stop = (await navigationOf()).listen();

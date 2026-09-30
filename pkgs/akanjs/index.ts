@@ -1,3 +1,4 @@
+import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { AkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 
@@ -67,8 +68,25 @@ export type MobileEnv = "local" | "debug" | "develop" | "main";
 export type MobilePermission = "camera" | "contacts" | "location" | "push" | "speech";
 
 export interface AkanMobileTargetAssets {
-  icon?: string;
-  splash?: string;
+  /** A square PNG, relative to the app folder, or it with the color behind its transparent areas. */
+  icon?: string | { image: string; backgroundColor?: string };
+  /** A PNG shown centered at launch, or the launch screen's color, image and when it hides. */
+  splash?: string | NonNullable<AkanNativeConfig["splash"]>;
+}
+
+/**
+ * Over-the-air web bundle updates. The app reads `<url>/<platform>/<channel>.json` and its `.sig`; `akan pack-update`
+ * writes the files, and whoever holds the private key signs and uploads them.
+ */
+export interface AkanMobileUpdatesConfig {
+  /** https in a release build. */
+  url: string;
+  /** The raw 32-byte Ed25519 public key, base64. */
+  publicKey: string;
+  /** Default: the backend env the binary is built for (`main`, `develop`, `debug`, `local`). */
+  channel?: string;
+  /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
+  readyTimeout?: number;
 }
 
 export interface AkanMobileTargetDeepLinks {
@@ -107,14 +125,26 @@ export interface AkanMobileNativeConfig {
     /** The Firebase project's google-services.json, relative to the app folder, for FCM push on Android. */
     googleServices?: string;
   };
+  /** Android's notification channel, status bar icon (relative to the app folder) and accent color. */
+  push?: AkanNativeConfig["push"];
+  /** The app's part of the iOS privacy manifest (PrivacyInfo.xcprivacy), which an App Store upload requires. */
+  privacy?: AkanNativeConfig["privacy"];
 }
+
+/**
+ * One bundle id, or one per platform, for an app whose store listings already carry different ids. A platform without
+ * its own takes `default`.
+ */
+export type AkanMobileAppId =
+  | string
+  | { default?: string; ios?: string; android?: string; macos?: string; windows?: string; linux?: string };
 
 export interface AkanMobileTargetConfig {
   name: string;
   basePath?: string;
   indexPath?: string;
   appName: string;
-  appId: string;
+  appId: AkanMobileAppId;
   /** Executables, archives and the Swift module; letters, digits, `.`, `_` and `-`. Default: the app's folder name. */
   fileName?: string;
   version: string;
@@ -124,16 +154,18 @@ export interface AkanMobileTargetConfig {
   deepLinks?: AkanMobileTargetDeepLinks;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
+  updates?: AkanMobileUpdatesConfig;
 }
 
 export interface AkanMobileConfig {
   appName: string;
-  appId: string;
+  appId: AkanMobileAppId;
   fileName?: string;
   version: string;
   buildNum: number;
   files?: AkanMobileTargetFiles;
   native?: AkanMobileNativeConfig;
+  updates?: AkanMobileUpdatesConfig;
   targets: Record<string, AkanMobileTargetConfig>;
 }
 

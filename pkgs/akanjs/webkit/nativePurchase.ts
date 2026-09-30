@@ -20,10 +20,15 @@ export interface BillingVerification {
 
 export type PurchaseCallback = (transaction: IapTransaction, verified: unknown) => void | Promise<void>;
 
+/** The app's own check; the store's raw proof is also on `transaction.verification`. */
+export type BillingVerifier = (data: BillingVerification, transaction: IapTransaction) => Promise<unknown>;
+
 export interface NativePurchaseOptions {
   productInfo: PurchaseProductInfo[];
-  /** The verification server's origin; it answers `POST <url>/billing/verifyBilling`. */
-  url: string;
+  /** The verification server's origin; it answers `POST <url>/billing/verifyBilling`. Unused with `verify`. */
+  url?: string;
+  /** Verifies instead of the POST: what it resolves reaches onPay/onSubscribe, and `null`, `undefined` or `false` refuses. */
+  verify?: BillingVerifier;
   onPay?: PurchaseCallback;
   onSubscribe?: PurchaseCallback;
 }
@@ -66,6 +71,11 @@ export class NativePurchase {
   async verify(transaction: IapTransaction): Promise<{ ok: true; body: unknown } | { ok: false }> {
     const data = await this.verificationOf(transaction);
     if (!data) return { ok: false };
+    if (this.options.verify) {
+      const body = await this.options.verify(data, transaction);
+      return body === null || body === undefined || body === false ? { ok: false } : { ok: true, body };
+    }
+    if (!this.options.url) throw new Error("usePurchase needs `verify` or the verification server's `url`");
     const res = await fetch(`${this.options.url.replace(/\/$/, "")}/billing/verifyBilling`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

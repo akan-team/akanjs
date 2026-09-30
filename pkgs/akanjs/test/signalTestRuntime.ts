@@ -20,7 +20,7 @@ export interface SignalTestContext<Fetch = FetchProxy> {
 export type SignalTestOptions = Pick<TestServerOptions, "storage" | "workerId" | "port" | "serverMode">;
 
 type SignalServerModule = {
-  env: BackendEnv;
+  env?: BackendEnv;
   fetch: FetchProxy;
   lib: AkanLib;
 };
@@ -68,6 +68,13 @@ const importServerModule = async (type: "app" | "lib", name: string): Promise<Si
 
 const importLibModule = async (name: string): Promise<SignalServerModule> => await import(`@libs/${name}/server`);
 
+//? An app's server.ts is an image entry, so its testing env is read from the file; a lib's server.ts still exports
+//? it, since every app's env.server.type.ts spreads it.
+const importTestingEnv = async (type: "app" | "lib", name: string, targetModule: SignalServerModule) =>
+  type === "app"
+    ? ((await import(`@apps/${name}/env/env.server.testing`)) as { env?: BackendEnv }).env
+    : targetModule.env;
+
 export const setupSignalTestTarget = async <Fetch = FetchProxy>(
   {
     type = process.env.AKAN_TEST_TARGET_TYPE as "app" | "lib" | undefined,
@@ -96,10 +103,11 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
       Promise.all((libNames ?? []).filter((libName) => libName !== name).map(importLibModule)),
       importServerModule(type, name),
     ]);
+    const testingEnv = await importTestingEnv(type, name, targetModule);
     const target: SignalTestTarget = {
       type,
       name,
-      env: { ...env, ...targetModule.env },
+      env: { ...env, ...testingEnv },
       fetch: targetModule.fetch,
       libs: [...dependencyModules.map((mod) => mod.lib), targetModule.lib],
     };

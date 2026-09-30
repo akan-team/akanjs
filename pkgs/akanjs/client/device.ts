@@ -13,27 +13,45 @@ const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessE
 const debugSessionId = Math.random().toString(36).slice(2, 8);
 let debugSeq = 0;
 
-//? Opt-in only: every native dev build carries a mobile target, so keying on one traced every visibility change of
-//? every desktop and phone session into its terminal.
-const isFrameDebugEnabled = () => {
-  if (typeof window === "undefined") return false;
-  if (new URLSearchParams(window.location.search).get("akanFrameDebug") === "1") return true;
+const FRAME_TRACE_LIMIT = 2000;
+const frameTrace: { seq: number; event: string; details: DebugPayload }[] = [];
+
+const readFrameDebugFlag = () => {
+  const fromSearch = new URLSearchParams(window.location.search).get("akanFrameDebug");
+  if (fromSearch) return fromSearch;
   try {
-    return window.localStorage.getItem("akan:debug:frame") === "1";
+    return window.localStorage.getItem("akan:debug:frame");
   } catch {
     // Storage a page cannot read (a sandboxed frame, a stub window) leaves tracing off instead of failing the caller.
-    return false;
+    return null;
   }
 };
 
+//? Opt-in only: every native dev build carries a mobile target, so keying on one traced every visibility change of
+//? every desktop and phone session into its terminal.
+//? `memory` keeps the trace off the console: a native dev build mirrors each console call over the bridge, which slows
+//? the frame enough to hide a race. Read it back from `window.__AKAN_FRAME_TRACE__`.
+const frameDebugMode = (): "console" | "memory" | null => {
+  if (typeof window === "undefined") return null;
+  const flag = readFrameDebugFlag();
+  return flag === "1" ? "console" : flag === "memory" ? "memory" : null;
+};
+
 export function debugFrame(event: string, payload: DebugPayload = {}) {
-  if (!isFrameDebugEnabled()) return;
+  const mode = frameDebugMode();
+  if (!mode) return;
   debugSeq += 1;
   const details = {
     href: window.location.href,
     now: Math.round(performance.now()),
     ...payload,
   };
+  if (mode === "memory") {
+    frameTrace.push({ seq: debugSeq, event, details });
+    if (frameTrace.length > FRAME_TRACE_LIMIT) frameTrace.splice(0, frameTrace.length - FRAME_TRACE_LIMIT);
+    (window as { __AKAN_FRAME_TRACE__?: typeof frameTrace }).__AKAN_FRAME_TRACE__ = frameTrace;
+    return;
+  }
   // biome-ignore lint/suspicious/noConsole: opt-in tracing, kept at debug so a native terminal files it under debug
   console.debug(`[akan:frame:${debugSessionId}:${debugSeq}] ${event}`, details);
 }

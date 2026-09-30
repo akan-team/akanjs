@@ -142,6 +142,7 @@ class PushPlugin(private val context: AkanNativePluginContext) : PushPluginSpec 
     override fun setForegroundPresentation(args: PushPresentation, reply: AkanNativeVoidReply) {
         Router.showInFront = args.banner == true || args.list == true
         Router.soundInFront = args.sound == true
+        Router.except = args.except
         reply.resolve()
     }
 
@@ -174,7 +175,7 @@ class PushPlugin(private val context: AkanNativePluginContext) : PushPluginSpec 
     private fun received(message: RemoteMessage) {
         val notification = message.notification
         if ("received" in listening) events.received(PushMessage(id = message.messageId, title = notification?.title, body = notification?.body, data = message.data))
-        if (notification != null && Router.showInFront) showInFront(message, notification)
+        if (notification != null && Router.showInFront && !Router.excepted(message.data)) showInFront(message, notification)
     }
 
     /** A notification for a message that arrived in front, when the page asked for one; its tap is an "action". */
@@ -231,6 +232,13 @@ class PushPlugin(private val context: AkanNativePluginContext) : PushPluginSpec 
         var pendingToken: String? = null
         var showInFront = false
         var soundInFront = false
+        var except: PushPresentationExcept? = null
+
+        fun excepted(data: Map<String, String>): Boolean {
+            val rule = except ?: return false
+            val value = data[rule.key] ?: return false
+            return value in rule.values
+        }
         private val main = Handler(Looper.getMainLooper())
 
         fun token(token: String) {

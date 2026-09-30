@@ -12,9 +12,10 @@
 // signed manifest must grow, so an old but validly signed bundle cannot be replayed.
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
+import { runtimeVersion } from "./boot.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
 
@@ -68,6 +69,64 @@ export interface UpdateManifest {
   archive?: { sha256: string; url: string; size: number; gzSha256: string };
   /** App updates: gzip deltas from earlier releases' tars (`from` = that tar's sha256). */
   patches?: { from: string; url: string; sha256: string; size: number }[];
+}
+
+/** Every file of a web bundle as the app serves it: index.html with the init script and CSP, public/, env.runtime.json. */
+export function webFiles(
+  webDir: string,
+  html: string,
+  env: Record<string, string>,
+): { path: string; data: Uint8Array }[] {
+  const files: { path: string; data: Uint8Array }[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else {
+        const rel = relative(webDir, path);
+        files.push({ path: rel, data: rel === "index.html" ? new TextEncoder().encode(html) : readFileSync(path) });
+      }
+    }
+  };
+  walk(webDir);
+  files.push({ path: "env.runtime.json", data: new TextEncoder().encode(JSON.stringify(env, null, 2)) });
+  return files;
+}
+
+/** Writes a web bundle's files under `<out>/files/<sha256>` (content-addressed, so releases share them) and lists them. */
+export function writeWebBundle(out: string, webDir: string, html: string, env: Record<string, string>): UpdateFile[] {
+  mkdirSync(join(out, "files"), { recursive: true });
+  return webFiles(webDir, html, env).map(({ path, data }) => {
+    const hash = sha256(data);
+    const target = join(out, "files", hash);
+    if (!existsSync(target)) writeFileSync(target, data);
+    return { path, sha256: hash, size: data.length };
+  });
+}
+
+/** A web bundle's manifest (UP-2), keys in the order `update publish` has always written them. */
+export function webManifest(release: {
+  app: { id: string; version: string };
+  platform: Platform;
+  channel: string;
+  nativeApi: string;
+  sequence: number;
+  bundle: string;
+  files: UpdateFile[];
+}): UpdateManifest {
+  return {
+    schema: 1,
+    kind: "web",
+    app: release.app.id,
+    platform: release.platform,
+    channel: release.channel,
+    nativeApi: release.nativeApi,
+    sequence: release.sequence,
+    bundle: release.bundle,
+    runtimeVersion: runtimeVersion(),
+    version: release.app.version,
+    files: release.files,
+  };
 }
 
 export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig | null {

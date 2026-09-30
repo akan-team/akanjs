@@ -1099,7 +1099,8 @@ export class AkanApp {
     this.#federationChildCache = null;
     // Batch children serve no HTTP/HMR traffic, so they must not gate frontend readiness.
     const trafficChildren = [...this.#children.values()].filter((item) => item.role !== "batch");
-    if (child.role !== "batch" && trafficChildren.every((item) => item.ready)) {
+    //? A gateway that lost its port stops only after its replicas exit, and one may boot in that wait.
+    if (!this.#stopping && child.role !== "batch" && trafficChildren.every((item) => item.ready)) {
       process.send?.({ type: "backend-ready", pid: process.pid } satisfies AkanIpcMessage);
     }
     if ([...this.#children.values()].every((item) => item.ready)) {

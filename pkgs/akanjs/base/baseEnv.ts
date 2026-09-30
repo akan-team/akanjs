@@ -129,11 +129,13 @@ const nativeDevGatewayOrigin = (): string | null =>
     ? `${window.location.protocol}//${window.location.host}`
     : null;
 
+const devServerOrigin = () => `http://localhost:${process.env.AKAN_PUBLIC_SERVER_PORT ?? "8282"}`;
+
 //* A release build has no gateway behind it, so in local mode it calls the dev server itself.
 const nativeDevServerUrl = (operationMode: BaseEnv["operationMode"]): URL | null => {
   const platform = (globalThis as { __AKAN_NATIVE__?: { platform?: string } }).__AKAN_NATIVE__?.platform;
   if (operationMode !== "local" || !platform || platform === "web") return null;
-  return new URL(`http://localhost:${process.env.AKAN_PUBLIC_SERVER_PORT ?? "8282"}`);
+  return new URL(devServerOrigin());
 };
 
 const missingPublicEnv = (key: string) =>
@@ -257,4 +259,17 @@ export const getEnv = (): ClientEnv => {
   } as const;
   cachedEnv = env;
   return env;
+};
+
+//* The server as a browser outside the page opens it — the system browser a native sign-in hands off to. A page the
+//* native dev gateway served calls it on the app's own origin, which no other browser can open, so that one names
+//* the dev server behind the gateway: the origin an OAuth redirect_uri is registered for.
+export const getServerOrigin = (): string => {
+  const env = getEnv();
+  const behindGateway =
+    env.side === "client" &&
+    env.renderMode === "csr" &&
+    !process.env.AKAN_PUBLIC_SERVER_URL &&
+    !!nativeDevGatewayOrigin();
+  return behindGateway ? devServerOrigin() : new URL(env.serverHttpUri).origin;
 };

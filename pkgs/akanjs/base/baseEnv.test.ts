@@ -283,6 +283,58 @@ describe("getEnv", () => {
     }
   });
 
+  test("getServerOrigin names what a browser outside the page opens: the dev server behind a gateway page", async () => {
+    const holder = globalThis as { __AKAN_NATIVE__?: { platform: string }; __AKAN_NATIVE_DEV__?: { gateway: string } };
+    const originOf = async (href: string) => asPage(href, async () => (await loadBaseEnv()).getServerOrigin());
+    try {
+      for (const [platform, href] of [
+        ["ios", "app://localhost/en?csr=true"],
+        ["android", "https://app.localhost/en?csr=true"],
+        ["macos", "app://localhost/en?csr=true"],
+      ] as const) {
+        for (const environment of ["local", "develop"]) {
+          resetEnv();
+          Object.assign(process.env, { AKAN_PUBLIC_ENV: environment, AKAN_PUBLIC_SERVER_PORT: "8283" });
+          holder.__AKAN_NATIVE__ = { platform };
+          holder.__AKAN_NATIVE_DEV__ = { gateway: "http://localhost:52011" };
+          expect([platform, environment, await originOf(href)]).toEqual([
+            platform,
+            environment,
+            "http://localhost:8283",
+          ]);
+        }
+      }
+      delete holder.__AKAN_NATIVE_DEV__;
+
+      resetEnv();
+      Object.assign(process.env, { AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_SERVER_PORT: "8283" });
+      holder.__AKAN_NATIVE__ = { platform: "android" };
+      expect(await originOf("https://app.localhost/en?csr=true")).toBe("http://localhost:8283");
+
+      resetEnv();
+      process.env.AKAN_PUBLIC_ENV = "main";
+      holder.__AKAN_NATIVE__ = { platform: "ios" };
+      expect(await originOf("app://localhost/")).toBe("https://minimal-main.example.com");
+
+      resetEnv();
+      Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVER_URL: "https://api.example.com/" });
+      expect(await originOf("app://localhost/")).toBe("https://api.example.com");
+      delete holder.__AKAN_NATIVE__;
+
+      resetEnv();
+      Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_RENDER_ENV: "ssr" });
+      expect(await originOf("https://minimal.example.com/en")).toBe("https://minimal.example.com");
+
+      resetEnv();
+      process.env.AKAN_PUBLIC_ENV = "local";
+      expect(await originOf("http://localhost:8282/en?csr=true")).toBe("http://localhost:8282");
+    } finally {
+      delete holder.__AKAN_NATIVE__;
+      delete holder.__AKAN_NATIVE_DEV__;
+      delete process.env.AKAN_PUBLIC_SERVER_URL;
+    }
+  });
+
   test("a local CSR bundle on an http page keeps following the page", async () => {
     resetEnv();
     process.env.AKAN_PUBLIC_ENV = "local";

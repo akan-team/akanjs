@@ -55,11 +55,17 @@ Locks `document.body` scrolling while `active`. Overlays share one count.
 
 Calls `onEscape` on Escape while `active`. Only the topmost open surface gets the key.
 
+Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
+
+`{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.
+
+`"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
+
 Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
-Start the CSR (mobile) bundle and hold its router state. The generated entry calls them.
+Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
 
 Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
 

@@ -125,7 +125,9 @@ export const getWebConfigFromEnv = (): AkanWebConfig => {
 
 export interface MobileDeepLinkAssociation {
   targetName: string;
-  appId: string;
+  /** Null when the target names no id for the platform; that platform then gets no association. */
+  iosAppId: string | null;
+  androidAppId: string | null;
   domains: string[];
   iosTeamId?: string;
   androidSha256CertFingerprints?: string[];

@@ -104,6 +104,9 @@ export class AkanAppHost {
   #backendGaveUp = false;
   #backendLifecycleState: BackendLifecycleState = "stopped";
   #pendingRestartReason: BackendRestartReason | null = null;
+  //? One replacement at a time: `#stopBackend` clears `#backend` only once the old process exits, so a second restart
+  //? inside that wait signals the same pid and spawns a second backend, and the one the host stops tracking keeps the port.
+  #backendRestart: Promise<void> | null = null;
   #pendingRecycle: {
     message: Extract<BuilderMessage, { type: "invalidate" }>;
     refreshConfig: boolean;
@@ -181,8 +184,10 @@ export class AkanAppHost {
     this.#cancelIdleSuspend();
     this.#stopIdleWatcher();
     this.#clearRestartTimers();
+    this.#pendingRestartReason = null;
     // Before the backend goes away, while it can still receive the answer.
     this.#failPendingBuilderMessages("dev server is shutting down");
+    await this.#backendRestart;
     await this.#stopBackend();
     this.#stopBuilder();
     return this;
@@ -202,6 +207,11 @@ export class AkanAppHost {
     return await createTunnel(type, { app: this.app, environment });
   }
   #startBackend(startStatus: { generation?: number; files: string[] } | null = null) {
+    if (this.#stopping) return;
+    if (this.#backend) {
+      this.logger.warn(`backend pid=${this.#backend.pid} is still running; not starting a second one`);
+      return;
+    }
     // Before the spawn: the new backend numbers its requests from 1 again, so old answers must not reach it.
     this.#builderRequests.startGeneration();
     this.#discardPendingBuilderMessages("the backend restarted while the builder was away");
@@ -386,10 +396,18 @@ export class AkanAppHost {
     if (this.#restartTimer) clearTimeout(this.#restartTimer);
     this.#restartTimer = setTimeout(() => {
       this.#restartTimer = null;
+      this.#backendRestart ??= this.#drainBackendRestarts().finally(() => {
+        this.#backendRestart = null;
+      });
+    }, BACKEND_RESTART_DEBOUNCE_MS);
+  }
+  //? A reason that arrived during a restart runs after it; one whose debounce is still pending waits for its timer.
+  async #drainBackendRestarts() {
+    while (this.#pendingRestartReason && !this.#restartTimer && !this.#stopping) {
       const next = this.#pendingRestartReason;
       this.#pendingRestartReason = null;
-      if (next) void this.#restartBackend(next);
-    }, BACKEND_RESTART_DEBOUNCE_MS);
+      await this.#restartBackend(next);
+    }
   }
   async #restartBackend(reason: BackendRestartReason) {
     this.logger.verbose(
@@ -719,6 +737,7 @@ export class AkanAppHost {
     return !!(
       this.#pendingRecycle ||
       this.#restartTimer ||
+      this.#backendRestart ||
       this.#backendRecoveryTimer ||
       this.#builderRecoveryTimer ||
       this.#rssRecycleReason
@@ -1053,6 +1072,7 @@ export class AkanAppHost {
     this.#clearRestartTimers();
     this.#builderRecoveryAttempts = 0;
     this.#pendingRestartReason = null;
+    await this.#backendRestart;
     this.#lastGoodFrontend = {};
     this.#buildStatusByPhase.clear();
     this.#pendingBuildStatusReplay = [];
