@@ -48,8 +48,8 @@ export class DesktopServerStage {
       AKAN_SSR: "false",
       AKAN_CSR: "false",
       AKAN_MCP: "false",
-      //? Inside the shell's quit budget, 2 s for every onQuit hook together.
-      AKAN_SHUTDOWN_TIMEOUT_MS: "1500",
+      //? Ahead of the launcher's 1.5 s grace before it signals, which sits inside the shell's 2 s quit budget.
+      AKAN_SHUTDOWN_TIMEOUT_MS: "1000",
     };
   }
 

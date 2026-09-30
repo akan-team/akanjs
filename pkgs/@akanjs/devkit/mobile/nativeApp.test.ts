@@ -64,6 +64,15 @@ describe("NativeApp", () => {
     expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
   });
 
+  test("follows the updates channel of the backend env it is built for", async () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: `${"a".repeat(43)}=` };
+    const built = async (env?: "debug" | "main") =>
+      (await new NativeApp(fakeApp(), target({ basePath: undefined, updates }), env).config()).config.updates;
+
+    expect(await built("main")).toEqual({ ...updates, channel: "main" });
+    expect(await built("debug")).toEqual({ ...updates, channel: "debug" });
+  });
+
   test("a desktop app is this computer's platform", () => {
     expect(["darwin", "win32", "linux"].map((host) => NativeApp.desktopPlatform(host as NodeJS.Platform))).toEqual([
       "macos",

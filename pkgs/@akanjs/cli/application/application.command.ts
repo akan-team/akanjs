@@ -292,7 +292,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, releaseEnvOption)
     .option("channel", String, {
-      desc: "the manifest to publish to (default: the target's updates.channel)",
+      desc: "the manifest to publish to (default: the target's updates.channel, else --env)",
       nullable: true,
     })
     .option("server", Boolean, { ...serverOption, desc: "a desktop release that carries the app's server" })

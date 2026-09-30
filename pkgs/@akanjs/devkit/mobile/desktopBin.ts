@@ -52,6 +52,13 @@ export class DesktopBin {
     return `${name}${path.extname(executable).toLowerCase() || ".exe"}`;
   }
 
+  //? Only the extension is taken from the URL: unzip and a Windows PATH lookup read it, and a decoded name could carry
+  //? a separator or `..` out of the cache folder.
+  static downloadName(url: string) {
+    const extension = /(?:\.tar)?\.[A-Za-z0-9]{1,8}$/.exec(path.posix.basename(new URL(url).pathname))?.[0] ?? "";
+    return `download${extension.toLowerCase()}`;
+  }
+
   static extractCommand(archive: string, dir: string, platform: NodeJS.Platform = process.platform): string[] {
     if (platform === "linux" && /\.zip$/i.test(archive)) return ["unzip", "-q", "-o", archive, "-d", dir];
     //? Windows' own bsdtar reads zip, and a GNU tar ahead of it on PATH (Git's) takes `C:` for a remote host.
@@ -107,7 +114,7 @@ export class DesktopBin {
 
   async #download(at: string, { url, sha256 }: AkanBinUrlSource): Promise<string> {
     const dir = path.join(this.#cacheDir, sha256);
-    const file = path.join(dir, decodeURIComponent(path.posix.basename(new URL(url).pathname)) || "download");
+    const file = path.join(dir, DesktopBin.downloadName(url));
     if (await Bun.file(file).exists()) return file;
     await mkdir(dir, { recursive: true });
     this.app.logger.info(`Downloading ${url}`);

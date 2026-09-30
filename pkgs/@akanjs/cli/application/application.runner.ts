@@ -37,7 +37,7 @@ export interface MobileTargetOptions {
   env?: MobileEnv;
 }
 export interface MobilePublishOptions extends MobileTargetOptions {
-  /** The manifest to publish to; default the target's updates.channel. */
+  /** The manifest to publish to; default the target's updates.channel, else the backend env it is built for. */
   channel?: string;
   /** A desktop release that carries the app's server, as the installed app does (`build-desktop --server`). */
   server?: boolean;
@@ -295,7 +295,7 @@ try {
       this.#reportBuild(
         app,
         mobileTarget,
-        await new NativeApp(app, mobileTarget).build(platform, {
+        await new NativeApp(app, mobileTarget, env).build(platform, {
           profile,
           ...(carried ? { server: carried } : {}),
           ...(installer ? { installer } : {}),
@@ -319,7 +319,7 @@ try {
       throw new Error(
         `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
       );
-    const nativeApp = new NativeApp(app, mobileTarget);
+    const nativeApp = new NativeApp(app, mobileTarget, env);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
       if (server) DesktopServerStage.assertCarriable(await app.getConfig());
@@ -334,13 +334,13 @@ try {
       return;
     }
     const upstream = `http://localhost:${await app.getDevPort()}`;
-    if (!(await ApplicationRunner.answers(upstream)))
+    if (!(await ApplicationRunner.answers(upstream, app.name)))
       throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
     const { i18n } = await app.getConfig();
     const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
     app.log(`${app.name}/${mobileTarget.name} on ${platform} follows ${upstream} through ${session.gateway}.`);
     if (interrupt)
-      interrupt.add(async () => await session.stop(), "Abandoning the app's shutdown; its window may stay open.");
+      interrupt.add(async () => await session.stop(), "Abandoning the app's shutdown; its window may stay open.", 130);
     else
       process.once("SIGINT", () => {
         void session.stop().finally(() => process.exit(130));
@@ -350,23 +350,29 @@ try {
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
-  //? The gateway answers its health route itself: the root path waits for a cold page render, which took a Windows VM
-  //? longer than these 3 s.
-  static async answers(url: string) {
-    try {
-      await fetch(`${url}/_akan/app/health`, { signal: AbortSignal.timeout(3_000) });
-      return true;
-    } catch {
-      // Nothing listening, which the caller turns into what to run.
-      return false;
-    }
+  //? The gateway answers its health and info routes itself: the root path waits for a cold page render, which took a
+  //? Windows VM longer than these 3 s. Another app's dev server may hold the port, so the name has to match.
+  static async answers(url: string, appName: string) {
+    const signal = AbortSignal.timeout(3_000);
+    // Nothing listening, which the caller turns into what to run.
+    if (!(await fetch(`${url}/_akan/app/health`, { signal }).catch(() => null))) return false;
+    const info = (await fetch(`${url}/_akan/app/info`, { signal })
+      .then(async (res) => (res.ok ? await res.json() : null))
+      .catch(() => null)) as { appName?: unknown } | null;
+    if (info?.appName === appName) return true;
+    const moveIt = `give ${appName} another port with AKAN_DEV_PORT`;
+    throw new Error(
+      typeof info?.appName === "string"
+        ? `${url} is the dev server of ${info.appName}, not ${appName}. Stop it (\`akan start ${appName} --kill\` takes the port over) or ${moveIt}.`
+        : `${url} answers, but not as an akan dev server; ${moveIt}.`,
+    );
   }
 
   async releaseIos(app: App, { target, env = "main", teamId, adHoc = false }: IosReleaseOptions = {}) {
     const targets = await resolveMobileTargets(app, target);
     await this.#buildMobileCsr(app, env);
     for (const mobileTarget of targets)
-      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget).releaseIos({ teamId, adHoc }));
+      this.#reportBuild(app, mobileTarget, await new NativeApp(app, mobileTarget, env).releaseIos({ teamId, adHoc }));
   }
 
   async releaseAndroid(app: App, format: "apk" | "aab", { target, env = "main" }: MobileTargetOptions = {}) {
@@ -377,7 +383,7 @@ try {
       this.#reportBuild(
         app,
         mobileTarget,
-        await new NativeApp(app, mobileTarget).releaseAndroid({ formats: [format] }),
+        await new NativeApp(app, mobileTarget, env).releaseAndroid({ formats: [format] }),
       );
   }
 
@@ -405,13 +411,15 @@ try {
     platform: "desktop" | "android" | "ios",
     { target, env = "main", channel, server = false }: MobilePublishOptions = {},
   ) {
+    if (server && platform !== "desktop")
+      throw new Error(`Only a desktop app carries its server; --server does not apply to ${platform}.`);
     const targets = await resolveMobileTargets(app, target);
     if (server) DesktopServerStage.assertCarriable(await app.getConfig());
     await this.#buildMobileCsr(app, env);
     const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
     const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
     for (const mobileTarget of targets) {
-      const nativeApp = new NativeApp(app, mobileTarget);
+      const nativeApp = new NativeApp(app, mobileTarget, env);
       const published = await nativeApp.publishUpdate(nativePlatform, {
         ...(channel ? { channel } : {}),
         ...(carried ? { server: carried } : {}),
@@ -446,7 +454,7 @@ try {
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env }).build({ spinner: true });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];

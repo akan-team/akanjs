@@ -21,7 +21,7 @@ class DesktopApp {
     process.platform === "darwin"
       ? path.join(homedir(), "Library/Application Support", appId, "server")
       : process.platform === "win32"
-        ? path.join(process.env.APPDATA ?? path.join(homedir(), "AppData/Roaming"), appId, "server")
+        ? path.join(process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData/Local"), appId, "server")
         : path.join(process.env.XDG_DATA_HOME ?? path.join(homedir(), ".local/share"), appId, "server");
 
   //? The shell installs its SIGTERM handler once its window exists, which trails "server ready" by up to a
@@ -148,6 +148,19 @@ describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop mini
       id: string;
     }[];
     expect(list.map((memo) => memo.id)).toContain(memoId);
+  });
+
+  test("carries the server env of the build's own env (debug, the default) and no other", async () => {
+    const stage = path.join(workspaceRoot, "apps/minimal/.akan/desktop/server");
+    const code = (
+      await Promise.all(
+        [...new Bun.Glob("*.js").scanSync(stage)].map(async (file) => await Bun.file(path.join(stage, file)).text()),
+      )
+    ).join("\n");
+    expect(code).toContain("bundles the server env of AKAN_PUBLIC_ENV=debug alone");
+    for (const other of ["local", "testing", "develop", "main"])
+      expect(code).toContain(`env/env.server.${other}.ts is not in this build`);
+    expect(code).not.toContain("env/env.server.debug.ts is not in this build");
   });
 
   test("ships the app's own native plugin (apps/minimal/native/probe), which finds the app's bin first", async () => {

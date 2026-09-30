@@ -95,6 +95,16 @@ describe("DesktopBin", () => {
     expect(DesktopBin.fileName("ffmpeg", "/x/ffmpeg.exe", "darwin")).toBe("ffmpeg");
   });
 
+  test("names a download by its URL's extension alone, so no URL writes outside the cache folder", () => {
+    expect(DesktopBin.downloadName("https://x.dev/r/ffmpeg-7.1-linux64.tar.xz")).toBe("download.tar.xz");
+    expect(DesktopBin.downloadName("https://x.dev/r/FFmpeg.ZIP?token=1")).toBe("download.zip");
+    expect(DesktopBin.downloadName("https://x.dev/r/ffmpeg.exe")).toBe("download.exe");
+    expect(DesktopBin.downloadName("https://x.dev/r/ffmpeg")).toBe("download");
+    expect(DesktopBin.downloadName("https://x.dev/r/ffmpeg%E0.zip")).toBe("download.zip");
+    expect(DesktopBin.downloadName("https://x.dev/a/..%2F..%2Fevil.zip")).toBe("download.zip");
+    expect(DesktopBin.downloadName("https://x.dev/a/..%5C..%5Cevil.zip")).toBe("download.zip");
+  });
+
   test("unpacks with the OS's own tools", () => {
     expect(DesktopBin.extractCommand("/c/a.zip", "/d", "linux")).toEqual(["unzip", "-q", "-o", "/c/a.zip", "-d", "/d"]);
     expect(DesktopBin.extractCommand("/c/a.zip", "/d", "darwin")).toEqual(["tar", "-xf", "/c/a.zip", "-C", "/d"]);

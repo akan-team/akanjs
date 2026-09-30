@@ -41,7 +41,7 @@ describe("DesktopServerStage", () => {
       AKAN_SSR: "false",
       AKAN_CSR: "false",
       AKAN_MCP: "false",
-      AKAN_SHUTDOWN_TIMEOUT_MS: "1500",
+      AKAN_SHUTDOWN_TIMEOUT_MS: "1000",
     });
     expect(env.PORT).toBeUndefined();
     expect(env.AKAN_LOG_TO_FILE).toBeUndefined();

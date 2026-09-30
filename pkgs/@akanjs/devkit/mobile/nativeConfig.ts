@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
-import type { AkanMobileTargetConfig, AkanNativeValue, AkanPluginNativeConfig, MobilePermission } from "akanjs";
+import type {
+  AkanMobileTargetConfig,
+  AkanNativeValue,
+  AkanPluginNativeConfig,
+  MobileEnv,
+  MobilePermission,
+} from "akanjs";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import type { NativePluginFolder } from "./nativePluginFolders";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
@@ -15,6 +21,8 @@ export interface NativeConfigInput {
   /** What the app's and its libs' plugins declare. */
   contributions: AkanPluginNativeConfig[];
   locales: readonly string[];
+  /** The backend the binary talks to; an updates channel left unnamed follows it. */
+  env?: MobileEnv;
   /** A desktop build that carries its server (`--server`). */
   desktopServer?: DesktopServerBundle;
   /** The plugins in the app's and its libs' `native/` folders. */
@@ -83,6 +91,7 @@ export class NativeConfig {
     webDir,
     contributions,
     locales,
+    env,
     desktopServer,
     nativePlugins = [],
     desktopBin,
@@ -96,14 +105,20 @@ export class NativeConfig {
       return used;
     });
     const abs = (relative: string) => path.resolve(appPath, relative);
+    const updates = NativeConfig.#updates(target, env);
+    const folders = new Set(nativePlugins.map((plugin) => path.resolve(plugin.dir)));
+    //? A `native/<id>` folder ships by itself, and the same folder listed again by path would reach the runtime twice.
+    const listed = (target.native?.plugins ?? []).filter(
+      (spec) => NativeConfig.#isId(spec) || !folders.has(path.resolve(appPath, spec)),
+    );
     const plugins = [
       ...new Set([
         ...NativeConfig.basePlugins,
         ...applied.flatMap((contribution) => contribution.plugins ?? []),
         //? A second copy of the app would start a second server on the same data.
         ...(desktopServer ? ["single-instance"] : []),
-        ...(NativeConfig.#updates(target) ? ["updates"] : []),
-        ...(target.native?.plugins ?? []),
+        ...(updates ? ["updates"] : []),
+        ...listed,
         ...nativePlugins.map((plugin) => plugin.dir),
       ]),
     ];
@@ -183,7 +198,7 @@ export class NativeConfig {
       },
       keyboard: { resize: "none" },
       ...(desktop ? { desktop } : {}),
-      ...(NativeConfig.#updates(target) ? { updates: NativeConfig.#updates(target) } : {}),
+      ...(updates ? { updates } : {}),
       ...(target.assets?.icon ? { icon: abs(target.assets.icon) } : {}),
       ...(target.assets?.splash ? { splash: { image: abs(target.assets.splash) } } : {}),
     };
@@ -191,9 +206,12 @@ export class NativeConfig {
   }
 
   //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
-  static #updates(target: AkanMobileTargetConfig): NonNullable<AkanNativeConfig["updates"]> | undefined {
-    const { url, publicKey, ...rest } = target.updates ?? {};
-    return url && publicKey ? { ...rest, url, publicKey } : undefined;
+  static #updates(
+    target: AkanMobileTargetConfig,
+    env?: MobileEnv,
+  ): NonNullable<AkanNativeConfig["updates"]> | undefined {
+    const { url, publicKey, channel = env, ...rest } = target.updates ?? {};
+    return url && publicKey ? { ...rest, url, publicKey, ...(channel ? { channel } : {}) } : undefined;
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */
@@ -204,13 +222,17 @@ export class NativeConfig {
   //? A permission names a plugin by its id, and a plugin given by folder is named in its manifest; a spec the runtime
   //? cannot read is left as it is for the runtime to report.
   static #pluginId(appPath: string, spec: string) {
-    if (!spec.startsWith(".") && !path.isAbsolute(spec)) return spec;
+    if (NativeConfig.#isId(spec)) return spec;
     try {
       const { id } = JSON.parse(readFileSync(path.join(path.resolve(appPath, spec), "native-plugin.json"), "utf8"));
       return typeof id === "string" ? id : spec;
     } catch {
       return spec;
     }
+  }
+
+  static #isId(spec: string) {
+    return !spec.startsWith(".") && !path.isAbsolute(spec);
   }
 
   /** Drops empty arrays and objects, and answers undefined when nothing is left. */

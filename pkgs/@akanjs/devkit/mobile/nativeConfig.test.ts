@@ -199,6 +199,26 @@ describe("NativeConfig.build", () => {
     expect(api.validateConfig(config, { appDir: root })).toEqual([]);
   });
 
+  test("ships a native/ folder once when the target also lists it by path", async () => {
+    const root = await makeTempRoot();
+    const kiosk = await writeManifest(path.join(root, "native", "kiosk"), "kiosk");
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        native: { plugins: ["./native/kiosk/", "haptics"] },
+        deepLinks: undefined,
+      },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      nativePlugins: [{ id: "kiosk", dir: kiosk, owner: "apps/board" }],
+    });
+
+    expect(config.plugins).toEqual([...NativeConfig.basePlugins, kiosk]);
+  });
+
   test("hands an unattended app's settings on: page recovery, a kiosk window, screen capture and Android autoplay", async () => {
     const root = await makeTempRoot();
     const { config } = NativeConfig.build({
@@ -242,6 +262,30 @@ describe("NativeConfig.build", () => {
 
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "updates"]);
     expect(config.updates).toEqual(updates);
+  });
+
+  test("an updates channel left unnamed is the backend env the binary is built for", () => {
+    const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=` };
+    const build = (env?: "debug" | "main", channel?: string) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/board",
+        target: {
+          ...minimalTarget,
+          permissions: [],
+          deepLinks: undefined,
+          native: undefined,
+          updates: { ...updates, ...(channel ? { channel } : {}) },
+        },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        ...(env ? { env } : {}),
+      }).config.updates;
+
+    expect(build("debug")).toEqual({ ...updates, channel: "debug" });
+    expect(build("main")).toEqual({ ...updates, channel: "main" });
+    expect(build("debug", "pilot")).toEqual({ ...updates, channel: "pilot" });
+    expect(build()).toEqual(updates);
   });
 
   test("keeps a file name the runtime accepts", () => {

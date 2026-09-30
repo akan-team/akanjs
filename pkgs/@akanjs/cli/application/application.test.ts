@@ -515,8 +515,11 @@ describe("ApplicationScript desktop", () => {
     script.applicationRunner.buildMobile = async (...args: unknown[]) => {
       recorder.record("runner.buildMobile", ...args);
     };
+    const command = CommandContainer.get(ApplicationCommand);
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "buildDesktop")?.handler;
     try {
       await script.buildDesktop(app as never, { target: "default", env: "develop", profile: "debug", write: false });
+      await handler?.call(command, app, "default", "main", false, true, true, false);
     } finally {
       script.applicationRunner.buildMobile = buildMobile;
     }
@@ -526,8 +529,16 @@ describe("ApplicationScript desktop", () => {
       name: "runner.buildMobile",
       args: [app, NativeApp.desktopPlatform(), { target: "default", env: "develop", profile: "debug" }],
     });
+    expect(recorder.calls).toContainEqual({
+      name: "runner.buildMobile",
+      args: [
+        app,
+        NativeApp.desktopPlatform(),
+        { target: "default", env: "main", profile: "release", server: true, installer: true },
+      ],
+    });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "server", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "server", "installer", "write"]);
   });
 });
 
@@ -549,6 +560,42 @@ describe("ApplicationRunner mobile", () => {
     await expect(new ApplicationRunner().startMobile(mobileApp({ default: target("default") }), "ios")).rejects.toThrow(
       "No dev server answers on http://localhost:1; run `akan start demo` first.",
     );
+  });
+
+  test("a dev server is reused only when it is this app's", async () => {
+    const serve = (appName?: string) =>
+      Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/_akan/app/health") return Response.json({ status: "running" });
+          if (pathname === "/_akan/app/info" && appName) return Response.json({ appName, environment: "local" });
+          return new Response("not found", { status: 404 });
+        },
+      });
+    const own = serve("demo");
+    const other = serve("admin");
+    const foreign = serve();
+    try {
+      expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(true);
+      await expect(ApplicationRunner.answers(`http://localhost:${other.port}`, "demo")).rejects.toThrow(
+        `http://localhost:${other.port} is the dev server of admin, not demo.`,
+      );
+      await expect(ApplicationRunner.answers(`http://localhost:${foreign.port}`, "demo")).rejects.toThrow(
+        "answers, but not as an akan dev server",
+      );
+    } finally {
+      for (const server of [own, other, foreign]) server.stop(true);
+    }
+    expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(false);
+  });
+
+  test("an update of a phone's web bundle refuses --server before it builds anything", async () => {
+    const app = { name: "demo", getConfig: mock(async () => ({})) } as unknown as AppExecutor;
+    await expect(new ApplicationRunner().publishUpdate(app, "android", { server: true })).rejects.toThrow(
+      "Only a desktop app carries its server; --server does not apply to android.",
+    );
+    expect(app.getConfig).not.toHaveBeenCalled();
   });
 
   test("a dev build runs one target at a time", async () => {

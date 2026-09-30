@@ -205,6 +205,42 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain(`COPY . .\n${envBlock}\nCMD ["bun","main.js"]`);
   });
 
+  test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
+    //? 9adfb95c's output for this config; only the blank lines its empty interpolations left are gone since.
+    const before = [
+      "FROM oven/bun:1-slim",
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
+      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+      "ARG TARGETARCH",
+      "",
+      "RUN mkdir -p /workspace",
+      "WORKDIR /workspace",
+      "COPY ./package.json ./package.json",
+      "RUN bun install --production",
+      "",
+      "COPY . .",
+      "ENV PORT=8282",
+      "ENV NODE_ENV=production",
+      "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
+      "ENV AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com",
+      "ENV AKAN_PUBLIC_APP_NAME=portal",
+      "ENV AKAN_PUBLIC_ENV=debug",
+      "",
+      "ENV AKAN_PUBLIC_DEFAULT_LOCALE=en",
+      "ENV AKAN_PUBLIC_LOCALES=en,ko",
+      "ENV AKAN_PUBLIC_API_PREFIX=/api",
+      "ENV AKAN_PUBLIC_WS_PREFIX=/ws",
+      "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
+      "ENV AKAN_DATABASE_MODES=single",
+      "ENV AKAN_LOG_TO_FILE=0",
+      "",
+      'CMD ["bun","main.js"]',
+    ];
+    const lines = (text: string) => text.split("\n").filter((line) => line !== "");
+
+    expect(lines(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile)).toEqual(lines(before.join("\n")));
+  });
+
   test("refuses a csr-less build that ships a mobile app", () => {
     expect(
       () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, mobile: { appName: "portal" } }, baseDevEnv),

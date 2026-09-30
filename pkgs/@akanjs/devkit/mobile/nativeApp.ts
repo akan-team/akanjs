@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
+import type { MobileEnv } from "akanjs";
 import type { App } from "../commandDecorators";
 import { DesktopBin } from "./desktopBin";
 import type { DesktopServerBundle } from "./desktopServerStage";
@@ -50,6 +51,7 @@ export class NativeApp {
   constructor(
     readonly app: App,
     readonly target: ResolvedMobileTarget,
+    readonly env?: MobileEnv,
   ) {
     this.targetRoot = path.join(app.cwdPath, ".akan", "mobile", target.name);
     this.web = new NativeWebDir(path.join(this.targetRoot, "web"));
@@ -88,6 +90,7 @@ export class NativeApp {
       webDir: this.web.dir,
       contributions: plugins.flatMap((plugin) => (plugin.native ? [plugin.native] : [])),
       locales: appConfig.i18n.locales,
+      env: this.env,
       nativePlugins,
       ...(server ? { desktopServer: server } : {}),
       ...(carried.length ? { desktopBin: this.binDir } : {}),
