@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { homedir, networkInterfaces } from "node:os";
 import path from "node:path";
 
-//? Builds `minimal` with --server on this OS and drives the app it made: AKAN_DESKTOP_E2E=1 turns it on, and
+//? Builds `minimal` (its target carries the server) on this OS and drives the app it made: AKAN_DESKTOP_E2E=1 turns it on, and
 //? AKAN_DESKTOP_E2E_BUILD=0 reuses the last build.
 const enabled = process.env.AKAN_DESKTOP_E2E === "1";
 const workspaceRoot = path.resolve(import.meta.dir, "../../../..");
@@ -105,14 +105,14 @@ const png = Uint8Array.from(
   (c) => c.charCodeAt(0),
 );
 
-describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop minimal --server)", () => {
+describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop minimal)", () => {
   let app: DesktopApp;
   let memoId = "";
 
   beforeAll(async () => {
     await Bun.$`rm -rf ${DesktopApp.serverData}`.quiet().nothrow();
     if (process.env.AKAN_DESKTOP_E2E_BUILD !== "0") {
-      const build = Bun.spawn(["bun", "run", "akan", "build-desktop", "minimal", "--target", "default", "--server"], {
+      const build = Bun.spawn(["bun", "run", "akan", "build-desktop", "minimal", "--target", "default"], {
         cwd: workspaceRoot,
         stdout: "inherit",
         stderr: "inherit",
@@ -143,6 +143,7 @@ describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop mini
     expect(imageUrl).toStartWith("/api/localFile/getBlob/memo/");
 
     const image = await fetch(`${app.url}${imageUrl}`);
+    expect(image.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await image.arrayBuffer())).toEqual(png);
     const list = (await (await fetch(`${app.url}/api/memo/memoListInPublic`, { headers: fromApp })).json()) as {
       id: string;

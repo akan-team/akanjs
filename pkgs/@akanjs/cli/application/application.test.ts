@@ -393,13 +393,13 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.calls).toContainEqual({ name: "scanSync", args: [{ write: false }] });
     expect(recorder.calls).toContainEqual({
       name: "runner.startMobile",
-      args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release", server: false }],
+      args: [app, NativeApp.desktopPlatform(), { target: "default", operation: "release" }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "startDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "release", "server", "write"]);
+    expect(optionNames).toEqual(["target", "env", "release", "write"]);
   });
 
-  const desktopDevHarness = ({ answers }: { answers: boolean }) => {
+  const desktopDevHarness = ({ answers, carries = true }: { answers: boolean; carries?: boolean }) => {
     const script = CommandContainer.get(ApplicationScript);
     const recorder = createCallRecorder();
     const app = createFakeExecutor(
@@ -418,7 +418,10 @@ describe("ApplicationScript desktop", () => {
       startDesktop: script.applicationRunner.startDesktop,
       timeout: ApplicationScript.devServerReadyTimeoutMs,
     };
-    ApplicationRunner.startTarget = async () => ({}) as never;
+    ApplicationRunner.startTarget = async () => ({
+      name: "default",
+      config: { native: { desktop: { server: carries } } } as never,
+    });
     ApplicationRunner.answers = async (url: string) => {
       recorder.record("answers", url);
       return answers;
@@ -436,14 +439,14 @@ describe("ApplicationScript desktop", () => {
     return { script, recorder, app, restore };
   };
 
-  test("start-desktop --server follows a dev server that already answers, and starts none", async () => {
+  test("a desktop app carrying its server follows a dev server that already answers, and starts none", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: true });
     script.startOne = async () => {
       recorder.record("startOne");
       return undefined as never;
     };
     try {
-      await script.startDesktop(app as never, { target: "default", server: true, write: false });
+      await script.startDesktop(app as never, { target: "default", write: false });
     } finally {
       restore();
     }
@@ -453,7 +456,7 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.calls[1]?.args[1]).toMatchObject({ target: "default", interrupt: expect.any(Object) });
   });
 
-  test("start-desktop --server starts akan start, opens the app once it serves, and stops it when the app ends", async () => {
+  test("a desktop app carrying its server starts akan start, opens the app once it serves, and stops it when the app ends", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     script.startOne = async (_app, options) => {
       recorder.record("startOne", options?.write);
@@ -465,7 +468,7 @@ describe("ApplicationScript desktop", () => {
       } as never;
     };
     try {
-      await script.startDesktop(app as never, { target: "default", server: true, write: false });
+      await script.startDesktop(app as never, { target: "default", write: false });
     } finally {
       restore();
     }
@@ -474,7 +477,7 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.calls[1]?.args).toEqual([false]);
   });
 
-  test("start-desktop --server stops the dev server it started when that never serves", async () => {
+  test("a desktop app carrying its server stops the dev server it started when that never serves", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     ApplicationScript.devServerReadyTimeoutMs = 20;
     script.startOne = async () =>
@@ -484,7 +487,7 @@ describe("ApplicationScript desktop", () => {
         },
       }) as never;
     try {
-      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+      await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow(
         "akan start demo did not answer within",
       );
     } finally {
@@ -494,7 +497,7 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
   });
 
-  test("start-desktop --server stops at once when the dev server it started gives up", async () => {
+  test("a desktop app carrying its server stops at once when the dev server it started gives up", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     script.startOne = async (_app, options) => {
       setTimeout(() => options?.onDevEvent?.({ app: "demo", state: "failed" }), 5);
@@ -506,7 +509,7 @@ describe("ApplicationScript desktop", () => {
     };
     const startedAt = Date.now();
     try {
-      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+      await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow(
         "akan start demo gave up restarting its server",
       );
     } finally {
@@ -517,7 +520,7 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.names()).toEqual(["answers", "devServer.stop"]);
   });
 
-  test("start-desktop --server asks for one target before it starts a dev server", async () => {
+  test("a desktop app carrying its server asks for one target before it starts a dev server", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     ApplicationRunner.startTarget = async () => {
       throw new Error("start-desktop runs one mobile target at a time; pass --target <name>.");
@@ -527,7 +530,7 @@ describe("ApplicationScript desktop", () => {
       return undefined as never;
     };
     try {
-      await expect(script.startDesktop(app as never, { server: true, write: false })).rejects.toThrow(
+      await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow(
         "start-desktop runs one mobile target at a time",
       );
     } finally {
@@ -537,16 +540,32 @@ describe("ApplicationScript desktop", () => {
     expect(recorder.names()).toEqual([]);
   });
 
-  test("start-desktop --release --server builds the server into the app instead", async () => {
+  test("a release build starts no dev server: the runner builds the server into the app", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     try {
-      await script.startDesktop(app as never, { operation: "release", server: true, write: false });
+      await script.startDesktop(app as never, { operation: "release", write: false });
     } finally {
       restore();
     }
 
     expect(recorder.names()).toEqual(["runner.startDesktop"]);
-    expect(recorder.calls[0]?.args[1]).toEqual({ operation: "release", server: true });
+    expect(recorder.calls[0]?.args[1]).toEqual({ operation: "release" });
+  });
+
+  test("a desktop app with no server of its own follows akan start without starting one", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false, carries: false });
+    script.startOne = async () => {
+      recorder.record("startOne");
+      return undefined as never;
+    };
+    try {
+      await script.startDesktop(app as never, { target: "default", write: false });
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual(["runner.startDesktop"]);
+    expect(recorder.calls[0]?.args[1]).toEqual({ target: "default" });
   });
 
   test("buildDesktop builds the targets for this computer's desktop platform", async () => {
@@ -565,7 +584,7 @@ describe("ApplicationScript desktop", () => {
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "buildDesktop")?.handler;
     try {
       await script.buildDesktop(app as never, { target: "default", env: "develop", profile: "debug", write: false });
-      await handler?.call(command, app, "default", "main", false, true, true, false);
+      await handler?.call(command, app, "default", "main", false, true, false);
     } finally {
       script.applicationRunner.buildMobile = buildMobile;
     }
@@ -577,14 +596,10 @@ describe("ApplicationScript desktop", () => {
     });
     expect(recorder.calls).toContainEqual({
       name: "runner.buildMobile",
-      args: [
-        app,
-        NativeApp.desktopPlatform(),
-        { target: "default", env: "main", profile: "release", server: true, installer: true },
-      ],
+      args: [app, NativeApp.desktopPlatform(), { target: "default", env: "main", profile: "release", installer: true }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "server", "installer", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "installer", "write"]);
   });
 });
 
@@ -640,12 +655,13 @@ describe("ApplicationRunner mobile", () => {
     expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(false);
   });
 
-  test("an update of a phone's web bundle refuses --server before it builds anything", async () => {
-    const app = { name: "demo", getConfig: mock(async () => ({})) } as unknown as AppExecutor;
-    await expect(new ApplicationRunner().publishUpdate(app, "android", { server: true })).rejects.toThrow(
-      "Only a desktop app carries its server; --server does not apply to android.",
-    );
-    expect(app.getConfig).not.toHaveBeenCalled();
+  test("only a desktop build of a target that declares desktop.server carries the server", () => {
+    const carrying = { name: "kiosk", config: { ...target("kiosk"), native: { desktop: { server: true } } } };
+    expect(ApplicationRunner.carriesServer(carrying, "windows")).toBe(true);
+    expect(ApplicationRunner.carriesServer(carrying, "macos")).toBe(true);
+    expect(ApplicationRunner.carriesServer(carrying, "android")).toBe(false);
+    expect(ApplicationRunner.carriesServer(carrying, "ios")).toBe(false);
+    expect(ApplicationRunner.carriesServer({ name: "store", config: target("store") }, "linux")).toBe(false);
   });
 
   test("a dev build runs one target at a time", async () => {
@@ -670,13 +686,13 @@ describe("ApplicationRunner mobile", () => {
         app: { name: "demo" },
         basePaths: new Set<string>(),
         database: { modes: ["cluster"] },
-        mobile: { targets: { default: target("default") } },
+        mobile: { targets: { default: { ...target("default"), native: { desktop: { server: true } } } } },
       }),
     } as unknown as AppExecutor;
-    await expect(new ApplicationRunner().buildDesktop(app, { server: true })).rejects.toThrow(
+    await expect(new ApplicationRunner().buildDesktop(app)).rejects.toThrow(
       "only database mode single runs (no Redis or Postgres); apps/demo/akan.config.ts declares cluster",
     );
-    await expect(new ApplicationRunner().startDesktop(app, { operation: "release", server: true })).rejects.toThrow(
+    await expect(new ApplicationRunner().startDesktop(app, { operation: "release" })).rejects.toThrow(
       "only database mode single runs",
     );
   });

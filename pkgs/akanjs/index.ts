@@ -153,6 +153,12 @@ export interface AkanMobileNativeConfig {
   privacy?: AkanNativeConfig["privacy"];
   desktop?: {
     /**
+     * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
+     * nothing else. `build-desktop`, `start-desktop` and `publish-update` all read it, and an installed app refuses
+     * a release that carries a server when it has none, or none when it has one.
+     */
+    server?: boolean;
+    /**
      * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
      * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an
      * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.

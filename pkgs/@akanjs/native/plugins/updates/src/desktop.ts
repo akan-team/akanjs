@@ -492,6 +492,18 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           // The manifest signature already vouches for the bytes; macOS also checks the code signature
           // (Windows Authenticode and Linux packages come with distribution signing, CLI-9).
           if (mac) await run(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
+          //? Taking the carried server away moves the pages to the build's own backend URL, and adding one starts them
+          //? on an empty local database: either way the app's data changes place, which an update must not do.
+          const carries = (root: string) => existsSync(join(resources(root), "server.json"));
+          if (carries(staged) !== carries(app)) {
+            rmSync(staging, { recursive: true, force: true });
+            state.failed.push(m.bundle);
+            writeState(state);
+            throw new AkanNativeError(
+              "NOT_ALLOWED",
+              `the release ${carries(app) ? "carries no server, and this app does" : "carries a server, and this app does not"}; install it instead`,
+            );
+          }
 
           // Keep this release's tar for the next delta, and only that one.
           mkdirSync(join(dir, "app"), { recursive: true });

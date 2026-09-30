@@ -21,10 +21,6 @@ const startEnvOption = {
   desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
   default: "local",
 } as const;
-const serverOption = {
-  desc: "also carry the app's server in the desktop app (database mode single, API only, on loopback)",
-  default: false,
-};
 const releaseEnvOption = {
   enum: ["debug", "develop", "main", "local"],
   desc: "backend environment",
@@ -157,18 +153,16 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
-    .option("server", Boolean, serverOption)
     .option("installer", Boolean, {
       desc: "Windows: also an NSIS setup program (per user, /S for a silent install)",
       default: false,
     })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, server, installer, write) {
+    .exec(async function (app, target, env, debug, installer, write) {
       await this.applicationScript.buildDesktop(app, {
         target,
         env,
         profile: debug ? "debug" : "release",
-        server,
         installer,
         write,
       });
@@ -233,17 +227,12 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
-    .option("server", Boolean, {
-      ...serverOption,
-      desc: "with --release, carry the app's server in the app; without it, start `akan start` alongside",
-    })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, release, server, write) {
+    .exec(async function (app, target, env, release, write) {
       await this.applicationScript.startDesktop(app, {
         target,
         env,
         operation: release ? "release" : "local",
-        server,
         write,
       });
     }),
@@ -331,15 +320,13 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "the manifest to publish to (default: the target's updates.channel, else --env)",
       nullable: true,
     })
-    .option("server", Boolean, { ...serverOption, desc: "a desktop release that carries the app's server" })
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, platform, target, env, channel, server, write, allowLocalRelease) {
+    .exec(async function (app, platform, target, env, channel, write, allowLocalRelease) {
       await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
         target,
         env,
         ...(channel ? { channel } : {}),
-        server,
         write,
         allowLocalRelease,
       });

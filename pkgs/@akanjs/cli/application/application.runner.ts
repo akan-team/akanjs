@@ -46,13 +46,9 @@ export interface MobileUpdatePackOptions extends MobileTargetOptions {
 export interface MobilePublishOptions extends MobileTargetOptions {
   /** The manifest to publish to; default the target's updates.channel, else the backend env it is built for. */
   channel?: string;
-  /** A desktop release that carries the app's server, as the installed app does (`build-desktop --server`). */
-  server?: boolean;
 }
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
-  /** A desktop build that carries the app's server. */
-  server?: boolean;
   /** A Windows build's setup program too. */
   installer?: boolean;
 }
@@ -62,8 +58,6 @@ export interface MobileStartOptions extends MobileTargetOptions {
   device?: string;
   /** Narrows an iPhone's signing to one Apple team. */
   teamId?: string;
-  /** A desktop release build that carries the app's server. */
-  server?: boolean;
   /** Stops a dev session along with what the caller started for it, instead of this command's own Ctrl+C exit. */
   interrupt?: InterruptTeardown;
 }
@@ -290,21 +284,19 @@ try {
   async buildMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "debug", profile = "release", server = false, installer = false }: MobileBuildOptions = {},
+    { target, env = "debug", profile = "release", installer = false }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     if (installer && platform !== "windows")
       throw new Error(`--installer builds a Windows setup program; this computer builds for ${platform}.`);
-    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
-    await this.#buildMobileCsr(app, env);
-    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+    const carried = await this.#stageMobile(app, platform, targets, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       this.#reportBuild(
         app,
         mobileTarget,
         await new NativeApp(app, mobileTarget, env).build(platform, {
           profile,
-          ...(carried ? { server: carried } : {}),
+          ...(carried && ApplicationRunner.carriesServer(mobileTarget, platform) ? { server: carried } : {}),
           ...(installer ? { installer } : {}),
         }),
       );
@@ -318,15 +310,13 @@ try {
   async startMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "local", operation = "local", device, teamId, server = false, interrupt }: MobileStartOptions = {},
+    { target, env = "local", operation = "local", device, teamId, interrupt }: MobileStartOptions = {},
   ) {
     const mobileTarget = await ApplicationRunner.startTarget(app, platform, target);
     const nativeApp = new NativeApp(app, mobileTarget, env);
     const selection = { ...(device ? { device } : {}), ...(teamId ? { teamId } : {}) };
     if (operation === "release") {
-      if (server) DesktopServerStage.assertCarriable(await app.getConfig());
-      await this.#buildMobileCsr(app, env);
-      const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
+      const carried = await this.#stageMobile(app, platform, [mobileTarget], env);
       const running = await nativeApp.run(platform, {
         ...selection,
         profile: "release",
@@ -453,20 +443,16 @@ try {
   async publishUpdate(
     app: App,
     platform: "desktop" | "android" | "ios",
-    { target, env = "main", channel, server = false }: MobilePublishOptions = {},
+    { target, env = "main", channel }: MobilePublishOptions = {},
   ) {
-    if (server && platform !== "desktop")
-      throw new Error(`Only a desktop app carries its server; --server does not apply to ${platform}.`);
     const targets = await resolveMobileTargets(app, target);
-    if (server) DesktopServerStage.assertCarriable(await app.getConfig());
-    await this.#buildMobileCsr(app, env);
-    const carried = server ? await new DesktopServerStage(app).prepare(env) : undefined;
     const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    const carried = await this.#stageMobile(app, nativePlatform, targets, env);
     for (const mobileTarget of targets) {
       const nativeApp = new NativeApp(app, mobileTarget, env);
       const published = await nativeApp.publishUpdate(nativePlatform, {
         ...(channel ? { channel } : {}),
-        ...(carried ? { server: carried } : {}),
+        ...(carried && ApplicationRunner.carriesServer(mobileTarget, nativePlatform) ? { server: carried } : {}),
       });
       this.#reportBuild(app, mobileTarget, published.build);
       app.log(
@@ -486,6 +472,16 @@ try {
     for (const artifact of artifacts) app.log(`${app.name}/${mobileTarget.name} ${artifact.kind}: ${artifact.path}`);
   }
 
+  static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
+    return platform !== "ios" && platform !== "android" && config.native?.desktop?.server === true;
+  }
+  //* The web build, and the server once for every target that carries it: they build from the same dist.
+  async #stageMobile(app: App, platform: NativePlatform, targets: ResolvedMobileTarget[], env: MobileEnv) {
+    const carries = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform));
+    if (carries) DesktopServerStage.assertCarriable(await app.getConfig());
+    await this.#buildMobileCsr(app, env);
+    return carries ? await new DesktopServerStage(app).prepare(env) : undefined;
+  }
   async #buildMobileCsr(app: App, env: MobileEnv) {
     const prevEnv = {
       AKAN_PUBLIC_ENV: process.env.AKAN_PUBLIC_ENV,

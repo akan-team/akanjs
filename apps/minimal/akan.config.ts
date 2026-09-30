@@ -24,6 +24,7 @@ const config: AppConfig = {
         permissions: ["push"],
         native: {
           android: { googleServices: "secrets/google-services.json" },
+          desktop: { server: true },
         },
         deepLinks: {
           schemes: ["minimal"],

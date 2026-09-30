@@ -315,17 +315,14 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
   async startDesktop(
     app: App,
-    {
-      write = true,
-      server = false,
-      ...options
-    }: Omit<MobileStartOptions, "device" | "teamId" | "interrupt"> & MobileWriteOptions = {},
+    { write = true, ...options }: Omit<MobileStartOptions, "device" | "teamId" | "interrupt"> & MobileWriteOptions = {},
   ) {
     await app.scanSync({ write });
-    if (!server || options.operation === "release")
-      return await this.applicationRunner.startDesktop(app, { ...options, server });
+    if (options.operation === "release") return await this.applicationRunner.startDesktop(app, options);
     //? Before a dev server boots for nothing: an app with several targets names one.
-    await ApplicationRunner.startTarget(app, undefined, options.target);
+    const mobileTarget = await ApplicationRunner.startTarget(app, undefined, options.target);
+    //? A desktop app that carries its server calls no other backend, so its dev build needs this app's dev server.
+    if (!ApplicationRunner.carriesServer(mobileTarget)) return await this.applicationRunner.startDesktop(app, options);
     const upstream = `http://localhost:${await app.getDevPort()}`;
     if (await ApplicationRunner.answers(upstream, app.name))
       app.log(`The desktop app follows the dev server on ${upstream}.`);

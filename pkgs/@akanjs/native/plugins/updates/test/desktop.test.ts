@@ -27,9 +27,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-const writeApp = (dir: string, marker: string) => {
+const writeApp = (dir: string, marker: string, { server = false } = {}) => {
   mkdirSync(join(dir, "resources"), { recursive: true });
   writeFileSync(join(dir, "resources", "boot.json"), JSON.stringify({ app: { id: APP_ID }, marker }));
+  if (server) writeFileSync(join(dir, "resources", "server.json"), "{}");
   writeFileSync(join(dir, EXE), "");
 };
 const markerOf = (dir: string) =>
@@ -43,6 +44,8 @@ interface HarnessOptions {
   serverBootAllowance?: number;
   url?: string;
   publicKey?: string;
+  /** The installed app carries a server (resources/server.json). */
+  carries?: boolean;
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -50,7 +53,7 @@ async function harness(options: HarnessOptions = {}) {
   roots.push(root);
   const install = join(root, "install");
   const app = join(install, "Renamed App");
-  writeApp(app, "installed");
+  writeApp(app, "installed", { server: options.carries });
   const stateDir = join(root, "local", "akan-native-updates");
   if (options.state) {
     mkdirSync(stateDir, { recursive: true });
@@ -216,10 +219,10 @@ describe("desktop updates: what a restart finds", () => {
 });
 
 /** Serves one signed release of the app, built as "Sample" (the tar's top folder is the build's app name). */
-function serveRelease(root: string) {
+function serveRelease(root: string, { carries = false } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const built = join(root, "built");
-  writeApp(join(built, "Sample"), "new");
+  writeApp(join(built, "Sample"), "new", { server: carries });
   const tarPath = join(root, "release.tar");
   const packed = Bun.spawnSync([
     process.platform === "win32" ? "tar.exe" : "tar",
@@ -293,4 +296,23 @@ describe("desktop updates: download and apply", () => {
       release.stop();
     }
   });
+
+  for (const carries of [true, false])
+    test(`an app that carries ${carries ? "a" : "no"} server refuses a release that carries ${carries ? "none" : "one"}, once`, async () => {
+      const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+      roots.push(root);
+      const release = serveRelease(root, { carries: !carries });
+      try {
+        const { call, state, install } = await harness({ url: release.url, publicKey: release.publicKey, carries });
+        const refused = await call("download");
+        expect(refused).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+        expect(refused.error?.message).toContain(carries ? "carries no server" : "carries a server");
+        expect(state().failed).toEqual(["2000-abcdef12"]);
+        expect(state().pending).toBeUndefined();
+        expect(readdirSync(install)).toEqual(["Renamed App"]);
+        expect(await call("check")).toMatchObject({ ok: true, result: { available: false } });
+      } finally {
+        release.stop();
+      }
+    });
 });
