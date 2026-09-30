@@ -2,7 +2,7 @@
 // only the carried server learns the path, by asking over its IPC channel (server.ts): the server reaches
 // what the user picked and nothing else. A grant lasts as long as the app runs.
 //
-// A dev build has no server of its own (its pages come from `akan start`), so its grant carries the path,
+// A dev build without a server of its own (its pages come from `akan start`) gives a grant that carries the path,
 // signed with a key in ~/.akan/native that only this user can read; akanjs `NativeFile` checks the signature.
 // The format is `dev:<mode>:<base64url path>:<base64url HMAC-SHA256 of "<mode>:<base64url path>">`.
 import { createHmac, randomBytes } from "node:crypto";

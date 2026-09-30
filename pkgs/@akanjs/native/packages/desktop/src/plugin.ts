@@ -49,6 +49,11 @@ export interface DesktopContext {
    * Bun.which without `env` reads the environment the app started with, so name a file here or pass the env.
    */
   readonly binDir: string | null;
+  /**
+   * The server the app carries (desktop.server), or null. `ready` settles once per session: true when the server
+   * first answered ready, false when it could not start or gave up before that.
+   */
+  readonly server: DesktopServerStatus | null;
   /** Pushes an event of this plugin to the pages that listen. Returns the windows reached. */
   emit(event: string, data?: unknown, target?: EmitTarget): number[];
   /** Serves a local file at /__akan_native/file/<id> for the rest of the session (PL-7). */
@@ -108,6 +113,10 @@ export interface DesktopContext {
     /** Ends the app before a window is created; onQuit hooks do not run (single-instance). */
     exit(code?: number): void;
   };
+}
+
+export interface DesktopServerStatus {
+  readonly ready: Promise<boolean>;
 }
 
 /** Which page load ended. `id` is "" for a page that sends no document id (v1 callers, tests). */

@@ -259,7 +259,7 @@ export interface AkanNativeConfig {
      * A server the app starts beside its window (akanjs `build-desktop --server`). `dir` is copied to
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher
-     * sets PORT, JWT_SECRET, the data folders (`<app data>/server`) and the listen host itself.
+     * sets PORT, JWT_SECRET, the data folders (`<app local data>/server`) and the listen host itself.
      */
     server?: { dir: string; entry: string; env?: Record<string, string> };
     /**

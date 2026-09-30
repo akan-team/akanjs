@@ -36,6 +36,11 @@ interface Staged {
   relative?: string;
 }
 
+//? A dev build without a server of its own serves `akan start`'s pages, and that server checks a signed dev grant. One
+//? that carries a server asks it over IPC, like a release build: the carried server runs in edge mode and refuses a
+//? dev grant.
+const devGrant = (ctx: DesktopContext) => ctx.dev && !ctx.server;
+
 /** Regular files under `dir`, depth first by name, without hidden files and folders (".*"). */
 export function listFiles(dir: string, limit: number): { files: string[]; truncated: boolean } {
   const files: string[] = [];
@@ -132,7 +137,7 @@ export function createDesktopFilePicker() {
               files: answer.paths.map((p) => ({
                 ...ctx.registerFile(p, mime(p)),
                 name: basename(p),
-                grant: grantFile(p, "read", { dev: ctx.dev }),
+                grant: grantFile(p, "read", { dev: devGrant(ctx) }),
               })),
             };
           const dir = stageDir(ctx);
@@ -152,7 +157,7 @@ export function createDesktopFilePicker() {
             return {
               saved: true,
               name: basename(answer.path),
-              grant: grantFile(answer.path, "write", { dev: ctx.dev }),
+              grant: grantFile(answer.path, "write", { dev: devGrant(ctx) }),
             };
           });
         }
@@ -191,7 +196,7 @@ export function createDesktopFilePicker() {
           if (forServer)
             return {
               name: basename(picked),
-              grant: grantFile(picked, "folder", { dev: ctx.dev }),
+              grant: grantFile(picked, "folder", { dev: devGrant(ctx) }),
               files: files.map((rel) => ({
                 ...ctx.registerFile(join(picked, rel), mime(rel)),
                 name: basename(rel),

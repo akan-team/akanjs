@@ -15,8 +15,9 @@
 //   started through cmd.exe to outlive the app) waits for the app to exit, does the renames and
 //   starts the result (moveThenRelaunch).
 // - The new app runs on trial. notifyReady() within updates.readyTimeout confirms it and removes
-//   .previous; a timeout, or a second launch without confirming, swaps .previous back and relaunches
-//   it. Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
+//   .previous (an app that carries a server confirms only once that server answered ready); a
+//   timeout, or a second launch without confirming, swaps .previous back and relaunches it.
+//   Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
 //   drops its backup when the final rename fails (updater.rs:1429-1476); here the old app stays
 //   until the new one said it works.
 
@@ -107,6 +108,28 @@ const resourcesOf = (app: string) => (mac ? join(app, "Contents", "Resources") :
 /** The executable inside an app with the running one's name. */
 const executableIn = (app: string) =>
   mac ? join(app, "Contents", "MacOS", basename(process.execPath)) : join(app, basename(process.execPath));
+
+/**
+ * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the
+ * key). A copy of the app elsewhere leaves the installed one's entry alone. Best effort: the update stands anyway.
+ */
+async function recordInstalledVersion(appId: string, app: string | null, version: string): Promise<void> {
+  if (!app || !version) return;
+  const key = `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${appId}`;
+  const reg = async (args: string[]) => {
+    const p = Bun.spawn(["reg.exe", ...args], { stdin: "ignore", stdout: "pipe", stderr: "ignore", windowsHide: true });
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+    return code === 0 ? out : null;
+  };
+  try {
+    const query = await reg(["query", key, "/v", "InstallLocation"]);
+    const location = query && /InstallLocation\s+REG_\w+\s+(.+?)\s*$/m.exec(query)?.[1];
+    if (!location || location.replace(/[\\/]+$/, "").toLowerCase() !== app.replace(/[\\/]+$/, "").toLowerCase()) return;
+    await reg(["add", key, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", version, "/f"]);
+  } catch (error) {
+    console.warn("[akan-native] updates: cannot record the installed version", error);
+  }
+}
 
 function readConfig(): Config | null {
   const app = appPath();
@@ -478,8 +501,12 @@ export default defineDesktopPlugin<UpdatesApi, UpdatesEvents>(
           setTimeout(() => ctx.quit(0), 50); // answer first
         },
 
-        async notifyReady() {
-          need();
+        async notifyReady(_args, ctx) {
+          const c = need();
+          if (!onTrial) return;
+          //? A release whose server never comes up is as broken as one whose page never renders: it is not
+          //? confirmed, and the trial's timeout rolls it back.
+          if (ctx.server && !(await ctx.server.ready)) return;
           if (!onTrial) return;
           clearTimeout(timer);
           onTrial = false;
@@ -492,6 +519,7 @@ export default defineDesktopPlugin<UpdatesApi, UpdatesEvents>(
           state.rolledBack = undefined;
           writeState(state);
           rmSync(previous, { recursive: true, force: true });
+          if (windows) void recordInstalledVersion(c.app, appPath(), entry.version);
         },
 
         async reset() {

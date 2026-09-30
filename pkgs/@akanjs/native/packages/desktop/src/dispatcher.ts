@@ -22,6 +22,7 @@ import type { Lifecycle } from "./lifecycle.ts";
 import type {
   DesktopContext,
   DesktopPlugin,
+  DesktopServerStatus,
   DocumentInfo,
   DocumentScope,
   EmitTarget,
@@ -44,6 +45,8 @@ export interface HostServices {
   appDataDir: string;
   /** desktop.bin in the app's resources, or null. */
   binDir?: string | null;
+  /** The carried server (resources/server.json), or null. */
+  server?: DesktopServerStatus | null;
   /** Sends an event (numbered for its document) to a window's page. */
   emit(window: number, message: BridgeEvent): void;
   /**
@@ -227,6 +230,7 @@ export function createDispatcher(
           return services.appDataDir;
         },
         binDir: services.binDir ?? null,
+        server: services.server ?? null,
         emit: (event, data, target) => deliver(plugin.id, event, data, target),
         registerFile: (path, mime) => services.registerFile(path, mime),
         shell: (op, args) =>

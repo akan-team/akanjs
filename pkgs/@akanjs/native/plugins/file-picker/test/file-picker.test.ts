@@ -205,12 +205,16 @@ describe("desktop", () => {
   const registered: string[] = [];
 
   /** The plugin with a fake shell: the panel "answers" with `answer`; UTType gives these MIME types. */
-  const withAnswer = (answer: Record<string, unknown>, { dev = false }: { dev?: boolean } = {}) => {
+  const withAnswer = (
+    answer: Record<string, unknown>,
+    { dev = false, server = false }: { dev?: boolean; server?: boolean } = {},
+  ) => {
     const shellCalls: { op: string; args: Record<string, unknown> }[] = [];
     let release: (() => void) | null = null;
     const ctx = {
       app: { id: "dev.test.picker", name: "Test", version: "1.0.0" },
       dev,
+      server: server ? { ready: Promise.resolve(true) } : null,
       appDataDir: join(root, "app"),
       registerFile(path: string, mime: string) {
         registered.push(path);
@@ -315,6 +319,27 @@ describe("desktop", () => {
       delete process.env.AKAN_NATIVE_DEV_GRANT_KEY;
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  test("a debug build that carries its server grants over IPC like a release build: that server refuses a dev grant", async () => {
+    mkdirSync(join(root, "grant-src"), { recursive: true });
+    writeFileSync(join(root, "grant-src", "c.txt"), "hello");
+    const withServer = { dev: true, server: true };
+    const picked = await withAnswer({ paths: [join(root, "grant-src", "c.txt")] }, withServer).call("pickFiles", {
+      forServer: true,
+    });
+    expect(picked.files[0].grant.startsWith("dev:")).toBe(false);
+    expect(resolveGrant(picked.files[0].grant)).toEqual({ path: join(root, "grant-src", "c.txt"), mode: "read" });
+    const folder = await withAnswer({ paths: [join(root, "grant-src")] }, withServer).call("pickDirectory", {
+      forServer: true,
+    });
+    expect(resolveGrant(folder.grant)).toEqual({ path: join(root, "grant-src"), mode: "folder" });
+    const target = join(root, "export", "debug.mp4");
+    const saved = await withAnswer({ path: target }, withServer).call("saveFile", {
+      name: "debug.mp4",
+      forServer: true,
+    });
+    expect(resolveGrant(saved.grant)).toEqual({ path: target, mode: "write" });
   });
 
   macOnly("pickDirectory returns a snapshot without hidden files", async () => {

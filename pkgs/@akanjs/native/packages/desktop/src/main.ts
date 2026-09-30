@@ -4,11 +4,11 @@
 // After akan_native_run no JavaScript runs on this thread again (not even worker.onerror), so every
 // failure that can be reported must be reported before that call.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInitScript } from "../../core/src/protocol.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
-import { webviewDataDir } from "./paths.ts";
+import { appLocalDataDir, webviewDataDir } from "./paths.ts";
 import type { Launch, LaunchWindow } from "./plugin.ts";
 import { READY_TIMEOUT } from "./server.ts";
 
@@ -67,6 +67,22 @@ export function launchBounds(window: LaunchWindow): LaunchWindow {
   if (typeof window.fullscreen === "boolean") out.fullscreen = window.fullscreen;
   if (typeof window.skipTaskbar === "boolean") out.skipTaskbar = window.skipTaskbar;
   return out;
+}
+
+/**
+ * Windows renames no folder that is some process's working folder: an app started from its install folder (the
+ * installer, a shortcut, Explorer) would hand it to the webview's processes, and an update could never swap it
+ * (plugins/updates). Called after the launch phase, where single-instance forwards a second launch's folder.
+ */
+export function leaveInstallFolder(appId: string, platform: NodeJS.Platform = process.platform): void {
+  if (platform !== "win32" || !appId) return;
+  try {
+    const dir = appLocalDataDir(appId);
+    mkdirSync(dir, { recursive: true });
+    process.chdir(dir);
+  } catch (error) {
+    console.warn("[akan-native] cannot leave the install folder; an update may not apply", error);
+  }
 }
 
 function fail(message: string, error?: unknown): never {
@@ -128,6 +144,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     worker.terminate();
     process.exit(launch.exit);
   }
+  leaveInstallFolder(appId);
   const bounds = launchBounds(launch.window);
   let initJs: string;
   try {
