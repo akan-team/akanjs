@@ -775,13 +775,15 @@ describe("AkanAppConfig trustedDependencies and bin", () => {
       [],
       { externalLibs: [], docker: { preRuns: [], postRuns: [] }, bin: [{ lib: "media", bin: libBin }] },
     );
-    expect(config.bin).toEqual({ ffmpeg: { "darwin-arm64": { path: "/repo/apps/portal/tools/ffmpeg" } } });
+    expect(config.bin).toEqual({
+      ffmpeg: { "darwin-arm64": { path: path.resolve("/repo/apps/portal/tools/ffmpeg") } },
+    });
     expect(config.libBins).toEqual([{ lib: "media", bin: libBin }]);
     expect(
       new AkanLibConfig({ name: "media", cwdPath: "/repo/libs/media" } as never, {
         bin: { ffprobe: { "linux-x64": { path: "../../tools/ffprobe" } } },
       }).bin,
-    ).toEqual({ ffprobe: { "linux-x64": { path: "/repo/tools/ffprobe" } } });
+    ).toEqual({ ffprobe: { "linux-x64": { path: path.resolve("/repo/tools/ffprobe") } } });
   });
 
   test("reads them off every workspace lib config on load", async () => {

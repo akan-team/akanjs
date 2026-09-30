@@ -237,7 +237,7 @@ describe("CsrDevModuleCompiler", () => {
   test("a macro runs with its modules' own import.meta, and the file importing it still reads the browser's", async () => {
     const { modules } = await compile("apps/demo/lib/useClient.ts", { prepass: true });
     const module = modules.find((compiled) => compiled.id === "apps/demo/lib/useClient.ts");
-    expect(module?.deps.some((dep) => dep.includes("node_modules/barrel/"))).toBe(true);
+    expect(module?.deps.some((dep) => dep.includes(`${path.join("node_modules", "barrel")}${path.sep}`))).toBe(true);
     expect(run(module)).toMatchObject({
       signal: { depUrl: Bun.pathToFileURL(file("apps/demo/lib/macroDep.ts")).href, hasRequire: "function" },
       own: `${origin}/apps/demo/lib/useClient.ts`,

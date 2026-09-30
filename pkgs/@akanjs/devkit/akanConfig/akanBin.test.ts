@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { AkanBin } from "./akanBin";
 
 const owner = "apps/portal/akan.config.ts";
@@ -24,7 +25,7 @@ describe("AkanBin.parse", () => {
           sha256: "a".repeat(64),
           file: "ffmpeg/bin/ffmpeg",
         },
-        "darwin-arm64": { path: "/repo/apps/portal/tools/ffmpeg" },
+        "darwin-arm64": { path: path.resolve("/repo/apps/portal/tools/ffmpeg") },
       },
     });
     expect(AkanBin.parse(undefined, owner, "/repo/apps/portal")).toEqual({});

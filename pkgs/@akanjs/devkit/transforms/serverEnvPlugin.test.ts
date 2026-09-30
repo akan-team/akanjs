@@ -89,7 +89,7 @@ describe("createServerEnvPlugin", () => {
     const other = path.join(root, "libs/shared/env/env.server.testing.ts");
     await write(other, 'export const env = { secret: "lib-testing-secret" };\n');
     const { envDir, entry } = await writeApp(root);
-    await write(entry, `import { env } from "${other}";\nconsole.info(env.secret);\n`);
+    await write(entry, `import { env } from ${JSON.stringify(other)};\nconsole.info(env.secret);\n`);
     const result = await Bun.build({
       entrypoints: [entry],
       target: "bun",
