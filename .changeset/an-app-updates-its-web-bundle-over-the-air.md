@@ -26,3 +26,13 @@ An installed app updates itself: a phone its web bundle over the air, a desktop 
   the bundle runs in that store build, writes `compat.json`, and fails when it needs a new binary. The signing
   contract is in the native runtime's architecture notes: fill the three fields, sign exactly the bytes you upload,
   upload `files/` first.
+- `publish-update` refuses a `--channel` outside the names `updates.channel` accepts (lowercase letters, digits, `.`,
+  `_`, `-`) before it builds, and numbers a release past the one its channel already has in the updates folder,
+  warning when this computer's clock is behind it. Apps compare against the time their own build was made, so keep the
+  building and the publishing computers' clocks in step.
+- A release of a desktop app that carries its server is confirmed only once that server answered ready, and its trial
+  clock starts once the server answered or gave up: a release whose server never comes up is rolled back like one whose
+  page never renders, and a server slow on its first run (its new files being scanned) costs no rollback.
+- On Windows an app started from its install folder (the installer, the Start menu, Explorer) applies and rolls back
+  updates: Windows renames no folder a process works in, so the app moves to its local data folder before the webview
+  starts, and the update helper and the app it starts work elsewhere.

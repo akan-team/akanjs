@@ -11,7 +11,8 @@ A desktop app ran whatever `ffmpeg` the user's computer had on its PATH, if any,
 comes from: a download with its `sha256` (an archive takes `file`, the executable inside it) or a path next to the
 declaring `akan.config.ts`. `build-desktop` and `start-desktop` fetch the file for the computer they build on, check it,
 and carry it in the app's `bin/`, which the app puts first on its PATH: the carried server's `spawn("ffmpeg")` runs
-that file, and a native plugin finds it in `ctx.binDir`. Bun's own `spawn` without `env` reads the environment the app
+that file, and a native plugin finds it in `ctx.binDir`. A download is kept as `download` plus its URL's extension
+(`.zip`, `.tar.xz`, `.exe`, …), never under a name the URL spells. Bun's own `spawn` without `env` reads the environment the app
 started with, so a plugin passes `env: process.env` to run one by name. A lib's entries reach the apps that depend on
 it, and an app's own entry of the same name wins. macOS builds sign every executable the app carries. The image does
 not read `bin`: it still installs through `docker`.
