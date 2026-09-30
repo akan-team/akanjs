@@ -1145,6 +1145,9 @@ struct Win {
   reloaded_at: Option<std::time::Instant>,
   /// Ends in a row, each within a minute of the load before (desktop.recovery "reload").
   gone_streak: u32,
+  /// A reload is waiting out recovery_wait: ends reported meanwhile (an unresponsive page repeats its report) are
+  /// the same end, and must neither raise the streak nor start a second wait.
+  reload_pending: bool,
 }
 
 struct Windows {
@@ -1507,7 +1510,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     std::thread::sleep(Duration::from_millis(3000));
     send(UserEvent::Show(id));
   });
-  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0 })
+  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0, reload_pending: false })
 }
 
 /// A `window` argument: a positive whole number.
@@ -1978,6 +1981,10 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
           log!("the webview's browser process ended; quitting");
           send(UserEvent::Quit(1));
         } else if let Some(win) = windows.map.get_mut(&window) {
+          if win.reload_pending {
+            log!("window {window}: the page stopped ({reason}) while its reload waits");
+            return;
+          }
           let now = std::time::Instant::now();
           let again = win.reloaded_at.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(60));
           win.gone_streak = if again { win.gone_streak + 1 } else { 0 };
@@ -1987,6 +1994,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
             let _ = win.webview.load_html(&gone_page());
           } else if let Some(wait) = wait {
             log!("window {window}: the page stopped again ({reason}); loading it again in {} s", wait.as_secs());
+            win.reload_pending = true;
             std::thread::spawn(move || {
               std::thread::sleep(wait);
               send(UserEvent::ReloadGone(window));
@@ -2000,6 +2008,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
       }
       Event::UserEvent(UserEvent::ReloadGone(window)) => {
         if let Some(win) = windows.map.get_mut(&window) {
+          win.reload_pending = false;
           win.reloaded_at = Some(std::time::Instant::now());
           let _ = win.webview.reload();
         }

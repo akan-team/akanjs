@@ -25,7 +25,10 @@ import { join, resolve } from "node:path";
 const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? resolve(import.meta.dir, "../.."));
 const VM_DIR = join(homedir(), ".akan", "native", "vm");
 const WORK = "C:\\akan-native-work";
-const COPY = (process.env.AKAN_NATIVE_VM_WORK_NAME ?? "akan-native").replace(/[^A-Za-z0-9._-]/g, "");
+const COPY = (process.env.AKAN_NATIVE_VM_WORK_NAME || "akan-native").replace(/[^A-Za-z0-9._-]/g, "");
+// robocopy /MIR onto the copy: a name that is empty or only dots would mirror onto the work root or above it.
+if (!/[A-Za-z0-9]/.test(COPY))
+  throw new Error(`AKAN_NATIVE_VM_WORK_NAME names no folder: ${JSON.stringify(process.env.AKAN_NATIVE_VM_WORK_NAME)}`);
 
 function target(): string {
   let host = process.env.AKAN_NATIVE_VM_HOST;
