@@ -1624,14 +1624,14 @@ akan build-desktop myapp --server true --env main`}
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "The server needs `single` in `database.modes`. The app carries `env.server.<env>.ts` of the `--env` it is built with, and no other environment's file, plus the defaults each lib it uses exports as its server env, all in plain text: anyone who has the app can read every value in them. Keep deployment secrets such as cloud keys out of those files.",
-              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나와, 앱이 쓰는 lib이 서버 env로 내보내는 기본값이 평문으로 실립니다. 앱을 가진 사람은 누구나 그 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀은 그 파일들에 두지 마세요.",
+              en: "The server needs `single` in `database.modes`. The app carries the server's `private/` folder, `env.server.<env>.ts` of the `--env` it is built with and no other environment's file, and the defaults each lib it uses exports as its server env (the lib's `env.server.testing.ts`), all in plain text: anyone who has the app can read every file and value in them. Keep deployment secrets such as cloud keys, and license files, out of them. The carried server has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`.",
+              ko: "서버를 넣으려면 `database.modes`에 `single`이 있어야 합니다. 앱에는 서버의 `private/` 폴더, 빌드할 때의 `--env`에 해당하는 `env.server.<env>.ts` 하나, 앱이 쓰는 lib이 서버 env로 내보내는 기본값(lib의 `env.server.testing.ts`)이 평문으로 실립니다. 앱을 가진 사람은 누구나 그 파일과 값을 모두 읽을 수 있으니 클라우드 키 같은 배포용 비밀과 라이선스 파일은 두지 마세요. 앱에 넣은 서버에는 `public/`이 없고 작업 폴더는 데이터 폴더이므로, 실행 중에 읽는 파일은 `process.cwd()`가 아니라 앱 폴더(`AKAN_APP_DIR`, 없으면 `Bun.main`의 폴더) 기준으로 읽습니다.",
             })}
           </Docs.Alert>
           <Docs.Alert type="info">
             {l.trans({
-              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer, signed ad hoc or with the development identity. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.",
-              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용 앱을 ad hoc 또는 개발용 인증서로 서명해 만듭니다. 배포 서명과 공증은 아직 akan 명령에 없고, Windows에서는 --installer가 서명하지 않은 현재 사용자용 설치 프로그램을 만듭니다.",
+              en: "start-desktop is for development and testing, and build-desktop makes an app for this computer: on macOS signed ad hoc or with the development identity, on Windows and Linux unsigned. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.",
+              ko: "start-desktop은 개발과 테스트용이고, build-desktop은 이 컴퓨터용 앱을 만듭니다. macOS는 ad hoc 또는 개발용 인증서로 서명하고, Windows와 Linux는 서명하지 않습니다. 배포 서명과 공증은 아직 akan 명령에 없고, Windows에서는 --installer가 서명하지 않은 현재 사용자용 설치 프로그램을 만듭니다.",
             })}
           </Docs.Alert>
           <div>
@@ -1843,21 +1843,26 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
                   An app follows the channel <code>updates.channel</code> names, or else the <code>--env</code> it was
                   built with, so it takes only releases published for its own env. <code>build-desktop</code> defaults
                   to <code>debug</code> and <code>publish-update</code> to <code>main</code>: pass the same{" "}
-                  <code>--env</code> to both. What makes a desktop app itself — its install folder, uninstall entry,
-                  data folder, single running instance and update state — comes from the target's <code>appId</code> and
-                  name, not from the env, so two envs of one target on one computer share all of it. To install them
-                  side by side, give each env its own target with its own <code>appId</code>.
+                  <code>--env</code> to both. <code>--channel</code> on <code>publish-update</code> names only the
+                  manifest it writes: the release inside keeps its build's channel, and an app that takes it follows
+                  that channel afterwards, so a pilot group gets a target of its own whose <code>updates.channel</code>{" "}
+                  is the pilot's. What makes a desktop app itself — its install folder, uninstall entry, data folder,
+                  single running instance and update state — comes from the target's <code>appId</code> and name, not
+                  from the env, so two envs of one target on one computer share all of it. To install them side by side,
+                  give each env its own target with its own <code>appId</code>.
                 </span>
               ),
               ko: (
                 <span>
                   앱은 <code>updates.channel</code>이 정한 채널을, 없으면 빌드할 때의 <code>--env</code>를 따릅니다.
                   그래서 자기 env로 게시한 릴리스만 받습니다. <code>build-desktop</code>의 기본값은 <code>debug</code>,{" "}
-                  <code>publish-update</code>는 <code>main</code>이므로 둘에 같은 <code>--env</code>를 줍니다. 설치
-                  폴더, 제거 항목, 데이터 폴더, 한 번에 하나만 뜨는 인스턴스, 업데이트 상태처럼 데스크톱 앱을 그 앱이게
-                  하는 것은 env가 아니라 타깃의 <code>appId</code>와 이름에서 나옵니다. 그래서 한 타깃의 두 env를 한
-                  컴퓨터에 두면 이것을 모두 함께 씁니다. 나란히 설치하려면 env마다 <code>appId</code>가 다른 타깃을 따로
-                  둡니다.
+                  <code>publish-update</code>는 <code>main</code>이므로 둘에 같은 <code>--env</code>를 줍니다.{" "}
+                  <code>publish-update</code>의 <code>--channel</code>은 쓸 매니페스트 이름만 정합니다. 안에 든 릴리스는
+                  빌드할 때의 채널을 그대로 가지므로 받은 앱은 그 뒤로 그 채널을 따릅니다. 그래서 pilot 그룹에는{" "}
+                  <code>updates.channel</code>이 pilot인 타깃을 따로 둡니다. 설치 폴더, 제거 항목, 데이터 폴더, 한 번에
+                  하나만 뜨는 인스턴스, 업데이트 상태처럼 데스크톱 앱을 그 앱이게 하는 것은 env가 아니라 타깃의{" "}
+                  <code>appId</code>와 이름에서 나옵니다. 그래서 한 타깃의 두 env를 한 컴퓨터에 두면 이것을 모두 함께
+                  씁니다. 나란히 설치하려면 env마다 <code>appId</code>가 다른 타깃을 따로 둡니다.
                 </span>
               ),
             })}

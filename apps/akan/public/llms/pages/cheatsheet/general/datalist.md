@@ -18,66 +18,6 @@
 
 DataList & Enum
 
-The value type, `"draft" | "published" | "archived"`, for props and parameters.
-
-Every value, in the order you declared them.
-
-Whether a value belongs to the enum, checked at runtime.
-
-The value's position in `values`, throwing for a value outside the enum.
-
-The usual array methods, run over `values`.
-
-Like the array methods, but they throw when nothing matches.
-
-The name you passed to `enumOf`, here `postStatus`.
-
-Builds a list from an array or another DataList, keeping the last item for a repeated id.
-
-Add or replace, or remove, by id, changing this list in place and returning it.
-
-Look up by id: `get` may return `undefined`, `pick` throws, `has` answers true or false.
-
-Position lookups, where `indexOf` and `pickAt` throw when nothing is there.
-
-Return a new DataList, but `sort` also reorders the source array, so sort a copy.
-
-The array methods over the items, where `map` returns a plain array.
-
-The item count and the underlying array, and the list itself works in `for…of` too.
-
-Returns a new DataList with the same items, which is what a store needs.
-
-The rows the slice has loaded, suffixed for a named slice as in `postListInPublic`.
-
-The rows as the last `init` loaded them.
-
-The rows a user selected, filled by `st.do.selectPost(post)`.
-
-`Load.Units` passes the list to this callback as a DataList.
-
-Question
-
-What it holds
-
-One value from a fixed set
-
-Records that each have an `id`
-
-Examples
-
-Status, role, type, size, visibility
-
-Users, files, posts, selected rows
-
-Where it lives
-
-`*.constant.ts`, as a field type
-
-Store state, or `new DataList(items)`
-
-Typical call
-
 Enum and DataList are two small helpers you will meet all over Akan code. Enum is for a fixed set of values; DataList is for a list of items that each have an id.
 
 A fixed set of values
@@ -88,6 +28,8 @@ A list keyed by id
 
 Users, files, posts, selected rows: records you find and replace by id.
 
+Both are imported from `akanjs/base`.
+
 Enum
 
 Use an Enum when a value must be one of a few known choices. Declared once, it keeps forms, APIs and labels in agreement.
@@ -96,19 +38,57 @@ Use an Enum when a value must be one of a few known choices. Declared once, it k
 
 Declare the class above the model classes, then use it as a field type:
 
+**Always add `as const`.** Without it, `PostStatus["value"]` widens to `string` and a typo compiles.
+
+**The first argument is the refName.** It is the class name in camelCase: `PostStatus` → `postStatus`.
+
+**Numbers work too.** Whole numbers make an `Int` field; any decimal makes it `Float`.
+
+**No TypeScript enum.** Akan never uses the `enum` keyword; a choice field is always an `enumOf` class.
+
 2. Give Each Value A Label
+
+Translate every value in the dictionary's `.enum()` stage, keyed by the refName:
+
+**Every value needs an entry.** The stage is typed from `PostStatus`, so a missing value is a type error.
+
+**Each label gets a key.** The value `draft` reads as `l("postStatus.draft")`.
 
 3. Use It On Screen
 
 In a form, hand the class straight to a toggle field:
 
+**Labels come from the dictionary.** `Field.ToggleSelect` and `Field.MultiToggleSelect` take the enum class and label each choice by its key.
+
+**Pass the setter as is.** `onChange={st.do.setStatusOnPost}` without an arrow wrapper keeps the field visible to the in-page agent.
+
 To show a saved value, look up the same key. A module-scope map gives each value its own style:
+
+**The map covers every value.** Typed as `{ [key in cnst.PostStatus["value"]]: string }`, it stops compiling when a new value has no class.
 
 4. Work With Values In Code
 
 The class itself carries the values and a few array helpers:
 
 Member
+
+- PostStatus["value"]: The value type, `"draft" | "published" | "archived"`, for props and parameters.
+
+- values: Every value, in the order you declared them.
+
+- has(value): Whether a value belongs to the enum, checked at runtime.
+
+- indexOf(value): The value's position in `values`, throwing for a value outside the enum.
+
+- The usual array methods, run over `values`.
+
+- Like the array methods, but they throw when nothing matches.
+
+- refName: The name you passed to `enumOf`, here `postStatus`.
+
+A control that takes label/value pairs, such as `Select`, needs the labels mapped in:
+
+**`Select` shows raw values.** `options={cnst.PostStatus}` works, but the list reads `draft`, not the translated label.
 
 DataList
 
@@ -118,19 +98,77 @@ The Basics
 
 A DataList keeps exactly one item per id:
 
+**`set` adds or replaces.** A new id goes to the end; a known id is swapped in place.
+
+**`pick` or `get`.** `pick(id)` throws for a missing id; `get(id)` returns `undefined`.
+
+**`filter` makes a smaller DataList.** The original list stays as it was.
+
 Methods At A Glance
 
 Method
 
+- new DataList(items): Builds a list from an array or another DataList, keeping the last item for a repeated id.
+
+- Add or replace, or remove, by id, changing this list in place and returning it.
+
+- Look up by id: `get` may return `undefined`, `pick` throws, `has` answers true or false.
+
+- Position lookups, where `indexOf` and `pickAt` throw when nothing is there.
+
+- Return a new DataList, but `sort` also reorders the source array, so sort a copy.
+
+- The array methods over the items, where `map` returns a plain array.
+
+- The item count and the underlying array, and the list itself works in `for…of` too.
+
+- save(): Returns a new DataList with the same items, which is what a store needs.
+
 DataList In The Store
+
+Every slice gives the store three DataList keys, and `Load.Units` hands you one more. For a post model:
 
 Name
 
+- postList: The rows the slice has loaded, suffixed for a named slice as in `postListInPublic`.
+
+- postInitList: The rows as the last `init` loaded them.
+
+- postSelection: The rows a user selected, filled by `st.do.selectPost(post)`.
+
+- renderList: `Load.Units` passes the list to this callback as a DataList.
+
 Change A Store List
+
+A custom store action writes the changed list back with `save()`, as the shared lib's admin store does:
+
+**`set`, then `save`.** `set` changes the list in place; `save()` wraps it in a new DataList so the store sees a new value.
+
+**Generated actions already do this.** Create, update and remove keep `postList` current; write an action only for a custom endpoint such as `addAdminRole`.
+
+**Always hand the store a new DataList.** `adminList.set(admin)` returns the same instance, and the store compares values by reference, so nothing on screen updates. Finish with `.save()`.
 
 Which One To Use
 
 A label-like value is an Enum; a collection of records with ids is a DataList.
+
+- Question
+
+- Enum
+
+- DataList
+
+- What it holds — One value from a fixed set — Records that each have an `id`
+
+- Examples — Status, role, type, size, visibility — Users, files, posts, selected rows
+
+- Where it lives — `*.constant.ts`, as a field type — Store state, or `new DataList(items)`
+
+- Typical call — `PostStatus.has(value)` — `postList.pick(id)`
+
+**DataList is not a database query.** It only works on data already loaded into the app, so `filter` sees the loaded rows, not the whole table.
+
+**Narrow on the server instead.** To fetch fewer rows, add a query filter or a slice.
 
 Querying
 
@@ -141,6 +179,14 @@ Form From Schema
 Bind enum fields and other inputs to the store.
 
 Tips
+
+**Keep the refName stable.** Dictionaries, label keys like `postStatus.draft` and API schemas find the enum by it, so renaming it leaves them behind.
+
+**Keep DataList items small.** Store lists hold light models, which carry only the fields a list needs.
+
+**Sort a copy.** Write `list.filter(fn).sort(compare)` or `new DataList(list).sort(compare)`, never `sort` on a store list directly.
+
+**Remember the shortcut.** Value choices are Enum; id collections are DataList.
 
 ## Code Examples
 

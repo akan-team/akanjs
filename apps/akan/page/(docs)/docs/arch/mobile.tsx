@@ -65,8 +65,8 @@ export default page().render(() => {
       title: l.trans({ en: "Shared backend", ko: "공유 백엔드" }),
       caption: l.trans({ en: "The server you already run", ko: "이미 돌리고 있는 그 서버" }),
       desc: l.trans({
-        en: "Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains.",
-        ko: "Android, iOS, 웹 client는 같은 Akan service를 호출하고 auth, permission, database rule, app-level domain을 공유할 수 있습니다.",
+        en: "Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains. A desktop app built with --server calls the copy of that server it carries instead.",
+        ko: "Android, iOS, 웹 client는 같은 Akan service를 호출하고 auth, permission, database rule, app-level domain을 공유할 수 있습니다. --server로 빌드한 데스크톱 앱은 대신 자기가 싣고 있는 서버를 호출합니다.",
       }),
     },
   ];
@@ -144,6 +144,12 @@ export default page().render(() => {
             {l.trans({
               en: "Concretely, Akan mobile apps are CSR web clients running inside a native shell that akanjs's own runtime, @akanjs/native, generates. The product screen is still built with Akan page, UI, state, and service patterns; the runtime supplies the shell, app identity, store package, and device bridge from what akan.config.ts declares.",
               ko: "정확히 말하면 Akan 모바일 앱은 akanjs의 자체 런타임인 @akanjs/native가 만들어 내는 네이티브 shell 안에서 실행되는 CSR 웹 클라이언트입니다. 제품 화면은 여전히 Akan page, UI, state, service 패턴으로 만들고, 런타임이 akan.config.ts의 선언을 바탕으로 shell, 앱 식별 정보, 스토어 패키지, 디바이스 브리지를 제공합니다.",
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: "The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, built with akan build-desktop --server, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.",
+              ko: "같은 target으로 macOS, Windows, Linux 앱도 빌드합니다. 데스크톱 앱은 폰처럼 공유 백엔드를 부르거나, akan build-desktop --server로 빌드하면 앱의 서버를 함께 싣습니다. 이 서버는 창과 함께 loopback 포트로 떠서 데이터를 그 컴퓨터에 두고, 페이지가 부르는 유일한 백엔드가 되므로 다른 곳에 서버 없이 앱이 동작합니다.",
             })}
           </div>
           <Docs.Figure

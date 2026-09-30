@@ -19,84 +19,6 @@
 
 UI Recipe Layer
 
-A function that returns the class string for one look, built with recipe(tv({ … })).
-
-One named axis of a recipe (variant, size, side) and the values it can take.
-
-A color named for its role (primary, background, destructive) instead of its value.
-
-A named place (button, badge, input) where a route's _overrides.tsx can swap a recipe.
-
-CSS variables in styles.css. Theme-aware, server/client agnostic. What is this color?
-
-Variant factories that compose tokens. Server-safe, no use client. How does it look?
-
-Consume recipes and add interaction and state; use client only when needed. How does it behave?
-
-A class set you would otherwise repeat
-
-Repeated or variant-like surface
-
-A status pill, a hero, a bubble or a tile: extract a recipe.
-
-Class chosen from a fixed set by data
-
-Tone, size, side or status decides the class: make it a variant of a recipe.
-
-Styling a server component or raw element
-
-A recipe is server-safe, so a server page can call it directly.
-
-A class you write once
-
-Genuinely one-off className
-
-Keep it inline. Do not over-abstract.
-
-Inside the route subtree
-
-Framework client components
-
-Button, Badge, Input, Dropdown, Pagination … read the slot, so they re-skin.
-
-Server components (Unit, View)
-
-They keep the canonical recipe.
-
-A raw call in your own JSX keeps the canonical recipe; import your own recipe there instead.
-
-Q1. Does the theme differ?
-
-Color · radius · font
-
-Override token values in the app's page/styles.css.
-
-Keep the Akan defaults.
-
-Q2. Does a component look differ?
-
-Same structure, different skin
-
-Write an app recipe and inject it through the recipes of _overrides.tsx.
-
-Use it as it is.
-
-Q3. Does structure or behavior differ?
-
-For example, modal → drawer
-
-Write a component override that reassembles the headless parts.
-
-Not needed.
-
-A surface the lib does not have?
-
-A chat bubble, a tile
-
-Add a new app recipe. It is an extension with no lib counterpart, so nothing conflicts.
-
-Use the lib's recipe.
-
 Recipe Layer
 
 A primary button needs about a dozen classes. Written out on every button, those dozen classes drift apart, and changing the look means editing every copy. A recipe names that look once, and every button asks for it by name.
@@ -107,15 +29,31 @@ Layer
 
 What it does
 
+- tokens: CSS variables in styles.css. Theme-aware, server/client agnostic. What is this color?
+
+- recipes: Variant factories that compose tokens. Server-safe, no use client. How does it look?
+
+- components: Consume recipes and add interaction and state; use client only when needed. How does it behave?
+
 Words used on this page
 
 Term
+
+- recipe: A function that returns the class string for one look, built with recipe(tv({ … })).
+
+- variant: One named axis of a recipe (variant, size, side) and the values it can take.
+
+- semantic token: A color named for its role (primary, background, destructive) instead of its value.
+
+- slot: A named place (button, badge, input) where a route's _overrides.tsx can swap a recipe.
 
 Why a recipe works on both sides
 
 One recipe, callable from both sides
 
 buttonRecipe carries no use client, so a server component and a client component can both call it and get the same class string.
+
+A recipe module never carries `"use client"`. It is a plain function that returns a className string, so both server and client components can call it. A server page can style a raw `<Link>` or `<div>` with `buttonRecipe()` directly.
 
 Framework Recipes
 
@@ -161,6 +99,10 @@ Variant
 
 Inline
 
+- A class set you would otherwise repeat
+
+- A class you write once
+
 Reach for this
 
 Not this
@@ -185,6 +127,8 @@ New look
 
 Canonical
 
+- Inside the route subtree
+
 Uses this recipe
 
 Not this one
@@ -197,9 +141,19 @@ Three Questions, One Invariant
 
 Customization is decided once, at design-system setup, not per screen. Compare your design spec with the /lab catalog once, then run each difference through the questions below.
 
+- Q1. Does the theme differ? — Color · radius · font — Override token values in the app's page/styles.css. — Keep the Akan defaults.
+
+- Q2. Does a component look differ? — Same structure, different skin — Write an app recipe and inject it through the recipes of _overrides.tsx. — Use it as it is.
+
+- Q3. Does structure or behavior differ? — For example, modal → drawer — Write a component override that reassembles the headless parts. — Not needed.
+
+- A surface the lib does not have? — A chat bubble, a tile — Add a new app recipe. It is an extension with no lib counterpart, so nothing conflicts. — Use the lib's recipe.
+
 Yes →
 
 No →
+
+**The invariant:** the screen code, a plain `<Button>`, never changes whatever the answers are. Only config files do.
 
 App recipes extend: they add surfaces the lib lacks, and never re-define a lib component in parallel. To change a lib component's look, use a recipe override, not a parallel button recipe. When the same className tweak repeats, promote it to a recipe override (app-wide) or a variant.
 

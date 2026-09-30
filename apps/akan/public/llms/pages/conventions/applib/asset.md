@@ -19,69 +19,55 @@
 
 Assets (public/ private/)
 
-The browser may download it
-
-Served as static files by URL. Images, PDFs, downloadable JSON and icons go here.
-
-Only the server reads it
-
-Never served. Seed data, private JSON, model files and resources for server jobs go here.
-
-File
-
-Used for
-
-Seed data the server loads.
-
-Model weights for server-side inference.
-
-A library's internal rules, covered under Library Assets below.
-
-Library's public/
-
-Inside the app
-
-Browser URL
-
-Library's private/
-
-Server code reads
-
-Anyone may download it
-
-UI images and icons, drawn with `Image` from `akanjs/ui`.
-
-PDFs and other files a user downloads.
-
-JSON the browser loads by URL.
-
-Only the server may read it
-
-Internal data such as seed records.
-
-Model weights.
-
-Server-only configuration and rules.
-
-Folder
-
-In the build
-
-Copied into every build.
-
-Copied when the app serves pages; an API-only build (`web: false`) leaves it out.
-
-Fonts in `public/`
-
-Unreferenced fonts are dropped by `assets.pruneFonts`; list any to keep in `assets.keepFonts`.
-
 Asset Folders
+
+Apps and libraries keep file assets in two folders at their root, beside `lib/` and `ui/`. Which one a file goes in depends on one question: may the browser download it?
+
+- public/ — The browser may download it — Served as static files by URL. Images, PDFs, downloadable JSON and icons go here.
+
+- private/ — Only the server reads it — Never served. Seed data, private JSON, model files and resources for server jobs go here. A desktop app that carries its server ships the folder in plain text on the user's computer.
+
+**No wrapping folder.** There is no `asset/` folder; `public/` and `private/` sit directly at the root.
+
+**Libraries have the same pair.** Every app that depends on the library can use them, as the Library Assets section shows.
 
 Public Assets
 
+The server serves every file under `public/` as a static file. Its URL is the file path with `apps/myapp/public` dropped:
+
+File
+
+- /docs/product-guide.pdf: `apps/myapp/public/docs/product-guide.pdf`
+
+- /data/sample-products.json: `apps/myapp/public/data/sample-products.json`
+
+- /images/hero.png: `apps/myapp/public/images/hero.png`
+
+**No locale in the URL.** Pages live under `/ko/…` and `/en/…`, but public files do not: `/ko/images/hero.png` is a 404.
+
+**Link to a file with a plain `<a>`.** `Link` from `akanjs/ui` adds the locale and navigates as a page, so it misses the file.
+
+**Cached for 5 minutes in production.** A replaced file can show its old version for that long, while dev never caches.
+
+Link to a PDF with a plain `<a>`:
+
 Load a JSON file in the browser from its URL:
 
+**Call `window.fetch`.** The `fetch` you import from `@apps/myapp/client` is Akan's API client, not the browser's.
+
+**Browser only.** A relative URL has no origin on the server, which is why the code lives in `webkit/`. Server code reads files from disk, as Private Assets shows.
+
 Optimized Images
+
+Draw UI images from `public/` with `Image` from `akanjs/ui` instead of a bare `<img>`. Like Next.js image optimization, the server sends a smaller, lighter version of the file:
+
+**Resized and cached.** Each image is served at the width it is drawn, as WebP when the browser accepts it. SVG files are sent unchanged.
+
+**Give `width` and `height`.** They choose the size the server sends and reserve the space before the image loads.
+
+**`priority` only for the first screen.** It preloads the image and loads it right away; every other image loads lazily.
+
+**The rest is config.** A remote host needs `images.remotePatterns`, and a `quality` other than 75 needs `images.qualities` in `akan.config.ts`.
 
 Image Optimization
 
@@ -93,27 +79,103 @@ Widths, formats, qualities and the remote hosts the optimizer may fetch.
 
 Private Assets
 
+Files under `private/` are never served, so no URL reaches them. Server code reads them from disk to load data, run inference or start a service. They are not secret from whoever holds the server's files, though: a desktop app built with `--server` carries them in plain text, so keep keys and license files that must stay yours out of such an app.
+
+- File
+
+- Used for
+
+- apps/myapp/private/seed/products.json — Seed data the server loads.
+
+- apps/myapp/private/model/yolo.onnx — Model weights for server-side inference.
+
+- libs/shared/private/recommendation/default-rules.json — A library's internal rules, covered under Library Assets below.
+
 Read from the app folder
+
+Build the path from `AKAN_APP_DIR`, the app's own folder, with one small helper in `srvkit/`:
+
+**`AKAN_APP_DIR` is the app folder everywhere.** It is `apps/myapp` under `akan start` and `dist/apps/myapp` in a build. A single-process server, such as the one a desktop app carries, may leave it unset, which is why the helper falls back to the folder of `Bun.main`.
+
+**It lives in `srvkit/`.** Code that touches `Bun` or `process.env` belongs there, never in a page or a client file.
+
+**Never read `./private/…` directly.** A relative path follows the working directory, which is the workspace root under `akan start`. The same line finds the file in a build and misses it in dev.
 
 Load data and models
 
 Read a JSON file with the helper:
 
+A model file is loaded once, when the server starts, inside an `adapt()` class:
+
+**`onInit` runs once per process.** The weights are read at boot, not on every request.
+
+**Inject it with `plug(YoloDetector)`.** `loadYoloModel` and `YoloModel` stand for your ONNX runtime's loader.
+
 Library Assets
+
+A library keeps assets in its own `public/` and `private/`. Every app that depends on it gets both under `libs/<lib>/`, public ones as URLs and private ones for server code only:
 
 Where
 
 Path
 
+- `libs/shared/public/banner/logo.png`
+
+- `apps/myapp/public/libs/shared/banner/logo.png`
+
+- `/libs/shared/banner/logo.png`
+
+- `libs/shared/private/recommendation/default-rules.json`
+
+- `apps/myapp/private/libs/shared/recommendation/default-rules.json`
+
+- `privateFile("libs/shared/recommendation/default-rules.json")`
+
+**`public/libs` and `private/libs` are generated.** `akan sync` rebuilds them and git ignores them, so never put your own files there.
+
+**Library server code reads through the app too.** It runs inside the app, and the library's source folder is not in a build.
+
+Draw a library image by its `/libs/…` URL:
+
+Read a library's private file through `private/libs/<lib>`:
+
 Which Folder?
 
+Ask whether anyone on the internet may download the file. Yes means `public/`, no means `private/`.
+
 Example file
+
+- public/
+
+- private/
+
+- Anyone may download it
+
+- Only the server may read it
 
 Goes here
 
 Not here
 
+**When unsure, use `private/`.** A public file needs no sign-in: anyone who knows the URL can download it.
+
+**UI images go through `Image`.** Use `Image` from `akanjs/ui` so the server optimizes them.
+
+**Share through a library.** When several apps need the same file, put it in the library's own `public/` or `private/` instead of copying it into each app.
+
 What a build ships
+
+`akan build` copies both folders into `dist`. Only that copy is trimmed; your source folders keep every file.
+
+- Folder
+
+- In the build
+
+- `private/` — Copied into every build.
+
+- `public/` — Copied when the app serves pages; an API-only build (`web: false`) leaves it out.
+
+- Fonts in `public/` — Unreferenced fonts are dropped by `assets.pruneFonts`; list any to keep in `assets.keepFonts`.
 
 ## Code Examples
 

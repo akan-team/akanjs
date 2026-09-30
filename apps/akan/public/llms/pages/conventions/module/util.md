@@ -19,125 +19,53 @@
 
 Model.Util.tsx
 
-Always a client file
-
-"use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
-
-Named after its action
-
-Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
-
-Takes ids, not models
-
-A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
-
-Calls, never decides
-
-It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
-
-Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
-
-The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
-
-Slice metadata that tells a wrapper which model and list to act on. It sends no request.
-
-The arguments a slice list was loaded with, such as the project ids that filter a ticket list.
-
-Sits beside the module's other files. A service module may have one; a scalar module may not.
-
-Always line 1, above the imports. Template and Zone carry it too; Unit and View never do.
-
-Named exports only. Callers write `Project.Util.Remove`, so no name repeats the model.
-
-Declared right above its component and named after it. It takes ids and plain values.
-
-One flat import for `fetch`, `st` and `usePage`. UI pieces come from `akanjs/ui`.
-
-Draws an Edit button that opens its Template child in an edit modal.
-
-Its children become the trigger. It asks for confirmation, then removes the record.
-
-A stricter remove that shows the record's `name`. `typeNameToRemove` makes the user retype it.
-
-The args the slice list was last loaded with, as an array in the slice's arg order.
-
-Takes one value per slice arg, then reloads the list and insight from page 1.
-
-The current path without the locale prefix, such as `/board/abc/post/1`.
-
-A wrapper from `akanjs/ui` whose click calls `router.back()`.
-
-View
-
-Form
-
-Logic
-
-The Util's job
-
-A button that runs one store action.
-
-Wrappers that open the generated edit and remove flows.
-
-A dialog trigger, and the draft value only that dialog uses.
-
-Filter controls that change a slice list's query args.
-
-Helpers that read the route to decide what to show.
-
-Another file's job
-
-fields and markup
-
-A Unit draws one row, and a View draws one record in full.
-
-A form whose fields are bound to the store.
-
-who may act, what changes
-
-Business rules run on the server, in the service and document.
-
-multi-step async flow
-
-A store action that the Util calls in one line.
-
-Mistake
-
-Instead
-
-Write `isOwner ? <Remove /> : null`, the house form for conditional render.
-
-Pass the setter by reference; the arrow hides the field from the agent and fails lint.
-
-Load data in the page and pass it down; `akan quality ssr` flags a mount-time load.
-
-Lint rejects `fetch.init*` in a client file. Reload with `st.do.initTicketInSelf()`.
-
-A Util with no click, hook or store is server work. Move it to a Unit or View.
-
-How a Unit places a Util button beside its link.
-
-Every generated slice action, including setQueryArgsOf.
-
-Every prop of Model.Edit, Model.Remove and the other wrappers.
-
-In-Page Agent
-
-How st.tool publishes a button to the agent.
-
 A Util file holds a module's small client components, each doing one action: a remove button, a toolbox, a dialog trigger, a filter control or a back link.
 
 Clicks and store actions gather here, so Unit and View stay server-rendered and Page, Zone and Template keep to their own jobs.
+
+- Always a client file — "use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
+
+- Named after its action — Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
+
+- Takes ids, not models — A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
+
+- Calls, never decides — It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
 
 Words used on this page
 
 Term
 
+- Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
+
+- The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
+
+- fetch.slice.<name>: Slice metadata that tells a wrapper which model and list to act on. It sends no request.
+
+- query args: The arguments a slice list was loaded with, such as the project ids that filter a ticket list.
+
 File Convention
+
+Every Util file has the same shape. `akan create-module product` writes the first one for you, with a single `Remove` export:
+
+**`fetch.slice.product` sends no request.** It is slice metadata that tells `Model.Remove` which model to remove.
+
+**`l("base.remove")` is a shared label.** Words every module shares live under `base.*`; a module's own words live under `<model>.*`.
+
+**Only `react*` packages import directly.** `react-icons` is fine; any other third-party package reaches a Util through a lib re-export.
 
 The rules in the file
 
 Part
+
+- lib/<model>/<Model>.Util.tsx: Sits beside the module's other files. A service module may have one; a scalar module may not.
+
+- "use client": Always line 1, above the imports. Template and Zone carry it too; Unit and View never do.
+
+- Named exports only. Callers write `Project.Util.Remove`, so no name repeats the model.
+
+- interface RemoveProps: Declared right above its component and named after it. It takes ids and plain values.
+
+- @apps/<app>/client: One flat import for `fetch`, `st` and `usePage`. UI pieces come from `akanjs/ui`.
 
 Model Wrapper Actions
 
@@ -145,7 +73,19 @@ Most Utils are thin controls around the Model wrappers. A toolbox gathers severa
 
 Wrapper
 
+- Model.Edit: Draws an Edit button that opens its Template child in an edit modal.
+
+- Model.Remove: Its children become the trigger. It asks for confirmation, then removes the record.
+
+- Model.SureToRemove: A stricter remove that shows the record's `name`. `typeNameToRemove` makes the user retype it.
+
 A project toolbox in a dropdown menu. Only the owner sees the remove item:
+
+**The wrappers call the generated actions.** `Model.Edit` runs `st.do.editProject` and `Model.SureToRemove` runs `st.do.removeProject`, so the Util writes no handler for them.
+
+**A custom action declares its own `st.tool`.** The archive button calls the tool's callable with the id, so a click and the agent run one handler.
+
+**Owner-only items use `cond ? … : null`.** The `isOwner` prop makes the condition visible to whoever renders the toolbox.
 
 Dialog And Modal Actions
 
@@ -153,15 +93,31 @@ When an action needs a confirmation or a small input first, its dialog lives in 
 
 Inside the dialog
 
+`Dialog` opens and closes itself. `useState` holds a draft value that only this dialog uses.
+
 In the store
+
+`edit<Model>(id, { modal })` writes the `<model>Modal` key, so any component or action can open or close it.
 
 Local state: SetOrg
 
 SetOrg picks an organization in a dialog, then saves it to the business license:
 
+**`useState` is fine here.** The picked id is a draft that belongs to this dialog alone. Server data never goes in `useState`.
+
+**`Field.ParentId` picks a related record.** It loads its options from `fetch.slice.orgInSelf` and hands the chosen id to `onChange`.
+
+**`Dialog.Action` fills the footer.** The save button stays disabled until an organization is picked.
+
 Store state: Resolve
 
 Resolve keeps the modal key in the store, so a store action opens the modal:
+
+**`editReport(id, { modal })` loads the record and names the modal.** It fills `reportForm` and sets `reportModal` to the name you pass.
+
+**The key carries the id.** `resolve-${reportId}` keeps each row's modal apart when a list renders many Resolve buttons.
+
+**`resetReport` closes it.** It clears `report`, `reportForm` and `reportModal`; hand it to `onCancel` as is.
 
 Query And Route Helpers
 
@@ -169,13 +125,29 @@ Filter controls and route-aware helpers are Utils too. They read store or route 
 
 What they use
 
+- st.use.queryArgsOf<Model><Suffix>(): The args the slice list was last loaded with, as an array in the slice's arg order.
+
+- st.do.setQueryArgsOf<Model><Suffix>(...args): Takes one value per slice arg, then reloads the list and insight from page 1.
+
+- st.use.path(): The current path without the locale prefix, such as `/board/abc/post/1`.
+
+- Link.Back: A wrapper from `akanjs/ui` whose click calls `router.back()`.
+
 Changing a filter
 
 QueryMakerInSelf keeps the project filter of the ticketInSelf list and clears its assignee filter:
 
+**Spread the args, one per slice arg.** Wrapping them in one array would put the whole array into the first arg.
+
+**An updater works too.** `setQueryArgsOfTicketInSelf((projectIds, userIds) => [projectIds, []])` derives the next args from the current ones.
+
 Reading the route
 
 BackButton shows a back link only on pages under one board:
+
+**`{ agent: false }` keeps the key off the agent's surface.** The path only decides what to draw, so the in-page agent has no reason to read it.
+
+**An early `return null` is a guard clause.** Use it only to bail out like this; elsewhere write `cond ? <X /> : null`.
 
 Rules And Common Mistakes
 
@@ -183,15 +155,63 @@ What belongs in a Util, and which file takes everything else:
 
 The work
 
+- Util
+
+- View — Unit · View
+
+- Form — Template
+
+- Logic — store · service
+
+- The Util's job
+
+- Another file's job
+
 Belongs here
 
 Not here
 
 Writing a Util
 
+**Labels go through `l`.** Take it from `usePage()` and write `l("model.key")` or `l.trans({ en, ko })`, never hard-coded action text.
+
+**Call, do not decide.** Call `st.do` actions or Model wrappers, and keep business rules in the service and document.
+
+**`useState` is for UI-only values.** An open dialog, a selected option or a draft input qualifies; server data does not.
+
+**Keep props explicit.** The caller should see which id, slice, role or name the action depends on.
+
+**Split big toolboxes.** Break a large toolbox or workflow modal into named exports instead of hiding too much in one component.
+
+**Publish custom buttons to the agent.** Model wrappers declare their own agent tools; a plain button publishes nothing until you declare `st.tool(…)` beside it and hand its callable to `onClick`.
+
 Common mistakes
 
+- Mistake
+
+- Instead
+
+- {isOwner && <Remove />} — Write `isOwner ? <Remove /> : null`, the house form for conditional render.
+
+- onChange={(v) => st.do.setNameOnX(v)} — Pass the setter by reference; the arrow hides the field from the agent and fails lint.
+
+- useEffect(() => { … }, []) — Load data in the page and pass it down; `akan quality ssr` flags a mount-time load.
+
+- fetch.initTicketInSelf() — Lint rejects `fetch.init*` in a client file. Reload with `st.do.initTicketInSelf()`.
+
+- <div>…markup only…</div> — A Util with no click, hook or store is server work. Move it to a Unit or View.
+
+**A Util prop cannot be a `cnst` model.** A prop such as `report: cnst.Report` fails `akan lint`. Take `reportId: string` and read the model from the store; an enum value such as `cnst.ProjectRole["value"]` is still fine.
+
 Related pages
+
+- Model.Unit.tsx — How a Unit places a Util button beside its link.
+
+- Model.store.ts — Every generated slice action, including setQueryArgsOf.
+
+- Model — Every prop of Model.Edit, Model.Remove and the other wrappers.
+
+- In-Page Agent — How st.tool publishes a button to the agent.
 
 ## Code Examples
 

@@ -16,117 +16,87 @@
 
 Schema Docs
 
-A model's name in code, such as `user` or `bizContract`. You pick models by it.
-
-One of the five classes a model declares: Input, Object, Light, Full and Insight.
-
-A value object stored inside another model, declared under `lib/__scalar/`.
-
-A fixed list of allowed values, declared with `enumOf(...)`.
-
-An explorer for the screen, with search, a table or diagram view and a tab per variant.
-
-Everything expanded on one long page, ready to print or save as a PDF.
-
-One model or scalar as a collapsible panel, picked by `refName`.
-
-Every registered enum in one table, with its values and the fields that use it.
-
-all
-
-Database models to show, by `refName`, in the order you list them.
-
-Scalar models to show, by `refName`.
-
-Enums to show: the class name, first letter lowercased (`BizContractStatus` → `bizContractStatus`).
-
-Opens every model and scalar panel. `Doc.Print` is always fully open and ignores it.
-
-Part
-
-What it does
-
-Summary cards
-
-Counts of database models, scalar models, enums and relations.
-
-Search
-
-Filters models and scalars by `refName`, and enums by name.
-
-Switches between field tables and a graph of how models point at each other.
-
-Shows one variant of a model at a time. `Full` opens first.
-
-Opens one field's full settings as JSON, including `ref`, `example` and `meta`.
-
-The field type. `!` marks a required field, and a model or scalar type is highlighted.
-
-`property`, `hidden`, `secret` or `resolve`, with `select:false` and `immutable` badges.
-
-The declared default. A function default reads `[function]`.
-
-`min`, `max`, `minlength`, `maxlength`, the `text:` search role, `custom validate`, `accumulate`.
-
-The allowed values when the field is an enum.
-
-Browsing on screen
-
-Relation diagram
-
-Variant tabs
-
-One variant at a time.
-
-Collapsible panels
-
-`openAll` opens them all.
-
-Field detail modal
-
-Printing
-
-All five variants at once
-
-Printed one after another per model.
-
-Field details in the table
-
-`ref`, `refPath`, `example` and `meta` inline, in place of the modal.
-
-Enum value labels
-
-Written in a column. `Doc.Zone` shows them only on hover.
-
-Page breaks
-
-Each database model gets its own page, and scalars and enums start on a new one.
-
-Print colors
-
-Switches to black text on white when printed, even from dark mode.
-
 Constant Schema Docs
+
+You do not have to write a data model spec by hand. `Constant.Doc` reads every model registered in `ConstantRegistry` and draws field tables and a relation diagram from it.
 
 Words used on this page
 
 Term
 
+- refName: A model's name in code, such as `user` or `bizContract`. You pick models by it.
+
+- variant: One of the five classes a model declares: Input, Object, Light, Full and Insight.
+
+- scalar: A value object stored inside another model, declared under `lib/__scalar/`.
+
+- enum: A fixed list of allowed values, declared with `enumOf(...)`.
+
 The parts
 
 Component
 
+- Constant.Doc.Zone: An explorer for the screen, with search, a table or diagram view and a tab per variant.
+
+- Constant.Doc.Print: Everything expanded on one long page, ready to print or save as a PDF.
+
+- One model or scalar as a collapsible panel, picked by `refName`.
+
+- Constant.Doc.Enum: Every registered enum in one table, with its values and the fields that use it.
+
 Put it on a page
+
+Write a client component in `ui/` that renders `Constant.Doc.Zone` or `Constant.Doc.Print`.
 
 Give each one a route of its own.
 
 First, the client component:
 
+**The `cnst` import registers your models.** Nothing is taken from it: loading the file is what lets the explorer find your app's models.
+
+**Pick what to show with props.** Both components take the same lists, described below.
+
+- string[] — all — Database models to show, by `refName`, in the order you list them.
+
+- string[] — all — Scalar models to show, by `refName`.
+
+- string[] — all — Enums to show: the class name, first letter lowercased (`BizContractStatus` → `bizContractStatus`).
+
+- boolean — false — Opens every model and scalar panel. `Doc.Print` is always fully open and ignores it.
+
+**An empty list means all.** `models={[]}` shows every model, the same as leaving the prop out.
+
+**A misspelled name is skipped quietly.** If a model is missing, check its `refName` against the summary counts.
+
+**Order follows your list.** A list you leave out is sorted by name.
+
 Then a route renders the component, and the route stays a server page:
+
+**The URL.** `(admin)` is a route group and adds nothing to the path, so this page serves `/schema`.
+
+**The print version.** Write `schema/print.tsx` the same way with `<PrintableSchemaDocs />`, and it serves `/schema/print`.
+
+**Render `Constant.Doc` from a `"use client"` file.** Its parts exist only on the client, so a page that renders `<Constant.Doc.Zone>` directly fails. Keep the route a server page that renders your wrapper.
 
 Generated Schema
 
+`Constant.Doc.Zone` is for browsing. Each model is a panel with a field table, and the toolbar switches the whole view to a relation diagram.
+
 What is on screen
+
+- Part
+
+- What it does
+
+- Summary cards — Counts of database models, scalar models, enums and relations.
+
+- Search — Filters models and scalars by `refName`, and enums by name.
+
+- Table · Diagram — Switches between field tables and a graph of how models point at each other.
+
+- Input · Object · Full · Light · Insight — Shows one variant of a model at a time. `Full` opens first.
+
+- Detail — Opens one field's full settings as JSON, including `ref`, `example` and `meta`.
 
 Reading a field row
 
@@ -134,17 +104,47 @@ Column
 
 What it shows
 
+- Type: The field type. `!` marks a required field, and a model or scalar type is highlighted.
+
+- Kind: `property`, `hidden`, `secret` or `resolve`, with `select:false` and `immutable` badges.
+
+- Default: The declared default. A function default reads `[function]`.
+
+- Constraints: `min`, `max`, `minlength`, `maxlength`, the `text:` search role, `custom validate`, `accumulate`.
+
+- Values: The allowed values when the field is an enum.
+
+**Labels come from the dictionary.** The model description is the one in `.of()`, and each field shows its label and `.desc()`.
+
+**Reading the diagram.** Each arrow is labelled with the fields that make it. A model outside your list shows as an `External` node.
+
+**Click a node.** The side panel lists its fields and their types, from the `Full` variant for a database model.
+
 Live on this site
 
 Printable Definition
 
+`Constant.Doc.Print` renders every selected variant and field expanded. There are no tabs, collapse panels, modals or diagram, so the page prints as it looks.
+
 Feature
+
+- Doc.Zone
+
+- Doc.Print
+
+- Browsing on screen
+
+- Printing
 
 has it
 
 does not
 
 To keep a copy as a PDF:
+
+Open the print route, such as `/schema/print`.
+
+Press `⌘P` or `Ctrl+P` and choose Save as PDF in the browser's print dialog.
 
 ## Code Examples
 

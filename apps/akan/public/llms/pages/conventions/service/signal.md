@@ -18,97 +18,21 @@
 
 service.signal.ts
 
-A module in `lib/_<name>` with no table of its own, such as `_security` or `_oauth`.
-
-A class that decides whether a call may run, such as `Public`, `Every` or `Admin`.
-
-A value the server fills in rather than the caller, taken with `.with(...)`.
-
-The protocol AI agents use to call your endpoints. Akan serves it at `/mcp`.
-
-A server's role: `federation` answers requests, `batch` runs background work, `all` does both.
-
-Model module
-
-Service module
-
-Declared in this order
-
-Work the runtime starts: schedules, queue jobs, boot and shutdown. Written even when empty.
-
-A paged window onto a table, with an insight query behind it. No table, no slice.
-
-What callers reach: `query`, `mutation`, `pubsub` and `message`.
-
-Checks the caller
-
-Agents see it
-
-Names a real guard
-
-Published. An agent's call is checked like anyone else's.
-
-HTTP serves it as before. Only the agent listing drops it.
-
-A person-only act. A model is refused and never sees the entry.
-
-Names Public, or nothing
-
-An open read, decided on purpose. Published, like the doc tools below.
-
-Runs for anyone over HTTP. MCP treats it as having no guard.
-
-no guards
-
-Zero checks over HTTP, and refused by MCP.
-
-endpoint name
-
-A literal route, in place of the one built from the endpoint name and its `.param()`s.
-
-model refName
-
-The segment before the path. A model module puts its refName there; a service module, nothing.
-
-API prefix (/api)
-
-`false` drops the app's API prefix, so the route sits at the origin root.
-
-`false` keeps it off the agent listing without changing who may call it.
-
-The raw `Request`, for a form body or a header Akan does not parse for you.
-
-The caller's IP as the nearest proxy recorded it, or `null` when no address is known at all.
-
-The verified account of the caller, imported from `@libs/shared/srvkit`.
-
-Runs on a cron schedule, such as every midnight.
-
-Runs every `ms` milliseconds.
-
-Runs once, `ms` milliseconds after the server starts.
-
-Runs once when the process starts, and once when it stops.
-
-A background queue job. `.msg()` names each field of its payload.
-
-Computes a model's `resolve` field. A service module has no model, so it never uses this.
-
-Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
-
-every mode
-
-Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
-
-For `cron` and `interval`, skips a run while the previous one still runs in the same process.
-
-`false` turns the job off without deleting its code.
-
 service.signal.ts is the door in front of a service module. The signal decides who may call and with which arguments, and the service decides what happens. You open it to add an endpoint, a scheduled job or a realtime room.
 
 Words used on this page
 
 Term
+
+- service module: A module in `lib/_<name>` with no table of its own, such as `_security` or `_oauth`.
+
+- guard: A class that decides whether a call may run, such as `Public`, `Every` or `Admin`.
+
+- internal argument: A value the server fills in rather than the caller, taken with `.with(...)`.
+
+- MCP: The protocol AI agents use to call your endpoints. Akan serves it at `/mcp`.
+
+- serverMode: A server's role: `federation` answers requests, `batch` runs background work, `all` does both.
 
 Two classes, not three
 
@@ -116,19 +40,45 @@ A model module's signal declares three classes. A service module's declares two,
 
 Class
 
+- Model module — lib/<model>
+
+- Service module — lib/_<service>
+
+- Declared in this order
+
 Declared
 
 Not declared
 
 Here is the whole file for a receipt module with one endpoint:
 
+**The Internal class stays, even empty.** It marks where scheduled work goes.
+
+**`exec` is one line.** It hands the arguments to the service and returns what the service returns.
+
+**The signal adds the noun back.** The service method is `print` and the endpoint is `printReceipt`, so `st.do.printReceipt` reads like `fetch.printReceipt`.
+
 Common mistake: an endpoint with no guards
 
+This `libs/util` file used to have the shape to avoid. The red line is how it read; the green line is the fix it carries now:
+
+**An endpoint that names no guards runs zero checks.** Without one, anyone could encrypt any input with the app's own key, which turns `encrypt` into an oracle. A library that cannot reach `libs/shared`'s `Admin` closes the endpoint with `[None]` and keeps it off MCP with `mcp: false`.
+
 Every Endpoint Names Its Guards
+
+In a model module, the slice's guards map covers the generated CRUD endpoints. A service module has no slice, so there is no default to inherit: each endpoint writes its own `guards` array right beside it.
 
 The same array also decides whether AI agents see the endpoint over MCP:
 
 What the endpoint declares
+
+- Checks the caller
+
+- Agents see it — MCP
+
+- Names a real guard
+
+- Names Public, or nothing
 
 Yes
 
@@ -136,25 +86,113 @@ No
 
 An open endpoint is fine when it is a decision, written down as one. The docs app's own signal does exactly that:
 
+**`[Public]` is the decision here.** The same markdown is already served anonymously under `/llms/pages`, so a guard would protect nothing and lock out the agents these tools exist for.
+
+**The class comment says why.** Why an obvious alternative was rejected is one of the few kinds of comment this codebase keeps.
+
+**A miss is an `Err`, not an empty page.** `readDocPage` throws `doc.error.docPageNotFound` so an agent is told it asked for nothing.
+
+**`[Public]` on a mutation is having no guard, spelled out.** MCP refuses a `mutation` whose only guard is `Public`, just as it refuses one with no guards at all. Which guard to use when is on the Authorization cheatsheet.
+
 Routes A Protocol Fixes
+
+Most endpoints are reached through the path Akan builds, and nobody types it. A protocol endpoint is different: RFC 8414 fixes the metadata document at `/.well-known/oauth-authorization-server`, and a client that does not find it there has nowhere else to look.
+
+`libs/shared` puts its OAuth endpoints exactly where the RFCs say:
+
+Four options place a route. One shared `protocolRoute` const keeps the five protocol endpoints from disagreeing about them:
+
+- string — endpoint name — A literal route, in place of the one built from the endpoint name and its `.param()`s.
+
+- false | string — model refName — The segment before the path. A model module puts its refName there; a service module, nothing.
+
+- false — API prefix (/api) — `false` drops the app's API prefix, so the route sits at the origin root.
+
+- boolean — true — `false` keeps it off the agent listing without changing who may call it.
+
+**`[Public]` is the decision again.** A client holds no credential yet, and getting one is why it came.
+
+**`prefix: false` states the root position outright.** A service module adds no prefix anyway, so the line documents intent rather than changing the route.
 
 Values the server fills in
 
+`.with(X)` hands `exec` a value the caller never sends, after the declared arguments:
+
 Internal argument
+
+- .with(Req): The raw `Request`, for a form body or a header Akan does not parse for you.
+
+- .with(Ip): The caller's IP as the nearest proxy recorded it, or `null` when no address is known at all.
+
+- .with(Account): The verified account of the caller, imported from `@libs/shared/srvkit`.
+
+**Missing means refused, unless nullable.** A `null` value without `{ nullable: true }` rejects the call as `Unauthorized`. `authorizeOAuth` and `registerOAuthClient` opt in because they answer strangers.
+
+**Never read the IP off the socket.** Behind the gateway every peer is `127.0.0.1`, which is why `Ip` reads what a proxy recorded.
+
+**Never take the acting user from the body.** Read it with `.with(Account)`, `Self` or `Me`, which the caller cannot forge.
 
 Return a Response as it is
 
+A `Response` returned from `exec` is sent as it stands, with no serialization. The OAuth endpoints use it to answer with the exact status, headers or 302 redirect a client expects. `localFile` uses it to stream a file back with no copy:
+
+**`[Public]` makes anonymous reads a stated decision.** `mcp: false` keeps the file stream off the MCP shelf.
+
+**`*` matches the rest of the URL.** `exec` reads the file path back out of `req.url`.
+
 Work The Runtime Starts
+
+`internal()` holds work the runtime starts on its own: a schedule, a queue job, a step at boot or shutdown. The runtime is the only caller, so there is no request to authorize and no guards to write.
 
 Builder
 
+- cron(expression): Runs on a cron schedule, such as every midnight.
+
+- interval(ms): Runs every `ms` milliseconds.
+
+- timeout(ms): Runs once, `ms` milliseconds after the server starts.
+
+- Runs once when the process starts, and once when it stops.
+
+- process(Type): A background queue job. `.msg()` names each field of its payload.
+
+- resolveField(Type): Computes a model's `resolve` field. A service module has no model, so it never uses this.
+
 A job that should run once a night, not once per server, names the batch worker:
+
+Every builder except `resolveField` takes these options as its last argument:
+
+- "federation" | "batch" | "all" — "all" — Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
+
+- ("cloud" | "edge" | "local")[] — every mode — Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
+
+- boolean — true — For `cron` and `interval`, skips a run while the previous one still runs in the same process.
+
+- boolean — true — `false` turns the job off without deleting its code.
+
+**Match the service's `serverMode`.** When the service declares one, the internal must declare the same, or the job is scheduled where that service is switched off.
+
+**Empty is normal.** All eight service modules in this workspace still have an empty Internal class; that is its shape until the first scheduled job arrives.
+
+**`lock` does not coordinate servers.** It only skips an overlapping run inside one process. Every server whose role matches runs its own copy, so give run-once work `serverMode: "batch"` and run a single batch worker.
 
 Realtime Without A Model
 
+`pubsub` and `message` need no table either, so a service module can carry a realtime feature on its own. Both ride the websocket:
+
 A room clients subscribe to. It declares the room's arguments and the payload type.
 
+One frame a client sends. Each field is declared with `.msg()`, and `exec` answers it.
+
 The minimal app pairs one of each for a fan-out benchmark:
+
+The service publishes into the room through its own signal, injected with `signal<sig.Minimal>()`:
+
+**Declare `Binary` for bytes.** `pubsub(Binary)` skips the JSON envelope and, under backpressure, keeps only the newest frame. Add `{ backpressure: "queue" }` when every frame matters.
+
+**Neither reaches MCP.** Agents never see a `pubsub` or a `message`, whatever its guards say.
+
+**A `pubsub` or `message` is open until it names its own `guards`.** Nothing above covers it, not even a slice default in a model module. Both endpoints above say `[Public]` only because `minimal` is a benchmark app, not an example. A room's guards re-run whenever the socket's credential changes.
 
 ## Code Examples
 

@@ -98,8 +98,8 @@ export default page().render(() => {
       title: l.trans({ en: "Short Aliases", ko: "짧은 별칭" }),
       code: "akan ba  =  akan build-android",
       desc: l.trans({
-        en: "Eight commands also answer to the first letter of each dashed word. The table below lists all of them.",
-        ko: "명령 여덟 개는 `-`로 나뉜 단어의 첫 글자만으로도 실행됩니다. 아래 표에 모두 있습니다.",
+        en: "Nine commands also answer to the first letter of each dashed word. The table below lists all of them.",
+        ko: "명령 아홉 개는 `-`로 나뉜 단어의 첫 글자만으로도 실행됩니다. 아래 표에 모두 있습니다.",
       }),
     },
   ];
@@ -110,6 +110,7 @@ export default page().render(() => {
     { alias: "akan t", command: "akan typecheck" },
     { alias: "akan bi", command: "akan build-ios" },
     { alias: "akan ba", command: "akan build-android" },
+    { alias: "akan bd", command: "akan build-desktop" },
     { alias: "akan si", command: "akan start-ios" },
     { alias: "akan sa", command: "akan start-android" },
     { alias: "akan sd", command: "akan start-desktop" },

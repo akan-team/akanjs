@@ -20,93 +20,35 @@
 
 model.dictionary.ts
 
-The text a user reads for one name, written once per language: `t(["Title", "제목"])`.
+`<model>.dictionary.ts` is the module's language layer. It gives every name a user reads a label in each language: fields, insight values, filters, sort orders, enum values, slices, endpoints, errors and the module's own UI text.
 
-A longer explanation added with `.desc([en, ko])`. Forms show it as a tooltip.
-
-The dotted path code uses to read a label, such as `ticket.title`.
-
-language tuple
-
-One entry per language, in the order the builder was given: `["Title", "제목"]`.
-
-stage
-
-One call in the chain, such as `.model()` or `.error()`. Each labels one kind of name.
-
-The module itself.
-
-Every model field. `id`, `createdAt`, `updatedAt` and `removedAt` come labelled.
-
-Every insight field. The built-in `count` comes labelled.
-
-Every filter query and its arguments. The built-in `any` comes labelled.
-
-Every sort order. `latest`, `oldest` and `relevance` come labelled.
-
-Every value of one `enumOf`. The key starts with the enum's name, not the model's.
-
-Every named slice, as a list key and an insight key. The root slice comes labelled.
-
-Every custom endpoint and its arguments. Generated CRUD such as `createTicket` comes labelled.
-
-Error messages, written as plain language tuples.
-
-Any other phrase the module shows, such as toasts and button text.
-
-A label on screen, in a server or client component. Get `l` from `usePage()`.
-
-An error thrown in a document or service. Import `Err` from `../dict`.
-
-A toast from a store action. Import `msg` from `../useClient`.
-
-Model
-
-Scalar
-
-Service
-
-Name the module and its values
-
-Name what the database answers
-
-Name the API
-
-Messages
-
-Instead of
-
-Write
-
-Enum keys start with the enum's name: `l("ticketStatus.active")`.
-
-Text typed straight into JSX
-
-Every visible string goes through `l("ticket.modelName")` or `l.trans({ en, ko })`.
-
-Deleting a stage that has nothing in it
-
-Keep it empty, such as `.insight<TicketInsight>((t) => ({}))`.
-
-An endpoint label with no `.desc()`
-
-Write one. AI agents choose a tool by the endpoint's description.
-
-The fields and enums the dictionary labels.
-
-Store actions that show loading and success toasts.
-
-The dictionary of an embedded value.
-
-Which languages the app serves, and its default.
+Code never writes that text itself; it asks for it by key, such as `l("ticket.title")`. The keys are typed against the constant, filter, slice and endpoint, so adding a field without a label is a compile error.
 
 Words used on this page
 
 Term
 
+- label: The text a user reads for one name, written once per language: `t(["Title", "제목"])`.
+
+- desc: A longer explanation added with `.desc([en, ko])`. Forms show it as a tooltip.
+
+- key: The dotted path code uses to read a label, such as `ticket.title`.
+
+- language tuple: One entry per language, in the order the builder was given: `["Title", "제목"]`.
+
+- stage: One call in the chain, such as `.model()` or `.error()`. Each labels one kind of name.
+
 Model Dictionary Pattern
 
+A database module uses `modelDictionary`. The stage order is fixed, and a stage with nothing to label is still written, empty, so every dictionary reads the same way.
+
 Here is the complete file for the ticket module from the constant and document pages:
+
+**`t` makes a label; `fn` makes one with arguments.** `.query()`, `.slice()` and `.endpoint()` hand you `fn`, whose `.arg()` names every argument the filter or signal declares.
+
+**Nothing can be skipped.** Each stage must cover every field, query, value, slice or endpoint its type declares, including `skip`, `limit` and `sort` when a custom endpoint takes them. A missing one is a type error.
+
+**Give nearly every label a `.desc()`,** even when it repeats the label. Forms show it as a tooltip, and API docs and AI agents read an endpoint's description.
 
 What each stage labels
 
@@ -116,27 +58,101 @@ Stage
 
 What it labels
 
+- .of(): The module itself.
+
+- .model(): Every model field. `id`, `createdAt`, `updatedAt` and `removedAt` come labelled.
+
+- .insight(): Every insight field. The built-in `count` comes labelled.
+
+- .query(): Every filter query and its arguments. The built-in `any` comes labelled.
+
+- .sort(): Every sort order. `latest`, `oldest` and `relevance` come labelled.
+
+- .enum(): Every value of one `enumOf`. The key starts with the enum's name, not the model's.
+
+- .slice(): Every named slice, as a list key and an insight key. The root slice comes labelled.
+
+- .endpoint(): Every custom endpoint and its arguments. Generated CRUD such as `createTicket` comes labelled.
+
+- .error(): Error messages, written as plain language tuples.
+
+- .translate(): Any other phrase the module shows, such as toasts and button text.
+
 Using Dictionaries
 
 Code reads the dictionary through three helpers. Each takes a key, and the user reads the text in their own language.
 
 Helper
 
+- l(key): A label on screen, in a server or client component. Get `l` from `usePage()`.
+
+- new Err(key): An error thrown in a document or service. Import `Err` from `../dict`.
+
+- msg.success(key): A toast from a store action. Import `msg` from `../useClient`.
+
 On screen
+
+A Template reads a field's label by its key, and the description by that key plus `.desc`:
+
+**`usePage()` works on the server too,** so translated text never needs `"use client"`. This Template has it for the store.
+
+**`desc` becomes a help icon** beside the label, with the description as its tooltip.
+
+**`l()` accepts only keys that exist,** so a typo is a type error. `l("key", { name })` fills a `{name}` placeholder in the text.
 
 In server code
 
 A document method throws the error by key when a state change is not allowed:
 
+**The key travels, not the sentence.** The client receives the key and its data, so each user reads the message in their own language.
+
+**The second argument fills placeholders:** `new Err("ticket.error.overdue", { days })` puts the number into `{days}`.
+
+**A subclass sets the HTTP status.** `Err` answers 400; `Err.BadRequest`, `Err.Unauthorized`, `Err.Forbidden`, `Err.NotFound` and `Err.Conflict` answer 400, 401, 403, 404 and 409.
+
 In a store
 
 A store action wraps the call in a loading toast and a success toast:
 
+**The same `key` swaps one toast for the next,** so the success toast replaces the loading one instead of stacking under it.
+
+**`msg.error` also takes an `.error()` key.** For a check that stops before calling the server, write `msg.error("ticket.error.cannotOpen")` and return early.
+
+**Two more options:** `duration` in seconds (3 by default) and `data` for placeholders.
+
 Extending A Library Model
+
+An app can extend a model a lib already ships, such as `user` from `libs/shared`. Its dictionary then starts from the lib's, and the app writes only what it adds.
+
+Pass the lib's dictionaries to `modelDictionary`, right after the language list:
+
+**`user.dictionaries` comes from a generated file.** `../__lib/lib.dictionary` exports one entry for each model the app shares with a lib. Import it; never edit it.
+
+**The lib's labels stay.** Its fields, queries, errors and `translate()` entries remain, so `.model<User>()` asks only for fields the lib did not label, like `githubInfo` here.
 
 Scalar And Service Dictionaries
 
 Pick the builder by the kind of module. Each builder offers only the stages that fit it, so a scalar has no queries and a service has no fields.
+
+**`modelDictionary`** for a database module in `lib/<model>/`, which can use every stage.
+
+**`scalarDictionary`** for an embedded value in `lib/__scalar/<name>/`. It usually needs only fields, enum values, errors and a little text.
+
+**`serviceDictionary`** for a service module in `lib/_<name>/`, or for app-level text that belongs to no model.
+
+- Model — modelDictionary
+
+- Scalar — scalarDictionary
+
+- Service — serviceDictionary
+
+- Name the module and its values
+
+- Name what the database answers
+
+- Name the API
+
+- Messages
 
 Available
 
@@ -148,19 +164,67 @@ A scalar labels its own fields and enum values:
 
 A service module with no endpoints of its own can hold nothing but shared UI text:
 
+**A service's endpoints are labelled the same way** with `.endpoint<OauthEndpoint>()`, and their keys sit under `<service>.signal.<endpoint>`.
+
 Errors, UI Text, And Languages
 
+`.error()` holds messages about something that went wrong, and `.translate()` holds every other phrase the module shows. Both take plain language tuples, with no `t()` and no `.desc()`.
+
 A word in braces is a placeholder, filled from the data passed along with the key:
+
+**Where the keys land:** an error under `error`, as `ticket.error.overdue`; a phrase right under the module, as `ticket.openTicketLoading`.
+
+**How labels are written:** English in Title Case, Korean as the plain domain term, and every Korean `.error()` sentence ends in `다.`
 
 The language list
 
 The array passed to the builder is the language list, and every tuple follows its order. A dictionary can declare more than two:
 
+**The compiler checks the length, not the order.** `["제목", "Title"]` compiles and shows Korean to English readers.
+
+**The app decides which languages it serves.** `i18n: { defaultLocale, locales }` in `akan.config.ts` lists them; the default is `en` out of `["en", "ko"]`.
+
+**A missing language falls back.** A language the dictionary does not declare reads the default language's text, and a key no language has shows as the key itself.
+
 Rules At A Glance
+
+**Keys follow the types.** Keep them aligned with the constant, filters, slices and endpoints rather than inventing free-form strings.
+
+**Labels are for people.** "Due Date" reads better than the variable name `due`.
+
+**Add `.desc()`** wherever a label can reach forms, tooltips, API docs or an AI agent.
+
+**One helper per place:** `l()` from `usePage()` in UI, `Err` in server logic, `msg` in stores.
+
+**Extend before you add.** A model a lib already has starts from `...model.dictionaries`, then adds the app's own labels.
+
+**Every tuple follows the language list,** in both order and length.
 
 Common mistakes
 
+- Instead of
+
+- Write
+
+- `l("ticket.status.active")` — Enum keys start with the enum's name: `l("ticketStatus.active")`.
+
+- Text typed straight into JSX — Every visible string goes through `l("ticket.modelName")` or `l.trans({ en, ko })`.
+
+- Deleting a stage that has nothing in it — Keep it empty, such as `.insight<TicketInsight>((t) => ({}))`.
+
+- An endpoint label with no `.desc()` — Write one. AI agents choose a tool by the endpoint's description.
+
+**Never `throw new Error`.** Throw `new Err("<module>.error.<key>")` and register the key in that module's `.error()`. A raw `Error` fails lint, and lint failures break the build.
+
 Read next
+
+- model.constant.ts — The fields and enums the dictionary labels.
+
+- model.store.ts — Store actions that show loading and success toasts.
+
+- scalar.dictionary.ts — The dictionary of an embedded value.
+
+- akan.config.ts · i18n — Which languages the app serves, and its default.
 
 ## Code Examples
 

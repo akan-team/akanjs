@@ -15,43 +15,45 @@
 
 Deep Links
 
-Scheme link
-
-An app-only link. It needs no verification, so it is the easy one to test during development.
-
-Domain link
-
-Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs.
-
-Scheme link. `orders` becomes the first path segment, so it opens `/orders/1`.
-
-Domain link. The path is used as is and opens `/orders/1`.
-
-A tapped push notification. It opens `/orders/1` the same way.
-
-App-only URL schemes, such as `shop` in `shop://orders/1`.
-
-Hosts whose HTTPS links open the app once iOS and Android verify them.
-
-Your Apple Developer Team ID. iOS uses it to verify `domains`.
-
-SHA-256 fingerprints of the certificates that sign the app. Android uses them to verify `domains`.
-
-Scheme links
-
-Domain links
-
 Deep Link Setup
+
+A deep link opens a specific screen of the app from a URL outside it, such as a link in a message or a tapped push notification. You set it up once, in the `deepLinks` block of a mobile target in `akan.config.ts`.
 
 Two Kinds Of Link
 
+Deep link is the feature; `schemes` and `domains` are the two usual ways to build it. You can declare both:
+
+- Scheme link — shop://orders/1 — An app-only link. It needs no verification, so it is the easy one to test during development.
+
+- Domain link — https://shop.example.com/orders/1 — Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs.
+
 Declare It
 
+Write `deepLinks` inside a target under `mobile.targets`:
+
+**One block per target.** `default` is the target name; each target declares its own `deepLinks`.
+
+**Hosts only in `domains`.** Write `shop.example.com`; an `https://` or a path you add is dropped.
+
+**`ios` and `android` serve `domains`.** If you only use scheme links, leave both out.
+
+**Rerun the app to apply.** After a change, run `akan start-ios` or `akan start-android` again.
+
 Where A Link Lands
+
+A scheme link, a domain link and a push notification's `data.url` all open the same CSR route:
 
 Incoming link
 
 What it opens
+
+- shop://orders/1: Scheme link. `orders` becomes the first path segment, so it opens `/orders/1`.
+
+- https://shop.example.com/orders/1: Domain link. The path is used as is and opens `/orders/1`.
+
+- data.url = "/orders/1": A tapped push notification. It opens `/orders/1` the same way.
+
+**Back works after a cold start.** When a link launches the app, the parent screen or the start screen is stacked first, so back stays inside the app.
 
 Mobile Config
 
@@ -65,11 +67,27 @@ The deepLinks Block
 
 Every field is optional. Each platform reads only what it needs, so declare only what your link style requires:
 
+- string[] — App-only URL schemes, such as `shop` in `shop://orders/1`. — schemes: ["shop"]
+
+- string[] — Hosts whose HTTPS links open the app once iOS and Android verify them. — domains: ["shop.example.com"]
+
+- string — Your Apple Developer Team ID. iOS uses it to verify `domains`. — ios: { teamId: "TEAMID" }
+
+- string[] — SHA-256 fingerprints of the certificates that sign the app. Android uses them to verify `domains`. — android: { sha256CertFingerprints: ["AA:BB:CC:DD:..."] }
+
 What Each Link Style Needs
 
 Scheme links need one field. Domain links need three, and each platform reads its own part:
 
 Field
+
+- iOS
+
+- Android
+
+- Scheme links
+
+- Domain links
 
 Read by this platform
 
@@ -78,6 +96,14 @@ Not read
 Domain Verification
 
 A domain link opens the app only after the platform confirms that the app belongs to the domain. It checks a file served from that domain:
+
+**The Akan server serves both files.** It answers `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` from this block, so point the domain at your app's server and redeploy it after a change.
+
+**iOS checks the Team ID and appId.** The file lists `<teamId>.<appId>` from `ios.teamId` and the target's `appId`, so both must be your real values.
+
+**Android checks the signing certificate.** Debug and release builds are signed by different keys, so list both fingerprints.
+
+**A debug build verifies only against a non-main server.** Its package ends in `.debug`, which `assetlinks.json` lists only when `AKAN_PUBLIC_ENV` is not `main`. The debug key's SHA-256 must also be in `sha256CertFingerprints`.
 
 Platform Docs
 
@@ -90,6 +116,10 @@ Getting The Android Fingerprint
 Read it from the keystore that signs the build. Debug builds are signed with the runtime's own debug keystore, created by the first Android build:
 
 Release builds are signed with the upload key akan release-android reads from the environment:
+
+**With Play App Signing, add Google's key too.** Play re-signs what you upload, so the installed app carries the app signing key: copy its SHA-256 from Play Console (Setup, App signing) and list it next to the upload and debug ones.
+
+**A domain link that fails verification opens in the browser, not the app.** The fingerprint of the key that signed the installed build must be in the list.
 
 ## Code Examples
 

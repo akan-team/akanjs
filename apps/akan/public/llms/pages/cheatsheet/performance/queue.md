@@ -18,71 +18,97 @@
 
 Queueing
 
-An internal declared in the signal file. A queued job runs its `exec`.
-
-One queued run of a process: its arguments plus its retry state.
-
-One server process of the app. Its role is `federation`, `batch` or `all`.
-
-A process option that picks which replica roles run its jobs.
-
-Milliseconds to wait before the first run.
-
-How many times the job may run in total, counting the first try.
-
-Milliseconds to wait before a retry.
-
-Requests
-
-Default job
-
-Batch job
-
-Answers user requests.
-
-Never listens for requests. Runs background work only.
-
-Does both. The default `0,0,1` is one of these.
-
-The job is in the queue, waiting for its turn.
-
-The process is working. Update `progress` along the way.
-
-The result, here `file`, is ready.
-
-The work failed. The reason goes into `errMsg`.
-
 Some work is too slow to finish inside a request. Put it in a queue and answer right away; a background process picks it up and does the heavy part.
+
+**Good for** backups, exports, report generation, imports, and long AI jobs.
 
 Words used on this page
 
 Term
 
+- process: An internal declared in the signal file. A queued job runs its `exec`.
+
+- job: One queued run of a process: its arguments plus its retry state.
+
+- replica: One server process of the app. Its role is `federation`, `batch` or `all`.
+
+- serverMode: A process option that picks which replica roles run its jobs.
+
 The three steps
 
+**The endpoint records the intent.** It saves `waiting`, queues the job and returns.
+
+**The queue holds the job** until a replica that runs this process takes it.
+
+**The process does the slow work** outside the request path, writing status and progress into the document.
+
 Queue From Endpoint
+
+Keep the endpoint short. It sets the status to `waiting`, asks the process to run later, and returns.
 
 The endpoint only hands the call to the service:
 
 The service saves the status, then queues the job:
 
+**`this.reportSignal.generateReport()` queues, it does not run.** It returns once the job is stored, and its arguments follow the process's `.msg()` order.
+
+**Inject it with `signal<sig.Report>()`.** The field must be named `<refName>Signal`, here `reportSignal`.
+
+**Save the status first, then queue.** A job can start at once, and a late `waiting` would overwrite its `running`.
+
 Job options
 
 Pass job options as the last argument of the queueing call:
 
+- number — 0 — Milliseconds to wait before the first run.
+
+- number — 1 — How many times the job may run in total, counting the first try. — await this.reportSignal.generateReport(report.id, { attempts: 3, backoff: 10_000 });
+
+- number | { type?, delay? } — Milliseconds to wait before a retry.
+
 Run In Process
+
+The internal process owns the slow work. It updates progress, uploads files, and marks the job `done` or `failed`.
 
 Declare the process in the signal file's Internal class:
 
+**`.msg()` declares what the job carries.** The values passed when queueing arrive in the same order, restored to the declared type.
+
+**The job itself comes last:** `exec(async function (reportId, job) {…})`. It carries `job.id` and `job.attemptsMade`.
+
+**`process(Boolean)` types the return value of `exec`,** here `true`.
+
 The work itself lives in a service method:
+
+**Save at every step.** `running`, then `done` or `failed`, with `progress` in between.
+
+**Only a throw retries.** A job runs again only when `exec` throws and `attempts` remain. This example catches and records `failed`, so it runs once.
 
 Replica Roles
 
+Akan runs replicas with roles: `federation` answers users, and `batch` takes background work. Splitting them keeps slow jobs from exhausting the request servers.
+
 Role
+
+- Requests
+
+- Default job — serverMode: "all"
+
+- Batch job — serverMode: "batch"
+
+- `AKAN_REPLICA=<federation>,<batch>,<all>`
 
 runs
 
 does not run
+
+To move the report job off the request servers, declare `serverMode` on the process:
+
+**Then start a batch replica.** `AKAN_REPLICA=2,1,0` is two federation replicas and one batch replica.
+
+**Something must run it.** With `serverMode: "batch"` and neither a batch nor an all replica, as in `2,0,0`, jobs pile up unrun.
+
+**A batch replica alone does not move the work.** A process without `serverMode` runs on every role, federation included.
 
 Request side: federation replica
 
@@ -113,6 +139,20 @@ Status
 Written by
 
 Meaning
+
+- waiting — queueGenerateReport — The job is in the queue, waiting for its turn.
+
+- running — generateReport — The process is working. Update `progress` along the way.
+
+- done — generateReport — The result, here `file`, is ready.
+
+- failed — generateReport — The work failed. The reason goes into `errMsg`.
+
+**Make jobs idempotent.** Retrying the same job must not corrupt data.
+
+**Save progress when the user needs feedback.** A `progress` field is enough.
+
+**Return quickly from the endpoint.** Do the slow work in the process.
 
 Internal Signals
 

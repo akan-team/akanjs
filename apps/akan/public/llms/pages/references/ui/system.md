@@ -14,123 +14,67 @@
 
 System
 
-app shell
-
-The frame every page renders inside, holding the theme, fonts, locale, toasts and socket.
-
-A React boundary that shows a fallback until the content inside it is ready.
-
-Every endpoint with its arguments, guards and return model, shipped as `fetch.serializedSignal`.
-
-agent tool
-
-An action a control publishes so the in-page agent can do what the user's click does.
-
-Auto
-
-Server
-
-no "use client"
-
-Tool
-
-App shell
-
-Controls you place
-
-Switches the color theme and publishes `applyTheme`.
-
-Switches the URL's language and publishes `setLanguage`.
-
-Turns developer-only UI on and off.
-
-Developer tools and primitives
-
-The API explorer, for an admin or docs screen.
-
-react-spring's animated `div`, `g` and `progress`.
-
-Root Layout Stages
-
-Override Slots
-
-Constant Schema Docs
-
-In-Page Agent
-
-How the tools a control publishes let the agent drive the screen.
-
-The app shell. Akan mounts `Provider` for you, and `Provider` mounts `Reconnect` when you turn it on. `ThemeToggle`, `SelectLanguage` and `DevModeToggle` are controls you place yourself.
-
-The frame around your root `_layout.tsx`, filled from its `rootLayout()` stages.
-
-Deprecated: it renders `children` and ignores `st`, so render the children directly.
-
-Sets `data-theme` to one of `themes`: a switch for two, a dropdown for three or more.
-
-A dropdown that swaps the `/:lang` segment of the current URL and keeps the rest.
-
-When the socket drops and a ping fails, it covers the screen, then reloads once reconnected.
-
-A switch for the store's `devMode` flag, kept in `localStorage` across reloads.
-
-A small React `Suspense` boundary. It shows `loading` while anything inside it suspends, such as a `lazy()` component still fetching its chunk.
-
-The content that may suspend.
-
-The fallback shown meanwhile; nothing is shown when it is left out.
-
-The API explorer, split into parts. It reads the serialized signal the server ships with the app — every endpoint, its arguments, guards and return model — and renders a document you can also call endpoints from.
-
-The explorer; `Doc.Zone({ refName, fetch, openAll? })` renders one signal's whole document.
-
-The HTTP side: `Endpoints` lists queries and mutations, or only the ones named in `endpoints`.
-
-The same list for websocket endpoints, each row handed to `PubSub` or `Message`.
-
-One subscription: its room, its payload shape, and a Try that shows frames as they land.
-
-The same three parts for a one-way message endpoint.
-
-`Result` is the live pane a Try writes into, showing byte payloads as a short hex preview.
-
-A model from its constant class: a type chip, its field table, or a titled schema.
-
-The one real component: `Arg({ argType, value, onChange })` renders one scalar's input.
-
-A tab set split into parts so the panels stay on the server. Only the provider and the menu hold state, and `Tab.Panel` renders what it is given, so the markup inside a panel never reaches the bundle.
-
-The provider holding the selected menu, which starts at `defaultMenu` or, left out, at none.
-
-The `role="tablist"` row the menu buttons sit in.
-
-One tab button, keyed by `menu` rather than `value`.
-
-The body shown while its `menu` is selected; `loading` decides when it mounts.
-
-A small re-export of react-spring's animated elements, the ones Akan UI components animate with. Drive them with a spring hook in your own animated surfaces.
-
-An animated `div`.
-
-An animated SVG group, `g`.
-
-An animated `progress` element.
-
 System UI
+
+The parts around your screens rather than feature widgets: the app shell, theme and language switches, an API explorer, tabs, and animation. They go in root layouts, admin pages, signal dashboards, tabbed detail views, and animated UI, and all come from `akanjs/ui`.
 
 Words used on this page
 
 Term
 
+- The frame every page renders inside, holding the theme, fonts, locale, toasts and socket.
+
+- Suspense: A React boundary that shows a fallback until the content inside it is ready.
+
+- serialized signal: Every endpoint with its arguments, guards and return model, shipped as `fetch.serializedSignal`.
+
+- An action a control publishes so the in-page agent can do what the user's click does.
+
 Pick a component
 
 Component
+
+- Auto
+
+- Server — no "use client"
+
+- Tool — st.tool
+
+- App shell
+
+- Controls you place
+
+- Developer tools and primitives
 
 Yes
 
 No
 
+**Auto means you never write it.** `Provider` wraps every page, and it mounts `Reconnect` when the root layout calls `.reconnect()`.
+
+**Server means you add no `"use client"` yourself.** A page, layout or View renders these directly; the parts that need the browser carry their own. `Signal` parts and `animated` need a file that starts with `"use client"`.
+
+**Tool means the in-page agent can use it too.** Placing `ThemeToggle` or `SelectLanguage` is enough for the agent to switch the theme or the language the same way the user does.
+
 Related pages
+
+- Root Layout Stages — `.theme()`, `.fonts()`, `.reconnect()` and the rest that fill `System.Provider`.
+
+- Override Slots — Restyle the toast stack through the `Toast` and `ToastItem` slots.
+
+- Constant Schema Docs — `Constant.Doc`, the model explorer that sits beside `Signal`.
+
+- In-Page Agent — How the tools a control publishes let the agent drive the screen.
+
+- System: The app shell. Akan mounts `Provider` for you, and `Provider` mounts `Reconnect` when you turn it on. `ThemeToggle`, `SelectLanguage` and `DevModeToggle` are controls you place yourself.
+
+- ClientSide: A small React `Suspense` boundary. It shows `loading` while anything inside it suspends, such as a `lazy()` component still fetching its chunk.
+
+- Signal: The API explorer, split into parts. It reads the serialized signal the server ships with the app — every endpoint, its arguments, guards and return model — and renders a document you can also call endpoints from.
+
+- Tab: A tab set split into parts so the panels stay on the server. Only the provider and the menu hold state, and `Tab.Panel` renders what it is given, so the markup inside a panel never reaches the bundle.
+
+- animated: A small re-export of react-spring's animated elements, the ones Akan UI components animate with. Drive them with a spring hook in your own animated surfaces.
 
 ## Code Examples
 

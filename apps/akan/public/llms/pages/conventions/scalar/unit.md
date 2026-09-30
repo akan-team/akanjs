@@ -18,81 +18,23 @@
 
 Scalar.Unit.tsx
 
-Scalar Unit
-
-Parent Unit
-
-Elsewhere
-
-Drawing the value
-
-Formats the value the same way on every screen that shows it.
-
-Labels each field from the scalar's own dictionary.
-
-Around the value
-
-Picks the scalar field off the parent model and passes it down.
-
-card · title · link
-
-The surrounding layout, the model's other fields and its `href`.
-
-Never inside a Unit
-
-The page loads the data and passes it down as props.
-
-A Zone or page renders the list and draws one Unit per row.
-
-A model action is a control in a Util, not part of the display.
-
-scalar
-
-A small value object stored inside another model, such as `Price` with `amount` and `currency`.
-
-A server component that draws one thing as a card, row or table cell.
-
-parent Unit
-
-The Unit of the model that holds the scalar, such as `Product.Unit`.
-
-The lighter model a list hands to each Unit. It holds only the fields its constant picks.
-
-Path
-
-In the scalar's own folder, beside its constant file.
-
-First Line
-
-Imports, never "use client". A Unit is a server component.
-
-Exports
-
-Small arrow components named by display purpose, each taking the value as a prop.
-
-Used As
-
-The parent imports `Price` from `@apps/<app>/client`.
-
-For a line in a card, showing the amount and currency in one span.
-
-For a narrow table cell, showing the amount only.
-
-For a detail View, showing each field on its own labelled line.
-
-Scalar Overview
-
-When a value should be a scalar, and which files its folder holds.
-
-The editing half: how a parent form changes the same scalar.
-
-The parent Unit: `ModelProps`, Light models and list rendering.
-
-Where the labels a Detail variant reads are defined.
+A scalar Unit is a small display component for one scalar value, used inside a parent's card, row, detail page or table cell. Write one when several models should show the same value the same way: Product, Order and Invoice can all reuse `Price.Unit.Label`.
 
 It draws the value and nothing else. The parent Unit decides the layout around it, and loading happens elsewhere:
 
 The work
+
+- Scalar Unit — Price.Unit
+
+- Parent Unit — Product.Unit
+
+- Elsewhere — page · Zone · Util
+
+- Drawing the value
+
+- Around the value
+
+- Never inside a Unit
 
 Done here
 
@@ -102,23 +44,91 @@ Words used on this page
 
 Term
 
+- A small value object stored inside another model, such as `Price` with `amount` and `currency`.
+
+- Unit: A server component that draws one thing as a card, row or table cell.
+
+- The Unit of the model that holds the scalar, such as `Product.Unit`.
+
+- cnst.Light<Model>: The lighter model a list hands to each Unit. It holds only the fields its constant picks.
+
 File Shape
+
+The Unit sits in the scalar's own folder under `lib/__scalar/`, next to the constant that defines the value:
+
+- Path — In the scalar's own folder, beside its constant file.
+
+- First Line — Imports, never "use client". A Unit is a server component.
+
+- Exports — Small arrow components named by display purpose, each taking the value as a prop.
+
+- Used As — The parent imports `Price` from `@apps/<app>/client`.
+
+**Name the file after its folder.** The `price/` folder holds `Price.Unit.tsx`, with the first letter capitalized, and its exports are reached as `Price.Unit.<Name>`.
+
+**A scalar has two UI files at most.** `<Scalar>.Template.tsx` edits the value and `<Scalar>.Unit.tsx` displays it. A scalar folder has no Zone, View or Util.
 
 Scalar Unit Example
 
 A scalar Unit receives a scalar value and renders it. It loads no data, manages no list and triggers no model action:
 
+**Declare your own props.** `ModelProps` needs a model with an `id`, and a scalar has none. Write `LabelProps` with the value as `price: cnst.Price`.
+
+**Take `className`, first in the interface.** The parent picks the color and size; the Unit owns only the format.
+
+**`import type` is enough here.** `cnst` is only used as a type in this file. Beside a value import it becomes `type cnst`, as in the parent example below.
+
+**A Unit is a server component, so it never starts with "use client".** Lint rejects the directive, React hooks such as `useState`, and an `st` import in every `*.Unit.tsx`, scalar Units included. `usePage()` and `l()` still work here.
+
 Use From Parent Unit
 
 A parent Unit imports the scalar Unit and passes it the scalar field of its model. The format is reused, while the parent card still decides the layout around it:
+
+**`product.price` is the value.** The scalar lives inside the parent model as one field.
+
+**The Light model has to carry the field.** `cnst.LightProduct` holds only the fields its constant picks, so list `"price"` there: `via(ProductObject, ["name", "price"] as const, …)`.
+
+**`Price` comes from `@apps/koyo/client`,** the same import that gives you `cnst`.
+
+**The parent styles the value from outside.** `className="text-foreground/70"` changes its color; the format stays the scalar's.
 
 Small Variants
 
 Add a variant only when the same scalar needs a different display size. Each one still renders just the value:
 
+- Label: For a line in a card, showing the amount and currency in one span.
+
+- Compact: For a narrow table cell, showing the amount only.
+
+- Detail: For a detail View, showing each field on its own labelled line.
+
+`Compact` and `Detail` sit in the same file as `Label`:
+
+**Name a variant by its purpose, not by the model.** Write `Compact`, never `PriceCompact`: the call site already reads `Price.Unit.Compact`.
+
+**Labels come from the scalar's dictionary.** `l("price.amount")` reads the `price.dictionary.ts` in the same folder.
+
+**`usePage()` is legal here.** Translation runs on the server, so `Detail` stays a server component.
+
 Common mistakes
 
+**Formatting the value inline in each parent.** Three cards with their own `toLocaleString()` drift apart; one `Price.Unit.Label` does not.
+
+**Adding a variant for a color change.** Pass `className` instead; a variant is for a different size or amount of detail.
+
+**Typing the props with `ModelProps`.** A scalar has no `id`, so write a plain props interface.
+
+**Loading or acting inside the Unit.** `fetch.*` belongs in the page and `st.do.*` in a Util; the Unit only draws what it receives.
+
 Read next
+
+- Scalar Overview — When a value should be a scalar, and which files its folder holds.
+
+- Scalar.Template.tsx — The editing half: how a parent form changes the same scalar.
+
+- Model.Unit.tsx — The parent Unit: `ModelProps`, Light models and list rendering.
+
+- scalar.dictionary.ts — Where the labels a Detail variant reads are defined.
 
 ## Code Examples
 

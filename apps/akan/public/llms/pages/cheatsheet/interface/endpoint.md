@@ -20,74 +20,6 @@
 
 Endpoint
 
-A server function the client calls by name. You declare it in `<model>.signal.ts`.
-
-A class that decides who may call an endpoint. It runs before the handler.
-
-The server class in `<model>.service.ts` that loads, checks and saves.
-
-A method on the document class that checks and changes one record, then returns `this`.
-
-A client method called as `st.do.x()`. It calls `fetch` and updates the screen.
-
-A small client component in `<Model>.Util.tsx` for one domain action.
-
-A required path segment: one scalar or `enumOf`, not a model or array. No optional arg before it.
-
-A request-body value, mostly for mutations. `{ nullable: true }` makes it optional.
-
-A query-string value. Always optional, so `exec` may receive `undefined`.
-
-Server-filled, never sent by the client. Without `{ nullable: true }`, a `null` refuses the call.
-
-none
-
-Guard classes that must all pass, run in order before the handler.
-
-30 s (client)
-
-Declare it for work over 30 s. Past it the caller gets `base.error.gatewayTimeout`.
-
-`false` keeps it away from AI agents. Guards and HTTP stay the same.
-
-Allows a `null` return. Without it, `exec` may not return `null`.
-
-Who is calling
-
-may call at all
-
-Request policy. `guards: [Every]` refuses anyone who is not signed in.
-
-owns this post
-
-The service checks ownership again, even after a guard passed.
-
-What is changing
-
-rule across documents
-
-Load every document the rule reads, then save, then notify.
-
-state precondition
-
-The post needs a title and content before it becomes `published`.
-
-CRUD
-
-The create, update and remove actions every model already has.
-
-Every endpoint option
-
-cache, method, path, prefix and the rest of the options object.
-
-MCP server
-
-How guarded endpoints become tools an AI agent can call.
-
-Agent chat
-
-Let the in-page agent press the same button with st.tool.
-
 Endpoint Actions
 
 Every model already comes with create, update and remove. When a screen needs one clear business action on top — publish, approve, reject, archive, send a notification — you write an endpoint for it.
@@ -100,9 +32,23 @@ Endpoint — you write it
 
 One business action, named with a verb.
 
+The rule of thumb: **one button, one store action, one endpoint, one service method.**
+
 Words used on this page
 
 Term
+
+- endpoint: A server function the client calls by name. You declare it in `<model>.signal.ts`.
+
+- guard: A class that decides who may call an endpoint. It runs before the handler.
+
+- service: The server class in `<model>.service.ts` that loads, checks and saves.
+
+- document chain method: A method on the document class that checks and changes one record, then returns `this`.
+
+- store action: A client method called as `st.do.x()`. It calls `fetch` and updates the screen.
+
+- Util: A small client component in `<Model>.Util.tsx` for one domain action.
 
 The Flow
 
@@ -112,21 +58,77 @@ File
 
 What it does
 
+- Post.Util.tsx: **Button.** The user clicks it, and it only calls the store action.
+
+- post.store.ts: **Store action.** Calls the generated fetch function, stores the result, shows a toast.
+
+- post.signal.ts: **Endpoint.** Runs the guards, then hands the work to the service.
+
+- post.service.ts: **Service.** Loads the post, checks it belongs to the caller, and saves it.
+
+- post.document.ts: **Document.** Checks that the post is ready, then changes its state.
+
+**You never write the client call.** `fetch.publishPost` is generated from the endpoint you declare in the signal.
+
+**The model name comes back at the edges.** The document and service say `publish()`; the signal, store and dictionary say `publishPost`.
+
 Declare Endpoint
 
 Keep the endpoint thin: take the arguments, name the guards, and call the service. The endpoint goes in the Endpoint class of the model's signal file:
+
+**`mutation` changes data, `query` only reads.** Both come from the `endpoint()` callback, and the first argument is the return type.
+
+**`.with(Self)` is the signed-in user.** The server fills it in, so never take the acting user's id from the client.
+
+**`exec` gets the arguments in order.** First the client arguments, then the `.with()` values. Write it as a `function`, not an arrow, so `this.postService` resolves.
+
+**Declare all three classes, even when empty.** `PostInternal`, `PostSlice` and `PostEndpoint` sit together, and the slice's `root` guard is always `Admin`.
 
 Arguments
 
 Builder
 
+- .param(name, Type): A required path segment: one scalar or `enumOf`, not a model or array. No optional arg before it.
+
+- .body(name, Type, options?): A request-body value, mostly for mutations. `{ nullable: true }` makes it optional.
+
+- .search(name, Type): A query-string value. Always optional, so `exec` may receive `undefined`.
+
+- .with(InternalArg, options?): Server-filled, never sent by the client. Without `{ nullable: true }`, a `null` refuses the call.
+
 Common options
+
+The second argument of `mutation()` or `query()` is the options object:
+
+- GuardCls[] — none — Guard classes that must all pass, run in order before the handler.
+
+- number (ms) — 30 s (client) — Declare it for work over 30 s. Past it the caller gets `base.error.gatewayTimeout`.
+
+- boolean — true — `false` keeps it away from AI agents. Guards and HTTP stay the same.
+
+- boolean — false — Allows a `null` return. Without it, `exec` may not return `null`.
+
+**The first guard that refuses answers the call.** The guards after it and the handler never run.
+
+**A timeout answers the caller; it does not stop the work.** The handler still runs to the end, with nobody waiting for its result.
+
+**Every custom endpoint names its own guards.** The slice's guard map covers only the generated CRUD, never `publishPost`. An endpoint without `guards` is open to anyone over HTTP and is left out of the MCP catalogue; so is a mutation guarded only by `Public`.
 
 Put Rules In Service And Document
 
 Business rules never go in the button or the endpoint. Where each check goes depends on what it looks at:
 
 The check
+
+- Guard — post.signal.ts
+
+- Service — post.service.ts
+
+- Document — post.document.ts
+
+- Who is calling
+
+- What is changing
 
 Goes here
 
@@ -136,19 +138,71 @@ Not here
 
 A post can be published only when it has a title and content. That check lives on the record itself:
 
+**Validate, change, return.** Check first, change `this`, and end with `return this`.
+
+**It never saves.** The caller saves once, so chain methods can be combined.
+
 2. Service: load, check, save
 
 The service loads the post, checks it belongs to the caller, then runs the chain and saves:
 
+**`getPost` comes with `serve(db.post)`.** Every model service gets a `get<Model>(id)` loader.
+
+**Two gates, not one.** `Every` only checks that someone is signed in; the service checks the post is theirs.
+
+**Keep the tail explicit.** Write `return await …save()` as it is.
+
 3. Dictionary: register the keys
+
+A key like `post.error.notReady` exists only once the module dictionary registers it as an `[en, ko]` pair:
+
+**`.error()` keys** are thrown as `new Err("post.error.notReady")`.
+
+**`.endpoint()` labels** are read with `l("post.signal.publishPost")`. `.arg()` names every argument.
+
+**`.translate()` keys** feed toasts such as `msg.success("post.publishSuccess")`.
+
+**Refuse with `new Err("<module>.error.<key>")`, never `throw new Error`.** A raw `Error` carries no key the dictionary could translate for the reader, and lint rejects it.
 
 Call It From Store
 
+Client components do not call `fetch` themselves; a store action does. A custom endpoint gets no generated action, so write one:
+
+**About three lines.** `await fetch.x()`, a generated setter such as `this.setPost()`, then the toast.
+
+**More fits here too.** After the endpoint succeeds, the action can also close a modal or refresh data.
+
+**An action returns nothing.** Write the result into state with a setter or `this.set({ … })`; a returned value never reaches the caller.
+
 Make One Util
+
+Put the button in `Post.Util.tsx`. Every card, detail page and admin page can then reuse the same action:
+
+**Always a client component.** `"use client"` sits on line 1 because the button has an `onClick` and uses the store.
+
+**Named for the verb.** Export `Publish`, not `PublishPostButton`; a page renders `<Post.Util.Publish postId={post.id} />`.
+
+**Take an id, not a model.** A Util prop typed as `cnst.Post` fails lint; pass `postId: string`.
 
 Tips
 
+**Start endpoint names with a verb:** `publishPost`, `approveTicket`, `archiveProject`.
+
+**Keep rules out of the button.** They belong in the service or the document.
+
+**Seen the same action twice?** Make it a Util component before you copy the button.
+
+**Never reuse a generated CRUD name.** `post`, `lightPost`, `createPost`, `updatePost`, `removePost`, `viewPost`, `editPost` and `mergePost` already exist. Declaring one again in the Endpoint class fails lint.
+
 Read next
+
+- CRUD — The create, update and remove actions every model already has.
+
+- Every endpoint option — cache, method, path, prefix and the rest of the options object.
+
+- MCP server — How guarded endpoints become tools an AI agent can call.
+
+- Agent chat — Let the in-page agent press the same button with st.tool.
 
 ## Code Examples
 

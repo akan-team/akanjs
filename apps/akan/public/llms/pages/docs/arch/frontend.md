@@ -19,94 +19,6 @@
 
 UI Architecture
 
-Runs once on the server and arrives as HTML. None of its JavaScript reaches the browser.
-
-A file that starts with "use client". It arrives as HTML, then again as JavaScript in the bundle.
-
-The browser re-runs a client component's JavaScript so the HTML on screen responds to input.
-
-The first HTML the server sends. What the page awaited is in it; streamed sections follow.
-
-One hydrated client component inside HTML the server rendered.
-
-Server
-
-Client
-
-The five that need the browser
-
-An event handler has to be in the browser to catch the click, so its component goes there too.
-
-client-only package
-
-A map, editor or chart that touches the DOM when imported. Reach it through a lib re-export.
-
-Everything else is server work
-
-markup and lists
-
-Cards drawn from an array are plain HTML with nothing to hydrate.
-
-Route values arrive typed in the render callback before the first byte is sent.
-
-Called in a route, it finishes before the first byte. From a mounted client it costs two extra round-trips.
-
-show / hide a panel
-
-Files that draw data
-
-One row, card or tile. Takes the model as a prop and only draws it.
-
-The detail screen for one record. Takes the full model as a prop.
-
-Files that hold state or an action
-
-Fills the store from an init or view prop and reads it. Holds almost no markup.
-
-The form. Every field is bound to the store, so it holds no useState.
-
-One domain action as a control, such as Serve, Refund or Remove.
-
-Split compound components
-
-Tab is four small client pieces: Tab, Tab.Menus, Tab.Menu and Tab.Panel. Panel bodies arrive as children, so they never enter the bundle. One client file with a mode useState and every panel inlined is the opposite.
-
-Use named slots
-
-Layout.Navbar takes title, back, left, right and children. A client shell holds server content in five places instead of swallowing it.
-
-Derive on the server
-
-Display and predicate logic goes on Light<Model>, which both sides hold. An enum-to-class lookup goes in a module-scope as const map.
-
-Load heavy islands late
-
-A map, editor or chart sits behind a ui/<Folder>/index_.tsx and lazy() pair, with a server-safe index.tsx beside it. Merging the pair into one file breaks RSC.
-
-The file starts with "use client" but uses none of the five features.
-
-Delete that first line.
-
-A component in a client file draws four or more elements with no client feature.
-
-Move it to a file without "use client".
-
-Ten or more elements wrap only one or two client features.
-
-Keep only the interactive leaf client and pass the rest in as children.
-
-A useEffect(…, []) loads server data after the page mounts.
-
-Fetch it in the route and pass it down as an init prop.
-
-A module draws only from Template, Zone and Util, with no Unit or View.
-
-Add a Unit or View and let the Zone hand its rows to it.
-
-A Template keeps form state in useState instead of the store.
-
-Bind each field to the store:
-
 Every component in an Akan app runs in one of two places. A server component runs once on the server and reaches the browser as finished HTML. A client component — a file that starts with "use client" — reaches the browser as HTML too, but then its JavaScript follows, and the browser runs it again before its buttons and inputs work.
 
 This page is about deciding which of the two each piece of a screen should be. The mistake it exists to prevent looks like this: one button in a file needs an onClick, so "use client" goes on top. The file is two hundred lines of product markup and one handler, and now all two hundred lines ship twice.
@@ -120,6 +32,18 @@ That is why Akan is SSR-first. Server is the default, and "use client" is a cost
 Words used on this page
 
 Term
+
+- server component: Runs once on the server and arrives as HTML. None of its JavaScript reaches the browser.
+
+- client component: A file that starts with "use client". It arrives as HTML, then again as JavaScript in the bundle.
+
+- hydrate: The browser re-runs a client component's JavaScript so the HTML on screen responds to input.
+
+- shell: The first HTML the server sends. What the page awaited is in it; streamed sections follow.
+
+- island: One hydrated client component inside HTML the server rendered.
+
+`akan quality ssr` prints each app's and lib's server render share: the portion of JSX elements rendered on the server. **50% is the floor**, and a falling share is a regression. If a change moves markup to the client, say why, or move it back.
 
 How A Page Reaches The Browser
 
@@ -187,15 +111,29 @@ Only five kinds of feature actually need the browser. A component that uses none
 
 What the code uses
 
+- Server
+
+- Client — "use client"
+
+- The five that need the browser
+
+- Everything else is server work
+
 Belongs here
 
 Not here
+
+**Wrap the interaction, not the UI.** Only the feature crosses to the client, never the markup around it. The smallest useful client component adds one behaviour and renders its `children` untouched, so everything inside stays server markup. Splitting One Screen below walks through one.
 
 In Domain UI The Rule Is Mechanical
 
 Inside a domain module you never make the call above yourself: the file name makes it. Template, Zone and Util always start with "use client"; Unit and View never do. If a file's role and its first line disagree, one of the two is wrong.
 
 File
+
+- Files that draw data
+
+- Files that hold state or an action
 
 Runs here
 
@@ -206,6 +144,8 @@ A Zone and a Unit working together
 Here is the pair the rule produces. The Zone is client for one reason only: it fills the store from init. It draws no markup of its own and hands every row to a Unit:
 
 The Unit takes the model as a prop and draws it. No "use client", no st, nothing to hydrate. A hundred rows on screen still cost the bundle one component: the Zone.
+
+**Never pass a model instance to a Zone or Util.** Both are always client components, so a `cnst.IcecreamOrder` prop is a class the server would have to hand across the boundary. Take `icecreamOrderId: string` and read the model from the store.
 
 Splitting One Screen
 
@@ -225,6 +165,14 @@ That is the whole client cost of a copy button: one handler and one children pas
 
 Four more ways to keep markup on the server
 
+- Split compound components — Tab is four small client pieces: Tab, Tab.Menus, Tab.Menu and Tab.Panel. Panel bodies arrive as children, so they never enter the bundle. One client file with a mode useState and every panel inlined is the opposite.
+
+- Use named slots — Layout.Navbar takes title, back, left, right and children. A client shell holds server content in five places instead of swallowing it.
+
+- Derive on the server — Display and predicate logic goes on Light<Model>, which both sides hold. An enum-to-class lookup goes in a module-scope as const map.
+
+- Load heavy islands late — A map, editor or chart sits behind a ui/<Folder>/index_.tsx and lazy() pair, with a server-safe index.tsx beside it. Merging the pair into one file breaks RSC.
+
 Measuring The Split
 
 None of this is a matter of taste, so it is measured rather than argued about in review. akan quality ssr counts the JSX elements on each side and reports, per app and lib, the share kept on the server, plus the six findings below.
@@ -238,6 +186,18 @@ Every finding is named akan.ssr.<rule>. Here is what each rule means and how to 
 Rule
 
 Meaning → fix
+
+- unnecessary-use-client: →
+
+- client-static-component: →
+
+- client-static-markup: →
+
+- client-mount-load: →
+
+- module-missing-server-view: →
+
+- template-client-state: →
 
 What is not flagged
 

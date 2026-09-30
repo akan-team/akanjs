@@ -17,51 +17,11 @@
 
 Mobile App Architecture
 
-Client-side rendering: the app draws every screen itself from JavaScript on the device.
-
-@akanjs/native, shipped inside akanjs. It builds your CSR client into iOS, Android, macOS, Windows and Linux apps, with no Xcode project, Gradle files or CocoaPods to keep.
-
-The small native app around your web client. The build generates it under .akan/mobile/<target>/native; it holds the app icon, ID and signing.
-
-A native runtime plugin that exposes one device feature to JavaScript, such as camera, push or iap. This is the native bridge.
-
-One native package built from an Akan app, with its own name and app ID.
-
-One UI surface
-
-Written once, shared with the web
-
-Web and mobile share the same Akan page tree, client router, generated fetch calls, dictionaries, and UI components.
-
-Native shell boundary
-
-What the native runtime generates
-
-Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
-
-Shared backend
-
-The server you already run
-
-Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains.
-
-Controls CSR page motion so mobile navigation can feel closer to native apps.
-
-Handles OS system areas such as notches, home indicators, and Android system bars.
-
-Reserves room in px for app chrome such as navbars, tabs and fixed actions; true reserves 48px.
-
-Permissions describe which native capabilities a mobile target intends to use.
-
-Native files such as google-services.json or a notification sound live in the app folder; the config names where each one lands.
-
-Native schemes, universal links, and app links enter the Akan CSR router as normalized routes.
-
-Push goes out through APNs on iOS and FCM on Android and the web, while click routing uses a standard data.url field.
-
 Akan ships the same product to the web and to the app stores, and you do not write a second app for mobile. The screens you already built for the web run inside a thin native app; only the parts that truly need the phone, such as packaging, signing and device features, are native.
 
 Concretely, Akan mobile apps are CSR web clients running inside a native shell that akanjs's own runtime, @akanjs/native, generates. The product screen is still built with Akan page, UI, state, and service patterns; the runtime supplies the shell, app identity, store package, and device bridge from what akan.config.ts declares.
+
+The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, built with akan build-desktop --server, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.
 
 Akan mobile architecture
 
@@ -71,7 +31,23 @@ Words used on this page
 
 Term
 
+- CSR: Client-side rendering: the app draws every screen itself from JavaScript on the device.
+
+- native runtime: @akanjs/native, shipped inside akanjs. It builds your CSR client into iOS, Android, macOS, Windows and Linux apps, with no Xcode project, Gradle files or CocoaPods to keep.
+
+- native shell: The small native app around your web client. The build generates it under .akan/mobile/<target>/native; it holds the app icon, ID and signing.
+
+- plugin: A native runtime plugin that exposes one device feature to JavaScript, such as camera, push or iap. This is the native bridge.
+
+- target: One native package built from an Akan app, with its own name and app ID.
+
 Who owns what
+
+- One UI surface — Written once, shared with the web — Web and mobile share the same Akan page tree, client router, generated fetch calls, dictionaries, and UI components.
+
+- Native shell boundary — What the native runtime generates — Native code owns packaging, signing, app capabilities, plugin linking, and store distribution.
+
+- Shared backend — The server you already run — Android, iOS, and web clients call the same Akan services and can share auth, permission, database rules, and app-level domains. A desktop app built with --server calls the copy of that server it carries instead.
 
 Mobile Targets
 
@@ -105,6 +81,14 @@ Inside the native shell, Akan uses the CSR router and mobile page frame. Page tr
 
 The frame settings a page can declare in .config():
 
+- "none" | "fade" | "bottomUp" | "stack" | "scaleOut" — Controls CSR page motion so mobile navigation can feel closer to native apps.
+
+- boolean | "top" | "bottom" | { top, bottom } — Handles OS system areas such as notches, home indicators, and Android system bars.
+
+- number | boolean — Reserves room in px for app chrome such as navbars, tabs and fixed actions; true reserves 48px.
+
+**Keyboard accessory anchoring.** A `BottomInset` with `keyboardSticky` can also opt into `contentAnchor="bottom"` so scrollable content resizes with the keyboard while preserving the content bottom edge.
+
 Native Bridge
 
 Web code alone cannot reach the camera, push notifications or the file system. Device capabilities are accessed through the native runtime's plugins, and Akan keeps the app-level API small. Using one takes three steps:
@@ -116,6 +100,14 @@ Build or run the app (akan build-ios, akan start-android, …); the shell is gen
 Call the matching client hook or plugin wrapper (akanjs/client/native) from the CSR app.
 
 What the bridge covers
+
+- Permissions — Permissions describe which native capabilities a mobile target intends to use.
+
+- Files — Native files such as google-services.json or a notification sound live in the app folder; the config names where each one lands.
+
+- Deep links — Native schemes, universal links, and app links enter the Akan CSR router as normalized routes.
+
+- Push notifications — Push goes out through APNs on iOS and FCM on Android and the web, while click routing uses a standard data.url field.
 
 Setup, step by step
 

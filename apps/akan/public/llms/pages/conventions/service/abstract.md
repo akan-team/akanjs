@@ -17,75 +17,79 @@
 
 service.abstract.md
 
-One title line: the module name as the folder spells it, minus the underscore.
-
-One sentence
-
-What the module owns, stated as fact rather than a promise. No heading above it.
-
-Two to five bullets, each an invariant a reader could not derive from the code.
-
-Workflow chain
-
-Optional. One line with no heading: bare arrows between states.
-
-Written for you from the folder name, minus the underscore. Keep it.
-
-Replaced by what the module owns, stated as fact.
-
-Stays. Both placeholder bullets become the module's real invariants, two to five in all.
-
-Not in the scaffold. Add one last line of arrows if the service moves something through states.
-
-A field's meaning
-
-Not here: a trailing comment beside the field, in the constant.ts that declares it.
-
-A lifetime or threshold, and its reason
-
-A code lives sixty seconds; an authorization request lives ten minutes.
-
-A refusal that looks like an oversight
-
-Revocation answers 200 whether or not the token was live, so it cannot probe tokens.
-
-Why an obvious alternative was rejected
-
-A client holding the same refresh token twice is not a thief.
-
-A scope boundary enforced call by call
-
-A late reuse revokes that grant's lineage only, never the account's other sessions.
-
 A short markdown file beside a service module. It holds the invariants — rules that must always hold — which the code obeys but cannot explain, and nothing else.
 
 One rule from the oauth module shows the difference:
 
 What the Code Says
 
+`oauth.service.ts` hands this window to `refreshSession`: a refresh token reused within 30 seconds of its rotation is rotated again, not revoked.
+
 What the Abstract Adds
 
 Why. A client that holds the same token twice is not a thief, and treating it as one signs the user out of an app that did nothing wrong.
 
+The second card is the abstract's whole job. The file sits in the module folder; the folder keeps its underscore and the file name drops it: `lib/_oauth/oauth.abstract.md`.
+
 When to touch it
 
+**Before you change the module,** read it first.
+
+**When an invariant, a workflow or public behaviour changes,** update it.
+
+**When only formatting, imports or style change,** leave it alone.
+
 The Four Parts
+
+An abstract has four parts, and the last is optional. All thirty-three abstracts in this workspace open with a title, one sentence and `## Rules`, and so does the scaffold a new service module starts from.
 
 The whole skeleton:
 
 Part
 
+- # <service> Service Abstract: One title line: the module name as the folder spells it, minus the underscore.
+
+- What the module owns, stated as fact rather than a promise. No heading above it.
+
+- ## Rules: Two to five bullets, each an invariant a reader could not derive from the code.
+
+- Optional. One line with no heading: bare arrows between states. — authorize -> pending -> approved | denied -> code
+
 A real one: oauth
+
+`libs/shared/lib/_oauth/oauth.abstract.md` is the best one in the workspace. Here it is in full, unedited:
+
+**Eight rules and one chain.** The service file runs to about five hundred lines, so it carries more than the usual two to five.
+
+**No field lists, types or signatures.** A name such as `AccountMiddleware` or `refreshSession` appears only to say who enforces the decision.
+
+**Every rule is a decision.** Left unwritten, the next reader would have to reverse-engineer it from the code.
+
+**More than half guard security.** They stop a plausible change to PKCE, redirect matching, token reuse or revocation from opening a hole.
 
 Fill In The Scaffold
 
 A new service module starts with an abstract already in this shape: its title, a placeholder sentence and two placeholder rules. Every line in angle brackets is a prompt, and none of them survives the first real edit.
+
+What `akan create-service payment` writes:
 
 What each line becomes:
 
 Scaffold
 
 Becomes
+
+- # payment Service Abstract: Written for you from the folder name, minus the underscore. Keep it.
+
+- <One sentence …>: Replaced by what the module owns, stated as fact.
+
+- ## Rules: Stays. Both placeholder bullets become the module's real invariants, two to five in all.
+
+- Not in the scaffold. Add one last line of arrows if the service moves something through states.
+
+- Not here: a trailing comment beside the field, in the constant.ts that declares it.
+
+**A line still in angle brackets means nobody has written the abstract yet.** The next reader — a person or an agent — opens this file before changing the module, and a placeholder tells them nothing true about it. Write the sentence and the rules in the same change that adds the first endpoint.
 
 What Counts As A Rule
 
@@ -97,9 +101,25 @@ Kind
 
 Example from oauth
 
+- A code lives sixty seconds; an authorization request lives ten minutes.
+
+- Revocation answers 200 whether or not the token was live, so it cannot probe tokens.
+
+- A client holding the same refresh token twice is not a thief.
+
+- A late reuse revokes that grant's lineage only, never the account's other sessions.
+
 Not worth a bullet
 
+**Field lists, types and method signatures.** The constant and signal files are shorter than a sentence describing them.
+
+**What the root AGENTS.md already tells every module,** such as keeping business behaviour in the service.
+
+**To-dos, roadmaps and related-module lists.** The import graph already shows which modules are related.
+
 Language
+
+Korean is normal in an abstract and common here: `security`, `util`, `localFile` and `shared` are all written in it. What is never normal is a language split inside one file.
 
 ## Code Examples
 

@@ -49,6 +49,22 @@ A route file is a page, a layout, or an overrides manifest. Everything under pag
 
 File
 
+- folder/_index.tsx — The page for the folder it sits in: project/_index.tsx serves /:lang/project.
+
+- folder/_layout.tsx — Wraps every page below its folder. The root one is a rootLayout() chain.
+
+- folder/_overrides.tsx — A logic-free manifest of UI overrides for the subtree: one export default override({ … }).
+
+- path.tsx — A segment as one file: project.tsx serves /:lang/project. Never an uppercase first letter.
+
+- [param].tsx — A dynamic segment as one file: [projectId].tsx serves /:lang/:projectId.
+
+- (group)/ — Organizes files without adding a URL segment, such as (user) or (public).
+
+- [lang]/ — Never written: Akan injects the locale.
+
+- robots.txt.tsx — The one route outside the locale: it serves /robots.txt, not /:lang/robots.txt.
+
 _index.tsx, _layout.tsx and _overrides.tsx are the only reserved names an underscore may introduce.
 
 Page File Shape
@@ -62,6 +78,16 @@ Chain Stages
 There are fifteen stages, and the three chains share most of them. page() adds .prompt(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.
 
 Stage
+
+- Every chain
+
+- page() only
+
+- layout() and rootLayout()
+
+- rootLayout() only
+
+- Ends the chain
 
 required
 

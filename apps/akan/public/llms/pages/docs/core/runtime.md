@@ -82,6 +82,8 @@ In practice you move two of them together. Build a feature with ENV=local and OP
 
 Database Variables
 
+Which database mode a deployment runs and where its data lives are the deployment's to say. These variables win over the same values in `env.server.ts`, so one image can serve several deployments:
+
 the first declared mode
 
 One of `database.modes`; a deployment of a build that declares several must set it.
@@ -107,6 +109,14 @@ required outside local
 The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.
 
 Every instance mounts one upload volume; disk uploads in `multiple` and `cluster` need it.
+
+An app that declares `database: { modes: ["single", "cluster"] }` ships one image that serves both of these:
+
+**Only local development may skip `REDIS_URI`.** A developer machine falls back to localhost, or to `REDIS_HOST` when `akan start` runs against a shared environment.
+
+**Behind a PgBouncer in transaction mode,** add `prepare=false` to `POSTGRES_URL`; the driver reads every such setting from the query string.
+
+**Uploads need storage every instance reads.** A deployed `multiple` or `cluster` app keeps them in object storage, or on one volume every instance mounts with `AKAN_STORAGE_SHARED=true`. Outside development, an upload to a disk only one instance reads is refused.
 
 Text Search Variables
 

@@ -18,28 +18,6 @@
 
 CSS And Styling
 
-A color named for its role (primary, background, destructive) instead of its value.
-
-One set of values for every token. The data-theme attribute picks which set applies.
-
-A ready-made akanjs/ui component (Button, Input, Badge, Field) that already uses the tokens.
-
-A CSS variable such as --primary. Tokens are custom properties underneath.
-
-Brand decisions turned into names such as primary, background, warning and destructive.
-
-Functions that compose token classes into one named look, such as buttonRecipe.
-
-akanjs/ui primitives (Button, Input, Badge) and Tailwind utilities that use those names.
-
-Business screens assembled from components, without repeating raw color and spacing rules.
-
-The font's name. It becomes the class font-<name>, such as font-pretendard.
-
-One entry per font file: its src and the weight it covers.
-
-The font the whole app uses when no font class is set. Only one font can be the default.
-
 Styling Foundation
 
 When every screen writes its own colors (#ff493b here, a red utility class there), changing the brand or adding a dark theme means hunting down each one. Akan avoids that by naming colors for what they are for, and letting every screen use the names.
@@ -60,6 +38,14 @@ Words used on this page
 
 Term
 
+- semantic token: A color named for its role (primary, background, destructive) instead of its value.
+
+- theme: One set of values for every token. The data-theme attribute picks which set applies.
+
+- primitive: A ready-made akanjs/ui component (Button, Input, Badge, Field) that already uses the tokens.
+
+- custom property: A CSS variable such as --primary. Tokens are custom properties underneath.
+
 How the layers work together
 
 Four layers, each built from the one below
@@ -69,6 +55,14 @@ From the bottom up: semantic tokens, recipes that compose them into looks, compo
 Layer
 
 What it does
+
+- tokens: Brand decisions turned into names such as primary, background, warning and destructive.
+
+- recipes: Functions that compose token classes into one named look, such as buttonRecipe.
+
+- components: akanjs/ui primitives (Button, Input, Badge) and Tailwind utilities that use those names.
+
+- screens: Business screens assembled from components, without repeating raw color and spacing rules.
 
 Tokens are declared in page/styles.css, which also imports Tailwind and the Akan UI styles. The Theme System section below shows that file; the UI Recipe page covers the recipe layer.
 
@@ -127,6 +121,12 @@ Font Declaration
 Fonts are declared once, in the root layout, and then used like any other Tailwind class. Hand the .fonts() stage of the rootLayout() chain an array; each entry takes three fields:
 
 Field
+
+- name: The font's name. It becomes the class font-<name>, such as font-pretendard.
+
+- paths: One entry per font file: its src and the weight it covers.
+
+- default: The font the whole app uses when no font class is set. Only one font can be the default.
 
 Each name is now a class. Text without one uses the default font, Pretendard here:
 

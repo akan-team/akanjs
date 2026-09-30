@@ -133,8 +133,15 @@ export default page().render(() => {
   const carriedServerNote: ReferenceRow = {
     name: l.trans({ en: "carried server", ko: "내장 서버" }),
     desc: l.trans({
-      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). Only the `--env` environment's `env.server.<env>.ts` ships, with the server env defaults of the libs it uses, in plain text that anyone with the app can read, so keep deployment secrets out of them. It runs none of the image's `docker` steps, and the build warns when there are some: an executable it spawns comes from `bin` in `akan.config.ts`, fetched for this computer and put first on its PATH, and a package that builds itself at install from `trustedDependencies`.",
-      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다(Windows는 `%LOCALAPPDATA%` 아래, `--debug` 빌드는 `server-debug/`). `--env` 환경의 `env.server.<env>.ts` 하나와 앱이 쓰는 lib의 서버 env 기본값이, 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로 배포용 비밀을 두지 마세요. 이미지의 `docker` 단계는 하나도 실행하지 않으며, 그런 단계가 있으면 빌드가 경고합니다. 서버가 실행하는 파일은 `akan.config.ts`의 `bin`에서 이 컴퓨터용으로 받아 PATH 맨 앞에 두고, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/`, the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다(Windows는 `%LOCALAPPDATA%` 아래, `--debug` 빌드는 `server-debug/`). `private/`, `--env` 환경의 `env.server.<env>.ts`, 앱이 쓰는 lib의 서버 env 기본값(lib마다 `env.server.testing.ts`)이 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로, 배포용 비밀·키·라이선스 파일을 두지 마세요. `public/`은 없고 작업 폴더는 데이터 폴더이므로, 실행 중에 읽는 파일은 `process.cwd()`가 아니라 앱 폴더(`AKAN_APP_DIR`, 없으면 `Bun.main`의 폴더) 기준으로 읽습니다. 이미지의 `docker` 단계는 하나도 실행하지 않습니다. 서버가 실행하는 파일은 `bin`에, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+    }),
+  };
+  const binNote: ReferenceRow = {
+    name: "bin",
+    desc: l.trans({
+      en: "An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, with or without `--server`: it is first on the app's PATH, so the carried server's `spawn(\"ffmpeg\")` runs it, and a native plugin finds it in `ctx.binDir`.",
+      ko: '`akan.config.ts`의 `bin`에 적은 실행 파일은 이 컴퓨터용으로 받아 `--server` 여부와 상관없이 모든 데스크톱 앱에 들어갑니다. 앱의 PATH 맨 앞에 있으므로 내장 서버의 `spawn("ffmpeg")`가 그 파일을 실행하고, 네이티브 플러그인은 `ctx.binDir`에서 찾습니다.',
     }),
   };
   const oneTargetNote: ReferenceRow = {
@@ -1026,6 +1033,7 @@ akan start-android myapp --device Pixel_10`,
           }),
         },
         carriedServerNote,
+        binNote,
         oneTargetNote,
       ],
       examples: `akan start-desktop myapp --target default
@@ -1069,8 +1077,8 @@ akan start-desktop myapp --release true --server true --env debug`,
       signature:
         "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--server <boolean>] [--installer <boolean>] [--write <boolean>]",
       desc: l.trans({
-        en: "Build the desktop app for this computer: a `.app` on macOS, an app folder on Windows and Linux, signed ad hoc or with the development identity. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
-        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더이며, ad hoc 또는 개발용 인증서로 서명합니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
+        en: "Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
+        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 ad hoc 또는 개발용 인증서로 서명한 `.app`, Windows와 Linux는 서명하지 않은 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
       }),
       options: [
         targetOption,
@@ -1088,7 +1096,7 @@ akan start-desktop myapp --release true --server true --env debug`,
         },
         writeOption,
       ],
-      notes: [aliasNote("bd"), carriedServerNote, outputNote("<macos|windows|linux>")],
+      notes: [aliasNote("bd"), carriedServerNote, binNote, outputNote("<macos|windows|linux>")],
       examples: `akan build-desktop myapp --target default
 akan build-desktop myapp --server true --env main
 akan build-desktop myapp --installer true --env main`,
@@ -1206,13 +1214,29 @@ akan update-keygen myapp --platform android`,
           name: "--channel",
           type: "String",
           desc: l.trans({
-            en: "Default `updates.channel`, else `--env`, the channel an app built with that env follows. Publish to a pilot channel first.",
-            ko: "기본값은 `updates.channel`, 없으면 그 env로 빌드한 앱이 따르는 `--env`입니다. pilot 채널에 먼저 게시합니다.",
+            en: "Default `updates.channel`, else `--env`. It names only the manifest written, not the channel the release follows.",
+            ko: "기본값은 `updates.channel`, 없으면 `--env`입니다. 쓸 매니페스트만 정하고, 릴리스가 따르는 채널은 바꾸지 않습니다.",
           }),
         },
         carryServerOption,
         writeOption,
         allowLocalReleaseOption,
+      ],
+      notes: [
+        {
+          name: "--env",
+          desc: l.trans({
+            en: "An app takes releases on `updates.channel`, else on the `--env` it was built with: publish with that `--env`.",
+            ko: "앱은 `updates.channel`, 없으면 빌드할 때의 `--env` 채널로 릴리스를 받습니다. 그 `--env`로 게시합니다.",
+          }),
+        },
+        {
+          name: "pilot",
+          desc: l.trans({
+            en: "A release keeps its build's channel: give a pilot group a target whose `updates.channel` is the pilot's.",
+            ko: "릴리스는 빌드할 때의 채널을 가집니다. pilot 그룹에는 `updates.channel`이 pilot인 타깃을 씁니다.",
+          }),
+        },
       ],
       examples: `akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main

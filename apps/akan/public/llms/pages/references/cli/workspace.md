@@ -15,87 +15,87 @@
 
 Workspace
 
-Create a new workspace with its first app, agent rules and MCP config.
+- --fix (Boolean, default true): Write the formatter and lint fixes. With `--fix false` it only reports.
 
-Format and lint one app, library or package with Biome.
+- --max-diagnostics (Number, default 200): How many diagnostics Biome prints before it truncates. `0` removes the limit.
 
-Sync every app and library, then lint every app, library and package.
+Workspace CLI
 
-Run `akan sync` on every library, then on every app.
+These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
 
-workspace root
+Command
 
-The repo's top folder, the one holding `package.json`, `tsconfig.json` and `.env`.
+- create-workspace: Create a new workspace with its first app, agent rules and MCP config.
 
-Rescans an app or library and rewrites its generated files. `akan sync <app|lib>` does one.
+- lint: Format and lint one app, library or package with Biome.
 
-The formatter and linter Akan uses. Its rules live in `biome.json` at the workspace root.
+- lint-all: Sync every app and library, then lint every app, library and package.
 
-One target
+- sync-all: Run `akan sync` on every library, then on every app.
 
-You changed one app, library or package. A package is linted without a sync.
+Words Used On This Page
 
-Whole workspace
+Term
 
-Before a wide check, where generated files, app code and libraries must agree.
+- workspace root: The repo's top folder, the one holding `package.json`, `tsconfig.json` and `.env`.
 
-Generated files look stale, or you changed the shared workspace setup.
+- sync: Rescans an app or library and rewrites its generated files. `akan sync <app|lib>` does one.
 
-Write the formatter and lint fixes. With `--fix false` it only reports.
+- Biome: The formatter and linter Akan uses. Its rules live in `biome.json` at the workspace root.
 
-How many diagnostics Biome prints before it truncates. `0` removes the limit.
+Which One To Run
+
+The three upkeep commands differ in scope and in whether they lint after the sync.
+
+- One target
+
+- Whole workspace
+
+Runs it
+
+Skips it
 
 `akan create-workspace <workspaceName> --app <app> [options]`
 
-Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
+Create a new workspace and its first app in one go. It runs these steps in order:Write the workspace files into `<dir>/<workspaceName>`, with `--registry` saved to `.npmrc`.Run `bun install`. `--init false` skips it.Install the `util` and `shared` libraries, only with `--libs true`.Create the first app, named by `--app`.Write the agent rules and the MCP config. `--agent-install` and `--mcp-install` turn them off.Make the first git commit. If git fails, the workspace still works; commit by hand.It ends by printing the next step: `cd <dir>/<workspaceName> && akan start <app>`.
 
-Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
+- workspaceName (String): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
 
-Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.
+- --app (String): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
 
-Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
+- --dir (String, default .): Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.
 
-Run `bun install` once the files are written.
+- --libs (Boolean, default false): Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
 
-npm registry for the Akan packages, saved to `.npmrc`. `AKAN_NPM_REGISTRY` sets the default.
+- --init (Boolean, default true): Run `bun install` once the files are written.
 
-GitHub owner of the repo. When set, `README.md` gets an Open in GitHub Codespaces badge.
+- --registry (String, default https://registry.npmjs.org): npm registry for the Akan packages, saved to `.npmrc`. `AKAN_NPM_REGISTRY` sets the default.
 
-Register the Akan MCP server for Cursor, Claude Code and Codex in their project config files.
+- --owner (String, default $GITHUB_OWNER): GitHub owner of the repo. When set, `README.md` gets an Open in GitHub Codespaces badge.
 
-Write `AGENTS.md`, `CLAUDE.md` and `.cursor/rules/akan.mdc` for coding agents.
+- --mcp-install (Boolean, default true): Register the Akan MCP server for Cursor, Claude Code and Codex in their project config files.
 
-where to run
+- --agent-install (Boolean, default true, -A): Write `AGENTS.md`, `CLAUDE.md` and `.cursor/rules/akan.mdc` for coding agents.
 
-Any folder works, because this command creates the workspace root.
+- where to run: Any folder works, because this command creates the workspace root.
 
-MCP config files
+- MCP config files: Cursor reads `.cursor/mcp.json`, Claude Code `.mcp.json`, and Codex `.codex/config.toml`.
 
-Cursor reads `.cursor/mcp.json`, Claude Code `.mcp.json`, and Codex `.codex/config.toml`.
+- framework version: There is no `--tag`. Move a workspace to another release channel with `akan update --tag <tag>`.
 
-framework version
-
-There is no `--tag`. Move a workspace to another release channel with `akan update --tag <tag>`.
-
-`bunx create-akan-workspace` installs the matching `@akanjs/cli` globally, then runs this command.
+- create-akan-workspace: `bunx create-akan-workspace` installs the matching `@akanjs/cli` globally, then runs this command.
 
 `akan lint <app|lib|pkg> [--fix <boolean>] [--max-diagnostics <n>]`
 
 Format and lint one app, library or package with Biome. Fixes are written by default, and an app or library is synced first. After Biome come the three checks under Notes.
 
-App, library or package name. Picked from a list when omitted.
+- app|lib|pkg (String): App, library or package name. Picked from a list when omitted.
 
-theme contrast
+- theme contrast: Fails when a color pair in `page/styles.css` misses the WCAG contrast threshold.
 
-Fails when a color pair in `page/styles.css` misses the WCAG contrast threshold.
+- recipes: Fails when a recipe in `ui/Recipe` has no variant or flag to choose.
 
-recipes
-
-Fails when a recipe in `ui/Recipe` has no variant or flag to choose.
-
-agent index
-
-Fails when the recipe index in an app's or library's `AGENTS.md` is stale. `akan sync` fixes it.
+- agent index: Fails when the recipe index in an app's or library's `AGENTS.md` is stale. `akan sync` fixes it.
 
 `akan lint-all [--fix <boolean>] [--max-diagnostics <n>]`
 
@@ -105,25 +105,15 @@ Sync every app and library, then lint every app, library and package. Each one g
 
 Run `akan sync` on every library, then on every app. Use it when generated files look stale, or after a change to the shared workspace setup.
 
-Workspace CLI
-
-These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
-
-Command
-
-Words Used On This Page
-
-Term
-
-Which One To Run
-
-The three upkeep commands differ in scope and in whether they lint after the sync.
-
-Runs it
-
-Skips it
-
 Rules Every Command Shares
+
+**Run from the workspace root.** Every command here except `create-workspace` runs from the folder holding `package.json`, `tsconfig.json` and `.env`.
+
+**Boolean options.** `--fix` on its own means true. To turn an option off, give the value: `--fix false`.
+
+**Short flags.** Each option also answers to its first letter (`-f` for `--fix`) unless its row shows another letter, such as `-A`.
+
+**Verbose output.** `-v` shows the output of each process the command runs, which a spinner normally hides.
 
 Related Pages
 
@@ -139,7 +129,35 @@ Moves the workspace to another framework version or release channel.
 
 ## Code Examples
 
-No code snippets were extracted from this page.
+### create-workspace
+
+```bash
+akan create-workspace acme --app shop
+akan create-workspace acme --app shop --dir projects --init false
+akan create-workspace acme --app shop --libs true
+```
+
+### lint
+
+```bash
+akan lint myapp
+akan lint util --fix false
+akan lint myapp --max-diagnostics 0
+```
+
+### lint-all
+
+```bash
+akan lint-all
+akan lint-all --fix false
+akan lint-all --max-diagnostics 0
+```
+
+### sync-all
+
+```bash
+akan sync-all
+```
 
 ## Agent Notes
 

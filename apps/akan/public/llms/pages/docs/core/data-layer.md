@@ -75,6 +75,34 @@ Nine of the fourteen read, one only builds a query descriptor, and the remaining
 
 Method
 
+- list<Filter> — await listByOwner(ownerId, { limit: 20 }) — Read, no hooks. Hydrated documents, newest first; takes skip, limit, sort and select.
+
+- listIds<Filter> — await listIdsByOwner(ownerId) — Read, no hooks. Just the ids; the same option, minus select.
+
+- find<Filter> — await findByOwner(ownerId) — Read, no hooks. The newest match or null.
+
+- findId<Filter> — await findIdByOwner(ownerId) — Read, no hooks. That match's id, or null.
+
+- pick<Filter> — await pickByOwner(ownerId) — Read, no hooks. Like find, but no match throws — for rows the caller knows exist.
+
+- pickId<Filter> — await pickIdByOwner(ownerId) — Read, no hooks. That id, or a throw.
+
+- exists<Filter> — if (await existsByOwner(ownerId)) … — Read, no hooks. The matching id or null — not a boolean, though it works in a condition.
+
+- count<Filter> — await countByOwner(ownerId) — Read, no hooks. How many rows match.
+
+- insight<Filter> — await insightByOwner(ownerId) — Read, no hooks. The model's Insight aggregate as a plain record, not a hydrated document.
+
+- query<Filter> — this.productService.queryByOwner(ownerId) — Neither. The descriptor a slice's exec returns; synchronous, never touches the database.
+
+- remove<Filter> — await removeByOwner(ownerId) — Write, NO hooks. One atomic soft delete over every match, reporting counts.
+
+- removeOne<Filter> — await removeOneByOwner(ownerId) — Write, NO hooks. The same on the newest match; for at-most-one rows, not queue claims.
+
+- update<Filter> — await updateByOwner(ownerId).set({ status: "archived" }) — Write, NO hooks. A chain: the patch goes on a terminal .set(); building it does nothing.
+
+- updateOne<Filter> — await updateOneByOwner(ownerId).set({ status: "archived" }) — Write, NO hooks. The same chain, narrowed to the newest match.
+
 Reach for the four writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — one atomic UPDATE cannot run any of that.
 
 Every model already carries an any filter, so listAny and countAny exist before you declare anything.
@@ -154,6 +182,20 @@ Common Decisions
 When you are not sure where to put code, start with the business question. The data layer is easier to design when each file answers one kind of question.
 
 Question
+
+- What fields does it have? — model.constant.ts
+
+- Which fields are text searchable? — model.constant.ts
+
+- How is it stored, filtered, or searched? — model.document.ts
+
+- What business rule should run? — model.service.ts
+
+- What should a page call, and who may call it? — model.signal.ts
+
+- What state is shared on the client? — model.store.ts
+
+- What should users see? — Model.View.tsx · Model.Zone.tsx
 
 Keep page files focused on user experience. If the rule would still matter when another page, mobile app, or admin screen uses the same feature, it usually belongs in the data layer.
 

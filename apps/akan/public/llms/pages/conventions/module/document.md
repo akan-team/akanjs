@@ -23,197 +23,7 @@
 
 model.document.ts
 
-A named, reusable query such as `inProject`. Each one generates fourteen methods.
-
-One loaded record: a class instance with `set()`, `save()` and your own chain methods.
-
-chain method
-
-A document method that changes `this` and returns it, so calls chain before one `save()`.
-
-The class for work on the whole collection. A service reaches it as `this.ticketModel`.
-
-The table facade inside the model class: `pickById`, `find`, `updateOne` and more.
-
-hook
-
-A function that runs before or after a document is written.
-
-query-level write
-
-One UPDATE over every match. Fast, but no hook runs.
-
-Named queries and sort orders. Each query becomes fourteen methods on the model and the service.
-
-One loaded record. Its chain methods change state and return the document itself.
-
-Work on the whole collection: atomic writes, loaders, indexes and hooks.
-
-Starts one named query.
-
-A required argument. Every required argument comes before the optional ones.
-
-An optional argument. Omitted, it is `undefined` or `null`, so add its condition only when set.
-
-Names the model an id points at, e.g. `{ ref: "user" }`, so the admin panel shows a picker.
-
-Returns the condition. The `q` helpers arrive as the last parameter.
-
-A named order, picked by key as `{ sort: "highPriority" }`. `-1` is descending.
-
-AND, OR and NOT. `all` and `any` skip `false` and `null`; an `{}` inside `any` matches every row.
-
-Equal or not equal. A bare value such as `{ status }` already means equal.
-
-In or not in a list. An empty `oneOf` matches nothing; an empty `notOneOf` matches everything.
-
-Range comparisons for numbers and dates.
-
-An array field contains this element. A bare value on an array field means the same.
-
-A text field contains this substring.
-
-The field has no value: absent or `null`. This is the one for "has no value".
-
-The key is stored, or absent. `missing` is for rows written before the field existed.
-
-Returns the query when the condition is truthy, `{}` otherwise.
-
-Full-text match over fields with a `text` role. See Text Search Query below.
-
-A raw SQL fragment with bound parameters. It ties the query to one database dialect.
-
-Every match. Options: `sort`, `skip`, `limit`, `select`.
-
-The same, ids only.
-
-One match or `null`.
-
-The same, id only.
-
-One match; throws when there is none.
-
-The matching id or `null` — not a boolean.
-
-How many match.
-
-Every counter the Insight class declares.
-
-Builds the query without running it, synchronously. A slice's `exec` returns this.
-
-One atomic UPDATE marking every match removed.
-
-The same, on the newest match only.
-
-A chain; the patch goes on a terminal `.set(patch)`.
-
-Loads through the id loader and throws when the document does not exist.
-
-The same, but resolves to `null` instead of throwing, also for an empty id.
-
-Loads several ids in one batched query.
-
-Inserts one document. The `save` and `create` hooks run.
-
-Patches and saves one document. The `save` and `update` hooks run.
-
-Soft-deletes one document by stamping `removedAt`. The `remove` hooks run.
-
-Treats the last word as a prefix, which a search-as-you-type box needs.
-
-Limits the match to some columns, e.g. `{ columns: ["title"] }`. Omitted, all four match.
-
-Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.
-
-One document, or throw. The second argument is a bare projection, e.g. `{ secret: true }`.
-
-`null` or a list instead of throwing. `find` chains `.sort()`, `.skip()` and `.limit()`.
-
-A number, or the matching id or `null`. `countDocuments` is the deprecated name.
-
-Load, `set()` and `save()` in one call, so the save hooks run.
-
-Query-level writes: one statement, no hooks. `One` hits the newest match.
-
-The same hookless writes, narrowed to one id. Not the document path.
-
-Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks.
-
-Random documents that match the query.
-
-Several `updateOne` operations in one call, each optionally upserting.
-
-One document per value of a field: the match for that key, or `null`.
-
-One document whose array field contains the key.
-
-One document per combination of several fields.
-
-Refuses a second document with the same values in these fields.
-
-Fixes the index name. The default depends on the index's position in `_onSchema`.
-
-query-level
-
-Every document write except a removal.
-
-Only when a document is inserted.
-
-When an existing document is saved.
-
-When `remove<Model>(id)` stamps `removedAt`.
-
-Reading
-
-reusable condition
-
-A list or lookup you would otherwise repeat in service methods.
-
-sort order
-
-A named order such as `highPriority`.
-
-frequent lookup
-
-A loader for a key you look up often, or an index for a query you run often.
-
-Writing
-
-state transition
-
-One record moves between states: `open()`, `approve()`.
-
-state precondition
-
-The chain method throws `Err` when the record is in the wrong state.
-
-counter · bulk write
-
-One UPDATE through the facade, returning `!!modifiedCount`.
-
-derived field · index
-
-Small persistence work in `_onSchema`.
-
-Orchestrating
-
-cross-document rule
-
-Load every document involved, then throw `Err` or save.
-
-side effect of a write
-
-`_postCreate`, `_postRemove` and the other service hooks.
-
-Field types, and the text roles that search reads.
-
-Who calls these methods, and the service hooks around them.
-
-The document file of an embedded value object.
-
-Text Search
-
-Search from marking the fields to publishing a slice.
+`model.document.ts` decides how a stored model is queried and changed. `model.constant.ts` says what the data looks like; this file holds the reusable queries, the state changes and the database helpers that services call.
 
 Open it when a service repeats the same query, when a record moves between states, or when a table needs a counter, a loader or an index.
 
@@ -221,63 +31,283 @@ Words used on this page
 
 Term
 
+- filter: A named, reusable query such as `inProject`. Each one generates fourteen methods.
+
+- document: One loaded record: a class instance with `set()`, `save()` and your own chain methods.
+
+- A document method that changes `this` and returns it, so calls chain before one `save()`.
+
+- model: The class for work on the whole collection. A service reaches it as `this.ticketModel`.
+
+- this.Ticket: The table facade inside the model class: `pickById`, `find`, `updateOne` and more.
+
+- A function that runs before or after a document is written.
+
+- One UPDATE over every match. Fast, but no hook runs.
+
 Standard Document Shape
 
 A database module's document file declares three classes, always in this order. A complete file with one query and one chain method looks like this:
 
 Class
 
+- TicketFilter: Named queries and sort orders. Each query becomes fourteen methods on the model and the service.
+
+- Ticket: One loaded record. Its chain methods change state and return the document itself.
+
+- TicketModel: Work on the whole collection: atomic writes, loaders, indexes and hooks.
+
+**The order is fixed.** `TicketFilter` → `Ticket` → `TicketModel`, and `sort: {}` is written even when it is empty.
+
+**Names follow the constant.** The three class names come from `cnst.Ticket`; `into()` takes the lowercase `cnst.ticket`.
+
+**The fourth argument of `into()` declares loaders.** Write `() => ({})` when there are none.
+
+**An empty module keeps all three.** A new module starts with three empty classes; they mark where each kind of code goes.
+
 Queries, Sorts And Generated Methods
+
+Write a condition you use often once, as a named query, and call the generated methods from services and signals. A query named `inProject` becomes `listInProject`, `countInProject`, `existsInProject` and eleven more:
 
 Building a query
 
 Builder
 
+- filter(): Starts one named query.
+
+- .arg(name, Type): A required argument. Every required argument comes before the optional ones.
+
+- .opt(name, Type): An optional argument. Omitted, it is `undefined` or `null`, so add its condition only when set.
+
+- .arg(name, ID, { ref }): Names the model an id points at, e.g. `{ ref: "user" }`, so the admin panel shows a picker.
+
+- .query((...args, q) => …): Returns the condition. The `q` helpers arrive as the last parameter.
+
+- sort: { key: { field: -1 } }: A named order, picked by key as `{ sort: "highPriority" }`. `-1` is descending.
+
+**Already built in:** the `any` query (every row not removed) and the `latest`, `oldest` and `relevance` sorts. Add only the rules your business needs.
+
+**Never put `undefined` in a query.** `{ status: undefined }` throws, so leave the key out when an optional argument is missing.
+
+**Sort keys are checked.** A key the filter does not declare is refused, not quietly replaced by another order.
+
 The q helpers
 
+Most helpers sit in a field's position, as in `{ status: q.oneOf(list) }`. The three presence checks take a field path instead.
+
 Helper
+
+- AND, OR and NOT. `all` and `any` skip `false` and `null`; an `{}` inside `any` matches every row. — q.any({ owner: userId }, { assignee: userId })
+
+- Equal or not equal. A bare value such as `{ status }` already means equal.
+
+- In or not in a list. An empty `oneOf` matches nothing; an empty `notOneOf` matches everything. — { status: q.oneOf(statuses) }
+
+- Range comparisons for numbers and dates. — { price: q.gte(minPrice) }
+
+- An array field contains this element. A bare value on an array field means the same. — { tags: q.has(tag) }
+
+- A text field contains this substring. — { title: q.contains(word) }
+
+- The field has no value: absent or `null`. This is the one for "has no value". — q.empty("assignee")
+
+- The key is stored, or absent. `missing` is for rows written before the field existed.
+
+- Returns the query when the condition is truthy, `{}` otherwise. — q.when(onlyOpen, { status: "opened" })
+
+- Full-text match over fields with a `text` role. See Text Search Query below.
+
+- A raw SQL fragment with bound parameters. It ties the query to one database dialect.
 
 Fourteen generated methods
 
 Every query generates fourteen methods, identically on the model and the service. Ten of them only read:
 
+- Promise<Doc[]> — Every match. Options: `sort`, `skip`, `limit`, `select`.
+
+- Promise<string[]> — The same, ids only.
+
+- Promise<Doc | null> — One match or `null`.
+
+- Promise<string | null> — The same, id only.
+
+- Promise<Doc> — One match; throws when there is none.
+
+- Promise<string> — The same, id only.
+
+- Promise<string | null> — The matching id or `null` — not a boolean.
+
+- Promise<number> — How many match.
+
+- Promise<Insight> — Every counter the Insight class declares.
+
+- QueryOf<Doc> — Builds the query without running it, synchronously. A slice's `exec` returns this.
+
+The other four are **query-level writes**: one statement straight to the database, with no hook:
+
+- Promise<UpdateResult> — One atomic UPDATE marking every match removed.
+
+- Promise<UpdateResult> — The same, on the newest match only.
+
+- UpdateChain<Doc> — A chain; the patch goes on a terminal `.set(patch)`.
+
+- UpdateChain<Doc> — The same, on the newest match only.
+
 In a service they read like this:
+
+**`count` and `insight` read the same query.** `count` returns a number; `insight` returns every counter on `db.<Model>Insight`.
+
+**`exists<Filter>` is not a boolean.** It resolves to the matching id or `null`, so a strict `=== true` never passes.
+
+**`removeOne` and `updateOne` hit the newest match.** They are for "there is at most one of these", never for taking the next item off a queue.
+
+**`update<Filter>` is a chain.** The patch goes on a terminal `.set()`; building the chain touches nothing.
+
+**A projection nests under `select` here.** `listInProject(id, { select: { secret: true } })`, while the facade's `pickById(id, { secret: true })` takes it bare.
+
+**The four query-level writes run no hooks.** No `_postRemove`, no cascade: on a model whose removal deletes a stored file or closes a child, `remove<Filter>` leaves all of that undone and still reports a count that looks like success. Use them only on models with no removal side effect; otherwise remove one at a time with the service's `remove<Model>(id)`.
 
 Generated CRUD methods
 
 Next to the query methods, every model gets these six CRUD methods.
 
+- Promise<Doc> — Loads through the id loader and throws when the document does not exist.
+
+- Promise<Doc | null> — The same, but resolves to `null` instead of throwing, also for an empty id.
+
+- Promise<Doc[]> — Loads several ids in one batched query.
+
+- Promise<Doc> — Inserts one document. The `save` and `create` hooks run.
+
+- Promise<Doc> — Patches and saves one document. The `save` and `update` hooks run.
+
+- Promise<Doc> — Soft-deletes one document by stamping `removedAt`. The `remove` hooks run.
+
 Called from a service:
 
+**Call them on the service.** The service's copies also run `_preCreate`, `_postRemove` and the other service hooks, and its `remove<Model>` runs the cascade. The model's copies skip both.
+
 Text Search Query
+
+`q.search()` matches the full-text index built from fields that declare a `text` role, such as `field(String, { text: "title" })`. There is no separate search method: a query named `bySearch` gets `listBySearch`, `countBySearch`, `queryBySearch`, `insightBySearch` and the rest.
 
 It is an ordinary query node, so it combines with normal conditions:
 
 Search options
 
+- boolean — false — Treats the last word as a prefix, which a search-as-you-type box needs.
+
+- ("title" | "desc" | "tag" | "filter")[] — Limits the match to some columns, e.g. `{ columns: ["title"] }`. Omitted, all four match.
+
+- number[] — [10, 1, 3, 0] — Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.
+
 A service calls it like any other query:
 
 Rules
 
+**Keep it at an AND position.** At the top or inside `q.all()`, never under `q.any()` or `q.not()`.
+
+**Blank input matches nothing.** An empty search box never turns into a full listing; do not "fix" that into a passthrough.
+
+**Name `relevance` for the best match first.** Another sort key wins over the score. With no sort, a service call orders by score but a slice uses `latest`.
+
+**No search in a query-level write.** `update<Filter>`, `remove<Filter>` and their `One` forms throw on a search query.
+
+**Works in every database mode.** For the same text, SQLite, libSQL and Postgres match the same documents; only the order can differ on Postgres.
+
+**A filter is enough for a service.** A slice publishes the search to clients, so add one only for models that are safe to enumerate.
+
 Optional search text
+
+The admin search in `libs/shared` takes the text as optional and falls back to `{}`, so an empty box lists every admin. That is intended only because admin guards protect the slice; never do it on a public one.
 
 Changing One Document
 
+The state changes of one record live on the document class as chain methods. Each one checks, changes `this` and returns `this`, so a service can chain several and save once.
+
 The service loads, chains and saves:
 
+**Check, change, return `this`.** Validate first, mutate second, and end with `return this`.
+
+**Never `save()` inside.** The caller saves once, so chains compose: `org.removeUser(id).removeInvite(id).save()`.
+
+**Several fields at once: `this.set({ … })`.** It returns `this`, so it can be the method's return value.
+
+**One comment line per method names the transition,** such as `// draft -> opened`.
+
+**Throw `new Err("ticket.error.<key>")`, never `new Error`.** A raw `Error` fails lint and with it the build, so register the key as `[en, ko]` in the dictionary's `.error({})`. A state precondition throws here; a rule across several documents throws in the service.
+
 Model-Level Helpers
+
+Work on the whole collection goes on the model class: atomic updates, bulk writes, counters and building new documents. Inside it, `this.Story` is the table facade:
+
+**Counters use the updater callback.** `({ inc }) => ({ viewCount: inc() })` compiles to one atomic UPDATE with no read first; return `!!modifiedCount`.
+
+**Updater helpers:** `set`, `unset`, `inc`, `mul`, `min`, `max`, `push`, `pull`, `addToSet`, `setOnInsert`. A bare value means `set`.
+
+**Removal is always soft.** Every remove stamps `removedAt`, and every query already skips removed rows, so a filter does not need to check `removedAt`.
 
 The table facade
 
 Method
 
+- One document, or throw. The second argument is a bare projection, e.g. `{ secret: true }`.
+
+- `null` or a list instead of throwing. `find` chains `.sort()`, `.skip()` and `.limit()`.
+
+- A number, or the matching id or `null`. `countDocuments` is the deprecated name.
+
+- Load, `set()` and `save()` in one call, so the save hooks run. — await this.Story.pickAndWrite(storyId, { status: "approved" })
+
+- Query-level writes: one statement, no hooks. `One` hits the newest match.
+
+- The same hookless writes, narrowed to one id. Not the document path.
+
+- Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks. — return await new this.Story(data).save();
+
+- Random documents that match the query.
+
+- Several `updateOne` operations in one call, each optionally upserting.
+
 Extending A Library Model
+
+An app can add to a model a library already defines, such as `user` from `libs/shared`. Pass the library's classes as the last arguments and write only what the app adds.
+
+`../__lib/lib.document` collects the library's classes for each model:
+
+**One spread per class.** `...user.filters` goes into `from()`, `...user.docs` into `by()`, `...user.models` into `into()`.
+
+**The library's behavior merges in.** Its queries, sorts, document methods, model methods, loaders and `_onSchema` hooks all join yours.
+
+**Keep the spreads when you edit.** Dropping one removes the library's methods from your class.
+
+**`lib/__lib/lib.document.ts` is generated.** Do not edit it; it follows the libraries the app depends on.
 
 Loaders And Lookups
 
+A loader collects the lookups made in the same tick and answers them with one query, so a hundred `load()` calls cost one round-trip. Declare one in the fourth argument of `into()` for a lookup key you use often.
+
+- byField("sku"): One document per value of a field: the match for that key, or `null`.
+
+- byArrayField("tags"): One document whose array field contains the key.
+
+- byQuery(["shop", "orderNumber"] as const): One document per combination of several fields.
+
 A single-field loader looks up by one key:
 
+A key made of several fields takes `byQuery`:
+
+**A missing key resolves to `null`.** `load()` does not throw for a key with no match.
+
+**Every builder takes a default query** as its second argument, e.g. `byField("sku", { status: "active" })`.
+
+**The id loader is built in.** `get<Model>`, `load<Model>` and `load<Model>Many` already batch through it, and it keeps nothing past a batch.
+
+**A loader returns one document per key, not a list.** `byField("seller")` would answer one product per seller. "Every product of a seller" is a query, `listBySeller(sellerId)`, not a loader.
+
 Keeping Loaded Keys
+
+Every builder takes an option object as its third argument, such as `byField("sku", {}, { cache: 60_000 })`. Its `cache` decides how long a loaded key is answered from memory:
 
 Each loaded key is kept
 
@@ -287,21 +317,63 @@ For that many milliseconds.
 
 For as long as the process runs.
 
+**A kept key serves a stale document.** Loaders live as long as the process, so a document changed after it was loaded is still answered in its old shape until the key expires.
+
+**A failed load is never kept.** The next `load()` for that key asks the database again.
+
 Schema Hooks And Indexes
+
+`static override _onSchema(schema)` declares what the table itself needs: indexes, and small hooks that keep derived fields in step. Business workflows stay in the service.
 
 Indexes
 
 An index speeds up a lookup you run often:
 
+The second argument of `schema.index()`:
+
+- boolean — false — Refuses a second document with the same values in these fields.
+
+- string — <table>_<fields>_<position> — Fixes the index name. The default depends on the index's position in `_onSchema`.
+
+**Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
+
+**Named sorts are indexed for you.** Each order in the filter's `sort` already has an index, so declare one only for a lookup you run often.
+
+**A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()` and ends with `.done()`.
+
+**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Add a new index at the end instead, or give it a `name`.
+
 Hooks
+
+A hook keeps a derived field in step with the field it comes from. This one recounts a story's tags whenever they change:
 
 Which writes run which hook event:
 
 Event
 
+- create — create<Model>
+
+- update — update<Model> · save()
+
+- remove — remove<Model>
+
+- query-level — update<Filter>
+
+- `schema.pre("…", fn)` · `schema.post("…", fn)`
+
 runs
 
 does not run
+
+**Hooks may be `async` and need no `next()`.** `this` is the document, and the third parameter, `previous`, is the row before this write (absent on create).
+
+**Read `this.isModified("field")` inside a save hook.** On a document fresh from a read, such as `get<Model>` or `list<Filter>`, it throws.
+
+**On a create, `isModified()` is always `false`.** A create has no `previous`, so check `!previous` first, as the example does.
+
+**`post` hooks run after the write commits.** `pre` hooks run before it, and can still change the document.
+
+**`updatedAt` is stamped for you** on every write, query-level ones included. Do not set it in a hook.
 
 Practical Rules
 
@@ -309,13 +381,47 @@ Where each kind of code goes, across the three classes and the service:
 
 What you are writing
 
+- Filter — from()
+
+- Document — by()
+
+- Model — into()
+
+- Service — serve()
+
+- Reading
+
+- Writing
+
+- Orchestrating
+
 goes here
 
 not here
 
 Common mistakes
 
+**Class names that drift from the constant.** `TicketFilter`, `Ticket` and `TicketModel` match `cnst.Ticket`.
+
+**The same condition copied into several services.** Move it into the filter and call `listInProject` everywhere.
+
+**A filter named after its own model.** A `ticket` query on `Ticket` would produce `removeTicket` and `updateTicket`, which the CRUD methods already own.
+
+**`!!result` instead of `!!modifiedCount`.** `updateOne` resolves to an object, so `!!` on it is always `true`. Destructure `{ modifiedCount }` first.
+
+**A heavy workflow in a schema hook.** Hooks are for indexes and small derived fields; workflows go in the service.
+
+**A large scalar document.** A scalar's document file is usually just `by(cnst.X)` with a small helper or two.
+
 Related pages
+
+- model.constant.ts — Field types, and the text roles that search reads.
+
+- model.service.ts — Who calls these methods, and the service hooks around them.
+
+- scalar.document.ts — The document file of an embedded value object.
+
+- Text Search — Search from marking the fields to publishing a slice.
 
 ## Code Examples
 

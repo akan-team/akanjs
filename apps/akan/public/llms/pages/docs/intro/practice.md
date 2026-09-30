@@ -210,22 +210,22 @@ akan create-module icecreamOrder
 ### Code
 
 ```bash
-└── apps/          # ${l.trans({ en: "Application code", ko: "애플리케이션 코드" })}
-    └── koyo/      # ${l.trans({ en: "Individual application", ko: "개별 애플리케이션" })}
-        └── lib/          # ${l.trans({ en: "Domain modules", ko: "도메인 모듈" })}
-            └── icecreamOrder/  # ${l.trans({ en: "Icecream order domain module", ko: "아이스크림 주문 도메인 모듈" })}
-                ├── icecreamOrder.abstract.md   # ${l.trans({ en: "Business intent", ko: "비즈니스 의도" })}
-                ├── icecreamOrder.constant.ts   # ${l.trans({ en: "Types and schemas", ko: "타입과 스키마" })}
-                ├── icecreamOrder.dictionary.ts # ${l.trans({ en: "Translations", ko: "번역" })}
-                ├── icecreamOrder.document.ts   # ${l.trans({ en: "Document", ko: "문서" })}
-                ├── icecreamOrder.service.ts    # ${l.trans({ en: "Business logic", ko: "비즈니스 로직" })}
-                ├── icecreamOrder.signal.ts     # ${l.trans({ en: "API endpoints", ko: "API 엔드포인트" })}
-                ├── icecreamOrder.store.ts      # ${l.trans({ en: "State management", ko: "상태 관리" })}
-                ├── icecreamOrder.Template.tsx  # ${l.trans({ en: "Form UI", ko: "수정/생성 UI" })}
-                ├── icecreamOrder.Unit.tsx      # ${l.trans({ en: "Overview UI", ko: "개요 UI" })}
-                ├── icecreamOrder.Util.tsx      # ${l.trans({ en: "Utility UI", ko: "유틸리티 UI" })}
-                ├── icecreamOrder.View.tsx      # ${l.trans({ en: "Detail view UI", ko: "상세 뷰 UI" })}
-                └── icecreamOrder.Zone.tsx      # ${l.trans({ en: "Integration UI", ko: "통합 UI" })}
+└── apps/          # <l.trans({ en: "Application code", ko: "애플리케이션 코드" })>
+    └── koyo/      # <l.trans({ en: "Individual application", ko: "개별 애플리케이션" })>
+        └── lib/          # <l.trans({ en: "Domain modules", ko: "도메인 모듈" })>
+            └── icecreamOrder/  # <l.trans({ en: "Icecream order domain module", ko: "아이스크림 주문 도메인 모듈" })>
+                ├── icecreamOrder.abstract.md   # <l.trans({ en: "Business intent", ko: "비즈니스 의도" })>
+                ├── icecreamOrder.constant.ts   # <l.trans({ en: "Types and schemas", ko: "타입과 스키마" })>
+                ├── icecreamOrder.dictionary.ts # <l.trans({ en: "Translations", ko: "번역" })>
+                ├── icecreamOrder.document.ts   # <l.trans({ en: "Document", ko: "문서" })>
+                ├── icecreamOrder.service.ts    # <l.trans({ en: "Business logic", ko: "비즈니스 로직" })>
+                ├── icecreamOrder.signal.ts     # <l.trans({ en: "API endpoints", ko: "API 엔드포인트" })>
+                ├── icecreamOrder.store.ts      # <l.trans({ en: "State management", ko: "상태 관리" })>
+                ├── icecreamOrder.Template.tsx  # <l.trans({ en: "Form UI", ko: "수정/생성 UI" })>
+                ├── icecreamOrder.Unit.tsx      # <l.trans({ en: "Overview UI", ko: "개요 UI" })>
+                ├── icecreamOrder.Util.tsx      # <l.trans({ en: "Utility UI", ko: "유틸리티 UI" })>
+                ├── icecreamOrder.View.tsx      # <l.trans({ en: "Detail view UI", ko: "상세 뷰 UI" })>
+                └── icecreamOrder.Zone.tsx      # <l.trans({ en: "Integration UI", ko: "통합 UI" })>
 ```
 
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts

@@ -21,64 +21,6 @@
 
 Business Service
 
-The phone operator
-
-May this caller ask at all?
-
-Takes the call, refuses the ones that should never reach the floor, and hands valid work to the right service.
-
-The business owner
-
-What should happen?
-
-Stock rules, payment status, reservation conflicts and external APIs are combined here into one meaningful action.
-
-The archive and its rulebook
-
-How is the record stored, and which changes will it accept?
-
-The stored form, the query filters, and the state changes a record will accept. A chain method mutates and returns this; the caller saves.
-
-A class that decides who may make a call. Every endpoint names its own in the signal file.
-
-The create, read, update and remove endpoints every model already has. You never write them.
-
-A state change on the document: it checks, mutates and returns this. The caller saves.
-
-A singleton that wraps an outside system, such as a POS terminal, and is plugged into a service.
-
-A pubsub channel. Every screen subscribed to it receives what the server publishes there.
-
-The screen asks once and expects one result: load a list, save a form, approve a request, add stock.
-
-An open screen keeps a websocket conversation going: device control, a live operation panel, a guided workflow.
-
-One business change is pushed into a room that many screens, dashboards, devices or users subscribe to.
-
-The work is queued, scheduled, repeated, or tied to the server lifecycle rather than to a caller.
-
-Decided by the guards
-
-An endpoint that declares a real guard is published to agents.
-
-no guards
-
-Refused. A missing guards array now costs visibility as well as authorization.
-
-A mutation whose only guard is Public is refused too.
-
-Decided by the shape
-
-Refused.
-
-A file upload is refused.
-
-An endpoint returning Any or Binary is refused.
-
-Your own choice
-
-Takes the endpoint off the shelf without touching its guards. Right for a step of a UI-driven state machine: perfectly guarded, still no business of a model.
-
 Business Service Architecture
 
 A customer taps Order on the kiosk, and that one button has to do four things: refuse the order when the mango has run out, write the order down, hand back a receipt now, and put the ticket on the kitchen screen before the customer turns away.
@@ -105,9 +47,27 @@ Stored data
 
 Each file answers one question, and only that one:
 
+- signal.ts — The phone operator — May this caller ask at all? — Takes the call, refuses the ones that should never reach the floor, and hands valid work to the right service.
+
+- service.ts — The business owner — What should happen? — Stock rules, payment status, reservation conflicts and external APIs are combined here into one meaningful action.
+
+- document.ts — The archive and its rulebook — How is the record stored, and which changes will it accept? — The stored form, the query filters, and the state changes a record will accept. A chain method mutates and returns this; the caller saves.
+
 Words used on this page
 
 Term
+
+- guard: A class that decides who may make a call. Every endpoint names its own in the signal file.
+
+- generated CRUD: The create, read, update and remove endpoints every model already has. You never write them.
+
+- chain method: A state change on the document: it checks, mutates and returns this. The caller saves.
+
+- adaptor: A singleton that wraps an outside system, such as a POS terminal, and is plugged into a service.
+
+- room: A pubsub channel. Every screen subscribed to it receives what the server publishes there.
+
+**The layers are not a formality.** A rule written into the kiosk screen ships once per client and drifts. The same rule on the service is one answer for the kiosk, the admin console, the mobile app and an AI agent, because all four arrive through the same endpoint.
 
 Two Actions, End To End
 
@@ -121,9 +81,19 @@ Staff move it to the next status
 
 This one is not generated. It is a mutation you declare, and only an admin may call it.
 
+`IcecreamOrderSlice.byStatuses` is the order list a screen loads, filtered by status.
+
+`processIcecreamOrder` is one line of delegation, because the decision is not the endpoint's to make.
+
 The decision lives in the service. This is where the order meets a second module, inventory, and where both documents are loaded before either is saved:
 
+`_preCreate` runs before the generated create saves the order. It hands the stock deduction to `inventoryService`.
+
+`processIcecreamOrder` loads the order, calls the chain method `process()`, then saves.
+
 The manager's half is the mirror image: the same three files, a different guard, and no state machine, because refilling today's inventory is allowed whenever an admin asks. Its signal appears in Bounding A Call below.
+
+**The rule of thumb is short.** If the code answers a business question, it belongs in service logic. If it only draws a screen or holds temporary UI state, it stays on the UI side.
 
 Endpoint, Slice, Internal
 
@@ -135,9 +105,17 @@ Who calls it
 
 What goes in it
 
+A user, through `fetch.*`
+
+`query` / `mutation`, or `message` / `pubsub` on an open connection
+
 A screen
 
+`fetch.initXInY(...)` in the route seeds the store; `st.do.initXInY()` reloads it
+
 The server itself
+
+Schedules such as `cron`, lifecycle hooks, and queued `process` jobs
 
 Choosing by what the screen needs
 
@@ -163,17 +141,45 @@ Use pubsub
 
 Use process or schedule
 
+- query / mutation: The screen asks once and expects one result: load a list, save a form, approve a request, add stock.
+
+- message: An open screen keeps a websocket conversation going: device control, a live operation panel, a guided workflow.
+
+- pubsub: One business change is pushed into a room that many screens, dashboards, devices or users subscribe to.
+
+- process / cron / interval: The work is queued, scheduled, repeated, or tied to the server lifecycle rather than to a caller.
+
 Bounding A Call
 
 Every endpoint takes an option object, and guards is only its first field. The rest say how the call behaves: how long it may take, whether its answer may be reused, whether agents see it.
 
 Here is the manager's half of the shift:
 
+`getTodaysInventory` is a read the whole shop shares: `Public`, and its answer is reused for a second (`cache: 1000`).
+
+`refillTodaysInventory` is a write only an admin may make, and a stock provider can make it slow, so it gets a minute (`timeout: 60_000`).
+
 Who may call this. An endpoint that names none runs no check; there is no default policy.
+
+Milliseconds this call may take; the `Timeout` middleware and the client both enforce it.
+
+Milliseconds the answer may be reused. **Only a query taking no internal argument** may carry one.
+
+`false` takes the endpoint out of the MCP catalogue without touching its guards.
+
+The HTTP verb a `mutation` answers on, for when a foreign wire protocol forces one.
+
+**Every call has a deadline, even without a timeout.** An endpoint that declares none still dies at 30 seconds, the client's own default, and the transport error it raises does not say whether the server ever received the call. Provisioning, a firmware flow, an external orchestration: declare one.
+
+**Losing the race does not cancel the work.** The handler runs to completion with nobody holding its result, so a deadline is an answer to the caller, not an undo.
 
 Work That Outlives The Request
 
 Some work has no caller waiting for it. Nobody presses a button to make ice cream melt, and nobody asks for last night's orders to be closed. That work goes in the Internal class, and the server starts it itself:
+
+`interval(10000)`: served ice cream melts on its own schedule, so every ten seconds the server warns about it.
+
+`cron("0 4 * * *", …)`: orders nobody collected are closed out overnight, at 4 a.m.
 
 Both are internal signals, and the batch replica, the server process that runs background jobs, is what runs them.
 
@@ -207,15 +213,25 @@ Handed in, never built
 
 Another module's service, an adaptor, an environment value and shared memory are each handed into the service from outside; the service builds none of them.
 
+Another module's service. The field must end in `Service`: `inventoryService` resolves `inventory`.
+
+An adaptor singleton: an `adapt()` class, or a role that `option.applyAdaptor` binds.
+
+The module's own signal, to publish a `pubsub` room or enqueue a `process`. Ends in `Signal`.
+
 A value read out of the backend environment at wiring time.
 
 Runtime state held in the cache adaptor, so every replica sees it. Takes a scalar or model class.
+
+Legacy: a constructor-style singleton from `lib/option.ts`. Write new adapters with `adapt()`.
 
 Writing an adaptor
 
 An adaptor is the unit you plug. It is a class built on adapt(), and it registers itself under the name it is given.
 
 It takes the same injectors as a service minus service and signal. So an adaptor can hold config, another adaptor and shared state, but not business logic:
+
+A database-backed service also receives its own model as `this.<refName>Model` without declaring anything — `serve(db.inventory, …)` is what adds it. The worked walk through each injector, including how a role is bound, is on Dependency Injection.
 
 Where An Error Belongs
 
@@ -249,6 +265,8 @@ yes
 
 A chain method is the smallest version of this. It validates, mutates, and returns this. It never saves, so chains compose and the caller decides when the write happens:
 
+**Never `throw new Error`.** A raw error is generalized to `Internal Server Error` on the way out, so the customer is told nothing and the log is told no key. Throw `new Err("<module>.error.<key>")` instead, and register the key as an `[en, ko]` pair in that module's dictionary `.error(&#123;&#125;)` stage. That is what makes the refusal readable in the caller's own language.
+
 When failing is not an error
 
 Best-effort code does not throw at all. It returns a plain value, and the caller decides whether that is an error:
@@ -271,9 +289,17 @@ Published
 
 Left out
 
+- Decided by the guards
+
+- Decided by the shape
+
+- Your own choice
+
 What agents get
 
 Not this
+
+The business service you already wrote is therefore the agent surface too: the same guards, the same `Err`, the same service method. What changes is the cost of the catalogue and who may be on the other end. The wire, the OAuth metadata, the rate limits and the `Person` guard are on MCP Server.
 
 ## Code Examples
 

@@ -20,26 +20,6 @@
 
 Model.View.tsx
 
-The complete model class, such as `cnst.Ticket`, with every field the constant declares.
-
-A slimmer class, such as `cnst.LightTicket`, holding only the fields a list needs.
-
-What `fetch.viewTicket(id)` returns as `ticketView`: one record as plain data.
-
-Filling the client store with data the server already fetched, so no second request is sent.
-
-Takes the full model
-
-Every field is there, including long text and nested data that a list leaves out.
-
-Only draws
-
-It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
-
-Exports General
-
-Drawn through a Zone
-
 Model
 
 Export
@@ -48,65 +28,51 @@ Props
 
 Drawn by
 
-one record in full
-
-For one detail page or detail section.
-
-one item of many
-
-For list rows, cards and compact summaries.
-
-The full model instance, built from the payload's `<model>Obj`.
-
-Set to `false`, so the View draws right away with no loading state.
-
-Set to `"view"`, so a modal wrapper opens the record to read, not its edit form.
-
-The `Date` the server stamped on the payload, used to compare it with the store.
-
-Drawing — the View's job
-
-fields and markup
-
-Titles, body text, nested data and formatted numbers from the full model.
-
-Field names, enum values and headings come from the dictionary.
-
-A View may render Units, Utils and Zones; each keeps its own job.
-
-Behaviour — another file
-
-Hooks need the browser, so they live in a Util or a Zone.
-
-Store reads and writes. The store, signal and service do the actual mutation.
-
-Hydrates the store from the view payload and hands the model to the View.
-
-Called in the route, so the query starts before the first byte is sent.
-
-The light-model counterpart, for list rows and cards.
-
-Where the buttons and actions inside a View live.
-
-The detail Zone, with every prop of Load.View.
-
-UI Architecture
-
-Why each UI file role runs on the server or the client.
-
 A View file draws one record in full: the body of a detail page or a detail section. It takes the full model as a prop and only draws it.
+
+- Takes the full model — Every field is there, including long text and nested data that a list leaves out.
+
+- Only draws — It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
+
+- Exports General — `General` is the main export. A long screen adds named sections beside it.
+
+- Drawn through a Zone — A detail Zone hands the model from the server to it through `Load.View`.
 
 Words used on this page
 
 Term
 
+- full model: The complete model class, such as `cnst.Ticket`, with every field the constant declares.
+
+- light model: A slimmer class, such as `cnst.LightTicket`, holding only the fields a list needs.
+
+- view payload: What `fetch.viewTicket(id)` returns as `ticketView`: one record as plain data.
+
+- hydrate: Filling the client store with data the server already fetched, so no second request is sent.
+
 View vs Unit
 
 Both files only draw a model. They differ in how much of the model they get and in the role they play on the page.
 
+- View: For one detail page or detail section.
+
+- Unit: For list rows, cards and compact summaries.
+
+**One record in detail is a View.** It needs fields such as a long body, so it takes the full model.
+
+**The same shape repeated is a Unit.** A list sends many records at once, so each row gets the light model.
+
 Standard View Shape
 
 Every View file starts from the same skeleton. Here is the whole file for a ticket:
+
+**The main export is `General`.** Pages and Zones reach it as `Ticket.View.General`.
+
+**Props are the full model plus a class name.** `GeneralProps` sits right above the component, `className` first, then `ticket: cnst.Ticket`.
+
+**The caller's class goes last.** `cn("…", className)` lets the page or Zone adjust width and spacing.
+
+**Every label goes through the dictionary.** A field name is `l("ticket.status")`. An enum value is keyed by the enum's name, so `"active"` reads `l("ticketStatus.active")`.
 
 Full Model Detail Patterns
 
@@ -114,7 +80,15 @@ A View receives the full model, not the light summary, so it can draw any field 
 
 An enum goes through its dictionary label, and a number is formatted where it is drawn:
 
+**Shared display logic goes on the Light model.** A one-off `toLocaleString()` stays in the View. A format a Unit needs too becomes a method on `LightOrder`, which the full model inherits.
+
+**A long screen gets named sections.** `User.View` in `libs/shared` exports `General` and `Discord` instead of one giant component.
+
+**A button inside is a Util.** `User.View.General` renders `User.Util.ChangePassword`; the View places it, the Util owns the click.
+
 Using View In Pages
+
+A detail page starts the request with `fetch.view<Model>(id)` and gives the view payload to a Zone. Whether you await the call decides when the section arrives:
 
 Destructure — streamed
 
@@ -128,13 +102,47 @@ Streamed
 
 The usual detail page does not await, and hands the promise across as it is:
 
+**No `async`, no `await`.** The render callback is `async` only when its body awaits.
+
+**The Zone takes the promise.** `ClientView` accepts a payload or its promise, and `Load.View` shows a skeleton until it lands.
+
 Awaited
+
+When the page needs the record itself, await the call. It resolves to an object holding `ticket` and `ticketView`:
+
+**`ticketView` still goes to the Zone.** Already resolved, it renders in the first HTML with no loading state.
+
+**`ticket` stays in the page.** It is the hydrated model, for the link, a title or a redirect.
+
+**The page does not call `Load.View` itself.** `renderView` is a function, and a server page cannot pass a function to a client component. The Zone sits between them for that reason.
+
+**Pass `ticketView` to a Zone, never `ticket`.** `ticket` is a class instance, and React Flight refuses a class instance as a client prop.
 
 Load.View And Store Hydration
 
+`Load.View` puts the record from the view payload into the client store, then calls your `renderView` with the full model. A detail Zone is little more than this one call:
+
+**Use it wherever server-fetched view data meets the store.** A detail Zone, a tab layout or a reusable section all wrap the View this way.
+
+**Waiting and empty states are built in.** A pending promise shows `loading`, a skeleton by default; an empty payload shows `empty`, an `<Empty />` by default.
+
 What it writes to the store
 
+Before the View renders, `Load.View` sets four keys for the model:
+
 Store key
+
+- <model>: The full model instance, built from the payload's `<model>Obj`.
+
+- <model>Loading: Set to `false`, so the View draws right away with no loading state.
+
+- <model>Modal: Set to `"view"`, so a modal wrapper opens the record to read, not its edit form.
+
+- <model>ViewAt: The `Date` the server stamped on the payload, used to compare it with the store.
+
+**Newer store data wins.** If the store already holds this record with a later `<model>ViewAt`, `Load.View` keeps the store's copy instead of the older payload.
+
+**Going back after a save loads the record again.** If the navigation cache replays a payload from before the save, `Load.View` fetches the record again with `st.do.view<Model>(id)`.
 
 Practical Rules
 
@@ -142,11 +150,33 @@ What belongs in a View, and which file takes everything else:
 
 The work
 
+- View — *.View.tsx
+
+- Util — *.Util.tsx
+
+- Zone — *.Zone.tsx
+
+- page — page/**
+
+- Drawing — the View's job
+
+- Behaviour — another file
+
 Belongs here
 
 Not here
 
+**A View is a server file, and lint checks it.** In a `*.View.tsx`, a `"use client"` line, a React hook import such as `useState`, or an `st` import each fail `akan lint`.
+
 Related pages
+
+- Model.Unit.tsx — The light-model counterpart, for list rows and cards.
+
+- Model.Util.tsx — Where the buttons and actions inside a View live.
+
+- Model.Zone.tsx — The detail Zone, with every prop of Load.View.
+
+- UI Architecture — Why each UI file role runs on the server or the client.
 
 ## Code Examples
 

@@ -32,6 +32,7 @@ interface LlmsPage {
   headings: Heading[];
   body: string[];
   codeBlocks: CodeBlock[];
+  emptySections: Heading[];
 }
 
 const appRoot = path.resolve(import.meta.dir, "..");
@@ -119,16 +120,91 @@ const unique = (values: string[]) => {
 const getProp = (object: ts.ObjectLiteralExpression, name: string) => {
   return object.properties.find((prop): prop is ts.PropertyAssignment => {
     if (!ts.isPropertyAssignment(prop)) return false;
-    const propName = prop.name;
-    return ts.isIdentifier(propName) ? propName.text === name : ts.isStringLiteral(propName) && propName.text === name;
+    return propName(prop) === name;
   });
 };
 
-const getStringValue = (node: ts.Node, sourceFile?: ts.SourceFile): string | null => {
+const propName = (prop: ts.PropertyAssignment) => {
+  const name = prop.name;
+  return ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : null;
+};
+
+const unwrap = (node: ts.Node): ts.Node => {
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+    return unwrap(node.expression);
+  return node;
+};
+
+const constCache = new WeakMap<ts.SourceFile, Map<string, ts.Expression>>();
+
+const localConst = (name: string, sourceFile?: ts.SourceFile) => {
+  if (!sourceFile) return undefined;
+  let consts = constCache.get(sourceFile);
+  if (!consts) {
+    const found = new Map<string, ts.Expression>();
+    walk(sourceFile, (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (!found.has(node.name.text)) found.set(node.name.text, node.initializer);
+      }
+    });
+    consts = found;
+    constCache.set(sourceFile, consts);
+  }
+  return consts.get(name);
+};
+
+const htmlEntities: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: " " };
+
+//? JSX text rules: each line is trimmed, blank lines drop, and the rest join with one space.
+const jsxTextOf = (node: ts.JsxText) => {
+  const lines = node.text.split(/\r\n|\n|\r/);
+  const text =
+    lines.length === 1
+      ? node.text
+      : lines
+          .map((line, idx) => {
+            const start = idx > 0 ? line.trimStart() : line;
+            return idx < lines.length - 1 ? start.trimEnd() : start;
+          })
+          .filter((line) => line.length > 0)
+          .join(" ");
+  return text.replace(/&(lt|gt|amp|quot|apos|nbsp);/g, (_, name: string) => htmlEntities[name] ?? "");
+};
+
+const jsxToText = (node: ts.Node, sourceFile?: ts.SourceFile): string => {
+  if (ts.isJsxText(node)) return jsxTextOf(node);
+  if (ts.isJsxExpression(node)) return node.expression ? (getStringValue(node.expression, sourceFile) ?? "") : "";
+  if (ts.isJsxFragment(node)) return node.children.map((child) => jsxToText(child, sourceFile)).join("");
+  if (ts.isJsxSelfClosingElement(node)) return node.tagName.getText(sourceFile) === "br" ? " " : "";
+  if (ts.isJsxElement(node)) {
+    const tag = node.openingElement.tagName.getText(sourceFile);
+    const inner = node.children.map((child) => jsxToText(child, sourceFile)).join("");
+    if (tag === "code") return `\`${inner}\``;
+    if (tag === "strong" || tag === "b") return `**${inner.trim()}**`;
+    return inner;
+  }
+  return "";
+};
+
+const isJsxNode = (node: ts.Node) =>
+  ts.isJsxElement(node) || ts.isJsxFragment(node) || ts.isJsxSelfClosingElement(node);
+
+const getStringValue = (input: ts.Node, sourceFile?: ts.SourceFile): string | null => {
+  const node = unwrap(input);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
   if (ts.isTemplateExpression(node)) {
-    const raw = node.getText(sourceFile);
-    return raw.startsWith("`") && raw.endsWith("`") ? raw.slice(1, -1) : raw;
+    //? A placeholder no local constant resolves (a function parameter such as `alias`) reads as `<alias>`.
+    return node.templateSpans.reduce((text, span) => {
+      const value = getStringValue(span.expression, sourceFile) ?? `<${span.expression.getText(sourceFile)}>`;
+      return `${text}${value}${span.literal.text}`;
+    }, node.head.text);
+  }
+  if (isJsxNode(node)) return jsxToText(node, sourceFile).replace(/\s+/g, " ").trim() || null;
+  if (ts.isIdentifier(node)) {
+    const value = localConst(node.text, sourceFile);
+    if (!value) return null;
+    const target = unwrap(value);
+    return ts.isStringLiteral(target) || ts.isNoSubstitutionTemplateLiteral(target) ? target.text : null;
   }
   return null;
 };
@@ -146,15 +222,14 @@ const getLocalizedObject = (node: ts.Node, sourceFile?: ts.SourceFile): Localize
   };
 };
 
-const getLocalizedText = (node: ts.Node, sourceFile?: ts.SourceFile): LocalizedText | null => {
+const isTransCall = (node: ts.Node, sourceFile?: ts.SourceFile): node is ts.CallExpression =>
+  ts.isCallExpression(node) && node.expression.getText(sourceFile).endsWith(".trans") && !!node.arguments[0];
+
+const getLocalizedText = (input: ts.Node, sourceFile?: ts.SourceFile): LocalizedText | null => {
+  const node = unwrap(input);
   const literalText = getStringValue(node, sourceFile);
   if (literalText) return { en: literalText, ko: literalText };
-
-  if (ts.isCallExpression(node)) {
-    const expression = node.expression.getText(sourceFile);
-    if (expression.endsWith(".trans") && node.arguments[0]) return getLocalizedObject(node.arguments[0], sourceFile);
-  }
-
+  if (isTransCall(node, sourceFile)) return getLocalizedObject(unwrap(node.arguments[0] as ts.Node), sourceFile);
   if (ts.isObjectLiteralExpression(node)) return getLocalizedObject(node, sourceFile);
   if (ts.isJsxExpression(node) && node.expression) return getLocalizedText(node.expression, sourceFile);
   return null;
@@ -182,9 +257,57 @@ const getJsxAttributeString = (node: ts.JsxOpeningLikeElement, name: string, sou
   return null;
 };
 
-const walk = (node: ts.Node, visitor: (node: ts.Node) => void) => {
-  visitor(node);
+const walk = (node: ts.Node, visitor: (node: ts.Node) => boolean | undefined) => {
+  if (visitor(node) === false) return;
   node.forEachChild((child) => walk(child, visitor));
+};
+
+//? The rows a table or a list renders: `rows={x}`, `items={x.map(…)}` or `{x.map(…)}` over a local array of objects.
+const renderedArrayOf = (expression: ts.Expression, sourceFile: ts.SourceFile) => {
+  let target = unwrap(expression);
+  if (ts.isCallExpression(target) && ts.isPropertyAccessExpression(target.expression)) {
+    const method = target.expression.name.text;
+    if (method !== "map" && method !== "flatMap") return null;
+    target = unwrap(target.expression.expression);
+  }
+  if (!ts.isIdentifier(target)) return null;
+  const value = localConst(target.text, sourceFile);
+  const array = value ? unwrap(value) : null;
+  if (!array || !ts.isArrayLiteralExpression(array)) return null;
+  return array.elements.some(
+    (element) => ts.isObjectLiteralExpression(unwrap(element)) || isTransCall(unwrap(element), sourceFile),
+  )
+    ? array
+    : null;
+};
+
+const skippedRowKeys = new Set(["key", "ko", "code", "icon", "image", "href", "className"]);
+
+const rowLine = (row: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile) => {
+  const parts = row.properties.flatMap((prop) => {
+    if (!ts.isPropertyAssignment(prop)) return [];
+    const name = propName(prop);
+    if (!name || skippedRowKeys.has(name)) return [];
+    const text = getLocalizedText(prop.initializer, sourceFile)?.en;
+    return text ? [text] : [];
+  });
+  return parts.length ? `- ${parts.join(" — ")}` : null;
+};
+
+const referenceRowLine = (row: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile) => {
+  const nameProp = getProp(row, "name");
+  const descProp = getProp(row, "desc");
+  if (!nameProp || !descProp) return null;
+  const name = getLocalizedText(nameProp.initializer, sourceFile)?.en;
+  const desc = getLocalizedText(descProp.initializer, sourceFile)?.en;
+  if (!name || !desc) return null;
+  const meta = ["type", "defaultValue", "enumOrFlag"].flatMap((key) => {
+    const value = getProp(row, key);
+    const text = value ? getStringValue(value.initializer, sourceFile) : null;
+    if (!text || text === "-") return [];
+    return [key === "defaultValue" ? `default ${text}` : text];
+  });
+  return `- ${name}${meta.length ? ` (${meta.join(", ")})` : ""}: ${desc}`;
 };
 
 const collectFiles = async (dir: string): Promise<string[]> => {
@@ -299,41 +422,113 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
   const texts: string[] = [];
   const headings: Heading[] = [];
   const codeBlocks: CodeBlock[] = [];
+  const emptySections: Heading[] = [];
+  let section: (Heading & { textNum: number }) | null = null;
 
+  const closeSection = () => {
+    if (section && section.textNum === 0) emptySections.push({ id: section.id, title: section.title });
+  };
+  const pushText = (text: string) => {
+    texts.push(text);
+    if (section && text.trim() !== section.title) section.textNum += 1;
+  };
+
+  const renderedArrays = new Set<ts.ArrayLiteralExpression>();
   walk(sourceFile, (node) => {
-    if (ts.isCallExpression(node)) {
+    const expression =
+      ts.isJsxAttribute(node) && node.initializer && ts.isJsxExpression(node.initializer)
+        ? node.initializer.expression
+        : ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
+          ? node.expression
+          : undefined;
+    const array = expression ? renderedArrayOf(expression, sourceFile) : null;
+    if (array) renderedArrays.add(array);
+  });
+
+  const visit = (node: ts.Node): boolean => {
+    if (ts.isArrayLiteralExpression(node) && renderedArrays.has(node)) return false;
+
+    const rendered =
+      ts.isJsxAttribute(node) && node.initializer && ts.isJsxExpression(node.initializer)
+        ? node.initializer.expression
+        : ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
+          ? node.expression
+          : undefined;
+    const array = rendered ? renderedArrayOf(rendered, sourceFile) : null;
+    if (array) {
+      for (const element of array.elements) {
+        const row = unwrap(element);
+        if (!ts.isObjectLiteralExpression(row)) {
+          const text = getLocalizedText(row, sourceFile)?.en;
+          if (text) pushText(text);
+          continue;
+        }
+        if (getProp(row, "signature")) {
+          walk(row, visit);
+          continue;
+        }
+        const line = referenceRowLine(row, sourceFile) ?? rowLine(row, sourceFile);
+        if (line) pushText(line);
+      }
+      return true;
+    }
+
+    if (ts.isObjectLiteralExpression(node) && !getProp(node, "signature")) {
+      const line = referenceRowLine(node, sourceFile);
+      if (line) {
+        pushText(line);
+        return false;
+      }
+    }
+
+    if (isTransCall(node, sourceFile)) {
       const text = getLocalizedText(node, sourceFile);
-      if (text?.en) texts.push(text.en);
+      if (text?.en) pushText(text.en);
+      return false;
     }
 
-    if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === "signature") {
+    if (ts.isPropertyAssignment(node) && propName(node) === "signature") {
       const signature = getStringValue(node.initializer, sourceFile);
-      if (signature) texts.push(`\`${signature}\``);
+      if (signature) pushText(`\`${signature}\``);
     }
 
-    if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) return;
+    if (ts.isPropertyAssignment(node) && propName(node) === "examples" && ts.isObjectLiteralExpression(node.parent)) {
+      const code = getStringValue(node.initializer, sourceFile);
+      const nameProp = getProp(node.parent, "name");
+      const name = nameProp ? getStringValue(nameProp.initializer, sourceFile) : null;
+      if (code) codeBlocks.push({ title: name ?? "Examples", language: "bash", code: code.trim() });
+    }
+
+    if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) return true;
 
     const tagName = node.tagName.getText(sourceFile);
     if (tagName === "Scroll.Slide") {
       const id = getJsxAttributeString(node, "id", sourceFile);
       const title = getJsxAttributeText(node, "title", sourceFile)?.en;
       if (id && title) {
+        closeSection();
         headings.push({ id, title });
+        section = { id, title, textNum: 0 };
         texts.push(title);
       }
-      return;
+      return true;
     }
 
     if (tagName === "Code.Snippet") {
       const code = getJsxAttributeString(node, "code", sourceFile);
-      if (!code) return;
+      if (!code) return true;
       codeBlocks.push({
         title: getJsxAttributeString(node, "title", sourceFile) ?? "Code",
         language: getJsxAttributeString(node, "language", sourceFile) ?? "ts",
         code: code.trim(),
       });
+      if (section) section.textNum += 1;
     }
-  });
+    return true;
+  };
+
+  walk(sourceFile, visit);
+  closeSection();
 
   const meta = menuMeta.get(href);
   const title = meta?.title.en ?? headings[0]?.title ?? titleFromHref(href);
@@ -348,6 +543,7 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
     headings,
     body: unique([title, ...texts]),
     codeBlocks,
+    emptySections,
   };
 };
 
@@ -485,6 +681,16 @@ const run = async () => {
       await writeFile(outputPath, renderPageMarkdown(page));
     }),
   );
+
+  //? The generator reads string literals, `l.trans` values (JSX included) and local row arrays; a section that
+  //? renders its text any other way (a shared component, a computed value) reaches the mirror as its heading only.
+  const empty = pages.flatMap((page) =>
+    page.emptySections.map((heading) => `${page.href}#${heading.id} (${heading.title})`),
+  );
+  if (empty.length)
+    console.warn(
+      `${empty.length} sections yield no text beyond their heading:\n${empty.map((line) => `  ${line}`).join("\n")}`,
+    );
 
   await writeFile(llmsTxtPath, renderLlmsTxt(pages));
   await writeFile(llmsFullPath, renderLlmsFull(pages));

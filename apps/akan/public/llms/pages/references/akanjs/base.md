@@ -25,141 +25,73 @@
 
 akanjs/base
 
-A document id: a 24-character hex string.
-
-Whole numbers and decimals. JavaScript `Number` is not a field type.
-
-An open value Akan does not check. You name its shape with a type argument.
-
-Raw bytes in a signal argument or return.
-
-A file in the body of the upload mutation.
-
-The date library and its type. Every `Date` field holds a `Dayjs`.
-
-Turns a fixed list of values into an enum class.
-
-The running app's name, environment and server addresses.
-
-The paths that signals and the websocket are served under.
-
-A list keyed by id. Every model list in a store is one.
-
-Model field
-
-Signal argument
-
-Signal return
-
-Import from `akanjs/base`
-
-Document ids.
-
-Counts and decimals.
-
-Payloads whose shape stays open.
-
-Keep stored bytes in a `File` model.
-
-Only in the body of a `fileUpload: true` mutation.
-
-JavaScript globals, no import
-
-Plain text.
-
-Text such as "true", "false", "1" and "0" is read as a boolean.
-
-The value is a `Dayjs`, not a JavaScript `Date`.
-
-Type
-
-TypeScript value
-
-Without a default
-
-The list exactly as declared.
-
-Whether the value is in the list.
-
-The value's position. Throws when the value is not in the list.
-
-Like the Array methods, but throw when nothing matches.
-
-Same as the Array methods.
-
-The type of one value: the union of the list.
-
-From `AKAN_PUBLIC_APP_NAME`. Required.
-
-From `AKAN_PUBLIC_REPO_NAME`. Required.
-
-From `AKAN_PUBLIC_SERVE_DOMAIN`. Required.
-
-From `AKAN_PUBLIC_ENV`.
-
-From `AKAN_PUBLIC_OPERATION_MODE`. It is `"local"` when `environment` is `"local"`.
-
-From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.
-
-Whether this code is running on the server or in the browser.
-
-From `AKAN_PUBLIC_RENDER_ENV`.
-
-The value `getApiPrefix()` returns.
-
-The value `getWsPrefix()` returns.
-
-The web origin, such as `http://localhost:8282`. Also split into `clientHost` and `clientPort`.
-
-The API base with the prefix, such as `http://localhost:8282/api`.
-
-The websocket origin without a path, such as `ws://localhost:8282`.
-
-Where
-
-Setting
-
-Who follows it
-
-The server's routes, and every page the server renders.
-
-A prebuilt CSR shell and a native app bundle, which no server renders.
-
-(nothing set)
-
-The defaults.
-
-Builds a list from an array. A repeated id keeps the last row.
-
-Replaces the row with the same id, or appends it. Changes this list and returns it.
-
-Removes the row with that id. Changes this list and returns it.
-
-A new DataList with the same rows. Hand this to `this.set()`.
-
-The row with that id. `get` returns `undefined` when it is missing; `pick` throws.
-
-Look up by id or position. `indexOf` and `pickAt` throw when nothing is there.
-
-Return a new DataList.
-
-Same as the Array methods. `for...of` works too.
-
-The rows as a plain array, and how many there are.
-
 `akanjs/base` holds the value types models and signals are built from, plus a few runtime helpers. It imports nothing else from Akan, so server files, client files and `common/` can all use it.
 
 Export
 
+- ID: A document id: a 24-character hex string.
+
+- Whole numbers and decimals. JavaScript `Number` is not a field type.
+
+- Any: An open value Akan does not check. You name its shape with a type argument.
+
+- Binary: Raw bytes in a signal argument or return.
+
+- Upload: A file in the body of the upload mutation.
+
+- The date library and its type. Every `Date` field holds a `Dayjs`.
+
+- enumOf: Turns a fixed list of values into an enum class.
+
+- getEnv: The running app's name, environment and server addresses.
+
+- The paths that signals and the websocket are served under.
+
+- DataList: A list keyed by id. Every model list in a store is one.
+
 Where Each Type Goes
+
+Type
+
+- Model field — field()
+
+- Signal argument — .body() .param()
+
+- Signal return — query() mutation()
+
+- Import from `akanjs/base`
+
+- JavaScript globals, no import
 
 Can be used
 
 Not used here
 
+**Arrays wrap the type.** `field([Float])` is a list of decimals, and `.body("files", [Upload])` takes several files.
+
+**The three globals need no import.** Akan extends `String`, `Boolean` and `Date` so they work as types as they are.
+
 Values Without a Default
 
 A required field with no `default` starts at the value below. An `.optional()` field starts at `null`.
+
+- Type
+
+- TypeScript value
+
+- Without a default
+
+- ID — string — ""
+
+- Int · Float — number — 0
+
+- Any — T — field<T>(Any) — null
+
+- String — string — ""
+
+- Boolean — boolean — false
+
+- Date — Dayjs — dayjs(new Date(-1))
 
 ID
 
@@ -167,11 +99,21 @@ ID
 
 The file meta scalar keeps the id of a file it does not load:
 
+**A relation uses the model class.** `field(File)` stores a relation to a file; `field(ID)` stores only the id string.
+
+**The format is checked.** Anything but 24 hex characters is refused. The empty string `""` passes as the placeholder for an id not set yet.
+
+**Name the owner with ref.** `field(ID, { ref: "org", cascade: "removeWith" })` removes this document when that org is removed.
+
 Int
 
 `Int` is a whole number: counters, quantities, page numbers, metric samples. A value that is not a safe integer is refused.
 
 The access stat scalar counts four things, each starting at zero:
+
+**`Number` is not a type.** `field(Number)` and `.body("x", Number)` fail to typecheck. Pick `Int` or `Float`.
+
+**Text is converted.** A query-string or form value such as `"3"` arrives as the number `3`.
 
 Float
 
@@ -179,11 +121,23 @@ Float
 
 The coordinate scalar keeps a longitude/latitude pair and an altitude:
 
+**Whole numbers stay Int.** A count, a quantity or an index is `Int`, even when it could be stored as a float.
+
+**Text is converted.** `"1.5"` from a query string arrives as `1.5`.
+
 Any
 
 `Any` is a value whose shape Akan does not check. Use it for integration payloads and loose metadata; when the shape is stable, declare real fields instead.
 
 An event payload that keeps its body open but typed:
+
+**Name the shape.** The type argument in `field<Record<string, unknown>>` keeps the value typed in TypeScript, though nothing checks it at runtime.
+
+**Give an object default as a function.** A literal `{}` is one object shared by every instance; `() => ({})` gives each its own.
+
+**Agents do not get it.** A signal that returns `Any`, or takes a required `Any` argument, is not published to MCP.
+
+**Never carry bytes in Any.** A `Buffer` becomes `{ type: "Buffer", data: [...] }` in JSON, about 3.6 times the size, and never turns back into bytes. Declare `Binary`.
 
 Binary
 
@@ -197,9 +151,25 @@ Sent as a websocket binary frame, with no JSON and no base64. Only when the whol
 
 A stream endpoint with one lossy room and one room that must see every frame:
 
+**A slow subscriber gets the newest frame.** By default a `pubsub(Binary)` room keeps only the latest frame, which suits telemetry and video.
+
+**`backpressure: "queue"` keeps every frame.** Use it for a sequence such as deltas; the send buffer then grows with the slowest subscriber.
+
+**Agents do not get it.** A signal that returns `Binary` is not published to MCP.
+
+**Binary is never a model field.** A model that declares `field(Binary)` fails to load. Keep the bytes in a `File` model and store a relation to it.
+
 Upload
 
 `Upload` is a file in the body of the upload mutation, and nowhere else. An app that mounts `libs/shared` already has that mutation:
+
+**Only with `fileUpload: true`.** `Upload` is valid only in the body of a mutation flagged this way, and that mutation is never published to MCP.
+
+**One per app.** The generated `fetch.add<Model>Files(fileList)` and store action `upload<Field>On<Model>(fileList)` both post to the mutation marked `fileUpload: true`. With two, only the first is used.
+
+**The body is fixed.** The client always sends `files`, `metas`, `type` and `parentId`, and `fileList` may be a `File[]` or the `FileList` from `input.files`.
+
+**Models reference `File`.** Declare `image: field(File).optional()` or `images: field([File])`, never `field(Upload)`.
 
 dayjs / Dayjs
 
@@ -208,6 +178,10 @@ dayjs / Dayjs
 A date field whose default is the moment each record is made:
 
 Reading the value is ordinary dayjs; import the type the same way:
+
+**Import it from `akanjs/base`.** Pages and module files may not import a third-party package, so `import dayjs from "dayjs"` fails lint there.
+
+**"Now" is a function.** `default: () => dayjs()` runs for each record; `default: dayjs()` would freeze the time the module loaded.
 
 enumOf
 
@@ -219,17 +193,87 @@ Static Helpers
 
 Member
 
+- values: The list exactly as declared.
+
+- has(value): Whether the value is in the list.
+
+- indexOf(value): The value's position. Throws when the value is not in the list.
+
+- Like the Array methods, but throw when nothing matches.
+
+- Same as the Array methods. — JobStatus.map((value) => value.toUpperCase());
+
+- JobStatus["value"]: The type of one value: the union of the list.
+
+**camelCase name, `as const` list.** The first argument names the enum; without `as const` the values widen to `string`.
+
+**The list decides the type.** Strings make a `String` enum, whole numbers an `Int` enum, other numbers a `Float` enum. An empty list throws.
+
+**Signal arguments are checked.** An argument typed with an enum refuses any value outside the list.
+
+**Labels live in the dictionary.** Translate each value in the module dictionary's `.enum()` stage.
+
 getEnv
 
 `getEnv()` tells running code about its app: the name, the environment, and where the web and API servers are. The first call reads the environment variables; later calls return the same cached object.
 
+- string — From `AKAN_PUBLIC_APP_NAME`. Required.
+
+- string — From `AKAN_PUBLIC_REPO_NAME`. Required.
+
+- string — From `AKAN_PUBLIC_SERVE_DOMAIN`. Required.
+
+- "testing" | "debug" | "develop" | "main" | "local" — "debug" — From `AKAN_PUBLIC_ENV`.
+
+- "local" | "edge" | "cloud" | "module" — "cloud" — From `AKAN_PUBLIC_OPERATION_MODE`. It is `"local"` when `environment` is `"local"`.
+
+- "single" | "multiple" | "cluster" | undefined — From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.
+
+- "server" | "client" — Whether this code is running on the server or in the browser.
+
+- "ssr" | "csr" — "csr" — From `AKAN_PUBLIC_RENDER_ENV`.
+
+- string — "/api" — The value `getApiPrefix()` returns.
+
+- string — "/ws" — The value `getWsPrefix()` returns.
+
+- string — The web origin, such as `http://localhost:8282`. Also split into `clientHost` and `clientPort`.
+
+- string — The API base with the prefix, such as `http://localhost:8282/api`.
+
+- string — The websocket origin without a path, such as `ws://localhost:8282`.
+
 A helper that builds the app's public host from the env:
+
+**Runs on both sides.** `side` says whether the code is on the server or in the browser.
+
+**The types are exported too.** `ClientEnv` is what `getEnv()` returns, `Environment` is the union of environment names, and `BackendEnv` types the server options.
+
+**Call getEnv() inside a function, never at module scope.** `akan build` loads modules without the three required variables, and `getEnv()` throws there. Use a method body, a default thunk, or `env(() => getEnv())` in an `adapt()` class.
 
 getApiPrefix / getWsPrefix
 
 `getApiPrefix()` returns the path signals are served under, and `getWsPrefix()` the websocket's path under it. Build URLs with them instead of writing `/api` or `/ws`, because an app can move both.
 
+- Where
+
+- Setting
+
+- Who follows it
+
+- main.ts — new AkanApp({ prefix, websocketPrefix }) — The server's routes, and every page the server renders.
+
+- akan.config.ts — api: { prefix, websocketPrefix } — A prebuilt CSR shell and a native app bundle, which no server renders.
+
+- (nothing set) — "/api" · "/ws" — The defaults.
+
 The OAuth consent page posts to a signal endpoint under the prefix:
+
+**A leading slash, never a trailing one.** Appending `"/path"` is always safe. A blank value or a bare `/` counts as not set.
+
+**The websocket sits under the API prefix.** The client connects to `serverHttpUri` plus `getWsPrefix()`, which is `ws://localhost:8282/api/ws` by default.
+
+**Call it where you build the URL.** A moved prefix reaches the browser too, so there is no need to pass it down as a prop.
 
 DataList
 
@@ -237,7 +281,27 @@ DataList
 
 A store action that puts an updated admin back into its list:
 
+**Finish with `.save()`.** `set` and `delete` change the list in place, so the store would still hold the same object. `.save()` hands it a new one it can tell has changed.
+
 Methods
+
+- new DataList(rows): Builds a list from an array. A repeated id keeps the last row.
+
+- set(row): Replaces the row with the same id, or appends it. Changes this list and returns it.
+
+- delete(id): Removes the row with that id. Changes this list and returns it.
+
+- save(): A new DataList with the same rows. Hand this to `this.set()`.
+
+- The row with that id. `get` returns `undefined` when it is missing; `pick` throws. — const user = users.pick("a");
+
+- Look up by id or position. `indexOf` and `pickAt` throw when nothing is there.
+
+- Return a new DataList.
+
+- Same as the Array methods. `for...of` works too.
+
+- The rows as a plain array, and how many there are.
 
 ## Code Examples
 

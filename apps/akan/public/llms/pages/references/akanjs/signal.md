@@ -21,121 +21,27 @@ akanjs/signal
 
 Export
 
-Declares the calls a module exposes: queries, mutations and WebSocket endpoints.
-
-Declares work the server starts itself: schedules, lifecycle hooks, queue jobs, resolved fields.
-
-Declares the list queries a client store loads, and guards the generated CRUD endpoints.
-
-Guards. They run before the handler and decide whether the call may go on.
-
-Internal arguments: handler arguments the server fills in, such as the request.
-
-Middleware wraps every endpoint call. The two built-ins are registered by default.
-
-Reports progress from inside a long MCP tool call.
-
-Look up registered signals, and publish or enqueue from a service.
-
-The per-call context guards and middleware receive: transport, arguments and caller.
-
-Request and response
-
-Reads, over `GET`. The only kind that may declare `cache`.
-
-Writes, over `POST`. The `method` option moves it to `PATCH`, `PUT` or `DELETE`.
-
-Realtime
-
-The client subscribes to a room, and the server publishes into it.
-
-The client sends one message and gets one answer back.
-
-The Signal File
-
-How `Internal`, `Slice` and `Endpoint` are laid out in one `*.signal.ts`.
-
-MCP Prompts
-
-Declared on a page with `page().prompt(name, description)`.
-
-The Guards That Ship
-
-`Every`, `Admin`, `Person` and the other guards `libs/shared` provides.
-
-Report MCP Progress
-
-The progress stream step by step, from the client's side too.
-
-Always passes. Use it on slice reads such as `get:`, never as a mutation's only guard.
-
-Always refuses the call.
-
-A base class with `static name` filled in and `scope` preset to `"account"`.
-
-The interface: `canPass(context)` returns a boolean, or a promise of one.
-
-`"account"` or `"resource"`: what the guard needs to reach a verdict.
-
-Reads arguments
-
-Checked for MCP listing
-
-Reads only the caller, through `context.get("account")`.
-
-Reads the call's arguments via `context.getArg(name)`, so it is judged only at call time.
-
-Sends one progress notification for the call running on this stack.
-
-Optional. The denominator the client renders; omit it when the amount of work is unknown.
-
-Optional. One short line on the current step; the user reads it, so write prose.
-
-`true` only while a client is streaming, so a costly message can be skipped.
-
-The request
-
-The current Bun request, `Bun.BunRequest`.
-
-The `Response` class, for building a reply such as `res.json(value)`.
-
-The caller
-
-The caller's IP as the nearest proxy recorded it, or `null`.
-
-The connection
-
-`ws`, `socketId`, `subscribe`, and the `on` / `off` cleanup hooks.
-
-Middleware
-
-Acts when
-
-What it does
-
-Always.
-
-Writes debug lines around the call, and an error line when it fails.
-
-The endpoint declares `timeout` in ms.
-
-Rejects with `base.error.gatewayTimeout` (504) once the time is spent.
-
-Every endpoint the server runs, after the two defaults.
-
-The endpoint option. Applies to that endpoint only, inside every global middleware.
-
-A database module's `internal`, `endpoint`, `slice`, `server` and `serializedSignal`.
-
-A service module's `internal`, `endpoint`, `server` and `serializedSignal`.
-
-One per `pubsub` endpoint. Publishes `data` to the room the arguments name.
-
-One per `process` internal. Enqueues a job and returns its `AkanJob`.
-
 `akanjs/signal` declares the API boundary around a service: what may be called, by whom, over which transport. You import it in `*.signal.ts` files and in the `srvkit/` files that hold guards and middleware.
 
 What It Exports
+
+- endpoint: Declares the calls a module exposes: queries, mutations and WebSocket endpoints.
+
+- internal: Declares work the server starts itself: schedules, lifecycle hooks, queue jobs, resolved fields.
+
+- slice: Declares the list queries a client store loads, and guards the generated CRUD endpoints.
+
+- Guards. They run before the handler and decide whether the call may go on.
+
+- Internal arguments: handler arguments the server fills in, such as the request.
+
+- Middleware wraps every endpoint call. The two built-ins are registered by default.
+
+- McpProgress: Reports progress from inside a long MCP tool call.
+
+- Look up registered signals, and publish or enqueue from a service.
+
+- SignalContext: The per-call context guards and middleware receive: transport, arguments and caller.
 
 Four Endpoint Kinds
 
@@ -143,23 +49,59 @@ The `endpoint` builder hands you four kinds, and each kind fixes its transport:
 
 Kind
 
+- HTTP
+
+- WebSocket
+
+- Request and response
+
+- Realtime
+
 travels over it
 
 does not
 
 An MCP prompt is not an endpoint kind. It is declared on a page with `page().prompt(name, description)`.
 
+- The Signal File — How `Internal`, `Slice` and `Endpoint` are laid out in one `*.signal.ts`.
+
+- MCP Prompts — Declared on a page with `page().prompt(name, description)`.
+
+- The Guards That Ship — `Every`, `Admin`, `Person` and the other guards `libs/shared` provides.
+
+- Report MCP Progress — The progress stream step by step, from the client's side too.
+
 Public / None / guard
 
 A guard decides whether a call may run, before its handler does. Every custom endpoint names its own `guards` array, and every guard in it must pass.
+
+- Public: Always passes. Use it on slice reads such as `get:`, never as a mutation's only guard.
+
+- None: Always refuses the call.
+
+- guard(name): A base class with `static name` filled in and `scope` preset to `"account"`.
+
+- Guard: The interface: `canPass(context)` returns a boolean, or a promise of one.
+
+- GuardScope: `"account"` or `"resource"`: what the guard needs to reach a verdict.
 
 Account Or Resource
 
 Every guard carries a `static scope`, which says whether the verdict needs the call's arguments:
 
+- Reads arguments
+
+- Checked for MCP listing
+
+- GuardScope
+
 yes
 
 no
+
+**Role checks are `"account"`.** In `libs/shared`, `Every`, `Admin` and `Person` are `"account"`; `Owner`, `SelfOrAdmin` and any `Can<Verb><Model>` guard are `"resource"`.
+
+**With `implements Guard`, declare it yourself.** `guard(name)` presets `"account"`, so a guard built on it that reads arguments overrides it with `"resource"`.
 
 Writing A Guard
 
@@ -167,17 +109,53 @@ Guards live in `srvkit/guards.ts`, one class each:
 
 Then name them on each endpoint. A `pubsub` room is not covered by slice guards, so it declares its own:
 
+**Same guard, every transport.** Guards run on HTTP and WebSocket calls alike, so read the caller with `context.get("account")` instead of branching on the transport.
+
+**In order, and the first refusal wins.** Guards run in the order declared, and the first one that refuses stops the call.
+
+**Slice guards stop at CRUD.** A slice's `guards` cover only its generated query and mutation endpoints; each `pubsub` and `message` declares its own.
+
+**Keep `static name`.** fetch serializes guard names, and the API explorer filters on them.
+
+**A wrong scope misleads the MCP catalogue.** Exposure follows the guards, so a caller-only guard marked `"resource"` lists the endpoint to callers who cannot use it, and an argument-reading guard marked `"account"` hides it from everyone.
+
 McpProgress
 
 `McpProgress` reports how far a long MCP tool call has got, so the agent's client can show it. Call it wherever the work happens; nothing has to be passed down.
 
+- (progress: number, option?: McpProgressOption) => void — Sends one progress notification for the call running on this stack.
+
+- number — Optional. The denominator the client renders; omit it when the amount of work is unknown.
+
+- string — Optional. One short line on the current step; the user reads it, so write prose.
+
+- boolean — `true` only while a client is streaming, so a costly message can be skipped.
+
 A service that imports rows reports after each one:
+
+**A no-op outside a stream.** Over plain HTTP, a WebSocket or in a test, `report` does nothing, so the same code runs unchanged.
+
+**Reachable from any depth.** It rides `AsyncLocalStorage`, so a service, an adapter or a loop several frames down reports without a channel parameter.
+
+**The client opts in.** A call streams only when the request sent both `Accept: text/event-stream` and a `_meta.progressToken`.
+
+**The response switches on the first report.** Only then does the server answer with SSE; a call that never reports gets an ordinary response.
 
 Req / Res / Ip / Ws
 
 Internal arguments are handler arguments the server fills in, not the caller. Declare one with `.with(X)`, and the handler receives it after the declared arguments.
 
 Argument
+
+- HTTP — query · mutation
+
+- WebSocket — pubsub · message
+
+- The request
+
+- The caller
+
+- The connection
 
 available
 
@@ -187,9 +165,29 @@ Libraries add their own, such as `Self`, `Me` and `Account` from `@libs/shared/s
 
 A mutation that reads the raw request body and the caller's IP, and a message handler that cleans up when the socket closes:
 
+**Required unless nullable.** A required internal argument that comes back `null` refuses the call with 401. Pass `{ nullable: true }` when `null` is a valid answer, as it is for `Ip`.
+
+**A returned `Response` is sent as is.** Serialization is skipped, which is how an endpoint declared `Any` streams a file back.
+
+**Cleanup belongs to the call that registered it.** `on("disconnect" | "unsubscribe", fn)` is scoped to the room for a `pubsub` and to the socket for a `message`. Register both when it must run either way.
+
+**`socketId` names a connection, not a caller.** Key per-user state on the account, and never mint an id of your own.
+
+**Never read the caller's IP off the socket or the request.** Behind the gateway, every peer is the gateway itself (`127.0.0.1`) for every caller. Take `.with(Ip)`.
+
 middleware / Middleware
 
 Middleware wraps every endpoint call, before and after the handler. Two are registered by default; write your own with `middleware(refName)`.
+
+- Middleware
+
+- Acts when
+
+- What it does
+
+- `Logging` — Always. — Writes debug lines around the call, and an error line when it fails.
+
+- `Timeout` — The endpoint declares `timeout` in ms. — Rejects with `base.error.gatewayTimeout` (504) once the time is spent.
 
 An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted.
 
@@ -213,11 +211,27 @@ Register it in one of two places:
 
 Where
 
+- lib/option.ts: Every endpoint the server runs, after the two defaults.
+
+- middlewares: The endpoint option. Applies to that endpoint only, inside every global middleware.
+
+**`use(env)` runs once.** The handler it returns serves every call, so set up in `use` and keep per-call work in the handler.
+
+**Skipping `next()` skips the guards.** Guards run inside `next()`, so never answer from a middleware on behalf of a guarded endpoint. For a stored answer, declare `{ cache: <ms> }` on the endpoint instead.
+
+**`refName` is the key.** Registering a middleware under a `refName` already taken replaces the earlier one.
+
+**A timeout does not cancel the work.** The handler keeps running with nobody holding its result, so a write still happens. The deadline answers the caller; it does not undo the call.
+
 SignalRegistry
 
 `SignalRegistry` finds a module's registered signals by refName at runtime. A refName nothing registered returns `undefined`.
 
 Method
+
+- getDatabase(refName): A database module's `internal`, `endpoint`, `slice`, `server` and `serializedSignal`.
+
+- getService(refName): A service module's `internal`, `endpoint`, `server` and `serializedSignal`.
 
 Look one up by refName:
 
@@ -225,7 +239,17 @@ Publishing From A Service
 
 Each module also has a server signal, which a service injects with `signal<sig.X>()`. It turns endpoints and internals into methods:
 
+- <pubsubKey>(...roomArgs, data): One per `pubsub` endpoint. Publishes `data` to the room the arguments name.
+
+- <processKey>(...args, jobOptions?): One per `process` internal. Enqueues a job and returns its `AkanJob`.
+
 The notice service saves a notice, then publishes it to the `noticeAdded` room from the guard example:
+
+**Save first, then notify.** A subscriber then never receives a record that failed to save.
+
+**The room's return model shapes the data.** `data` is serialized with the `pubsub` endpoint's return model, like any response.
+
+**The field name picks the signal.** `noticeSignal` resolves to the `notice` module's server signal, and the `Signal` suffix is required.
 
 ## Code Examples
 

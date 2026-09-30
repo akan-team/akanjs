@@ -53,6 +53,12 @@ const facets = [
     ko: "앱이 빌드되거나 실행되는 방식을 바꾸는 코드입니다. 예: 빌드 때 이미지 크기를 생성하는 플러그인.",
   },
   {
+    name: "native/",
+    side: "client",
+    en: "Its own native plugins, one folder per plugin id. Example: native/label-printer/ with its page API, Kotlin and Swift.",
+    ko: "직접 가진 네이티브 플러그인이며, 플러그인 id마다 폴더 하나입니다. 예: native/label-printer/에 페이지 API, Kotlin, Swift.",
+  },
+  {
     name: "public/",
     side: "client",
     en: "Files served as they are, with no processing. Example: images, fonts, robots.txt.",
@@ -289,6 +295,7 @@ export default page().render(() => {
 ├── webkit/
 ├── env/
 ├── plugin/
+├── native/
 ├── public/
 ├── srvkit/
 ├── private/
@@ -312,6 +319,7 @@ export default page().render(() => {
 ├── common/
 ├── webkit/
 ├── plugin/
+├── native/
 ├── client.ts
 ├── server.ts
 └── index.ts`}
