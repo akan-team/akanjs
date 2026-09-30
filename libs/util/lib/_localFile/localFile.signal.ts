@@ -10,7 +10,6 @@ export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
     .with(Req)
     .exec(async function (req) {
       const path = req.url.split("/localFile/getBlob/").slice(1).join("/localFile/getBlob/");
-      const fileStream = await this.localFileService.readLocalFile(path);
-      return new Response(fileStream);
+      return await this.localFileService.serveLocalFile(path);
     }),
 })) {}

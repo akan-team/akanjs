@@ -8,5 +8,6 @@ stored through the util lib's blob storage.
   MCP.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
-- An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB.
+- An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB, stored under a name made from that type; the uploaded
+  file name is not kept.
 - Removal is soft: a removed memo keeps its row with `removedAt` set, and its image stays in storage.

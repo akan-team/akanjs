@@ -8,16 +8,22 @@ export class MemoService extends serve(db.memo, ({ use }) => ({
   blobStorageApi: use<BlobStorageApi>(),
 })) {
   static readonly imageLimit = 5 * 1024 * 1024;
-  static readonly imageTypes: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  //? The stored name takes its extension from the type checked here, never from the uploaded name: the file is
+  //? served by that extension, and an `x.html` sent as image/png would otherwise be stored as a page.
+  static readonly imageExtensions: { readonly [type: string]: string | undefined } = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
 
   async attachImage(memoId: string, upload: File) {
     const image = await (upload as unknown as Promise<File>);
-    if (!MemoService.imageTypes.includes(image.type) || image.size > MemoService.imageLimit)
-      throw new Err("memo.error.imageRejected");
+    const extension = MemoService.imageExtensions[image.type];
+    if (!extension || image.size > MemoService.imageLimit) throw new Err("memo.error.imageRejected");
     const memo = await this.getMemo(memoId);
-    const filename = image.name.replace(/[^A-Za-z0-9._-]/g, "") || "image";
     const { url } = await this.blobStorageApi.uploadDataFromReadableStream({
-      path: `memo/${memo.id}/${Date.now()}-${filename}`,
+      path: `memo/${memo.id}/${Date.now()}.${extension}`,
       body: image.stream(),
       mimetype: image.type,
     });

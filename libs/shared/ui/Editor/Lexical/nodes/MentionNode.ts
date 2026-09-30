@@ -1,3 +1,4 @@
+import { resolveServerUrl } from "akanjs/client";
 import { type EditorConfig, type LexicalEditor, TextNode } from "lexical";
 
 import { MENTION_CHIP, MENTION_CHIP_AVATAR, MENTION_CHIP_LINK } from "../theme";
@@ -22,7 +23,7 @@ const applyChip = (dom: HTMLElement, node: MentionNode) => {
     delete dom.dataset.mentionHref;
     dom.classList.remove(...MENTION_CHIP_LINK_CLASSES);
   }
-  const avatarUrl = cssSafeUrl(node.__imageUrl);
+  const avatarUrl = cssSafeUrl(node.__imageUrl ? resolveServerUrl(node.__imageUrl) : null);
   if (avatarUrl) {
     dom.style.setProperty("--mention-avatar", `url("${avatarUrl}")`);
     dom.classList.add(...MENTION_CHIP_AVATAR_CLASSES);
