@@ -84,7 +84,7 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 ```
 
 1. 샘플을 debug로 빌드해(`--debug`, 페이지 로그와 `PUBLIC_UPDATE_PROBE`가 필요하다) 임시 "설치" 폴더에 복사한다. 릴리스도 `--debug`로 게시한다. 경로는 `<os>-<arch>/`다.
-2. 릴리스 A를 게시하고 앱을 `PUBLIC_UPDATE_PROBE=apply`로 실행한다. check → download(전체) → apply → trial → 확정까지 간다.
+2. 릴리스 A를 게시하고 앱을 `PUBLIC_UPDATE_PROBE=apply`로 실행한다. check → download(전체) → apply → trial → 확정까지 간다. 앱은 탐색기에서 연 것처럼 자기 폴더를 작업 폴더로 띄운다. Windows는 작업 폴더인 폴더의 이름을 바꾸지 못하므로, 그 경우에도 교체되는지 본다.
 3. 릴리스 B(A에서의 delta)를 `no-ready`로 실행한다. B는 확정하지 않으므로 A로 롤백되고, B를 다시 받지 않아야 한다.
 4. 앱 옆에 남은 폴더가 없는지 본다.
 
@@ -115,7 +115,7 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/installer-check.ts'   # NSIS�
 bun scripts/vm/windows.ts desktop 'bun scripts/vm/kiosk-check.ts'
 ```
 
-- installer-check: 샘플을 `--installer`로 빌드해 `/S /RUN`으로 설치(폴더, 시작 메뉴, 제거 항목, 앱 실행) → 실행 중인 앱 위로 다시 설치(설치 폴더에서 도는 앱을 먼저 멈춤) → `/S` 제거까지 본다.
+- installer-check: 샘플을 `--installer`로(일회용 업데이트 키, 127.0.0.1의 릴리스 서버) 빌드하고 다음 패치 버전의 릴리스 A를 게시한 뒤, `/S /RUN`으로 설치(폴더, 폴더 옆 제거 프로그램, 시작 메뉴, 제거 항목, 앱 실행) → 설치 프로그램이 띄운 앱이 A를 받아 확정(제거 프로그램이 남고 제거 항목 버전이 A) → 실행 중인 앱 위로 다시 설치(설치 폴더에서 도는 앱을 먼저 멈춤) → `/S` 제거(폴더, 옆에 남긴 `.previous`·`.update-*`·`.failed-*`, 제거 프로그램, 바로가기, 항목)까지 본다.
   - NSIS 설치 프로그램은 32비트라 그 PowerShell도 32비트다. 32비트 프로세스는 64비트 프로세스의 경로를 읽지 못해(`Get-Process`의 Path가 빈다) 앱을 WMI(`Win32_Process.ExecutablePath`)로 찾는다.
 - kiosk-check: `desktop.recovery: "reload"`, `desktop.window { fullscreen, skipTaskbar }`, `desktop.screenCapture: "auto"`로 빌드해 DevTools 포트로 확인한다. 첫 화면부터 전체화면, 페이지를 연달아 죽이면(`Page.crash`) 즉시·1초·2초 뒤 다시 불러오기, `app.relaunch()`, WebView2 브라우저 프로세스를 끝내면 앱 재실행, `getDisplayMedia()`가 선택 창 없이 `displaySurface: "monitor"` 트랙으로 답하기.
 - 확인 결과(2026-09-30): Windows 11 ARM VM에서 둘 다 통과. `skipTaskbar`는 전체화면이 작업 표시줄을 가리므로 따로 스크린샷으로 비교했다.
