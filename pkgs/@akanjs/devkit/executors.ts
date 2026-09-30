@@ -790,7 +790,8 @@ export class WorkspaceExecutor extends Executor {
   }
   async #getDirHasFile(basePath: string, targetFilename: string) {
     if (!(await FileSys.dirExists(basePath))) return [];
-    const AVOID_DIRS = ["node_modules", "dist", "public", "webkit"];
+    //? `local/` is gitignored scratch: a test's temporary workspace there has a package.json of its own.
+    const AVOID_DIRS = ["node_modules", "dist", "public", "webkit", "local"];
     const getDirs = async (dirname: string, maxDepth = 3, results: string[] = [], prefix = "") => {
       const dirs = await this.readdir(dirname);
       await Promise.all(

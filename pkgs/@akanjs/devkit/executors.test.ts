@@ -995,6 +995,17 @@ describe("WorkspaceExecutor listing", () => {
       ["@sample/tool", "akanjs", "zeta-tool"],
     ]);
   });
+
+  test("never takes a scratch workspace under a local/ folder for a package, app or lib", async () => {
+    const root = await makeTempRoot();
+    await writeJson(path.join(root, "pkgs/@akanjs/devkit/package.json"), { name: "@akanjs/devkit" });
+    await writeJson(path.join(root, "pkgs/@akanjs/devkit/local/akan-cli-x/package.json"), { name: "repo" });
+    await writeText(path.join(root, "apps/portal/akan.config.ts"), "");
+    await writeText(path.join(root, "libs/util/local/akan-cli-y/akan.config.ts"), "");
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    expect(await workspace.getExecs()).toEqual([["portal"], [], ["@akanjs/devkit"]]);
+  });
 });
 
 describe("SysExecutor module listing", () => {
