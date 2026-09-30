@@ -4,8 +4,9 @@ import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport, AkanUpstream } from "akanjs/service";
 import { getApiPrefix, getWsPrefix, normalizeRoutePrefix, resetEnvCache } from "../base/baseEnv";
+import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
-import { makeAkanChildProxyHeaders } from "./akanAppHeaders";
+import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
 import { compressResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
@@ -244,6 +245,10 @@ export class AkanApp {
       process.exit(await OpsCommand.run(process.argv.slice(3)));
     }
     if (this.#solo) return await this.#startSolo();
+    if (SelfExec.carried)
+      throw new Error(
+        "A desktop app's server runs in one process, and this main.ts asks for replicas (replica, solo: false or AKAN_SOLO=false), which would start with the `bun` on the user's PATH. Leave them out of the app the desktop build carries.",
+      );
     Logger.role = "gateway";
     await this.#prepareRuntimeDir();
     await this.#startLogHub();
@@ -653,6 +658,12 @@ export class AkanApp {
     const upstream = child?.upstream ? (child.wsUpstream ?? this.#getChildUpstream(child.idx, child.role).ws) : null;
     if (!child || !upstream) return new Response("No websocket upstream is ready", { status: 503 });
     const url = new URL(req.url);
+    //? Once upgraded here, a replica's refusal can only close the socket: the browser has to see the 403 from this hop.
+    try {
+      CrossSiteGuard.assertOrigin(req, url, url.pathname === "/_akan/hmr" ? "hmr" : "websocket");
+    } catch {
+      return new Response("Forbidden", { status: 403 });
+    }
     const upstreamWs = new WebSocket(`ws://${upstream.host}:${upstream.port}${url.pathname}${url.search}`, {
       headers: makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req)),
     } as unknown as string[]);
@@ -967,7 +978,8 @@ export class AkanApp {
     if (!location) return;
     try {
       const parsed = new URL(location);
-      if (parsed.hostname === "akan-child") headers.set("location", `${parsed.pathname}${parsed.search}${parsed.hash}`);
+      if (parsed.hostname === AKAN_CHILD_HOST)
+        headers.set("location", `${parsed.pathname}${parsed.search}${parsed.hash}`);
     } catch {
       // Relative redirects are already safe to pass through.
     }
@@ -1095,6 +1107,7 @@ export class AkanApp {
     child.upstream = message.upstream;
     child.wsUpstream = message.wsUpstream;
     child.healthPath = message.healthPath;
+    if (message.crossSite) CrossSiteGuard.configure(message.crossSite);
     child.lastPongAtMono = performance.now();
     child.restartAttempts = 0;
     // A child that (re)spawned after subscribers arrived has never heard the floor.

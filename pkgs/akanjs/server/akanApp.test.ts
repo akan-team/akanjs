@@ -4,7 +4,8 @@ import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AkanApp } from "./akanApp";
-import { makeAkanChildProxyHeaders } from "./akanAppHeaders";
+import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
+import { HostAllowlist } from "./routing/hostAllowlist";
 
 const tempRoots: string[] = [];
 
@@ -92,12 +93,12 @@ const answerHealthPing = `if (message.type === "health.ping") {
   process.send?.({ type: "health.pong", nonce: message.nonce, sentAt: message.sentAt, pid: process.pid });
 }`;
 
-const sendReady = (wsUpstream?: string) => `process.send?.({
+const sendReady = (wsUpstream?: string, crossSite?: string) => `process.send?.({
   type: "ready",
   pid: process.pid,
   replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
   role: process.env.SERVER_MODE ?? "all",
-  upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET },${wsUpstream ? `\n  wsUpstream: ${wsUpstream},` : ""}
+  upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET },${wsUpstream ? `\n  wsUpstream: ${wsUpstream},` : ""}${crossSite ? `\n  crossSite: ${crossSite},` : ""}
   healthPath: "/_akan/app/child-health",
 });`;
 
@@ -361,6 +362,17 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(headers.get("x-forwarded-host")).toBe("akanjs.com");
     expect(headers.get("x-forwarded-proto")).toBe("https");
     expect(headers.get("x-akan-child-idx")).toBe("2");
+  });
+
+  test("carries the one Host a replica's ws port admits, which a page rebound to loopback cannot send", () => {
+    const allowlist = new HostAllowlist([AKAN_CHILD_HOST]);
+    const hop = new Request("http://127.0.0.1:18282/api/ws", {
+      headers: makeAkanChildProxyHeaders(new Request("http://app.example/api/ws"), 0),
+    });
+    const rebound = new Request("http://rebound.example:18282/api/ws", { headers: { host: "rebound.example:18282" } });
+
+    expect(allowlist.allows(hop)).toBe(true);
+    expect(allowlist.allows(rebound)).toBe(false);
   });
 
   test("asks the child for an identity body, whatever the real client accepts", () => {
@@ -841,6 +853,69 @@ describe("AkanApp", () => {
       await waitForReady(port);
 
       const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
+      const reply = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("timed out waiting for ws echo")), 5_000);
+        socket.addEventListener("open", () => socket.send("hello"));
+        socket.addEventListener("message", (event) => {
+          clearTimeout(timeout);
+          resolve(String(event.data));
+        });
+        socket.addEventListener("error", () => {
+          clearTimeout(timeout);
+          reject(new Error("ws connection failed"));
+        });
+      });
+      socket.close();
+      expect(reply).toBe("echo:hello");
+    });
+  }, 20_000);
+
+  test("refuses a cross-site socket with 403 at the gateway, by the origins its replica allows", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-origin-");
+
+    await Bun.write(
+      serverPath,
+      `
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                fetch() { return new Response("ok"); },
+              });
+              const ws = Bun.serve({
+                port: 0,
+                fetch(req, server) {
+                  if (server.upgrade(req, { data: {} })) return undefined;
+                  return new Response("no-upgrade");
+                },
+                websocket: {
+                  message(socket, message) { socket.send("echo:" + message); },
+                },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  ws.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady(`{ type: "tcp", host: "127.0.0.1", port: ws.port }`, `{ allowedOrigins: ["https://partner.example"], enabled: true }`)}
+            },
+          };
+        `,
+    );
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+
+      const refused = await fetch(`http://127.0.0.1:${port}/api/ws`, { headers: { origin: "https://evil.example" } });
+      expect(refused.status).toBe(403);
+
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`, {
+        headers: { origin: "https://partner.example" },
+      } as unknown as string[]);
       const reply = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("timed out waiting for ws echo")), 5_000);
         socket.addEventListener("open", () => socket.send("hello"));

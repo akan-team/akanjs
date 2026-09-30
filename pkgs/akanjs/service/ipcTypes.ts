@@ -143,6 +143,7 @@ export type AkanIpcMessage =
       /** Actual websocket upstream the child bound; may differ from the preferred port when it was in use. */
       wsUpstream?: Extract<AkanUpstream, { type: "tcp" }>;
       healthPath?: string;
+      crossSite?: { allowedOrigins: string[]; enabled: boolean };
     }
   | { type: "backend-ready"; pid: number }
   | { type: "pubsub.publish"; roomId: string; data: object | object[]; origin?: string }

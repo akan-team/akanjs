@@ -17,16 +17,25 @@ export class CrossSiteGuard {
    * Android and Windows; both WebViews send exactly that as `Origin`. */
   static readonly nativeOrigins = ["app://localhost", "https://app.localhost"] as const;
   static #enabled = true;
+  static #allowedOrigins: string[] = [];
   static #allowed = new Set<string>(CrossSiteGuard.nativeOrigins);
 
   /** Applied at boot from the mounting app's `option.ts`; the native shells stay allowed unless disabled. */
   static configure({ allowedOrigins = [], enabled = true }: CrossSiteOption) {
     CrossSiteGuard.#enabled = enabled;
+    CrossSiteGuard.#allowedOrigins = [...allowedOrigins];
     CrossSiteGuard.#allowed = new Set([...CrossSiteGuard.nativeOrigins, ...allowedOrigins]);
+  }
+
+  //? The gateway loads no `option.ts`: a replica hands it this in its ready message, so a socket is refused before
+  //? the gateway upgrades it.
+  static option(): Required<CrossSiteOption> {
+    return { allowedOrigins: [...CrossSiteGuard.#allowedOrigins], enabled: CrossSiteGuard.#enabled };
   }
 
   static reset() {
     CrossSiteGuard.#enabled = true;
+    CrossSiteGuard.#allowedOrigins = [];
     CrossSiteGuard.#allowed = new Set(CrossSiteGuard.nativeOrigins);
   }
 

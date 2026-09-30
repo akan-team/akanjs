@@ -12,6 +12,7 @@ describe("SelfExec", () => {
     expect(process.env.BUN_BE_BUN).toBeUndefined();
     expect(SelfExec.env().BUN_BE_BUN).toBe("1");
     expect(SelfExec.env({ PATH: "/bin" })).toEqual({ PATH: "/bin", BUN_BE_BUN: "1" });
+    expect(SelfExec.carried).toBe(true);
 
     SelfExec.adopt();
     expect(SelfExec.env().BUN_BE_BUN).toBe("1");

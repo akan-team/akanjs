@@ -19,11 +19,13 @@ import { AgentRelayAccess } from "../signal/guards";
 import { createOpenApiDocument } from "../signal/openapi";
 import { FetchSerializer } from "../signal/serializer";
 import { SignalContext } from "../signal/signalContext";
+import { AKAN_CHILD_HOST } from "./akanAppHeaders";
 import type { AkanLib, AkanLibProps } from "./akanLib";
 import { BinaryPubsub } from "./binaryPubsub";
 import { DevtoolsRouter } from "./devtools";
 import { DiLifecycle } from "./di/diLifecycle";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
+import { OrphanGroup } from "./lifecycle/orphanGroup";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
@@ -168,6 +170,7 @@ export class AkanServer {
   #ops: OpsRoute | null | undefined;
   #lastMetrics: AkanMetricsReport = {};
   #stopping: Promise<void> | null = null;
+  #orphanExiting = false;
   constructor(
     name = "AkanServer",
     env: BackendEnv = {},
@@ -396,7 +399,7 @@ export class AkanServer {
     //? Behind the gateway the Host a child sees is the gateway's hop, so only a server bound to TCP checks it.
     const hostAllowlist = unix ? null : HostAllowlist.fromEnv();
     const hostname = process.env.AKAN_LISTEN_HOST || undefined;
-    const buildRoutes = (upgradeAppWs: ApiRouteInputs["upgradeAppWs"]) =>
+    const buildRoutes = (upgradeAppWs: ApiRouteInputs["upgradeAppWs"], allowlist: HostAllowlist | null) =>
       ApiRouter.buildRoutes({
         prefix: this.prefix,
         websocketPrefix: this.websocketPrefix,
@@ -406,22 +409,26 @@ export class AkanServer {
         renderEnvRoutes,
         upgradeAppWs,
         webProxyRunner,
-        hostAllowlist,
+        hostAllowlist: allowlist,
       });
     this.#server = Bun.serve({
       idleTimeout: 0,
       ...(unix ? { unix } : { port, hostname }),
-      routes: buildRoutes((req, data) => this.#server?.upgrade(req, { data }) ?? false),
+      routes: buildRoutes((req, data) => this.#server?.upgrade(req, { data }) ?? false, hostAllowlist),
       websocket: websocketHandlers,
     } as Parameters<typeof Bun.serve>[0]);
     if (unix && process.env.AKAN_CHILD_WS_PORT) {
       const preferredWsPort = Number(process.env.AKAN_CHILD_WS_PORT);
-      //? Only the gateway dials this port, at the loopback address the ready message names below.
+      //? Only the gateway dials this port, at the loopback address the ready message names below. A page on a name
+      //? rebound to 127.0.0.1 reaches it too, with its own name as Host, which the gateway's hop never carries.
       const wsServeOptions = (port: number) => ({
         idleTimeout: 0,
         port,
         hostname: "127.0.0.1",
-        routes: buildRoutes((req, data) => this.#wsServer?.upgrade(req, { data }) ?? false),
+        routes: buildRoutes(
+          (req, data) => this.#wsServer?.upgrade(req, { data }) ?? false,
+          new HostAllowlist([AKAN_CHILD_HOST]),
+        ),
         websocket: websocketHandlers,
       });
       try {
@@ -474,6 +481,7 @@ export class AkanServer {
       upstream: unix ? { type: "unix", socketPath: unix } : { type: "tcp", host: "127.0.0.1", port: Number(port) },
       wsUpstream: typeof wsPort === "number" ? { type: "tcp", host: "127.0.0.1", port: wsPort } : undefined,
       healthPath: "/_akan/app/child-health",
+      crossSite: CrossSiteGuard.option(),
     } satisfies AkanIpcMessage);
     await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());
@@ -558,10 +566,16 @@ export class AkanServer {
   // Fires when the gateway dies, even by SIGKILL; exiting keeps orphan replicas from holding ports into the next boot.
   #handleParentDisconnect() {
     this.logger.warn("Parent IPC channel closed; shutting down to avoid an orphaned replica");
-    setTimeout(() => process.exit(1), this.shutdownTimeoutMs + 1_000);
+    setTimeout(() => this.#exitOrphaned(1), this.shutdownTimeoutMs + 1_000);
     void this.stop()
-      .then(() => process.exit(0))
-      .catch(() => process.exit(1));
+      .then(() => this.#exitOrphaned(0))
+      .catch(() => this.#exitOrphaned(1));
+  }
+
+  #exitOrphaned(code: number) {
+    if (this.#orphanExiting) return;
+    this.#orphanExiting = true;
+    OrphanGroup.exit(code);
   }
 
   #handleIpcMessage(message: AkanIpcMessage) {

@@ -11,6 +11,11 @@ export class SelfExec {
     delete process.env.BUN_BE_BUN;
   }
 
+  /** A desktop app's carried server: only its shell starts the app executable as Bun. */
+  static get carried(): boolean {
+    return SelfExec.#beBun !== undefined;
+  }
+
   static env(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
     return SelfExec.#beBun === undefined ? env : { ...env, BUN_BE_BUN: SelfExec.#beBun };
   }

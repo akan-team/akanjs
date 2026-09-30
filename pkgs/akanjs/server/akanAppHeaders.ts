@@ -11,6 +11,9 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+/** The Host every request the gateway hands a replica carries; a browser never sends it to a replica's port. */
+export const AKAN_CHILD_HOST = "akan-child";
+
 export interface ProxyClientPeer {
   address: string;
   port: number;
@@ -45,6 +48,6 @@ export function makeAkanChildProxyHeaders(req: Request, childIdx: number, peer?:
   if (!headers.has("x-request-id") && process.env.AKAN_BENCH_SKIP_REQUEST_ID !== "1") {
     headers.set("x-request-id", crypto.randomUUID());
   }
-  headers.set("host", "akan-child");
+  headers.set("host", AKAN_CHILD_HOST);
   return headers;
 }

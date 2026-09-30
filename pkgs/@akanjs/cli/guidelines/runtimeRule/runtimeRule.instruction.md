@@ -191,7 +191,8 @@ app — the dist `.js`, `akan.build.json` and `private/` — and installs it on 
 A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
 on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
-server's adapter. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server` on Windows, never
+server's adapter. It runs in one process, so a `main.ts` asking for replicas (`replica`, `solo: false`) does not
+boot in the app. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server` on Windows, never
 Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate store and takes the session's
 `HTTP(S)_PROXY` / `NO_PROXY` / `NODE_EXTRA_CA_CERTS`, and nothing else of the user's environment.
 
@@ -261,7 +262,7 @@ Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settl
 root to change the network or the clock — runs as a service on that machine (the image), and the desktop app ships
 without `--server`, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs as the signed-in
 user and stops with the app, and so does what it started: on macOS and Linux the server leads its own process
-group, which ends with it; on Windows the job object does the same.
+group, which ends with it, also when the app was killed or crashed; on Windows the job object does the same.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
 ["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
