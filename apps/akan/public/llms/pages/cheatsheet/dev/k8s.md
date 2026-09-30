@@ -27,13 +27,13 @@ Name
 
 What it does
 
-- app-deployment: Runs the app image in exactly one pod.
+- app-deployment: Runs the app image in exactly one pod. — Deployment
 
-- app-svc: Exposes the app on port 8282 inside the cluster.
+- app-svc: Exposes the app on port 8282 inside the cluster. — Service
 
-- app-ingress: Connects your domains to the Service and gets their TLS certificate.
+- app-ingress: Connects your domains to the Service and gets their TLS certificate. — Ingress
 
-- sqlite-data: Keeps the sqlite data in `/workspace/sqlite` across pod restarts.
+- sqlite-data: Keeps the sqlite data in `/workspace/sqlite` across pod restarts. — PersistentVolumeClaim
 
 The namespace picks the branch
 
@@ -103,33 +103,33 @@ Top-level keys
 
 A key tagged `_common-secret.yaml` is set there once for every app.
 
-- string — Names the namespace `<appName>-<branch>`, the image path and the default host.
+- appName (string): Names the namespace `<appName>-<branch>`, the image path and the default host.
 
-- string — The workspace part of the image path `<registry>/<repoName>/<appName>`.
+- repoName (string, _common-secret.yaml): The workspace part of the image path `<registry>/<repoName>/<appName>`.
 
-- string — The base domain, so the default host is `<appName>-<branch>.<serveDomain>`.
+- serveDomain (string, _common-secret.yaml): The base domain, so the default host is `<appName>-<branch>.<serveDomain>`.
 
-- string[] — [] — Adds one `<subRoute>-<branch>.<serveDomain>` host and TLS name per basePath.
+- subRoutes (string[], default []): Adds one `<subRoute>-<branch>.<serveDomain>` host and TLS name per basePath.
 
-- string — The registry host.
+- image.registry (string, _common-secret.yaml): The registry host.
 
-- string — <branch>-live — Write it only to pin one specific build.
+- image.tag (string, default <branch>-live): Write it only to pin one specific build.
 
 Per-branch keys
 
 Written under a branch block such as `main:`. The defaults come from `_common-values.yaml`.
 
-- string[] — [] — Extra hosts and TLS names for that branch, such as a production domain.
+- <branch>.domains (string[], default []): Extra hosts and TLS names for that branch, such as a production domain.
 
-- string — "0,0,1" — Becomes `AKAN_REPLICA` in the pod: process counts for federation, batch and all.
+- <branch>.app.replica (string, default "0,0,1"): Becomes `AKAN_REPLICA` in the pod: process counts for federation, batch and all.
 
-- string — unset — Becomes `AKAN_SOLO`; write `false` to keep a gateway in front of a single replica.
+- <branch>.app.solo (string, default unset): Becomes `AKAN_SOLO`; write `false` to keep a gateway in front of a single replica.
 
-- { memory, cpu } — 250M / 0.05 (main: 1G / 1) — The memory and CPU the pod requests.
+- <branch>.app.resources.requests ({ memory, cpu }, default 250M / 0.05 (main: 1G / 1)): The memory and CPU the pod requests.
 
-- { memory, cpu } — 1G / 0.5 (main: 4G / 4) — The pod's limit; the CPU limit also sets how many images the optimizer encodes at once.
+- <branch>.app.resources.limits ({ memory, cpu }, default 1G / 0.5 (main: 4G / 4)): The pod's limit; the CPU limit also sets how many images the optimizer encodes at once.
 
-- string — 2Gi (main: 5Gi) — The size of the `ReadWriteOnce` PVC mounted at `/workspace/sqlite`.
+- <branch>.app.resources.storage (string, default 2Gi (main: 5Gi)): The size of the `ReadWriteOnce` PVC mounted at `/workspace/sqlite`.
 
 **Some settings are not values.** Port 8282, `replicas: 1`, the 40-second termination grace period and the three probes are fixed in `templates/app.yaml`. Changing them means editing the chart.
 
@@ -147,15 +147,21 @@ Role
 
 Common values
 
-- Requests
+Requests
 
-- batch internals — serverMode: "batch"
+batch internals — serverMode: "batch"
 
-- Gateway
+Gateway
 
 - One process, no gateway
 
+  - 0,0,1: The chart default: one all-purpose process.
+
+  - 1,0,0: One request process, so nothing pinned to batch runs.
+
 - Several processes behind a gateway
+
+  - 2,1,0: Two request processes and one batch worker.
 
 Yes
 

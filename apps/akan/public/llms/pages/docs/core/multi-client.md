@@ -27,17 +27,17 @@ The test is whether the surfaces are sold, deployed, or reached as separate prod
 
 Situation
 
-- A customer storefront and an admin console — They share products, orders, users, and permissions, but need different domains, layouts, and release targets. — 상품, 주문, 사용자, 권한을 공유하지만 도메인, 화면 구성, 배포 대상이 다릅니다.
+- A customer storefront and an admin console — They share products, orders, users, and permissions, but need different domains, layouts, and release targets.
 
-- A consumer client, a partner portal, and an internal tool — One backend, three audiences. Each gets its own home screen and navigation without a second app. — 백엔드는 하나이고 대상은 셋입니다. 앱을 새로 만들지 않고도 각자 홈 화면과 내비게이션을 가집니다.
+- A consumer client, a partner portal, and an internal tool — One backend, three audiences. Each gets its own home screen and navigation without a second app.
 
-- Android and iOS packages released per brand, region, or user type — A mobile target points at a basePath, so each package opens its own client from the same backend. — 모바일 target이 basePath를 가리키므로, 각 패키지가 같은 백엔드에서 자기 클라이언트를 엽니다.
+- Android and iOS packages released per brand, region, or user type — A mobile target points at a basePath, so each package opens its own client from the same backend.
 
-- White-label or regional sites on shared business rules — Different domains, names, and first screens over the same domain models — the case basePath exists for. — 같은 도메인 모델 위에 도메인, 이름, 첫 화면만 다릅니다. basePath가 있는 이유가 이것입니다.
+- White-label or regional sites on shared business rules — Different domains, names, and first screens over the same domain models — the case basePath exists for.
 
-- Account settings, dashboards, tabs, grouped screens — These are sections inside one client. A route group such as (user) organizes them without adding a URL segment. — 하나의 클라이언트 안의 구역입니다. (user) 같은 route group이 URL 세그먼트를 더하지 않고 정리해 줍니다.
+- Account settings, dashboards, tabs, grouped screens — These are sections inside one client. A route group such as (user) organizes them without adding a URL segment.
 
-- A section that only some signed-in users may open — Authorization is a guard and a layout gate, not a deployment boundary. Splitting on it buys nothing and costs a domain. — 권한은 guard와 layout에서 막는 문제이지 배포 경계가 아닙니다. 이것 때문에 나누면 얻는 것 없이 도메인만 하나 더 씁니다.
+- A section that only some signed-in users may open — Authorization is a guard and a layout gate, not a deployment boundary. Splitting on it buys nothing and costs a domain.
 
 normal routing
 
@@ -73,9 +73,9 @@ Route Config
 
 Define clients in akan.config.ts with routes. The basePath names the client, and domains decide which production host should open that client.
 
-The client this route opens and its first page folder: basePath store lives in page/store.
+- basePath (string): The client this route opens and its first page folder: basePath store lives in page/store.
 
-Hosts per branch that open this basePath; a matching host hides the basePath segment.
+- domains (Record<branch, string[]>, default {}): Hosts per branch that open this basePath; a matching host hides the basePath segment.
 
 Page Structure
 

@@ -67,15 +67,17 @@ Each provider gives you a client ID, and usually a secret, in its developer cons
 
 Credential fields
 
-- string — The app's client ID from the provider console. Kakao calls it the REST API key.
+- clientID (string): The app's client ID from the provider console. Kakao calls it the REST API key.
 
-- string — Sent with the code-for-token exchange, only when set.
+  - required
 
-- string — Your Apple developer team ID, the issuer of Apple's client secret.
+- clientSecret (string): Sent with the code-for-token exchange, only when set.
 
-- string — The ID of the Sign in with Apple key, sent as the secret's `kid`.
+- teamID (string, apple): Your Apple developer team ID, the issuer of Apple's client secret.
 
-- string — Path to that key's private key file. Akan signs the client secret with it.
+- keyID (string, apple): The ID of the Sign in with Apple key, sent as the secret's `kid`.
+
+- keyFilePath (string, apple): Path to that key's private key file. Akan signs the client secret with it.
 
 Redirect URI for the console
 
@@ -85,9 +87,9 @@ A provider only sends users back to a URI you registered. Akan builds it from th
 
 **Allow the scopes below.** Consent items the console has not enabled come back empty, such as Kakao's email.
 
-- Key in security.sso
+Key in security.sso
 
-- Scope Akan requests
+Scope Akan requests
 
 - github — user
 
@@ -103,11 +105,11 @@ Write A Callback
 
 You rarely write this yourself: `libs/shared/lib/user/user.signal.ts` already pairs a start route with a callback for each provider. Read it when you add a provider or change what happens after sign-in.
 
-- endpoint
+endpoint
 
-- Path
+Path
 
-- What it does
+What it does
 
 - google — /api/user/google — Redirects the browser to Google's consent screen.
 
@@ -119,13 +121,13 @@ The pieces it uses. All but `handleSsoCallback`, a user service method, come fro
 
 Helper
 
-- Guards that refuse the call with `ssoNotConfigured` when that provider has no keys.
+- SSO.Google, SSO.Github, SSO.Kakao, …: Guards that refuse the call with `ssoNotConfigured` when that provider has no keys.
 
 - makeOAuthRedirectResponse: Builds the 302 to the provider's consent screen from the `ssoOrigin` cookie.
 
-- Read the `code` query and the `ssoOrigin` cookie, and throw when either is missing.
+- getSsoCode, getSsoOrigin: Read the `code` query and the `ssoOrigin` cookie, and throw when either is missing.
 
-- One per provider. Trades the code for a token and fetches the profile.
+- extractGoogleProfile, extractGithubProfile, …: One per provider. Trades the code for a token and fetches the profile.
 
 - handleSsoCallback: The user service's decision: sign in, continue signup or error. Returns `{ cookie, redirect }`.
 
@@ -139,11 +141,11 @@ Account Id
 
 Each provider names the user differently. The callback turns every profile into one `accountId` before it calls the service, and that value identifies the user from then on.
 
-- provider
+provider
 
-- accountId
+accountId
 
-- Nickname seed
+Nickname seed
 
 - github — username — displayName
 
@@ -167,11 +169,11 @@ After The Callback
 
 The callback always ends on one of three pages, and you name all three on the sign-in button:
 
-- Outcome
+Outcome
 
-- When
+When
 
-- Goes to
+Goes to
 
 - Signed in — The accountId belongs to an active, restricted or dormant user. — signinRedirect
 
@@ -181,17 +183,17 @@ The callback always ends on one of three pages, and you name all three on the si
 
 SSOButtons props
 
-- string — Where an existing user lands, signed in.
+- signinRedirect (string): Where an existing user lands, signed in.
 
-- string — Where a newcomer lands to finish signup. Gets `?userId=<id>` appended.
+- signupRedirect (string): Where a newcomer lands to finish signup. Gets `?userId=<id>` appended.
 
-- string — "/404" — Where a failed sign-in lands. Gets `?error=<error key>` appended.
+- errorRedirect (string, default "/404"): Where a failed sign-in lands. Gets `?error=<error key>` appended.
 
-- SsoType["value"][] — [] — Providers shown as full-width buttons with a label.
+- mainSsos (SsoType["value"][], default []): Providers shown as full-width buttons with a label.
 
-- SsoType["value"][] — [] — Providers shown as a row of round icon buttons below.
+- subSsos (SsoType["value"][], default []): Providers shown as a row of round icon buttons below.
 
-- boolean — false — Replace the current history entry instead of pushing a new one.
+- replace (boolean, default false): Replace the current history entry instead of pushing a new one.
 
 **Your own button** calls `st.do.ssoSigninUser(ssoType, { signinRedirect, signupRedirect, errorRedirect })`, the same action `SSOButtons` uses.
 

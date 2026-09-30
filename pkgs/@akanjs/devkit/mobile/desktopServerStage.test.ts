@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppConfig } from "../akanConfig";
-import { tempDirs } from "../testHelpers";
+import type { App } from "../commandDecorators";
+import { tempDirs, writeText as write } from "../testHelpers";
 import type { PackageJson } from "../types";
 import { DesktopServerStage } from "./desktopServerStage";
 import { NativeApi } from "./nativeApi";
@@ -83,6 +84,80 @@ describe("DesktopServerStage", () => {
       level: "info",
       message: expect.stringContaining("carries only bin: ffmpeg"),
     });
+  });
+
+  const stageApp = async (spawn: (...args: unknown[]) => Promise<string> = async () => "") => {
+    const root = await makeTempRoot();
+    const dist = path.join(root, "dist/apps/portal");
+    const config = appConfig();
+    const app = {
+      cwdPath: path.join(root, "apps/portal"),
+      dist: { cwdPath: dist },
+      getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
+      logger: { info: () => undefined, warn: () => undefined },
+      spawn,
+    } as unknown as App;
+    return { dist, app, stage: new DesktopServerStage(app) };
+  };
+
+  test("carries everything the backend build wrote beside main.js but what only the image reads", async () => {
+    const { dist, stage } = await stageApp();
+    const carried = [
+      "main.js",
+      "server.js",
+      "chunk-5eap2n9b.js",
+      "akan.build.json",
+      "better-sqlite3-a1b2c3d4.node",
+      "engine-e5f6a7b8.wasm",
+      "model-c9d0e1f2.bin",
+      "private/service-account.json",
+    ];
+    const imageOnly = [
+      "Dockerfile",
+      "package.json",
+      "rscWorker.js",
+      "console.js",
+      "console-runtime.js",
+      "csr/index.html",
+      "public/favicon.ico",
+      ".akan/artifact/base-artifact.json",
+    ];
+    for (const file of [...carried, ...imageOnly]) await write(path.join(dist, file), file);
+
+    await stage.prepare("main");
+
+    const staged = await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: stage.dir, dot: true }));
+    expect(staged.map((file) => file.split(path.sep).join("/")).sort()).toEqual(carried.sort());
+    expect(await Bun.file(path.join(stage.dir, "better-sqlite3-a1b2c3d4.node")).text()).toBe(
+      "better-sqlite3-a1b2c3d4.node",
+    );
+  });
+
+  test("installs from the config alone, offline when Bun's cache holds the packages", async () => {
+    const spawned: unknown[][] = [];
+    const { stage } = await stageApp(async (...args) => {
+      spawned.push(args);
+      return "";
+    });
+
+    await stage.install();
+
+    expect(spawned).toEqual([[process.execPath, ["install", "--production", "--prefer-offline"], { cwd: stage.dir }]]);
+    const installed = (await Bun.file(path.join(stage.dir, "package.json")).json()) as PackageJson;
+    expect(Object.keys(installed.dependencies ?? {}).sort()).toEqual(["react", "react-dom"]);
+  });
+
+  test("an install that fails says it needs the registry or a Bun cache that holds the packages", async () => {
+    const { stage } = await stageApp(async () => {
+      throw new Error("error: GET https://registry.npmjs.org/scheduler - ConnectionRefused");
+    });
+
+    const failed = stage.install();
+
+    await expect(failed).rejects.toThrow(
+      "it needs the npm registry, or a Bun cache that already holds every one of them.\nerror: GET https://registry.npmjs.org/scheduler",
+    );
   });
 
   test("refuses an app whose database modes leave out single", () => {

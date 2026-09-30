@@ -245,6 +245,8 @@ export class AkanAppHost {
             message: msg.data.message,
           });
           this.#sendOrQueueBuildStatus(status);
+          //? A replica crash loop leaves the gateway up, waiting for an edit: no exit reaches the host's own give-up.
+          if (!status.ok) this.#emitDevEvent("failed", status.message);
           return;
         }
         if (backendMsgTypeSet.has(msg.type)) this.#sendToBuilder(msg);

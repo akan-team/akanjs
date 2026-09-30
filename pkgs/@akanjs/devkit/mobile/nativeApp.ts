@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { MobileEnv } from "akanjs";
@@ -70,6 +69,11 @@ export class NativeApp {
     return path.join(this.targetRoot, "native", platform);
   }
 
+  //? Apart from the builds: a desktop build empties its folder first, which would take a release and its installer.
+  devOutDir(platform: NativePlatform) {
+    return path.join(this.targetRoot, "dev", platform);
+  }
+
   /** The web root, from the production build the mobile commands run first. */
   async assembleWeb() {
     const dist = this.app.dist.cwdPath;
@@ -123,12 +127,16 @@ export class NativeApp {
       this.config({ platform, ...(server ? { server } : {}) }),
     ]);
     for (const warning of warnings) this.app.logger.warn(warning);
+    this.#assertValid(api, config);
+    return { api, config };
+  }
+
+  #assertValid(api: NativeBuildApiModule, config: AkanNativeConfig) {
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
       throw new Error(
         `Mobile target '${this.target.name}' makes an invalid native config:\n- ${problems.join("\n- ")}`,
       );
-    return { api, config };
   }
 
   //? The app's own output: its console (mirrored by a dev build), the simulator log stream or logcat.
@@ -139,12 +147,12 @@ export class NativeApp {
   };
 
   //* `AKAN_PUBLIC_*` is already inlined into the CSR bundle, so the runtime reads no .env file of its own.
-  #task(platform: NativePlatform, config: AkanNativeConfig): TaskOptions {
+  #task(platform: NativePlatform, config: AkanNativeConfig, outDir = this.outDir(platform)): TaskOptions {
     return {
       appDir: this.app.cwdPath,
       config,
       platform,
-      outDir: this.outDir(platform),
+      outDir,
       envFiles: false,
       skipWebBuild: true,
       log: (event) => {
@@ -192,10 +200,11 @@ export class NativeApp {
     const boot: NativeDevBoot = { steps: [], lines: [] };
     this.#boot = boot;
     try {
-      await mkdir(this.web.dir, { recursive: true });
+      //? The runtime bundles an index.html it finds here as the dev build's page, and a release build leaves one.
+      await this.web.clear();
       const [{ api, config }, { api: routes }] = await Promise.all([this.prepare(platform), this.app.getConfig()]);
       const session = await api.dev({
-        ...this.#task(platform, config),
+        ...this.#task(platform, config, this.devOutDir(platform)),
         upstream,
         hmrPath: "/_akan/hmr",
         //? A dev page calls its own origin (akanjs baseEnv), so the gateway relays the socket it opens for the API too.
@@ -253,10 +262,7 @@ export class NativeApp {
     { channel, server }: { channel?: string; server?: DesktopServerBundle } = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
-    if (!this.target.config.updates)
-      throw new Error(
-        `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
-      );
+    this.#assertUpdates();
     await this.assembleWeb();
     const { api, config } = await this.prepare(platform, server);
     return await api.publishUpdate({
@@ -265,6 +271,46 @@ export class NativeApp {
       out: this.updatesDir,
       ...(channel ? { channel } : {}),
     });
+  }
+
+  /**
+   * What publishing refuses once the release is built: no updates settings, an invalid config, no signing key or
+   * another app's, and a desktop release whose server presence is not its channel's previous release's.
+   */
+  async assertPublishable(
+    platform: NativePlatform,
+    { channel, server = false }: { channel?: string; server?: boolean } = {},
+  ) {
+    this.#assertUpdates();
+    const [api, { config }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, stageBin: false }),
+    ]);
+    this.#assertValid(api, config);
+    try {
+      api.checkPublishUpdate({
+        appDir: this.app.cwdPath,
+        config,
+        platform,
+        out: this.updatesDir,
+        server,
+        ...(channel ? { channel } : {}),
+      });
+    } catch (error) {
+      throw new Error(
+        `Mobile target '${this.target.name}': ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+
+  #assertUpdates() {
+    if (!this.target.config.updates)
+      throw new Error(
+        `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
+      );
   }
 
   /** The key update releases of this target's app id on `platform` are signed with: made once, then read. */

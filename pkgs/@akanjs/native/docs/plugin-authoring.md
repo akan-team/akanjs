@@ -106,7 +106,13 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
 - Bun API와 macOS 명령(`Bun.spawn(["open", url])` 등)을 쓸 수 있다. Finder에서 띄운 앱은 PATH와 LANG이 최소라서 명령은 절대 경로로 부르고 로캘을 지정한다(clipboard, device 참고).
 - `ctx.appDataDir`, `ctx.emit(event, data)`, `ctx.registerFile(path, mime)`(MIME은 `@akanjs/native/core`의 `mimeFor(name)`), `ctx.quit(code)`.
 - `ctx.binDir`: 앱이 싣는 실행 파일 폴더(설정 `desktop.bin`, akanjs `bin`), 없으면 null. 호스트가 이 폴더를 `process.env.PATH` 맨 앞에 붙이지만, Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽는다(Bun 1.4.2). 이름으로 실행하려면 `Bun.spawn(["svcl", …], { env: process.env })`처럼 환경을 넘기거나 `join(ctx.binDir, "svcl.exe")`로 부른다. `node:child_process`는 바뀐 `process.env`를 쓴다.
-- `ctx.server`: 앱이 싣는 서버(`desktop.server`), 없으면 null. `ready`는 세션에 한 번 정해진다. 서버가 처음 ready를 보내면 true, 띄우지 못했거나 그 전에 포기했으면 false다.
+- `ctx.server`: 앱이 싣는 서버(`desktop.server`), 없으면 null. `ready`는 세션에 한 번 정해진다. 서버가 처음 ready를 보내면 true, 띄우지 못했거나 그 전에 포기했으면 false다. 그 뒤의 일은 `state`와 `onState(listener)`로 안다.
+  - `"starting"`: ready 전(ready 전에 죽어 다시 띄우는 중도 포함)
+  - `"up"`: ready를 보낸 뒤
+  - `"restarting"`: ready였다가 죽어 다시 띄우는 중
+  - `"gaveUp"`: 이 세션에는 다시 띄우지 않는다
+  - `"stopped"`: 앱이 끝나는 중
+  - 페이지는 `app` 플러그인의 `serverState` 이벤트로 같은 값을 받는다(첫 페이지가 들을 때 지금 값, 그 뒤 바뀔 때마다).
 - 네이티브 셸: `ctx.shell("window.setTitle", { title })`(main 스레드에서 실행, 결과는 Promise), `ctx.onNativeEvent("window" | "opened" | "pageLoad", cb)`. 새 창 op가 필요하면 `native/desktop/src/lib.rs`의 `window_op`에 추가한다. 나중에 답하는 op(시트, 권한 요청)는 모듈 파일에 두고 요청 id로 `reply`한다(`panels.rs`: `panel.open`·`panel.save`·`alert.show`, 부른 창의 시트). macOS UI는 새 crate 없이 objc2·objc2-app-kit·block2, 그 밖의 Apple 프레임워크는 objc2 런타임(`msg_send!`)으로 부른다(plugins.md Q-P6).
 - 다중 창(SH-6): 앱에는 창이 여러 개일 수 있다(창 id, 1은 앱이 연 창).
   - 메서드 호출의 `ctx.window`는 부른 페이지의 창이다(setup·이벤트 소스에서는 undefined). 그 호출 안의 `ctx.shell`은 `args.window`가 없으면 그 창에 적용되므로, 창 op를 부르는 기존 플러그인은 부른 창을 대상으로 한다. 다른 창은 `ctx.shell(op, { window: 2 })`.
@@ -120,7 +126,7 @@ export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { a
   - 모듈 최상위 변수는 App 범위다. 페이지·창별 상태는 `ctx.document`나 창별 표 + `onDocumentEnd`(플러그인 필드) / `ctx.onDocumentEnd(fn)`에 둔다.
 - launch 단계: `setup`은 창이 만들어지기 전에 불리고 async여도 된다. 호스트는 모든 플러그인의 `setup`을 기다린 뒤(플러그인마다 최대 3초, 넘으면 경고 후 진행) main 스레드에 창을 만들라고 알린다. 이 동안만 쓸 수 있는 것:
   - `ctx.launch.setWindow({ x, y, width, height, maximized, fullscreen, skipTaskbar })`: 설정 크기 대신 이 bounds(논리 포인트, x·y는 바깥 프레임 왼쪽 위)로 창을 만든다. `fullscreen`은 첫 프레임부터 x·y가 있는 디스플레이에서 테두리 없는 전체화면, `skipTaskbar`는 작업 표시줄 버튼 없음(Windows·Linux)이다. 둘 다 설정 `desktop.window`보다 우선한다. 제목 표시줄을 잡을 수 있는 디스플레이가 없으면 셸이 위치를 버리고 가운데에 연다(`plugins/window-state`).
-  - `ctx.launch.exit(code)`: 창을 만들지 않고 종료한다. `onQuit` 훅은 돌지 않는다(`plugins/single-instance`).
+  - `ctx.launch.exit(code)`: 창을 만들지 않고 종료한다. `onQuit` 훅은 돌지 않는다(`plugins/single-instance`). setup이 3초를 넘겨 창이 이미 만들어진 뒤에 부르면 앱을 끝낸다(`ctx.quit(code)`와 같다). `setWindow`는 그때 무시된다.
   - `setup`이 끝난 뒤의 호출은 경고만 남기고 무시된다. launch 단계에서는 창이 없으므로 `ctx.shell`을 기다리지 않는다.
 - 종료 흐름(plugins.md D4, 등록 함수는 모두 해제 함수를 반환한다)
   - `ctx.onQuit(fn: () => void | Promise<void>)`: 앱이 어떤 경로로든 끝나기 직전의 정리(Cmd+Q, 창 닫기, `app.exit()`, 로그아웃). 모든 훅을 함께 실행하고 최대 2초 기다린다. 창 위치 저장, 소켓 정리 등.

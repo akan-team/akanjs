@@ -36,7 +36,7 @@ What it means for you
 
 - AKAN_LOG_TO_FILE=0: File logging is off, so collect stdout or set it to 1 and mount a log volume.
 
-- The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
+- ca-certificates, tzdata: The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
 
 - console.js: It ships next to `main.js`, so you open an operator console with `docker exec`.
 
@@ -64,43 +64,43 @@ Required — set by the build
 
 The app does not start without these three.
 
-- string — from the build — The app's codename.
+- AKAN_PUBLIC_APP_NAME (string, default from the build): The app's codename.
 
-- string — from the build — The workspace name.
+- AKAN_PUBLIC_REPO_NAME (string, default from the build): The workspace name.
 
-- string — from the build — The base domain the app derives its own origins from.
+- AKAN_PUBLIC_SERVE_DOMAIN (string, default from the build): The base domain the app derives its own origins from.
 
 Commonly changed
 
-- local | testing | debug | develop | main — from the build (debug) — Which deployment this is. The Helm chart sets it per namespace. An image carries only the server env it was built with, so it runs that environment and no other.
+- AKAN_PUBLIC_ENV (local | testing | debug | develop | main, default from the build (debug)): Which deployment this is. The Helm chart sets it per namespace. An image carries only the server env it was built with, so it runs that environment and no other.
 
-- local | edge | cloud | module — cloud in the image — Where it runs. The on-premise box in this page's example is `edge`.
+- AKAN_PUBLIC_OPERATION_MODE (local | edge | cloud | module, default cloud in the image): Where it runs. The on-premise box in this page's example is `edge`.
 
-- single | multiple | cluster — the app's only declared mode — Picks one of the modes `database.modes` declares. Required when the app declares several.
+- AKAN_DATABASE_MODE (single | multiple | cluster, default the app's only declared mode): Picks one of the modes `database.modes` declares. Required when the app declares several.
 
-- number — 8282 — The port the gateway or the solo process binds.
+- PORT (number, default 8282): The port the gateway or the solo process binds.
 
-- string — /workspace/sqlite in the image — Where the sqlite files go. Point it at a mounted volume.
+- AKAN_SQLITE_DIR (string, default /workspace/sqlite in the image): Where the sqlite files go. Point it at a mounted volume.
 
-- 0 | 1 — 0 in the image — Rotating log files. Set 1 and mount `AKAN_LOG_DIR` to get them back.
+- AKAN_LOG_TO_FILE (0 | 1, default 0 in the image): Rotating log files. Set 1 and mount `AKAN_LOG_DIR` to get them back.
 
-- string — /workspace/runtime/logs in the image — Where the rotating log files go when file logging is on.
+- AKAN_LOG_DIR (string, default /workspace/runtime/logs in the image): Where the rotating log files go when file logging is on.
 
-- 1 — unset — Required to open `console.js` in a production-like environment.
+- AKAN_CONSOLE (1, default unset): Required to open `console.js` in a production-like environment.
 
 Where the data lives
 
 These say where the data and the uploads live. Set on the container, each wins over the same value bundled from `env.server.ts`, so one image serves every deployment.
 
-- string — <AKAN_SQLITE_DIR>/<app>-<env>.db — The SQLite database file. In `multiple`, every container on the host opens this one file.
+- SQLITE_DATABASE_PATH (string, default <AKAN_SQLITE_DIR>/<app>-<env>.db, single · multiple): The SQLite database file. In `multiple`, every container on the host opens this one file.
 
-- string — <AKAN_SQLITE_DIR>/<app>-<env>_solid.db — The SQLite file that holds the cache, queue and pubsub.
+- AKAN_SOLID_DB_PATH (string, default <AKAN_SQLITE_DIR>/<app>-<env>_solid.db, single): The SQLite file that holds the cache, queue and pubsub.
 
-- string — The Redis for the cache, queue and pubsub. Required; `rediss://` connects over TLS.
+- REDIS_URI (string, multiple · cluster): The Redis for the cache, queue and pubsub. Required; `rediss://` connects over TLS.
 
-- string — The Postgres database. Pool size, SSL and prepared statements ride its query string. — postgres://app:secret@db:5432/app?max=20&ssl=require
+- POSTGRES_URL (string, cluster): The Postgres database. Pool size, SSL and prepared statements ride its query string. — Example: `postgres://app:secret@db:5432/app?max=20&ssl=require`
 
-- true — Says `/workspace/local`, where uploads land, is one volume every instance mounts.
+- AKAN_STORAGE_SHARED (true, multiple · cluster): Says `/workspace/local`, where uploads land, is one volume every instance mounts.
 
 **Behind PgBouncer in transaction mode, also add `&prepare=false`** to that query string.
 
@@ -146,13 +146,23 @@ Value examples
 
 Whether the container answers requests, and whether an internal pinned to `serverMode: "batch"` runs in it:
 
-- Requests
+Requests
 
-- batch internals — serverMode: "batch"
+batch internals — serverMode: "batch"
 
 - Solo — one process, no gateway
 
+  - (unset): Same as `"0,0,1"`: one all-purpose replica.
+
+  - "1,0,0": One federation replica.
+
+  - "0,0,0": Becomes one all-purpose replica. You can never ask for none.
+
 - Gateway in front
+
+  - "2": Two federation replicas. Missing slots count as zero.
+
+  - "0,1,0": One batch replica. The gateway stays to answer health checks.
 
 handled
 
@@ -194,13 +204,13 @@ Several Containers On One Host
 
 When one container is not enough, run several copies on the same host in the `multiple` database mode. They open one SQLite file on a host volume and share one Redis for the cache, queue and pubsub.
 
-- Mode
+Mode
 
-- Database
+Database
 
-- Cache · queue · pubsub
+Cache · queue · pubsub
 
-- Runs on
+Runs on
 
 - single — A SQLite file — SQLite files — One container
 
@@ -228,7 +238,17 @@ Setting
 
 - akan.config.ts — what the build puts in the image
 
+  - web: true: The default. Both surfaces are built.
+
+  - web: { csr: false }: Drops the mobile SPA bundle and keeps SSR.
+
+  - web: false: API only: no route artifact, CSR bundle, RSC worker entrypoint or `public/`.
+
 - Container env — narrows at boot
+
+  - AKAN_CSR=false: Takes down only the mobile SPA bundle.
+
+  - AKAN_SSR=false: Takes down the RSC worker and the render routes, and CSR with them.
 
 served
 
@@ -250,13 +270,13 @@ Customize The Image
 
 You do not write a Dockerfile; the `docker` key in `akan.config.ts` shapes the image. The image installs only `ca-certificates` and `tzdata`, so an app that needs ffmpeg or Chromium has to say so.
 
-- string | { amd64?, arm64? } — oven/bun:1-slim — The base image. The object form picks one per architecture; a missing one uses the default.
+- image (string | { amd64?, arm64? }, default oven/bun:1-slim): The base image. The object form picks one per architecture; a missing one uses the default.
 
-- (string | { amd64?, arm64? })[] — [] — Commands run before `bun install`, such as a system package a native dependency needs.
+- preRuns ((string | { amd64?, arm64? })[], default []): Commands run before `bun install`, such as a system package a native dependency needs.
 
-- (string | { amd64?, arm64? })[] — [] — Commands run after `bun install`, before the app files are copied.
+- postRuns ((string | { amd64?, arm64? })[], default []): Commands run after `bun install`, before the app files are copied.
 
-- string[] — ["bun", "main.js"] — The container's `CMD`.
+- command (string[], default ["bun", "main.js"]): The container's `CMD`.
 
 An app that needs ffmpeg, plus one step that runs only on arm64:
 

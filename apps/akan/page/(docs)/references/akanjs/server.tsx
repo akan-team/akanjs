@@ -483,8 +483,8 @@ export default page().render(() => {
     {
       name: "setCrossSite(option)",
       desc: l.trans({
-        en: "Extra origins a browser may send mutations from. `{ enabled: false }` turns the check off.",
-        ko: "브라우저가 mutation을 보내도 되는 다른 origin입니다. `{ enabled: false }`면 검사를 끕니다.",
+        en: "Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.",
+        ko: "브라우저가 mutation을 보내고 웹소켓을 열어도 되는 다른 origin입니다. `{ enabled: false }`면 검사를 끕니다.",
       }),
     },
   ];

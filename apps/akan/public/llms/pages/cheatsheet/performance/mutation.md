@@ -23,9 +23,9 @@ Mutating Data
 
 You need to bump a view counter, archive a batch of rows, or edit the one record a user opened. There are two ways to write, and the choice decides whether your hooks run.
 
-- Document Path — Loads the document, changes it and saves it, so hooks run and a removal takes its cascade.
+- Document Path — Loads the document, changes it and saves it, so hooks run and a removal takes its cascade. — `await this.updatePost(id, data);`
 
-- Query Write — Sends one atomic SQL statement and loads nothing. Fast and safe under races, but no hook runs.
+- Query Write — Sends one atomic SQL statement and loads nothing. Fast and safe under races, but no hook runs. — `await this.Post.updateOne(filter, change);`
 
 Which one runs what
 
@@ -33,23 +33,41 @@ If a hook or a cascade must run for each document, take a document path. The tab
 
 Term
 
-- Schema hooks, registered in `_onSchema`. They run whenever a document is saved or removed.
+- schema.pre, schema.post: Schema hooks, registered in `_onSchema`. They run whenever a document is saved or removed.
 
-- Service hooks. Only the service's `create<Model>`, `update<Model>` and `remove<Model>` run them.
+- _preCreate, _postCreate, _preUpdate, _postUpdate, _preRemove, _postRemove: Service hooks. Only the service's `create<Model>`, `update<Model>` and `remove<Model>` run them.
 
 - cascade: A removal declared on a field: documents linked to the removed one go with it.
 
 Method
 
-- Schema hooks
+Schema hooks
 
-- Service hooks
+Service hooks
 
-- cascade
+cascade
 
 - Document path: load, change, save
 
+  - update<Model>(id, data): Generated on the service. The default choice for one record.
+
+  - remove<Model>(id): Generated on the service. Soft-removes the document, then runs the cascade.
+
+  - pickAndWrite(id, data): On the model: pick, set, save. `pickOneAndWrite(query, data)` picks by query.
+
+  - doc.set(data).save(): The same thing, spelled out, when you already hold the document.
+
 - Query write: one SQL statement, nothing loaded
+
+  - updateOne · updateMany: Change the newest match, or every match.
+
+  - removeOne · removeMany: Soft-remove the newest match, or every match.
+
+  - updateById · removeById: The same query writes, narrowed to one id.
+
+  - update<Filter>(…).set(…): Generated per filter, like `remove<Filter>`, `updateOne<Filter>` and `removeOne<Filter>`.
+
+  - bulkWrite(operations): A list of `updateOne` operations, run one after another.
 
 Runs
 
@@ -75,9 +93,9 @@ When
 
 Example
 
-- Object — You only assign values. A bare value means `set`. — { status: "published", pinned: true }
+- Object — You only assign values. A bare value means `set`. — Example: `{ status: "published", pinned: true }`
 
-- Builder — You need `inc`, `addToSet` or another operator. — ({ inc }) => ({ viewNum: inc(1) })
+- Builder — You need `inc`, `addToSet` or another operator. — Example: `({ inc }) => ({ viewNum: inc(1) })`
 
 In a model class, the two look like this:
 
@@ -131,7 +149,7 @@ Operator
 
 What it does · SQL
 
-- Sets the field. The short form of `set`.
+- plain value: Sets the field. The short form of `set`.
 
 - set(value): Sets the field.
 
@@ -153,9 +171,9 @@ What it does · SQL
 
 - setOnInsert(value): Sets the field only when an upsert inserts a new row.
 
-- A dotted key writes inside an object field.
+- nested path: A dotted key writes inside an object field.
 
-- Several operators nest into one expression.
+- combined: Several operators nest into one expression.
 
 **Simplified, in the SQLite/libsql dialect.** Postgres uses the matching `jsonb` functions.
 
@@ -177,13 +195,13 @@ What a write returns
 
 Every query write resolves to the same result. Check `modifiedCount` when the write must have hit a row:
 
-- boolean — `true` once the statement ran.
+- acknowledged (boolean): `true` once the statement ran.
 
-- number — Rows the filter matched. 0 when an upsert inserted instead.
+- matchedCount (number): Rows the filter matched. 0 when an upsert inserted instead.
 
-- number — Rows the write changed, counting an upsert's insert.
+- modifiedCount (number): Rows the write changed, counting an upsert's insert.
 
-- string | null — The new row's id when an upsert inserted; otherwise `null` or absent.
+- upsertedId (string | null, optional): The new row's id when an upsert inserted; otherwise `null` or absent.
 
 Read next
 
@@ -270,6 +288,97 @@ export class StatModel extends into(Stat, StatFilter, cnst.stat, () => ({})) {
     return !!modifiedCount;
   }
 }
+```
+
+### plain value
+
+```ts
+{ status: "done" }
+// → json_set(_doc, '$.status', json(?))
+```
+
+### set(value)
+
+```ts
+({ set }) => ({ status: set("done") })
+// → json_set(_doc, '$.status', json(?))
+```
+
+### unset()
+
+```ts
+({ unset }) => ({ draft: unset() })
+// → json_remove(_doc, '$.draft')
+```
+
+### inc(by = 1)
+
+```ts
+({ inc }) => ({ viewNum: inc(1) })
+// → json_set(_doc, '$.viewNum', COALESCE(json_extract(_doc, '$.viewNum'), 0) + ?)
+```
+
+### mul(by)
+
+```ts
+({ mul }) => ({ price: mul(1.1) })
+// → json_set(_doc, '$.price', COALESCE(json_extract(_doc, '$.price'), 0) * ?)
+```
+
+### min(value)
+
+```ts
+({ min }) => ({ lowest: min(10) })
+// → json_set(_doc, '$.lowest', MIN(COALESCE(json_extract(_doc, '$.lowest'), ?), ?))
+```
+
+### max(value)
+
+```ts
+({ max }) => ({ highest: max(90) })
+// → json_set(_doc, '$.highest', MAX(COALESCE(json_extract(_doc, '$.highest'), ?), ?))
+```
+
+### push(value)
+
+```ts
+({ push }) => ({ logs: push(entry) })
+// → json_set(_doc, '$.logs', json_insert(COALESCE(json_extract(_doc, '$.logs'), json('[]')), '$[#]', json(?)))
+```
+
+### addToSet(value)
+
+```ts
+({ addToSet }) => ({ tags: addToSet("urgent") })
+// → json_set(_doc, '$.tags', CASE WHEN EXISTS (SELECT 1 FROM json_each(...) WHERE value = ?) THEN ... ELSE json_insert(..., '$[#]', json(?)) END)
+```
+
+### pull(value)
+
+```ts
+({ pull }) => ({ tags: pull("urgent") })
+// → json_set(_doc, '$.tags', (SELECT json_group_array(value) FROM json_each(...) WHERE value <> ?))
+```
+
+### setOnInsert(value)
+
+```ts
+({ setOnInsert }) => ({ status: setOnInsert("new") })
+// → no SQL; applied only to the upsert insert
+```
+
+### nested path
+
+```ts
+({ set }) => ({ "profile.city": set("Seoul") })
+// → json_set(_doc, '$.profile.city', json(?))
+```
+
+### combined
+
+```ts
+({ inc, addToSet }) => ({ viewNum: inc(1), tags: addToSet("hot") })
+// → json_set(json_set(_doc, '$.viewNum', ... + ?), '$.tags', ...)
 ```
 
 ## Agent Notes

@@ -23,6 +23,8 @@ afterwards, and a PC without the WebView2 Runtime gets it. The program is not co
 - The Start menu shortcut and the app `/RUN` or the last page starts work in `%LOCALAPPDATA%`: Windows cannot rename a
   folder some process works in, which is what applying an update does.
 - `/RUN` starts the app after a silent install only; an interactive one offers it on its last page.
+- Run again without `/D=`, it installs into the folder the uninstall entry names, so a reinstall replaces the copy
+  already installed wherever it was put, and a setup started while another one runs refuses to start.
 - A silent install that cannot finish exits with 2: files it could not write (the script is long-path aware, and the
   build warns when the deepest file nears 260 characters under `%LOCALAPPDATA%\Programs`), a WebView2 Runtime still
   missing after its setup ran (an interactive install asks), or a `/D=` folder holding someone else's files.

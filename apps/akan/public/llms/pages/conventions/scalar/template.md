@@ -24,15 +24,25 @@ It edits the value and nothing else. Reading the draft, saving it and submitting
 
 The work
 
-- Scalar — Price.Template
+Scalar — Price.Template
 
-- Parent — Product.Template
+Parent — Product.Template
 
-- Shell — Load.Edit
+Shell — Load.Edit
 
 - Editing the value
 
+  - Field.*: One control per scalar field, labelled from the scalar's dictionary.
+
+  - new cnst.Price().set(value): Builds the changed value and hands it to `onChange`.
+
 - Keeping and saving it
+
+  - st.use.productForm(): Reads the parent's draft, where the price is one field.
+
+  - st.do.setPriceOnProduct: Writes the whole changed price back into that draft.
+
+  - load · open · submit: An edit shell such as `Load.Edit` does this around the parent Template.
 
 Done here
 
@@ -42,9 +52,9 @@ Words used on this page
 
 Term
 
-- A small value object stored inside another model, such as `Price` with `amount` and `currency`.
+- scalar: A small value object stored inside another model, such as `Price` with `amount` and `currency`.
 
-- The Template of the model that holds the scalar, such as `Product.Template`.
+- parent form: The Template of the model that holds the scalar, such as `Product.Template`.
 
 - <model>Form: The store's draft of the record being edited, such as `productForm`.
 
@@ -54,13 +64,13 @@ File Shape
 
 The Template sits in the scalar's own folder under `lib/__scalar/`, next to the constant that defines the value and the dictionary that labels it:
 
-- Path — In the scalar's own folder, beside its constant file.
+- Path — `apps/<app>/lib/__scalar/<scalar>/<Scalar>.Template.tsx` — In the scalar's own folder, beside its constant file.
 
-- First Line — Always. Its fields handle input events, which only run in the browser.
+- First Line — `"use client";` — Always. Its fields handle input events, which only run in the browser.
 
-- Exports — Named arrow components, each taking `value` and `onChange`.
+- Exports — `General` — Named arrow components, each taking `value` and `onChange`.
 
-- Used As — The parent form imports `Price` from `@apps/<app>/client`.
+- Used As — `<Price.Template.General value={…} onChange={…} />` — The parent form imports `Price` from `@apps/<app>/client`.
 
 **A scalar has two UI files at most.** `<Scalar>.Template.tsx` edits the value and `<Scalar>.Unit.tsx` displays it. A scalar folder has no Zone, View or Util.
 
@@ -96,11 +106,11 @@ Field Or Custom UI
 
 Give every scalar field a `Field.*` control, never a bare `<input>`. A Field brings the label, the validation and, when handed a store setter, the `data-akan-action` attribute. Pick the control by the value's shape:
 
-- Scalar
+Scalar
 
-- Control
+Control
 
-- Note
+Note
 
 - `Price` — Field.Number · Field.Text — Plain number and text fields, as in the example above.
 

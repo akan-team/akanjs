@@ -75,33 +75,33 @@ Nine of the fourteen read, one only builds a query descriptor, and the remaining
 
 Method
 
-- list<Filter> — await listByOwner(ownerId, { limit: 20 }) — Read, no hooks. Hydrated documents, newest first; takes skip, limit, sort and select.
+- list<Filter>: Read, no hooks. Hydrated documents, newest first; takes skip, limit, sort and select. — Example: `await listByOwner(ownerId, { limit: 20 })`
 
-- listIds<Filter> — await listIdsByOwner(ownerId) — Read, no hooks. Just the ids; the same option, minus select.
+- listIds<Filter>: Read, no hooks. Just the ids; the same option, minus select. — Example: `await listIdsByOwner(ownerId)`
 
-- find<Filter> — await findByOwner(ownerId) — Read, no hooks. The newest match or null.
+- find<Filter>: Read, no hooks. The newest match or null. — Example: `await findByOwner(ownerId)`
 
-- findId<Filter> — await findIdByOwner(ownerId) — Read, no hooks. That match's id, or null.
+- findId<Filter>: Read, no hooks. That match's id, or null. — Example: `await findIdByOwner(ownerId)`
 
-- pick<Filter> — await pickByOwner(ownerId) — Read, no hooks. Like find, but no match throws — for rows the caller knows exist.
+- pick<Filter>: Read, no hooks. Like find, but no match throws — for rows the caller knows exist. — Example: `await pickByOwner(ownerId)`
 
-- pickId<Filter> — await pickIdByOwner(ownerId) — Read, no hooks. That id, or a throw.
+- pickId<Filter>: Read, no hooks. That id, or a throw. — Example: `await pickIdByOwner(ownerId)`
 
-- exists<Filter> — if (await existsByOwner(ownerId)) … — Read, no hooks. The matching id or null — not a boolean, though it works in a condition.
+- exists<Filter>: Read, no hooks. The matching id or null — not a boolean, though it works in a condition. — Example: `if (await existsByOwner(ownerId)) …`
 
-- count<Filter> — await countByOwner(ownerId) — Read, no hooks. How many rows match.
+- count<Filter>: Read, no hooks. How many rows match. — Example: `await countByOwner(ownerId)`
 
-- insight<Filter> — await insightByOwner(ownerId) — Read, no hooks. The model's Insight aggregate as a plain record, not a hydrated document.
+- insight<Filter>: Read, no hooks. The model's Insight aggregate as a plain record, not a hydrated document. — Example: `await insightByOwner(ownerId)`
 
-- query<Filter> — this.productService.queryByOwner(ownerId) — Neither. The descriptor a slice's exec returns; synchronous, never touches the database.
+- query<Filter>: Neither. The descriptor a slice's exec returns; synchronous, never touches the database. — Example: `this.productService.queryByOwner(ownerId)`
 
-- remove<Filter> — await removeByOwner(ownerId) — Write, NO hooks. One atomic soft delete over every match, reporting counts.
+- remove<Filter>: Write, NO hooks. One atomic soft delete over every match, reporting counts. — Example: `await removeByOwner(ownerId)`
 
-- removeOne<Filter> — await removeOneByOwner(ownerId) — Write, NO hooks. The same on the newest match; for at-most-one rows, not queue claims.
+- removeOne<Filter>: Write, NO hooks. The same on the newest match; for at-most-one rows, not queue claims. — Example: `await removeOneByOwner(ownerId)`
 
-- update<Filter> — await updateByOwner(ownerId).set({ status: "archived" }) — Write, NO hooks. A chain: the patch goes on a terminal .set(); building it does nothing.
+- update<Filter>: Write, NO hooks. A chain: the patch goes on a terminal .set(); building it does nothing. — Example: `await updateByOwner(ownerId).set({ status: "archived" })`
 
-- updateOne<Filter> — await updateOneByOwner(ownerId).set({ status: "archived" }) — Write, NO hooks. The same chain, narrowed to the newest match.
+- updateOne<Filter>: Write, NO hooks. The same chain, narrowed to the newest match. — Example: `await updateOneByOwner(ownerId).set({ status: "archived" })`
 
 Reach for the four writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — one atomic UPDATE cannot run any of that.
 

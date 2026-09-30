@@ -40,13 +40,13 @@ Term
 
 Exports
 
-- What `fetch.init*`, `fetch.view*` and `fetch.edit*` return: awaitable, or split per field.
+- InitHandle, ViewHandle, EditHandle: What `fetch.init*`, `fetch.view*` and `fetch.edit*` return: awaitable, or split per field.
 
 - ClientInit: Type of a Zone's `init` prop: a list payload or its promise.
 
-- Types of a Zone's `view` and `edit` props for one record.
+- ClientView, ClientEdit: Types of a Zone's `view` and `edit` props for one record.
 
-- The same three payloads, already resolved instead of a promise.
+- ServerInit, ServerView, ServerEdit: The same three payloads, already resolved instead of a promise.
 
 - SliceMeta: Names the slice a component works on: `refName`, `sliceName` and `argLength`.
 
@@ -58,9 +58,9 @@ Exports
 
 - FetchClient: The runtime client behind every app's `fetch`.
 
-- Read the request a page is being rendered for. Server only.
+- getRequest, headers, cookies: Read the request a page is being rendered for. Server only.
 
-- `HttpClient`, `WsClient`, `AgentTurn`, request helpers like `getRequestTheme`, and client types.
+- Everything else: `HttpClient`, `WsClient`, `AgentTurn`, request helpers like `getRequestTheme`, and client types.
 
 InitHandle / ViewHandle / EditHandle
 
@@ -70,11 +70,11 @@ So each section renders as soon as its own data lands, and the page never waits 
 
 Three Handles
 
-- Handle
+Handle
 
-- Returned by
+Returned by
 
-- Fields
+Fields
 
 - `InitHandle` — fetch.init<Model><Suffix>(...args, option?) — <model>Init<Suffix> · <model>List<Suffix> · <model>Insight<Suffix>
 
@@ -98,13 +98,23 @@ Where Each Field Goes
 
 Field
 
-- Zone — init · view · edit
+Zone — init · view · edit
 
-- Server — Unit · View · Load.Stream
+Server — Unit · View · Load.Stream
 
 - Plain payload
 
+  - <model>Init<Suffix>: The list payload. Pass it to the Zone's `init` prop.
+
+  - <model>View · <model>Edit: One record's payload. Pass it to the Zone's `view` or `edit` prop.
+
 - Hydrated instances
+
+  - <model>List<Suffix>: A `DataList` of Light models, such as a list to count.
+
+  - <model>Insight<Suffix>: The aggregate as an Insight model instance.
+
+  - <model>: The full model instance of one record.
 
 hand it here
 
@@ -130,31 +140,31 @@ Type Parameters
 
 Two are usually enough: the ref name and the Light model. The other three default to `any`.
 
-- string — The model's ref name, such as `"user"`. The payload's keys are named after it.
+- RefName (string): The model's ref name, such as `"user"`. The payload's keys are named after it.
 
-- The Light model each row is, such as `cnst.LightUser`.
+- Light: The Light model each row is, such as `cnst.LightUser`.
 
-- any — The Insight model of the aggregate.
+- Insight (default any): The Insight model of the aggregate.
 
-- any — The slice's argument tuple.
+- QueryArgs (default any): The slice's argument tuple.
 
-- any — The model's filter class. It types the sort key.
+- Filter (default any): The model's filter class. It types the sort key.
 
 What The Payload Holds
 
 Every key but the first three is named after the model. For `user`, the rows are `userObjList`:
 
-- Which slice the list came from: the same three fields as `SliceMeta`.
+- refName, sliceName, argLength: Which slice the list came from: the same three fields as `SliceMeta`.
 
 - <model>ObjList: The rows, as plain objects.
 
 - <model>ObjInsight: The aggregate as a plain object. `null` when loaded with `insight: false`.
 
-- The current page, the page size, and the last page worked out from the count.
+- pageOf<Model>, limitOf<Model>, lastPageOf<Model>: The current page, the page size, and the last page worked out from the count.
 
 - hasMoreOf<Model>: Whether another batch exists, read off the batch size rather than the count.
 
-- The arguments and the sort key the list was loaded with.
+- queryArgsOf<Model>, sortOf<Model>: The arguments and the sort key the list was loaded with.
 
 - <model>InitAt: When the list was loaded.
 
@@ -162,11 +172,11 @@ ClientView / ClientEdit
 
 `ClientView` and `ClientEdit` are the Zone prop types for one record. Each takes the resolved payload or the promise the view or edit handle hands out.
 
-- Type
+Type
 
-- Handle field
+Handle field
 
-- Consumed by
+Consumed by
 
 - `ClientView` — fetch.view<Model>(id) → <model>View — The `view` prop of `Load.View`.
 
@@ -206,17 +216,17 @@ FetchInitForm
 
 `FetchInitForm` is the option object for loading a list: which page, how many rows, what order, and whether to count. It is the last argument of `fetch.init<Model><Suffix>()` and `st.do.init<Model><Suffix>()`.
 
-- number — 1 — The page to load, counted from 1.
+- page (number, default 1): The page to load, counted from 1.
 
-- number — 20 — Rows per page.
+- limit (number, default 20): Rows per page.
 
-- ExtractSort<Filter> — "latest" — One of the filter's sort keys. `latest`, `oldest` and `relevance` always exist.
+- sort (ExtractSort<Filter>, default "latest"): One of the filter's sort keys. `latest`, `oldest` and `relevance` always exist.
 
-- boolean — true — `false` skips the aggregate query, so `<model>ObjInsight` is `null` and there is no total.
+- insight (boolean, default true): `false` skips the aggregate query, so `<model>ObjInsight` is `null` and there is no total.
 
-- Partial<DefaultOf<Input>> — Values the slice's form starts from, and returns to after each save.
+- default (Partial<DefaultOf<Input>>, st.do.init*): Values the slice's form starts from, and returns to after each save.
 
-- boolean — false — `false` reuses a list already loaded with the same arguments, page, limit and sort.
+- invalidate (boolean, default false, st.do.init*): `false` reuses a list already loaded with the same arguments, page, limit and sort.
 
 Its type arguments, `Input` and `Filter`, type `default` and `sort`. Fields tagged `st.do.init*` are read by the store only. The defaults above apply to `fetch.init*`; `st.do.init*` keeps the list's current `page`, `limit` and `sort` when you leave them out.
 
@@ -254,11 +264,11 @@ Member
 
 - setTimeout(ms): Budget for calls whose endpoint and caller name none: 30 seconds by default, `false` for no limit.
 
-- Open or close the WebSocket that `pubsub` and `message` endpoints use.
+- connect(), disconnect(): Open or close the WebSocket that `pubsub` and `message` endpoints use.
 
 - fetch.instance: The `FetchClient` inside an app's `fetch` proxy.
 
-- Build an app's `fetch` in the generated `lib/sig.ts` and `lib/useClient.ts`.
+- FetchClient.from, FetchClient.build: Build an app's `fetch` in the generated `lib/sig.ts` and `lib/useClient.ts`.
 
 Signal tests use `clone` to call the server as a signed-in user:
 
@@ -272,13 +282,13 @@ getRequest / headers / cookies
 
 These read the request a page is being rendered for. `akanjs/fetch` pulls in no client code, so a server component can import them freely.
 
-- Request | undefined — The request being rendered.
+- getRequest() (Request | undefined): The request being rendered.
 
-- Map<string, string> — The request headers, keys in lower case. A new Map on every call.
+- headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call.
 
-- Map<string, { name, value }> — The parsed `Cookie` header. A `j:` value is decoded as JSON.
+- cookies() (Map<string, { name, value }>): The parsed `Cookie` header. A `j:` value is decoded as JSON.
 
-- AkanRequestStore | undefined — The whole per-request store: the request, its theme and its query cache.
+- getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache.
 
 A page can read them while it renders:
 

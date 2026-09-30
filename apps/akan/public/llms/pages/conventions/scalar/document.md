@@ -49,17 +49,27 @@ A helper that reads the scalar's fields, such as a label, a flag or a small calc
 
 What you write
 
-- constant
+constant
 
-- dictionary
+dictionary
 
-- document
+document
 
 - The value itself, for server and browser
 
+  - Fields and defaults: The value's shape, such as `amount: field(Float, { default: 0 })`.
+
+  - enumOf(…): Enum classes such as `Currency`, declared above the scalar class.
+
+  - Helper methods: Display, predicate and small calculation methods such as `getLabel()`.
+
 - Labels
 
+  - Labels and descriptions: An `[en, ko]` label and description for every field and enum value.
+
 - Server only
+
+  - by(cnst.Price): The one-line wrapper that gives server code the `db.Price` type.
 
 Lives in this file
 
@@ -85,21 +95,21 @@ Where each need goes
 
 Reach for a helper when the same display or calculation shows up in several places. Anything that loads data stays in a service.
 
-- When you need…
+When you need…
 
-- File
+File
 
-- Example
+Example
 
-- A service method that takes or returns the value — leaveInfo.document.ts — leaveInfo: db.LeaveInfo
+- A service method that takes or returns the value — leaveInfo.document.ts — Example: `leaveInfo: db.LeaveInfo`
 
-- One price label reused in product cards, order summaries and invoices — price.constant.ts — price.getLabel()
+- One price label reused in product cards, order summaries and invoices — price.constant.ts — Example: `price.getLabel()`
 
-- An address summary built from `city` and `street` — address.constant.ts — address.getSummary()
+- An address summary built from `city` and `street` — address.constant.ts — Example: `address.getSummary()`
 
-- A calculation across two values, such as a distance — coordinate.constant.ts — Coordinate.getDistanceKm(a, b)
+- A calculation across two values, such as a distance — coordinate.constant.ts — Example: `Coordinate.getDistanceKm(a, b)`
 
-- Loading other records or calling a backend service — <model>.service.ts — this.userModel.getUser(userId)
+- Loading other records or calling a backend service — <model>.service.ts — Example: `this.userModel.getUser(userId)`
 
 Common mistakes
 

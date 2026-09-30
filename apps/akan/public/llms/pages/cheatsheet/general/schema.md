@@ -49,11 +49,11 @@ Start From The Screen
 
 Before adding fields, picture the list page, the detail page and the form. The schema should make those everyday reads easy.
 
-- Screen
+Screen
 
-- Lands in
+Lands in
 
-- Ask first
+Ask first
 
 - List page — What small fields should every row show? — LightPost
 
@@ -79,11 +79,11 @@ How many
 
 Store it as
 
-- Embed a scalar array in the document, as for a user's few links or a post's small settings. — links: field([ExternalLink])
+- One to few: Embed a scalar array in the document, as for a user's few links or a post's small settings. — Example: `links: field([ExternalLink])`
 
-- Keep an array of relations, which stores only ids, as for selected files or assigned users. — files: field([File])
+- One to many: Keep an array of relations, which stores only ids, as for selected files or assigned users. — Example: `files: field([File])`
 
-- Make a child model that points back at its parent, as for comments, logs, events or telemetry. — post: field(ID, { ref: "post" })
+- One to squillions: Make a child model that points back at its parent, as for comments, logs, events or telemetry. — Example: `post: field(ID, { ref: "post" })`
 
 Comments can grow without limit, so they get a model of their own that points back at the post:
 
@@ -101,13 +101,23 @@ A post list usually shows the author's name and picture next to each post. Both 
 
 What you get
 
-- Reference — field(LightUser)
+Reference — field(LightUser)
 
-- Copy — field(AuthorCard)
+Copy — field(AuthorCard)
 
 - When the list is read
 
+  - Same response: Either way, the list page sends no second request.
+
+  - Always current: The server looks the user up each time it builds a response.
+
+  - No lookup on read: The copied values are read exactly as stored.
+
 - When the post is written
+
+  - Stores only the id: The post keeps the user's id and nothing else about them.
+
+  - Updated by your code: A copy changes only when your code writes it again.
 
 Yes
 

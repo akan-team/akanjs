@@ -23,11 +23,11 @@ Scripts
 
 A script is a TypeScript file that boots your app's server, does one job, and exits. Reach for it when the job should live in a file rather than at a prompt:
 
-- Command
+Command
 
-- Form
+Form
 
-- Good for
+Good for
 
 - `akan script` — A file in `script/` you can review and rerun — Seed data, migrations, checks, small maintenance fixes
 
@@ -55,9 +55,11 @@ Arguments
 
 Both arguments may be left out, and the command then asks. They are positional, so the app comes first:
 
-- String — The app name, needed with a file name. Left out, it asks from a list or uses the only app. — koyo
+- app (String): The app name, needed with a file name. Left out, it asks from a list or uses the only app. — Example: `koyo`
 
-- String — A file directly in `script/`; the `.ts` suffix is optional. Leave it out to pick from a list. — hello
+  - optional
+
+- filename (String): A file directly in `script/`; the `.ts` suffix is optional. Leave it out to pick from a list. — Example: `hello`
 
 **No subfolders.** A name containing `/` or `..` is refused, so keep every script at the top of `script/`.
 
@@ -89,11 +91,11 @@ Lookup Helpers
 
 Once `server.start()` resolves, `server` hands out any service, signal or adaptor the app registered. Prefer a class to a name string, which is not type-checked.
 
-- Finds by
+Finds by
 
-- Call
+Call
 
-- What you get
+What you get
 
 - server.get(srv.IcecreamOrderService) — Class — A service, signal or adaptor instance, fully typed.
 

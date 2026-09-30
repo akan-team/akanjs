@@ -50,19 +50,19 @@ srvkit/ holds seven kinds of code. Four step into the request path, and three ar
 
 Kind
 
-- Guard: Decides whether a request may run an endpoint: sign-in, role or ownership checks.
+- Guard: Decides whether a request may run an endpoint: sign-in, role or ownership checks. — Example: `libs/shared/srvkit/guards.ts`
 
-- InternalArg: Reads a trusted value, such as the caller's account, and hands it to exec as an argument.
+- InternalArg: Reads a trusted value, such as the caller's account, and hands it to exec as an argument. — Example: `libs/shared/srvkit/internalArgs.ts`
 
-- Middleware: Wraps every signal call and attaches server context before the endpoint's guards run.
+- Middleware: Wraps every signal call and attaches server context before the endpoint's guards run. — Example: `libs/shared/srvkit/accountMiddleware.ts`
 
 - WebProxy: Runs before a page load is routed, to redirect, rewrite, or add headers.
 
-- A reusable function for hashing, encryption, file handling, image inspection or tokens. — libs/util/srvkit/aes.ts libs/util/srvkit/getImageSize.ts
+- Server helper: A reusable function for hashing, encryption, file handling, image inspection or tokens.
 
-- Adaptor: A singleton adapt() class wrapping storage, queues, email, payment or a vendor API.
+- Adaptor: A singleton adapt() class wrapping storage, queues, email, payment or a vendor API. — Example: `libs/util/srvkit/ipfsApi.ts`
 
-- Class utility: Legacy: a server-only class, such as an SDK client, injected through option.ts.
+- Class utility: Legacy: a server-only class, such as an SDK client, injected through option.ts. — Example: `libs/util/srvkit/cloudflareApi.ts`
 
 Where the request-path four run
 
@@ -70,13 +70,21 @@ A page load and a signal call take different paths, and each piece sits on only 
 
 Piece
 
-- Page load — /ko/docs
+Page load — /ko/docs
 
-- Signal call — HTTP · WS · MCP
+Signal call — HTTP · WS · MCP
 
 - Server level: registered once in option.ts
 
+  - WebProxy: Redirects, rewrites or adds headers before the page is chosen.
+
+  - Middleware: Attaches server context, such as the account, before guards run.
+
 - Signal level: named on each endpoint or slice
+
+  - Guard: Allows or refuses the call.
+
+  - InternalArg: Hands a server-made value to exec as an argument.
 
 Runs here
 
@@ -182,9 +190,9 @@ Guards and internal args meet in the signal file. Guards go in the option, and `
 
 Before writing your own, check the ones that already ship:
 
-- From `akanjs/signal`: raw request, response, caller IP, and the socket with its `socketId`.
+- Req, Res, Ip, Ws: From `akanjs/signal`: raw request, response, caller IP, and the socket with its `socketId`.
 
-- From `@libs/shared/srvkit`: account, signed-in user, admin, and whether a model is calling.
+- Account, Self, Me, AgentCall: From `@libs/shared/srvkit`: account, signed-in user, admin, and whether a model is calling.
 
 Service Logic And External Libraries
 
@@ -194,11 +202,11 @@ What you wrapped
 
 How the service gets it
 
-- Imported straight from the srvkit barrel. — import { createOrderHash } from "@apps/koyo/srvkit";
+- Function helper: Imported straight from the srvkit barrel. — Example: `import { createOrderHash } from "@apps/koyo/srvkit";`
 
-- `plug(Class)` in the service, with nothing in option.ts. — paymentApi: plug(PaymentApi),
+- Singleton adaptor: `plug(Class)` in the service, with nothing in option.ts. — Example: `paymentApi: plug(PaymentApi),`
 
-- Built in option.ts `.use()`, then injected with `use<T>()`. — emailClient: use<EmailClient>(),
+- Class instance (legacy): Built in option.ts `.use()`, then injected with `use<T>()`. — Example: `emailClient: use<EmailClient>(),`
 
 Function helper
 
@@ -271,6 +279,48 @@ Inside a srvkit file
 **`#private` is the house style here.** Its lint ban covers only constant, document, service and store files.
 
 ## Code Examples
+
+### common/
+
+```ts
+libs/util/common/isHttpUri.ts
+// camelCase file, filename equals the single export
+```
+
+### webkit/
+
+```ts
+libs/util/webkit/useSpeech.tsx
+// use<Thing>.tsx — .tsx even with no JSX
+```
+
+### srvkit/
+
+```ts
+libs/util/srvkit/cloudflareApi.ts
+// camelCase file, PascalCase class
+```
+
+### ui/
+
+```ts
+apps/akan/ui/BrowserMockup.tsx
+// PascalCase component, camelCase sidecar
+```
+
+### plugin/
+
+```ts
+libs/util/plugin/pushNotification.plugin.ts
+// <name>.plugin.ts
+```
+
+### Server helper
+
+```ts
+libs/util/srvkit/aes.ts
+libs/util/srvkit/getImageSize.ts
+```
 
 ### apps/koyo/srvkit/legacyPageRedirect.ts
 

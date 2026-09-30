@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
@@ -19,6 +22,8 @@ import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
 
 type CallRecorder = ReturnType<typeof createCallRecorder>;
+
+const repoRoot = path.resolve(import.meta.dir, "../../../..");
 
 const createRecordedWorkspace = (recorder: CallRecorder) =>
   createFakeExecutor(
@@ -399,7 +404,15 @@ describe("ApplicationScript desktop", () => {
     expect(optionNames).toEqual(["target", "env", "release", "write"]);
   });
 
-  const desktopDevHarness = ({ answers, carries = true }: { answers: boolean; carries?: boolean }) => {
+  const desktopDevHarness = ({
+    answers,
+    carries = true,
+    modes = ["single"],
+  }: {
+    answers: boolean;
+    carries?: boolean;
+    modes?: DatabaseMode[];
+  }) => {
     const script = CommandContainer.get(ApplicationScript);
     const recorder = createCallRecorder();
     const app = createFakeExecutor(
@@ -407,7 +420,9 @@ describe("ApplicationScript desktop", () => {
       {
         scanSync: async () => undefined,
         getDevPort: async () => 8482,
+        getConfig: async () => ({ app: { name: "demo" }, database: { modes } }),
         log: () => undefined,
+        workspace: { workspaceRoot: "/workspace" },
       },
       recorder,
     );
@@ -422,8 +437,8 @@ describe("ApplicationScript desktop", () => {
       name: "default",
       config: { native: { desktop: { server: carries } } } as never,
     });
-    ApplicationRunner.answers = async (url: string) => {
-      recorder.record("answers", url);
+    ApplicationRunner.answers = async (url: string, _appName: string, workspaceRoot: string) => {
+      recorder.record("answers", url, workspaceRoot);
       return answers;
     };
     script.applicationRunner.startDesktop = async (...args: unknown[]) => {
@@ -452,8 +467,62 @@ describe("ApplicationScript desktop", () => {
     }
 
     expect(recorder.names()).toEqual(["answers", "runner.startDesktop"]);
-    expect(recorder.calls[0]?.args).toEqual(["http://localhost:8482"]);
+    expect(recorder.calls[0]?.args).toEqual(["http://localhost:8482", "/workspace"]);
     expect(recorder.calls[1]?.args[1]).toMatchObject({ target: "default", interrupt: expect.any(Object) });
+  });
+
+  test("a desktop app carrying its server needs database mode single in dev too, and says so before a dev server boots", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false, modes: ["cluster"] });
+    script.startOne = async () => {
+      recorder.record("startOne");
+      return undefined as never;
+    };
+    try {
+      await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow(
+        "only database mode single runs (no Redis or Postgres); apps/demo/akan.config.ts declares cluster",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(recorder.names()).toEqual([]);
+  });
+
+  test("a desktop app carrying its server stops the local database the dev server brought up when that fails to start", async () => {
+    const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
+    Object.assign(app, {
+      getConfig: async () =>
+        ({
+          app: { name: "demo" },
+          database: { modes: ["multiple", "single"] },
+          resolveDatabaseMode: () => "multiple",
+          getMissingDatabaseModeDependencySpecs: () => [],
+        }) as unknown as AkanAppConfig,
+      getEnv: () => "local",
+      spinning: () => ({ succeed: () => undefined, fail: () => undefined }),
+    });
+    const dbup = script.dbup;
+    const dbdown = script.dbdown;
+    script.dbup = async (...args: unknown[]) => {
+      recorder.record("dbup", ...args);
+      return false;
+    };
+    script.dbdown = async () => {
+      recorder.record("dbdown");
+    };
+    const start = script.applicationRunner.start;
+    script.applicationRunner.start = async () => {
+      throw new Error("the dev host did not start");
+    };
+    try {
+      await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow("the dev host did not start");
+    } finally {
+      restore();
+      Object.assign(script, { dbup, dbdown });
+      script.applicationRunner.start = start;
+    }
+
+    expect(recorder.names()).toEqual(["answers", "dbup", "dbdown"]);
   });
 
   test("a desktop app carrying its server starts akan start, opens the app once it serves, and stops it when the app ends", async () => {
@@ -608,6 +677,7 @@ describe("ApplicationRunner mobile", () => {
     ({
       name: "demo",
       cwdPath: "/repo/apps/demo",
+      workspace: { workspaceRoot: "/repo" },
       getDevPort: async () => 1,
       getConfig: async () => ({
         basePaths: new Set<string>(),
@@ -639,20 +709,104 @@ describe("ApplicationRunner mobile", () => {
     const older = serve(undefined, 4242);
     const foreign = serve();
     try {
-      expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(true);
-      await expect(ApplicationRunner.answers(`http://localhost:${other.port}`, "demo")).rejects.toThrow(
+      expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo", "/repo")).toBe(true);
+      await expect(ApplicationRunner.answers(`http://localhost:${other.port}`, "demo", "/repo")).rejects.toThrow(
         `http://localhost:${other.port} is the dev server of admin, not demo.`,
       );
-      await expect(ApplicationRunner.answers(`http://localhost:${older.port}`, "demo")).rejects.toThrow(
+      await expect(ApplicationRunner.answers(`http://localhost:${older.port}`, "demo", "/repo")).rejects.toThrow(
         `http://localhost:${older.port} is an akan dev server (pid 4242) too old to say which app it serves. Stop it (\`akan start demo --kill\` takes the port over)`,
       );
-      await expect(ApplicationRunner.answers(`http://localhost:${foreign.port}`, "demo")).rejects.toThrow(
+      await expect(ApplicationRunner.answers(`http://localhost:${foreign.port}`, "demo", "/repo")).rejects.toThrow(
         "answers, but not as an akan dev server",
       );
     } finally {
       for (const server of [own, other, older, foreign]) server.stop(true);
     }
-    expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo")).toBe(false);
+    expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo", "/repo")).toBe(false);
+  });
+
+  test("a dev server of the same app is followed only from the checkout it runs from", async () => {
+    const [here, there] = [track(await createTempApp("demo")).root, track(await createTempApp("demo")).root];
+    const serve = (workspaceRoot?: string) =>
+      Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/_akan/app/health") return Response.json({ status: "running" });
+          if (pathname === "/_akan/app/info")
+            return Response.json({
+              appName: "demo",
+              operationMode: "local",
+              ...(workspaceRoot ? { workspaceRoot } : {}),
+            });
+          return new Response("not found", { status: 404 });
+        },
+      });
+    const own = serve(here);
+    const other = serve(there);
+    const unnamed = serve();
+    try {
+      expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo", here)).toBe(true);
+      expect(await ApplicationRunner.answers(`http://localhost:${own.port}`, "demo", `${here}/apps/..`)).toBe(true);
+      await expect(ApplicationRunner.answers(`http://localhost:${other.port}`, "demo", here)).rejects.toThrow(
+        `http://localhost:${other.port} is the dev server of demo in ${there}, not in ${here}. Stop it (\`akan start demo --kill\` takes the port over)`,
+      );
+      expect(await ApplicationRunner.answers(`http://localhost:${unnamed.port}`, "demo", here)).toBe(true);
+    } finally {
+      for (const server of [own, other, unnamed]) server.stop(true);
+    }
+  });
+
+  test("publish-update checks every target's updates settings and signing key before it builds anything", async () => {
+    const home = track({ root: await mkdtemp(path.join(os.tmpdir(), "akan-native-home-")) }).root;
+    const pem = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    await writeText(path.join(home, "keys", "com.demo.app.update.key"), pem);
+    const { x } = createPublicKey(createPrivateKey(pem)).export({ format: "jwk" });
+    const updates = {
+      url: "https://releases.example.com/demo",
+      publicKey: Buffer.from(x ?? "", "base64url").toString("base64"),
+    };
+    const recorder = createCallRecorder();
+    const publishing = (admin: object) =>
+      ({
+        name: "demo",
+        cwdPath: path.join(repoRoot, "apps/minimal"),
+        workspace: { workspaceRoot: repoRoot },
+        getScanInfo: () => ({ getLibs: () => [] }),
+        collectPlugins: async () => [],
+        getConfig: async () => ({
+          basePaths: new Set<string>(),
+          i18n: { defaultLocale: "en", locales: ["en"] },
+          mobile: { targets: { store: { ...target("store"), updates }, admin: { ...target("admin"), ...admin } } },
+        }),
+        prepareCommand: async () => {
+          recorder.record("build");
+          throw new Error("built");
+        },
+        logger: { warn: () => undefined },
+      }) as unknown as AppExecutor;
+    const saved = {
+      AKAN_NATIVE_HOME: process.env.AKAN_NATIVE_HOME,
+      AKAN_NATIVE_UPDATE_KEY: process.env.AKAN_NATIVE_UPDATE_KEY,
+    };
+    process.env.AKAN_NATIVE_HOME = home;
+    delete process.env.AKAN_NATIVE_UPDATE_KEY;
+    try {
+      await expect(new ApplicationRunner().publishUpdate(publishing({}), "android", { target: "all" })).rejects.toThrow(
+        "Mobile target 'admin' has no updates: { url, publicKey } in akan.config.ts",
+      );
+      const otherKey = Buffer.alloc(32, 7).toString("base64");
+      await expect(
+        new ApplicationRunner().publishUpdate(publishing({ updates: { ...updates, publicKey: otherKey } }), "android", {
+          target: "all",
+        }),
+      ).rejects.toThrow("Mobile target 'admin': the key at");
+    } finally {
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    expect(recorder.names()).toEqual([]);
   });
 
   test("only a desktop build of a target that declares desktop.server carries the server", () => {

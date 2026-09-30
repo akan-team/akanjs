@@ -15,6 +15,9 @@ mock.module("@akanjs/devkit/applicationBuildRunner", () => ({
   },
 }));
 const { ApplicationRunner } = await import("./application.runner");
+const { NativeApp } = await import("@akanjs/devkit/mobile");
+//? What publish-update refuses before building is application.test.ts's; here the build itself is the point.
+NativeApp.prototype.assertPublishable = async () => undefined;
 
 const target = { name: "default", appName: "Demo", appId: "com.demo.app", version: "1.0.0", buildNum: 1 };
 const app = {

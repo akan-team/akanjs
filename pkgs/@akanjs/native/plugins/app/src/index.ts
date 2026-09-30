@@ -54,11 +54,16 @@ export interface AppEvents {
    * arrives as backButton, and one let go early as `cancelled`.
    */
   backProgress: { phase: BackProgressPhase; progress: number; swipeEdge: "left" | "right" };
+  /**
+   * Desktop, an app that carries a server (desktop.server): where it is, at every change and when the first page
+   * starts listening. "gaveUp" means it is not started again until the app is.
+   */
+  serverState: { state: "starting" | "up" | "restarting" | "gaveUp" | "stopped" };
 }
 
 export const app = definePlugin<AppApi, AppEvents>("app", {
   methods: ["getInfo", "getLaunchUrl", "exit", "relaunch", "minimize", "answerBeforeQuit", "setBackEnabled"],
-  events: ["urlOpen", "backButton", "beforeQuit", "backProgress"],
+  events: ["urlOpen", "backButton", "beforeQuit", "backProgress", "serverState"],
   web,
 });
 

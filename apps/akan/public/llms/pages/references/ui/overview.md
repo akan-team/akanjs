@@ -78,159 +78,159 @@ Every value `akanjs/ui` exports, A to Z. Use it when you know a name but not the
 
 Export
 
-- Agent — The in-page agent namespace, with twelve members.
+- Agent: The in-page agent namespace, with twelve members.
 
-- AgentAttachments — The attachment chips, drawn in the composer and on each sent message.
+- AgentAttachments: The attachment chips, drawn in the composer and on each sent message.
 
-- agentAttrs — The `data-akan-*` attributes for a handler passed by reference; spread them on your own control.
+- agentAttrs: The `data-akan-*` attributes for a handler passed by reference; spread them on your own control.
 
-- AgentProvider — Hands a subtree one session, passed in or built from a `runner`; an `Agent.Chat` inside uses it.
+- AgentProvider: Hands a subtree one session, passed in or built from a `runner`; an `Agent.Chat` inside uses it.
 
-- AgentReferences — The `@` reference chips, drawn in the composer and on each sent message.
+- AgentReferences: The `@` reference chips, drawn in the composer and on each sent message.
 
-- AgentSession — The conversation loop that runs in the browser; build one to own the transcript yourself.
+- AgentSession: The conversation loop that runs in the browser; build one to own the transcript yourself.
 
-- agentSessionOf — Builds an `AgentSession` from the same options `Agent.Chat` takes.
+- agentSessionOf: Builds an `AgentSession` from the same options `Agent.Chat` takes.
 
-- animated — The react-spring animated elements: `div`, `g` and `progress`.
+- animated: The react-spring animated elements: `div`, `g` and `progress`.
 
-- Badge — The status pill.
+- Badge: The status pill.
 
-- badgeRecipe — The badge's className factory, and a recipe slot.
+- badgeRecipe: The badge's className factory, and a recipe slot.
 
-- BottomSheet — The mobile sheet, `half` or `full` height.
+- BottomSheet: The mobile sheet, `half` or `full` height.
 
-- Button — The one button primitive; an `onClick` that returns a promise turns on its async states.
+- Button: The one button primitive; an `onClick` that returns a promise turns on its async states.
 
-- buttonRecipe — The button's className factory, and a recipe slot.
+- buttonRecipe: The button's className factory, and a recipe slot.
 
-- ChatCommands — The chat's slash-command registry: the whole `/` menu.
+- ChatCommands: The chat's slash-command registry: the whole `/` menu.
 
-- ClientSide — A small Suspense boundary for client-only content.
+- ClientSide: A small Suspense boundary for client-only content.
 
-- Clipboard — A bare copy icon that turns into a check; `Copy` is the one with a success toast.
+- Clipboard: A bare copy icon that turns into a check; `Copy` is the one with a success toast.
 
-- Constant — `Doc` and `Graph`: constant models as a schema document and as a relation graph.
+- Constant: `Doc` and `Graph`: constant models as a schema document and as a relation graph.
 
-- Copy — Wraps a trigger; a click copies text to the clipboard and shows a global success message.
+- Copy: Wraps a trigger; a click copies text to the clipboard and shows a global success message.
 
-- createOverridable — Makes a framework component resolve through a route's override slot.
+- createOverridable: Makes a framework component resolve through a route's override slot.
 
-- CsrImage — `Image` without the optimizer: a plain `img` for a CSR-only bundle.
+- CsrImage: `Image` without the optimizer: a plain `img` for a CSR-only bundle.
 
-- Data — The admin listing screen, in nine parts.
+- Data: The admin listing screen, in nine parts.
 
-- DatePicker — The browser's native date field, plus `RangePicker` and `TimePicker`.
+- DatePicker: The browser's native date field, plus `RangePicker` and `TimePicker`.
 
-- The shipped default behind each matching slot, public so a replacement can compose it.
+- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToast, DefaultToastItem: The shipped default behind each matching slot, public so a replacement can compose it.
 
-- Dialog — The headless dialog namespace that `Modal` is built on.
+- Dialog: The headless dialog namespace that `Modal` is built on.
 
-- DragAction — A row that reveals a left and a right action when swiped, built from `Body`, `Left` and `Right`.
+- DragAction: A row that reveals a left and a right action when swiped, built from `Body`, `Left` and `Right`.
 
-- DraggableList — A drag-to-sort list with `Item` and `Cursor`; `Field.TextList` is built on it.
+- DraggableList: A drag-to-sort list with `Item` and `Cursor`; `Field.TextList` is built on it.
 
-- Dropdown — The row-action menu: a trigger that opens a floating menu.
+- Dropdown: The row-action menu: a trigger that opens a floating menu.
 
-- DROPDOWN_KEEP_OPEN_ATTR — `data-dropdown-keep-open`: a click on an item carrying it leaves the menu open.
+- DROPDOWN_KEEP_OPEN_ATTR: `data-dropdown-keep-open`: a click on an item carrying it leaves the menu open.
 
-- Empty — The no-data placeholder.
+- Empty: The no-data placeholder.
 
-- fetchRunner — The default runner: sends each turn to the app's own `runAgentTurn` endpoint.
+- fetchRunner: The default runner: sends each turn to the app's own `runAgentTurn` endpoint.
 
-- Field — The form-field namespace: a section wrapper and twenty members.
+- Field: The form-field namespace: a section wrapper and twenty members.
 
-- FontFace — Adds one `ReactFont`'s `@font-face` rule in the browser; fonts from `.fonts()` are already handled.
+- FontFace: Adds one `ReactFont`'s `@font-face` rule in the browser; fonts from `.fonts()` are already handled.
 
-- httpRunner — A runner that POSTs each turn to a URL you name, streamed or not.
+- httpRunner: A runner that POSTs each turn to a URL you name, streamed or not.
 
-- Image — An image from a `File` model or a URL, served through the Akan optimizer.
+- Image: An image from a `File` model or a URL, served through the Akan optimizer.
 
-- InfiniteScroll — Loads the next batch when a sentinel scrolls into view; `reverse` prepends and keeps position.
+- InfiniteScroll: Loads the next batch when a sentinel scrolls into view; `reverse` prepends and keeps position.
 
-- Input — The text input, plus `TextArea`, `Password`, `Email`, `Number` and `Checkbox`.
+- Input: The text input, plus `TextArea`, `Password`, `Email`, `Number` and `Checkbox`.
 
-- inputRecipe — The field shell's className factory, and a recipe slot.
+- inputRecipe: The field shell's className factory, and a recipe slot.
 
-- KeyboardAvoiding — Lifts its children above the on-screen keyboard.
+- KeyboardAvoiding: Lifts its children above the on-screen keyboard.
 
-- Layout — The page shell: content containers such as `View` and frame slots such as `Navbar`.
+- Layout: The page shell: content containers such as `View` and frame slots such as `Navbar`.
 
-- LegacyModal — The previous modal skin, with spring transitions and drag-to-dismiss.
+- LegacyModal: The previous modal skin, with spring transitions and drag-to-dismiss.
 
-- Link — Route-aware navigation, plus `Back`, `Close` and `Lang`.
+- Link: Route-aware navigation, plus `Back`, `Close` and `Lang`.
 
-- Load — The fetch-to-React bridge: `Units`, `View`, `Edit`, `Pagination`, `Page`, `Stream`.
+- Load: The fetch-to-React bridge: `Units`, `View`, `Edit`, `Pagination`, `Page`, `Stream`.
 
-- Loading — Six loading indicators, one per shape of waiting.
+- Loading: Six loading indicators, one per shape of waiting.
 
-- The composer's default attachment limits: 4 MB a file, 8 MB and five files a message.
+- maxAttachmentBytes, maxMessageAttachmentBytes, maxMessageAttachments: The composer's default attachment limits: 4 MB a file, 8 MB and five files a message.
 
-- Menu — A navigation menu built from an item tree.
+- Menu: A navigation menu built from an item tree.
 
-- Modal — The modal: drive it with `open`, or hand it a `trigger` that opens it on click.
+- Modal: The modal: drive it with `open`, or hand it a `trigger` that opens it on click.
 
-- Model — The CRUD shells for a generated model store, with fifteen members.
+- Model: The CRUD shells for a generated model store, with fifteen members.
 
-- More — A list footer: infinite scroll on mobile, a pager elsewhere; `Load.Units` uses it by default.
+- More: A list footer: infinite scroll on mobile, a pager elsewhere; `Load.Units` uses it by default.
 
-- ObjectId — A document id cut to its ends, with the full id in a tooltip and a copy button.
+- ObjectId: A document id cut to its ends, with the full id in a tooltip and a copy button.
 
-- How a menu tells a click in an overlay it opened from a click outside.
+- OverlayOwnerProvider, isOwnOverlayClick, OVERLAY_LAYER_ATTR, useOverlayLayerProps, useOverlayScope: How a menu tells a click in an overlay it opened from a click outside.
 
-- override — Builds the manifest an `_overrides.tsx` exports; it returns the map unchanged and checks its types.
+- override: Builds the manifest an `_overrides.tsx` exports; it returns the map unchanged and checks its types.
 
-- Pagination — The pager, taking its numbers as props.
+- Pagination: The pager, taking its numbers as props.
 
-- Popconfirm — A small confirmation before a destructive action.
+- Popconfirm: A small confirmation before a destructive action.
 
-- Portal — Renders into the host element with the given id, SSR included.
+- Portal: Renders into the host element with the given id, SSR included.
 
-- Radio — The radio group, with `Item`.
+- Radio: The radio group, with `Item`.
 
-- RecentTime — A relative time label, with the absolute date in a tooltip.
+- RecentTime: A relative time label, with the absolute date in a tooltip.
 
-- The two factories every recipe is built from: `recipe(tv({ ... }))`.
+- recipe, tv: The two factories every recipe is built from: `recipe(tv({ ... }))`.
 
-- Reference — Helpers for an `@` reference: its token in the draft, its identity and its size cap.
+- Reference: Helpers for an `@` reference: its token in the draft, its identity and its size cap.
 
-- Refresh — Pull-to-refresh around a scrolling child.
+- Refresh: Pull-to-refresh around a scrolling child.
 
-- ScreenNavigator — A swipeable pager across `Screen`s, with `NavbarItem`; `namespace` publishes it to the agent.
+- ScreenNavigator: A swipeable pager across `Screen`s, with `NavbarItem`; `namespace` publishes it to the agent.
 
-- Select — The selector: single, multiple or searchable.
+- Select: The selector: single, multiple or searchable.
 
-- SessionContext — The React context `Agent.Zone` and `AgentProvider` hand a session down through.
+- SessionContext: The React context `Agent.Zone` and `AgentProvider` hand a session down through.
 
-- Signal — The API explorer, in eight namespaces.
+- Signal: The API explorer, in eight namespaces.
 
-- Switch — An on/off toggle, drawn as a `role="switch"` button.
+- Switch: An on/off toggle, drawn as a `role="switch"` button.
 
-- System — The app shell: `Provider`, `Root` and four controls.
+- System: The app shell: `Provider`, `Root` and four controls.
 
-- Tab — Tabs split into parts so the panels stay on the server.
+- Tab: Tabs split into parts so the panels stay on the server.
 
-- Table — Draws rows you already have, with columns and an optional pager.
+- Table: Draws rows you already have, with columns and an optional pager.
 
-- Toast — The toast stack `System.Provider` mounts; you write into it with `msg.*`.
+- Toast: The toast stack `System.Provider` mounts; you write into it with `msg.*`.
 
-- ToggleSelect — A choice drawn as a row of buttons, with `Multi`.
+- ToggleSelect: A choice drawn as a row of buttons, with `Multi`.
 
-- tokenCount — Formats a token estimate as a short label: `950`, `1.2k`, `3.4M`.
+- tokenCount: Formats a token estimate as a short label: `950`, `1.2k`, `3.4M`.
 
-- Tooltip — A pure-CSS hint shown on hover or focus.
+- Tooltip: A pure-CSS hint shown on hover or focus.
 
-- triggerSlot — Clones a caller's trigger so aria state lands on the real control.
+- triggerSlot: Clones a caller's trigger so aria state lands on the real control.
 
-- UiOverrideProvider — The provider behind every `_overrides.tsx`; mount one yourself to override a subtree.
+- UiOverrideProvider: The provider behind every `_overrides.tsx`; mount one yourself to override a subtree.
 
-- Unauthorized — The no-access placeholder, shaped like `Empty`; you render it yourself.
+- Unauthorized: The no-access placeholder, shaped like `Empty`; you render it yourself.
 
-- useAgent — Reads the enclosing session from a component.
+- useAgent: Reads the enclosing session from a component.
 
-- useAgentReference — Returns a function that puts data a component shows into the draft as an `@` chip.
+- useAgentReference: Returns a function that puts data a component shows into the draft as an `@` chip.
 
-- How a component looks up its own component slot and recipe slot on the current route.
+- useUiOverride, useUiRecipe: How a component looks up its own component slot and recipe slot on the current route.
 
 ## Code Examples
 

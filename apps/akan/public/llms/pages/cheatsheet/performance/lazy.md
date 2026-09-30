@@ -35,13 +35,21 @@ What to split
 
 Component
 
-- lazy()
+lazy()
 
-- import
+import
 
 - Split it off
 
+  - Maps · charts · editors · 3D viewers · wallet widgets: Heavy code, and often browser-only.
+
+  - Large admin panels opened now and then: Most visits never open it, so most visits never pay for it.
+
 - Import it directly
+
+  - Tiny buttons: Too small to be worth a separate download.
+
+  - Above-the-fold content: Users need it right away, so deferring it only makes them wait.
 
 Load it this way
 
@@ -51,11 +59,11 @@ lazy() options
 
 `lazy(loader, option?)` takes a function that returns `import(…)` and gives back a component you render like any other.
 
-- boolean — true — `false` skips server rendering: the server sends `loading`, and the chunk loads after mount.
+- ssr (boolean, default true): `false` skips server rendering: the server sends `loading`, and the chunk loads after mount.
 
-- boolean — false — Gives the component its own Suspense boundary, so only this spot waits for the chunk.
+- suspense (boolean, default false): Gives the component its own Suspense boundary, so only this spot waits for the chunk.
 
-- () => ReactNode — The placeholder, shown only with `ssr: false` or `suspense: true`.
+- loading (() => ReactNode): The placeholder, shown only with `ssr: false` or `suspense: true`.
 
 External Libraries
 
@@ -109,11 +117,23 @@ Measured in this workspace with each SDK imported eagerly, the first four below 
 
 Package
 
-- import()
+import()
 
 - Defer: heavy, and an app may never configure it
 
+  - discord.js: Sends Discord messages, about 23 MiB.
+
+  - puppeteer: A headless browser for PDF output, about 19 MiB.
+
+  - nodemailer: Sends mail, about 16 MiB.
+
+  - firebase-admin: Push notifications, about 2 MiB.
+
+  - An image encoder: Heavy, and only the apps that process images need it.
+
 - Keep eager: every request uses it
+
+  - jwt · aes: Deferring only moves the load to the first request.
 
 Import it this way
 
@@ -135,9 +155,9 @@ Measure it
 
 Check what a process actually pays before and after the change with these env vars.
 
-- "1" — Logs each server process's resident memory (RSS) on an interval.
+- AKAN_MEMORY_LOG ("1"): Logs each server process's resident memory (RSS) on an interval.
 
-- number — 60000 — How often the report is written, in milliseconds.
+- AKAN_MEMORY_LOG_INTERVAL_MS (number, default 60000): How often the report is written, in milliseconds.
 
 Server Render Or Client Only
 
@@ -145,13 +165,19 @@ The three settings differ in whether the server renders the component and whethe
 
 Setting
 
-- Server render
+Server render
 
-- Shows loading
+Shows loading
 
 - Rendered on the server
 
+  - lazy(loader): The default, for a component that can render on the server.
+
+  - { suspense: true }: Use it for what mounts after a click: a modal body, an editor, a dropdown.
+
 - Rendered in the browser only
+
+  - { ssr: false }: Use it when the library needs `window`, `document`, canvas, WebGL or browser storage.
 
 Yes
 

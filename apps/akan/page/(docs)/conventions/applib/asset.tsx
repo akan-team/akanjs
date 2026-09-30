@@ -565,7 +565,7 @@ export const HeroImage = ({ className }: HeroImageProps) => {
                   <code>private/</code> 아래 파일은 서빙되지 않으므로 어떤 URL로도 접근할 수 없습니다. 서버 코드가
                   디스크에서 읽어 데이터를 불러오고, 추론을 돌리고, 서비스를 초기화하는 데 씁니다. 다만 서버 파일을 가진
                   사람에게는 비밀이 아닙니다. 서버를 싣는 데스크톱 앱(<code>native.desktop.server</code>)은 이 파일을
-                  평문으로 싣으므로, 남에게 보이면 안 되는 키와 라이선스 파일은 그런 앱에 두지 않습니다.
+                  평문으로 실으므로, 남에게 보이면 안 되는 키와 라이선스 파일은 그런 앱에 두지 않습니다.
                 </span>
               ),
             })}
@@ -811,6 +811,26 @@ export class YoloDetector extends adapt("yoloDetector" as const, () => ({})) {
                       <code>public/libs</code>와 <code>private/libs</code>는 생성되는 폴더입니다.
                     </strong>{" "}
                     <code>akan sync</code>가 다시 만들고 git은 무시하므로, 직접 만든 파일을 두지 마세요.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A desktop app that carries its server carries these files too.</strong> Any app that depends
+                    on the library may turn on <code>native.desktop.server</code>, and then its users can read the
+                    library's <code>private/</code> in plain text, so keep keys and license files that must stay yours
+                    out of it.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>서버를 싣는 데스크톱 앱은 이 파일도 싣습니다.</strong> 라이브러리에 의존하는 어느 앱이든{" "}
+                    <code>native.desktop.server</code>를 켤 수 있고, 그러면 그 앱의 사용자가 라이브러리의{" "}
+                    <code>private/</code>를 평문으로 읽을 수 있습니다. 남에게 보이면 안 되는 키와 라이선스 파일은 두지
+                    마세요.
                   </span>
                 ),
               })}

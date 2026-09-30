@@ -55,13 +55,13 @@ File Convention And Props
 
 A Zone file always starts with `"use client"`. Its props must be able to cross from server to client: an `init` or `view` payload, ids, and a `className`.
 
-- Path — Database and service modules may have one. Scalar modules may not.
+- Path — `apps/<app>/lib/<model>/<Model>.Zone.tsx` — Database and service modules may have one. Scalar modules may not.
 
-- First Line — Always, on line 1 above the imports.
+- First Line — `"use client";` — Always, on line 1 above the imports.
 
-- List Props — `init` is a `ClientInit`. `slice` goes to the wrappers and controls inside.
+- List Props — `className · init · slice · <parent>Id` — `init` is a `ClientInit`. `slice` goes to the wrappers and controls inside.
 
-- View Props — `view` is a `ClientView`. The signed-in user comes from `st.use.self()`, not a prop.
+- View Props — `className · view · <parent>Id` — `view` is a `ClientView`. The signed-in user comes from `st.use.self()`, not a prop.
 
 A new module starts with this Zone: one list export, `Card`, and one detail export, `View`:
 
@@ -89,21 +89,23 @@ The Zone gives `Load.Units` a row renderer and an empty state:
 
 Load.Units props
 
-- ClientInit<"model", LightModel> — The list payload or its promise, handed down from the page.
+- init (ClientInit<"model", LightModel>): The list payload or its promise, handed down from the page.
 
-- (item, idx) => ReactNode — Draws one row; required unless you pass `renderList`.
+  - required
 
-- (list: DataList) => ReactNode — Draws the whole list, for grouping, tabs, boards or a custom order.
+- renderItem ((item, idx) => ReactNode): Draws one row; required unless you pass `renderList`.
 
-- (() => ReactNode) | false — <Empty /> — Draws the no-rows state; `false` with `renderList` draws the empty list instead.
+- renderList ((list: DataList) => ReactNode): Draws the whole list, for grouping, tabs, boards or a custom order.
 
-- ReactNode — A ready-made no-rows placeholder that wins over `renderEmpty`.
+- renderEmpty ((() => ReactNode) | false, default <Empty />): Draws the no-rows state; `false` with `renderList` draws the empty list instead.
 
-- ReactNode — Loading.Skeleton — Shown while a promised `init` is pending and while the list reloads.
+- empty (ReactNode): A ready-made no-rows placeholder that wins over `renderEmpty`.
 
-- boolean — true — Adds a pager on desktop and infinite scroll on mobile.
+- loading (ReactNode, default Loading.Skeleton): Shown while a promised `init` is pending and while the list reloads.
 
-- string — Classes for the wrapping div, such as a grid layout.
+- pagination (boolean, default true): Adds a pager on desktop and infinite scroll on mobile.
+
+- className (string): Classes for the wrapping div, such as a grid layout.
 
 View Zone With Load.View
 
@@ -117,17 +119,17 @@ A pending view promise gets its own boundary, so a slow detail never holds up th
 
 Load.View props
 
-- ClientView<"model", Model> — The detail payload or its promise, handed down from the page.
+- view (ClientView<"model", Model>): The detail payload or its promise, handed down from the page.
 
-- (model) => ReactNode — Draws the full model, usually as `<Model>.View.General`.
+- renderView ((model) => ReactNode): Draws the full model, usually as `<Model>.View.General`.
 
-- ReactNode — Loading.Skeleton — Shown while a promised `view` is pending.
+- loading (ReactNode, default Loading.Skeleton): Shown while a promised `view` is pending.
 
-- ReactNode — <Empty /> — Shown when the record came back empty.
+- empty (ReactNode, default <Empty />): Shown when the record came back empty.
 
-- string — Classes for the wrapping div.
+- className (string): Classes for the wrapping div.
 
-- boolean — Renders `renderView` without the wrapping div.
+- noDiv (boolean): Renders `renderView` without the wrapping div.
 
 Section Orchestration Zones
 
@@ -175,13 +177,27 @@ Every piece of a screen has one home. Reach for a Zone when a section needs the 
 
 File
 
-- Server
+Server
 
-- Client — "use client"
+Client — "use client"
 
 - Fetches or draws
 
+  - page/**/*.tsx: The route shell that reads params, starts `fetch.*` and passes the results down.
+
+  - <Model>.Unit.tsx: Draws one row or card from a light model.
+
+  - <Model>.View.tsx: Draws the full detail of one record.
+
 - Holds state or an action
+
+  - <Model>.Zone.tsx: Composes a page section: Load wrappers, store reads and modals.
+
+  - <Model>.Template.tsx: Form fields and form fragments, each bound to the store.
+
+  - <Model>.Util.tsx: Small actions, toolboxes and helpers, such as a filter or a remove button.
+
+  - <model>.store.ts: State and actions, shipped only in the client bundle.
 
 Runs here
 
@@ -203,9 +219,9 @@ Five rules keep a Zone small:
 
 Common mistakes
 
-- Mistake, then the fix
+Mistake, then the fix
 
-- Do this
+Do this
 
 - useEffect(() => { fetch… }, []) — Fetch in the route and pass the result down as `init` or `view`.
 

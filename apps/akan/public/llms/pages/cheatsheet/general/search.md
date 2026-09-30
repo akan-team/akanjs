@@ -112,11 +112,11 @@ A service method that returns one page of results and the total:
 
 Three options cover almost everything, all passed as the second argument of `q.search()`.
 
-- boolean — false — Lets the last word match as a prefix, for as-you-type boxes. Without it, `Ken` misses `Kenny`. — q.search(text, { prefix: true })
+- prefix (boolean, default false): Lets the last word match as a prefix, for as-you-type boxes. Without it, `Ken` misses `Kenny`. — Example: `q.search(text, { prefix: true })`
 
-- ("title" | "desc" | "tag" | "filter")[] — all four — Looks only in the named roles. `thumb` is not indexed, so it is not a column. — q.search(text, { columns: ["title", "tag"] })
+- columns (("title" | "desc" | "tag" | "filter")[], default all four): Looks only in the named roles. `thumb` is not indexed, so it is not a column. — Example: `q.search(text, { columns: ["title", "tag"] })`
 
-- [title, desc, tag, filter] — [10, 1, 3, 0] — Replaces the ranking weights: four finite, non-negative numbers, in title, desc, tag, filter order. — q.search(text, { weights: [20, 1, 5, 0] })
+- weights ([title, desc, tag, filter], default [10, 1, 3, 0]): Replaces the ranking weights: four finite, non-negative numbers, in title, desc, tag, filter order. — Example: `q.search(text, { weights: [20, 1, 5, 0] })`
 
 How input is matched
 
@@ -170,9 +170,9 @@ Operating It
 
 The index keeps itself current through database triggers. A write from any path is reflected, including bulk query-level updates that fire no document hooks.
 
-- 1 | true | 0 | false — unset = on — Switches the index on or off. Off keeps indexed data; back on re-syncs every model. — AKAN_SEARCH_ENABLED=0
+- AKAN_SEARCH_ENABLED (1 | true | 0 | false, default unset = on): Switches the index on or off. Off keeps indexed data; back on re-syncs every model. — Example: `AKAN_SEARCH_ENABLED=0`
 
-- string — unicode61 remove_diacritics 2 — Picks the fts5 tokenizer; Postgres reads only the two forms below. — unicode61 [remove_diacritics 0|1|2] trigram [case_sensitive 0|1]
+- AKAN_SEARCH_TOKENIZER (string, default unicode61 remove_diacritics 2): Picks the fts5 tokenizer; Postgres reads only the two forms below.
 
 **Give every process in a deployment the same value.** A process cannot clean up triggers for models it does not mount, so a mixed fleet leaves stale ones behind.
 
@@ -288,6 +288,13 @@ export class ProductSlice extends slice(
       }),
   }),
 ) {}
+```
+
+### AKAN_SEARCH_TOKENIZER
+
+```ts
+unicode61 [remove_diacritics 0|1|2]
+trigram [case_sensitive 0|1]
 ```
 
 ## Agent Notes

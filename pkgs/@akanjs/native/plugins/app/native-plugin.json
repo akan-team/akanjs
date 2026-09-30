@@ -2,7 +2,7 @@
   "id": "app",
   "apiVersion": 1,
   "methods": ["getInfo", "getLaunchUrl", "exit", "relaunch", "minimize", "answerBeforeQuit", "setBackEnabled"],
-  "events": ["urlOpen", "backButton", "beforeQuit", "backProgress"],
+  "events": ["urlOpen", "backButton", "beforeQuit", "backProgress", "serverState"],
   "codegen": true,
   "web": "./src/web.ts",
   "desktop": "./src/desktop.ts",

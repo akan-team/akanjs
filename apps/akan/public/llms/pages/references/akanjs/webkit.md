@@ -43,15 +43,15 @@ On This Page
 
 - useThrottle: Runs a callback at once, then ignores calls for a while.
 
-- Tells a client component whether a promise has resolved, and its value.
+- useFetch, useFetchFn: Tells a client component whether a promise has resolved, and its value.
 
-- Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
+- useCamera, useGeoLocation: Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
 
 - usePushNotification: Not in this module: the push hook lives in `@libs/util/webkit`.
 
 - usePurchase: In-app purchase on the native iap plugin, verified by your server. Imported from `akanjs/webkit/usePurchase`.
 
-- The CSR router's location parser and history stack.
+- useLocation, useHistory: The CSR router's location parser and history stack.
 
 - LoginForm: The argument of the shared store's `login` action.
 
@@ -67,13 +67,13 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
-- Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
+- usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
-- Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
+- createRobotPage, createSitemapPage: Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
-- Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
+- bootCsr, replacePages, useCsrValues: Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
 
-- Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
+- LoginAuth, ScreenScopeItem: Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
 
 **Call the hooks from a client file.** They are React hooks, so they need a file with `"use client"`. Put `lazy()` in the `ui/<Folder>/index_.tsx` boundary file.
 
@@ -91,19 +91,19 @@ lazy
 
 `lazy` is React's `lazy` with Akan's server switch. With `ssr: false` it skips server rendering, which is what a map, chart or 3D library that touches `window` on import needs.
 
-- boolean — true — `false` skips server rendering: the server sends `loading`, and the chunk loads after mount.
+- ssr (boolean, default true): `false` skips server rendering: the server sends `loading`, and the chunk loads after mount.
 
-- boolean — false — Wraps the component in its own Suspense boundary, so only this spot waits for the chunk.
+- suspense (boolean, default false): Wraps the component in its own Suspense boundary, so only this spot waits for the chunk.
 
-- () => ReactNode — The placeholder. It shows only with `ssr: false` or `suspense: true`.
+- loading (() => ReactNode): The placeholder. It shows only with `ssr: false` or `suspense: true`.
 
 What Each Call Renders
 
-- Call
+Call
 
-- Server HTML
+Server HTML
 
-- While the chunk loads
+While the chunk loads
 
 - No option — The component itself. — The nearest boundary, usually the whole route, shows its fallback.
 
@@ -123,11 +123,13 @@ useDebounce
 
 `useDebounce` returns a callback that runs only after the calls stop. A search box that queries once the user stops typing is the usual case; an image editor or a costly field update uses it while the user drags or types.
 
-- (...args) => unknown — Runs once, with the arguments of the last call.
+- callback ((...args) => unknown): Runs once, with the arguments of the last call.
 
-- unknown[] — [] — The dependency list of the inner `useCallback`: every prop and state the callback reads.
+  - required
 
-- number — 100 — Milliseconds to wait after the last call.
+- states (unknown[], default []): The dependency list of the inner `useCallback`: every prop and state the callback reads.
+
+- wait (number, default 100): Milliseconds to wait after the last call.
 
 A search box that reloads a slice 300 ms after the last keystroke:
 
@@ -139,9 +141,9 @@ useInterval
 
 `useInterval` runs a callback every `delay` ms and clears the timer on unmount. Use it to poll a dashboard, a game state or a build log.
 
-- () => void | Promise<void> — Runs on every tick. The callback from the latest render is the one that runs.
+- callback (() => void | Promise<void>): Runs on every tick. The callback from the latest render is the one that runs.
 
-- number — Milliseconds between ticks. Changing it restarts the timer.
+- delay (number): Milliseconds between ticks. Changing it restarts the timer.
 
 A Zone that refreshes its order list every 3 seconds:
 
@@ -155,15 +157,15 @@ useThrottle
 
 `useThrottle` returns a callback that runs at once, then drops calls until `delay` ms pass. Use it for scroll, pointer, resize and drag handlers that fire too often.
 
-- (...args) => unknown — Runs at once on the first call of each window.
+- func ((...args) => unknown): Runs at once on the first call of each window.
 
-- number — 200 — Milliseconds during which later calls are dropped.
+- delay (number, default 200): Milliseconds during which later calls are dropped.
 
-- unknown[] — [] — Extra dependencies. `func` and `delay` are already included.
+- deps (unknown[], default []): Extra dependencies. `func` and `delay` are already included.
 
 Compared With useDebounce
 
-- When it runs
+When it runs
 
 - useDebounce(callback, states = [], wait = 100) — Once, after the calls stop for `wait` ms.
 
@@ -185,11 +187,11 @@ These hooks turn a promise into `{ fulfilled, value }` inside a client component
 
 Result And Option
 
-- boolean — `true` once the current promise resolves; a rejected or newly handed one reads `false`.
+- fulfilled (boolean): `true` once the current promise resolves; a rejected or newly handed one reads `false`.
 
-- T | null — The current promise's resolved value, `null` until it resolves.
+- value (T | null): The current promise's resolved value, `null` until it resolves.
 
-- (err: string) => void — Option. Called with `"Error: <message>"` when the promise rejects.
+- onError ((err: string) => void): Option. Called with `"Error: <message>"` when the promise rejects.
 
 The storage quota exists only in the browser, so this component is loaded through `lazy(…, { ssr: false })`:
 
@@ -217,7 +219,7 @@ useCamera
 
 Option
 
-- { header?, photo?, picture?, cancel? } — {} — Text of the native picker sheet. A missing one comes from the `base` dictionary.
+- promptLabels ({ header?, photo?, picture?, cancel? }, default {}): Text of the native picker sheet. A missing one comes from the `base` dictionary.
 
 A button that takes a photo and previews it:
 
@@ -257,7 +259,7 @@ Push lives in `@libs/util/webkit`, not `akanjs/webkit`. In a native shell the ho
 
 - getToken(): Returns the token without asking. Registering shows no prompt, so check the permission first.
 
-- Read the permission state, or show the prompt and return the answer.
+- getPermission(), requestPermission(): Read the permission state, or show the prompt and return the answer.
 
 - isSupported(): Tells whether push can work in this runtime.
 
@@ -287,15 +289,15 @@ usePurchase
 
 Options
 
-- "ios" | "android" | "all" — The stores the app sells in. A native shell on another platform shows no products.
+- platform ("ios" | "android" | "all"): The stores the app sells in. A native shell on another platform shows no products.
 
-- { id, type: "consumable" | "nonConsumable" | "subscription" }[] — The store product ids and what each one is. A product not listed is finished without being consumed.
+- productInfo ({ id, type: "consumable" | "nonConsumable" | "subscription" }[]): The store product ids and what each one is. A product not listed is finished without being consumed.
 
-- string — The verification server's origin. It answers `POST <url>/billing/verifyBilling`.
+- url (string): The verification server's origin. It answers `POST <url>/billing/verifyBilling`.
 
-- (transaction, verified) => void | Promise<void> — Credits a consumable or non-consumable. `verified` is the server's JSON answer.
+- onPay ((transaction, verified) => void | Promise<void>): Credits a consumable or non-consumable. `verified` is the server's JSON answer.
 
-- (transaction, verified) => void | Promise<void> — The same, for a subscription.
+- onSubscribe ((transaction, verified) => void | Promise<void>): The same, for a subscription.
 
 - products: The store's `IapProduct`s for `productInfo`: title, `displayPrice`, price, currency and offers.
 
@@ -325,9 +327,9 @@ The CSR router runs on these two hooks: one turns an href into route state, the 
 
 - useHistory(locations): Keeps visited locations, the current index and each page's scroll position in a ref.
 
-- Record a push, replace or pop, saving the scroll of the page being left.
+- setHistoryForward, setHistoryBack: Record a push, replace or pop, saving the scroll of the page being left.
 
-- Read the entries around the current one. Back and forward are told apart with them.
+- getPrevLocation, getCurrentLocation, getNextLocation: Read the entries around the current one. Back and forward are told apart with them.
 
 - getScrollTop(location): The scroll position to restore: the saved one, or the `#hash` element's top.
 
@@ -343,13 +345,13 @@ LoginForm
 
 `LoginForm` is what the shared store's `login` action takes. It says which account to load after sign-in, and where to send the user on success or failure.
 
-- "user" | "admin" | "public" — `"admin"` loads the admin account. Any other value loads the user with `getSelf`.
+- auth ("user" | "admin" | "public"): `"admin"` loads the admin account. Any other value loads the user with `getSelf`.
 
-- string — Where `router.push` goes after the account loads.
+- redirect (string): Where `router.push` goes after the account loads.
 
-- string — Where to go when loading the account fails.
+- unauthorize (string): Where to go when loading the account fails.
 
-- string | null — A token saved with `setAuth` before anything loads, for example right after sign-in.
+- jwt (string | null): A token saved with `setAuth` before anything loads, for example right after sign-in.
 
 A button that loads the signed-in user, then lands on the home page or goes back to sign-in:
 

@@ -31,15 +31,15 @@ What It Exports
 
 - slice: Declares the list queries a client store loads, and guards the generated CRUD endpoints.
 
-- Guards. They run before the handler and decide whether the call may go on.
+- Public, None, guard: Guards. They run before the handler and decide whether the call may go on.
 
-- Internal arguments: handler arguments the server fills in, such as the request.
+- Req, Res, Ip, Ws: Internal arguments: handler arguments the server fills in, such as the request.
 
-- Middleware wraps every endpoint call. The two built-ins are registered by default.
+- middleware, Logging, Timeout: Middleware wraps every endpoint call. The two built-ins are registered by default.
 
 - McpProgress: Reports progress from inside a long MCP tool call.
 
-- Look up registered signals, and publish or enqueue from a service.
+- SignalRegistry, serverSignal: Look up registered signals, and publish or enqueue from a service.
 
 - SignalContext: The per-call context guards and middleware receive: transport, arguments and caller.
 
@@ -49,13 +49,21 @@ The `endpoint` builder hands you four kinds, and each kind fixes its transport:
 
 Kind
 
-- HTTP
+HTTP
 
-- WebSocket
+WebSocket
 
 - Request and response
 
+  - query: Reads, over `GET`. The only kind that may declare `cache`.
+
+  - mutation: Writes, over `POST`. The `method` option moves it to `PATCH`, `PUT` or `DELETE`.
+
 - Realtime
+
+  - pubsub: The client subscribes to a room, and the server publishes into it.
+
+  - message: The client sends one message and gets one answer back.
 
 travels over it
 
@@ -89,11 +97,15 @@ Account Or Resource
 
 Every guard carries a `static scope`, which says whether the verdict needs the call's arguments:
 
-- Reads arguments
+Reads arguments
 
-- Checked for MCP listing
+Checked for MCP listing
 
 - GuardScope
+
+  - "account": Reads only the caller, through `context.get("account")`.
+
+  - "resource": Reads the call's arguments via `context.getArg(name)`, so it is judged only at call time.
 
 yes
 
@@ -123,13 +135,13 @@ McpProgress
 
 `McpProgress` reports how far a long MCP tool call has got, so the agent's client can show it. Call it wherever the work happens; nothing has to be passed down.
 
-- (progress: number, option?: McpProgressOption) => void — Sends one progress notification for the call running on this stack.
+- McpProgress.report(progress, option?) ((progress: number, option?: McpProgressOption) => void): Sends one progress notification for the call running on this stack.
 
-- number — Optional. The denominator the client renders; omit it when the amount of work is unknown.
+- option.total (number): Optional. The denominator the client renders; omit it when the amount of work is unknown.
 
-- string — Optional. One short line on the current step; the user reads it, so write prose.
+- option.message (string): Optional. One short line on the current step; the user reads it, so write prose.
 
-- boolean — `true` only while a client is streaming, so a costly message can be skipped.
+- McpProgress.streaming (boolean): `true` only while a client is streaming, so a costly message can be skipped.
 
 A service that imports rows reports after each one:
 
@@ -147,15 +159,23 @@ Internal arguments are handler arguments the server fills in, not the caller. De
 
 Argument
 
-- HTTP — query · mutation
+HTTP — query · mutation
 
-- WebSocket — pubsub · message
+WebSocket — pubsub · message
 
 - The request
 
+  - Req: The current Bun request, `Bun.BunRequest`.
+
+  - Res: The `Response` class, for building a reply such as `res.json(value)`.
+
 - The caller
 
+  - Ip: The caller's IP as the nearest proxy recorded it, or `null`.
+
 - The connection
+
+  - Ws: `ws`, `socketId`, `subscribe`, and the `on` / `off` cleanup hooks.
 
 available
 
@@ -179,11 +199,11 @@ middleware / Middleware
 
 Middleware wraps every endpoint call, before and after the handler. Two are registered by default; write your own with `middleware(refName)`.
 
-- Middleware
+Middleware
 
-- Acts when
+Acts when
 
-- What it does
+What it does
 
 - `Logging` — Always. — Writes debug lines around the call, and an error line when it fails.
 
@@ -211,9 +231,9 @@ Register it in one of two places:
 
 Where
 
-- lib/option.ts: Every endpoint the server runs, after the two defaults.
+- lib/option.ts: Every endpoint the server runs, after the two defaults. — Example: `option.applyMiddleware(SlowCallMiddleware);`
 
-- middlewares: The endpoint option. Applies to that endpoint only, inside every global middleware.
+- middlewares: The endpoint option. Applies to that endpoint only, inside every global middleware. — Example: `mutation(Boolean, { guards: [Admin], middlewares: [SlowCallMiddleware] })`
 
 **`use(env)` runs once.** The handler it returns serves every call, so set up in `use` and keep per-call work in the handler.
 

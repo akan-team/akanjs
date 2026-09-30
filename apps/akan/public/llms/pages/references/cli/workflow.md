@@ -104,21 +104,23 @@ Command
 
 MCP tool · mode
 
-- akan workflow list: `list_workflows` · <bothModes>
+- akan workflow list: `list_workflows` · plan and apply mode
 
-- akan workflow explain: `explain_workflow` · <bothModes>
+- akan workflow explain: `explain_workflow` · plan and apply mode
 
-- akan workflow plan: `plan_workflow` · <bothModes>
+- akan workflow plan: `plan_workflow` · plan and apply mode
 
-- akan workflow apply: `apply_workflow` · <applyMode>
+- akan workflow apply: `apply_workflow` · apply mode
 
-- akan workflow validate: `run_validation` · <applyMode>
+- akan workflow validate: `run_validation` · apply mode
 
-- akan repair generated: `repair_generated` · <applyMode>
+- akan repair generated: `repair_generated` · apply mode
 
-- akan repair imports: `repair_imports` · <applyMode>
+- akan repair imports: `repair_imports` · apply mode
 
-- akan repair module-shape: `repair_module_shape` · <applyMode>
+- akan repair module-shape: `repair_module_shape` · apply mode
+
+- akan workflow report, akan repair format, akan repair dictionary: CLI only
 
 **plan_workflow always stores its plan.** Without `out` it writes to `.akan/workflows/plans/` under a name built from the workflow and its inputs, such as `add-field-koyo-icecreamorder-topping.json`. It returns that `planPath` for `apply_workflow`.
 
@@ -128,19 +130,19 @@ Seven workflows ship with the CLI. `akan workflow list` prints each with when to
 
 With `--format json`, explain also carries the predicted changes and the completion criteria.
 
-- create-module: <l.trans({ en: "A new database-backed domain module, from the constant through the store and UI.", ko: "constant부터 store, UI까지 갖춘, DB에 저장되는 새 도메인 모듈입니다.", })> <needsLabel> `--app` `--module`
+- create-module: A new database-backed domain module, from the constant through the store and UI. Needs: `--app` `--module`
 
-- create-scalar: <l.trans({ en: "A reusable value module with no database ownership, such as a value object or shared scalar.", ko: "값 객체나 공용 스칼라처럼 DB를 소유하지 않는 재사용 값 모듈입니다.", })> <needsLabel> `--app` `--scalar`
+- create-scalar: A reusable value module with no database ownership, such as a value object or shared scalar. Needs: `--app` `--scalar`
 
-- create-ui: <l.trans({ en: "One conventional UI file for an existing module.", ko: "기존 모듈에 관례에 맞는 UI 파일 하나를 더합니다.", })> <needsLabel> `--app` `--module` `--surface`
+- create-ui: One conventional UI file for an existing module. Needs: `--app` `--module` `--surface`
 
-- add-field: <l.trans({ en: "A field on the constant and the dictionary, with the Template form flagged for review.", ko: "constant와 dictionary에 필드를 더하고, Template 폼은 검토할 곳으로 표시합니다.", })> <needsLabel> `--app` `--module` `--field` `--type`
+- add-field: A field on the constant and the dictionary, with the Template form flagged for review. Needs: `--app` `--module` `--field` `--type`
 
-- add-enum-field: <l.trans({ en: "A closed-value field: the enum class, its labels and options, and the field itself.", ko: "정해진 값만 받는 필드로, enum 클래스와 라벨·옵션, 필드 자체를 더합니다.", })> <needsLabel> `--app` `--module` `--field` `--values`
+- add-enum-field: A closed-value field: the enum class, its labels and options, and the field itself. Needs: `--app` `--module` `--field` `--values`
 
-- add-mutation: <l.trans({ en: "A service method and a mutation guarded by `None`; it only recommends a store action or UI control.", ko: "service 메서드와 `None` 가드를 단 뮤테이션을 더하고, store 액션과 UI 컨트롤은 권장만 합니다.", })> <needsLabel> `--app` `--module` `--mutation`
+- add-mutation: A service method and a mutation guarded by `None`; it only recommends a store action or UI control. Needs: `--app` `--module` `--mutation`
 
-- add-slice: <l.trans({ en: "A service query and an `init` slice guarded by `None`; it only recommends the page load and Zone.", ko: "service 쿼리와 `None` 가드를 단 `init` 슬라이스를 더하고, 페이지 로드와 Zone은 권장만 합니다.", })> <needsLabel> `--app` `--module` `--slice`
+- add-slice: A service query and an `init` slice guarded by `None`; it only recommends the page load and Zone. Needs: `--app` `--module` `--slice`
 
 **create-ui plans five surfaces and applies three.** `--surface` accepts `view`, `unit`, `template`, `zone` and `util`; apply builds only the first three.
 
@@ -156,7 +158,21 @@ Each workflow fixes the commands `validate` runs against its `--app`.
 
 - Create
 
+  - create-module
+
+  - create-scalar
+
+  - create-ui
+
 - Add to a module
+
+  - add-field
+
+  - add-enum-field
+
+  - add-mutation
+
+  - add-slice
 
 Run by validate
 
@@ -174,7 +190,7 @@ Serves workflows and repairs to an agent as MCP tools.
 
 List, explain, plan, apply, or validate a workflow, or print an earlier run's report. `plan` and `explain` never write source. Only `apply` does, and only from a plan file.
 
-- action (String, list | explain | plan | apply | validate | report): What to do. Left out, it is asked for at a prompt.
+- action (String, list | explain | plan | apply | validate | report, required): What to do. Left out, it is asked for at a prompt.
 
 - workflow (String): Needed by every action but `list`. What it names depends on the action; see Notes.
 
@@ -216,7 +232,7 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 
 Run one narrow repair and print a structured report. Each kind is a known remedy for a known problem. `dictionary` and `module-shape` change nothing: they read `akan doctor --strict`, keep your module's findings, and name the command that fixes them.
 
-- kind (String, generated | format | imports | dictionary | module-shape): Which repair to run. What each one does is in Notes.
+- kind (String, generated | format | imports | dictionary | module-shape, required): Which repair to run. What each one does is in Notes.
 
 - --format (String, default markdown, markdown | json · -o): Output format. `json` is what an MCP client receives.
 

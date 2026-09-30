@@ -42,15 +42,25 @@ What becomes what
 
 What you wrote
 
-- tool
+tool
 
-- resource
+resource
 
-- prompt
+prompt
 
 - Signal (*.signal.ts)
 
+  - query · mutation: Custom endpoints and the generated create, update and remove become tools named by their key.
+
+  - <model> · <model>List…: Generated reads are tools that also get an `akan://` resource URI.
+
+  - <model>Insight…: An aggregate with nothing to point at, so it stays a tool with no URI.
+
+  - pubsub · message: Never exposed: their arguments read a socket an MCP request does not have.
+
 - Page (page/**)
+
+  - page().prompt(): A screen the user runs as a slash command; the model does not pick it.
 
 Published as
 
@@ -100,31 +110,31 @@ Why, and what to do
 
 Options
 
-- boolean — true — Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.
+- enabled (boolean, default true, AKAN_MCP, AKAN_PUBLIC_MCP): Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.
 
-- boolean — false — Publishes queries only, whatever the guards allow; the env turns it on only on `true` or `1`.
+- readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow; the env turns it on only on `true` or `1`.
 
-- string — /mcp — Mount path; the OAuth resource identifier, and so the `aud` a token needs, follows it.
+- path (string, default /mcp, AKAN_MCP_PATH): Mount path; the OAuth resource identifier, and so the `aud` a token needs, follows it.
 
-- string — 0.0.0 — Reported as `serverInfo.version`, the same placeholder the OpenAPI document uses.
+- version (string, default 0.0.0, AKAN_MCP_VERSION): Reported as `serverInfo.version`, the same placeholder the OpenAPI document uses.
 
-- string — Domain tools for the <app> app. — Sent to the model with the tool list: what the app is for and which tool to reach first.
+- instructions (string, default Domain tools for the <app> app., AKAN_MCP_INSTRUCTIONS): Sent to the model with the tool list: what the app is for and which tool to reach first.
 
-- string[] — [] — Extra origins past the DNS-rebinding check; only a browser-hosted client sends an Origin.
+- allowedOrigins (string[], default [], AKAN_MCP_ALLOWED_ORIGINS): Extra origins past the DNS-rebinding check; only a browser-hosted client sends an Origin.
 
-- number — 100 — Entries per catalogue page; a client follows `nextCursor` for the rest.
+- pageSize (number, default 100, AKAN_MCP_PAGE_SIZE): Entries per catalogue page; a client follows `nextCursor` for the rest.
 
-- string — en — The one language of the catalogue and its error text, server-wide.
+- language (string, default en, AKAN_MCP_LANGUAGE): The one language of the catalogue and its error text, server-wide.
 
-- "full" | "shallow" | "none" — shallow — Result shape a tool advertises: `shallow` names nested models, `full` inlines, `none` omits.
+- outputSchema ("full" | "shallow" | "none", default shallow, AKAN_MCP_OUTPUT_SCHEMA): Result shape a tool advertises: `shallow` names nested models, `full` inlines, `none` omits.
 
-- boolean — true — Repeats a structured result as JSON in the text block; the env can only turn it off.
+- legacyTextBlock (boolean, default true, AKAN_MCP_LEGACY_TEXT): Repeats a structured result as JSON in the text block; the env can only turn it off.
 
-- { calls?, windowMs?, concurrent? } | false — 120 calls / 60s, 8 in flight — Per-caller budget for `tools/call`, `resources/read` and `prompts/get`, counted per process. — AKAN_MCP_RATE_LIMIT=60/30 # 60 calls per 30s; off disables AKAN_MCP_CONCURRENT=4
+- rateLimit ({ calls?, windowMs?, concurrent? } | false, default 120 calls / 60s, 8 in flight, AKAN_MCP_RATE_LIMIT, AKAN_MCP_CONCURRENT): Per-caller budget for `tools/call`, `resources/read` and `prompts/get`, counted per process.
 
-- number — 60000 — Characters of screen data one page prompt may attach before its lists are cut.
+- promptBudget (number, default 60000, AKAN_MCP_PROMPT_BUDGET): Characters of screen data one page prompt may attach before its lists are cut.
 
-- { authorizationServers?, scopes?, resource?, verify? } — {} — The OAuth resource-server identity; naming an authorization server makes a token mandatory.
+- auth ({ authorizationServers?, scopes?, resource?, verify? }, default {}, AKAN_MCP_AUTH_SERVERS, AKAN_MCP_SCOPES, AKAN_MCP_RESOURCE): The OAuth resource-server identity; naming an authorization server makes a token mandatory.
 
 **Over the rate limit** a call answers `429` with `Retry-After`. Listings are not counted, and N replicas grant N budgets.
 
@@ -142,7 +152,7 @@ Tool part
 
 - outputSchema: The return model; a scalar or a nullable single return ships as text only.
 
-- The endpoint's dictionary label and its `.desc()`.
+- title, description: The endpoint's dictionary label and its `.desc()`.
 
 - annotations: `readOnlyHint` on a query, `destructiveHint` on a `remove…` or `delete…` mutation.
 
@@ -158,13 +168,13 @@ The generated reads and CRUD publish through the `slice()` guards map. A named s
 
 Generated entry
 
-- The root slice: guarded by `guards.root`, opted out with `mcp: { root: false }`.
+- taskList, taskInsight: The root slice: guarded by `guards.root`, opted out with `mcp: { root: false }`.
 
-- The full read: `guards.get` and `mcp: { get: false }`; `lightTask` is never published.
+- task: The full read: `guards.get` and `mcp: { get: false }`; `lightTask` is never published.
 
-- `guards.cru` and `mcp: { cru: false }`, or a per-verb key such as `create`.
+- createTask, updateTask, removeTask: `guards.cru` and `mcp: { cru: false }`, or a per-verb key such as `create`.
 
-- A named slice: only its own `init({ guards, mcp })` counts.
+- taskListInTodo, taskInsightInTodo: A named slice: only its own `init({ guards, mcp })` counts.
 
 To keep an entry off the shelf, use `mcp: false`. On `slice()` it is a map keyed like `guards`:
 
@@ -226,17 +236,17 @@ A prompt cannot re-run itself and has no fallback context, so every way a screen
 
 What happened
 
-- The page is not run; the answer names the tool that finds the id. — No <arg> was named for "<prompt>". Find it with <model>List…, then run this prompt again with <arg>=<id>.
+- A required argument was left out: The page is not run; the answer names the tool that finds the id.
 
-- The page is not run; the declaration's own error message is returned.
+- An argument fails the page's declaration: The page is not run; the declaration's own error message is returned.
 
-- A `401` credential challenge, so the client signs in instead of giving up.
+- A redirect or a guard refusal, with no token: A `401` credential challenge, so the client signs in instead of giving up.
 
-- One fixed answer, so it never confirms whether an id exists. — This screen is not available to the signed-in account.
+- A redirect or a guard refusal, with a token: One fixed answer, so it never confirms whether an id exists. — Example: `This screen is not available to the signed-in account.`
 
-- Answered as not-found for these arguments. — No screen exists for these arguments.
+- `router.notFound()`, or a document it reads is missing: Answered as not-found for these arguments. — Example: `No screen exists for these arguments.`
 
-- The real error is logged on the server and never described to the caller. — The page failed to load.
+- Any other throw: The real error is logged on the server and never described to the caller. — Example: `The page failed to load.`
 
 **Lists are cut to `promptBudget`** (60,000 characters by default), largest first, with a note: `Attached the first N of M rows of <key>; call it for the rest.` A single document is never cut.
 
@@ -268,13 +278,17 @@ Every guard declares `static scope`, with no default. It decides whether the gua
 
 Guard
 
-- Hides from listing
+Hides from listing
 
-- Checked at call
+Checked at call
 
 - scope: "account"
 
+  - SignedIn · Admin · Every: Reads only the caller, so an anonymous agent is not offered admin tools it can only fail.
+
 - scope: "resource"
+
+  - Can<Verb><Model> · SelfOrAdmin: Needs the call's arguments, so the entry stays listed and is stopped at call time.
 
 Yes
 
@@ -331,6 +345,13 @@ export const option = new AkanOption<ModulesOptions>().setMcp({
 
 // A value decided at boot takes a function of the env.server.* options:
 //   .setMcp(() => ({ readOnly: getEnv().environment === "debug" }))
+```
+
+### rateLimit
+
+```ts
+AKAN_MCP_RATE_LIMIT=60/30   # 60 calls per 30s; off disables
+AKAN_MCP_CONCURRENT=4
 ```
 
 ### apps/myapp/lib/task/task.signal.ts
@@ -410,6 +431,13 @@ export default page()
       </>
     );
   });
+```
+
+### A required argument was left out
+
+```ts
+No <arg> was named for "<prompt>".
+Find it with <model>List…, then run this prompt again with <arg>=<id>.
 ```
 
 ### apps/myapp/lib/task/task.service.ts

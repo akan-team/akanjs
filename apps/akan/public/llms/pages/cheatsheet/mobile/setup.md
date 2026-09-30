@@ -56,27 +56,27 @@ Mobile Config
 
 The `mobile` block in `akan.config.ts` describes the native app: its name, ID, version and targets. Values at the `mobile` root apply to every target, and a target overrides the ones it sets.
 
-- string — app name — Name under the home-screen icon. A store listing may show a different name.
+- appName (string, default app name): Name under the home-screen icon. A store listing may show a different name.
 
-- string — com.<repo>.<app> — Android package name and iOS bundle ID. Console and Firebase registrations must match it.
+- appId (string, default com.<repo>.<app>): Android package name and iOS bundle ID. Console and Firebase registrations must match it.
 
-- string — 0.0.1 — The version users see: Android `versionName` and iOS `CFBundleShortVersionString`.
+- version (string, default 0.0.1): The version users see: Android `versionName` and iOS `CFBundleShortVersionString`.
 
-- number — 1 — Store build number: Android `versionCode`, iOS `CFBundleVersion`. Raise it for every store upload.
+- buildNum (number, default 1): Store build number: Android `versionCode`, iOS `CFBundleVersion`. Raise it for every store upload.
 
-- Record<string, Target> — { default: {} } — One entry per native app. The key is the name `--target` takes.
+- targets (Record<string, Target>, default { default: {} }): One entry per native app. The key is the name `--target` takes.
 
-- MobilePermission[] — Device features to prepare. Only `camera`, `contacts`, `location`, `push` and `speech` exist.
+- targets.*.permissions (MobilePermission[]): Device features to prepare. Only `camera`, `contacts`, `location`, `push` and `speech` exist.
 
-- string — / — Home route. A deep link opens on top of it, and Android back returns to it before exiting.
+- targets.*.indexPath (string, default /): Home route. A deep link opens on top of it, and Android back returns to it before exiting.
 
-- string — The client to open in a multi-client app. It must be a `basePath` declared in `routes`.
+- targets.*.basePath (string): The client to open in a multi-client app. It must be a `basePath` declared in `routes`.
 
-- { plugins?, ios?, android?, desktop? } — Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
+- targets.*.native ({ plugins?, ios?, android?, desktop? }): Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
 
-- Record<string, string> — Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.
+- targets.*.files (Record<string, string>): Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.
 
-- string — Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app. `files` and `native` at the `mobile` root merge into every target.
+- targets.*.appId (string): Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app. `files` and `native` at the `mobile` root merge into every target.
 
 Icons, splash images and deep links are also target fields; see Config and Deep Links.
 
@@ -118,15 +118,43 @@ The runtime ships a plugin only when the target asks for it. A base set every Ak
 
 Package
 
-- Always
+Always
 
-- By a permission — permissions
+By a permission — permissions
 
-- By name — native.plugins
+By name — native.plugins
 
 - What every Akan page may call
 
+  - app: App info, the Android back button, deep-link events and app exit.
+
+  - app-state: Foreground and background changes.
+
+  - device: The platform, model and device language.
+
+  - keyboard: Reports the keyboard height so the screen can move with it.
+
+  - preferences: On-device storage, where the sign-in token is kept.
+
+  - secure-storage: The keychain or keystore, for secrets.
+
+  - browser · opener: Opens a page in an in-app browser, or a link in the system.
+
+  - auth-session: The system sign-in sheet an OAuth flow opens.
+
+  - dialog · haptics: System alerts and action sheets, and haptic feedback.
+
 - Per feature
+
+  - camera: Camera and photo picker. Brought by `camera`.
+
+  - geolocation: Current and watched location. Brought by `location`.
+
+  - push: APNs on iOS, FCM on Android. Brought by `push`.
+
+  - iap: In-app purchase: StoreKit 2 and Play Billing.
+
+  - share · biometric · …: The runtime's other plugins, by id, or a plugin folder by its absolute path.
 
 Yes
 
@@ -174,11 +202,11 @@ Success looks like this: the app opens on the target's `indexPath`, and a save i
 
 Commands and store builds
 
-- Command
+Command
 
-- Default --env
+Default --env
 
-- What you get
+What you get
 
 - start-android — local — Runs on an emulator or phone. `--release` ships the web build instead of the dev server.
 
@@ -200,23 +228,23 @@ Open the Android app signing docs
 
 Mobile command flags
 
-- string — A key of `mobile.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.
+- --target (string): A key of `mobile.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.
 
-- local | debug | develop | main — The backend the app talks to. The default differs per command, as in the table above.
+- --env (local | debug | develop | main): The backend the app talks to. The default differs per command, as in the table above.
 
-- boolean — false — Run a release build with the web build inside, so no dev server is needed.
+- --release (boolean, default false, start-*): Run a release build with the web build inside, so no dev server is needed.
 
-- string — A simulator, emulator or device by id or name. A paired iPhone's name makes a signed phone build.
+- --device (string, start-ios, start-android): A simulator, emulator or device by id or name. A paired iPhone's name makes a signed phone build.
 
-- string — The Apple team id to sign with, when the Mac holds profiles of several teams.
+- -T, --team (string, start-ios, release-ios): The Apple team id to sign with, when the Mac holds profiles of several teams.
 
-- boolean — false — A debug build instead of a release one.
+- --debug (boolean, default false, build-*): A debug build instead of a release one.
 
-- boolean — false — Sign with an ad-hoc profile instead of an App Store one.
+- --ad-hoc (boolean, default false, release-ios): Sign with an ad-hoc profile instead of an App Store one.
 
-- aab | apk — aab — `aab` for a Play Store upload, `apk` to install the file directly.
+- --assemble-type (aab | apk, default aab, release-android): `aab` for a Play Store upload, `apk` to install the file directly.
 
-- boolean — false — Allow `--env local` in a release build. For local testing only.
+- -l, --allow-local-release (boolean, default false, release-*): Allow `--env local` in a release build. For local testing only.
 
 iOS Setup
 
@@ -274,9 +302,9 @@ Open rustup
 
 - Linux: A C compiler, pkg-config, and the WebKitGTK 4.1, GTK 3 and libsoup 3 development packages.
 
-A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. Turn it on for a target with `native: { desktop: { server: true } }`. Then `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` and `akan publish-update` build the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server. An installed app refuses an update that adds or drops the server, so switching it for an app already out there takes a reinstall.
+A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. Turn it on for a target with `native: { desktop: { server: true } }`. Then `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` and `akan publish-update` build the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. Any program on the computer can call that port too, so guard its endpoints as you would a network server's. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server. An installed app refuses an update that adds or drops the server, so switching it for an app already out there takes a reinstall, and the reinstall moves no data: with the server added the app starts on an empty local database, and with it dropped the pages call the backend the build names.
 
-The server needs `single` in `database.modes`. The app carries the server's `private/` folder, `env.server.<env>.ts` of the `--env` it is built with and no other environment's file, and the defaults each lib it uses exports as its server env (the lib's `env.server.testing.ts`), all in plain text: anyone who has the app can read every file and value in them. Keep deployment secrets such as cloud keys, and license files, out of them. The carried server has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`.
+The server needs `single` in `database.modes`. The app carries the server's `private/` folder (each lib's too, under `private/libs/<lib>`), `env.server.<env>.ts` of the `--env` it is built with and no other environment's file, and the defaults each lib it uses exports as its server env (the lib's `env.server.testing.ts`), all in plain text: anyone who has the app can read every file and value in them. Keep deployment secrets such as cloud keys, and license files, out of them. The carried server has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`.
 
 start-desktop is for development and testing, and build-desktop makes an app for this computer: on macOS signed ad hoc or with the development identity, on Windows and Linux unsigned. Distribution signing and notarization are not akan commands yet; on Windows, --installer makes an unsigned installer for the current user.
 
@@ -294,15 +322,19 @@ A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "relo
 
 Installing On Windows
 
-`akan build-desktop myapp --installer true` on Windows adds a setup program next to the app folder (NSIS: `winget install NSIS.NSIS`). It installs for the current user, so updates swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards, which is what a remote install passes; a PC without the WebView2 Runtime gets it too. The program is not code-signed yet, so a copy downloaded in a browser meets a SmartScreen warning.
+`akan build-desktop myapp --installer true --env main` on Windows adds a setup program next to the app folder (NSIS: `winget install NSIS.NSIS`). It installs for the current user, so updates swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards, which is what a remote install passes; a PC without the WebView2 Runtime gets it too. Run again without `/D=`, it installs into the folder the app is already in, and one started while another runs refuses to start. The program is not code-signed yet, so a copy downloaded in a browser meets a SmartScreen warning.
 
 The build follows the CPU of the Bun that runs it, so an ARM64 Windows machine builds an x64 PC's app when `akan` runs on an x64 Bun (`bun-windows-x64-baseline`, which also runs on CPUs without AVX2) after `rustup target add x86_64-pc-windows-msvc`.
 
 Updates
 
-An installed app updates itself from releases you sign. `akan update-keygen` makes the key once and prints its public half for `mobile.updates`; `akan publish-update` builds a release (the whole app on the desktop, the web bundle on a phone) into `.akan/mobile/<target>/updates`, which you upload to `updates.url`, the manifests last. A new release runs on trial until its first page mounts. A phone looks for a newer web bundle by itself, at start and on each return to the front, and runs it from the next cold start; on the desktop a release is the whole app and a relaunch, so when to check, download and apply is the app's call. `akan pack-update` writes a phone update unsigned instead, for a signer that keeps the key elsewhere.
+An installed app updates itself from releases you sign. `akan update-keygen` makes the key once and prints its public half for `mobile.updates`; `akan publish-update` builds a release (the whole app on the desktop, the web bundle on a phone) into `.akan/mobile/<target>/updates`, which holds only what you upload to `updates.url`, the manifests last. A new release runs on trial until its first page mounts. A phone looks for a newer web bundle by itself, at start and on each return to the front, and runs it from the next cold start; on the desktop a release is the whole app and a relaunch, so when to check, download and apply is the app's call. `akan pack-update` writes a phone update unsigned instead, for a signer that keeps the key elsewhere.
 
-An app follows the channel `updates.channel` names, or else the `--env` it was built with, so it takes only releases published for its own env. `build-desktop` defaults to `debug` and `publish-update` to `main`: pass the same `--env` to both. `--channel` on `publish-update` names only the manifest it writes: the release inside keeps its build's channel, and an app that takes it follows that channel afterwards, so a pilot group gets a target of its own whose `updates.channel` is the pilot's. What makes a desktop app itself — its install folder, uninstall entry, data folder, single running instance and update state — comes from the target's `appId` and name, not from the env, so two envs of one target on one computer share all of it. To install them side by side, give each env its own target with its own `appId`.
+Anyone who can reach `updates.url` can read everything under it, and the updater sends no credentials. A desktop release is the whole app, so it holds the carried server's `private/` (the app's and its libs') and its env file: keep out of them what the installed app may not hold either.
+
+An app follows the channel `updates.channel` names, or else the `--env` it was built with, so without `updates.channel` it takes only releases published for its own env. `build-desktop` defaults to `debug` and `publish-update` to `main`: pass the same `--env` to both. `--channel` on `publish-update` names only the manifest it writes: the release inside keeps its build's channel, and an app that takes it follows that channel afterwards, so a pilot group gets a target of its own whose `updates.channel` is the pilot's. `publish-update` refuses, before it builds, a desktop release that differs from the channel's previous one in carrying a server: publish it on another channel through `updates.channel`, or remove that `<channel>.json` from the output folder to start the channel over. What makes a desktop app itself — its install folder, uninstall entry, data folder, single running instance and update state — comes from the target's `appId` and name, not from the env, so two envs of one target on one computer share all of it. To install them side by side, give each env its own target with its own `appId`.
+
+While a release is on trial, `updates.check()` answers `available: false` for it and `updates.apply()` rejects with `NOT_ALLOWED`: applying would replace the app a failed trial goes back to. An app that carries a server confirms its trial only once that server has answered and stayed up for 5 s, and only while it is up, and the `readyTimeout` clock starts then; a server that gives up, or is not up within 120 s of the start, rolls the release back at once, and the release stays downloaded for the next apply until a third such failure excludes it for good. A release that adds or drops the server is refused from its manifest, before anything is downloaded, and reinstalling the app clears the list of releases the earlier install refused.
 
 Behind a CDN, the files under `app/` and `files/` are named by their hash and may be cached for long, but `<channel>.json` and `<channel>.json.sig` must not be cached, or must be invalidated together: a manifest paired with another release's signature fails verification, and every app stops updating until the caches expire. Upload `app/` and `files/` first, then those two files last, together.
 
@@ -330,7 +362,21 @@ Push on each platform
 
 - Android push
 
+  - The package name matches the Android app registered in Firebase.
+
+  - `native.android.googleServices` points at that app's `google-services.json`.
+
+  - The notification permission is granted on the phone.
+
+  - The server's Firebase credentials are for the same project.
+
 - iOS push
+
+  - You test on a real device.
+
+  - The profile allows push; `aps-environment` follows it, `development` for a phone run and `production` for a release.
+
+  - The server holds an APNs key (team ID, key ID, the .p8 file) for this bundle ID; iOS push does not go through Firebase.
 
 Next
 
@@ -530,11 +576,16 @@ mobile: {
 import { updates } from "akanjs/client/native";
 
 // e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
-const { available } = await updates.check();
-if (available) {
-  await updates.download();
-  await updates.apply();
-}
+export const useAppUpdates = () => {
+  const takeUpdate = async () => {
+    if ((await updates.getState()).trial) return; // the running release is still on trial
+    const { available } = await updates.check();
+    if (!available) return;
+    await updates.download();
+    await updates.apply();
+  };
+  return { takeUpdate };
+};
 ```
 
 ## Agent Notes

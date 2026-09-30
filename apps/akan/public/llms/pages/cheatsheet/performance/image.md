@@ -50,7 +50,7 @@ Term
 
 - sizes: How wide the image renders per viewport, e.g. `(min-width: 768px) 50vw, 100vw`.
 
-- Two candidates for one fixed width: a normal screen and a high-density one.
+- 1x, 2x: Two candidates for one fixed width: a normal screen and a high-density one.
 
 - 640w: A candidate labelled with its pixel width. The browser picks one through `sizes`.
 
@@ -70,11 +70,11 @@ Pass a `file` (a `File` relation or any `{ url, imageSize }`) or a plain `src`, 
 
 Which srcSet you get
 
-- You pass
+You pass
 
-- srcSet
+srcSet
 
-- Good for
+Good for
 
 - `width` only — A 1x/2x pair, each rounded up to an allowed width — A fixed-size box: avatar, thumbnail
 
@@ -90,23 +90,23 @@ Which srcSet you get
 
 **`unoptimized` is not for SVGs.** `data:`, `blob:` and `.svg` sources skip the optimizer on their own. The flag is for images optimized elsewhere.
 
-- File | { url, imageSize } | null — The image to show. Its `imageSize` fills in `width` and `height` when you omit them.
+- file (File | { url, imageSize } | null): The image to show. Its `imageSize` fills in `width` and `height` when you omit them.
 
-- string — A direct URL that wins over `file.url`. With neither, an empty `bg-muted` box renders and nothing is requested.
+- src (string): A direct URL that wins over `file.url`. With neither, an empty `bg-muted` box renders and nothing is requested.
 
-- number — file.imageSize[0] — The rendered width in CSS pixels. It picks the 1x/2x candidates.
+- width (number, default file.imageSize[0]): The rendered width in CSS pixels. It picks the 1x/2x candidates.
 
-- number — file.imageSize[1] — The rendered height in CSS pixels. It reserves space, so the layout does not jump.
+- height (number, default file.imageSize[1]): The rendered height in CSS pixels. It reserves space, so the layout does not jump.
 
-- string — Switches to the full `w` srcSet for a fluid element.
+- sizes (string): Switches to the full `w` srcSet for a fluid element.
 
-- number — 75 — Encoding quality. Any value other than 75 must be listed in `qualities`.
+- quality (number, default 75): Encoding quality. Any value other than 75 must be listed in `qualities`.
 
-- boolean — false — Loads eagerly at high priority and preloads during SSR. `preload` does the same.
+- priority (boolean, default false): Loads eagerly at high priority and preloads during SSR. `preload` does the same.
 
-- boolean — false — Skips the optimizer and renders the original `src`.
+- unoptimized (boolean, default false): Skips the optimizer and renders the original `src`.
 
-- string — "image" — Alt text. Always pass a real one; the default tells a screen reader nothing.
+- alt (string, default "image"): Alt text. Always pass a real one; the default tells a screen reader nothing.
 
 Config
 
@@ -114,37 +114,37 @@ Every optimizer setting lives under the `images` key of `akan.config.ts`. An arr
 
 Sizes, formats and quality
 
-- number[] — [640, 750, 828, 1080, 1200, 1920, 2048, 3840] — Widths for viewport-wide images. Together with `imageSizes`, the only `w` values accepted.
+- deviceSizes (number[], default [640, 750, 828, 1080, 1200, 1920, 2048, 3840]): Widths for viewport-wide images. Together with `imageSizes`, the only `w` values accepted.
 
-- number[] — [32, 48, 64, 96, 128, 256, 384] — Widths for fixed-size elements, joined with `deviceSizes`.
+- imageSizes (number[], default [32, 48, 64, 96, 128, 256, 384]): Widths for fixed-size elements, joined with `deviceSizes`.
 
-- ("image/avif" | "image/webp")[] — ["image/webp"] — Output formats in preference order. The first one the request's `Accept` header allows wins.
+- formats (("image/avif" | "image/webp")[], default ["image/webp"]): Output formats in preference order. The first one the request's `Accept` header allows wins.
 
-- number[] — [75] — Allowed `q` values. Anything else is a 400, even a valid integer from 1 to 100.
+- qualities (number[], default [75]): Allowed `q` values. Anything else is a 400, even a valid integer from 1 to 100.
 
 **Widen `deviceSizes`, `imageSizes` and `qualities`; never narrow them.** `Image` does not read `akan.config.ts` and keeps the default lists as its own constants. A narrower config makes the server reject, with a 400, the `w` and `q` values the client still sends.
 
 Allowed sources
 
-- { protocol?, hostname?, port?, pathname?, search? }[] — [] — Allow-list for absolute URLs. Empty means no remote image is accepted at all.
+- remotePatterns ({ protocol?, hostname?, port?, pathname?, search? }[], default []): Allow-list for absolute URLs. Empty means no remote image is accepted at all.
 
-- { pathname?, search? }[] — [{ pathname: "/**" }] — Allow-list for root-relative URLs. The default admits all of `public/`.
+- localPatterns ({ pathname?, search? }[], default [{ pathname: "/**" }]): Allow-list for root-relative URLs. The default admits all of `public/`.
 
-- boolean — false — Lets an SVG through the optimizer untouched. While off, an SVG input is a 400.
+- dangerouslyAllowSVG (boolean, default false): Lets an SVG through the optimizer untouched. While off, an SVG input is a 400.
 
 Fetching remote images
 
-- number — 14400 — Seconds a remote image is reused at least. Also the floor of the response `max-age` in production.
+- minimumCacheTTL (number, default 14400): Seconds a remote image is reused at least. Also the floor of the response `max-age` in production.
 
-- number — 3 — Redirects followed for a remote image. Every hop must match `remotePatterns` too.
+- maximumRedirects (number, default 3): Redirects followed for a remote image. Every hop must match `remotePatterns` too.
 
-- number — 7000 — Timeout for each hop of the remote fetch, in milliseconds.
+- fetchTimeoutMs (number, default 7000): Timeout for each hop of the remote fetch, in milliseconds.
 
-- number — 26214400 (25MB) — Largest remote body accepted. Anything bigger is a 413.
+- maxRemoteBytes (number, default 26214400 (25MB)): Largest remote body accepted. Anything bigger is a 413.
 
 Server load
 
-- number — 0 — Encodes that run at once. `0` means half the CPUs the server sees, at least one.
+- maxConcurrency (number, default 0): Encodes that run at once. `0` means half the CPUs the server sees, at least one.
 
 Encoding shares one worker pool with file reads and hashing. Raise `maxConcurrency` and a burst of image requests slows down everything else the server does, which is why the default holds it to half.
 
@@ -154,13 +154,21 @@ Encoding runs on `Bun.Image`, and its codecs depend on the server's OS. AVIF, HE
 
 Codec
 
-- macOS · Windows
+macOS · Windows
 
-- Linux
+Linux
 
 - Output
 
+  - image/webp: The default output. Works everywhere.
+
+  - image/avif: Dropped from `formats` on Linux; those callers get webp.
+
 - Input decoding
+
+  - JPEG · PNG · GIF · WebP: Read and resized on every platform.
+
+  - AVIF · TIFF: Passed through untouched on Linux.
 
 Available
 
@@ -168,9 +176,9 @@ Not available
 
 What happens to each input
 
-- Input
+Input
 
-- Result
+Result
 
 - JPEG · PNG · static GIF — Resized, then converted to the first `formats` entry the browser accepts.
 
@@ -196,21 +204,21 @@ A remote image is refused until its URL matches an entry in `remotePatterns`, an
 
 Add each host you serve images from:
 
-- Field
+Field
 
-- How it matches
+How it matches
 
-- Example
+Example
 
-- protocol — Exact: `http` or `https` — "https"
+- protocol — Exact: `http` or `https` — Example: `"https"`
 
-- hostname — Glob; `*` also spans dots — "*.example.com"
+- hostname — Glob; `*` also spans dots — Example: `"*.example.com"`
 
-- port — Exact string; `""` means the default port — "8443"
+- port — Exact string; `""` means the default port — Example: `"8443"`
 
-- pathname — Glob; `*` is one segment, `**` any depth — "/articles/**"
+- pathname — Glob; `*` is one segment, `**` any depth — Example: `"/articles/**"`
 
-- search — Exact, including the leading `?` — "?v=2"
+- search — Exact, including the leading `?` — Example: `"?v=2"`
 
 **An omitted field matches anything.** `{ hostname: "cdn.example.com" }` admits every path on that host, over http and https.
 
@@ -224,11 +232,11 @@ Remote Cache
 
 A remote image is downloaded once, then served from disk until its TTL runs out, so a warm image never reaches its origin. The TTL is the upstream `max-age`, but never less than `minimumCacheTTL`.
 
-- Source
+Source
 
-- Original re-read
+Original re-read
 
-- Server serves the edit
+Server serves the edit
 
 - Remote, production build — Once the TTL runs out — After the TTL
 
@@ -256,9 +264,9 @@ Key part
 
 - quality: The `q` parameter: 75 unless a component passes `quality`.
 
-- The first `formats` entry the browser accepts, or the source's own format.
+- output format: The first `formats` entry the browser accepts, or the source's own format.
 
-- Upstream ETag (or a content hash) for a remote image; mtime and size for a local one.
+- source tag: Upstream ETag (or a content hash) for a remote image; mtime and size for a local one.
 
 **Reuse a few card sizes.** Many one-off widths spread across more allowed widths; a handful of repeated sizes lands on the same files.
 

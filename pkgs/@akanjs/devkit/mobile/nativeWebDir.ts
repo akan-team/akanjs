@@ -34,12 +34,16 @@ export class NativeWebDir {
   }
   static readonly #targetTag = "<script>window.__AKAN_MOBILE_TARGET__=";
 
+  async clear() {
+    await rm(this.dir, { recursive: true, force: true });
+    await mkdir(this.dir, { recursive: true });
+  }
+
   /** Rebuilds the folder from scratch and answers its files as web paths: relative, `/`-separated and sorted. */
   async assemble(target: AkanMobileTargetConfig, { html, publicDir, fontsDir }: NativeWebDirSources) {
     if (!(await Bun.file(html).exists()))
       throw new Error(`CSR html for mobile target '${target.name}' not found: ${html}`);
-    await rm(this.dir, { recursive: true, force: true });
-    await mkdir(this.dir, { recursive: true });
+    await this.clear();
     if (publicDir && (await NativeWebDir.#isDir(publicDir))) await cp(publicDir, this.dir, { recursive: true });
     if (fontsDir && (await NativeWebDir.#isDir(fontsDir)))
       await cp(fontsDir, path.join(this.dir, "_akan", "fonts"), { recursive: true });

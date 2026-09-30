@@ -42,9 +42,9 @@ A scalar abstract has three parts, and there is no fourth:
 
 Part
 
-- # <scalar> Abstract: One title line with the scalar name spelled the way its folder spells it.
+- # <scalar> Abstract: One title line with the scalar name spelled the way its folder spells it. — Example: `# coordinate Abstract`
 
-- What the value represents and, when it matters, who holds it, with no heading above.
+- One sentence: What the value represents and, when it matters, who holds it, with no heading above.
 
 - ## Rules: Two to five bullets: a fixed value, a field order, a unit, a lifetime, what a static computes.
 
@@ -64,9 +64,9 @@ The whole of `coordinate.abstract.md` is eight lines, for a class with fourteen 
 
 Four bullets, and each one is something a caller would otherwise get wrong:
 
-- The rule says
+The rule says
 
-- Without it, a caller assumes
+Without it, a caller assumes
 
 - `type` is always `Point`. — That `type` is open and could hold another GeoJSON shape.
 
@@ -86,13 +86,29 @@ Examples from the scalars in this repository, sorted by whether they belong in R
 
 Content
 
-- Write
+Write
 
-- Leave out
+Leave out
 
 - What the type cannot carry
 
+  - A unit: Kilometres rather than metres: `getDistanceKm` and `getDistanceM` differ only by unit.
+
+  - An order: Longitude before latitude in `coordinate`.
+
+  - A match by position: Each `fileMeta` lines up with the uploaded file at the same index.
+
+  - A lifetime or a consumption rule: For a held value: an `oauthGrant` lives 60 seconds and is spent on first exchange, pass or fail.
+
+  - What a static computes: Only when a caller could reasonably expect something else, such as a flat distance.
+
 - What the code already says
+
+  - The field list: The constant file already lists every field.
+
+  - The types: Each `field(...)` declaration already states its type.
+
+  - That it is reusable: Every scalar is reusable, so saying so tells the reader nothing.
 
 Do this
 
@@ -106,9 +122,9 @@ What `akan create-scalar price` writes:
 
 What each line becomes:
 
-- Scaffold
+Scaffold
 
-- Becomes
+Becomes
 
 - # price Abstract — Written for you from the folder name. Keep it.
 
@@ -116,9 +132,9 @@ What each line becomes:
 
 - ## Rules — Stays. Both placeholder bullets become what a caller may assume about the value, two to five in all.
 
-- Not here: a trailing comment beside the field in `price.constant.ts`.
+- A field's meaning — Not here: a trailing comment beside the field in `price.constant.ts`.
 
-- None: a value embedded in something else has no lifecycle of its own.
+- Workflow — None: a value embedded in something else has no lifecycle of its own.
 
 **Field meaning lives beside the field.** A trailing comment is where the next reader of that field looks, as in `oauthGrant.constant.ts`:
 
@@ -128,13 +144,25 @@ Read it before changing the scalar, and update it only when something callers re
 
 Change
 
-- Update
+Update
 
-- Leave
+Leave
 
 - When what callers rely on changes
 
+  - Validation meaning: What counts as a valid value, such as the 1 to 5 satisfaction range in `leaveInfo`.
+
+  - Public behavior: What callers can observe, such as what a static returns.
+
+  - Reuse rules: How it combines with other scalars, as `accessLog` stores its location as a `coordinate`.
+
 - When only how the code looks changes
+
+  - Formatting: Whitespace and line breaks the formatter decides.
+
+  - Imports: Adding, removing or reordering imports.
+
+  - Style: A code style change that alters no behavior.
 
 ## Code Examples
 
@@ -142,11 +170,11 @@ Change
 
 ```markdown
 # price Abstract
-<l.trans({ en: "<one sentence: what this value represents, and who holds it>", ko: "<이 값이 무엇을 나타내고 누가 들고 있는지 한 문장으로>" })>
+<one sentence: what this value represents, and who holds it>
 
 ## Rules
-- <l.trans({ en: "<something a caller would otherwise get wrong>", ko: "<적혀 있지 않으면 호출자가 틀릴 것>" })>
-- <l.trans({ en: "<two to five bullets in all>", ko: "<항목은 모두 두 개에서 다섯 개>" })>
+- <something a caller would otherwise get wrong>
+- <two to five bullets in all>
 ```
 
 ### libs/util/lib/__scalar/coordinate/coordinate.abstract.md

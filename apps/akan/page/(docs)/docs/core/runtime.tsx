@@ -254,6 +254,39 @@ AKAN_PUBLIC_ENV=main
 AKAN_PUBLIC_OPERATION_MODE=edge
 AKAN_PUBLIC_LOG_LEVEL=info`}
           />
+          <div>
+            {l.trans({
+              en: "Two more narrow who reaches the server, for one only its own computer calls, such as the server a desktop app carries:",
+              ko: "두 개는 서버에 닿는 쪽을 좁힙니다. 데스크톱 앱에 싣는 서버처럼 자기 컴퓨터만 부르는 서버용입니다:",
+            })}
+          </div>
+          <Docs.OptionTable
+            items={[
+              {
+                key: "AKAN_LISTEN_HOST",
+                type: "string",
+                default: l.trans({ en: "every interface", ko: "모든 인터페이스" }),
+                desc: l.trans({
+                  en: "The one address the server binds, such as 127.0.0.1.",
+                  ko: "서버가 바인딩할 주소 하나입니다. 예: 127.0.0.1.",
+                }),
+              },
+              {
+                key: "AKAN_ALLOWED_HOSTS",
+                type: "host:port, …",
+                desc: l.trans({
+                  en: "The Host headers it answers; any other request, socket upgrade and preflight included, gets 403.",
+                  ko: "응답할 Host 헤더입니다. 다른 요청은 소켓 업그레이드와 preflight까지 403을 받습니다.",
+                }),
+              },
+            ]}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "A server that renders pages calls itself at localhost:<PORT>, so list that in AKAN_ALLOWED_HOSTS too, and keep AKAN_LISTEN_HOST on an address localhost reaches.",
+              ko: "페이지를 렌더링하는 서버는 localhost:<PORT>로 자기 자신을 부르므로, 그 주소도 AKAN_ALLOWED_HOSTS에 넣고 AKAN_LISTEN_HOST는 localhost가 닿는 주소로 둡니다.",
+            })}
+          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

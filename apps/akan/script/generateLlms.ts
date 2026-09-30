@@ -33,6 +33,26 @@ interface LlmsPage {
   body: string[];
   codeBlocks: CodeBlock[];
   emptySections: Heading[];
+  sourceTexts: SourceText[];
+}
+
+interface TextMatcher {
+  text: string;
+  pattern: RegExp | null;
+}
+
+interface SourceText {
+  label: string;
+  matchers: TextMatcher[];
+  row: boolean;
+  readable: boolean;
+}
+
+interface Line {
+  text: string;
+  indent: string;
+  scope: string;
+  owner: ts.Node | null;
 }
 
 const appRoot = path.resolve(import.meta.dir, "..");
@@ -106,15 +126,18 @@ const representativeHrefs = [
   "/cheatsheet/dev/test",
 ];
 
-const unique = (values: string[]) => {
+const flatten = (value: string) => value.replace(/\s+/g, " ").trim();
+
+//? A line repeats only across scopes: a shared option row belongs under every command that lists it.
+const unique = (lines: Pick<Line, "text" | "indent" | "scope">[]) => {
   const seen = new Set<string>();
-  return values
-    .map((value) => value.replace(/\s+/g, " ").trim())
-    .filter((value) => {
-      if (!value || seen.has(value)) return false;
-      seen.add(value);
-      return true;
-    });
+  return lines.flatMap(({ text, indent, scope }) => {
+    const flat = flatten(text);
+    const key = `${scope}\u0000${indent}${flat}`;
+    if (!flat || seen.has(key)) return [];
+    seen.add(key);
+    return [`${indent}${flat}`];
+  });
 };
 
 const getProp = (object: ts.ObjectLiteralExpression, name: string) => {
@@ -137,7 +160,14 @@ const unwrap = (node: ts.Node): ts.Node => {
 
 const constCache = new WeakMap<ts.SourceFile, Map<string, ts.Expression>>();
 
-const localConst = (name: string, sourceFile?: ts.SourceFile) => {
+//? The arguments of the local helper call being read, such as `aliasNote("sd")`, bound to its parameter names.
+const frames: Map<string, ts.Expression>[] = [];
+
+const localConst = (name: string, sourceFile?: ts.SourceFile): ts.Expression | undefined => {
+  for (let idx = frames.length - 1; idx >= 0; idx -= 1) {
+    const bound = frames[idx]?.get(name);
+    if (bound) return bound;
+  }
   if (!sourceFile) return undefined;
   let consts = constCache.get(sourceFile);
   if (!consts) {
@@ -173,7 +203,7 @@ const jsxTextOf = (node: ts.JsxText) => {
 
 const jsxToText = (node: ts.Node, sourceFile?: ts.SourceFile): string => {
   if (ts.isJsxText(node)) return jsxTextOf(node);
-  if (ts.isJsxExpression(node)) return node.expression ? (getStringValue(node.expression, sourceFile) ?? "") : "";
+  if (ts.isJsxExpression(node)) return node.expression ? (getLocalizedText(node.expression, sourceFile)?.en ?? "") : "";
   if (ts.isJsxFragment(node)) return node.children.map((child) => jsxToText(child, sourceFile)).join("");
   if (ts.isJsxSelfClosingElement(node)) return node.tagName.getText(sourceFile) === "br" ? " " : "";
   if (ts.isJsxElement(node)) {
@@ -189,23 +219,83 @@ const jsxToText = (node: ts.Node, sourceFile?: ts.SourceFile): string => {
 const isJsxNode = (node: ts.Node) =>
   ts.isJsxElement(node) || ts.isJsxFragment(node) || ts.isJsxSelfClosingElement(node);
 
+const returnedOf = (fn: ts.ArrowFunction | ts.FunctionExpression) => {
+  if (!ts.isBlock(fn.body)) return fn.body;
+  const [statement] = fn.body.statements;
+  return fn.body.statements.length === 1 && statement && ts.isReturnStatement(statement)
+    ? statement.expression
+    : undefined;
+};
+
+const resolving = new Set<ts.Node>();
+
+interface HelperCall {
+  fn: ts.Node;
+  body: ts.Node;
+  frame: Map<string, ts.Expression>;
+}
+
+const helperCallOf = (node: ts.Node, sourceFile?: ts.SourceFile): HelperCall | null => {
+  if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) return null;
+  const value = localConst(node.expression.text, sourceFile);
+  const fn = value ? unwrap(value) : null;
+  if (!fn || !(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) || resolving.has(fn)) return null;
+  const body = returnedOf(fn);
+  if (!body) return null;
+  const frame = new Map<string, ts.Expression>();
+  fn.parameters.forEach((param, idx) => {
+    const arg = node.arguments[idx];
+    if (ts.isIdentifier(param.name) && arg) frame.set(param.name.text, arg);
+  });
+  return { fn, body: unwrap(body), frame };
+};
+
+const withFrame = <T>({ fn, frame }: HelperCall, read: () => T) => {
+  frames.push(frame);
+  resolving.add(fn);
+  try {
+    return read();
+  } finally {
+    resolving.delete(fn);
+    frames.pop();
+  }
+};
+
+const resolveConst = <T>(name: string, sourceFile: ts.SourceFile | undefined, read: (value: ts.Node) => T | null) => {
+  const value = localConst(name, sourceFile);
+  if (!value || resolving.has(value)) return null;
+  resolving.add(value);
+  try {
+    return read(value);
+  } finally {
+    resolving.delete(value);
+  }
+};
+
 const getStringValue = (input: ts.Node, sourceFile?: ts.SourceFile): string | null => {
   const node = unwrap(input);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
   if (ts.isTemplateExpression(node)) {
     //? A placeholder no local constant resolves (a function parameter such as `alias`) reads as `<alias>`.
     return node.templateSpans.reduce((text, span) => {
-      const value = getStringValue(span.expression, sourceFile) ?? `<${span.expression.getText(sourceFile)}>`;
+      const value = getLocalizedText(span.expression, sourceFile)?.en ?? `<${span.expression.getText(sourceFile)}>`;
       return `${text}${value}${span.literal.text}`;
     }, node.head.text);
   }
   if (isJsxNode(node)) return jsxToText(node, sourceFile).replace(/\s+/g, " ").trim() || null;
   if (ts.isIdentifier(node)) {
-    const value = localConst(node.text, sourceFile);
-    if (!value) return null;
-    const target = unwrap(value);
-    return ts.isStringLiteral(target) || ts.isNoSubstitutionTemplateLiteral(target) ? target.text : null;
+    return resolveConst(node.text, sourceFile, (value) => {
+      const target = unwrap(value);
+      const stringLike =
+        ts.isStringLiteral(target) ||
+        ts.isNoSubstitutionTemplateLiteral(target) ||
+        ts.isTemplateExpression(target) ||
+        ts.isIdentifier(target);
+      return stringLike ? getStringValue(target, sourceFile) : null;
+    });
   }
+  const helper = helperCallOf(node, sourceFile);
+  if (helper) return withFrame(helper, () => getStringValue(helper.body, sourceFile));
   return null;
 };
 
@@ -232,6 +322,9 @@ const getLocalizedText = (input: ts.Node, sourceFile?: ts.SourceFile): Localized
   if (isTransCall(node, sourceFile)) return getLocalizedObject(unwrap(node.arguments[0] as ts.Node), sourceFile);
   if (ts.isObjectLiteralExpression(node)) return getLocalizedObject(node, sourceFile);
   if (ts.isJsxExpression(node) && node.expression) return getLocalizedText(node.expression, sourceFile);
+  if (ts.isIdentifier(node)) return resolveConst(node.text, sourceFile, (value) => getLocalizedText(value, sourceFile));
+  const helper = helperCallOf(node, sourceFile);
+  if (helper) return withFrame(helper, () => getLocalizedText(helper.body, sourceFile));
   return null;
 };
 
@@ -262,12 +355,13 @@ const walk = (node: ts.Node, visitor: (node: ts.Node) => boolean | undefined) =>
   node.forEachChild((child) => walk(child, visitor));
 };
 
+const arrayMethods = new Set(["map", "flatMap", "filter", "slice"]);
+
 //? The rows a table or a list renders: `rows={x}`, `items={x.map(…)}` or `{x.map(…)}` over a local array of objects.
 const renderedArrayOf = (expression: ts.Expression, sourceFile: ts.SourceFile) => {
   let target = unwrap(expression);
-  if (ts.isCallExpression(target) && ts.isPropertyAccessExpression(target.expression)) {
-    const method = target.expression.name.text;
-    if (method !== "map" && method !== "flatMap") return null;
+  while (ts.isCallExpression(target) && ts.isPropertyAccessExpression(target.expression)) {
+    if (!arrayMethods.has(target.expression.name.text)) return null;
     target = unwrap(target.expression.expression);
   }
   if (!ts.isIdentifier(target)) return null;
@@ -281,33 +375,135 @@ const renderedArrayOf = (expression: ts.Expression, sourceFile: ts.SourceFile) =
     : null;
 };
 
-const skippedRowKeys = new Set(["key", "ko", "code", "icon", "image", "href", "className"]);
-
-const rowLine = (row: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile) => {
-  const parts = row.properties.flatMap((prop) => {
-    if (!ts.isPropertyAssignment(prop)) return [];
-    const name = propName(prop);
-    if (!name || skippedRowKeys.has(name)) return [];
-    const text = getLocalizedText(prop.initializer, sourceFile)?.en;
-    return text ? [text] : [];
-  });
-  return parts.length ? `- ${parts.join(" — ")}` : null;
+const renderedExpressionOf = (node: ts.Node) => {
+  if (ts.isJsxAttribute(node) && node.initializer && ts.isJsxExpression(node.initializer))
+    return node.initializer.expression;
+  if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)))
+    return node.expression;
+  return undefined;
 };
 
-const referenceRowLine = (row: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile) => {
-  const nameProp = getProp(row, "name");
-  const descProp = getProp(row, "desc");
-  if (!nameProp || !descProp) return null;
-  const name = getLocalizedText(nameProp.initializer, sourceFile)?.en;
-  const desc = getLocalizedText(descProp.initializer, sourceFile)?.en;
-  if (!name || !desc) return null;
-  const meta = ["type", "defaultValue", "enumOrFlag"].flatMap((key) => {
-    const value = getProp(row, key);
-    const text = value ? getStringValue(value.initializer, sourceFile) : null;
+const resolveObject = (node: ts.Node, sourceFile: ts.SourceFile) => {
+  const target = unwrap(node);
+  if (ts.isObjectLiteralExpression(target)) return target;
+  if (!ts.isIdentifier(target)) return null;
+  const value = localConst(target.text, sourceFile);
+  const resolved = value ? unwrap(value) : null;
+  return resolved && ts.isObjectLiteralExpression(resolved) ? resolved : null;
+};
+
+const arrayElementsOf = (node: ts.Node, sourceFile: ts.SourceFile) => {
+  const target = unwrap(node);
+  if (ts.isArrayLiteralExpression(target)) return target.elements;
+  if (!ts.isIdentifier(target)) return null;
+  const value = localConst(target.text, sourceFile);
+  const resolved = value ? unwrap(value) : null;
+  return resolved && ts.isArrayLiteralExpression(resolved) ? resolved.elements : null;
+};
+
+const isStringList = (elements: readonly ts.Expression[]) =>
+  elements.length > 0 &&
+  elements.every(
+    (element) => ts.isStringLiteral(unwrap(element)) || ts.isNoSubstitutionTemplateLiteral(unwrap(element)),
+  );
+
+//? A row's own properties with `...spread` rows merged in, later keys winning as they do at runtime.
+const rowEntries = (row: ts.ObjectLiteralExpression, sourceFile: ts.SourceFile, seen = new Set<ts.Node>()) => {
+  const entries = new Map<string, ts.Expression>();
+  seen.add(row);
+  for (const prop of row.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      const spread = resolveObject(prop.expression, sourceFile);
+      if (!spread || seen.has(spread)) continue;
+      for (const [key, value] of rowEntries(spread, sourceFile, seen)) entries.set(key, value);
+      continue;
+    }
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = propName(prop);
+    if (name) entries.set(name, prop.initializer);
+  }
+  return entries;
+};
+
+type RowEntries = Map<string, ts.Expression>;
+
+const nameKeys = ["name", "key"];
+const metaKeys = ["type", "defaultValue", "default", "enumOrFlag", "required", "tags"];
+const skippedRowKeys = new Set(["icon", "image", "href", "className", "marks", "codeTitle"]);
+const isSkippedKey = (key: string) => skippedRowKeys.has(key) || key === "ko" || key.endsWith("Ko");
+
+const cellText = (value: ts.Expression, sourceFile: ts.SourceFile) => {
+  const elements = arrayElementsOf(value, sourceFile);
+  if (elements) return isStringList(elements) ? elements.map((element) => getStringValue(element)).join(", ") : null;
+  return getLocalizedText(value, sourceFile)?.en ?? null;
+};
+
+const nameOf = (entries: RowEntries, sourceFile: ts.SourceFile) => {
+  for (const key of nameKeys) {
+    const value = entries.get(key);
+    const text = value ? cellText(value, sourceFile) : null;
+    if (text) return text;
+  }
+  return null;
+};
+
+const descOf = (entries: RowEntries, sourceFile: ts.SourceFile) => {
+  const value = entries.get("desc") ?? entries.get("en");
+  return value ? cellText(value, sourceFile) : null;
+};
+
+//? `{ key, label }` with no description is a table's column, not one of its rows.
+const isColumnDefinition = (entries: RowEntries) =>
+  entries.has("key") && entries.has("label") && !entries.has("desc") && !entries.has("en");
+
+const isRowLike = (entries: RowEntries, sourceFile: ts.SourceFile) =>
+  !isColumnDefinition(entries) && !!nameOf(entries, sourceFile) && !!descOf(entries, sourceFile);
+
+const inlineCode = (code: string) => (code.includes("`") ? `\`\` ${code} \`\`` : `\`${code}\``);
+
+const metaOf = (entries: RowEntries, sourceFile: ts.SourceFile) =>
+  metaKeys.flatMap((key) => {
+    const value = entries.get(key);
+    const text = value ? cellText(value, sourceFile) : null;
+    if (key === "required") return text === "yes" ? ["required"] : [];
     if (!text || text === "-") return [];
-    return [key === "defaultValue" ? `default ${text}` : text];
+    return [key === "default" || key === "defaultValue" ? `default ${text}` : text];
   });
-  return `- ${name}${meta.length ? ` (${meta.join(", ")})` : ""}: ${desc}`;
+
+interface RowText {
+  line: string | null;
+  codeBlocks: CodeBlock[];
+}
+
+const rowTextOf = (entries: RowEntries, sourceFile: ts.SourceFile): RowText => {
+  const name = nameOf(entries, sourceFile);
+  const desc = descOf(entries, sourceFile);
+  const reference = !!name && !!desc && !isColumnDefinition(entries);
+  const codeBlocks: CodeBlock[] = [];
+  const parts: string[] = [];
+  for (const [key, value] of entries) {
+    if (isSkippedKey(key)) continue;
+    if (reference && (nameKeys.includes(key) || key === "desc" || key === "en" || metaKeys.includes(key))) continue;
+    if (key === "code" || key === "example") {
+      const code = getLocalizedText(value, sourceFile)?.en.trim();
+      if (!code) continue;
+      const codeTitle = key === "code" ? entries.get("codeTitle") : undefined;
+      const title = (codeTitle ? cellText(codeTitle, sourceFile) : null) ?? name;
+      if (code.includes("\n")) codeBlocks.push({ title: title ?? "Code", language: "ts", code });
+      else parts.push(key === "example" ? `Example: ${inlineCode(code)}` : inlineCode(code));
+      continue;
+    }
+    const text = cellText(value, sourceFile);
+    if (text) parts.push(text);
+  }
+  if (reference) {
+    const meta = metaOf(entries, sourceFile);
+    return {
+      line: `- ${name}${meta.length ? ` (${meta.join(", ")})` : ""}: ${[desc, ...parts].join(" — ")}`,
+      codeBlocks,
+    };
+  }
+  return { line: parts.length ? `- ${parts.join(" — ")}` : null, codeBlocks };
 };
 
 const collectFiles = async (dir: string): Promise<string[]> => {
@@ -415,68 +611,231 @@ const extractMenuMeta = async () => {
   return meta;
 };
 
+const uniqueCode = (blocks: CodeBlock[]) => {
+  const seen = new Set<string>();
+  return blocks.filter((block) => {
+    if (seen.has(block.code)) return false;
+    seen.add(block.code);
+    return true;
+  });
+};
+
+const bindingNames = (name: ts.BindingName, names: Set<string>) => {
+  if (ts.isIdentifier(name)) names.add(name.text);
+  else
+    for (const element of name.elements) {
+      if (!ts.isOmittedExpression(element)) bindingNames(element.name, names);
+    }
+};
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+//? Inside a helper such as `aliasNote(alias)`, a `<alias>` placeholder stands for whatever each call passes.
+const matcherOf = (text: string, node: ts.Node): TextMatcher => {
+  const params = new Set<string>();
+  for (let current = node.parent; current; current = current.parent) {
+    if (ts.isArrowFunction(current) || ts.isFunctionExpression(current) || ts.isFunctionDeclaration(current))
+      for (const param of current.parameters) bindingNames(param.name, params);
+  }
+  const placeholders = [...params].filter((param) => text.includes(`<${param}`));
+  if (!placeholders.length) return { text, pattern: null };
+  const placeholder = new RegExp(`<(?:${placeholders.map(escapeRegExp).join("|")})(?:[.[][^<>]*)?>`, "g");
+  const source = text
+    .split(placeholder)
+    .map((part) => escapeRegExp(part))
+    .join(".+?");
+  return { text, pattern: new RegExp(source) };
+};
+
+//? What the mirror must hold: every English text of the page, and each row as one line holding its name and its
+//? description. Rows are read here on their own terms, so a row the generator drops or cannot read is counted.
+const sourceTextsOf = (sourceFile: ts.SourceFile) => {
+  const texts = new Map<string, SourceText>();
+  const addText = (text: string | null | undefined, node: ts.Node) => {
+    const flat = text ? flatten(text) : "";
+    if (flat && !texts.has(flat))
+      texts.set(flat, { label: flat, matchers: [matcherOf(flat, node)], row: false, readable: true });
+  };
+  const addRow = (node: ts.ObjectLiteralExpression) => {
+    const entries = rowEntries(node, sourceFile);
+    const nameValue = entries.get("name") ?? entries.get("key");
+    const descValue = entries.get("desc") ?? entries.get("en");
+    if (!nameValue || !descValue || entries.has("signature")) return;
+    const name = cellText(nameValue, sourceFile);
+    if (!name) return;
+    const desc = cellText(descValue, sourceFile);
+    const label = `${flatten(name)}: ${desc ? flatten(desc) : "(description not readable)"}`;
+    if (texts.has(label)) return;
+    const matchers = [name, desc ?? ""].map((text) => matcherOf(flatten(text), node));
+    texts.set(label, { label, matchers, row: true, readable: !!desc });
+  };
+  walk(sourceFile, (node) => {
+    if (isTransCall(node, sourceFile)) {
+      addText(getLocalizedText(node, sourceFile)?.en, node);
+      return false;
+    }
+    if (!ts.isObjectLiteralExpression(node)) return true;
+    if (getProp(node, "en") && getProp(node, "ko")) addText(getLocalizedObject(node, sourceFile)?.en, node);
+    addRow(node);
+    return true;
+  });
+  return [...texts.values()];
+};
+
+const isInMirror = (source: SourceText, markdown: string) => {
+  if (!source.readable) return false;
+  const holds = (target: string) =>
+    source.matchers.every(({ text, pattern }) => (pattern ? pattern.test(target) : target.includes(text)));
+  return source.row ? markdown.split("\n").some((line) => holds(flatten(line))) : holds(flatten(markdown));
+};
+
 const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): Promise<LlmsPage> => {
   const href = hrefFromFile(filePath);
   const sourceText = await readFile(filePath, "utf8");
   const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const texts: string[] = [];
+  const lines: Line[] = [];
   const headings: Heading[] = [];
   const codeBlocks: CodeBlock[] = [];
   const emptySections: Heading[] = [];
+  const consumed = new Set<ts.Node>();
   let section: (Heading & { textNum: number }) | null = null;
+  let scope = "";
+  let owner: ts.Node | null = null;
 
   const closeSection = () => {
     if (section && section.textNum === 0) emptySections.push({ id: section.id, title: section.title });
   };
-  const pushText = (text: string) => {
-    texts.push(text);
+  const pushText = (text: string, depth = 0) => {
+    lines.push({ text, indent: "  ".repeat(depth), scope, owner });
     if (section && text.trim() !== section.title) section.textNum += 1;
+  };
+  const pushCode = (blocks: CodeBlock[]) => {
+    codeBlocks.push(...blocks);
+    if (section && blocks.length) section.textNum += 1;
+  };
+  const owned = (node: ts.Node, emit: () => void) => {
+    const previous = owner;
+    owner = node;
+    emit();
+    owner = previous;
   };
 
   const renderedArrays = new Set<ts.ArrayLiteralExpression>();
   walk(sourceFile, (node) => {
-    const expression =
-      ts.isJsxAttribute(node) && node.initializer && ts.isJsxExpression(node.initializer)
-        ? node.initializer.expression
-        : ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
-          ? node.expression
-          : undefined;
+    const expression = renderedExpressionOf(node);
     const array = expression ? renderedArrayOf(expression, sourceFile) : null;
     if (array) renderedArrays.add(array);
   });
 
-  const visit = (node: ts.Node): boolean => {
-    if (ts.isArrayLiteralExpression(node) && renderedArrays.has(node)) return false;
+  const emitCommand = (entries: RowEntries) => {
+    const name = nameOf(entries, sourceFile);
+    const signatureValue = entries.get("signature");
+    const signature = signatureValue ? getStringValue(signatureValue, sourceFile) : null;
+    const previous = scope;
+    scope = `command:${signature ?? name ?? ""}`;
+    if (signature) pushText(`\`${signature}\``);
+    for (const [key, value] of entries) {
+      if (key === "name" || key === "signature") continue;
+      if (key === "examples") {
+        const code = getStringValue(value, sourceFile);
+        if (code) pushCode([{ title: name ?? "Examples", language: "bash", code: code.trim() }]);
+        continue;
+      }
+      const elements = arrayElementsOf(value, sourceFile);
+      if (elements) {
+        emitElements(elements, 0);
+        continue;
+      }
+      const text = cellText(value, sourceFile);
+      if (text) pushText(text);
+    }
+    scope = previous;
+  };
 
-    const rendered =
-      ts.isJsxAttribute(node) && node.initializer && ts.isJsxExpression(node.initializer)
-        ? node.initializer.expression
-        : ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
-          ? node.expression
-          : undefined;
+  const emitRow = (row: ts.ObjectLiteralExpression, depth: number) => {
+    const entries = rowEntries(row, sourceFile);
+    if (entries.has("signature")) return emitCommand(entries);
+    if (isColumnDefinition(entries)) {
+      const [label, caption] = ["label", "caption"].map((key) => {
+        const value = entries.get(key);
+        return value ? cellText(value, sourceFile) : null;
+      });
+      const text = [label, caption].filter(Boolean).join(" — ");
+      if (text) pushText(depth ? `- ${text}` : text, depth);
+      return;
+    }
+    const { line, codeBlocks: rowCode } = rowTextOf(entries, sourceFile);
+    if (line) pushText(line, depth);
+    pushCode(rowCode);
+    for (const [key, value] of entries) {
+      if (isSkippedKey(key)) continue;
+      const elements = arrayElementsOf(value, sourceFile);
+      if (!elements || isStringList(elements)) continue;
+      emitElements(elements, line ? depth + 1 : depth);
+    }
+  };
+
+  const emitHelperRow = (element: ts.Node, depth: number) => {
+    const helper = helperCallOf(unwrap(element), sourceFile);
+    if (!helper || !ts.isObjectLiteralExpression(helper.body)) return false;
+    const row = helper.body;
+    consumed.add(row);
+    withFrame(helper, () => emitRow(row, depth));
+    return true;
+  };
+
+  const emitElements = (elements: readonly ts.Expression[], depth: number) => {
+    for (const element of elements) {
+      if (ts.isSpreadElement(element)) {
+        const spread = arrayElementsOf(element.expression, sourceFile);
+        if (spread) emitElements(spread, depth);
+        continue;
+      }
+      if (emitHelperRow(element, depth)) continue;
+      const row = resolveObject(element, sourceFile);
+      if (row) {
+        consumed.add(row);
+        emitRow(row, depth);
+        continue;
+      }
+      const text = getLocalizedText(element, sourceFile)?.en;
+      if (!text) continue;
+      consumed.add(unwrap(element));
+      pushText(depth ? `- ${text}` : text, depth);
+    }
+  };
+
+  const visit = (node: ts.Node): boolean => {
+    if (ts.isArrayLiteralExpression(node)) {
+      if (renderedArrays.has(node)) return false;
+      for (const element of node.elements) {
+        if (emitHelperRow(element, 0)) continue;
+        const row = ts.isIdentifier(unwrap(element)) ? resolveObject(element, sourceFile) : null;
+        if (row && isRowLike(rowEntries(row, sourceFile), sourceFile)) {
+          consumed.add(row);
+          emitRow(row, 0);
+          continue;
+        }
+        owned(unwrap(element), () => walk(element, visit));
+      }
+      return false;
+    }
+
+    const rendered = renderedExpressionOf(node);
     const array = rendered ? renderedArrayOf(rendered, sourceFile) : null;
     if (array) {
-      for (const element of array.elements) {
-        const row = unwrap(element);
-        if (!ts.isObjectLiteralExpression(row)) {
-          const text = getLocalizedText(row, sourceFile)?.en;
-          if (text) pushText(text);
-          continue;
-        }
-        if (getProp(row, "signature")) {
-          walk(row, visit);
-          continue;
-        }
-        const line = referenceRowLine(row, sourceFile) ?? rowLine(row, sourceFile);
-        if (line) pushText(line);
-      }
+      emitElements(array.elements, 0);
       return true;
     }
 
-    if (ts.isObjectLiteralExpression(node) && !getProp(node, "signature")) {
-      const line = referenceRowLine(node, sourceFile);
-      if (line) {
-        pushText(line);
+    if (ts.isObjectLiteralExpression(node)) {
+      const entries = rowEntries(node, sourceFile);
+      if (entries.has("signature")) {
+        emitCommand(entries);
+        return false;
+      }
+      if (isRowLike(entries, sourceFile)) {
+        owned(node, () => emitRow(node, 0));
         return false;
       }
     }
@@ -485,18 +844,6 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
       const text = getLocalizedText(node, sourceFile);
       if (text?.en) pushText(text.en);
       return false;
-    }
-
-    if (ts.isPropertyAssignment(node) && propName(node) === "signature") {
-      const signature = getStringValue(node.initializer, sourceFile);
-      if (signature) pushText(`\`${signature}\``);
-    }
-
-    if (ts.isPropertyAssignment(node) && propName(node) === "examples" && ts.isObjectLiteralExpression(node.parent)) {
-      const code = getStringValue(node.initializer, sourceFile);
-      const nameProp = getProp(node.parent, "name");
-      const name = nameProp ? getStringValue(nameProp.initializer, sourceFile) : null;
-      if (code) codeBlocks.push({ title: name ?? "Examples", language: "bash", code: code.trim() });
     }
 
     if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) return true;
@@ -509,7 +856,7 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
         closeSection();
         headings.push({ id, title });
         section = { id, title, textNum: 0 };
-        texts.push(title);
+        lines.push({ text: title, indent: "", scope, owner });
       }
       return true;
     }
@@ -517,12 +864,13 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
     if (tagName === "Code.Snippet") {
       const code = getJsxAttributeString(node, "code", sourceFile);
       if (!code) return true;
-      codeBlocks.push({
-        title: getJsxAttributeString(node, "title", sourceFile) ?? "Code",
-        language: getJsxAttributeString(node, "language", sourceFile) ?? "ts",
-        code: code.trim(),
-      });
-      if (section) section.textNum += 1;
+      pushCode([
+        {
+          title: getJsxAttributeString(node, "title", sourceFile) ?? "Code",
+          language: getJsxAttributeString(node, "language", sourceFile) ?? "ts",
+          code: code.trim(),
+        },
+      ]);
     }
     return true;
   };
@@ -532,6 +880,8 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
 
   const meta = menuMeta.get(href);
   const title = meta?.title.en ?? headings[0]?.title ?? titleFromHref(href);
+  //? A row written where the page lists it drops the copy written where it was declared.
+  const kept = lines.filter((line) => !line.owner || !consumed.has(line.owner));
 
   return {
     href,
@@ -541,9 +891,10 @@ const extractPage = async (filePath: string, menuMeta: Map<string, MenuMeta>): P
     title,
     priority: priorityFromHref(href),
     headings,
-    body: unique([title, ...texts]),
-    codeBlocks,
+    body: unique([{ text: title, indent: "", scope: "" }, ...kept]),
+    codeBlocks: uniqueCode(codeBlocks),
     emptySections,
+    sourceTexts: sourceTextsOf(sourceFile),
   };
 };
 
@@ -674,16 +1025,25 @@ const run = async () => {
   await rm(pagesOutputRoot, { recursive: true, force: true });
   await mkdir(pagesOutputRoot, { recursive: true });
 
-  await Promise.all(
+  const missing = await Promise.all(
     pages.map(async (page) => {
       const outputPath = outputPathFromHref(page.href);
+      const markdown = renderPageMarkdown(page);
       await mkdir(path.dirname(outputPath), { recursive: true });
-      await writeFile(outputPath, renderPageMarkdown(page));
+      await writeFile(outputPath, markdown);
+      return page.sourceTexts
+        .filter((source) => !isInMirror(source, markdown))
+        .map(({ label }) => `${page.href}: ${label}`);
     }),
   );
 
-  //? The generator reads string literals, `l.trans` values (JSX included) and local row arrays; a section that
-  //? renders its text any other way (a shared component, a computed value) reaches the mirror as its heading only.
+  //? The generator reads literals, `l.trans` values (JSX included), local rows and one-expression helpers; text a
+  //? page renders any other way (a computed value, a shared component's own copy) is counted here, not dropped.
+  const lost = missing.flat();
+  if (lost.length)
+    console.warn(
+      `${lost.length} source texts are missing from their mirror:\n${lost.map((line) => `  ${line.slice(0, 160)}`).join("\n")}`,
+    );
   const empty = pages.flatMap((page) =>
     page.emptySections.map((heading) => `${page.href}#${heading.id} (${heading.title})`),
   );

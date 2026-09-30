@@ -110,37 +110,37 @@ Mount `Agent.Chat` once, in the layout that wraps every screen the agent should 
 
 Props
 
-Header text and the panel's accessible name.
+- title (string, default l("base.agent")): Header text and the panel's accessible name.
 
-App-wide guidance for the model, in English, which `Agent.Guide` adds route guidance to.
+- instructions (string): App-wide guidance for the model, in English, which `Agent.Guide` adds route guidance to.
 
-Opens the panel on first render while the panel owns its state.
+- defaultOpen (boolean, default false): Opens the panel on first render while the panel owns its state.
 
-Controlled open state, paired with `onOpenChange`; left off, the panel owns it.
+- open (boolean): Controlled open state, paired with `onOpenChange`; left off, the panel owns it.
 
-Called on open and close; without it, a controlled panel draws no close button.
+- onOpenChange ((open: boolean) => void): Called on open and close; without it, a controlled panel draws no close button.
 
-`false` draws no floating button, for a shell that already has its own entry point.
+- launcher (boolean, default true): `false` draws no floating button, for a shell that already has its own entry point.
 
-Replaces the empty-state line while the transcript is empty, where starter questions go.
+- intro (ReactNode): Replaces the empty-state line while the transcript is empty, where starter questions go.
 
-Extra controls in the header bar, left of the built-in clear and close buttons.
+- header (ReactNode): Extra controls in the header bar, left of the built-in clear and close buttons.
 
-`false` drops the header bar and `header` for an inline chat; `/new` still clears.
+- chrome (boolean, default true): `false` drops the header bar and `header` for an inline chat; `/new` still clears.
 
-The composer's opening text, read once at mount and never sent, where a `?prompt=` value goes.
+- defaultDraft (string, default ""): The composer's opening text, read once at mount and never sent, where a `?prompt=` value goes.
 
-Renders in the page flow instead of floating, for a zone chat inside its own section.
+- inline (boolean, default false): Renders in the page flow instead of floating, for a zone chat inside its own section.
 
-⌘L on Apple platforms and Ctrl+L elsewhere; `false` gives the chord back to the browser.
+- shortcut (boolean, default true): ⌘L on Apple platforms and Ctrl+L elsewhere; `false` gives the chord back to the browser.
 
-Classes for the closed button only, where `className` reaches both surfaces.
+- launcherClassName (string): Classes for the closed button only, where `className` reaches both surfaces.
 
-Classes for the open panel only.
+- panelClassName (string): Classes for the open panel only.
 
-Which built-in tools this chat's agent gets: all, none, or exactly the ones listed.
+- builtins (boolean | AgentBuiltin[], default true): Which built-in tools this chat's agent gets: all, none, or exactly the ones listed.
 
-Keeps the transcript across reloads, as the last section shows.
+- persist (PersistOption | SessionHistory): Keeps the transcript across reloads, as the last section shows.
 
 `attach`, `voice`, `visual`, `maxTurns`, `compact` and the rest are listed in the Agent UI reference.
 
@@ -178,29 +178,29 @@ Slot
 
 Description and default export
 
-- AgentChat — The whole panel (launcher, transcript, cards and composer), so reach for it last.
+- AgentChat: The whole panel (launcher, transcript, cards and composer), so reach for it last.
 
-- AgentLauncher — DefaultLauncher — The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge.
+- AgentLauncher: The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge. — DefaultLauncher
 
-- AgentBubble — DefaultBubble — One message; wrap yours in `memo()`, since the transcript re-renders on every delta.
+- AgentBubble: One message; wrap yours in `memo()`, since the transcript re-renders on every delta. — DefaultBubble
 
-- AgentSteps — DefaultSteps — One whole agent turn plus `isRunning`; the default adds no element.
+- AgentSteps: One whole agent turn plus `isRunning`; the default adds no element. — DefaultSteps
 
-- AgentComposer — DefaultComposer — The input row with Send and Stop, whose field shell comes from the `input` recipe slot.
+- AgentComposer: The input row with Send and Stop, whose field shell comes from the `input` recipe slot. — DefaultComposer
 
-- AgentApproval — DefaultApproval — The confirm gate above the composer, which a `remove*` tool reaches by default.
+- AgentApproval: The confirm gate above the composer, which a `remove*` tool reaches by default. — DefaultApproval
 
-- AgentQuestion — DefaultQuestion — The `askUser` card, which shows the choices while a free-text answer goes in the composer.
+- AgentQuestion: The `askUser` card, which shows the choices while a free-text answer goes in the composer. — DefaultQuestion
 
-- AgentQueued — DefaultQueued — The message parked while a turn runs, with its take-back and drop controls.
+- AgentQueued: The message parked while a turn runs, with its take-back and drop controls. — DefaultQueued
 
-- AgentMenu — DefaultAgentMenu — The completion list above the composer: `/` commands and `@` references.
+- AgentMenu: The completion list above the composer: `/` commands and `@` references. — DefaultAgentMenu
 
-- AgentMarkdown — DefaultMarkdown — Assistant text, built as React elements and never with `dangerouslySetInnerHTML`.
+- AgentMarkdown: Assistant text, built as React elements and never with `dangerouslySetInnerHTML`. — DefaultMarkdown
 
-- AgentCode — DefaultCode — A fenced code block in that text, where a highlighter binds; `lang` is the fence's language.
+- AgentCode: A fenced code block in that text, where a highlighter binds; `lang` is the fence's language. — DefaultCode
 
-- AgentToolCard — DefaultToolCard — The frame around a card tool's own component.
+- AgentToolCard: The frame around a card tool's own component. — DefaultToolCard
 
 **Compose the default.** Eleven slots export their default beside them, so a replacement can wrap the one it replaces instead of rewriting it.
 
@@ -262,15 +262,15 @@ Which documents a user may point at is the app's answer, not the framework's, so
 
 Each source is a `ReferenceSource`, an object of five fields:
 
-- string — Your own model name, the vocabulary your published tools already speak.
+- refName (string): Your own model name, the vocabulary your published tools already speak.
 
-- string — What this group of rows is called in the `@` menu, so pass it through `l()`.
+- label (string): What this group of rows is called in the `@` menu, so pass it through `l()`.
 
-- AgentFieldType — The model class that masks the value before it leaves the browser.
+- type (AgentFieldType): The model class that masks the value before it leaves the browser.
 
-- (query, signal) => Promise<ReferenceCandidate[]> — Your query for the menu rows, whose `signal` aborts when the user keeps typing.
+- search ((query, signal) => Promise<ReferenceCandidate[]>): Your query for the menu rows, whose `signal` aborts when the user keeps typing.
 
-- (refId) => Promise<unknown> — Loads the document, once, when the user picks a row.
+- resolve ((refId) => Promise<unknown>): Loads the document, once, when the user picks a row.
 
 **`type` decides what leaves the browser.** It uses `st.expose`'s vocabulary: the value is masked by the model class you name, so its `hidden`, `secret` and `visual` fields never travel.
 
@@ -314,17 +314,17 @@ The / menu lists these six commands and nothing else:
 
 Command
 
-- Starts a new conversation, even mid-turn or over an open question card.
+- /new, /clear: Starts a new conversation, even mid-turn or over an open question card.
 
-- /retry — Resends the last user message and leaves everything above it in place.
+- /retry: Resends the last user message and leaves everything above it in place.
 
-- /compact — Summarizes the whole conversation now, keeping nothing verbatim.
+- /compact: Summarizes the whole conversation now, keeping nothing verbatim.
 
-- /copy — Copies the transcript as markdown with the page URL and time; local notes are left out.
+- /copy: Copies the transcript as markdown with the page URL and time; local notes are left out.
 
-- /help — Lists the commands as a local note that is never sent to the model.
+- /help: Lists the commands as a local note that is never sent to the model.
 
-- /tools — Lists the tools and readable keys this screen published; a zone chat lists its zone only.
+- /tools: Lists the tools and readable keys this screen published; a zone chat lists its zone only.
 
 **An app cannot add a / command.** A product's own reusable request is a `page().prompt()`, which MCP clients list and the in-page chat does not.
 
@@ -396,7 +396,15 @@ Rule
 
 - Every store
 
+  - Restores into an untouched chat only: Mounted with the zone, it restores; mounted later, it only saves from then on.
+
+  - Saves after every change: Debounced and one save at a time; a failed save is silent.
+
 - Web storage only
+
+  - Keeps the newest 50 messages
+
+  - Drops file bytes and reference values: A file keeps its name, type, url and ref; a reference keeps its pointer and a note to read it again.
 
 Applies
 

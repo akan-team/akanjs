@@ -48,17 +48,17 @@ Term
 
 - JWT: A sign-in token. Paste one to call guarded endpoints as that account.
 
-- The two WebSocket kinds: a subscription the server pushes to, and a message answered on a listener.
+- pubsub, message: The two WebSocket kinds: a subscription the server pushes to, and a message answered on a listener.
 
 What one document shows
 
-- Summary — Counts of all endpoints, REST, WebSocket, and those published as MCP tools.
+- Summary — Counts of all endpoints, REST, WebSocket, and those published as MCP tools. — `Endpoints · REST API · Web Socket · MCP Tools`
 
-- Toolbar — Shows the Base URL and sets the guard filter, the JWT and an endpoint search.
+- Toolbar — Shows the Base URL and sets the guard filter, the JWT and an endpoint search. — `Signal.Doc.Setting`
 
-- REST API — Every query and mutation, generated CRUD and slice reads included. Each row has Reference and Try it.
+- REST API — Every query and mutation, generated CRUD and slice reads included. Each row has Reference and Try it. — `GET · POST`
 
-- Web Socket — A pubsub row subscribes and shows frames as they land. A message row listens and sends.
+- Web Socket — A pubsub row subscribes and shows frames as they land. A message row listens and sends. — `Subscribe · Listen · Send`
 
 Render A Zone
 
@@ -70,11 +70,15 @@ Render that component from a route.
 
 First, the client component:
 
-- string — The signal to document: `base`, or a module name such as `product`.
+- refName (string): The signal to document: `base`, or a module name such as `product`.
 
-- FetchProxy — The app's own `fetch`. A signal the app does not mount shows as unregistered.
+  - required
 
-- boolean — Opens every endpoint row. Leave it off for a signal with many endpoints.
+- fetch (FetchProxy): The app's own `fetch`. A signal the app does not mount shows as unregistered.
+
+- openAll (boolean): Opens every endpoint row. Leave it off for a signal with many endpoints.
+
+  - optional
 
 **Why `"use client"`.** A server page cannot pass `fetch` as a prop, and `Signal.Doc.Zone` exists only on the client.
 
@@ -114,11 +118,11 @@ Reading a row
 
 Part
 
-- The method badge: GET for a query, POST for a mutation.
+- GET, POST: The method badge: GET for a query, POST for a mutation.
 
-- The guards the endpoint declares. An endpoint with none shows no badge.
+- guard badges: The guards the endpoint declares. An endpoint with none shows no badge.
 
-- Whether agents can call it as an MCP tool. A refused row says why underneath.
+- MCP badge: Whether agents can call it as an MCP tool. A refused row says why underneath.
 
 - Reference: The arguments (path, query, body, form data), the return type and an example response.
 

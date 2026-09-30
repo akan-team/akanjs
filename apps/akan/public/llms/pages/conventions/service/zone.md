@@ -39,15 +39,23 @@ Where each kind of UI goes
 
 The UI is
 
-- page/
+page/
 
-- ui/
+ui/
 
-- .Zone.tsx
+.Zone.tsx
 
 - Not a Zone
 
+  - A screen of its own: A route, like the OAuth consent screen in `libs/shared/page/oauth`.
+
+  - One button in another screen: A `ui/` component the service store drives, or rarely a `Service.Util.tsx`.
+
+  - A section on exactly one route: It is that route. Write it in the page itself.
+
 - A Zone
+
+  - A section reused on several routes: Several controls that share store state, laid out together.
 
 Goes here
 
@@ -101,11 +109,11 @@ Data
 
 How it reaches the Zone
 
-- Await it in the page and pass it down as a prop.
+- Server data needed at once: Await it in the page and pass it down as a prop.
 
-- Hand the unawaited promise to `<Load.Stream of={…}>`. It resolves behind its own boundary.
+- Server data the section can wait for: Hand the unawaited promise to `<Load.Stream of={…}>`. It resolves behind its own boundary.
 
-- A store action, called through `st.do.*`.
+- Anything a click asks for: A store action, called through `st.do.*`.
 
 Or Just Write The Page
 
@@ -115,13 +123,13 @@ What _oauth needed
 
 How it got it
 
-- A route: `libs/shared/page/oauth/consent/_index.tsx`.
+- Consent screen: A route: `libs/shared/page/oauth/consent/_index.tsx`.
 
-- A plain `<form method="post">` that the cookie session authenticates.
+- Approve and deny buttons: A plain `<form method="post">` that the cookie session authenticates.
 
-- An endpoint, `listOAuthConnections`, for the app's own page to call.
+- Connected-apps list: An endpoint, `listOAuthConnections`, for the app's own page to call.
 
-- Ten endpoints and zero components.
+- What the module ships: Ten endpoints and zero components.
 
 **A form post needs no script.** The consent page ships as HTML and works before any bundle arrives.
 

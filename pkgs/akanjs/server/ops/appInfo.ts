@@ -7,6 +7,7 @@ export interface AppPublicInfo {
   repoName: string;
   environment: string;
   operationMode: string;
+  workspaceRoot?: string;
 }
 
 export interface AppDetailInfo extends AppPublicInfo {
@@ -37,9 +38,11 @@ export class AppInfo {
   static readonly startedAt = new Date();
   static #build: AppBuildInfo | null = null;
 
+  //? Only a local dev server names its checkout, which the akan CLI tells from another checkout's server of the app.
   static public(): AppPublicInfo {
     const { appName, repoName, environment, operationMode } = getEnv();
-    return { appName, repoName, environment, operationMode };
+    const workspaceRoot = operationMode === "local" ? process.env.AKAN_WORKSPACE_ROOT : undefined;
+    return { appName, repoName, environment, operationMode, ...(workspaceRoot ? { workspaceRoot } : {}) };
   }
 
   static detail(proc: AppProcessInfo): AppDetailInfo {

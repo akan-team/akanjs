@@ -57,9 +57,9 @@ What you get
 
 - RPC — `--rpc` — Serves akan wire frames over stdio for another process to drive.
 
-- `--interactive`, or no prompt and no `--json` on a terminal — A chat you keep talking to. A prompt you pass becomes its first message.
+- Full-screen session — `--interactive`, or no prompt and no `--json` on a terminal — A chat you keep talking to. A prompt you pass becomes its first message.
 
-- Any other call with a prompt — Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
+- One run — Any other call with a prompt — Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
 
 **Without a terminal, or with `--json`, a missing prompt is an error.** In a pipe or a CI step, always pass one: `akan code "add a comment module"`.
 
@@ -101,19 +101,27 @@ A profile bundles what the agent may do into one value, picked with `--profile`.
 
 Profile
 
-- Write & run
+Write & run
 
-- Web
+Web
 
-- MCP
+MCP
 
-- Asks first
+Asks first
 
-- Saved
+Saved
 
 - Waits for your answer (await)
 
+  - local: The default. Everything is on, and nothing asks for approval.
+
+  - review: A reviewer: only `read`, `ls`, `grep` and `find`, no `AGENTS.md`, sessions in memory.
+
 - Ends the turn and picks it up later (suspend)
+
+  - pod: An isolated container with nobody watching it: everything but MCP is on.
+
+  - web: The reach of `local`, but every file write waits for your approval.
 
 On
 

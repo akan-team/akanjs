@@ -14,8 +14,6 @@
 
 Package
 
-- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
-
 Package CLI
 
 Six commands that create, build and verify the packages under `pkgs/`: the framework (`akanjs`), the CLI and other tooling. They sit below the app and library commands, so use those for product code.
@@ -24,7 +22,7 @@ Words Used on This Page
 
 Term
 
-- A folder under `pkgs/` with its own `package.json`, such as `akanjs` or `@akanjs/cli`.
+- package: A folder under `pkgs/` with its own `package.json`, such as `akanjs` or `@akanjs/cli`.
 
 - dist: The build output in `dist/pkgs/<pkg>/`, which is the folder that gets packed and published.
 
@@ -54,9 +52,21 @@ Build output
 
 - Check
 
+  - version: Print the `akanjs` version in use.
+
+  - sync-package: Scan one package's imports as a quick check.
+
 - Add and remove
 
+  - create-package: Start a new folder in `pkgs/` and register its import path.
+
+  - remove-package: Delete the folder and its import path.
+
 - Build and publish
+
+  - build-package: Write the dist folder and the dependency list.
+
+  - verify-dist-package: Check the dist folder before you publish it.
 
 Changed
 
@@ -116,6 +126,8 @@ Create a new package folder at `pkgs/<name>/` and register its import path in th
 
 Delete the whole `pkgs/<pkg>/` folder without asking, and drop its entries from the root `tsconfig.json`. Use it when a package should no longer be synced, built or verified.
 
+- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
+
 - tsconfig.json: Removes `<pkg>` and `<pkg>/*` from `paths`, and its entry from `references`.
 
 - what stays: The old build in `dist/pkgs/<pkg>/` and any imports of the package in other code.
@@ -124,6 +136,8 @@ Delete the whole `pkgs/<pkg>/` folder without asking, and drop its entries from 
 
 Scan one package's imports to find the npm packages and sibling packages it uses. It changes no files and prints only whether the scan passed, so use it as a quick check after editing imports.
 
+- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
+
 - npm packages: An import counts only when the root `package.json` lists it in `dependencies` or `devDependencies`.
 
 - writing them: `build-package` is the step that writes dependencies into `pkgs/<pkg>/package.json`.
@@ -131,6 +145,8 @@ Scan one package's imports to find the npm packages and sibling packages it uses
 `akan build-package [pkg]`
 
 Build one package into `dist/pkgs/<pkg>/`, the folder you publish or other packages use locally. Run it after you change the package, before anything relies on its build output.
+
+- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
 
 - clean start: Deletes `dist/pkgs/<pkg>/` first, so nothing from an older build is left behind.
 
@@ -155,6 +171,8 @@ Build one package into `dist/pkgs/<pkg>/`, the folder you publish or other packa
 `akan verify-dist-package [pkg]`
 
 Check a package's build output in `dist/pkgs/<pkg>/`, then measure it with an `npm pack` dry run. Run it after `build-package` and before publishing, so a broken export map is caught here and not by the first person to install it.
+
+- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
 
 - build first: Fails at once if `dist/pkgs/<pkg>/package.json` is missing; run `build-package`.
 

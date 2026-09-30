@@ -293,7 +293,7 @@ Term
 
 - Secret: A Kubernetes object that hands private values, such as database URLs, to pods as env vars.
 
-- Volume access modes: one node mounts the first, pods on many nodes share the second.
+- ReadWriteOnce, ReadWriteMany: Volume access modes: one node mounts the first, pods on many nodes share the second.
 
 - WAL: SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
@@ -511,15 +511,15 @@ What akanjs/ui gives you
 
 Export
 
-- Data shells: seed the store from a fetch handle and render loading, empty and list states.
+- Load.Units, Load.View, Load.Edit: Data shells: seed the store from a fetch handle and render loading, empty and list states.
 
 - Load.Stream: Awaits one promise behind its own Suspense boundary; a resolved value renders inline.
 
-- Create, edit and remove modals wired to the generated store actions.
+- Model.New, Model.Edit, Model.SureToRemove: Create, edit and remove modals wired to the generated store actions.
 
 - Field: The control for every model field type. Never a bare input for a model field.
 
-- Composition primitives. Tab keeps panel bodies on the server; Link adds the locale prefix.
+- Tab, Layout, Link, Image, Empty: Composition primitives. Tab keeps panel bodies on the server; Link adds the locale prefix.
 
 - cn: The only class merge, from akanjs/client. Pass the caller's className last.
 
@@ -556,41 +556,41 @@ akan.config.ts is the app-level settings file. You do not need to understand eve
 
 This is the whole key set. Every one of them has a default that a working app can live with, and the slides below cover the ones you are most likely to change:
 
-- AkanRouteConfig[] — Public domains for the app, optionally split per client with basePath.
+- routes (AkanRouteConfig[]): Public domains for the app, optionally split per client with basePath.
 
-- { prefix, websocketPrefix } — /api, /ws — Where signal endpoints and the websocket upgrade are mounted. Baked into every client bundle.
+- api ({ prefix, websocketPrefix }, default /api, /ws): Where signal endpoints and the websocket upgrade are mounted. Baked into every client bundle.
 
-- boolean | { csr: boolean } — true — Which web surfaces the build produces and the app mounts at boot.
+- web (boolean | { csr: boolean }, default true): Which web surfaces the build produces and the app mounts at boot.
 
-- { defaultLocale, locales } — en, ["en", "ko"] — The locale segment every route sits under. defaultLocale must be one of locales.
+- i18n ({ defaultLocale, locales }, default en, ["en", "ko"]): The locale segment every route sits under. defaultLocale must be one of locales.
 
-- AkanMobileConfig — Native app identity plus one entry per mobile package that Android and iOS commands read.
+- mobile (AkanMobileConfig): Native app identity plus one entry per mobile package that Android and iOS commands read.
 
-- AkanImageConfig — webp, quality 75 — Allow-list, sizes, and limits for the image optimizer. A remote host not listed is refused.
+- images (AkanImageConfig, default webp, quality 75): Allow-list, sizes, and limits for the image optimizer. A remote host not listed is refused.
 
-- string[] — [] — Extra process.env names the browser build may inline, beyond the built-in AKAN_PUBLIC_* pattern.
+- publicEnv (string[], default []): Extra process.env names the browser build may inline, beyond the built-in AKAN_PUBLIC_* pattern.
 
-- string[] — [] — Globs for files that cannot live inside env.server.*.ts. Shipped by upload-env and git-ignored.
+- secrets (string[], default []): Globs for files that cannot live inside env.server.*.ts. Shipped by upload-env and git-ignored.
 
-- { pruneFonts, keepFonts } — true, [] — How akan build trims the public/ copy it ships. Source trees are never touched.
+- assets ({ pruneFonts, keepFonts }, default true, []): How akan build trims the public/ copy it ships. Source trees are never touched.
 
-- string[] | boolean — false — Which library page folders this app mounts as its own routes.
+- syncPageLibs (string[] | boolean, default false): Which library page folders this app mounts as its own routes.
 
-- AkanPlugin[] — [] — Akan plugins this app contributes, read live by the CLI.
+- plugins (AkanPlugin[], default []): Akan plugins this app contributes, read live by the CLI.
 
-- string | DockerImageConfig — oven/bun:1-slim — A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
-- { modes: DatabaseMode[] } — { modes: ["single"] } — The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
+- database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 
-- string[] — [] — Packages kept as production runtime dependencies instead of being bundled.
+- externalLibs (string[], default []): Packages kept as production runtime dependencies instead of being bundled.
 
-- string[] — [] — Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
+- trustedDependencies (string[], default []): Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
 
-- Record<string, { [platform]: AkanBinSource }> — {} — Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
 
-- string[] — akanjs + workspace — Barrel paths Akan flattens while scanning and bundling.
+- barrelImports (string[], default akanjs + workspace): Barrel paths Akan flattens while scanning and bundling.
 
-- string[] — built-in list — Extra packages whose imports the client build rewrites to the exact source file.
+- optimizeImports (string[], default built-in list): Extra packages whose imports the client build rewrites to the exact source file.
 
 Start small
 
@@ -682,9 +682,9 @@ Nine of the fourteen read, one only builds a query descriptor, and the remaining
 
 Method
 
-- list<Filter> — await listByOwner(ownerId, { limit: 20 }) — Read, no hooks. Hydrated documents, newest first; takes skip, limit, sort and select.
+- list<Filter>: Read, no hooks. Hydrated documents, newest first; takes skip, limit, sort and select. — Example: `await listByOwner(ownerId, { limit: 20 })`
 
-- listIds<Filter> — await listIdsByOwner(ownerId) — Read, no hooks. Just the ids; the same option, minus select.
+- listIds<Filter>: Read, no hooks. Just the ids; the same option, minus select. — Example: `await listIdsByOwner(ownerId)`
 
 ## File Rule
 
@@ -724,29 +724,29 @@ The five UI suffixes are not five sizes of component either. Each one answers a 
 
 File
 
-- model.abstract.md — shared — Business intent, domain rules, workflows and agent notes beside the module code.
+- model.abstract.md: Business intent, domain rules, workflows and agent notes beside the module code. — shared
 
-- model.constant.ts — shared — Constants, status values, default options, and shared model types.
+- model.constant.ts: Constants, status values, default options, and shared model types. — shared
 
-- model.dictionary.ts — shared — Labels, field names, and text keys the model uses, such as the price label.
+- model.dictionary.ts: Labels, field names, and text keys the model uses, such as the price label. — shared
 
-- model.document.ts — server — Stored data shape, filters, and document model definition.
+- model.document.ts: Stored data shape, filters, and document model definition. — server
 
-- model.service.ts — server — Server-side business logic, such as creating an order or applying a coupon.
+- model.service.ts: Server-side business logic, such as creating an order or applying a coupon. — server
 
-- model.signal.ts — shared — Public actions, slices, endpoints, and internal jobs that pages can call.
+- model.signal.ts: Public actions, slices, endpoints, and internal jobs that pages can call. — shared
 
-- model.store.ts — client — Client or model state used across screens, such as selected filters or a cart.
+- model.store.ts: Client or model state used across screens, such as selected filters or a cart. — client
 
-- Model.Template.tsx — client — The create and edit form: reads st.use.productForm(), writes through generated setters.
+- Model.Template.tsx: The create and edit form: reads st.use.productForm(), writes through generated setters. — client
 
-- Model.Unit.tsx — server — One item in a list or grid, such as a row or card; takes the trimmed LightProduct.
+- Model.Unit.tsx: One item in a list or grid, such as a row or card; takes the trimmed LightProduct. — server
 
-- Model.Util.tsx — client — A domain UI helper named for the endpoint verb minus the model noun, like Refund.
+- Model.Util.tsx: A domain UI helper named for the endpoint verb minus the model noun, like Refund. — client
 
-- Model.View.tsx — server — One record in full detail: the full model, with fields a list never loads.
+- Model.View.tsx: One record in full detail: the full model, with fields a list never loads. — server
 
-- Model.Zone.tsx — client — A composed page section: feeds the store to Load.Units or Load.View; Unit and View draw it.
+- Model.Zone.tsx: A composed page section: feeds the store to Load.Units or Load.View; Unit and View draw it. — client
 
 The client boundary follows the suffix, not your judgment. Template, Zone, and Util always carry "use client" on line 1; Unit and View never do, so they render on the server and ship no JavaScript.
 
@@ -857,17 +857,17 @@ The test is whether the surfaces are sold, deployed, or reached as separate prod
 
 Situation
 
-- A customer storefront and an admin console — They share products, orders, users, and permissions, but need different domains, layouts, and release targets. — 상품, 주문, 사용자, 권한을 공유하지만 도메인, 화면 구성, 배포 대상이 다릅니다.
+- A customer storefront and an admin console — They share products, orders, users, and permissions, but need different domains, layouts, and release targets.
 
-- A consumer client, a partner portal, and an internal tool — One backend, three audiences. Each gets its own home screen and navigation without a second app. — 백엔드는 하나이고 대상은 셋입니다. 앱을 새로 만들지 않고도 각자 홈 화면과 내비게이션을 가집니다.
+- A consumer client, a partner portal, and an internal tool — One backend, three audiences. Each gets its own home screen and navigation without a second app.
 
-- Android and iOS packages released per brand, region, or user type — A mobile target points at a basePath, so each package opens its own client from the same backend. — 모바일 target이 basePath를 가리키므로, 각 패키지가 같은 백엔드에서 자기 클라이언트를 엽니다.
+- Android and iOS packages released per brand, region, or user type — A mobile target points at a basePath, so each package opens its own client from the same backend.
 
-- White-label or regional sites on shared business rules — Different domains, names, and first screens over the same domain models — the case basePath exists for. — 같은 도메인 모델 위에 도메인, 이름, 첫 화면만 다릅니다. basePath가 있는 이유가 이것입니다.
+- White-label or regional sites on shared business rules — Different domains, names, and first screens over the same domain models — the case basePath exists for.
 
-- Account settings, dashboards, tabs, grouped screens — These are sections inside one client. A route group such as (user) organizes them without adding a URL segment. — 하나의 클라이언트 안의 구역입니다. (user) 같은 route group이 URL 세그먼트를 더하지 않고 정리해 줍니다.
+- Account settings, dashboards, tabs, grouped screens — These are sections inside one client. A route group such as (user) organizes them without adding a URL segment.
 
-- A section that only some signed-in users may open — Authorization is a guard and a layout gate, not a deployment boundary. Splitting on it buys nothing and costs a domain. — 권한은 guard와 layout에서 막는 문제이지 배포 경계가 아닙니다. 이것 때문에 나누면 얻는 것 없이 도메인만 하나 더 씁니다.
+- A section that only some signed-in users may open — Authorization is a guard and a layout gate, not a deployment boundary. Splitting on it buys nothing and costs a domain.
 
 normal routing
 
@@ -903,9 +903,9 @@ Route Config
 
 Define clients in akan.config.ts with routes. The basePath names the client, and domains decide which production host should open that client.
 
-The client this route opens and its first page folder: basePath store lives in page/store.
+- basePath (string): The client this route opens and its first page folder: basePath store lives in page/store.
 
-Hosts per branch that open this basePath; a matching host hides the basePath segment.
+- domains (Record<branch, string[]>, default {}): Hosts per branch that open this basePath; a matching host hides the basePath segment.
 
 ## File Based Routing
 
@@ -953,21 +953,21 @@ A route file is a page, a layout, or an overrides manifest. Everything under pag
 
 File
 
-- folder/_index.tsx — The page for the folder it sits in: project/_index.tsx serves /:lang/project.
+- folder/_index.tsx: The page for the folder it sits in: project/_index.tsx serves /:lang/project.
 
-- folder/_layout.tsx — Wraps every page below its folder. The root one is a rootLayout() chain.
+- folder/_layout.tsx: Wraps every page below its folder. The root one is a rootLayout() chain.
 
-- folder/_overrides.tsx — A logic-free manifest of UI overrides for the subtree: one export default override({ … }).
+- folder/_overrides.tsx: A logic-free manifest of UI overrides for the subtree: one export default override({ … }).
 
-- path.tsx — A segment as one file: project.tsx serves /:lang/project. Never an uppercase first letter.
+- path.tsx: A segment as one file: project.tsx serves /:lang/project. Never an uppercase first letter.
 
-- [param].tsx — A dynamic segment as one file: [projectId].tsx serves /:lang/:projectId.
+- [param].tsx: A dynamic segment as one file: [projectId].tsx serves /:lang/:projectId.
 
-- (group)/ — Organizes files without adding a URL segment, such as (user) or (public).
+- (group)/: Organizes files without adding a URL segment, such as (user) or (public).
 
-- [lang]/ — Never written: Akan injects the locale.
+- [lang]/: Never written: Akan injects the locale.
 
-- robots.txt.tsx — The one route outside the locale: it serves /robots.txt, not /:lang/robots.txt.
+- robots.txt.tsx: The one route outside the locale: it serves /robots.txt, not /:lang/robots.txt.
 
 _index.tsx, _layout.tsx and _overrides.tsx are the only reserved names an underscore may introduce.
 
@@ -1048,19 +1048,19 @@ Environment variables prefixed with AKAN_PUBLIC_ are public. They can be read by
 
 Four of those names answer who this app is and where it runs, and the first two are required:
 
-required
+- AKAN_PUBLIC_REPO_NAME (string): Organization or repository namespace, usually fixed for the life of the project.
 
-Organization or repository namespace, usually fixed for the life of the project.
+  - required
 
-The domain the app builds links, callbacks, and domain-based routes from.
+- AKAN_PUBLIC_SERVE_DOMAIN (string): The domain the app builds links, callbacks, and domain-based routes from.
 
-Which data set the app runs against, from local test data up to production-like main.
+- AKAN_PUBLIC_ENV (local | debug | develop | main | testing, default debug): Which data set the app runs against, from local test data up to production-like main.
 
-local when ENV=local, else cloud
-
-Where clients connect: local runtime, cloud, or edge paths; module is only in the type.
+- AKAN_PUBLIC_OPERATION_MODE (local | edge | cloud | module, default local when ENV=local, else cloud): Where clients connect: local runtime, cloud, or edge paths; module is only in the type.
 
 In practice you move two of them together. Build a feature with ENV=local and OPERATION_MODE=local, switch ENV to debug or develop when you need shared data or shared services, and deploy with ENV=main against whichever operation mode the cluster serves:
+
+Two more narrow who reaches the server, for one only its own computer calls, such as the server a desktop app carries:
 
 ## Fundamentals
 
@@ -1296,7 +1296,7 @@ Export
 
 - ID: A document id: a 24-character hex string.
 
-- Whole numbers and decimals. JavaScript `Number` is not a field type.
+- Int, Float: Whole numbers and decimals. JavaScript `Number` is not a field type.
 
 - Any: An open value Akan does not check. You name its shape with a type argument.
 
@@ -1304,13 +1304,13 @@ Export
 
 - Upload: A file in the body of the upload mutation.
 
-- The date library and its type. Every `Date` field holds a `Dayjs`.
+- dayjs, Dayjs: The date library and its type. Every `Date` field holds a `Dayjs`.
 
 - enumOf: Turns a fixed list of values into an enum class.
 
 - getEnv: The running app's name, environment and server addresses.
 
-- The paths that signals and the websocket are served under.
+- getApiPrefix, getWsPrefix: The paths that signals and the websocket are served under.
 
 - DataList: A list keyed by id. Every model list in a store is one.
 
@@ -1318,35 +1318,35 @@ Where Each Type Goes
 
 Type
 
-- Model field — field()
+Model field — field()
 
-- Signal argument — .body() .param()
+Signal argument — .body() .param()
 
-- Signal return — query() mutation()
+Signal return — query() mutation()
 
 - Import from `akanjs/base`
 
+  - ID: Document ids.
+
+  - Int · Float: Counts and decimals.
+
+  - Any: Payloads whose shape stays open.
+
+  - Binary: Keep stored bytes in a `File` model.
+
+  - Upload: Only in the body of a `fileUpload: true` mutation.
+
 - JavaScript globals, no import
+
+  - String: Plain text.
+
+  - Boolean: Text such as "true", "false", "1" and "0" is read as a boolean.
+
+  - Date: The value is a `Dayjs`, not a JavaScript `Date`.
 
 Can be used
 
 Not used here
-
-**Arrays wrap the type.** `field([Float])` is a list of decimals, and `.body("files", [Upload])` takes several files.
-
-**The three globals need no import.** Akan extends `String`, `Boolean` and `Date` so they work as types as they are.
-
-Values Without a Default
-
-A required field with no `default` starts at the value below. An `.optional()` field starts at `null`.
-
-- Type
-
-- TypeScript value
-
-- Without a default
-
-- ID — string — ""
 
 ## akanjs/client
 
@@ -1377,7 +1377,7 @@ akanjs/client
 
 Export
 
-- The route chain: the one default export of every route file.
+- page, layout, rootLayout: The route chain: the one default export of every route file.
 
 - PageConfig: What `.config()` takes: transition, safe area, cache and SSR mode.
 
@@ -1385,19 +1385,21 @@ Export
 
 - cn: Joins class names and resolves Tailwind conflicts.
 
-- Prop types for components that draw one record or a list.
+- ModelProps, ModelsProps: Prop types for components that draw one record or a list.
 
-- Runtime proxies without your app's types. Import the typed ones from `@apps/<app>/client`.
+- usePage, msg, Err, fetch, sig: Runtime proxies without your app's types. Import the typed ones from `@apps/<app>/client`.
 
-- Read cookies, the auth token and the signed-in account.
+- getCookie, getAccount, getAuthToken: Read cookies, the auth token and the signed-in account.
 
-- Save or clear the auth token in fetch, the cookie and storage at once.
+- setAuth, initAuth, resetAuth: Save or clear the auth token in fetch, the cookie and storage at once.
+
+- resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
-- Used by route loaders. App code never calls them.
+- resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
 
@@ -1429,8 +1431,6 @@ Method
 
 - getPrefixedPath(path): Adds the locale and basePath to a path when the app has a basePath.
 
-- navigation(): The last push or replace as a promise. It rejects when the route refused to move.
-
 ## akanjs/common
 
 Source: /references/akanjs/common
@@ -1460,31 +1460,31 @@ Export
 
 - sleep: Waits the given number of milliseconds.
 
-- Changes the case of the first character only.
+- capitalize, lowerlize: Changes the case of the first character only.
 
-- Adds dashes to a Korean phone number and checks the dashed form.
+- formatPhone, isPhoneNumber: Adds dashes to a Korean phone number and checks the dashed form.
 
 - isEmail: Checks that a string looks like an email address.
 
 - RestClient: Calls a REST API that is not an Akan server.
 
-- Reads and writes a nested value by a path such as `items[0].name`.
+- pathGet, pathSet: Reads and writes a nested value by a path such as `items[0].name`.
 
-- Picks one or several random items from a list.
+- randomPick, randomPicks: Picks one or several random items from a list.
 
 More in akanjs/common
 
-- clamp: Keeps a number between `min` and `max`.
+- clamp: Keeps a number between `min` and `max`. — Example: `clamp(120, 0, 100); // 100`
 
-- formatNumber: Adds thousands separators to a number string and keeps the decimals as written.
+- formatNumber: Adds thousands separators to a number string and keeps the decimals as written. — Example: `formatNumber("1234567.89"); // "1,234,567.89"`
 
 - isValidDate: Tells whether a `YYYY-MM-DD` string, `Date` or `Dayjs` parses, though `2024-02-30` still passes.
 
 - isDayjs: Tells whether a value is a `Dayjs`.
 
-- Splits "1.2.3" into major, minor and patch, and joins them back. — splitVersion("1.2.3"); // { major: "1", minor: "2", patch: "3" }
+- splitVersion, mergeVersion: Splits "1.2.3" into major, minor and patch, and joins them back. — Example: `splitVersion("1.2.3"); // { major: "1", minor: "2", patch: "3" }`
 
-- Copy data fields without methods, and only `plainFieldsOf` keeps a model's `Date` fields.
+- objectify, plainFieldsOf: Copy data fields without methods, and only `plainFieldsOf` keeps a model's `Date` fields.
 
 - deepObjectify: Makes a deep plain copy, JSON-ready when you pass `serializable` or `convertDate`.
 
@@ -1492,7 +1492,7 @@ More in akanjs/common
 
 - isThenable: Tells whether a value can be awaited.
 
-- interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written.
+- interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`
 
 The same import also carries route-convention helpers and wire contracts that the framework uses itself. App code rarely needs them.
 
@@ -1538,17 +1538,17 @@ Export
 
 - field: The builder `via` hands you. Each call declares one stored field.
 
-- Variants of `field` that keep a value away from agents, the client, or default reads.
+- field.visual, field.hidden, field.secret: Variants of `field` that keep a value away from agents, the client, or default reads.
 
 - resolve: Declares a field the server computes for each response instead of storing it.
 
 - getDefault: Builds the blank object a new record or form starts from.
 
-- Types for the stored shape, the default shape, a query, a purified value, and a file.
+- DocumentModel, DefaultOf, QueryOf, PurifiedModel, ProtoFile, ProtoLightFile: Types for the stored shape, the default shape, a query, a purified value, and a file.
 
-- Turn raw data into model values, and a model back into a checked plain object.
+- crystalize, makePurify: Turn raw data into model values, and a model back into a checked plain object.
 
-- Convert values to and from the payload that crosses a boundary.
+- serialize, deserialize: Convert values to and from the payload that crosses a boundary.
 
 - ConstantRegistry: Finds model classes, refNames and enums at runtime.
 
@@ -1623,13 +1623,13 @@ Term
 
 Exports
 
-- What `fetch.init*`, `fetch.view*` and `fetch.edit*` return: awaitable, or split per field.
+- InitHandle, ViewHandle, EditHandle: What `fetch.init*`, `fetch.view*` and `fetch.edit*` return: awaitable, or split per field.
 
 - ClientInit: Type of a Zone's `init` prop: a list payload or its promise.
 
-- Types of a Zone's `view` and `edit` props for one record.
+- ClientView, ClientEdit: Types of a Zone's `view` and `edit` props for one record.
 
-- The same three payloads, already resolved instead of a promise.
+- ServerInit, ServerView, ServerEdit: The same three payloads, already resolved instead of a promise.
 
 - SliceMeta: Names the slice a component works on: `refName`, `sliceName` and `argLength`.
 
@@ -1641,9 +1641,9 @@ Exports
 
 - FetchClient: The runtime client behind every app's `fetch`.
 
-- Read the request a page is being rendered for. Server only.
+- getRequest, headers, cookies: Read the request a page is being rendered for. Server only.
 
-- `HttpClient`, `WsClient`, `AgentTurn`, request helpers like `getRequestTheme`, and client types.
+- Everything else: `HttpClient`, `WsClient`, `AgentTurn`, request helpers like `getRequestTheme`, and client types.
 
 InitHandle / ViewHandle / EditHandle
 
@@ -1653,11 +1653,11 @@ So each section renders as soon as its own data lands, and the page never waits 
 
 Three Handles
 
-- Handle
+Handle
 
-- Returned by
+Returned by
 
-- Fields
+Fields
 
 - `InitHandle` — fetch.init<Model><Suffix>(...args, option?) — <model>Init<Suffix> · <model>List<Suffix> · <model>Insight<Suffix>
 
@@ -1673,6 +1673,7 @@ Headings:
 - akanjs/server
 - AkanApp
 - AkanAppOptions
+- AkanServer Web Surfaces
 - AkanOption
 - AkanResponse
 - WebProxy
@@ -1715,25 +1716,25 @@ Exports
 
 - WebProxy: The interface a web proxy class implements: one `use(request)` method.
 
-- The two built-in proxies. Every app runs them before its own.
+- LocaleWebProxy, HostBasePathWebProxy: The two built-in proxies. Every app runs them before its own.
 
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
 - Transaction: Legacy decorator: runs a method in a database transaction.
 
-- Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
+- Everything else: Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
 
 Where It Is Imported
 
 File
 
-- main.ts: Use the leaf path, which keeps the SSR renderer out of the gateway.
+- main.ts: Use the leaf path, which keeps the SSR renderer out of the gateway. — Example: `import { AkanApp } from "akanjs/server/akanApp";`
 
-- server.ts: Generated; never edit it by hand.
+- server.ts: Generated; never edit it by hand. — Example: `import { AkanLib, AkanServer } from "akanjs/server";`
 
-- lib/option.ts: One per app and one per lib.
+- lib/option.ts: One per app and one per lib. — Example: `import { AkanOption } from "akanjs/server";`
 
-- srvkit/*.ts: Server-only helpers: proxy classes and legacy decorated classes.
+- srvkit/*.ts: Server-only helpers: proxy classes and legacy decorated classes. — Example: `import { AkanResponse, Try, type WebProxy } from "akanjs/server";`
 
 AkanApp
 
@@ -1767,15 +1768,15 @@ What It Exports
 
 - slice: Declares the list queries a client store loads, and guards the generated CRUD endpoints.
 
-- Guards. They run before the handler and decide whether the call may go on.
+- Public, None, guard: Guards. They run before the handler and decide whether the call may go on.
 
-- Internal arguments: handler arguments the server fills in, such as the request.
+- Req, Res, Ip, Ws: Internal arguments: handler arguments the server fills in, such as the request.
 
-- Middleware wraps every endpoint call. The two built-ins are registered by default.
+- middleware, Logging, Timeout: Middleware wraps every endpoint call. The two built-ins are registered by default.
 
 - McpProgress: Reports progress from inside a long MCP tool call.
 
-- Look up registered signals, and publish or enqueue from a service.
+- SignalRegistry, serverSignal: Look up registered signals, and publish or enqueue from a service.
 
 - SignalContext: The per-call context guards and middleware receive: transport, arguments and caller.
 
@@ -1785,13 +1786,21 @@ The `endpoint` builder hands you four kinds, and each kind fixes its transport:
 
 Kind
 
-- HTTP
+HTTP
 
-- WebSocket
+WebSocket
 
 - Request and response
 
+  - query: Reads, over `GET`. The only kind that may declare `cache`.
+
+  - mutation: Writes, over `POST`. The `method` option moves it to `PATCH`, `PUT` or `DELETE`.
+
 - Realtime
+
+  - pubsub: The client subscribes to a room, and the server publishes into it.
+
+  - message: The client sends one message and gets one answer back.
 
 travels over it
 
@@ -1804,14 +1813,6 @@ An MCP prompt is not an endpoint kind. It is declared on a page with `page().pro
 - MCP Prompts — Declared on a page with `page().prompt(name, description)`.
 
 - The Guards That Ship — `Every`, `Admin`, `Person` and the other guards `libs/shared` provides.
-
-- Report MCP Progress — The progress stream step by step, from the client's side too.
-
-Public / None / guard
-
-A guard decides whether a call may run, before its handler does. Every custom endpoint names its own `guards` array, and every guard in it must pass.
-
-- Public: Always passes. Use it on slice reads such as `get:`, never as a mutation's only guard.
 
 ## akanjs/webkit
 
@@ -1853,15 +1854,15 @@ On This Page
 
 - useThrottle: Runs a callback at once, then ignores calls for a while.
 
-- Tells a client component whether a promise has resolved, and its value.
+- useFetch, useFetchFn: Tells a client component whether a promise has resolved, and its value.
 
-- Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
+- useCamera, useGeoLocation: Camera and location through the native runtime's plugins, with a browser fallback and the permission prompts.
 
 - usePushNotification: Not in this module: the push hook lives in `@libs/util/webkit`.
 
 - usePurchase: In-app purchase on the native iap plugin, verified by your server. Imported from `akanjs/webkit/usePurchase`.
 
-- The CSR router's location parser and history stack.
+- useLocation, useHistory: The CSR router's location parser and history stack.
 
 - LoginForm: The argument of the shared store's `login` action.
 
@@ -1877,13 +1878,13 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
-- Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
+- usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
-- Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
+- createRobotPage, createSitemapPage: Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
 
-- Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
+- bootCsr, replacePages, useCsrValues: Start the CSR (mobile) bundle, swap its route modules in place during dev, and hold its router state. The generated entry calls them.
 
-- Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
+- LoginAuth, ScreenScopeItem: Types: `"user" | "admin" | "public"`, and one on-screen item `{ id, label? }`.
 
 **Call the hooks from a client file.** They are React hooks, so they need a file with `"use client"`. Put `lazy()` in the `ui/<Folder>/index_.tsx` boundary file.
 
@@ -1912,13 +1913,13 @@ Words Used on This Page
 
 Term
 
-- The workspace's `AGENTS.md`, the one file holding the conventions every coding agent follows.
+- agent guide: The workspace's `AGENTS.md`, the one file holding the conventions every coding agent follows.
 
-- A short file that only tells one tool to read `AGENTS.md`, such as `CLAUDE.md`.
+- pointer: A short file that only tells one tool to read `AGENTS.md`, such as `CLAUDE.md`.
 
-- The part of `AGENTS.md` between the `akan:agent` markers. The command rewrites only this part.
+- managed block: The part of `AGENTS.md` between the `akan:agent` markers. The command rewrites only this part.
 
-- `apps/<app>/AGENTS.md` or `libs/<lib>/AGENTS.md`: the UI recipes that scope can import.
+- scoped guide: `apps/<app>/AGENTS.md` or `libs/<lib>/AGENTS.md`: the UI recipes that scope can import.
 
 What Each Target Writes
 
@@ -1930,9 +1931,17 @@ App/lib guides
 
 - Guide · only the block is rewritten, so `--force` is never needed
 
+  - agents-md: Rebuilds the managed block, then writes every app and library guide.
+
 - Pointers · written whole, so an existing file needs `--force`
 
+  - claude: Claude Code imports the guide through `@AGENTS.md`.
+
+  - cursor: An always-on Cursor rule that points at the guide.
+
 - Default
+
+  - all: All three, in the order `cursor`, `agents-md`, `claude`.
 
 Writes
 
@@ -1954,14 +1963,6 @@ What the Guide Holds
 
 The managed block is rebuilt from the installed Akan release and your workspace. Top to bottom, it holds:
 
-Section
-
-- The repo name, and the apps, libraries and packages in it.
-
-- The coding rules, including the lint rules that break the build.
-
-- The workspace layout, everyday commands, where each kind of code goes, and common pitfalls.
-
 ## Application
 
 Source: /references/cli/application
@@ -1975,37 +1976,7 @@ Headings:
 
 Application
 
-- --write (Boolean, default true): Run `akan sync` first so generated files are current.
-
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
-
 Backend environment the app connects to.
-
-- --debug (Boolean, default false): Make a debug build instead of a release one.
-
-- --device (String): The simulator, emulator or device to run on: its id or name, such as `iPhone 17` or `Pixel_10`. A paired iPhone's name makes a signed iPhone build. Left out, a booted iPhone simulator (else the newest one) or a connected Android device (else the first emulator, started) is used.
-
-- --team (String, -T): The Apple team id the signing is narrowed to, when the Mac holds profiles of several teams.
-
-- --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
-
-- --release (Boolean, default false): Run a release build that carries its own production web build instead of loading the dev server.
-
-- alias: `akan <alias>` runs this command.
-
-- dev server: Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
-
-- desktop.server: A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
-
-- carried server: The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/`, the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.
-
-- bin: An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, whether or not it carries a server: it is first on the app's PATH, so the carried server's `spawn("ffmpeg")` runs it, and a native plugin finds it in `ctx.binDir`.
-
-- one target: Runs one mobile target at a time; with several, pass `--target <name>`.
-
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/<platform>`; the command prints each file's path.
-
-- signing: Signed with the upload key the environment names: `MYAPP_RELEASE_STORE_FILE`, `MYAPP_RELEASE_STORE_PASSWORD` and `MYAPP_RELEASE_KEY_ALIAS`, plus `MYAPP_RELEASE_KEY_PASSWORD` when the key has its own. A missing one stops the command before it builds.
 
 Application CLI
 
@@ -2013,25 +1984,55 @@ These commands carry an app from creation to release: create it, run it locally,
 
 - Manage Apps
 
+  - create-application: Create a new app under `apps/` from the template.
+
+  - remove-application: Delete an app's folder from the workspace.
+
+  - sync: Regenerate the generated files of an app or library.
+
+  - plan-slice: List the files an app needs to move into a workspace of its own.
+
 - Local Development
+
+  - start: Run the dev server for one or more apps.
+
+  - dbup: Start the local database containers.
+
+  - dbdown: Stop the local database containers.
+
+  - db-export, db-import: Copy an app's data out of one database mode and into another.
+
+  - script: Run a file from the app's `script/` folder.
+
+  - console: Open an interactive server console.
+
+  - logs: Follow a running app's logs, filtered.
 
 - Check and Build
 
+  - typecheck: Typecheck the app.
+
+  - test: Run the tests of an app, library or package.
+
+  - build: Build the app for production into `dist/apps/<app>`.
+
 - Mobile
+
+  - start-ios, start-android: Run the app on a simulator, an emulator or a connected device.
+
+  - start-desktop: Run the app as a desktop app on this computer.
+
+  - build-ios, build-android, build-desktop: Build the native app on the native runtime.
+
+  - release-ios, release-android: Build the app for an App Store or Play Store release.
+
+  - update-keygen, publish-update, pack-update: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
 
 `akan create-application <appName> [--start <boolean>]`
 
 Create `apps/<appName>` from the app template, then sync it. With `--start` it also boots the dev server.
-
-- appName (String): App name. It is lowercased, and spaces become hyphens.
-
-- --start (Boolean, default false): Start the dev server and open the browser once the app is created.
-
-`akan remove-application <app>`
-
-Delete the `apps/<app>` folder, so the app drops out of sync, builds and deployment. Commit first if you may want it back.
 
 ## Cloud CLI
 
@@ -2044,12 +2045,6 @@ Headings:
 
 Cloud CLI
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
-
-Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
-
-- where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
-
 Five optional commands for signing in to Akan Cloud, updating the framework and moving env values. Internal deployment commands are left out of this page on purpose.
 
 Words Used on This Page
@@ -2058,11 +2053,11 @@ Term
 
 - Akan Cloud: The service at `https://cloud.akanjs.com` that holds your account, env values and tunnels.
 
-- Each app's and library's `env/env.client.<env>.ts` and `env/env.server.<env>.ts`, kept out of git.
+- env values: Each app's and library's `env/env.client.<env>.ts` and `env/env.server.<env>.ts`, kept out of git.
 
 - AKAN_WORKSPACE_ID: The cloud workspace id in the root `.env`, which decides where env values are kept.
 
-- A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
+- SCP server: A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
 
 Where Each Command Connects
 
@@ -2072,9 +2067,19 @@ This machine only
 
 - Account
 
+  - login: Signs in through the browser and saves the session.
+
+  - logout: Deletes the saved session without contacting the cloud.
+
 - Framework
 
+  - update: Installs from npm, or from a local registry with `--registry local`.
+
 - Env values
+
+  - download-env: Pulls env values from Akan Cloud or an SCP server, whichever the workspace uses.
+
+  - upload-env: Pushes the local env values to that same place for the next `download-env`.
 
 Connects
 
@@ -2097,10 +2102,6 @@ Used when
 Where the archive lives
 
 - Akan Cloud — `AKAN_WORKSPACE_ID` is set — The cloud workspace with that id, after signing in if needed.
-
-- SCP server — `AKAN_WORKSPACE_ID` is empty — `~/secrets/<repo>/env.tar` on a server you pick from a list.
-
-**Both directions overwrite.** `upload-env` replaces the stored archive whole, and `download-env` writes over local files at the same paths. Download before you edit, and upload right after.
 
 ## Code CLI
 
@@ -2156,9 +2157,9 @@ What you get
 
 - RPC — `--rpc` — Serves akan wire frames over stdio for another process to drive.
 
-- `--interactive`, or no prompt and no `--json` on a terminal — A chat you keep talking to. A prompt you pass becomes its first message.
+- Full-screen session — `--interactive`, or no prompt and no `--json` on a terminal — A chat you keep talking to. A prompt you pass becomes its first message.
 
-- Any other call with a prompt — Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
+- One run — Any other call with a prompt — Runs the prompt to the end and prints each event. With `--json`, one JSON line per event.
 
 **Without a terminal, or with `--json`, a missing prompt is an error.** In a pipe or a CI step, always pass one: `akan code "add a comment module"`.
 
@@ -2259,7 +2260,7 @@ Guideline
 
 Lists the guidelines bundled with the CLI, or prints one of them as Markdown. Use it when an agent, a documentation tool or a contributor needs more depth on one area than `AGENTS.md` carries.
 
-- action (String, list | show): `list` prints every guideline name, one per line; `show` prints one guideline.
+- action (String, list | show, required): `list` prints every guideline name, one per line; `show` prints one guideline.
 
 - name (String): Guideline to print, such as `framework`, `moduleOverview` or `modelSignal`; required for `show`.
 
@@ -2281,7 +2282,7 @@ Words Used On This Page
 
 Term
 
-- An instruction document for coding agents that ships inside the Akan CLI, one per area or file role.
+- guideline: An instruction document for coding agents that ships inside the Akan CLI, one per area or file role.
 
 - AGENTS.md: The guide an agent reads on every task: the short rules, plus which guideline covers the rest.
 
@@ -2324,8 +2325,6 @@ Headings:
 
 Library
 
-- lib (String): A library in `libs/`, such as `util`. Leave it out, or mistype it, to pick one from a list.
-
 Library CLI
 
 Five commands that create, install, sync, check and remove the shared libraries in `libs/`. Use a library for domain, utility, UI or platform code that several apps import.
@@ -2334,13 +2333,13 @@ Words Used on This Page
 
 Term
 
-- A folder under `libs/` holding code several apps share: domain modules, UI or utilities.
+- library: A folder under `libs/` holding code several apps share: domain modules, UI or utilities.
 
-- A ready-made library from Akan.js, such as `shared` or `util`, that `install-library` copies in.
+- template: A ready-made library from Akan.js, such as `shared` or `util`, that `install-library` copies in.
 
 - akan.source: The stamp `install-library` puts in the library's `package.json`: origin, commit or version, hash.
 
-- An installed library whose files no longer match the hash in its stamp.
+- drift: An installed library whose files no longer match the hash in its stamp.
 
 What Each Command Touches
 
@@ -2352,9 +2351,19 @@ Git history
 
 - Add a library
 
+  - create-library: Start a new library you fill in yourself.
+
+  - install-library: Copy in a template such as `shared` or `util`.
+
 - Keep it current
 
+  - sync-library: Refresh the generated files after you change the library.
+
+  - library-status: Check whether installed libraries changed after the install.
+
 - Remove
+
+  - remove-library: Delete the whole library folder.
 
 Changed
 
@@ -2374,14 +2383,6 @@ Related Pages
 
 create-workspace
 
-`--libs true` installs `util` and `shared` while it creates the workspace.
-
-akan sync
-
-Takes an app or a library; for a library it runs `sync-library`.
-
-create-module
-
 ## Module
 
 Source: /references/cli/module
@@ -2393,18 +2394,6 @@ Headings:
 
 Module
 
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object, for scripts and agents.
-
-- sys (String): The app or library to write into, such as `shop`. Leave it out to pick one from a list.
-
-- sys:module: Name the module as `<sys>:<module>`, such as `shop:story`. Leave it out to pick the sys, then the module.
-
-- database modules only: A service module in `lib/_<service>` or a scalar in `lib/__scalar` is not listed.
-
-- existing file: A file already at that path is overwritten with the scaffold, so commit first.
-
-- name field: The scaffold renders only the module's `name` field; swap in the fields you need.
-
 Module CLI
 
 Six commands that create, remove and fill in modules inside an app or library. Use `create-module` for a feature built around a stored model, `create-service` for one that is not.
@@ -2413,15 +2402,15 @@ Words Used on This Page
 
 Term
 
-- A module built around one stored model, in `lib/<module>/`.
+- database module: A module built around one stored model, in `lib/<module>/`.
 
-- Behavior not tied to one stored model, such as notifications, in `lib/_<service>/`.
+- service module: Behavior not tied to one stored model, such as notifications, in `lib/_<service>/`.
 
 - sys: The app or library that holds the module: `shop` in `shop:story`.
 
-- The starter code a command writes, meant to be edited.
+- scaffold: The starter code a command writes, meant to be edited.
 
-- What a create command prints at the end: the files it wrote and the commands to run next.
+- report: What a create command prints at the end: the files it wrote and the commands to run next.
 
 Files a New Module Gets
 
@@ -2429,7 +2418,29 @@ File
 
 - Model and logic
 
+  - .abstract.md: The module's rules and workflows, in prose.
+
+  - .constant.ts: The fields and the Light class.
+
+  - .document.ts: Queries and state changes on the stored record.
+
+  - .dictionary.ts: English and Korean labels.
+
+  - .service.ts: The business logic.
+
+  - .signal.ts: The endpoints callers reach.
+
+  - .store.ts: Client state and actions.
+
 - UI
+
+  - .View.tsx: The detail screen for one record.
+
+  - .Unit.tsx: One row or card in a list.
+
+  - .Template.tsx: The create and edit form.
+
+  - .Zone.tsx · .Util.tsx: A page section, and small domain helpers such as a remove button.
 
 Written
 
@@ -2440,16 +2451,6 @@ The other three create commands fill in one UI file of an existing module: `crea
 Rules All Six Share
 
 **Name the target, or pick it from a list.** `create-module` and `create-service` take the app or library as their second argument; the other four take `<sys>:<module>`. Leave it out and the CLI asks.
-
-**Only database modules can be picked.** A folder with an underscore, such as `lib/_<service>` or `lib/__scalar`, never appears as a `sys:module`.
-
-**Create commands end with a report.** It lists the files written and the next steps, `akan sync <sys>` and `akan lint <sys>`. Add `-o json` for the same report as one JSON object.
-
-**`remove-module` prints no report.** Run `akan sync <sys>` after it yourself.
-
-**Commit before you run these.** A create command writes its scaffold over any file at the same path, and `remove-module` deletes the folder without asking.
-
-Related Pages
 
 ## Commands
 
@@ -2497,13 +2498,13 @@ Shared Behaviour
 
 These hold for every command, so the detail pages do not repeat them.
 
-- Verbose Output — Every command accepts it. It prints the output of each process the command runs, which a spinner normally hides.
+- Verbose Output — `-v, --verbose` — Every command accepts it. It prints the output of each process the command runs, which a spinner normally hides.
 
-- Help — Prints the command's arguments and options with their defaults and choices. Bare `akan` lists every command.
+- Help — `akan <command> --help` — Prints the command's arguments and options with their defaults and choices. Bare `akan` lists every command.
 
-- Run From The Workspace Root — Run every command except `create-workspace` from the folder that holds these three files. Anywhere else it stops with an error.
+- Run From The Workspace Root — `package.json · tsconfig.json · .env` — Run every command except `create-workspace` from the folder that holds these three files. Anywhere else it stops with an error.
 
-- Short Aliases — Nine commands also answer to the first letter of each dashed word. The table below lists all of them.
+- Short Aliases — `akan ba = akan build-android` — Nine commands also answer to the first letter of each dashed word. The table below lists all of them.
 
 Alias
 
@@ -2534,8 +2535,6 @@ Headings:
 
 Package
 
-- pkg (String): A package path under `pkgs/`, such as `akanjs` or `@akanjs/cli`; leave it out to pick from a list.
-
 Package CLI
 
 Six commands that create, build and verify the packages under `pkgs/`: the framework (`akanjs`), the CLI and other tooling. They sit below the app and library commands, so use those for product code.
@@ -2544,7 +2543,7 @@ Words Used on This Page
 
 Term
 
-- A folder under `pkgs/` with its own `package.json`, such as `akanjs` or `@akanjs/cli`.
+- package: A folder under `pkgs/` with its own `package.json`, such as `akanjs` or `@akanjs/cli`.
 
 - dist: The build output in `dist/pkgs/<pkg>/`, which is the folder that gets packed and published.
 
@@ -2574,23 +2573,25 @@ Build output
 
 - Check
 
+  - version: Print the `akanjs` version in use.
+
+  - sync-package: Scan one package's imports as a quick check.
+
 - Add and remove
 
+  - create-package: Start a new folder in `pkgs/` and register its import path.
+
+  - remove-package: Delete the folder and its import path.
+
 - Build and publish
+
+  - build-package: Write the dist folder and the dependency list.
+
+  - verify-dist-package: Check the dist folder before you publish it.
 
 Changed
 
 Untouched
-
-Picking a Package
-
-The four commands that take `[pkg]` find the package the same way.
-
-**Name a package by its path under `pkgs/`.** For example `akanjs`, `@akanjs/cli` or `create-akan-workspace`. Leave it out, or mistype it, and you pick one from a list.
-
-**Only a folder with a `package.json` counts as a package.** A folder fresh from `create-package` has none yet, so add one before the other commands.
-
-**Commit before you remove or build a package.** `remove-package` deletes `pkgs/<pkg>/` without asking, and `build-package` rewrites `pkgs/<pkg>/package.json`.
 
 ## Page
 
@@ -2615,9 +2616,9 @@ Term
 
 - sys:module: How the CLI names a module: `shop:product` is `lib/product/` in the `shop` app.
 
-- A folder in parentheses, such as `(public)`. It groups files and adds nothing to the URL.
+- route group: A folder in parentheses, such as `(public)`. It groups files and adds nothing to the URL.
 
-- The starter code a command writes, meant to be edited.
+- scaffold: The starter code a command writes, meant to be edited.
 
 Pages It Writes
 
@@ -2626,6 +2627,14 @@ File
 Default
 
 - Written into the target folder, by default `page/(<app>)/(public)/<module>/`
+
+  - _index.tsx: `/<module>`: the list of cards, with a create button. Under `--single` the button opens a modal.
+
+  - new/_index.tsx: `/<module>/new`: the create form, built from `Template.General`.
+
+  - [<module>Id]/_index.tsx: `/<module>/<id>`: the detail from `Zone.View`, with a link to the edit page.
+
+  - [<module>Id]/edit/_index.tsx: `/<module>/<id>/edit`: the edit form, filled with the saved record.
 
 Written
 
@@ -2639,7 +2648,7 @@ Part
 
 - inPublic: The slice the list and both forms load and save through.
 
-- The list of cards and the detail screen.
+- Zone.Card, Zone.View: The list of cards and the detail screen.
 
 - Template.General: The form body, shared by the create and edit pages.
 
@@ -2653,14 +2662,6 @@ Check After It Runs
 
 **`--base-path` is a folder inside the app, not a URL prefix.** `--base-path admin` writes to `apps/shop/admin/`, outside `page/`, so no route is created. Give the whole folder, such as `page/(shop)/(admin)/product`.
 
-Related Pages
-
-Module CLI
-
-`create-module` makes the module these pages need, and `--page` adds them in one go.
-
-Routing
-
 ## Primitive
 
 Source: /references/cli/primitive
@@ -2672,12 +2673,6 @@ Headings:
 - Primitive or Workflow
 
 Primitive
-
-- --app (String, -a): Target app or library name.
-
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
-
-- afterwards: Run `akan sync <app>` and then `akan lint <app>`.
 
 Primitive CLI
 
@@ -2703,7 +2698,13 @@ Command
 
 - Add a UI file
 
+  - create-ui: Writes one View, Unit or Template file and nothing else.
+
 - Add a field
+
+  - add-field: Adds the field to the Input class and its label to the dictionary.
+
+  - add-enum-field: Declares an enum class first, then adds a field typed as that class.
 
 Written
 
@@ -2723,13 +2724,13 @@ Rules All Three Share
 
 Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or a Template. It writes from the same template `akan create-module` uses, and touches no other file. It is the flag form of `akan create-view`, `create-unit` and `create-template`.
 
-- --module (String, -m): Target module name, such as `icecreamOrder`.
+- --app (String, -a, required): Target app or library name.
+
+- --module (String, -m, required): Target module name, such as `icecreamOrder`.
 
 - --surface (String, default template, view | unit | template · -u): Which file to write; Zone and Util are not built by this command.
 
-- view: `<Module>.View.tsx` exporting `General`, the detail screen, as a server component.
-
-- unit: `<Module>.Unit.tsx` exporting `Card`, one list or card item, as a server component.
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
 
 ## Quality
 
@@ -2751,13 +2752,13 @@ Lint tells you a line is wrong. `akan quality` tells you the shape of the codeba
 
 What It Catches
 
-- Files Grown Too Long — A service past 500 lines, a Template or Zone past 800, or a Util past 1,000.
+- Files Grown Too Long — A service past 500 lines, a Template or Zone past 800, or a Util past 1,000. — `akan.file.recommended-max-lines`
 
-- Helpers In The Wrong File — A helper function declared in `order.service.ts` next to `OrderService`.
+- Helpers In The Wrong File — A helper function declared in `order.service.ts` next to `OrderService`. — `akan.convention.service`
 
-- Modules With No Server View — Its UI renders only from Template, Zone and Util, so all of it ships to the browser as JavaScript.
+- Modules With No Server View — Its UI renders only from Template, Zone and Util, so all of it ships to the browser as JavaScript. — `akan.ssr.module-missing-server-view`
 
-- Markup In The Bundle — A client component wraps a large static subtree around one or two handlers.
+- Markup In The Bundle — A client component wraps a large static subtree around one or two handlers. — `akan.ssr.client-static-markup`
 
 Run it before a review, after a refactor, and after any change to a `.tsx` file. The render share is the one number a UI change can quietly lower.
 
@@ -2814,10 +2815,6 @@ Headings:
 
 Scalar
 
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object, for scripts and agents.
-
-- sys (String): The app or library, such as `shop`. Leave it out to pick one from a list.
-
 Scalar CLI
 
 Two commands that create and remove a scalar inside an app or library. A scalar is a reusable value object saved inside other models, not a model with its own table; for that, use `create-module`.
@@ -2826,13 +2823,13 @@ Words Used on This Page
 
 Term
 
-- A named group of fields saved inside other models, like `Price`. It has no table of its own.
+- scalar: A named group of fields saved inside other models, like `Price`. It has no table of its own.
 
 - sys: The app or library that holds the scalar: `shop` in `akan create-scalar price shop`.
 
-- The starter code a command writes, meant to be edited.
+- scaffold: The starter code a command writes, meant to be edited.
 
-- What `create-scalar` prints at the end: the files it wrote and the commands to run next.
+- report: What `create-scalar` prints at the end: the files it wrote and the commands to run next.
 
 Files Each Command Touches
 
@@ -2840,9 +2837,23 @@ File
 
 - Scaffolded into `lib/__scalar/<scalar>/`
 
+  - <scalar>.abstract.md: What the value means and its reuse rules, as headings to fill in.
+
+  - <scalar>.constant.ts: The class with the fields, starting with one placeholder `field: field(String)`.
+
+  - <scalar>.dictionary.ts: English and Korean labels, written with `scalarDictionary`.
+
+  - <scalar>.document.ts: The server-side class, one line: `by(cnst.<Scalar>)`.
+
 - Written by hand, in the same folder
 
+  - <Scalar>.Template.tsx: The editor for the value inside a parent form.
+
+  - <Scalar>.Unit.tsx: The display of the value inside a parent card or detail page.
+
 - Outside the folder
+
+  - code that uses it: Fields such as `field(Price)` and imports in other modules. Neither command touches them.
 
 Written or deleted
 
@@ -2861,16 +2872,6 @@ Rules to Know
 **Check usages before you remove a scalar.** `remove-scalar` deletes the folder without asking and leaves every field and import that used it broken until you fix them.
 
 Related Pages
-
-Scalar Overview
-
-When a scalar fits better than a module, and how to embed one.
-
-Module CLI
-
-`create-module` for a model with its own table.
-
-Workflow CLI
 
 ## Tunnel CLI
 
@@ -3025,10 +3026,6 @@ Headings:
 
 Workspace
 
-- --fix (Boolean, default true): Write the formatter and lint fixes. With `--fix false` it only reports.
-
-- --max-diagnostics (Number, default 200): How many diagnostics Biome prints before it truncates. `0` removes the limit.
-
 Workspace CLI
 
 These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
@@ -3059,7 +3056,13 @@ The three upkeep commands differ in scope and in whether they lint after the syn
 
 - One target
 
+  - lint: You changed one app, library or package. A package is linted without a sync.
+
 - Whole workspace
+
+  - lint-all: Before a wide check, where generated files, app code and libraries must agree.
+
+  - sync-all: Generated files look stale, or you changed the shared workspace setup.
 
 Runs it
 
@@ -3069,9 +3072,9 @@ Skips it
 
 Create a new workspace and its first app in one go. It runs these steps in order:Write the workspace files into `<dir>/<workspaceName>`, with `--registry` saved to `.npmrc`.Run `bun install`. `--init false` skips it.Install the `util` and `shared` libraries, only with `--libs true`.Create the first app, named by `--app`.Write the agent rules and the MCP config. `--agent-install` and `--mcp-install` turn them off.Make the first git commit. If git fails, the workspace still works; commit by hand.It ends by printing the next step: `cd <dir>/<workspaceName> && akan start <app>`.
 
-- workspaceName (String): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
+- workspaceName (String, required): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
 
-- --app (String): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
+- --app (String, required): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
 
 - --dir (String, default .): Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.
 
@@ -3080,8 +3083,6 @@ Create a new workspace and its first app in one go. It runs these steps in order
 - --init (Boolean, default true): Run `bun install` once the files are written.
 
 - --registry (String, default https://registry.npmjs.org): npm registry for the Akan packages, saved to `.npmrc`. `AKAN_NPM_REGISTRY` sets the default.
-
-- --owner (String, default $GITHUB_OWNER): GitHub owner of the repo. When set, `README.md` gets an Open in GitHub Codespaces badge.
 
 ## Assets (public/ private/)
 
@@ -3103,9 +3104,9 @@ Asset Folders
 
 Apps and libraries keep file assets in two folders at their root, beside `lib/` and `ui/`. Which one a file goes in depends on one question: may the browser download it?
 
-- public/ — The browser may download it — Served as static files by URL. Images, PDFs, downloadable JSON and icons go here.
+- public/ — The browser may download it — Served as static files by URL. Images, PDFs, downloadable JSON and icons go here. — `public/images/hero.png → /images/hero.png`
 
-- private/ — Only the server reads it — Never served. Seed data, private JSON, model files and resources for server jobs go here. A desktop app that carries its server ships the folder in plain text on the user's computer.
+- private/ — Only the server reads it — Never served. Seed data, private JSON, model files and resources for server jobs go here. A desktop app that carries its server ships the folder in plain text on the user's computer. — `private/model/yolo.onnx`
 
 **No wrapping folder.** There is no `asset/` folder; `public/` and `private/` sit directly at the root.
 
@@ -3202,9 +3203,9 @@ Library
 
 - Serving the web
 
-- Mobile, data and env
+  - routes: Which domains open the app, and which basePath each one maps to.
 
-- Build and image
+  - web: Which web surfaces the build produces: SSR pages, the CSR shell, or API only.
 
 ## Server Utils (srvkit/)
 
@@ -3280,7 +3281,7 @@ Term
 
 - "use client": The first line that makes a file a client component. Without it, a component renders on the server.
 
-- Several components exported as one object, used as `Only.Web` or `Chart.Bar`.
+- namespace component: Several components exported as one object, used as `Only.Web` or `Chart.Bar`.
 
 ## Web Utils (webkit/)
 
@@ -3465,15 +3466,15 @@ Term
 
 - document: One loaded record: a class instance with `set()`, `save()` and your own chain methods.
 
-- A document method that changes `this` and returns it, so calls chain before one `save()`.
+- chain method: A document method that changes `this` and returns it, so calls chain before one `save()`.
 
 - model: The class for work on the whole collection. A service reaches it as `this.ticketModel`.
 
 - this.Ticket: The table facade inside the model class: `pickById`, `find`, `updateOne` and more.
 
-- A function that runs before or after a document is written.
+- hook: A function that runs before or after a document is written.
 
-- One UPDATE over every match. Fast, but no hook runs.
+- query-level write: One UPDATE over every match. Fast, but no hook runs.
 
 ## Overview
 
@@ -3541,19 +3542,19 @@ Which file owns the work
 
 The work
 
-- document — *.document.ts
+document — *.document.ts
 
-- service — *.service.ts
+service — *.service.ts
 
-- signal — *.signal.ts
+signal — *.signal.ts
 
 - Changing one document
 
+  - state change: A chain method such as `story.approve()` validates, changes the document and returns `this`.
+
+  - state precondition: The chain method throws when the document is in the wrong state for the change.
+
 - Running a business action
-
-- Exposing it
-
-Belongs here
 
 ## model.signal.ts
 
@@ -3580,11 +3581,11 @@ You open it when a page needs a new call or list, or the server needs a schedule
 
 Class
 
-- Work the server runs by itself: computed fields, schedules, lifecycle hooks, queue jobs.
+- StoryInternal, internal(): Work the server runs by itself: computed fields, schedules, lifecycle hooks, queue jobs.
 
-- Lists a page loads, like `inRoot`. Each one becomes fetch methods and store state.
+- StorySlice, slice(): Lists a page loads, like `inRoot`. Each one becomes fetch methods and store state.
 
-- Calls a client makes: queries, mutations, websocket messages and pubsub rooms.
+- StoryEndpoint, endpoint(): Calls a client makes: queries, mutations, websocket messages and pubsub rooms.
 
 Words used on this page
 
@@ -3664,17 +3665,17 @@ A Template only connects the screen to the store. Anything that needs a decision
 
 The work
 
-- Template — *.Template.tsx
+Template — *.Template.tsx
 
-- Elsewhere
+Elsewhere
 
 - Drawing the form
 
-- Deciding and saving
+  - Field.*: Labelled controls, each bound to one field of the form draft.
 
-Belongs here
+  - submit button · step · preview: Small interaction pieces that belong to one form.
 
-Not here
+  - l("<model>.<field>"): Labels and help text from the module dictionary.
 
 ## Model.Unit.tsx
 
@@ -3698,21 +3699,21 @@ Open it when a list needs a new look, or a row should show another field. A Unit
 
 What
 
-- Unit
+Unit
 
-- Util
+Util
 
-- Template
+Template
 
-- Store
+Store
 
-- page
+page
 
 - What the Unit does itself
 
-- What it hands to another file
+  - Light model fields: Title, status, dates: drawn as a card, a row or a tile.
 
-Lives here
+  - usePage · l(): Translation works on the server, so labels need no client code.
 
 ## Model.Util.tsx
 
@@ -3734,21 +3735,21 @@ A Util file holds a module's small client components, each doing one action: a r
 
 Clicks and store actions gather here, so Unit and View stay server-rendered and Page, Zone and Template keep to their own jobs.
 
-- Always a client file — "use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
+- Always a client file — `"use client";` — "use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
 
-- Named after its action — Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
+- Named after its action — `Project.Util.Remove` — Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
 
-- Takes ids, not models — A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
+- Takes ids, not models — `projectId: string` — A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
 
-- Calls, never decides — It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
+- Calls, never decides — `st.do.resolveReport(reportId)` — It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
 
 Words used on this page
 
 Term
 
-- Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
+- Model.Edit, Model.Remove: Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
 
-- The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
+- st.do, st.use: The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
 
 - fetch.slice.<name>: Slice metadata that tells a wrapper which model and list to act on. It sends no request.
 
@@ -3779,13 +3780,13 @@ Drawn by
 
 A View file draws one record in full: the body of a detail page or a detail section. It takes the full model as a prop and only draws it.
 
-- Takes the full model — Every field is there, including long text and nested data that a list leaves out.
+- Takes the full model — `ticket: cnst.Ticket` — Every field is there, including long text and nested data that a list leaves out.
 
-- Only draws — It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
+- Only draws — `Ticket.Util.* · Ticket.Unit.*` — It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
 
-- Exports General — `General` is the main export. A long screen adds named sections beside it.
+- Exports General — `Ticket.View.General` — `General` is the main export. A long screen adds named sections beside it.
 
-- Drawn through a Zone — A detail Zone hands the model from the server to it through `Load.View`.
+- Drawn through a Zone — `renderView={(ticket) => …}` — A detail Zone hands the model from the server to it through `Load.View`.
 
 Words used on this page
 
@@ -3890,9 +3891,9 @@ Words used on this page
 
 Term
 
-- A small value object saved inside another model, such as a price, an address or a coordinate.
+- scalar: A small value object saved inside another model, such as a price, an address or a coordinate.
 
-- The model that embeds the scalar, such as a `Product` holding a `Price`.
+- parent model: The model that embeds the scalar, such as a `Product` holding a `Price`.
 
 - via(): Turns a list of fields into a class, imported from `akanjs/constant`.
 
@@ -3926,11 +3927,11 @@ Words used on this page
 
 Term
 
-- The name a person reads, one string per language: `t(["Amount", "금액"])`.
+- label: The name a person reads, one string per language: `t(["Amount", "금액"])`.
 
 - .desc(): A one-sentence explanation chained after a label.
 
-- One string per language, in the order `scalarDictionary(["en", "ko"])` lists them.
+- language tuple: One string per language, in the order `scalarDictionary(["en", "ko"])` lists them.
 
 - key: The dotted path code reads a label by, such as `price.amount`.
 
@@ -3940,7 +3941,7 @@ A scalar is a value embedded in a model, so it has no list or API of its own to 
 
 Stage
 
-- model — modelDictionary
+model — modelDictionary
 
 ## scalar.document.ts
 
@@ -4002,13 +4003,13 @@ Words used on this page
 
 Term
 
-- A value defined only by its fields, like a price or an address, with no `id` of its own.
+- value object: A value defined only by its fields, like a price or an address, with no `id` of its own.
 
-- Putting a scalar inside another model as a field, so it is saved with that model.
+- embed: Putting a scalar inside another model as a field, so it is saved with that model.
 
-- The model that holds the scalar, such as `Product` holding a `Price`.
+- parent model: The model that holds the scalar, such as `Product` holding a `Price`.
 
-- A model with its own table, service, endpoints and screens, under `lib/<model>/`.
+- database module: A model with its own table, service, endpoints and screens, under `lib/<model>/`.
 
 When To Use A Scalar
 
@@ -4035,21 +4036,21 @@ It edits the value and nothing else. Reading the draft, saving it and submitting
 
 The work
 
-- Scalar — Price.Template
+Scalar — Price.Template
 
-- Parent — Product.Template
+Parent — Product.Template
 
-- Shell — Load.Edit
+Shell — Load.Edit
 
 - Editing the value
 
+  - Field.*: One control per scalar field, labelled from the scalar's dictionary.
+
+  - new cnst.Price().set(value): Builds the changed value and hands it to `onChange`.
+
 - Keeping and saving it
 
-Done here
-
-Not here
-
-Words used on this page
+  - st.use.productForm(): Reads the parent's draft, where the price is one field.
 
 ## Scalar.Unit.tsx
 
@@ -4072,21 +4073,21 @@ It draws the value and nothing else. The parent Unit decides the layout around i
 
 The work
 
-- Scalar Unit — Price.Unit
+Scalar Unit — Price.Unit
 
-- Parent Unit — Product.Unit
+Parent Unit — Product.Unit
 
-- Elsewhere — page · Zone · Util
+Elsewhere — page · Zone · Util
 
 - Drawing the value
 
+  - price.amount · price.currency: Formats the value the same way on every screen that shows it.
+
+  - l("price.amount"): Labels each field from the scalar's own dictionary.
+
 - Around the value
 
-- Never inside a Unit
-
-Done here
-
-Not here
+  - product.price: Picks the scalar field off the parent model and passes it down.
 
 ## service.abstract.md
 
@@ -4185,13 +4186,13 @@ Signing a token, streaming a stored file back to a browser, running an OAuth han
 
 A service module is that folder without the model.
 
-- Where It Lives — In `lib/_<service>`, with a leading underscore. The files inside drop it.
+- Where It Lives — In `lib/_<service>`, with a leading underscore. The files inside drop it. — `libs/util/lib/_security/security.service.ts`
 
-- What It Owns — An action or a capability instead of a table. Nothing to list, edit, or keep until tomorrow.
+- What It Owns — An action or a capability instead of a table. Nothing to list, edit, or keep until tomorrow. — `sign · encrypt · stream · authorize`
 
-- What It Leaves Out — No document file, no filters, no slices, no generated CRUD: there is no table behind it.
+- What It Leaves Out — No document file, no filters, no slices, no generated CRUD: there is no table behind it. — `no *.document.ts · no slice()`
 
-- How It Is Called — The same path a model module uses, minus the document layer.
+- How It Is Called — The same path a model module uses, minus the document layer. — `fetch → signal → service → srvkit/`
 
 Here is one call through a service module, using `_oauth` as the example:
 
@@ -4226,7 +4227,7 @@ Term
 
 - injection callback: The function passed to `serve()` that returns the service's dependencies.
 
-- Process roles: federation serves requests, batch runs background work and serves none.
+- federation, batch: Process roles: federation serves requests, batch runs background work and serves none.
 
 Both kinds of service start with `serve()`. What differs is the first argument:
 
@@ -4299,7 +4300,7 @@ Term
 
 - action: A method of the store class. Components call it as `st.do.<action>()`.
 
-- How a client component reads a key (`st.use.<key>()`) and runs an action (`st.do.<action>()`).
+- st.use, st.do: How a client component reads a key (`st.use.<key>()`) and runs an action (`st.do.<action>()`).
 
 - model store: A store bound to a model's signal, `store(sig.<model>, …)`. Lists, forms and CRUD are generated.
 
@@ -4439,17 +4440,17 @@ Which folder does my code go in?
 
 Code
 
-- apps/
+apps/
 
-- libs/
+libs/
 
-- pkgs/
+pkgs/
 
 - Runs as one product
 
-- Shared by several apps
+  - customer site · admin portal · brand app: A product you run and deploy on its own.
 
-- Akan itself, or an installable package
+  - business code one app uses: Its pages, modules and UI stay inside that app.
 
 ## Using Insight
 
@@ -4848,13 +4849,13 @@ Words used on this page
 
 Term
 
-- A named place where a framework component can be swapped, such as `Modal` or `InputPassword`.
+- slot: A named place where a framework component can be swapped, such as `Modal` or `InputPassword`.
 
 - _overrides.tsx: The manifest in a `page/` folder that binds slots for every route under that folder.
 
-- Your replacement. It takes the same props as the original, so no call site changes.
+- drop-in: Your replacement. It takes the same props as the original, so no call site changes.
 
-- Parts with behavior but no look of their own, such as `Dialog.Modal`.
+- headless parts: Parts with behavior but no look of their own, such as `Dialog.Modal`.
 
 - recipe: A function that returns the className for a variant, such as `buttonRecipe({ variant: "primary" })`.
 
@@ -4925,11 +4926,11 @@ Term
 
 - st.do.set<Field>On<Model>: The generated form setter. It writes one field of that draft.
 
-- Shows the `value` you pass and hands the next one to `onChange`. Only `Switch` can also run alone.
+- controlled: Shows the `value` you pass and hands the next one to `onChange`. Only `Switch` can also run alone.
 
-- An action the in-page agent may call. A form setter passed by reference becomes one.
+- agent tool: An action the in-page agent may call. A form setter passed by reference becomes one.
 
-- A name in `_overrides.tsx` that swaps a component for one route subtree.
+- override slot: A name in `_overrides.tsx` that swaps a component for one route subtree.
 
 Pick a control
 
@@ -4958,9 +4959,9 @@ Term
 
 - trigger: The element the user clicks to open the overlay, passed as `trigger` or as `children`.
 
-- You pass `open` and set it back in `onCancel`. Left out, the component keeps its own open state.
+- controlled: You pass `open` and set it back in `onCancel`. Left out, the component keeps its own open state.
 
-- A name in `_overrides.tsx` that swaps a component for one route subtree.
+- override slot: A name in `_overrides.tsx` that swaps a component for one route subtree.
 
 - scrim: A see-through layer behind a popover that catches the click outside it.
 
@@ -5022,19 +5023,19 @@ Words used on this page
 
 Term
 
-- The frame every page renders inside, holding the theme, fonts, locale, toasts and socket.
+- app shell: The frame every page renders inside, holding the theme, fonts, locale, toasts and socket.
 
 - Suspense: A React boundary that shows a fallback until the content inside it is ready.
 
 - serialized signal: Every endpoint with its arguments, guards and return model, shipped as `fetch.serializedSignal`.
 
-- An action a control publishes so the in-page agent can do what the user's click does.
+- agent tool: An action a control publishes so the in-page agent can do what the user's click does.
 
 Pick a component
 
 Component
 
-- Auto
+Auto
 
 ## Console
 
@@ -5143,7 +5144,7 @@ What it means for you
 
 - AKAN_LOG_TO_FILE=0: File logging is off, so collect stdout or set it to 1 and mount a log volume.
 
-- The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
+- ca-certificates, tzdata: The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
 
 - console.js: It ships next to `main.js`, so you open an operator console with `docker exec`.
 
@@ -5212,13 +5213,13 @@ Name
 
 What it does
 
-- app-deployment: Runs the app image in exactly one pod.
+- app-deployment: Runs the app image in exactly one pod. — Deployment
 
-- app-svc: Exposes the app on port 8282 inside the cluster.
+- app-svc: Exposes the app on port 8282 inside the cluster. — Service
 
-- app-ingress: Connects your domains to the Service and gets their TLS certificate.
+- app-ingress: Connects your domains to the Service and gets their TLS certificate. — Ingress
 
-- sqlite-data: Keeps the sqlite data in `/workspace/sqlite` across pod restarts.
+- sqlite-data: Keeps the sqlite data in `/workspace/sqlite` across pod restarts. — PersistentVolumeClaim
 
 The namespace picks the branch
 
@@ -5284,11 +5285,11 @@ Scripts
 
 A script is a TypeScript file that boots your app's server, does one job, and exits. Reach for it when the job should live in a file rather than at a prompt:
 
-- Command
+Command
 
-- Form
+Form
 
-- Good for
+Good for
 
 - `akan script` — A file in `script/` you can review and rerun — Seed data, migrations, checks, small maintenance fixes
 
@@ -5372,7 +5373,7 @@ Term
 
 - account: What the middleware leaves on the call. A guest's account holds neither `self` nor `me`.
 
-- The two identities an account can carry: `self` is the user, `me` is the admin.
+- self, me: The two identities an account can carry: `self` is the user, `me` is the admin.
 
 - scope: What a guard needs to answer: the caller alone (`account`) or the call's arguments (`resource`).
 
@@ -5438,11 +5439,11 @@ In Akan, edge computing means one Akan server calls another with the same genera
 
 Part
 
-- Decides what should happen and sends commands to the edge.
+- Cloud server: Decides what should happen and sends commands to the edge.
 
-- Does the work close to the device or user, and reports status back.
+- Edge server: Does the work close to the device or user, and reports status back.
 
-- fetch + { origin }: Connects both sides with typed signal calls; only `{ origin }` differs from a local call.
+- fetch + { origin }: Connects both sides with typed signal calls; only `{ origin }` differs from a local call. — Example: `await fetch.startJob(jobId, { origin: edgeOrigin });`
 
 Call Another Server
 
@@ -5481,7 +5482,7 @@ A file feature splits one upload in two. The bytes go to storage, and the databa
 
 Where
 
-- **File model.** Stores the File record with its name, url, size, status and progress.
+- file.constant.ts, file.document.ts: **File model.** Stores the File record with its name, url, size, status and progress.
 
 - file.signal.ts: **Upload endpoint.** Receives `Upload` files and hands them to the service.
 
@@ -5489,7 +5490,7 @@ Where
 
 - StorageAdaptorRole: **Storage adaptor.** Where the bytes live; the default `BlobStorage` writes to local disk.
 
-- **Store and UI.** Upload from a file input and show the result once it is `active`.
+- file.store.ts, File.Util.tsx: **Store and UI.** Upload from a file input and show the result once it is `active`.
 
 - localFile.getBlob: **Serve endpoint.** Ships in `@libs/util` and streams a local file back during development.
 
@@ -5712,19 +5713,19 @@ CRUD is usually the first screen you build: list records, open one, create one, 
 
 What you write
 
-- post.signal.ts: The slice. It decides which records this screen can read and edit.
+- post.signal.ts: The slice. It decides which records this screen can read and edit. — Example: `inAdmin: init({ guards: [Admin] })`
 
-- Post.Template.tsx: Draws the form fields. Create and edit use the same one.
+- Post.Template.tsx: Draws the form fields. Create and edit use the same one. — Example: `onChange={st.do.setTitleOnPost}`
 
-- Post.Zone.tsx: Connects the slice to UI behaviour with the `Load` and `Model` components.
+- Post.Zone.tsx: Connects the slice to UI behaviour with the `Load` and `Model` components. — Example: `<Load.Units init={init} renderItem={…} />`
 
 Each task maps to the components and generated store actions that do it:
 
-- Task
+Task
 
-- Store key or action
+Store key or action
 
-- Component
+Component
 
 - List — Load.Units — postListInAdmin
 
@@ -5795,7 +5796,7 @@ Term
 
 - articleForm: The store's copy of the record being written. `st.use.articleForm()` reads it.
 
-- A wrapper such as `Load.Edit` or `Model.Edit` that fills, opens and saves the form.
+- edit shell: A wrapper such as `Load.Edit` or `Model.Edit` that fills, opens and saves the form.
 
 - fetch.slice.<name>: Tells a shell which model to save and which list a new record joins.
 
@@ -5844,7 +5845,7 @@ What becomes what
 
 What you wrote
 
-- tool
+tool
 
 ## Deep Links
 
@@ -5866,9 +5867,9 @@ Two Kinds Of Link
 
 Deep link is the feature; `schemes` and `domains` are the two usual ways to build it. You can declare both:
 
-- Scheme link — shop://orders/1 — An app-only link. It needs no verification, so it is the easy one to test during development.
+- schemes: An app-only link. It needs no verification, so it is the easy one to test during development. — Scheme link — Example: `shop://orders/1`
 
-- Domain link — https://shop.example.com/orders/1 — Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs.
+- domains: Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs. — Domain link — Example: `https://shop.example.com/orders/1`
 
 Declare It
 
@@ -5985,11 +5986,11 @@ Words used on this page
 
 Term
 
-- Path segments after the language and basePath: `/chat` is 1, `/chat/[chatId]` is 2.
+- Route depth: Path segments after the language and basePath: `/chat` is 1, `/chat/[chatId]` is 2.
 
-- Space the device itself covers, such as the notch, the status bar and the home indicator.
+- Safe area: Space the device itself covers, such as the notch, the status bar and the home indicator.
 
-- Space the app reserves for its own bars, such as a navbar on top or a composer below.
+- Inset: Space the app reserves for its own bars, such as a navbar on top or a composer below.
 
 - keyboard accessory layer: A layer that rides on top of the software keyboard and moves with it.
 
@@ -6062,7 +6063,7 @@ What happens
 
 - order.dictionary.ts: 1. Declare: register each error sentence as an `[en, ko]` pair in `.error({})`.
 
-- 2. Throw: when a business rule fails, throw `new Err("order.error.notDraft")`.
+- order.document.ts, order.service.ts: 2. Throw: when a business rule fails, throw `new Err("order.error.notDraft")`.
 
 - HTTP · WebSocket: 3. Send: the server answers with the untranslated key, a status code and `data`.
 
@@ -6177,19 +6178,19 @@ Words used on this page
 
 Term
 
-- The engine that holds cached values: a SQLite file or Redis, picked by the database mode.
+- cache adaptor: The engine that holds cached values: a SQLite file or Redis, picked by the database mode.
 
 - topic: A namespace in front of the key, such as `previewTokens`. Topic plus key names one value.
 
-- `expireAt` is the moment a value disappears, as a Dayjs; `ttl` is its lifetime in milliseconds.
+- expireAt, ttl: `expireAt` is the moment a value disappears, as a Dayjs; `ttl` is its lifetime in milliseconds.
 
-- One of several server processes running the same app.
+- replica: One of several server processes running the same app.
 
 Four ways to cache
 
-- Document Cache — A key–value store every model class carries. Reach for it when the key is a record id.
+- Document Cache — A key–value store every model class carries. Reach for it when the key is a record id. — `this.articleCache.set(topic, id, value)`
 
-- Service Memory — A value or map a service keeps between calls, shared by every replica on the same cache.
+- Service Memory — A value or map a service keeps between calls, shared by every replica on the same cache. — `memory(String) · memory(Map, { of })`
 
 ## Image Optimization
 
@@ -6262,9 +6263,9 @@ What to split
 
 Component
 
-- lazy()
+lazy()
 
-- import
+import
 
 - Split it off
 
@@ -6288,9 +6289,9 @@ Mutating Data
 
 You need to bump a view counter, archive a batch of rows, or edit the one record a user opened. There are two ways to write, and the choice decides whether your hooks run.
 
-- Document Path — Loads the document, changes it and saves it, so hooks run and a removal takes its cascade.
+- Document Path — Loads the document, changes it and saves it, so hooks run and a removal takes its cascade. — `await this.updatePost(id, data);`
 
-- Query Write — Sends one atomic SQL statement and loads nothing. Fast and safe under races, but no hook runs.
+- Query Write — Sends one atomic SQL statement and loads nothing. Fast and safe under races, but no hook runs. — `await this.Post.updateOne(filter, change);`
 
 Which one runs what
 
@@ -6298,9 +6299,9 @@ If a hook or a cascade must run for each document, take a document path. The tab
 
 Term
 
-- Schema hooks, registered in `_onSchema`. They run whenever a document is saved or removed.
+- schema.pre, schema.post: Schema hooks, registered in `_onSchema`. They run whenever a document is saved or removed.
 
-- Service hooks. Only the service's `create<Model>`, `update<Model>` and `remove<Model>` run them.
+- _preCreate, _postCreate, _preUpdate, _postUpdate, _preRemove, _postRemove: Service hooks. Only the service's `create<Model>`, `update<Model>` and `remove<Model>` run them.
 
 - cascade: A removal declared on a field: documents linked to the removed one go with it.
 
@@ -6323,27 +6324,27 @@ Headings:
 
 Querying
 
-plain value
+In Akan, a database query is a named filter in `<model>.document.ts`. Services and slices call it by name instead of rebuilding the same condition in every place.
 
-Equals. Several keys in one object are joined with AND.
+Building Blocks
 
-- q.eq: Equals, spelled out. Same as a plain value.
+Piece
 
-- q.ne: Not equal.
+- filter(): Starts one named query inside `from(cnst.Task, (filter) => …)`.
 
-- q.oneOf: Equals any value in the list. An empty list matches nothing.
+- .arg(name, Type): A required input, such as `.arg("projectId", ID)`.
 
-- q.notOneOf: Equals none of the values. An empty list matches everything.
+- .opt(name, Type): An optional input. It comes after every `.arg()` and is `undefined` when left out.
 
-- q.gt: Greater than.
+- .query((...args, q) => …): Gets the inputs in declared order, then `q`, and returns the condition.
 
-- q.gte: Greater than or equal to.
+- q: The condition helper: `q.all`, `q.oneOf`, `q.between`, `q.when` and more.
 
-- q.lt: Less than.
+- sort: Named orders beside the built-in `latest`, `oldest` and `relevance`. Write `{}` if you add none.
 
-- q.lte: Less than or equal to.
+Basic Filter
 
-- q.between: Inside a range, both ends included.
+Start from the list your screen needs. A project page, for example, shows the tasks of one project that are not archived.
 
 ## Queueing
 
@@ -6400,11 +6401,11 @@ Realtime
 
 Realtime keeps one WebSocket open, so the server and the browser trade small events without a new request each time. Chat, games, live editors, dashboards and presence all run on it.
 
-- Tool
+Tool
 
-- Direction
+Direction
 
-- Use it for
+Use it for
 
 - message — Browser → server — e.g. read receipts, cursor moves, typing status, game input
 

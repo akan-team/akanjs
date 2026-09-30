@@ -894,8 +894,7 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
     .with(Req)
     .exec(async function (req) {
       const path = req.url.split("/localFile/getBlob/").slice(1).join("/localFile/getBlob/");
-      const fileStream = await this.localFileService.readLocalFile(path);
-      return new Response(fileStream);
+      return await this.localFileService.serveLocalFile(path);
     }),
 })) {}`}
           />
@@ -936,6 +935,26 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
                       <code>*</code>는 URL의 나머지 전부와 맞습니다.
                     </strong>{" "}
                     <code>exec</code>은 <code>req.url</code>에서 파일 경로를 다시 꺼내 읽습니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>The file goes out the way Bun sends a file.</strong> The service sets no Content-Type, so
+                    Bun types the body by its stored name and answers a Range with 206, and the response is neither
+                    buffered nor compressed. Every answer but a PDF's carries <code>nosniff</code> and a sandboxing
+                    Content-Security-Policy, so an uploaded HTML or SVG never runs on the API's origin.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>파일은 Bun이 파일을 보내는 방식 그대로 나갑니다.</strong> 서비스가 Content-Type을 달지
+                    않으므로 Bun이 저장된 이름으로 타입을 정하고 Range에는 206으로 답하며, 응답을 버퍼링하거나 압축하지
+                    않습니다. PDF를 뺀 모든 응답에 <code>nosniff</code>와 sandbox Content-Security-Policy가 붙으므로,
+                    업로드한 HTML이나 SVG가 API 오리진에서 실행되지 않습니다.
                   </>
                 ),
               })}

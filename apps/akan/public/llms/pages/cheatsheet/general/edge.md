@@ -26,11 +26,11 @@ In Akan, edge computing means one Akan server calls another with the same genera
 
 Part
 
-- Decides what should happen and sends commands to the edge.
+- Cloud server: Decides what should happen and sends commands to the edge.
 
-- Does the work close to the device or user, and reports status back.
+- Edge server: Does the work close to the device or user, and reports status back.
 
-- fetch + { origin }: Connects both sides with typed signal calls; only `{ origin }` differs from a local call.
+- fetch + { origin }: Connects both sides with typed signal calls; only `{ origin }` differs from a local call. — Example: `await fetch.startJob(jobId, { origin: edgeOrigin });`
 
 Call Another Server
 
@@ -52,13 +52,13 @@ A health check that pings one edge server:
 
 Options for a remote call
 
-- string — The server that receives the call: scheme, host and API prefix. — { origin: `https://${host}${getApiPrefix()}` }
+- origin (string, query · mutation · pubsub): The server that receives the call: scheme, host and API prefix. — Example: `` { origin: `https://${host}${getApiPrefix()}` } ``
 
-- number | false — 30000 — Milliseconds before the caller gives up; overrides the endpoint's `timeout`, and `false` waits.
+- timeout (number | false, default 30000, query · mutation): Milliseconds before the caller gives up; overrides the endpoint's `timeout`, and `false` waits.
 
-- string — Sent as `Authorization: Bearer <token>`, so the remote guards judge that account.
+- token (string, query · mutation): Sent as `Authorization: Bearer <token>`, so the remote guards judge that account.
 
-- () => void — Runs after the room is subscribed again following a dropped connection.
+- onResync (() => void, pubsub): Runs after the room is subscribed again following a dropped connection.
 
 Send Commands
 
@@ -128,7 +128,7 @@ Data
 
 - pubsub(Binary): **Telemetry, video frames.** Binary websocket frames; a slow subscriber gets the newest one.
 
-- **Huge streams.** Add one only when `pubsub(Binary)` is not enough.
+- A separate transport: **Huge streams.** Add one only when `pubsub(Binary)` is not enough.
 
 **Bytes skip JSON.** When the whole return is `Binary`, each payload goes out as a websocket binary frame and arrives as a `Uint8Array`.
 
@@ -144,11 +144,11 @@ Declare both database modes in `akan.config.ts`:
 
 Each deployment of the image then says where it runs and where its data lives:
 
-- Setting
+Setting
 
-- Edge site
+Edge site
 
-- Cloud cluster
+Cloud cluster
 
 - `AKAN_PUBLIC_OPERATION_MODE` — `edge` — `cloud`, the image default
 

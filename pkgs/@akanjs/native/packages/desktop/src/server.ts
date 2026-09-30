@@ -12,7 +12,7 @@
 //   only its own CA list unless told to use the system's, which is where an organisation's CAs are.
 // - The port of the last session comes first, so a URL registered somewhere stays valid while it is
 //   free. A server that exits before its first ready, while the page has not been handed its URL,
-//   is started again on a fresh port: another program may have taken the one picked.
+//   is started again on that port if it is still free, else on a fresh one: another program may have taken it.
 // - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up. Before its first
 //   ready it is restarted BOOT_RESTART_DELAY apart, so a server that cannot boot gives up while the window
 //   still waits for it (READY_TIMEOUT) and the page opens with the alert, not with a URL nobody answers.
@@ -22,12 +22,24 @@
 //   IPC channel close and stops itself (akanjs AkanServer); on Windows the job object ends it at once.
 // - macOS and Linux: the server leads its own process group, and whatever it started that is still
 //   there once it exited is ended with it (Windows: the job object).
+// - Its standard error, and its standard output until it is ready, also go to <server data>/runtime/logs/
+//   server-output.log: a server that fails before it listens has written nothing to its own log file yet.
 
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import { resolveGrant } from "./grants.ts";
+import type { DesktopServerState, DesktopServerStatus } from "./plugin.ts";
 
 export interface ServerManifest {
   /** The file in resources/server that starts the server. */
@@ -114,6 +126,8 @@ export const MAX_FAILURES = 5;
 export const BOOT_RESTART_DELAY = 250;
 /** A run that stayed up this long was healthy: its crash starts the count again. */
 export const HEALTHY_RUN = 60_000;
+/** server-output.log moves to server-output.log.1 past this size. */
+export const OUTPUT_LOG_LIMIT = 1 << 20;
 
 export interface ServerProcess {
   readonly exited: Promise<number | null>;
@@ -144,6 +158,8 @@ export interface DesktopServerOptions {
   freePort?(preferred?: number): Promise<number>;
   /** The server gave up: MAX_FAILURES crashes in a row, or it could not start at all. */
   onGiveUp?(message: string): void;
+  /** Every change of `state`. */
+  onState?(state: DesktopServerState): void;
   readyTimeout?: number;
   stopGrace?: number;
   restartDelay?(failures: number, everReady: boolean): number;
@@ -158,7 +174,39 @@ export interface DesktopServer {
   start(): Promise<{ url: string; ready: boolean }>;
   /** Settles once: true at the first ready, false when the server gave up or stopped before that. */
   readonly ready: Promise<boolean>;
+  /** Where the server is now; `ready` only tells the first answer. */
+  readonly state: DesktopServerState;
   stop(): Promise<void>;
+}
+
+/** What plugins see of the server (ctx.server) from their setup on: the plugin host starts it only after that. */
+export function createServerStatus() {
+  let settle = (_ready: boolean) => {};
+  const ready = new Promise<boolean>((resolve) => (settle = resolve));
+  let state: DesktopServerState = "starting";
+  const listeners = new Set<(state: DesktopServerState) => void>();
+  const status: DesktopServerStatus = {
+    ready,
+    get state() {
+      return state;
+    },
+    onState(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  const setState = (next: DesktopServerState) => {
+    if (next === state) return;
+    state = next;
+    for (const listener of listeners) {
+      try {
+        listener(next);
+      } catch (error) {
+        console.error("[akan-native] a server state listener failed", error);
+      }
+    }
+  };
+  return { status, settle: (value: boolean) => settle(value), setState };
 }
 
 export function readServerManifest(resources: string): ServerManifest | null {
@@ -183,6 +231,20 @@ export function serverArgv(execPath: string, resources: string, entry: string): 
     `--config=${join(resources, "server.bunfig.toml")}`,
     join(resources, "server", entry),
   ];
+}
+
+/**
+ * `key`'s value in `env`. Windows names a variable in any case (`Path`), and the plugin host's copy of process.env
+ * matches a name only in the case it has, where the process's own env ignores case.
+ */
+export function envValue(
+  env: Record<string, string | undefined>,
+  key: string,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (env[key] !== undefined || platform !== "win32") return env[key];
+  const name = Object.keys(env).find((candidate) => candidate.toUpperCase() === key.toUpperCase());
+  return name === undefined ? undefined : env[name];
 }
 
 /** `dir` first on a PATH, once: a relaunched app inherits the PATH its predecessor already extended. */
@@ -218,7 +280,7 @@ export function serverEnv(
 ): Record<string, string> {
   const system: Record<string, string> = {};
   for (const key of SYSTEM_ENV_KEYS) {
-    const value = env[key];
+    const value = envValue(env, key, platform);
     if (value === undefined) continue;
     //? Windows variables have one name whatever its case: http_proxy is HTTP_PROXY, twice in one block.
     if (platform === "win32" && Object.keys(system).some((k) => k.toUpperCase() === key.toUpperCase())) continue;
@@ -280,7 +342,24 @@ const listenOn = (port: number) =>
     });
   });
 
-const loopbackPort = (preferred?: number) => (preferred ? listenOn(preferred).catch(() => listenOn(0)) : listenOn(0));
+const answers = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    const done = (answered: boolean) => {
+      socket.destroy();
+      resolve(answered);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(500, () => done(false));
+  });
+
+//? macOS and Windows let 127.0.0.1:P bind beside another program's wildcard *:P, whose clients then reach this
+//? server instead: a port something already answers on is taken, whatever the bind says.
+const loopbackPort = async (preferred?: number) => {
+  const kept = preferred && !(await answers(preferred)) ? await listenOn(preferred).catch(() => 0) : 0;
+  return kept || listenOn(0);
+};
 
 const validPort = (port: number) => Number.isInteger(port) && port > 0 && port < 65536;
 
@@ -359,6 +438,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
   const argv = serverArgv(options.execPath ?? process.execPath, options.resources, options.manifest.entry);
   const grace = options.stopGrace ?? STOP_GRACE;
   const logs = join(dataDir, "runtime", "logs");
+  const outputLog = join(logs, "server-output.log");
+  let outputSize = -1;
   let env: Record<string, string> = {};
   let secret = "";
   let port = 0;
@@ -374,6 +455,34 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
   const crashedGroups = new Set<NonNullable<ServerProcess["killGroup"]>>();
   let settleReady = (_ready: boolean) => {};
   const ready = new Promise<boolean>((resolve) => (settleReady = resolve));
+  let state: DesktopServerState = "starting";
+  const setState = (next: DesktopServerState) => {
+    if (next === state || state === "stopped") return;
+    state = next;
+    try {
+      options.onState?.(next);
+    } catch (error) {
+      console.error("[akan-native] the server's state handler failed", error);
+    }
+  };
+
+  const record = (line: string) => {
+    try {
+      if (outputSize < 0) {
+        mkdirSync(logs, { recursive: true });
+        outputSize = existsSync(outputLog) ? statSync(outputLog).size : 0;
+      }
+      if (outputSize > OUTPUT_LOG_LIMIT) {
+        renameSync(outputLog, `${outputLog}.1`);
+        outputSize = 0;
+      }
+      const text = `${new Date().toISOString()} ${line}\n`;
+      appendFileSync(outputLog, text);
+      outputSize += Buffer.byteLength(text);
+    } catch {
+      // The console still has the line.
+    }
+  };
 
   const configure = () => {
     env = serverEnv(options.manifest, {
@@ -388,6 +497,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
   const giveUp = (message: string) => {
     gaveUp = true;
     settleReady(false);
+    setState("gaveUp");
+    record(`[akan-native] ${message}`);
     try {
       options.onGiveUp?.(message);
     } catch (error) {
@@ -397,7 +508,10 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
 
   const failed = (why: string) => {
     failures++;
-    console.error(`[akan-native] the server ${why} (${failures} of ${MAX_FAILURES} in a row)`);
+    const line = `[akan-native] the server ${why} (${failures} of ${MAX_FAILURES} in a row)`;
+    console.error(line);
+    record(line);
+    setState(everReady ? "restarting" : "starting");
     if (failures >= MAX_FAILURES)
       return giveUp(
         `The app's server stopped ${MAX_FAILURES} times in a row and is not restarted again. Its logs are in ${logs}.`,
@@ -415,6 +529,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
         if (type === "file.resolve") return answerGrant(child, message as { id?: unknown; grant?: unknown });
         if (type !== "ready" || readyAt !== null) return;
         readyAt = now();
+        setState("up");
         if (!everReady) {
           everReady = true;
           settleReady(true);
@@ -425,7 +540,10 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
           // The next session picks a port of its own.
         }
       },
-      onLine: (line, stream) => (stream === "stderr" ? console.error : console.info)(`[server] ${line}`),
+      onLine: (line, stream) => {
+        (stream === "stderr" ? console.error : console.info)(`[server] ${line}`);
+        if (stream === "stderr" || readyAt === null) record(line);
+      },
     });
     proc = child;
     child.exited.then(
@@ -453,7 +571,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
     if (stopping || gaveUp) return;
     try {
       if (!everReady && !handedOut && failures > 0) {
-        const fresh = await pickPort();
+        const fresh = await pickPort(port);
         if (stopping || gaveUp) return;
         if (!handedOut && fresh !== port) {
           port = fresh;
@@ -469,6 +587,9 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
 
   return {
     ready,
+    get state() {
+      return state;
+    },
     async start() {
       const kept = lastPort(dataDir);
       try {
@@ -504,6 +625,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       stopping = true;
       clearTimeout(restartTimer);
       settleReady(false);
+      setState("stopped");
       for (const group of crashedGroups) group("SIGKILL");
       crashedGroups.clear();
       const child = proc;

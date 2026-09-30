@@ -81,11 +81,11 @@ Inside the native shell, Akan uses the CSR router and mobile page frame. Page tr
 
 The frame settings a page can declare in .config():
 
-- "none" | "fade" | "bottomUp" | "stack" | "scaleOut" — Controls CSR page motion so mobile navigation can feel closer to native apps.
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut"): Controls CSR page motion so mobile navigation can feel closer to native apps.
 
-- boolean | "top" | "bottom" | { top, bottom } — Handles OS system areas such as notches, home indicators, and Android system bars.
+- safeArea (boolean | "top" | "bottom" | { top, bottom }): Handles OS system areas such as notches, home indicators, and Android system bars.
 
-- number | boolean — Reserves room in px for app chrome such as navbars, tabs and fixed actions; true reserves 48px.
+- topInset / bottomInset (number | boolean): Reserves room in px for app chrome such as navbars, tabs and fixed actions; true reserves 48px.
 
 **Keyboard accessory anchoring.** A `BottomInset` with `keyboardSticky` can also opt into `contentAnchor="bottom"` so scrollable content resizes with the keyboard while preserving the content bottom edge.
 

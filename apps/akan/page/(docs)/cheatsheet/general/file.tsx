@@ -425,6 +425,26 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>
+            A link goes through <code>resolveServerUrl</code>.
+          </strong>{" "}
+          The stored <code>url</code> is relative to the server, and a page a native shell or a desktop app serves is on
+          another origin. <code>Image</code> already resolves it.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>
+            링크는 <code>resolveServerUrl</code>을 거칩니다.
+          </strong>{" "}
+          저장된 <code>url</code>은 서버 기준 상대 경로이고, 네이티브 셸이나 데스크톱 앱이 띄운 페이지는 origin이
+          다릅니다. <code>Image</code>는 이미 이렇게 풀어 씁니다.
+        </>
+      ),
+    }),
   ];
 
   const generatedRows = [
@@ -1011,6 +1031,7 @@ export class FileStore extends store(sig.file, () => ({
           title="apps/myapp/lib/file/File.Util.tsx"
           code={`"use client";
 import { st, usePage } from "@apps/myapp/client";
+import { resolveServerUrl } from "akanjs/client";
 import { Image } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
 
@@ -1029,7 +1050,7 @@ export const Upload = () => {
           {uploadedFile.mimetype.startsWith("image/") ? (
             <Image src={uploadedFile.url} alt={uploadedFile.filename} />
           ) : null}
-          <a href={uploadedFile.url} download={uploadedFile.filename}>
+          <a href={resolveServerUrl(uploadedFile.url)} download={uploadedFile.filename}>
             {l.trans({ en: "Download", ko: "다운로드" })}
           </a>
         </>

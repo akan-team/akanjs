@@ -27,13 +27,13 @@ Signing a token, streaming a stored file back to a browser, running an OAuth han
 
 A service module is that folder without the model.
 
-- Where It Lives — In `lib/_<service>`, with a leading underscore. The files inside drop it.
+- Where It Lives — In `lib/_<service>`, with a leading underscore. The files inside drop it. — `libs/util/lib/_security/security.service.ts`
 
-- What It Owns — An action or a capability instead of a table. Nothing to list, edit, or keep until tomorrow.
+- What It Owns — An action or a capability instead of a table. Nothing to list, edit, or keep until tomorrow. — `sign · encrypt · stream · authorize`
 
-- What It Leaves Out — No document file, no filters, no slices, no generated CRUD: there is no table behind it.
+- What It Leaves Out — No document file, no filters, no slices, no generated CRUD: there is no table behind it. — `no *.document.ts · no slice()`
 
-- How It Is Called — The same path a model module uses, minus the document layer.
+- How It Is Called — The same path a model module uses, minus the document layer. — `fetch → signal → service → srvkit/`
 
 Here is one call through a service module, using `_oauth` as the example:
 
@@ -61,31 +61,47 @@ This workspace has eight service modules, and reading them is faster than readin
 
 Module
 
-- _security: JWT signing and verification, AES encryption, refresh-token minting. Server-only: no store, no UI.
+- _security: JWT signing and verification, AES encryption, refresh-token minting. Server-only: no store, no UI. — Example: `libs/util/lib/_security`
 
-- _oauth: The OAuth 2.1 authorization server that issues the tokens `/mcp` accepts.
+- _oauth: The OAuth 2.1 authorization server that issues the tokens `/mcp` accepts. — Example: `libs/shared/lib/_oauth`
 
-- _doc: Serves the Akan.js docs to agents over MCP. It reads a generated folder and writes nothing.
+- _doc: Serves the Akan.js docs to agents over MCP. It reads a generated folder and writes nothing. — Example: `apps/akan/lib/_doc`
 
-- _localFile: Streams a public blob back as an HTTP `Response` from a custom path. Four files, one endpoint.
+- _localFile: Streams a public blob back as an HTTP `Response` from a custom path. Four files, one endpoint. — Example: `libs/util/lib/_localFile`
 
-- A library's root container: an empty batch service and a client store other modules share. — libs/util/lib/_util libs/shared/lib/_shared
+- _util, _shared: A library's root container: an empty batch service and a client store other modules share.
 
-- An app's root container. `_akan` is still the empty scaffold; `_minimal` adds four bench endpoints. — apps/akan/lib/_akan apps/minimal/lib/_minimal
+- _akan, _minimal: An app's root container. `_akan` is still the empty scaffold; `_minimal` adds four bench endpoints.
 
 Only four files are in every one of them. Here is which of the eight carry the optional ones:
 
-- store — *.store.ts
+store — *.store.ts
 
-- test — *.test.ts
+test — *.test.ts
 
-- Util — *.Util.tsx
+Util — *.Util.tsx
 
-- Zone — *.Zone.tsx
+Zone — *.Zone.tsx
 
 - Feature modules
 
+  - _security
+
+  - _oauth
+
+  - _doc: Tests its service: `doc.service.test.ts`.
+
+  - _localFile
+
 - Root containers
+
+  - _util
+
+  - _shared
+
+  - _akan: The store is the empty scaffold.
+
+  - _minimal: The store is the empty scaffold.
 
 Has the file
 
@@ -101,9 +117,29 @@ The Two Poles
 
 Put a small feature module, `_security`, beside the largest, `_oauth`: both have the same five kinds of file. What changes is how much each file holds:
 
-- _security: Its service holds two secrets and hands back signed or encrypted strings. Nothing on screen renders it, so there is no store and no component.
+- _security: Its service holds two secrets and hands back signed or encrypted strings. Nothing on screen renders it, so there is no store and no component. — The Floor
 
-- _oauth: A whole authorization server, and still no store: every screen it needs is a route in `libs/shared/page/oauth`, not a section of another screen.
+  - abstract.md — What it owns, and four rules
+
+  - dictionary.ts — Endpoint labels
+
+  - service.ts — About 75 lines holding two secrets
+
+  - signal.ts — One mutation, `encrypt`
+
+  - signal.test.ts — Boots the barrel and calls it
+
+- _oauth: A whole authorization server, and still no store: every screen it needs is a route in `libs/shared/page/oauth`, not a section of another screen. — The Ceiling
+
+  - abstract.md — Eight rules and a workflow chain
+
+  - dictionary.ts — Labels in `.endpoint()`, error keys in `.error()`, consent-page phrases in `.translate()`
+
+  - service.ts — About 500 lines: PKCE, rotation, revocation
+
+  - signal.ts — 10 endpoints, 5 of them at the origin root
+
+  - signal.test.ts — The protocol, end to end
 
 **A service module with state does not grow a table for it.** `_oauth` keeps every client, request and grant in `memory(Map, &#123; of: cnst.OauthGrant &#125;)` caches, and each shape is a scalar under `libs/shared/lib/__scalar/`. A scalar travels as JSON text, so the same declaration round-trips through the Redis and sqlite caches unchanged.
 
@@ -115,21 +151,21 @@ Always There
 
 File
 
-- <service>.abstract.md: A title, one sentence on what it owns, and `## Rules`: invariants the code cannot show.
+- <service>.abstract.md: A title, one sentence on what it owns, and `## Rules`: invariants the code cannot show. — Example: `libs/shared/lib/_oauth/oauth.abstract.md`
 
-- <service>.dictionary.ts: Built with `serviceDictionary`: endpoint labels, error keys and UI phrases.
+- <service>.dictionary.ts: Built with `serviceDictionary`: endpoint labels, error keys and UI phrases. — Example: `libs/shared/lib/_oauth/oauth.dictionary.ts`
 
 - <service>.service.ts: The workflow itself, built with `serve()` naming the module, even when the body is empty.
 
-- <service>.signal.ts: Two classes, `<X>Internal` and `<X>Endpoint`. No Slice, because there is no table to page through.
+- <service>.signal.ts: Two classes, `<X>Internal` and `<X>Endpoint`. No Slice, because there is no table to page through. — Example: `libs/util/lib/_security/security.signal.ts`
 
 Only When Needed
 
-- <service>.store.ts: Only when the feature has client state. Four of the eight have one; two are empty scaffolds.
+- <service>.store.ts: Only when the feature has client state. Four of the eight have one; two are empty scaffolds. — Example: `libs/util/lib/_util/util.store.ts`
 
-- <service>.signal.test.ts: Boots the barrel and calls the endpoints through `fetch`. `_security` and `_oauth` have one.
+- <service>.signal.test.ts: Boots the barrel and calls the endpoints through `fetch`. `_security` and `_oauth` have one. — Example: `libs/shared/lib/_oauth/oauth.signal.test.ts`
 
-- Rare: none of the eight has one. The two UI pages of this section explain why.
+- <Service>.Util.tsx, <Service>.Zone.tsx: Rare: none of the eight has one. The two UI pages of this section explain why.
 
 Ship The Empty Files
 
@@ -143,9 +179,9 @@ The rule that most often looks like a mistake: a scaffold file stays in the tree
 
 The Empty Forms You Will Meet
 
-- signal.ts: The builder callback returns an empty object, not nothing.
+- signal.ts: The builder callback returns an empty object, not nothing. — Example: `export class XInternal extends internal(srv.x, () => ({})) {}`
 
-- service.ts: A root container with no methods still declares its service.
+- service.ts: A root container with no methods still declares its service. — Example: `export class UtilService extends serve("util" as const, { serverMode: "batch" }, () => ({})) {}`
 
 - store.ts: Exactly two comments, `// state` and `// action`, mark where each half goes.
 
@@ -179,6 +215,29 @@ Client state, only when the feature has any.
 
 ## Code Examples
 
+### _util, _shared
+
+```ts
+libs/util/lib/_util
+libs/shared/lib/_shared
+```
+
+### _akan, _minimal
+
+```ts
+apps/akan/lib/_akan
+apps/minimal/lib/_minimal
+```
+
+### <service>.service.ts
+
+```ts
+export class SecurityService extends serve("security" as const, ({ use }) => ({
+  jwtSecret: use<string>(),
+  aeskey: use<string>(),
+})) {}
+```
+
 ### libs/util/lib/_util/util.signal.ts
 
 ```ts
@@ -189,6 +248,16 @@ import * as srv from "../srv";
 export class UtilInternal extends internal(srv.util, () => ({})) {}
 
 export class UtilEndpoint extends endpoint(srv.util, () => ({})) {}
+```
+
+### store.ts
+
+```ts
+export class AkanStore extends store("akan" as const, () => ({
+  // state
+})) {
+  // action
+}
 ```
 
 ## Agent Notes

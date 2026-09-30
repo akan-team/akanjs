@@ -14,12 +14,6 @@
 
 Cloud CLI
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
-
-Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
-
-- where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
-
 Five optional commands for signing in to Akan Cloud, updating the framework and moving env values. Internal deployment commands are left out of this page on purpose.
 
 Words Used on This Page
@@ -28,11 +22,11 @@ Term
 
 - Akan Cloud: The service at `https://cloud.akanjs.com` that holds your account, env values and tunnels.
 
-- Each app's and library's `env/env.client.<env>.ts` and `env/env.server.<env>.ts`, kept out of git.
+- env values: Each app's and library's `env/env.client.<env>.ts` and `env/env.server.<env>.ts`, kept out of git.
 
 - AKAN_WORKSPACE_ID: The cloud workspace id in the root `.env`, which decides where env values are kept.
 
-- A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
+- SCP server: A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
 
 Where Each Command Connects
 
@@ -42,9 +36,19 @@ This machine only
 
 - Account
 
+  - login: Signs in through the browser and saves the session.
+
+  - logout: Deletes the saved session without contacting the cloud.
+
 - Framework
 
+  - update: Installs from npm, or from a local registry with `--registry local`.
+
 - Env values
+
+  - download-env: Pulls env values from Akan Cloud or an SCP server, whichever the workspace uses.
+
+  - upload-env: Pushes the local env values to that same place for the next `download-env`.
 
 Connects
 
@@ -88,6 +92,8 @@ Share a local app on a public URL with the `akan login` session.
 
 Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the browser and waits until you finish there.
 
+- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+
 - browser: Prints the sign-in URL and a QR code and opens it; visit the URL yourself if no browser opens.
 
 - time limit: Gives up after 10 minutes without a sign-in, so run it again.
@@ -103,6 +109,8 @@ Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the bro
 `akan logout [--host <host>]`
 
 Sign out of Akan Cloud on this machine. Use it to switch accounts, or to take this machine's cloud access away.
+
+- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
 
 - clears: Only the session saved for that `--host`, leaving other hosts signed in.
 
@@ -128,6 +136,10 @@ Move the global `akan` CLI and this workspace's Akan.js packages to the newest v
 
 Download the env values of every app and library in this workspace. Run it after cloning and whenever someone uploads a change, because env values are never committed.
 
+- --host (String, default https://cloud.akanjs.com): Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
+
+- where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
+
 - files: Unpacked at the workspace root, over the same paths `upload-env` packed.
 
 - first SCP run: Asks for a server name and host, plus an optional username and SSH port.
@@ -137,6 +149,10 @@ Download the env values of every app and library in this workspace. Run it after
 `akan upload-env [--host <host>]`
 
 Upload the env values of every app and library to where `download-env` reads from. The stored archive is replaced whole, so download first instead of uploading a stale local copy.
+
+- --host (String, default https://cloud.akanjs.com): Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
+
+- where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
 
 - env files: `env/env.client.<env>.ts` and `env/env.server.<env>.ts`, without the `type` and `example` files.
 

@@ -33,6 +33,8 @@ const BROTLI_QUALITY = 4;
 const GZIP_LEVEL = 6;
 /** Under a KB the framing bytes and the call cost more than the repetition they remove. */
 const MIN_COMPRESS_BYTES = 1024;
+//? Compressing blocks the event loop, ~6 ms (br) and ~12 ms (gzip) per MiB of JSON on an M-series core.
+const MAX_COMPRESS_BYTES = 4 * 1024 * 1024;
 
 const compressBody = (bytes: Uint8Array, encoding: ContentEncoding) =>
   encoding === "br"
@@ -44,9 +46,19 @@ const compressBody = (bytes: Uint8Array, encoding: ContentEncoding) =>
       })
     : gzipSync(bytes, { level: GZIP_LEVEL });
 
+//? A Range is Bun.serve's to answer: it sends a file body it gets untouched as a 206 of exactly those bytes.
+const isWholeBody = (req: Request, response: Response) =>
+  !req.headers.has("range") &&
+  !response.headers.has("content-range") &&
+  response.status >= 200 &&
+  response.status < 300 &&
+  response.status !== 206;
+
 // Buffers the body: never pass a streamed response (SSR HTML, RSC flight, SSE) — it would hold the whole render.
 export const compressResponse = async (req: Request, response: Response): Promise<Response> => {
   if (response.headers.has("content-encoding") || !response.body) return response;
+  if (!isWholeBody(req, response)) return response;
+  if (Number(response.headers.get("content-length")) > MAX_COMPRESS_BYTES) return response;
   if (!isCompressibleContentType(response.headers.get("content-type") ?? "")) return response;
   if (process.env.AKAN_HTTP_COMPRESS === "false" || process.env.AKAN_HTTP_COMPRESS === "0") return response;
   const acceptEncoding = req.headers.get("accept-encoding") ?? "";

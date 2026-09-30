@@ -86,7 +86,7 @@ Registers the Akan MCP server in the project config of Cursor, Claude Code and C
 
 Calls one Akan MCP tool from the terminal and prints its JSON result. It runs the same code as the server without the stdio protocol, so it shows exactly what an agent would get.
 
-- tool (String): The tool name, such as `list_apps` or `plan_workflow`.
+- tool (String, required): The tool name, such as `list_apps` or `plan_workflow`.
 
 - --mode (String, default readonly, readonly | plan | apply): The mode to call in. A tool that the mode does not carry fails.
 
@@ -158,25 +158,25 @@ Level
 
 Meaning
 
-- An app root holds a file or folder that the app layout does not allow.
+- `app-root-unknown-entry` — error — An app root holds a file or folder that the app layout does not allow.
 
-- The same check for a library root.
+- `lib-root-unknown-entry` — error — The same check for a library root.
 
-- A module lacks a required file, such as its `*.signal.ts`.
+- `module-shape-invalid` — error — A module lacks a required file, such as its `*.signal.ts`.
 
-- warning (error with `--strict`) — A module has no `*.abstract.md`.
+- `module-abstract-missing` — warning (error with `--strict`) — A module has no `*.abstract.md`.
 
-- A field in `*.constant.ts` has no label in the module's dictionary.
+- `dictionary-label-missing` — warning — A field in `*.constant.ts` has no label in the module's dictionary.
 
-- `AGENTS.md` was written by an older framework release than the one installed.
+- `agent-guide-stale` — warning — `AGENTS.md` was written by an older framework release than the one installed.
 
-- `AGENTS.md` carries no version stamp, so its age is unknown.
+- `agent-guide-unstamped` — warning — `AGENTS.md` carries no version stamp, so its age is unknown.
 
-- A recipe list in an `AGENTS.md` misses a recipe or names one that is gone.
+- `recipe-index-stale` — error — A recipe list in an `AGENTS.md` misses a recipe or names one that is gone.
 
-- An inline `className` repeats a recipe's look instead of using the recipe.
+- `recipe-inline-duplicate` — warning — An inline `className` repeats a recipe's look instead of using the recipe.
 
-- warning (`--ios` only) — A mobile target still uses a placeholder bundle id.
+- `mobile-appid-placeholder` — warning (`--ios` only) — A mobile target still uses a placeholder bundle id.
 
 **doctor never fails the process.** It exits with code 0 even when the status is `failed`, so a CI gate must read `status` from `--format json`.
 
@@ -188,9 +188,43 @@ Tool
 
 - Read the workspace
 
+  - inspect_akan_context: Typed, read-only context lookup. Agents are told to read with this first.
+
+  - get_workspace_summary: The same summary `akan context --format json` prints.
+
+  - list_apps: The apps, each with its modules.
+
+  - list_modules: Every module across apps and libraries.
+
+  - get_module_context: One module with its abstract body. Pass `app` when two apps share the module name.
+
+  - get_guideline: One Akan guideline by name, the same text as `akan guideline show`.
+
+  - explain_command: A short explanation of one `akan` command.
+
+  - doctor_workspace: The `akan doctor` result. Given a plan or changed files, it separates old problems from new.
+
+  - get_validation_contract: The validation commands, the report formats and the tool list of each mode.
+
 - Plan a change
 
+  - list_workflows: The workflows that exist.
+
+  - explain_workflow: One workflow's inputs, predicted changes and checks.
+
+  - plan_workflow: Writes a plan file and returns its `planPath` for `apply_workflow`.
+
 - Apply and repair
+
+  - apply_workflow: Carries out a stored plan and names what to validate next.
+
+  - run_validation: Runs the validation commands for a plan or an apply report.
+
+  - repair_generated: Refreshes generated files, like `akan repair generated`.
+
+  - repair_imports: Organizes imports, like `akan repair imports`.
+
+  - repair_module_shape: Reports what a module is missing, like `akan repair module-shape`.
 
 Offered in this mode
 

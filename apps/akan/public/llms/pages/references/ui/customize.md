@@ -28,13 +28,13 @@ Words used on this page
 
 Term
 
-- A named place where a framework component can be swapped, such as `Modal` or `InputPassword`.
+- slot: A named place where a framework component can be swapped, such as `Modal` or `InputPassword`.
 
 - _overrides.tsx: The manifest in a `page/` folder that binds slots for every route under that folder.
 
-- Your replacement. It takes the same props as the original, so no call site changes.
+- drop-in: Your replacement. It takes the same props as the original, so no call site changes.
 
-- Parts with behavior but no look of their own, such as `Dialog.Modal`.
+- headless parts: Parts with behavior but no look of their own, such as `Dialog.Modal`.
 
 - recipe: A function that returns the className for a variant, such as `buttonRecipe({ variant: "primary" })`.
 
@@ -42,9 +42,9 @@ Two kinds of slot
 
 One manifest takes both kinds. Swap a recipe when only the look is wrong, and a component when the markup is.
 
-- Component slot — 46 slots · typed by AkanUiOverrides — Replaces the whole component (markup, classes, and any behavior you do not reuse) with one you write in `apps/<app>/ui/`. Every call site and its props stay.
+- Component slot — 46 slots · typed by AkanUiOverrides — Replaces the whole component (markup, classes, and any behavior you do not reuse) with one you write in `apps/<app>/ui/`. Every call site and its props stay. — `override({ Modal: BrandModal })`
 
-- Recipe slot — 3 slots · typed by AkanUiRecipes — Replaces only the classes, with a recipe in `apps/<app>/ui/Recipe/`. Call sites, markup, async states, focus handling and a11y stay.
+- Recipe slot — 3 slots · typed by AkanUiRecipes — Replaces only the classes, with a recipe in `apps/<app>/ui/Recipe/`. Call sites, markup, async states, focus handling and a11y stay. — `override({ recipes: { button: neonButtonRecipe } })`
 
 **Keep `_overrides.tsx` logic-free.** It needs no `"use client"`: write imports and a single `export default override({ … })`, nothing else.
 
@@ -82,11 +82,11 @@ Export
 
 - AkanUiRecipes: Maps each recipe slot (`button`, `badge`, `input`) to its className factory type.
 
-- The shape of a whole manifest, and the union of slot names.
+- AkanUiOverrideManifest, AkanUiOverrideName: The shape of a whole manifest, and the union of slot names.
 
 - Dialog: Headless parts (`.Modal`, `.Title`, `.Content`, `.Action`, `.Trigger`) to build a `Modal` from.
 
-- The shipped defaults of the eleven chat-part slots and both Toast slots, to wrap instead of rewrite.
+- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToast, DefaultToastItem: The shipped defaults of the eleven chat-part slots and both Toast slots, to wrap instead of rewrite.
 
 - agentAttrs: The `data-akan-*` attributes a default control carries for the agent; spread them on a replacement.
 
@@ -94,7 +94,7 @@ Export
 
 - UiOverrideProvider: Mounts an override map by hand around any subtree, merged over the route's manifest.
 
-- Read the component or recipe bound to a slot in this subtree, or `undefined`.
+- useUiOverride, useUiRecipe: Read the component or recipe bound to a slot in this subtree, or `undefined`.
 
 - createOverridable: Wraps a component so it resolves through a named slot and falls back to the default.
 
@@ -128,31 +128,31 @@ The framework has the 46 slots below; a component not listed cannot be replaced.
 
 Slot
 
-- Standalone components. The key is the name you render: `<Modal>` binds `Modal`.
+- Badge, Modal, Empty, Pagination, Popconfirm, Dropdown, Table, Menu, Tooltip, Unauthorized: Standalone components. The key is the name you render: `<Modal>` binds `Modal`.
 
-- Generic components. Your replacement is written without generics; see Generic Components.
+- Button, Select: Generic components. Your replacement is written without generics; see Generic Components.
 
-- `Input` and its five leaves, `Input.TextArea` through `Input.Checkbox`.
+- Input, InputTextArea, InputPassword, InputEmail, InputNumber, InputCheckbox: `Input` and its five leaves, `Input.TextArea` through `Input.Checkbox`.
 
-- `Radio` and `Radio.Item`.
+- Radio, RadioItem: `Radio` and `Radio.Item`.
 
-- `DatePicker` with `.RangePicker` and `.TimePicker`.
+- DatePicker, DatePickerRangePicker, DatePickerTimePicker: `DatePicker` with `.RangePicker` and `.TimePicker`.
 
-- The generic `ToggleSelect` and its `.Multi` leaf.
+- ToggleSelect, ToggleSelectMulti: The generic `ToggleSelect` and its `.Multi` leaf.
 
-- Each `Loading.*` member. `Loading` itself is a plain namespace with no slot.
+- LoadingSpin, LoadingSkeleton, LoadingProgressBar, LoadingButton, LoadingInput, LoadingArea: Each `Loading.*` member. `Loading` itself is a plain namespace with no slot.
 
-- The toast stack, and one toast card inside it.
+- Toast, ToastItem: The toast stack, and one toast card inside it.
 
 - DraftBar: The banner an edit shell shows for a recovered form. Restore and discard stay wired.
 
-- The in-page chat. `AgentChat` swaps the whole panel; the other eleven each swap one part.
+- AgentChat, AgentLauncher, AgentBubble, AgentSteps, AgentComposer, AgentApproval, AgentQuestion, AgentQueued, AgentMenu, AgentMarkdown, AgentToolCard, AgentCode: The in-page chat. `AgentChat` swaps the whole panel; the other eleven each swap one part.
 
 Not slots
 
 Component
 
-- Wiring with no look of its own, like every behavior-only component, so there is nothing to swap.
+- Portal, InfiniteScroll, ClientSide: Wiring with no look of its own, like every behavior-only component, so there is nothing to swap.
 
 - Messages: The toast stack inside `System`. To restyle toasts, bind `Toast` and `ToastItem` instead.
 
@@ -206,11 +206,11 @@ Recipe Slots
 
 When a component's structure is right and only its look is wrong, swap its recipe instead. The `recipes` key, typed by `AkanUiRecipes`, replaces the className factory and leaves async states, focus handling and a11y alone.
 
-- (variants?: ButtonVariants, className?: ClassValue) => string — `Button`, and the buttons inside `Popconfirm`, `Dropdown`, `Menu`, `Pagination` and `ToggleSelect`.
+- button ((variants?: ButtonVariants, className?: ClassValue) => string): `Button`, and the buttons inside `Popconfirm`, `Dropdown`, `Menu`, `Pagination` and `ToggleSelect`.
 
-- (variants?: BadgeVariants, className?: ClassValue) => string — `Badge`, and the tag chips `Field.Tags` draws.
+- badge ((variants?: BadgeVariants, className?: ClassValue) => string): `Badge`, and the tag chips `Field.Tags` draws.
 
-- (variants?: InputSurfaceVariants, className?: ClassValue) => string — The field shell of `Input` and its text leaves, and the chat composer's text box.
+- input ((variants?: InputSurfaceVariants, className?: ClassValue) => string): The field shell of `Input` and its text leaves, and the chat composer's text box.
 
 A replacement takes the framework recipe's whole variant contract, because every existing call site passes it:
 

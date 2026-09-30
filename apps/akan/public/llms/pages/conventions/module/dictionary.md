@@ -62,21 +62,21 @@ What it labels
 
 - .model(): Every model field. `id`, `createdAt`, `updatedAt` and `removedAt` come labelled.
 
-- .insight(): Every insight field. The built-in `count` comes labelled.
+- .insight(): Every insight field. The built-in `count` comes labelled. — Example: `ticket.insight.activeCount`
 
 - .query(): Every filter query and its arguments. The built-in `any` comes labelled.
 
-- .sort(): Every sort order. `latest`, `oldest` and `relevance` come labelled.
+- .sort(): Every sort order. `latest`, `oldest` and `relevance` come labelled. — Example: `ticket.sort.due`
 
-- .enum(): Every value of one `enumOf`. The key starts with the enum's name, not the model's.
+- .enum(): Every value of one `enumOf`. The key starts with the enum's name, not the model's. — Example: `ticketStatus.inProgress`
 
 - .slice(): Every named slice, as a list key and an insight key. The root slice comes labelled.
 
 - .endpoint(): Every custom endpoint and its arguments. Generated CRUD such as `createTicket` comes labelled.
 
-- .error(): Error messages, written as plain language tuples.
+- .error(): Error messages, written as plain language tuples. — Example: `ticket.error.cannotOpen`
 
-- .translate(): Any other phrase the module shows, such as toasts and button text.
+- .translate(): Any other phrase the module shows, such as toasts and button text. — Example: `ticket.openTicketLoading`
 
 Using Dictionaries
 
@@ -84,11 +84,11 @@ Code reads the dictionary through three helpers. Each takes a key, and the user 
 
 Helper
 
-- l(key): A label on screen, in a server or client component. Get `l` from `usePage()`.
+- l(key): A label on screen, in a server or client component. Get `l` from `usePage()`. — Example: `l("ticket.title")`
 
-- new Err(key): An error thrown in a document or service. Import `Err` from `../dict`.
+- new Err(key): An error thrown in a document or service. Import `Err` from `../dict`. — Example: `throw new Err("ticket.error.cannotOpen");`
 
-- msg.success(key): A toast from a store action. Import `msg` from `../useClient`.
+- msg.success(key): A toast from a store action. Import `msg` from `../useClient`. — Example: `msg.success("ticket.openTicketSuccess");`
 
 On screen
 
@@ -140,19 +140,39 @@ Pick the builder by the kind of module. Each builder offers only the stages that
 
 **`serviceDictionary`** for a service module in `lib/_<name>/`, or for app-level text that belongs to no model.
 
-- Model — modelDictionary
+Model — modelDictionary
 
-- Scalar — scalarDictionary
+Scalar — scalarDictionary
 
-- Service — serviceDictionary
+Service — serviceDictionary
 
 - Name the module and its values
 
+  - .of()
+
+  - .model()
+
+  - .enum()
+
 - Name what the database answers
+
+  - .insight()
+
+  - .query()
+
+  - .sort()
 
 - Name the API
 
+  - .slice()
+
+  - .endpoint()
+
 - Messages
+
+  - .error()
+
+  - .translate()
 
 Available
 
@@ -202,9 +222,9 @@ Rules At A Glance
 
 Common mistakes
 
-- Instead of
+Instead of
 
-- Write
+Write
 
 - `l("ticket.status.active")` — Enum keys start with the enum's name: `l("ticketStatus.active")`.
 
@@ -283,6 +303,41 @@ export const dictionary = modelDictionary(["en", "ko"])
     openTicketLoading: ["Opening the ticket…", "티켓을 여는 중입니다."],
     openTicketSuccess: ["Ticket opened", "티켓을 열었습니다."],
   });
+```
+
+### .of()
+
+```ts
+ticket.modelName
+ticket.modelDesc
+```
+
+### .model()
+
+```ts
+ticket.title
+ticket.title.desc
+```
+
+### .query()
+
+```ts
+ticket.query.inProject
+ticket.query.inProject.arg.project
+```
+
+### .slice()
+
+```ts
+ticket.signal.ticketListInProject
+ticket.signal.ticketInsightInProject
+```
+
+### .endpoint()
+
+```ts
+ticket.signal.openTicket
+ticket.signal.openTicket.arg.due
 ```
 
 ### apps/koyo/lib/ticket/Ticket.Template.tsx

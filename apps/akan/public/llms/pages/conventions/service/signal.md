@@ -40,11 +40,17 @@ A model module's signal declares three classes. A service module's declares two,
 
 Class
 
-- Model module — lib/<model>
+Model module — lib/<model>
 
-- Service module — lib/_<service>
+Service module — lib/_<service>
 
 - Declared in this order
+
+  - XInternal: Work the runtime starts: schedules, queue jobs, boot and shutdown. Written even when empty.
+
+  - XSlice: A paged window onto a table, with an insight query behind it. No table, no slice.
+
+  - XEndpoint: What callers reach: `query`, `mutation`, `pubsub` and `message`.
 
 Declared
 
@@ -72,13 +78,25 @@ The same array also decides whether AI agents see the endpoint over MCP:
 
 What the endpoint declares
 
-- Checks the caller
+Checks the caller
 
-- Agents see it — MCP
+Agents see it — MCP
 
 - Names a real guard
 
+  - { guards: [Every] }: Published. An agent's call is checked like anyone else's.
+
+  - { guards: [Every], mcp: false }: HTTP serves it as before. Only the agent listing drops it.
+
+  - { guards: [Every, Person] }: A person-only act. A model is refused and never sees the entry.
+
 - Names Public, or nothing
+
+  - query(T, { guards: [Public] }): An open read, decided on purpose. Published, like the doc tools below.
+
+  - mutation(T, { guards: [Public] }): Runs for anyone over HTTP. MCP treats it as having no guard.
+
+  - no guards: Zero checks over HTTP, and refused by MCP.
 
 Yes
 
@@ -102,13 +120,13 @@ Most endpoints are reached through the path Akan builds, and nobody types it. A 
 
 Four options place a route. One shared `protocolRoute` const keeps the five protocol endpoints from disagreeing about them:
 
-- string — endpoint name — A literal route, in place of the one built from the endpoint name and its `.param()`s.
+- path (string, default endpoint name): A literal route, in place of the one built from the endpoint name and its `.param()`s.
 
-- false | string — model refName — The segment before the path. A model module puts its refName there; a service module, nothing.
+- prefix (false | string, default model refName): The segment before the path. A model module puts its refName there; a service module, nothing.
 
-- false — API prefix (/api) — `false` drops the app's API prefix, so the route sits at the origin root.
+- globalPrefix (false, default API prefix (/api)): `false` drops the app's API prefix, so the route sits at the origin root.
 
-- boolean — true — `false` keeps it off the agent listing without changing who may call it.
+- mcp (boolean, default true): `false` keeps it off the agent listing without changing who may call it.
 
 **`[Public]` is the decision again.** A client holds no credential yet, and getting one is why it came.
 
@@ -140,21 +158,23 @@ A `Response` returned from `exec` is sent as it stands, with no serialization. T
 
 **`*` matches the rest of the URL.** `exec` reads the file path back out of `req.url`.
 
+**The file goes out the way Bun sends a file.** The service sets no Content-Type, so Bun types the body by its stored name and answers a Range with 206, and the response is neither buffered nor compressed. Every answer but a PDF's carries `nosniff` and a sandboxing Content-Security-Policy, so an uploaded HTML or SVG never runs on the API's origin.
+
 Work The Runtime Starts
 
 `internal()` holds work the runtime starts on its own: a schedule, a queue job, a step at boot or shutdown. The runtime is the only caller, so there is no request to authorize and no guards to write.
 
 Builder
 
-- cron(expression): Runs on a cron schedule, such as every midnight.
+- cron(expression): Runs on a cron schedule, such as every midnight. — Example: `purgeReceipts: cron("0 0 * * *").exec(...)`
 
 - interval(ms): Runs every `ms` milliseconds.
 
 - timeout(ms): Runs once, `ms` milliseconds after the server starts.
 
-- Runs once when the process starts, and once when it stops.
+- initialize(), destroy(): Runs once when the process starts, and once when it stops.
 
-- process(Type): A background queue job. `.msg()` names each field of its payload.
+- process(Type): A background queue job. `.msg()` names each field of its payload. — Example: `reprint: process(Boolean).msg("icecreamOrderId", ID).exec(...)`
 
 - resolveField(Type): Computes a model's `resolve` field. A service module has no model, so it never uses this.
 
@@ -162,13 +182,13 @@ A job that should run once a night, not once per server, names the batch worker:
 
 Every builder except `resolveField` takes these options as its last argument:
 
-- "federation" | "batch" | "all" — "all" — Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
+- serverMode ("federation" | "batch" | "all", default "all"): Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
 
-- ("cloud" | "edge" | "local")[] — every mode — Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
+- operationMode (("cloud" | "edge" | "local")[], default every mode): Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
 
-- boolean — true — For `cron` and `interval`, skips a run while the previous one still runs in the same process.
+- lock (boolean, default true): For `cron` and `interval`, skips a run while the previous one still runs in the same process.
 
-- boolean — true — `false` turns the job off without deleting its code.
+- enabled (boolean, default true): `false` turns the job off without deleting its code.
 
 **Match the service's `serverMode`.** When the service declares one, the internal must declare the same, or the job is scheduled where that service is switched off.
 
@@ -328,8 +348,7 @@ export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
     .with(Req)
     .exec(async function (req) {
       const path = req.url.split("/localFile/getBlob/").slice(1).join("/localFile/getBlob/");
-      const fileStream = await this.localFileService.readLocalFile(path);
-      return new Response(fileStream);
+      return await this.localFileService.serveLocalFile(path);
     }),
 })) {}
 ```

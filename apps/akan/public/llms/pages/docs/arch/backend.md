@@ -159,15 +159,15 @@ Here is the manager's half of the shift:
 
 `refillTodaysInventory` is a write only an admin may make, and a stock provider can make it slow, so it gets a minute (`timeout: 60_000`).
 
-Who may call this. An endpoint that names none runs no check; there is no default policy.
+- guards (GuardCls[]): Who may call this. An endpoint that names none runs no check; there is no default policy.
 
-Milliseconds this call may take; the `Timeout` middleware and the client both enforce it.
+- timeout (number, default 30000 (client)): Milliseconds this call may take; the `Timeout` middleware and the client both enforce it.
 
-Milliseconds the answer may be reused. **Only a query taking no internal argument** may carry one.
+- cache (number): Milliseconds the answer may be reused. **Only a query taking no internal argument** may carry one.
 
-`false` takes the endpoint out of the MCP catalogue without touching its guards.
+- mcp (boolean, default true): `false` takes the endpoint out of the MCP catalogue without touching its guards.
 
-The HTTP verb a `mutation` answers on, for when a foreign wire protocol forces one.
+- method ("POST" | "PATCH" | "PUT" | "DELETE", default "POST"): The HTTP verb a `mutation` answers on, for when a foreign wire protocol forces one.
 
 **Every call has a deadline, even without a timeout.** An endpoint that declares none still dies at 30 seconds, the client's own default, and the transport error it raises does not say whether the server ever received the call. Provisioning, a firmware flow, an external orchestration: declare one.
 
@@ -213,17 +213,17 @@ Handed in, never built
 
 Another module's service, an adaptor, an environment value and shared memory are each handed into the service from outside; the service builds none of them.
 
-Another module's service. The field must end in `Service`: `inventoryService` resolves `inventory`.
+- service (<T extends Service>() => T): Another module's service. The field must end in `Service`: `inventoryService` resolves `inventory`. — Example: `inventoryService: service<srv.InventoryService>()`
 
-An adaptor singleton: an `adapt()` class, or a role that `option.applyAdaptor` binds.
+- plug ((adaptor: AdaptorCls) => Adaptor): An adaptor singleton: an `adapt()` class, or a role that `option.applyAdaptor` binds. — Example: `posTerminal: plug(PosTerminal)`
 
-The module's own signal, to publish a `pubsub` room or enqueue a `process`. Ends in `Signal`.
+- signal (<S>() => S): The module's own signal, to publish a `pubsub` room or enqueue a `process`. Ends in `Signal`. — Example: `icecreamOrderSignal: signal<sig.IcecreamOrder>()`
 
-A value read out of the backend environment at wiring time.
+- env ((fn: (env) => T) => T): A value read out of the backend environment at wiring time. — Example: `pos: env((option: PosTerminalOptions) => option.pos)`
 
-Runtime state held in the cache adaptor, so every replica sees it. Takes a scalar or model class.
+- memory ((ref, opts?) => Store): Runtime state held in the cache adaptor, so every replica sees it. Takes a scalar or model class. — Example: `openTickets: memory(Map, { of: String })`
 
-Legacy: a constructor-style singleton from `lib/option.ts`. Write new adapters with `adapt()`.
+- use (<T>() => T): Legacy: a constructor-style singleton from `lib/option.ts`. Write new adapters with `adapt()`. — Example: `alarmApi: use<AlarmApi>()`
 
 Writing an adaptor
 
@@ -291,9 +291,23 @@ Left out
 
 - Decided by the guards
 
+  - guards: [Admin]: An endpoint that declares a real guard is published to agents.
+
+  - no guards: Refused. A missing guards array now costs visibility as well as authorization.
+
+  - mutation · [Public]: A mutation whose only guard is Public is refused too.
+
 - Decided by the shape
 
+  - pubsub · message: Refused.
+
+  - fileUpload: true: A file upload is refused.
+
+  - Any · Binary: An endpoint returning Any or Binary is refused.
+
 - Your own choice
+
+  - mcp: false: Takes the endpoint off the shelf without touching its guards. Right for a step of a UI-driven state machine: perfectly guarded, still no business of a model.
 
 What agents get
 

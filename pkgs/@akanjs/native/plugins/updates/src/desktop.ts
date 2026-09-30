@@ -10,27 +10,49 @@
 //   gzip archive. Either way the tar's sha256 must match the manifest.
 // - It is unpacked next to the app (`<App>.app.update-<bundle>`, same volume, so the swap is a
 //   rename: Electrobun extractor/main.zig:7355-7373), checked (app id; macOS `codesign --verify`),
-//   and swapped in by apply(): <App>.app → <App>.app.previous, the new one → <App>.app, relaunch.
-//   Windows does not rename a folder whose program is running, so there a helper (PowerShell,
-//   started through cmd.exe to outlive the app) waits for the app to exit, does the renames and
-//   starts the result (moveThenRelaunch).
+//   flushed to the disk, and swapped in by apply(): <App>.app → <App>.app.previous, the new one →
+//   <App>.app, relaunch. Windows does not rename a folder whose program is running, so there a helper
+//   (PowerShell, started through cmd.exe to outlive the app) waits for the app to exit, does the renames
+//   and starts the result (moveThenRelaunch); a RunOnce value puts back what a shutdown left half moved.
 // - The new app runs on trial. notifyReady() within updates.readyTimeout of its page's load confirms
 //   it and removes .previous; a timeout, or a second launch without confirming, swaps .previous back
-//   and relaunches it. An app that carries a server confirms only once that server answered ready,
-//   and its clock starts then, when the server gave up, or SERVER_BOOT_ALLOWANCE after the start:
-//   a server that hangs while it boots fails the release as one that crashes does.
+//   and relaunches it. Nothing is applied while a release is on trial: that would replace .previous.
+// - An app that carries a server confirms only once that server answered ready and stayed up for
+//   SERVER_SETTLE, and while it is up; its clock starts then. A server that gives up, or is not up
+//   SERVER_BOOT_ALLOWANCE after the start, rolls the release back at once but fails it only after
+//   MAX_STRIKES tries, as a Windows swap that did not happen does: the cause may be this PC's moment
+//   (a lock, a scan), so the release stays downloaded for the next apply.
 //   Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
 //   drops its backup when the final rename fails (updater.rs:1429-1476); here the old app stays
 //   until the new one said it works.
 
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { uptime } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import { isBundleId } from "../../../packages/core/src/kernel.ts";
 import { applyDelta } from "../../../packages/desktop/src/delta.ts";
-import { type DesktopContext, type DesktopPlugin, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
-import { relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
+import {
+  type DesktopContext,
+  type DesktopPlugin,
+  type DesktopServerState,
+  type DesktopServerStatus,
+  defineDesktopPlugin,
+} from "../../../packages/desktop/src/plugin.ts";
+import { type RelaunchOptions, relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
 import type { UpdateCheck, UpdateState, UpdatesApi, UpdatesEvents } from "./index.ts";
 
 export interface UpdatesConfig {
@@ -54,16 +76,34 @@ interface Entry {
   build: number;
 }
 
+type Trial = Entry & {
+  previous: string;
+  attempts: number;
+  pid?: number;
+  boot?: number;
+  from?: number;
+  staged?: string;
+};
+
 interface State {
   current?: Entry;
   pending?: Entry & { staged: string };
   /**
-   * `pid`: the process running the trial, so a second instance of the app leaves it alone. `from` (Windows, where a
-   * helper swaps after the app exited): the build that applied it, which is still what runs when the swap failed.
+   * `pid` and `boot` (when the system started, s): the process running the trial, so a second instance of the app
+   * leaves it alone. `from` (Windows, where a helper swaps after the app exited): the build that applied it, which is
+   * still what runs when the swap failed, with the release still at `staged`.
    */
-  trial?: Entry & { previous: string; attempts: number; pid?: number; from?: number };
+  trial?: Trial;
   failed: string[];
+  /** Why each release in `failed` was failed. */
+  reasons?: Record<string, string>;
+  /** Tries of a release that failed for a reason that may pass (MAX_STRIKES). */
+  strikes?: Record<string, number>;
   rolledBack?: string;
+  /** A rollback whose moves may not have happened: the failed build, while it still runs, makes them again. */
+  rollback?: { build: number; previous: string; to: string; attempts: number };
+  /** embeddedSequence of the build installed here: another one means the app was installed again. */
+  installed?: number;
 }
 
 interface Manifest {
@@ -79,6 +119,8 @@ interface Manifest {
   arch?: string;
   archive?: { sha256: string; url: string; size: number; gzSha256: string };
   patches?: { from: string; url: string; sha256: string; size: number }[];
+  /** Whether the release carries a server (resources/server.json); a manifest published before it says nothing. */
+  server?: boolean;
 }
 
 /**
@@ -87,6 +129,10 @@ interface Manifest {
  * launcher's own wait (READY_TIMEOUT, 8 s) only decides when the window opens.
  */
 export const SERVER_BOOT_ALLOWANCE = 120_000;
+/** A server whose init throws answered ready first: its release is confirmed only once it stayed up this long. */
+export const SERVER_SETTLE = 5_000;
+/** Tries of a release whose server did not come up, or whose Windows swap did not happen, before it is failed. */
+export const MAX_STRIKES = 3;
 
 const MAX_MANIFEST = 1 << 20;
 const MAX_SIGNATURE = 1024;
@@ -100,6 +146,44 @@ function alive(pid: number): boolean {
   } catch (error) {
     return (error as { code?: string }).code === "EPERM";
   }
+}
+
+/** When the system started, in seconds: a PID recorded under another boot names another process now. */
+const bootTime = () => Math.round(Date.now() / 1000 - uptime());
+
+//? Never whichever tar.exe comes first on PATH: a GNU tar there (Git for Windows) reads "C:" as a remote host.
+const tarBinary = () =>
+  process.platform === "win32"
+    ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+    : (["/usr/bin/tar", "/bin/tar"].find((path) => existsSync(path)) ?? "tar");
+
+/** fsync of a file, or of a folder on macOS and Linux; Windows flushes only a handle opened for writing. */
+function flush(path: string, folder = false): void {
+  if (folder && process.platform === "win32") return;
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, folder || process.platform !== "win32" ? "r" : "r+");
+    fsyncSync(fd);
+  } catch {
+    // Best effort: what cannot be opened for it is as durable as the OS makes it anyway.
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** An unpacked release reaches the disk before a rename points the app at it: a power cut must not leave empty files. */
+function flushTree(root: string): void {
+  //? Linux flushes everything in one call and waits for it; an fsync per file costs a journal commit each there.
+  if (process.platform === "linux" && Bun.spawnSync(["sync"]).exitCode === 0) return;
+  const walk = (folder: string) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const path = join(folder, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) flush(path);
+    }
+    flush(folder, true);
+  };
+  walk(root);
 }
 
 /**
@@ -150,8 +234,9 @@ export interface DesktopUpdatesOptions {
   config?: UpdatesConfig | null;
   /** The executable's file name inside an app; the running one's by default. */
   exeName?: string;
-  relaunch?(exe: string, moves: [string, string][]): Promise<void>;
+  relaunch?(exe: string, moves: [string, string][], recover?: RelaunchOptions["recover"]): Promise<void>;
   serverBootAllowance?: number;
+  serverSettle?: number;
 }
 
 export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): DesktopPlugin<UpdatesApi, UpdatesEvents> {
@@ -161,31 +246,51 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const exeName = options.exeName ?? basename(process.execPath);
   const installed = options.app !== undefined ? options.app : appPath(mac);
   const config = options.config !== undefined ? options.config : readConfig(installed, mac);
-  const relaunch = options.relaunch ?? ((exe, moves) => relaunchAfterExit(exe, moves));
+  const relaunch = options.relaunch ?? ((exe, moves, recover) => relaunchAfterExit(exe, moves, { recover }));
   const allowance = options.serverBootAllowance ?? SERVER_BOOT_ALLOWANCE;
+  const settleTime = options.serverSettle ?? SERVER_SETTLE;
   /** The executable inside an app with the running one's name. */
   const executableIn = (app: string) => (mac ? join(app, "Contents", "MacOS", exeName) : join(app, exeName));
   const resources = (app: string) => resourcesOf(app, mac);
+  const carries = (app: string) => existsSync(join(resources(app), "server.json"));
   let dir = "";
   let onTrial = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let downloading = false;
-  let serverAnswered: Promise<boolean> = Promise.resolve(true);
+  let unwritableTold = false;
+  const refusalsTold = new Set<string>();
+  let serverAnswered: Promise<string | null> = Promise.resolve(null);
 
   const statePath = () => join(dir, "state.json");
-  const readState = (): State => {
+  const parseState = (path: string): State | null => {
     try {
-      const s = JSON.parse(readFileSync(statePath(), "utf8")) as State;
+      const s = JSON.parse(readFileSync(path, "utf8")) as State;
       return { ...s, failed: Array.isArray(s.failed) ? s.failed : [] };
     } catch {
-      return { failed: [] };
+      return null;
     }
   };
+  //? A state.json a power cut left unreadable falls back to the one it replaced, never to nothing: nothing forgets
+  //? the trial to roll back and the releases already refused.
+  const readState = (): State => parseState(statePath()) ?? parseState(`${statePath()}.bak`) ?? { failed: [] };
   const writeState = (state: State) => {
     mkdirSync(dir, { recursive: true });
-    const tmp = `${statePath()}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ ...state, failed: state.failed.slice(-20) }));
-    renameSync(tmp, statePath());
+    const path = statePath();
+    const failed = state.failed.slice(-20);
+    const reasons = state.reasons
+      ? Object.fromEntries(Object.entries(state.reasons).filter(([bundle]) => failed.includes(bundle)))
+      : undefined;
+    const tmp = `${path}.tmp`;
+    const fd = openSync(tmp, "w");
+    try {
+      writeSync(fd, JSON.stringify({ ...state, failed, reasons }));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    if (existsSync(path)) renameSync(path, `${path}.bak`);
+    renameSync(tmp, path);
+    flush(dir, true);
   };
   const need = (): UpdatesConfig => {
     if (!config)
@@ -195,34 +300,85 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       );
     return config;
   };
-  /** The running app is this release (installed by an update), not another build. */
-  const runningIs = (entry: Entry | undefined) => !!entry && !!config && entry.build === config.embeddedSequence;
+  /** `entry` when the running app is that release (installed by an update), not another build. */
+  const ifRunning = <E extends Entry>(entry: E | undefined): E | undefined =>
+    entry && config && entry.build === config.embeddedSequence ? entry : undefined;
+  const runningIs = (entry: Entry | undefined) => ifRunning(entry) !== undefined;
+  /** The release running now; one on trial is running too, confirmed or not. */
+  const runningSequence = (c: UpdatesConfig, state: State) =>
+    (ifRunning(state.trial) ?? ifRunning(state.current))?.sequence ?? c.embeddedSequence;
 
-  const moveThenRelaunch = (moves: [string, string][], app: string) => relaunch(executableIn(app), moves);
+  const fail = (state: State, bundle: string, why: string) => {
+    if (!state.failed.includes(bundle)) state.failed.push(bundle);
+    state.reasons = { ...state.reasons, [bundle]: why };
+    if (state.strikes) delete state.strikes[bundle];
+  };
+  /** One more failed try of `bundle`: true once it had `limit` of them, which makes it a failed release. */
+  const strike = (state: State, bundle: string, why: string, limit = MAX_STRIKES): boolean => {
+    const tries = (state.strikes?.[bundle] ?? 0) + 1;
+    if (tries < limit) {
+      state.strikes = { ...state.strikes, [bundle]: tries };
+      return false;
+    }
+    fail(state, bundle, limit > 1 ? `${why} (${tries} tries)` : why);
+    return true;
+  };
+  const entryOf = ({ bundle, sequence, version, tar, build }: Entry): Entry => ({
+    bundle,
+    sequence,
+    version,
+    tar,
+    build,
+  });
 
-  /** Puts .previous back, marks the trial failed and relaunches the old app. */
-  const rollBack = async (state: State, quit: (code: number) => void, why: string): Promise<void> => {
+  const recover = (): RelaunchOptions["recover"] =>
+    windows && config ? { script: join(dir, "recover.ps1"), name: `akan-native-update ${config.app}` } : undefined;
+  const moveThenRelaunch = (moves: [string, string][], app: string) => relaunch(executableIn(app), moves, recover());
+
+  /**
+   * Puts .previous back, then relaunches it. A release that may pass another time (`retry`) stays downloaded as the
+   * pending update until it had MAX_STRIKES; any other is failed.
+   */
+  const rollBack = async (state: State, quit: (code: number) => void, why: string, retry = false): Promise<void> => {
     const trial = state.trial;
     if (!trial || !installed) return; // settled meanwhile (another instance, notifyReady)
     const app = installed;
-    console.warn(`[akan-native] updates: ${trial.bundle} ${why}; rolling back`);
+    const failed = strike(state, trial.bundle, why, retry ? MAX_STRIKES : 1);
+    const tries = failed ? "" : `, to be tried again (${state.strikes?.[trial.bundle]} of ${MAX_STRIKES})`;
+    console.warn(`[akan-native] updates: ${trial.bundle} ${why}; rolling back${tries}`);
     state.trial = undefined;
-    state.failed.push(trial.bundle);
     state.rolledBack = trial.bundle;
-    if (existsSync(trial.previous)) {
-      const failed = `${app}.failed-${trial.bundle}`;
-      rmSync(failed, { recursive: true, force: true });
+    if (!existsSync(trial.previous)) {
       writeState(state);
+      return;
+    }
+    //? A newer download already waiting supersedes the release being tried again.
+    const keep = !failed && !(state.pending && state.pending.sequence > trial.sequence);
+    const to = keep ? join(`${app}.update-${trial.bundle}`, basename(app)) : `${app}.failed-${trial.bundle}`;
+    rmSync(keep ? dirname(to) : to, { recursive: true, force: true });
+    if (keep) {
+      mkdirSync(dirname(to), { recursive: true });
+      state.pending = { ...entryOf(trial), staged: to };
+    }
+    state.rollback = { build: trial.build, previous: trial.previous, to, attempts: 1 };
+    writeState(state);
+    try {
       // macOS, Linux: the running app can be renamed; its open files stay valid.
       await moveThenRelaunch(
         [
-          [app, failed],
+          [app, to],
           [trial.previous, app],
         ],
         app,
       );
-      quit(0);
-    } else writeState(state);
+    } catch (error) {
+      console.error(
+        `[akan-native] updates: ${trial.bundle} could not be rolled back; the next start tries again`,
+        error,
+      );
+      return;
+    }
+    quit(0);
   };
 
   /**
@@ -286,92 +442,192 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       typeof m.build !== "number" ||
       !m.archive ||
       !hex(m.archive.sha256) ||
-      !hex(m.archive.gzSha256)
+      !hex(m.archive.gzSha256) ||
+      (m.server !== undefined && typeof m.server !== "boolean")
     ) {
       throw new AkanNativeError("INTERNAL", "invalid release manifest");
     }
     return m;
   };
 
-  const running = (state: State) => (runningIs(state.current) ? state.current!.sequence : config!.embeddedSequence);
-  const isNewer = (m: Manifest, state: State) => m.sequence > running(state) && !state.failed.includes(m.bundle);
+  const isNewer = (c: UpdatesConfig, m: Manifest, state: State) =>
+    m.sequence > runningSequence(c, state) && !state.failed.includes(m.bundle);
   const patchFor = (m: Manifest, state: State) => {
-    const tar = runningIs(state.current) ? state.current!.tar : undefined;
+    const tar = ifRunning(state.current)?.tar;
     return tar && existsSync(join(dir, "app", `${tar}.tar`)) ? m.patches?.find((p) => p.from === tar) : undefined;
   };
+  //? Taking the carried server away moves the pages to the build's own backend URL, and adding one starts them on an
+  //? empty local database: either way the app's data changes place, which an update must not do.
+  const serverRefusal = (release: boolean, app: string) =>
+    release === carries(app)
+      ? null
+      : `the release ${release ? "carries a server, and this app does not" : "carries no server, and this app does"}; install it instead`;
 
-  /** The carried server's first answer, or false once the release's boot allowance ran out. */
-  const serverVerdict = (ctx: DesktopContext): Promise<boolean> => {
+  /** null once the carried server answered ready and stayed up SERVER_SETTLE; else why it did not in time. */
+  const serverVerdict = (server: DesktopServerStatus): Promise<string | null> =>
+    new Promise((resolve) => {
+      let settling: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribe = () => {};
+      const done = (why: string | null) => {
+        clearTimeout(boot);
+        clearTimeout(settling);
+        unsubscribe();
+        resolve(why);
+      };
+      const boot = setTimeout(() => done(`its server was not up within ${allowance / 1000} s`), allowance);
+      const watch = (state: DesktopServerState) => {
+        clearTimeout(settling);
+        if (state === "up") settling = setTimeout(() => done(null), settleTime);
+        else if (state === "gaveUp") done("its server gave up");
+      };
+      unsubscribe = server.onState(watch);
+      watch(server.state);
+    });
+  /** true once the server is up (now or at its next ready), false when it gave up or the app quits first. */
+  const upAgain = (server: DesktopServerStatus) =>
+    new Promise<boolean>((resolve) => {
+      if (server.state === "up") return resolve(true);
+      const unsubscribe = server.onState((state) => {
+        if (state !== "up" && state !== "gaveUp" && state !== "stopped") return;
+        unsubscribe();
+        resolve(state === "up");
+      });
+    });
+
+  const watchTrial = (ctx: DesktopContext, c: UpdatesConfig) => {
+    onTrial = true;
+    const failTrial = (why: string, retry: boolean) => {
+      if (!onTrial) return;
+      onTrial = false;
+      clearTimeout(timer);
+      void rollBack(readState(), (code) => ctx.quit(code), why, retry);
+    };
     const server = ctx.server;
-    if (!server) return Promise.resolve(true);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        console.warn(`[akan-native] updates: the app's server did not answer ready within ${allowance / 1000} s`);
-        resolve(false);
-      }, allowance);
-      void server.ready.then((ready) => {
+    serverAnswered = server ? serverVerdict(server) : Promise.resolve(null);
+    void serverAnswered.then((why) => why !== null && failTrial(why, true));
+    server?.onState((state) => state === "gaveUp" && failTrial("its server gave up", true));
+    ctx.onNativeEvent("pageLoad", (e) => {
+      if (e.event !== "finished" || (e.window ?? 1) !== 1 || !onTrial) return;
+      //? A carried server still starting (a new release's first run, its files being scanned) is not the release
+      //? failing: the clock starts once the server has settled.
+      void serverAnswered.then((why) => {
+        if (why !== null || !onTrial) return;
         clearTimeout(timer);
-        resolve(ready);
+        timer = setTimeout(() => failTrial("did not call notifyReady() in time", false), c.readyTimeout);
       });
     });
   };
 
-  const setup = (ctx: DesktopContext) => {
-    //? Local, never Roaming: the unpacked releases are the whole app, and a trial belongs to this PC's install.
-    dir = join(ctx.appLocalDataDir, "akan-native-updates");
+  const setup = async (ctx: DesktopContext) => {
+    //? Local, never Roaming: the unpacked releases are the whole app, and a trial belongs to this PC's install. A debug
+    //? build has the release app's id: a record of its own keeps it from dropping that app's downloads as older.
+    dir = join(ctx.appLocalDataDir, ctx.dev ? "akan-native-updates-debug" : "akan-native-updates");
     const app = installed;
     if (!config || !app) return;
     const state = readState();
+    let changed = false;
+    //? Installed again (the installer, a copy of another build): what the earlier install refused says nothing now.
+    if (!runningIs(state.current) && !runningIs(state.trial) && state.installed !== config.embeddedSequence) {
+      if (state.installed !== undefined) {
+        state.failed = [];
+        state.reasons = undefined;
+        state.strikes = undefined;
+      }
+      state.installed = config.embeddedSequence;
+      changed = true;
+    }
     //? A download from before the app was reinstalled at a newer build would take it back.
-    if (state.pending && state.pending.sequence <= running(state)) {
+    if (state.pending && state.pending.sequence <= runningSequence(config, state)) {
       console.warn(`[akan-native] updates: ${state.pending.bundle} is not newer than this app; dropping it`);
       state.pending = undefined;
-      writeState(state);
+      changed = true;
     }
-    // Leftovers of earlier swaps: failed apps, unpacked updates nothing points at.
+    const rollback = state.rollback;
+    if (rollback) {
+      state.rollback = undefined;
+      changed = true;
+      //? Still the failed build: the moves of its rollback did not happen (a rename refused, a helper that never ran).
+      if (
+        rollback.build === config.embeddedSequence &&
+        existsSync(rollback.previous) &&
+        rollback.attempts < MAX_STRIKES
+      ) {
+        state.rollback = { ...rollback, attempts: rollback.attempts + 1 };
+        writeState(state);
+        console.warn("[akan-native] updates: the last rollback did not happen; trying it again");
+        try {
+          rmSync(rollback.to, { recursive: true, force: true });
+          mkdirSync(dirname(rollback.to), { recursive: true });
+          await moveThenRelaunch(
+            [
+              [app, rollback.to],
+              [rollback.previous, app],
+            ],
+            app,
+          );
+          ctx.launch.exit(0);
+          return;
+        } catch (error) {
+          console.error("[akan-native] updates: the rollback failed again", error);
+        }
+      }
+    }
+    if (state.trial && !runningIs(state.trial)) {
+      const trial = state.trial;
+      state.trial = undefined;
+      changed = true;
+      //? Still the build that applied it: the helper put the app back (a file stayed locked through its retries), or
+      //? never ran (a logoff right after apply, PowerShell refused). The release waits for the next apply.
+      if (trial.from === config.embeddedSequence) {
+        const failed = strike(state, trial.bundle, "could not be moved into place");
+        const tries = failed
+          ? ""
+          : `; it is tried again at the next apply (${state.strikes?.[trial.bundle]} of ${MAX_STRIKES})`;
+        console.warn(`[akan-native] updates: ${trial.bundle} could not be moved into place${tries}`);
+        if (
+          !failed &&
+          trial.staged &&
+          existsSync(executableIn(trial.staged)) &&
+          !(state.pending && state.pending.sequence > trial.sequence)
+        )
+          state.pending = { ...entryOf(trial), staged: trial.staged };
+      }
+    }
+    if (changed) writeState(state);
+    // Leftovers of earlier swaps: failed apps, unpacked updates nothing points at, the .previous of a confirmed release.
+    const confirmed = !state.trial && !state.rollback && runningIs(state.current);
     for (const name of readdirSync(dirname(app))) {
       const path = join(dirname(app), name);
       if (
         name.startsWith(`${basename(app)}.failed-`) ||
-        (name.startsWith(`${basename(app)}.update-`) && path !== dirname(state.pending?.staged ?? ""))
+        (name.startsWith(`${basename(app)}.update-`) && path !== dirname(state.pending?.staged ?? "")) ||
+        (name === `${basename(app)}.previous` && confirmed)
       ) {
         rmSync(path, { recursive: true, force: true });
       }
     }
-    if (state.trial) {
-      if (!runningIs(state.trial)) {
-        //? Still the build that applied it: the helper put the app back (a file stayed locked through its retries).
-        //? Taking the same release again would download, apply and relaunch in a loop.
-        if (state.trial.from === config.embeddedSequence) {
-          console.warn(`[akan-native] updates: ${state.trial.bundle} could not be moved into place`);
-          state.failed.push(state.trial.bundle);
-        }
-        state.trial = undefined;
-        writeState(state);
-      } else if (state.trial.pid !== undefined && state.trial.pid !== process.pid && alive(state.trial.pid)) {
-        // A second instance (a deep link on Windows or Linux starts one) while the trial runs:
-        // not a restart of the trial. single-instance hands over and this process exits.
-      } else if (++state.trial.attempts > 1) {
-        return rollBack(state, (code) => ctx.launch.exit(code), "was started again without notifyReady()");
-      } else {
-        state.trial.pid = process.pid;
-        writeState(state);
-        onTrial = true;
-        const startClock = () => {
-          clearTimeout(timer);
-          timer = setTimeout(() => {
-            if (onTrial) void rollBack(readState(), (code) => ctx.quit(code), "did not call notifyReady() in time");
-          }, config.readyTimeout);
-        };
-        serverAnswered = serverVerdict(ctx);
-        ctx.onNativeEvent("pageLoad", (e) => {
-          if (e.event !== "finished" || (e.window ?? 1) !== 1 || !onTrial) return;
-          //? A carried server still starting (a new release's first run, its files being scanned) is not the release
-          //? failing: the clock starts once the server answered, gave up or ran out of its allowance.
-          void serverAnswered.then(() => onTrial && startClock());
-        });
-      }
+    const trial = state.trial;
+    if (!trial) return;
+    const boot = bootTime();
+    //? An app that carries a server always has single-instance (build-desktop refuses it without): a second instance
+    //? ends at that gate before any setup runs, so a live PID other than this one is never the trial.
+    if (
+      !ctx.server &&
+      trial.pid !== undefined &&
+      trial.pid !== process.pid &&
+      (trial.boot === undefined || Math.abs(trial.boot - boot) <= 60) &&
+      alive(trial.pid)
+    ) {
+      // A second instance (a deep link on Windows or Linux starts one) while the trial runs:
+      // not a restart of the trial. single-instance hands over and this process exits.
+      return;
     }
+    if (++trial.attempts > 1)
+      return rollBack(state, (code) => ctx.launch.exit(code), "was started again without notifyReady()");
+    trial.pid = process.pid;
+    trial.boot = boot;
+    writeState(state);
+    watchTrial(ctx, config);
   };
 
   const plugin: DesktopPlugin<UpdatesApi, UpdatesEvents> = {
@@ -383,7 +639,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       async getState() {
         const c = need();
         const state = readState();
-        const current = runningIs(state.trial) ? state.trial : runningIs(state.current) ? state.current : undefined;
+        const current = ifRunning(state.trial) ?? ifRunning(state.current);
         return {
           bundle: current?.bundle ?? null,
           sequence: current?.sequence ?? 0,
@@ -399,13 +655,18 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         const c = need();
         const m = await fetchRelease(c);
         const state = readState();
-        const available = isNewer(m, state);
+        const refusal = typeof m.server === "boolean" && installed ? serverRefusal(m.server, installed) : null;
+        if (refusal && !refusalsTold.has(m.bundle)) {
+          refusalsTold.add(m.bundle);
+          console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
+        }
+        const available = !refusal && isNewer(c, m, state);
         return {
           available,
           bundle: m.bundle,
           version: m.version,
           sequence: m.sequence,
-          downloadSize: available ? (patchFor(m, state)?.size ?? m.archive!.size) : null,
+          downloadSize: available ? (patchFor(m, state)?.size ?? m.archive?.size ?? null) : null,
         } satisfies UpdateCheck;
       },
 
@@ -416,9 +677,31 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         downloading = true;
         try {
           const m = await fetchRelease(c);
+          const archive = m.archive as NonNullable<Manifest["archive"]>;
           const state = readState();
-          if (!isNewer(m, state)) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
+          if (!isNewer(c, m, state)) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
+          const refusal = typeof m.server === "boolean" ? serverRefusal(m.server, app) : null;
+          if (refusal) throw new AkanNativeError("NOT_ALLOWED", refusal);
           if (state.pending?.bundle === m.bundle && existsSync(state.pending.staged)) return { bundle: m.bundle };
+          //? Unpacked beside the app, where the swap is a rename. An app installed where this user cannot write is
+          //? updated by its installer, and finding that out must not cost the whole download at every check.
+          const staging = `${app}.update-${m.bundle}`;
+          try {
+            rmSync(staging, { recursive: true, force: true });
+            mkdirSync(staging, { recursive: true });
+          } catch (error) {
+            if (!unwritableTold) {
+              unwritableTold = true;
+              console.warn(
+                `[akan-native] updates: cannot write beside ${app}; install new releases with the installer`,
+                error,
+              );
+            }
+            throw new AkanNativeError(
+              "NOT_ALLOWED",
+              `${dirname(app)} is not writable: install the release with its installer`,
+            );
+          }
           // The release tar: a delta from ours if we can, else the whole archive.
           let tar: Uint8Array | null = null;
           const patch = patchFor(m, state);
@@ -436,27 +719,24 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
             }
           }
           if (!tar) {
-            const gz = await fetchBytes(`${releases(c)}/${m.archive!.url}`, m.archive!.size, ctx);
-            if (sha256(gz) !== m.archive!.gzSha256)
+            const gz = await fetchBytes(`${releases(c)}/${archive.url}`, archive.size, ctx);
+            if (sha256(gz) !== archive.gzSha256)
               throw new AkanNativeError("INTERNAL", "the release archive does not match its hash");
             tar = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);
           }
-          if (sha256(tar) !== m.archive!.sha256)
+          if (sha256(tar) !== archive.sha256)
             throw new AkanNativeError("INTERNAL", "the release does not match its hash");
 
           // Unpack next to the app and check it before anything points at it.
-          const staging = `${app}.update-${m.bundle}`;
-          rmSync(staging, { recursive: true, force: true });
-          mkdirSync(staging, { recursive: true });
           const tarFile = join(staging, "release.tar");
           writeFileSync(tarFile, tar);
           const run = async (cmd: string[]) => {
             const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
             const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
-            if (code !== 0) throw new AkanNativeError("INTERNAL", `${basename(cmd[0]!)} failed: ${err.trim()}`);
+            if (code !== 0) throw new AkanNativeError("INTERNAL", `${basename(cmd[0] ?? "")} failed: ${err.trim()}`);
           };
           // bsdtar is in Windows since 10 (System32\tar.exe).
-          await run([process.platform === "win32" ? "tar.exe" : "/usr/bin/tar", "-xf", tarFile, "-C", staging]);
+          await run([tarBinary(), "-xf", tarFile, "-C", staging]);
           rmSync(tarFile);
           //? The release's app is named for its build; the installed one may be named otherwise (the installer's /D=,
           //? a renamed .app), and the swap gives it the installed one's name.
@@ -492,32 +772,31 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           // The manifest signature already vouches for the bytes; macOS also checks the code signature
           // (Windows Authenticode and Linux packages come with distribution signing, CLI-9).
           if (mac) await run(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
-          //? Taking the carried server away moves the pages to the build's own backend URL, and adding one starts them
-          //? on an empty local database: either way the app's data changes place, which an update must not do.
-          const carries = (root: string) => existsSync(join(resources(root), "server.json"));
-          if (carries(staged) !== carries(app)) {
+          const unpackedRefusal = serverRefusal(carries(staged), app);
+          if (unpackedRefusal) {
             rmSync(staging, { recursive: true, force: true });
-            state.failed.push(m.bundle);
-            writeState(state);
-            throw new AkanNativeError(
-              "NOT_ALLOWED",
-              `the release ${carries(app) ? "carries no server, and this app does" : "carries a server, and this app does not"}; install it instead`,
-            );
+            const latest = readState();
+            fail(latest, m.bundle, unpackedRefusal);
+            writeState(latest);
+            throw new AkanNativeError("NOT_ALLOWED", unpackedRefusal);
           }
+          flushTree(staged);
 
           // Keep this release's tar for the next delta, and only that one.
           mkdirSync(join(dir, "app"), { recursive: true });
           for (const name of readdirSync(join(dir, "app"))) rmSync(join(dir, "app", name), { force: true });
-          writeFileSync(join(dir, "app", `${m.archive!.sha256}.tar`), tar);
-          state.pending = {
+          writeFileSync(join(dir, "app", `${archive.sha256}.tar`), tar);
+          //? Read again: a trial confirmed while this downloaded must not be written back as unconfirmed.
+          const latest = readState();
+          latest.pending = {
             bundle: m.bundle,
             sequence: m.sequence,
             version: m.version,
-            tar: m.archive!.sha256,
-            build: m.build!,
+            tar: archive.sha256,
+            build: m.build as number,
             staged,
           };
-          writeState(state);
+          writeState(latest);
           return { bundle: m.bundle };
         } finally {
           downloading = false;
@@ -528,15 +807,29 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         const c = need();
         const app = installed as string;
         const state = readState();
+        //? .previous is what a release on trial rolls back to: applying another would replace it with that release.
+        if (runningIs(state.trial))
+          throw new AkanNativeError(
+            "NOT_ALLOWED",
+            "the running release is on trial: apply once notifyReady() confirmed it",
+          );
         const pending = state.pending;
-        if (!pending || !existsSync(pending.staged) || pending.sequence <= running(state))
+        if (!pending || !existsSync(pending.staged) || pending.sequence <= runningSequence(c, state))
           throw new AkanNativeError("NOT_FOUND", "no downloaded update to apply");
+        const refusal = serverRefusal(carries(pending.staged), app);
+        if (refusal) {
+          rmSync(dirname(pending.staged), { recursive: true, force: true });
+          state.pending = undefined;
+          fail(state, pending.bundle, refusal);
+          writeState(state);
+          throw new AkanNativeError("NOT_ALLOWED", refusal);
+        }
         const previous = `${app}.previous`;
         rmSync(previous, { recursive: true, force: true });
-        const { staged: _staged, ...entry } = pending;
+        const entry = entryOf(pending);
         if (windows) {
           // The helper swaps once this app has exited; the staging folder (now empty) goes at the next start.
-          state.trial = { ...entry, previous, attempts: 0, from: c.embeddedSequence };
+          state.trial = { ...entry, previous, attempts: 0, from: c.embeddedSequence, staged: pending.staged };
           state.pending = undefined;
           writeState(state);
           await moveThenRelaunch(
@@ -570,24 +863,31 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         setTimeout(() => ctx.quit(0), 50); // answer first
       },
 
-      async notifyReady() {
+      async notifyReady(_args, ctx) {
         const c = need();
         if (!onTrial) return;
         //? A release whose server never comes up is as broken as one whose page never renders: it is not
-        //? confirmed, and the trial's timeout rolls it back.
-        if (!(await serverAnswered)) return;
+        //? confirmed, and the trial rolls it back.
+        if ((await serverAnswered) !== null || !onTrial) return;
+        //? A server that crashed after it settled is restarting: the release is confirmed once it answers again.
+        if (ctx.server && !(await upAgain(ctx.server))) return;
         if (!onTrial) return;
         clearTimeout(timer);
         onTrial = false;
         const state = readState();
         const trial = state.trial;
         if (!trial) return;
-        const { previous, attempts: _attempts, ...entry } = trial;
+        const entry = entryOf(trial);
         state.current = entry;
         state.trial = undefined;
         state.rolledBack = undefined;
+        if (state.strikes) delete state.strikes[entry.bundle];
         writeState(state);
-        rmSync(previous, { recursive: true, force: true });
+        try {
+          rmSync(trial.previous, { recursive: true, force: true });
+        } catch (error) {
+          console.warn(`[akan-native] updates: ${trial.previous} stays until the next start`, error);
+        }
         if (windows) void recordInstalledVersion(c.app, installed, entry.version);
       },
 
@@ -595,7 +895,15 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         need();
         const state = readState();
         if (state.pending) rmSync(dirname(state.pending.staged), { recursive: true, force: true });
-        writeState({ failed: [], ...(state.current ? { current: state.current } : {}) });
+        //? A release on trial keeps its record, and a rollback that did not happen its retry: without them the running
+        //? app could be neither confirmed nor put back.
+        writeState({
+          failed: [],
+          ...(state.current ? { current: state.current } : {}),
+          ...(runningIs(state.trial) ? { trial: state.trial } : {}),
+          ...(state.rollback ? { rollback: state.rollback } : {}),
+          ...(state.installed !== undefined ? { installed: state.installed } : {}),
+        });
       },
     },
   };

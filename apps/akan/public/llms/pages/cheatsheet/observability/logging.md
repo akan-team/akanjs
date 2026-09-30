@@ -51,13 +51,13 @@ What a record carries
 
 Field
 
-- The level name and its OpenTelemetry severity number.
+- level, sev: The level name and its OpenTelemetry severity number.
 
-- The logger name, and the context string passed as the second argument.
+- name, context: The logger name, and the context string passed as the second argument.
 
-- Which process wrote it. role is gateway, all, federation, batch or rsc-worker.
+- role, replicaIdx, pid: Which process wrote it. role is gateway, all, federation, batch or rsc-worker.
 
-- Filled only inside a request, such as `mutation:refundPayment` arriving over `http`.
+- traceId, endpoint, origin: Filled only inside a request, such as `mutation:refundPayment` arriving over `http`.
 
 - attrs: Structured key=value data attached with `Logger.emit`.
 
@@ -115,17 +115,17 @@ Severity
 
 Description
 
-- trace: Every step, including the ones that are only interesting once.
+- trace: Every step, including the ones that are only interesting once. — 1
 
-- verbose: Detail a developer asks for on purpose. It is TRACE's upper tier, not a band of its own.
+- verbose: Detail a developer asks for on purpose. It is TRACE's upper tier, not a band of its own. — 3
 
-- debug: Diagnosis for one subsystem while you are working on it.
+- debug: Diagnosis for one subsystem while you are working on it. — 5
 
-- info: Normal lifecycle events. The production default.
+- info: Normal lifecycle events. The production default. — 9
 
-- warn: Recovered: it kept going, and somebody should know.
+- warn: Recovered: it kept going, and somebody should know. — 13
 
-- error: An operation failed or needs attention. Written to stderr, not stdout.
+- error: An operation failed or needs attention. Written to stderr, not stdout. — 17
 
 ndjson output, the SSE payload and a numeric `--level` filter all carry this number, so a table that renumbers the levels disagrees with the wire.
 
@@ -133,11 +133,11 @@ Three level settings
 
 Each answers a different question: what a person at the terminal wants, what stdout ships to a collector, and how deep a sink with no floor goes.
 
-The console level. `log` means info (deprecated); an unknown name silently becomes info.
+- AKAN_PUBLIC_LOG_LEVEL (trace | verbose | debug | info | warn | error, default info): The console level. `log` means info (deprecated); an unknown name silently becomes info.
 
-What stdout carries. Overrides `AKAN_PUBLIC_LOG_LEVEL`; in ndjson, also a child's forwarding floor.
+- AKAN_LOG_STDOUT_LEVEL (trace | verbose | debug | info | warn | error, default AKAN_PUBLIC_LOG_LEVEL): What stdout carries. Overrides `AKAN_PUBLIC_LOG_LEVEL`; in ndjson, also a child's forwarding floor.
 
-The floor for every sink without `minLevel`, the rotating file and the hub included.
+- AKAN_LOG_FILE_LEVEL (trace | verbose | debug | info | warn | error, default trace): The floor for every sink without `minLevel`, the rotating file and the hub included.
 
 To change them at runtime, call `Logger.setLevel(level)` and `Logger.setFileLevel(level)`.
 
@@ -163,15 +163,13 @@ Meaning
 
 - sequence: Four digits. A restart moves on to the next number instead of overwriting.
 
-on (0 in the Docker image)
+- AKAN_LOG_TO_FILE (0 | 1, default on (0 in the Docker image)): Only the exact string `0` turns file logging off; `false` does not.
 
-Only the exact string `0` turns file logging off; `false` does not.
+- AKAN_LOG_DIR (string, default <runtimeDir>/logs): Log directory. A relative path resolves from the process's working directory.
 
-Log directory. A relative path resolves from the process's working directory.
+- AKAN_LOG_MAX_SIZE_MB (number, default 50): Past this size, writing moves on to the next sequence file.
 
-Past this size, writing moves on to the next sequence file.
-
-Newest files kept per process key. Older ones are deleted.
+- AKAN_LOG_MAX_FILES (number, default 100): Newest files kept per process key. Older ones are deleted.
 
 **Where `<runtimeDir>` is:** `runtime/` under `NODE_ENV=production`, otherwise `local/apps/<app>/runtime`. `AKAN_RUNTIME_DIR` overrides both.
 
@@ -217,29 +215,29 @@ History only, as NDJSON
 
 The same filters inside akan console
 
-Minimum level, by name or by severity number.
+- --level (string): Minimum level, by name or by severity number.
 
-Substring the message must contain.
+- --grep (string): Substring the message must contain.
 
-Endpoint globs, comma-separated: `mutation:*`, `query:userList`.
+- --endpoint (string): Endpoint globs, comma-separated: `mutation:*`, `query:userList`.
 
-One request's traceId.
+- --trace (string): One request's traceId.
 
-Replica indexes, comma-separated.
+- --child (string): Replica indexes, comma-separated.
 
-Process roles: `gateway`, `all`, `federation`, `batch`, `rsc-worker`.
+- --role, -R (string): Process roles: `gateway`, `all`, `federation`, `batch`, `rsc-worker`.
 
-Call origins: `http`, `websocket`, `mcp`, `internal`, `page`.
+- --origin (string): Call origins: `http`, `websocket`, `mcp`, `internal`, `page`.
 
-Only records newer than this: `30s`, `5m`, `2h`, `1d`, or epoch ms.
+- --since (string): Only records newer than this: `30s`, `5m`, `2h`, `1d`, or epoch ms.
 
-Records to replay from the buffer before following.
+- --replay, -n (number, default 0): Records to replay from the buffer before following.
 
-Print NDJSON records instead of rendered lines.
+- --json (boolean, default false): Print NDJSON records instead of rendered lines.
 
-Keep streaming. Pass `--follow false` for history only.
+- --follow (boolean, default true): Keep streaming. Pass `--follow false` for history only.
 
-Directory holding `akan-control.sock`. Pass it for a built app running elsewhere.
+- --runtime-dir, -d (string, default local/apps/<app>/runtime): Directory holding `akan-control.sock`. Pass it for a built app running elsewhere.
 
 - Filters Combine — Flags AND together; a comma list inside one flag is an OR. `*` is the only wildcard, for endpoints and logger names, and an endpoint reads `type:key`, as in `mutation:refundPayment` or `page:<routeId>`.
 
@@ -263,29 +261,27 @@ What the request line carries
 
 - ok | error <endpoint>: The message. A clean call is written at info, a failed one at warn.
 
-- Duration and status. On failure, status is the error's statusCode, or 500.
+- ms, status: Duration and status. On failure, status is the error's statusCode, or 500.
 
 - userId: The caller's account id, once the call knows who is asking.
 
-- Query count, query time and cache hit ratio, only under `AKAN_TRACE=1`.
+- db, dbMs, cacheHit: Query count, query time and cache hit ratio, only under `AKAN_TRACE=1`.
 
 - err: The first line of the error message, cut at 200 characters.
 
 Settings
 
-One summary record per call. `slow` keeps only failures and calls over `AKAN_LOG_FLIGHT_MS`.
+- AKAN_LOG_CANONICAL (1 | true | all | slow, default off): One summary record per call. `slow` keeps only failures and calls over `AKAN_LOG_FLIGHT_MS`.
 
-Keeps each call's last 64 sub-level records, promoted only if it failed or ran long.
+- AKAN_LOG_FLIGHT (1 | true, default off): Keeps each call's last 64 sub-level records, promoted only if it failed or ran long.
 
-The slow threshold, shared by the flight recorder and `slow` mode.
+- AKAN_LOG_FLIGHT_MS (number, default 1000): The slow threshold, shared by the flight recorder and `slow` mode.
 
-Records held at once across calls (1,024 calls at 64 each); past it a call runs unrecorded.
+- AKAN_LOG_FLIGHT_MAX (number, default 65536): Records held at once across calls (1,024 calls at 64 each); past it a call runs unrecorded.
 
-unset
+- AKAN_LOG_DEBUG_HEADER (string, default unset): Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local.
 
-Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local.
-
-Adds db and cache figures to the request line, and per-stage spans to metrics.
+- AKAN_TRACE (1, default off): Adds db and cache figures to the request line, and per-stage spans to metrics.
 
 One request at trace in production
 
@@ -311,13 +307,13 @@ Collection and live viewing are different problems. Collection must lose nothing
 
 **Order by `seq`, not `at`.** `at` comes from several processes' clocks; `seq` is the hub's arrival order.
 
-`ndjson`: one JSON record per stdout line. `ndjson-only` writes the rotating file as JSON too.
+- AKAN_LOG_FORMAT (text | ndjson | ndjson-only, default text): `ndjson`: one JSON record per stdout line. `ndjson-only` writes the rotating file as JSON too.
 
-Keeps a child's IPC forwarder on instead of following the hub's floor.
+- AKAN_LOG_STREAM (1, default off): Keeps a child's IPC forwarder on instead of following the hub's floor.
 
-Records the hub owner's ring holds. Eviction starts at this or at the byte cap.
+- AKAN_LOG_BUFFER (number, default 2000): Records the hub owner's ring holds. Eviction starts at this or at the byte cap.
 
-Byte cap on the same ring. Ignored unless it is a positive number.
+- AKAN_LOG_BUFFER_MB (number, default 4): Byte cap on the same ring. Ignored unless it is a positive number.
 
 **`AKAN_LOG_FORMAT` is one value for the whole deployment.** Processes given different values corrupt the stream.
 
@@ -347,7 +343,7 @@ Piece
 
 - ?level=&endpoint=…: The `akan logs` filters, plus `name`, `stream` and `limit`.
 
-- Each event's id is the hub seq, so a reconnect resumes where it left off.
+- id, Last-Event-ID: Each event's id is the hub seq, so a reconnect resumes where it left off.
 
 - : heartbeat: A heartbeat comment every 15 seconds, and a 2-second reconnect hint.
 
@@ -439,19 +435,19 @@ myapp-local-local-2026-05-25-1-federation-0001.log
 ### Terminal
 
 ```bash
-# <l.trans({ en: "List current log files", ko: "현재 로그 파일 목록" })>
+# List current log files
 ls -lh local/apps/myapp/runtime/logs
 
-# <l.trans({ en: "Follow the gateway", ko: "gateway 로그 따라가기" })>
+# Follow the gateway
 tail -f local/apps/myapp/runtime/logs/*-gateway-*.log
 
-# <l.trans({ en: "Follow one child replica", ko: "child replica 하나 따라가기" })>
+# Follow one child replica
 tail -f local/apps/myapp/runtime/logs/*-0-all-*.log
 
-# <l.trans({ en: "Search for errors", ko: "에러 찾기" })>
+# Search for errors
 rg "ERROR|Unhandled|Failed" local/apps/myapp/runtime/logs
 
-# <l.trans({ en: "On a server with AKAN_LOG_DIR=/var/log/akan", ko: "AKAN_LOG_DIR=/var/log/akan인 서버에서" })>
+# On a server with AKAN_LOG_DIR=/var/log/akan
 ls -lh /var/log/akan
 rg "invoice-sync|ERROR" /var/log/akan
 ```
@@ -459,25 +455,19 @@ rg "invoice-sync|ERROR" /var/log/akan
 ### Terminal
 
 ```bash
-# <l.trans({
-              en: "warn and above from any mutation, whose message mentions payment",
-              ko: "mutation에서 나온 warn 이상 중 메시지에 payment가 든 줄",
-            })>
+# warn and above from any mutation, whose message mentions payment
 akan logs myapp --level warn --grep payment --endpoint "mutation:*"
 
-# <l.trans({ en: "One request, start to finish", ko: "요청 하나를 처음부터 끝까지" })>
+# One request, start to finish
 akan logs myapp --trace m8x1k2-a9f3c1
 
-# <l.trans({
-              en: "What the RSC worker rendered, with the last 50 buffered records first",
-              ko: "RSC worker가 렌더한 것, 버퍼의 최근 50건부터",
-            })>
+# What the RSC worker rendered, with the last 50 buffered records first
 akan logs myapp --role rsc-worker --origin page --replay 50
 
-# <l.trans({ en: "History only, as NDJSON", ko: "지난 기록만 NDJSON으로" })>
+# History only, as NDJSON
 akan logs myapp --since 5m --follow false --json
 
-# <l.trans({ en: "The same filters inside akan console", ko: "akan console 안에서도 같은 필터" })>
+# The same filters inside akan console
 akan:myapp> .tail level=warn grep=payment endpoint=mutation:*
 akan:myapp> .trace m8x1k2-a9f3c1
 akan:myapp> .tail off
@@ -488,10 +478,7 @@ akan:myapp> .tail off
 ```bash
 curl -X POST -H "x-akan-debug: <secret>" \
      https://api.example.com/api/refundPayment/ord_1
-# <l.trans({
-              en: "that request alone is logged at trace, its lines marked debug=true",
-              ko: "그 요청만 trace로 찍히고, 그 줄에는 debug=true가 붙습니다",
-            })>
+# that request alone is logged at trace, its lines marked debug=true
 ```
 
 ### docker-compose.yml
@@ -529,10 +516,7 @@ services:
 curl -N -H "Authorization: Bearer $AKAN_LOG_STREAM_TOKEN" \
      "http://<pod>:8282/_akan/app/logs?level=warn&endpoint=mutation:*"
 
-# <l.trans({
-              en: "Reconnect where you left off; an evicted range arrives as an explicit gap event",
-              ko: "끊긴 곳부터 다시 받기. 밀려난 구간은 gap 이벤트로 알려 줍니다",
-            })>
+# Reconnect where you left off; an evicted range arrives as an explicit gap event
 curl -N -H "Authorization: Bearer $AKAN_LOG_STREAM_TOKEN" \
      -H "Last-Event-ID: 84213" \
      "http://<pod>:8282/_akan/app/logs?level=warn"

@@ -38,9 +38,9 @@ Term
 
 - "use client": The first line that makes a file a client component. Without it, a component renders on the server.
 
-- Several components exported as one object, used as `Only.Web` or `Chart.Bar`.
+- namespace component: Several components exported as one object, used as `Only.Web` or `Chart.Bar`.
 
-- A camelCase helper or type file that serves one component, like `swipeCard.util.ts`.
+- sidecar: A camelCase helper or type file that serves one component, like `swipeCard.util.ts`.
 
 Does it belong in ui/?
 
@@ -48,15 +48,27 @@ Ask two questions: does it draw JSX or define a look, and does it take one model
 
 Code
 
-- ui/
+ui/
 
-- lib/<model>/
+lib/<model>/
 
-- webkit/
+webkit/
 
 - Draws JSX or defines a look, bound to no model — ui/
 
+  - landing hero · admin header: Belongs to one app, so it lives in `apps/<app>/ui`.
+
+  - Only.Admin · Only.Web: An auth gate or responsive wrapper several apps share, so it lives in `libs/<lib>/ui`.
+
+  - Chart · MapView · Editor: Wraps a third-party package that pages and module files may not import directly.
+
+  - cardRecipe · panelRecipe: A look several screens share. Not a component or a hook, but it lives in `ui/Recipe/`.
+
 - Goes somewhere else
+
+  - a card for one order: It is bound to a model, so it is `Order.Unit.tsx` in `lib/order/`.
+
+  - useGeoLocation: A hook or browser helper with no markup of its own.
 
 Goes here
 
@@ -108,9 +120,9 @@ Everything in `ui/` is imported through the folder's barrel, never through a fil
 
 What each kind of file in ui/ turns into at the import site:
 
-- File in ui/
+File in ui/
 
-- How to use it
+How to use it
 
 - ui/AutoClose.tsx — `import { AutoClose } from "@apps/myapp/ui"`
 
@@ -166,9 +178,9 @@ Practical Rules
 
 Common mistakes
 
-- Mistake
+Mistake
 
-- Fix
+Fix
 
 - "use client" on a component that only renders markup — Delete it unless the file uses a hook, handler, the store, a browser global or client-only package.
 

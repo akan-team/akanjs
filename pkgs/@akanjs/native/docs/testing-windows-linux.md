@@ -93,9 +93,20 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/update-check.ts windows'
 3. 릴리스 B(A에서의 delta)를 `no-ready`로 실행한다. B는 확정하지 않으므로 A로 롤백되고, B를 다시 받지 않아야 한다.
 4. 앱 옆에 남은 폴더가 없는지 본다.
 
+`--server`(예: `bun scripts/vm/update-check.ts linux --server`)는 샘플에 서버를 싣고(`desktop.server`, IPC로 ready를 보내는 대역)
+같은 흐름을 서버를 싣는 앱으로 본다.
+
+1. A는 서버가 ready 뒤 자리를 잡은 뒤(`SERVER_SETTLE`)에야 확정된다.
+2. 릴리스 B의 서버는 시작할 때마다 끝난다. launcher가 포기하면 B는 곧바로 롤백되고, `failed`가 아니라 `strikes` 1로 받아 둔 채
+   남는다(state.json을 읽어 확인한다).
+3. 서버 없는 빌드를 같은 채널에 게시하면 빌드 전에 거부된다.
+4. 채널을 새로 시작해(매니페스트와 서명을 지움) 그 빌드를 게시하면, 설치된 앱이 매니페스트만 보고 거부한다.
+
+샘플은 `--debug`로 빌드하므로 업데이트 상태는 `akan-native-updates-debug`, 서버 데이터는 `server-debug`에 있다.
+
 서명에는 일회용 키를 쓴다. 그 공개 키를 샘플 설정 사본에 넣으므로 실제 업데이트 키는 필요 없다.
 
-확인 결과(2026-09-25): Windows 11 ARM VM과 Linux 컨테이너 모두 통과했다(A 전체 → 확정, B delta → 롤백, 남은 폴더 없음). 2026-09-26 검토 반영 뒤에도 macOS·Linux·Windows 모두 통과했다.
+확인 결과(2026-09-25): Windows 11 ARM VM과 Linux 컨테이너 모두 통과했다(A 전체 → 확정, B delta → 롤백, 남은 폴더 없음). 2026-09-26 검토 반영 뒤에도 macOS·Linux·Windows 모두 통과했다. 2026-10-01: Linux·Windows에서 기본과 `--server` 모두 통과했다(macOS는 화면이 잠겨 돌리지 못함).
 
 주의: 확인이 도중에 실패하면 임시 폴더에 설치한 앱이 남아 있을 수 있다. 그러면 다음 실행의 앱이 single-instance로 넘기고 바로 끝나서 확인이 멈춘다. Windows에서는 `bun scripts/vm/windows.ts ssh 'Get-Process | Where-Object { $_.Path -like "*akan-native-update-check*" } | Stop-Process -Force'`로 먼저 끝낸다.
 
@@ -120,10 +131,18 @@ bun scripts/vm/windows.ts desktop 'bun scripts/vm/installer-check.ts'   # NSIS�
 bun scripts/vm/windows.ts desktop 'bun scripts/vm/kiosk-check.ts'
 ```
 
-- installer-check: 샘플을 `--installer`로(일회용 업데이트 키, 127.0.0.1의 릴리스 서버) 빌드하고 다음 패치 버전의 릴리스 A를 게시한 뒤, `/S /RUN`으로 설치(폴더, 폴더 옆 제거 프로그램, 시작 메뉴, 제거 항목, 앱 실행) → 설치 프로그램이 띄운 앱이 A를 받아 확정(제거 프로그램이 남고 제거 항목 버전이 A) → 실행 중인 앱 위로 다시 설치(설치 폴더에서 도는 앱을 먼저 멈춤) → `/S` 제거(폴더, 옆에 남긴 `.previous`·`.update-*`·`.failed-*`, 제거 프로그램, 바로가기, 항목)까지 본다.
+- installer-check: 샘플을 `--installer`로(일회용 업데이트 키, 127.0.0.1의 릴리스 서버) 빌드하고 다음 패치 버전의 릴리스 A를 게시한 뒤 차례로 본다.
+  1. `/S /RUN`으로 설치: 폴더, 폴더 옆 제거 프로그램, 시작 메뉴, 제거 항목, 앱 실행.
+  2. 설치 프로그램이 띄운 앱이 A를 받아 확정: 제거 프로그램이 남고 제거 항목 버전이 A.
+  3. 실행 중인 앱 위로 다시 설치: 설치 폴더에서 도는 앱을 먼저 멈춘다. 설치 폴더 안의 정션은 옛 폴더와 함께 사라지고, 가리키던 파일은 남는다.
+  4. 시작하지 못하는 설치: 다른 프로세스가 설치 뮤텍스(`Local\akan-native-setup-<id>`)를 잡고 있으면 설치와 제거 모두 2로 끝난다. `<폴더>.setup-new` 자리에 파일이 있으면 설치가 2로 끝나고 그 파일은 그대로다. 어느 쪽이든 도는 앱은 멈추지 않고 빌드도 그대로다.
+  5. 폴더를 바꾸지 못하는 `/S /RUN` 설치(다른 프로그램이 설치 폴더를 작업 폴더로 쓴다): 2로 끝나고, 설치된 빌드가 그대로이고, 옆에 `.setup-new`·`.setup-old`·`.setup-uninstall.exe`가 남지 않고, 자리에 있는 앱을 다시 띄운다.
+  6. `/S` 제거: 폴더, 옆에 남긴 `.previous`·`.update-*`·`.failed-*`·`.setup-*`, 제거 프로그램, 바로가기, 항목, 자동 시작, 셸의 업데이트 상태(debug 빌드의 것도)와 RunOnce 복구 명령, 앱이 등록한 딥 링크 스킴, 알림 AUMID 키와 아이콘이 지워지고, 서버 데이터와 정션이 가리키던 파일은 남는다.
+  7. `/D=`로 다른 폴더에 설치한 뒤 `/D=` 없이 다시 설치: 두 번째 설치가 그 폴더의 앱을 바꾸고 기본 폴더에 사본을 만들지 않는다. 그 뒤의 제거는 다른 프로그램이 가져간 스킴을 남긴다.
   - NSIS 설치 프로그램은 32비트라 그 PowerShell도 32비트다. 32비트 프로세스는 64비트 프로세스의 경로를 읽지 못해(`Get-Process`의 Path가 빈다) 앱을 WMI(`Win32_Process.ExecutablePath`)로 찾는다.
 - kiosk-check: `desktop.recovery: "reload"`, `desktop.window { fullscreen, skipTaskbar }`, `desktop.screenCapture: "auto"`로 빌드해 DevTools 포트로 확인한다. 첫 화면부터 전체화면, 페이지를 연달아 죽이면(`Page.crash`) 즉시·1초·2초 뒤 다시 불러오기, `app.relaunch()`, WebView2 브라우저 프로세스를 끝내면 앱 재실행, `getDisplayMedia()`가 선택 창 없이 `displaySurface: "monitor"` 트랙으로 답하기.
 - 확인 결과(2026-09-30): Windows 11 ARM VM에서 둘 다 통과. `skipTaskbar`는 전체화면이 작업 표시줄을 가리므로 따로 스크린샷으로 비교했다.
+  - installer-check의 3·4·6·7단계에 2026-10-01 더한 확인은 아직 installer-check로 돌리지 않았다. 같은 동작(뮤텍스, 정션, 제거 범위, 등록된 위치로의 재설치, 공간 부족, 풀던 중 디스크가 참)은 가짜 앱으로 만든 설치 프로그램으로 VM에서 확인했다.
 - macOS에서 update-check는 화면이 잠겨 있으면 멈춘다. 샘플이 `requestAnimationFrame` 안에서 업데이트 확인을 시작하는데, 잠긴 화면에서는 프레임이 오지 않는다.
 
 ## 공통 벡터 (architecture.md §5)

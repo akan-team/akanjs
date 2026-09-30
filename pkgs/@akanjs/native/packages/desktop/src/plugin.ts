@@ -17,7 +17,10 @@ export type EmitTarget = { window: number } | "focused";
 
 export interface DesktopContext {
   app: AppInfo;
-  /** A dev build (boot.json `dev`): its pages come from a dev server the shell did not start. */
+  /**
+   * A debug build (boot.json `dev`: `--debug`, and every dev build, whose pages come from a dev server the shell did not
+   * start). It has the release app's id, so what it keeps apart goes in folders of its own.
+   */
   readonly dev: boolean;
   /**
    * The window whose page made this call (SH-6; 1 = the window the app opened). Only in method
@@ -56,7 +59,7 @@ export interface DesktopContext {
   readonly binDir: string | null;
   /**
    * The server the app carries (desktop.server), or null. `ready` settles once per session: true when the server
-   * first answered ready, false when it could not start or gave up before that.
+   * first answered ready, false when it could not start or gave up before that; `state` and `onState` follow it after.
    */
   readonly server: DesktopServerStatus | null;
   /** Pushes an event of this plugin to the pages that listen. Returns the windows reached. */
@@ -109,19 +112,31 @@ export interface DesktopContext {
   closeWindow(window?: number): void;
   /**
    * Launch phase: only while setup runs, before the window exists. The host waits for every
-   * plugin's setup (async allowed, at most 3 s each) before it creates the window. Calls after
-   * that are ignored with a warning.
+   * plugin's setup (async allowed, at most 3 s each) before it creates the window. setWindow after
+   * that is ignored with a warning.
    */
   readonly launch: {
     /** Creates the window at these bounds (logical points) instead of the configured size (window-state). */
     setWindow(bounds: LaunchWindow): void;
-    /** Ends the app before a window is created; onQuit hooks do not run (single-instance). */
+    /**
+     * Ends the app before a window is created; onQuit hooks do not run (single-instance). A setup that ran past its
+     * time quits the app instead, since its window exists by then.
+     */
     exit(code?: number): void;
   };
 }
 
+/**
+ * "starting" until the server answers ready (again after a crash before that), "up" while it answers, "restarting"
+ * after a crash once it had been up, "gaveUp" when it is not started again this session, "stopped" as the app quits.
+ */
+export type DesktopServerState = "starting" | "up" | "restarting" | "gaveUp" | "stopped";
+
 export interface DesktopServerStatus {
   readonly ready: Promise<boolean>;
+  readonly state: DesktopServerState;
+  /** Every later change of `state`. Returns an unsubscribe function. */
+  onState(listener: (state: DesktopServerState) => void): () => void;
 }
 
 /** Which page load ended. `id` is "" for a page that sends no document id (v1 callers, tests). */

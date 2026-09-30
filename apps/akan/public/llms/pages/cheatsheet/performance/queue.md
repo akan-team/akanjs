@@ -60,11 +60,11 @@ Job options
 
 Pass job options as the last argument of the queueing call:
 
-- number — 0 — Milliseconds to wait before the first run.
+- delay (number, default 0): Milliseconds to wait before the first run.
 
-- number — 1 — How many times the job may run in total, counting the first try. — await this.reportSignal.generateReport(report.id, { attempts: 3, backoff: 10_000 });
+- attempts (number, default 1): How many times the job may run in total, counting the first try. — Example: `await this.reportSignal.generateReport(report.id, { attempts: 3, backoff: 10_000 });`
 
-- number | { type?, delay? } — Milliseconds to wait before a retry.
+- backoff (number | { type?, delay? }): Milliseconds to wait before a retry.
 
 Run In Process
 
@@ -90,13 +90,19 @@ Akan runs replicas with roles: `federation` answers users, and `batch` takes bac
 
 Role
 
-- Requests
+Requests
 
-- Default job — serverMode: "all"
+Default job — serverMode: "all"
 
-- Batch job — serverMode: "batch"
+Batch job — serverMode: "batch"
 
 - `AKAN_REPLICA=<federation>,<batch>,<all>`
+
+  - federation: Answers user requests.
+
+  - batch: Never listens for requests. Runs background work only.
+
+  - all: Does both. The default `0,0,1` is one of these.
 
 runs
 

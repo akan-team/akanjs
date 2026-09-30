@@ -51,7 +51,7 @@ Term
 
 - guard: A class that decides whether the caller may run an endpoint.
 
-- Wrappers that fill the store from route data and draw the loading and empty states.
+- Load.Units, Load.View: Wrappers that fill the store from route data and draw the loading and empty states.
 
 Module File Map
 
@@ -125,11 +125,11 @@ Role Boundaries
 
 When a module gets confusing, it is usually because logic moved into the wrong file. Check where it belongs before adding code.
 
-- What
+What
 
-- Where
+Where
 
-- What goes there
+What goes there
 
 - Business rules — service · document · constant — Service workflows, document methods and constant helpers. Never inside render code.
 
@@ -161,17 +161,41 @@ Pick the column for the task you are building and read it top to bottom: that is
 
 File, in reading order
 
-- New model
+New model
 
-- List
+List
 
-- Detail/edit
+Detail/edit
 
-- Action
+Action
 
 - Logic files
 
+  - abstract: Every path starts here, with the rules the change must keep.
+
+  - constant: The new object's fields and model layers.
+
+  - dictionary: Names for the new fields, errors and UI text.
+
+  - document: Filters, document methods and indexes for the stored data.
+
+  - service: The workflow the new model or the click runs.
+
+  - signal: A slice for a list, the `get` guard behind `view<Model>` for detail, an endpoint for an action.
+
+  - store: The state the screen reads. For an action, the store action a button calls.
+
 - UI files
+
+  - Zone: The section that takes the route's data and fills the list or the detail.
+
+  - Unit: One card or row of the list.
+
+  - View: The detail of one full record.
+
+  - Template: The edit form. For an action, the button can live here or in Util.
+
+  - Util: The action's button when it is a control of its own.
 
 Read for this task
 

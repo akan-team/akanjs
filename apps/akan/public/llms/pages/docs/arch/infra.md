@@ -56,7 +56,7 @@ Term
 
 - Secret: A Kubernetes object that hands private values, such as database URLs, to pods as env vars.
 
-- Volume access modes: one node mounts the first, pods on many nodes share the second.
+- ReadWriteOnce, ReadWriteMany: Volume access modes: one node mounts the first, pods on many nodes share the second.
 
 - WAL: SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
@@ -120,13 +120,13 @@ Besides the app itself, a service needs somewhere to keep data, a queue for back
 
 Start with single mode. Most services do not need a separate database cluster on day one. When real performance limits, queue needs or multi-instance operation appear, move up to multiple or cluster mode without changing the business shape of the app.
 
-- Mode
+Mode
 
-- Database
+Database
 
-- Where it runs
+Where it runs
 
-- Cache · queue · pubsub
+Cache · queue · pubsub
 
 - single — One SQLite file — SQLite files: a key-value cache, and a queue and pubsub sped up by Bun IPC — One container
 
@@ -138,15 +138,13 @@ Start with single mode. Most services do not need a separate database cluster on
 
 When to pick each mode
 
-Mode
-
 When → what you get
 
-- single: →
+- single: The best start for MVPs, internal tools, admin pages, content sites and small-to-medium services.→ Enough for most products under roughly 10k DAU, especially with WAL mode.
 
-- multiple: →
+- multiple: When one host runs several containers that need a shared cache, pub/sub and queue.→ Lighter than cluster: cache and background work move to Redis, the data stays in one SQLite file.
 
-- cluster: →
+- cluster: For several servers, local runs that match production, or heavier relational storage.→ The most production-like mode, for heavier concurrent work and cluster validation.
 
 Declaring the modes
 
@@ -222,19 +220,19 @@ Growth Stages
 
 Infrastructure does not need to start big. A business can begin with one server and one container, then grow step by step as traffic and reliability requirements increase. The three stages at a glance:
 
-- Stage
+Stage
 
-- Servers
+Servers
 
-- Containers
+Containers
 
-- Database mode
+Database mode
 
-- one — one — single
+- 1. Single serverStable — one — one — single
 
-- one — several — multiple / cluster
+- 2. Multiple containersExperimental — one — several — multiple / cluster
 
-- several — several — cluster
+- 3. Cloud clusterExperimental — several — several — cluster
 
 Stage 1 is stable, and stages 2 and 3 are experimental. Both have a recipe under Database Mode above: docker compose on one host for stage 2, the chart's cluster mode for stage 3.
 

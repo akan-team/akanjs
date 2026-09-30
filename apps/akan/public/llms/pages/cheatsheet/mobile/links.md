@@ -23,9 +23,9 @@ Two Kinds Of Link
 
 Deep link is the feature; `schemes` and `domains` are the two usual ways to build it. You can declare both:
 
-- Scheme link — shop://orders/1 — An app-only link. It needs no verification, so it is the easy one to test during development.
+- schemes: An app-only link. It needs no verification, so it is the easy one to test during development. — Scheme link — Example: `shop://orders/1`
 
-- Domain link — https://shop.example.com/orders/1 — Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs.
+- domains: Works like a normal web link but needs iOS and Android verification. Best for sharing, email and push URLs. — Domain link — Example: `https://shop.example.com/orders/1`
 
 Declare It
 
@@ -67,13 +67,13 @@ The deepLinks Block
 
 Every field is optional. Each platform reads only what it needs, so declare only what your link style requires:
 
-- string[] — App-only URL schemes, such as `shop` in `shop://orders/1`. — schemes: ["shop"]
+- schemes (string[]): App-only URL schemes, such as `shop` in `shop://orders/1`. — Example: `schemes: ["shop"]`
 
-- string[] — Hosts whose HTTPS links open the app once iOS and Android verify them. — domains: ["shop.example.com"]
+- domains (string[]): Hosts whose HTTPS links open the app once iOS and Android verify them. — Example: `domains: ["shop.example.com"]`
 
-- string — Your Apple Developer Team ID. iOS uses it to verify `domains`. — ios: { teamId: "TEAMID" }
+- ios.teamId (string): Your Apple Developer Team ID. iOS uses it to verify `domains`. — Example: `ios: { teamId: "TEAMID" }`
 
-- string[] — SHA-256 fingerprints of the certificates that sign the app. Android uses them to verify `domains`. — android: { sha256CertFingerprints: ["AA:BB:CC:DD:..."] }
+- android.sha256CertFingerprints (string[]): SHA-256 fingerprints of the certificates that sign the app. Android uses them to verify `domains`. — Example: `android: { sha256CertFingerprints: ["AA:BB:CC:DD:..."] }`
 
 What Each Link Style Needs
 
@@ -81,13 +81,21 @@ Scheme links need one field. Domain links need three, and each platform reads it
 
 Field
 
-- iOS
+iOS
 
-- Android
+Android
 
 - Scheme links
 
+  - schemes
+
 - Domain links
+
+  - domains
+
+  - ios.teamId
+
+  - android.sha256CertFingerprints
 
 Read by this platform
 

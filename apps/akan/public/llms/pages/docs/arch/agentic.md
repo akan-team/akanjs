@@ -134,15 +134,49 @@ Declaring tools and state
 
 - st.tool(name).desc(…).arg(…).opt(…).exec(fn)
 
+  - The only way an action reaches an agent. It returns the callable to wire to onClick.
+
+  - desc is required and comes first. arg is what the caller must pass; opt is what it may, and an omitted opt arrives as null.
+
+  - Both take a scalar, an enum, or one array level of either ([String], [TaskStatus]), so a list never has to be taught as a string format.
+
+  - A third argument narrows the values at render time: .arg("branch", String, { oneOf: branchCodes }) is enumOf for values known only once the component has its data.
+
 - st.tool(name, { confirm, settle })
+
+  - confirm holds the call on the approval card: true for every call, or a function of the arguments for the ones that deserve it.
+
+  - A remove* name confirms by default, reading destructiveness off the name as MCP hints do. Write { confirm: false } to opt out.
+
+  - settle: false marks a read of what is already there, so the turn reports without waiting for the DOM. The default waits, since a write may still be landing.
 
 - st.tool(canRefund && "refundOrder")
 
+  - A falsy name declares the tool without publishing it. The callable still handles a person's click; nothing reaches the agent.
+
+  - Every chain ends in a hook, so a conditional surface withholds the name instead of skipping the declaration.
+
+  - The name follows the render: a control that appears later publishes, and one that goes away stops.
+
 - st.expose(name, Type).desc(…).value(v) · st.useState(name, Type).desc(…).init(v)
+
+  - Derived values and local state, each ending in one hook. .value() takes the value the component holds, or a thunk when a ref the children fill builds it; .init() is useState and returns the same pair.
+
+  - The declared type checks what you hand over and masks how it reads: a model class strips its hidden, secret and visual fields; Any passes untouched.
+
+  - Read-only unless set: true, which publishes a set<Name> tool of the same type. { report: false } keeps a key that changes every second out of change reports.
 
 - agentAttrs(handler, key)
 
+  - The data-akan-* attributes for a handler passed by reference, and {} for an inline arrow: a closure says nothing about what it does, and a guessed mark is worse than none.
+
+  - Every akanjs/ui control already spreads it, so an app writes it only on a control of its own.
+
+  - key says which of several same-named controls this is, in the call argument's own words. Without it the pointer cannot tell a tab's menus apart, so it draws nothing.
+
 - st.use.x({ agent: false })
+
+  - Subscribes without joining the surface. There is no store-level switch; a store class says nothing about agents.
 
 Six built-in tools
 

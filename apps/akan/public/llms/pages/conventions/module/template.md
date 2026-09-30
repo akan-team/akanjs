@@ -30,13 +30,27 @@ A Template only connects the screen to the store. Anything that needs a decision
 
 The work
 
-- Template — *.Template.tsx
+Template — *.Template.tsx
 
-- Elsewhere
+Elsewhere
 
 - Drawing the form
 
+  - Field.*: Labelled controls, each bound to one field of the form draft.
+
+  - submit button · step · preview: Small interaction pieces that belong to one form.
+
+  - l("<model>.<field>"): Labels and help text from the module dictionary.
+
 - Deciding and saving
+
+  - business rule: Validation and state transitions go in constant, document and service.
+
+  - access check: Who may save is decided by the guards in the signal.
+
+  - fetch.*: A server call and its toasts go in a store action.
+
+  - open · load · submit: An edit shell does this around the Template.
 
 Belongs here
 
@@ -52,19 +66,19 @@ Term
 
 - fetch.slice.<name>: Tells a Field or a shell which model and which list it works with.
 
-- A wrapper such as `Load.Edit` or `Model.Edit` that loads, opens and submits the form.
+- edit shell: A wrapper such as `Load.Edit` or `Model.Edit` that loads, opens and submits the form.
 
 File Convention
 
 A Template sits in the module folder, beside the model it edits. Every field reads and writes the store, which exists only in the browser, so its first line is always `"use client"`.
 
-- Path — Database and scalar modules may have one. Service modules may not.
+- Path — `apps/<app>/lib/<model>/<Model>.Template.tsx` — Database and scalar modules may have one. Service modules may not.
 
-- First Line — Always, on line 1 above the imports.
+- First Line — `"use client";` — Always, on line 1 above the imports.
 
-- Exports — Named arrow components. General is the model's main form.
+- Exports — `General · Phone · SubmitPhone · PhoneCode` — Named arrow components. General is the model's main form.
 
-- Used As — Pages and shells reach it through the model namespace from @apps/<app>/client.
+- Used As — `<Ticket.Template.General />` — Pages and shells reach it through the model namespace from @apps/<app>/client.
 
 **Name the main form `General`.** `Model.AdminPanel` uses `Template.General` as its form, and falls back to the first export.
 
@@ -88,11 +102,11 @@ Field Patterns
 
 `Field.*` components are ready-made form controls with a label row. Pick the one that matches the model field, then connect `value` and `onChange` to the store.
 
-- Model field
+Model field
 
-- Field
+Field
 
-- Note
+Note
 
 - String — Field.Text — `TextArea`, `Email`, `Phone` and `Password` are variants for special text.
 
@@ -106,13 +120,13 @@ Field Patterns
 
 - [String] — Field.Tags — `TextList` keeps the order and lets the user drag rows.
 
-- Field.Parent — `Children` takes an array, and `ParentId` / `ChildrenId` take `ID` fields.
+- relation to a model — Field.Parent — `Children` takes an array, and `ParentId` / `ChildrenId` take `ID` fields.
 
 - File — Field.Img — `Imgs` takes `[File]` and `File` / `Files` take other files, all from `@libs/shared/ui`.
 
-- Field.Rich — A rich-text editor with attachments, from `@libs/shared/ui`.
+- rich text — Field.Rich — A rich-text editor with attachments, from `@libs/shared/ui`.
 
-- Field.List — You render one row; the field draws the add and remove buttons.
+- embedded objects — Field.List — You render one row; the field draws the add and remove buttons.
 
 The basic members come from `akanjs/ui`. `Field` from `@libs/shared/ui` holds them all and adds `Rich`, `Img`, `Imgs`, `File`, `Files`, `Coordinate` and `Postcode`, so import it from there. Here are four fields that need more than `value` and `onChange`, added to the same form:
 
@@ -144,11 +158,11 @@ Opening A Template
 
 A Template only draws fields. An edit shell around it fills the form state, opens the form and submits it. Pick the shell by where the form opens:
 
-- Shell
+Shell
 
-- Use it when
+Use it when
 
-- What it draws
+What it draws
 
 - Load.Edit — A page already holds the record to edit, or a partial new form. — The form in the page, in a modal, or as bare fields, chosen by `type`.
 
@@ -174,23 +188,23 @@ To edit an existing record, fetch its edit object with `fetch.edit<Model>` and p
 
 Before the Template renders, Load.Edit writes these keys into the store:
 
-- State key
+State key
 
-- Given an edit object
+Given an edit object
 
-- Given a partial form
+Given a partial form
 
-- The full model, built from the edit object. — `null`
+- <model> — The full model, built from the edit object. — `null`
 
-- `false`
+- <model>Loading — `false` — Left as it was.
 
-- An editable copy of the model. — The default values merged with `edit`.
+- <model>Form — An editable copy of the model. — The default values merged with `edit`.
 
-- `false` — `false`
+- <model>FormLoading — `false` — `false`
 
-- The `modal` prop, or `"edit"`. — The `modal` prop, or `"edit"`.
+- <model>Modal — The `modal` prop, or `"edit"`. — The `modal` prop, or `"edit"`.
 
-- When the server read the record, used to re-read a stale one.
+- <model>ViewAt — When the server read the record, used to re-read a stale one. — Left as it was.
 
 Model.Edit for an edit modal
 

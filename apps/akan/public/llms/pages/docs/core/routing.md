@@ -49,21 +49,21 @@ A route file is a page, a layout, or an overrides manifest. Everything under pag
 
 File
 
-- folder/_index.tsx — The page for the folder it sits in: project/_index.tsx serves /:lang/project.
+- folder/_index.tsx: The page for the folder it sits in: project/_index.tsx serves /:lang/project.
 
-- folder/_layout.tsx — Wraps every page below its folder. The root one is a rootLayout() chain.
+- folder/_layout.tsx: Wraps every page below its folder. The root one is a rootLayout() chain.
 
-- folder/_overrides.tsx — A logic-free manifest of UI overrides for the subtree: one export default override({ … }).
+- folder/_overrides.tsx: A logic-free manifest of UI overrides for the subtree: one export default override({ … }).
 
-- path.tsx — A segment as one file: project.tsx serves /:lang/project. Never an uppercase first letter.
+- path.tsx: A segment as one file: project.tsx serves /:lang/project. Never an uppercase first letter.
 
-- [param].tsx — A dynamic segment as one file: [projectId].tsx serves /:lang/:projectId.
+- [param].tsx: A dynamic segment as one file: [projectId].tsx serves /:lang/:projectId.
 
-- (group)/ — Organizes files without adding a URL segment, such as (user) or (public).
+- (group)/: Organizes files without adding a URL segment, such as (user) or (public).
 
-- [lang]/ — Never written: Akan injects the locale.
+- [lang]/: Never written: Akan injects the locale.
 
-- robots.txt.tsx — The one route outside the locale: it serves /robots.txt, not /:lang/robots.txt.
+- robots.txt.tsx: The one route outside the locale: it serves /robots.txt, not /:lang/robots.txt.
 
 _index.tsx, _layout.tsx and _overrides.tsx are the only reserved names an underscore may introduce.
 
@@ -81,13 +81,43 @@ Stage
 
 - Every chain
 
+  - .param: Declares one [x] path segment, typed; a value the type refuses answers not-found. — (name, Type)
+
+  - .search: An optional query key; [String] reads a list, and a value the type refuses is dropped. — (key, Type)
+
+  - .config: Client frame behaviour such as transition and devOnly; child pages inherit a layout's. — ({ … })
+
+  - .head: The route's <head> as JSX (title, meta, link), or a function of the args that returns it. — (jsx | fn)
+
+  - .loading: Fallback UI while the route loads; every .search() value reads undefined inside it. — (fn)
+
 - page() only
+
+  - .prompt: Publishes the screen as an MCP prompt: .param() args are required, .search() optional. — (name, desc)
 
 - layout() and rootLayout()
 
+  - .notFound: 404 UI rendered inside the layout when a child route is missing; takes raw route props. — (fn)
+
+  - .error: SSR error UI under the nearest layout when a child throws; raw props, error and digest. — (fn)
+
 - rootLayout() only
 
+  - .fonts: Registers app-wide fonts; optimize subsets a font and serves it from /_akan/fonts. — ([…])
+
+  - .manifest: The web app manifest (name, startUrl, icons…) for installable, PWA-like behaviour. — ({ … })
+
+  - .theme: The document's default theme (dark, light, system); an empty string is honoured. — (name)
+
+  - .reconnect: The connection-lost overlay only, not reconnection; off unless you set it. — (on)
+
+  - .wsConnect: Connects the WebSocket on load (default true); false waits for fetch.instance.connect(). — (on)
+
+  - .layoutStyle: The outer page container style, web or mobile. Use mobile for app-like shells. — (style)
+
 - Ends the chain
+
+  - .render: The component, ending the chain; gets lang, the declared args, and children on a layout. — (fn)
 
 required
 

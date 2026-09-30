@@ -101,7 +101,15 @@ Inline
 
 - A class set you would otherwise repeat
 
+  - Repeated or variant-like surface: A status pill, a hero, a bubble or a tile: extract a recipe.
+
+  - Class chosen from a fixed set by data: Tone, size, side or status decides the class: make it a variant of a recipe.
+
+  - Styling a server component or raw element: A recipe is server-safe, so a server page can call it directly.
+
 - A class you write once
+
+  - Genuinely one-off className: Keep it inline. Do not over-abstract.
 
 Reach for this
 
@@ -128,6 +136,12 @@ New look
 Canonical
 
 - Inside the route subtree
+
+  - Framework client components: Button, Badge, Input, Dropdown, Pagination … read the slot, so they re-skin.
+
+  - Server components (Unit, View): They keep the canonical recipe.
+
+  - buttonRecipe(...): A raw call in your own JSX keeps the canonical recipe; import your own recipe there instead.
 
 Uses this recipe
 

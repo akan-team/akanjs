@@ -46,15 +46,21 @@ Start from what the control is bound to. Most controls land in `ui/` or `page/`,
 
 The control is
 
-- ui/
+ui/
 
-- page/
+page/
 
-- .Util.tsx
+.Util.tsx
 
 - Usually
 
+  - Not bound to one model: A disconnect button, a permission prompt, a map control. The service store only drives it.
+
+  - A screen of its own: The OAuth consent screen is a route in `libs/shared/page/oauth`, not a component.
+
 - Rarely
+
+  - Meaningless outside this module: It reads this store and calls this endpoint. In `ui/` it would import the module back in.
 
 Goes here
 
@@ -96,13 +102,23 @@ A service module folder has exactly two component roles: `Service.Util.tsx` and 
 
 Role
 
-- model module — lib/<model>
+model module — lib/<model>
 
-- service module — lib/_<name>
+service module — lib/_<name>
 
 - Roles that need a model
 
+  - .Template.tsx: Binds to a model's form state.
+
+  - .Unit.tsx: Renders one light model, such as a list card.
+
+  - .View.tsx: Renders one full model, such as a detail screen.
+
 - Roles that need no model
+
+  - .Util.tsx: One client control.
+
+  - .Zone.tsx: One client section a page drops in whole.
 
 Allowed
 

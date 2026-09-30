@@ -247,7 +247,7 @@ export class AkanApp {
     if (this.#solo) return await this.#startSolo();
     if (SelfExec.carried)
       throw new Error(
-        "A desktop app's server runs in one process, and this main.ts asks for replicas (replica, solo: false or AKAN_SOLO=false), which would start with the `bun` on the user's PATH. Leave them out of the app the desktop build carries.",
+        "A desktop app's server runs in one process, and this one was asked for a gateway and replicas, which would start with the `bun` on the user's PATH: by `replica` or `solo: false` in main.ts, or by AKAN_SOLO=false, an AKAN_REPLICA other than one traffic replica, or AKAN_COMMAND_TYPE=start in its env. Leave them out of the app the desktop build carries.",
       );
     Logger.role = "gateway";
     await this.#prepareRuntimeDir();
@@ -957,8 +957,10 @@ export class AkanApp {
   async #proxyResponse(req: Request, upstreamRes: Response): Promise<Response> {
     const headers = new Headers(upstreamRes.headers);
     // Bun fetch decompresses upstream bodies but keeps these headers, so browsers would decode twice.
-    headers.delete("content-encoding");
-    headers.delete("content-length");
+    if (headers.has("content-encoding")) {
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+    }
     this.#rewriteInternalLocation(headers);
     const proxied = new Response(upstreamRes.body, {
       status: upstreamRes.status,

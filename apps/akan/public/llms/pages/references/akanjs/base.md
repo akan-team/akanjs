@@ -31,7 +31,7 @@ Export
 
 - ID: A document id: a 24-character hex string.
 
-- Whole numbers and decimals. JavaScript `Number` is not a field type.
+- Int, Float: Whole numbers and decimals. JavaScript `Number` is not a field type.
 
 - Any: An open value Akan does not check. You name its shape with a type argument.
 
@@ -39,13 +39,13 @@ Export
 
 - Upload: A file in the body of the upload mutation.
 
-- The date library and its type. Every `Date` field holds a `Dayjs`.
+- dayjs, Dayjs: The date library and its type. Every `Date` field holds a `Dayjs`.
 
 - enumOf: Turns a fixed list of values into an enum class.
 
 - getEnv: The running app's name, environment and server addresses.
 
-- The paths that signals and the websocket are served under.
+- getApiPrefix, getWsPrefix: The paths that signals and the websocket are served under.
 
 - DataList: A list keyed by id. Every model list in a store is one.
 
@@ -53,15 +53,31 @@ Where Each Type Goes
 
 Type
 
-- Model field — field()
+Model field — field()
 
-- Signal argument — .body() .param()
+Signal argument — .body() .param()
 
-- Signal return — query() mutation()
+Signal return — query() mutation()
 
 - Import from `akanjs/base`
 
+  - ID: Document ids.
+
+  - Int · Float: Counts and decimals.
+
+  - Any: Payloads whose shape stays open.
+
+  - Binary: Keep stored bytes in a `File` model.
+
+  - Upload: Only in the body of a `fileUpload: true` mutation.
+
 - JavaScript globals, no import
+
+  - String: Plain text.
+
+  - Boolean: Text such as "true", "false", "1" and "0" is read as a boolean.
+
+  - Date: The value is a `Dayjs`, not a JavaScript `Date`.
 
 Can be used
 
@@ -75,11 +91,9 @@ Values Without a Default
 
 A required field with no `default` starts at the value below. An `.optional()` field starts at `null`.
 
-- Type
+TypeScript value
 
-- TypeScript value
-
-- Without a default
+Without a default
 
 - ID — string — ""
 
@@ -193,17 +207,17 @@ Static Helpers
 
 Member
 
-- values: The list exactly as declared.
+- values: The list exactly as declared. — Example: `JobStatus.values; // ["ready", "running", "done"]`
 
-- has(value): Whether the value is in the list.
+- has(value): Whether the value is in the list. — Example: `JobStatus.has("ready"); // true`
 
 - indexOf(value): The value's position. Throws when the value is not in the list.
 
-- Like the Array methods, but throw when nothing matches.
+- find(fn), findIndex(fn): Like the Array methods, but throw when nothing matches.
 
-- Same as the Array methods. — JobStatus.map((value) => value.toUpperCase());
+- filter(fn), map(fn), forEach(fn): Same as the Array methods. — Example: `JobStatus.map((value) => value.toUpperCase());`
 
-- JobStatus["value"]: The type of one value: the union of the list.
+- JobStatus["value"]: The type of one value: the union of the list. — Example: `const statusClass: { [key in JobStatus["value"]]: string } = { ready: "text-foreground/60", running: "text-primary", done: "text-success" };`
 
 **camelCase name, `as const` list.** The first argument names the enum; without `as const` the values widen to `string`.
 
@@ -217,31 +231,31 @@ getEnv
 
 `getEnv()` tells running code about its app: the name, the environment, and where the web and API servers are. The first call reads the environment variables; later calls return the same cached object.
 
-- string — From `AKAN_PUBLIC_APP_NAME`. Required.
+- appName (string): From `AKAN_PUBLIC_APP_NAME`. Required.
 
-- string — From `AKAN_PUBLIC_REPO_NAME`. Required.
+- repoName (string): From `AKAN_PUBLIC_REPO_NAME`. Required.
 
-- string — From `AKAN_PUBLIC_SERVE_DOMAIN`. Required.
+- serveDomain (string): From `AKAN_PUBLIC_SERVE_DOMAIN`. Required.
 
-- "testing" | "debug" | "develop" | "main" | "local" — "debug" — From `AKAN_PUBLIC_ENV`.
+- environment ("testing" | "debug" | "develop" | "main" | "local", default "debug"): From `AKAN_PUBLIC_ENV`.
 
-- "local" | "edge" | "cloud" | "module" — "cloud" — From `AKAN_PUBLIC_OPERATION_MODE`. It is `"local"` when `environment` is `"local"`.
+- operationMode ("local" | "edge" | "cloud" | "module", default "cloud"): From `AKAN_PUBLIC_OPERATION_MODE`. It is `"local"` when `environment` is `"local"`.
 
-- "single" | "multiple" | "cluster" | undefined — From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.
+- databaseMode ("single" | "multiple" | "cluster" | undefined): From `AKAN_DATABASE_MODE`, else the mode the app declares. `undefined` in the browser.
 
-- "server" | "client" — Whether this code is running on the server or in the browser.
+- side ("server" | "client"): Whether this code is running on the server or in the browser.
 
-- "ssr" | "csr" — "csr" — From `AKAN_PUBLIC_RENDER_ENV`.
+- renderMode ("ssr" | "csr", default "csr"): From `AKAN_PUBLIC_RENDER_ENV`.
 
-- string — "/api" — The value `getApiPrefix()` returns.
+- apiPrefix (string, default "/api"): The value `getApiPrefix()` returns.
 
-- string — "/ws" — The value `getWsPrefix()` returns.
+- wsPrefix (string, default "/ws"): The value `getWsPrefix()` returns.
 
-- string — The web origin, such as `http://localhost:8282`. Also split into `clientHost` and `clientPort`.
+- clientHttpUri (string): The web origin, such as `http://localhost:8282`. Also split into `clientHost` and `clientPort`.
 
-- string — The API base with the prefix, such as `http://localhost:8282/api`.
+- serverHttpUri (string): The API base with the prefix, such as `http://localhost:8282/api`.
 
-- string — The websocket origin without a path, such as `ws://localhost:8282`.
+- serverWsUri (string): The websocket origin without a path, such as `ws://localhost:8282`.
 
 A helper that builds the app's public host from the env:
 
@@ -255,11 +269,11 @@ getApiPrefix / getWsPrefix
 
 `getApiPrefix()` returns the path signals are served under, and `getWsPrefix()` the websocket's path under it. Build URLs with them instead of writing `/api` or `/ws`, because an app can move both.
 
-- Where
+Where
 
-- Setting
+Setting
 
-- Who follows it
+Who follows it
 
 - main.ts — new AkanApp({ prefix, websocketPrefix }) — The server's routes, and every page the server renders.
 
@@ -285,23 +299,23 @@ A store action that puts an updated admin back into its list:
 
 Methods
 
-- new DataList(rows): Builds a list from an array. A repeated id keeps the last row.
+- new DataList(rows): Builds a list from an array. A repeated id keeps the last row. — Example: `const users = new DataList([{ id: "a", nickname: "Akan" }]);`
 
-- set(row): Replaces the row with the same id, or appends it. Changes this list and returns it.
+- set(row): Replaces the row with the same id, or appends it. Changes this list and returns it. — Example: `users.set({ id: "b", nickname: "Akan" });`
 
 - delete(id): Removes the row with that id. Changes this list and returns it.
 
 - save(): A new DataList with the same rows. Hand this to `this.set()`.
 
-- The row with that id. `get` returns `undefined` when it is missing; `pick` throws. — const user = users.pick("a");
+- get(id), pick(id): The row with that id. `get` returns `undefined` when it is missing; `pick` throws. — Example: `const user = users.pick("a");`
 
-- Look up by id or position. `indexOf` and `pickAt` throw when nothing is there.
+- has(id), indexOf(id), at(idx), pickAt(idx): Look up by id or position. `indexOf` and `pickAt` throw when nothing is there.
 
-- Return a new DataList.
+- filter, slice, sort: Return a new DataList.
 
-- Same as the Array methods. `for...of` works too.
+- map, forEach, find, some, every, reduce: Same as the Array methods. `for...of` works too.
 
-- The rows as a plain array, and how many there are.
+- values, length: The rows as a plain array, and how many there are.
 
 ## Code Examples
 

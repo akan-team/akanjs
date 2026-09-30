@@ -72,5 +72,10 @@ export default defineDesktopPlugin<AppApi, AppEvents>({
     // Android's back button and its swipe: never fire here, but listening works on every platform.
     backButton: () => () => {},
     backProgress: () => () => {},
+    serverState(send, ctx) {
+      if (!ctx.server) return () => {};
+      send({ state: ctx.server.state });
+      return ctx.server.onState((state) => void send({ state }));
+    },
   },
 });

@@ -22,13 +22,13 @@ Words Used on This Page
 
 Term
 
-- The workspace's `AGENTS.md`, the one file holding the conventions every coding agent follows.
+- agent guide: The workspace's `AGENTS.md`, the one file holding the conventions every coding agent follows.
 
-- A short file that only tells one tool to read `AGENTS.md`, such as `CLAUDE.md`.
+- pointer: A short file that only tells one tool to read `AGENTS.md`, such as `CLAUDE.md`.
 
-- The part of `AGENTS.md` between the `akan:agent` markers. The command rewrites only this part.
+- managed block: The part of `AGENTS.md` between the `akan:agent` markers. The command rewrites only this part.
 
-- `apps/<app>/AGENTS.md` or `libs/<lib>/AGENTS.md`: the UI recipes that scope can import.
+- scoped guide: `apps/<app>/AGENTS.md` or `libs/<lib>/AGENTS.md`: the UI recipes that scope can import.
 
 What Each Target Writes
 
@@ -40,9 +40,17 @@ App/lib guides
 
 - Guide · only the block is rewritten, so `--force` is never needed
 
+  - agents-md: Rebuilds the managed block, then writes every app and library guide.
+
 - Pointers · written whole, so an existing file needs `--force`
 
+  - claude: Claude Code imports the guide through `@AGENTS.md`.
+
+  - cursor: An always-on Cursor rule that points at the guide.
+
 - Default
+
+  - all: All three, in the order `cursor`, `agents-md`, `claude`.
 
 Writes
 
@@ -66,27 +74,27 @@ The managed block is rebuilt from the installed Akan release and your workspace.
 
 Section
 
-- The repo name, and the apps, libraries and packages in it.
+- Workspace: The repo name, and the apps, libraries and packages in it.
 
-- The coding rules, including the lint rules that break the build.
+- Conventions: The coding rules, including the lint rules that break the build.
 
-- The workspace layout, everyday commands, where each kind of code goes, and common pitfalls.
+- Onboarding: The workspace layout, everyday commands, where each kind of code goes, and common pitfalls.
 
-- Present only while samples from `create-workspace` remain, and lists which ones to delete.
+- Start clean: Present only while samples from `create-workspace` remain, and lists which ones to delete.
 
-- Read a module's `*.abstract.md` first, and update it when the module's behavior changes.
+- Module abstracts: Read a module's `*.abstract.md` first, and update it when the module's behavior changes.
 
-- Which generated files never to hand-edit, and the commands that regenerate them.
+- Generated files: Which generated files never to hand-edit, and the commands that regenerate them.
 
-- The `akanjs/ui` recipes. App and library recipes are in the scoped guides.
+- Recipes: The `akanjs/ui` recipes. App and library recipes are in the scoped guides.
 
-- Prefer an Akan workflow to a direct edit, run through MCP or the CLI.
+- MCP workflow policy: Prefer an Akan workflow to a direct edit, run through MCP or the CLI.
 
-- The `sync`, `lint`, `typecheck`, `test`, `build`, `doctor` and `quality` commands.
+- Validation: The `sync`, `lint`, `typecheck`, `test`, `build`, `doctor` and `quality` commands.
 
-- Where each kind of code belongs, the module flow, and how to theme and re-skin the UI.
+- Framework guide: Where each kind of code belongs, the module flow, and how to theme and re-skin the UI.
 
-- A checklist before handing work back: lint, typecheck, sync, SSR share, comments and abstracts.
+- Before you finish: A checklist before handing work back: lint, typecheck, sync, SSR share, comments and abstracts.
 
 Rules and MCP
 
@@ -112,7 +120,7 @@ Prints the deeper guides that `AGENTS.md` points to.
 
 Write the agent guide and its pointers into the workspace. Run it again after upgrading Akan: only the managed block of `AGENTS.md` is rewritten, so your own text stays.
 
-- action (String): Always `install`, the only action. Left out, the CLI asks for it; any other value is an error.
+- action (String, required): Always `install`, the only action. Left out, the CLI asks for it; any other value is an error.
 
 - target (String, default all, cursor | agents-md | claude | all): Which file to write. Left out, it writes all three.
 

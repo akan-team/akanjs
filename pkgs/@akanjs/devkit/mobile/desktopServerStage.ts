@@ -16,8 +16,18 @@ export interface DesktopServerBundle {
 //* `bun install --production` does. It is staged outside dist: installing there would put host packages into the
 //* image's `COPY . .`.
 export class DesktopServerStage {
-  //? The RSC worker's and the akan console's bundles: an API-only server starts neither.
-  static readonly skippedFiles = new Set(["rscWorker.js", "console.js", "console-runtime.js"]);
+  //? An API-only server starts neither the RSC worker nor the akan console and serves no CSR, public/ or SSR artifact,
+  //? and `install` wrote its own package.json. The rest of dist is the server's: its chunks, a `.node`, a `.wasm`.
+  static readonly uncarried = new Set([
+    "Dockerfile",
+    "package.json",
+    "rscWorker.js",
+    "console.js",
+    "console-runtime.js",
+    "csr",
+    "public",
+    ".akan",
+  ]);
   //? Only the RSC worker loads it, and its peer webpack makes 35 of the 43 MB an install would add.
   static readonly rscRenderer = "react-server-dom-webpack";
 
@@ -88,29 +98,37 @@ export class DesktopServerStage {
     return { ...built, dependencies: Object.fromEntries(dependencies) };
   }
 
-  async prepare(environment: MobileEnv): Promise<DesktopServerBundle> {
+  //* The packages come from the config alone, so they install before `akan build` runs: a machine that cannot install
+  //* them stops at once instead of after the whole build.
+  async install() {
     const config = await this.app.getConfig();
     DesktopServerStage.assertCarriable(config);
-    const dist = this.app.dist.cwdPath;
     await rm(this.dir, { recursive: true, force: true });
     await mkdir(this.dir, { recursive: true });
-    const entries = await readdir(dist, { withFileTypes: true });
-    for (const entry of entries) {
-      const carried =
-        (entry.isFile() &&
-          ((entry.name.endsWith(".js") && !DesktopServerStage.skippedFiles.has(entry.name)) ||
-            entry.name === "akan.build.json")) ||
-        (entry.isDirectory() && entry.name === "private");
-      if (carried) await cp(path.join(dist, entry.name), path.join(this.dir, entry.name), { recursive: true });
-    }
-    const built = (await Bun.file(path.join(dist, "package.json")).json()) as PackageJson;
     await writeFile(
       path.join(this.dir, "package.json"),
-      JSON.stringify(DesktopServerStage.packageJson(config, built), null, 2),
+      JSON.stringify(DesktopServerStage.packageJson(config, config.getProductionPackageJson()), null, 2),
     );
-    await this.app.spawn(process.execPath, ["install", "--production"], { cwd: this.dir });
+    try {
+      await this.app.spawn(process.execPath, ["install", "--production", "--prefer-offline"], { cwd: this.dir });
+    } catch (error) {
+      throw new Error(
+        `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
     //? Launcher links only: a link out of the app bundle breaks its signature, and the server runs none of them.
     await rm(path.join(this.dir, "node_modules", ".bin"), { recursive: true, force: true });
+  }
+
+  //? Copies the build beside what `install` put in the stage, so it runs after both.
+  async prepare(environment: MobileEnv): Promise<DesktopServerBundle> {
+    const config = await this.app.getConfig();
+    const dist = this.app.dist.cwdPath;
+    await mkdir(this.dir, { recursive: true });
+    for (const name of await readdir(dist))
+      if (!DesktopServerStage.uncarried.has(name))
+        await cp(path.join(dist, name), path.join(this.dir, name), { recursive: true });
     const scanInfo = this.app.getScanInfo({ allowEmpty: true }) ?? (await this.app.scan({ write: false }));
     const carried = [...DesktopBin.select(config, scanInfo.getLibs()).keys()];
     const notice = DesktopServerStage.imageStepsNotice(config, carried);

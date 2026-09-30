@@ -24,17 +24,31 @@ It draws the value and nothing else. The parent Unit decides the layout around i
 
 The work
 
-- Scalar Unit — Price.Unit
+Scalar Unit — Price.Unit
 
-- Parent Unit — Product.Unit
+Parent Unit — Product.Unit
 
-- Elsewhere — page · Zone · Util
+Elsewhere — page · Zone · Util
 
 - Drawing the value
 
+  - price.amount · price.currency: Formats the value the same way on every screen that shows it.
+
+  - l("price.amount"): Labels each field from the scalar's own dictionary.
+
 - Around the value
 
+  - product.price: Picks the scalar field off the parent model and passes it down.
+
+  - card · title · link: The surrounding layout, the model's other fields and its `href`.
+
 - Never inside a Unit
+
+  - fetch.*: The page loads the data and passes it down as props.
+
+  - Load.Units: A Zone or page renders the list and draws one Unit per row.
+
+  - st.do.*: A model action is a control in a Util, not part of the display.
 
 Done here
 
@@ -44,11 +58,11 @@ Words used on this page
 
 Term
 
-- A small value object stored inside another model, such as `Price` with `amount` and `currency`.
+- scalar: A small value object stored inside another model, such as `Price` with `amount` and `currency`.
 
 - Unit: A server component that draws one thing as a card, row or table cell.
 
-- The Unit of the model that holds the scalar, such as `Product.Unit`.
+- parent Unit: The Unit of the model that holds the scalar, such as `Product.Unit`.
 
 - cnst.Light<Model>: The lighter model a list hands to each Unit. It holds only the fields its constant picks.
 
@@ -56,13 +70,13 @@ File Shape
 
 The Unit sits in the scalar's own folder under `lib/__scalar/`, next to the constant that defines the value:
 
-- Path — In the scalar's own folder, beside its constant file.
+- Path — `apps/<app>/lib/__scalar/<scalar>/<Scalar>.Unit.tsx` — In the scalar's own folder, beside its constant file.
 
-- First Line — Imports, never "use client". A Unit is a server component.
+- First Line — `import type { cnst } from "@apps/<app>/client";` — Imports, never "use client". A Unit is a server component.
 
-- Exports — Small arrow components named by display purpose, each taking the value as a prop.
+- Exports — `Label · Summary · Badge` — Small arrow components named by display purpose, each taking the value as a prop.
 
-- Used As — The parent imports `Price` from `@apps/<app>/client`.
+- Used As — `<Price.Unit.Label price={…} />` — The parent imports `Price` from `@apps/<app>/client`.
 
 **Name the file after its folder.** The `price/` folder holds `Price.Unit.tsx`, with the first letter capitalized, and its exports are reached as `Price.Unit.<Name>`.
 

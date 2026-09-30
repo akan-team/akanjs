@@ -26,33 +26,33 @@ Words used on this page
 
 Term
 
-- The engine that holds cached values: a SQLite file or Redis, picked by the database mode.
+- cache adaptor: The engine that holds cached values: a SQLite file or Redis, picked by the database mode.
 
 - topic: A namespace in front of the key, such as `previewTokens`. Topic plus key names one value.
 
-- `expireAt` is the moment a value disappears, as a Dayjs; `ttl` is its lifetime in milliseconds.
+- expireAt, ttl: `expireAt` is the moment a value disappears, as a Dayjs; `ttl` is its lifetime in milliseconds.
 
-- One of several server processes running the same app.
+- replica: One of several server processes running the same app.
 
 Four ways to cache
 
-- Document Cache — A key–value store every model class carries. Reach for it when the key is a record id.
+- Document Cache — A key–value store every model class carries. Reach for it when the key is a record id. — `this.articleCache.set(topic, id, value)`
 
-- Service Memory — A value or map a service keeps between calls, shared by every replica on the same cache.
+- Service Memory — A value or map a service keeps between calls, shared by every replica on the same cache. — `memory(String) · memory(Map, { of })`
 
-- Local Memory — A plain field on this process only. Fastest, but not shared, and gone after a restart.
+- Local Memory — A plain field on this process only. Fastest, but not shared, and gone after a restart. — `memory(Int, { local: true, default: 0 })`
 
-- Endpoint Cache — Reuses a query's whole answer for every caller for the milliseconds you declare.
+- Endpoint Cache — Reuses a query's whole answer for every caller for the milliseconds you declare. — `query(T, { guards, cache: 1000 })`
 
 Where cached values live
 
 The engine follows the database mode the app runs in: `database.modes` in `akan.config.ts` declares the modes, and `AKAN_DATABASE_MODE` picks one per deployment. Your code is the same on either engine.
 
-- Database mode
+Database mode
 
-- Cache engine
+Cache engine
 
-- Where it lives
+Where it lives
 
 - `single` (default) — SQLite file — `local/apps/<app>/` in dev, `sqlite/` in production. `AKAN_SOLID_DB_PATH` sets the file.
 
@@ -86,11 +86,11 @@ Method
 
 - incr(topic, key, by?, { expireAt }?): Adds `by` (1 by default) and answers the total; the expiry applies if this call creates it.
 
-- A hash under one key: each field is written, read and removed alone, and expires on its own.
+- hset, hget, hdelete: A hash under one key: each field is written, read and removed alone, and expires on its own.
 
-- Lists the fields, lists them with their values, or empties the hash.
+- hkeys, hentries, hclear: Lists the fields, lists them with their values, or empties the hash.
 
-- The one-step `getDel`, `setIfAbsent` and `incr`, for a single field.
+- hgetDel, hsetIfAbsent, hincr: The one-step `getDel`, `setIfAbsent` and `incr`, for a single field.
 
 **A class instance comes back as plain JSON.** Objects and arrays are stored as JSON, so a model read back has no methods and its dates are strings. For a model value, use a `memory()` typed with the model instead.
 
@@ -110,21 +110,21 @@ What you get
 
 - memory(Map, { of: ref }): A shared async key–value map. `getOrInsert` keeps the first writer's value, across replicas too.
 
-- memory(ref, { local: true }): A plain field on this process, read and assigned directly; on a `Map`, a real `Map`.
+- memory(ref, { local: true }): A plain field on this process, read and assigned directly; on a `Map`, a real `Map`. — Example: `this.localHitCount += 1;`
 
 Options
 
-- scalar | model class — The value type of a `Map` memory. Required when the first argument is `Map`.
+- of (scalar | model class): The value type of a `Map` memory. Required when the first argument is `Map`.
 
-- boolean — false — Keep a plain field on this process instead of in the cache adaptor.
+- local (boolean, default false): Keep a plain field on this process instead of in the cache adaptor.
 
-- value of ref — What a single value reads before its first write; without one it reads `null`.
+- default (value of ref): What a single value reads before its first write; without one it reads `null`.
 
-- number (ms) — How long each write lives, unless that `set` passes its own `{ expireAt }`.
+- ttl (number (ms)): How long each write lives, unless that `set` passes its own `{ expireAt }`.
 
-- (stored) => value — Maps the stored value to what code reads. Give it with `set` or not at all; not with `local`.
+- get ((stored) => value): Maps the stored value to what code reads. Give it with `set` or not at all; not with `local`.
 
-- (value) => stored — The inverse of `get`: turns what code writes back into the stored value.
+- set ((value) => stored): The inverse of `get`: turns what code writes back into the stored value.
 
 Rules
 
@@ -142,11 +142,11 @@ Which One?
 
 Pick by who owns the value and who needs to see it.
 
-- When
+When
 
-- Seen by
+Seen by
 
-- Use
+Use
 
 - The key is a model id. — this.articleCache — Every replica on the same cache
 
@@ -212,6 +212,22 @@ export class ArticleService extends serve(db.article, ({ memory }) => ({
     this.localHitCount += 1;
   }
 }
+```
+
+### memory(ref)
+
+```ts
+get() · set(value, { expireAt }?) · delete()
+getDel() · setIfAbsent(value) · incr(by?)
+```
+
+### memory(Map, { of: ref })
+
+```ts
+get(key) · set(key, value, { expireAt }?) · delete(key) · clear()
+getDel(key) · setIfAbsent(key, value) · incr(key, by?)
+getOrInsert(key, value) · getOrInsertComputed(key, fn)
+keys() · entries() · forEach(fn)
 ```
 
 ## Agent Notes

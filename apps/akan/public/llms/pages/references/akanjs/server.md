@@ -11,6 +11,7 @@
 - akanjs/server (#akanjs-server)
 - AkanApp (#AkanApp)
 - AkanAppOptions (#AkanAppOptions)
+- AkanServer Web Surfaces (#AkanServer web surfaces)
 - AkanOption (#AkanOption)
 - AkanResponse (#AkanResponse)
 - WebProxy (#WebProxy)
@@ -55,25 +56,25 @@ Exports
 
 - WebProxy: The interface a web proxy class implements: one `use(request)` method.
 
-- The two built-in proxies. Every app runs them before its own.
+- LocaleWebProxy, HostBasePathWebProxy: The two built-in proxies. Every app runs them before its own.
 
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
 - Transaction: Legacy decorator: runs a method in a database transaction.
 
-- Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
+- Everything else: Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
 
 Where It Is Imported
 
 File
 
-- main.ts: Use the leaf path, which keeps the SSR renderer out of the gateway.
+- main.ts: Use the leaf path, which keeps the SSR renderer out of the gateway. — Example: `import { AkanApp } from "akanjs/server/akanApp";`
 
-- server.ts: Generated; never edit it by hand.
+- server.ts: Generated; never edit it by hand. — Example: `import { AkanLib, AkanServer } from "akanjs/server";`
 
-- lib/option.ts: One per app and one per lib.
+- lib/option.ts: One per app and one per lib. — Example: `import { AkanOption } from "akanjs/server";`
 
-- srvkit/*.ts: Server-only helpers: proxy classes and legacy decorated classes.
+- srvkit/*.ts: Server-only helpers: proxy classes and legacy decorated classes. — Example: `import { AkanResponse, Try, type WebProxy } from "akanjs/server";`
 
 AkanApp
 
@@ -91,13 +92,25 @@ With one replica that takes traffic there is nothing to balance, so `AkanApp` ru
 
 Setting
 
-- Solo
+Solo
 
-- Gateway
+Gateway
 
 - Default
 
+  - AKAN_REPLICA=0,0,1: One replica that takes traffic and runs batch work. There is nothing to balance.
+
 - Brings the gateway back
+
+  - AKAN_REPLICA=0,0,2: Two or more replicas: the gateway spreads traffic across them.
+
+  - AKAN_REPLICA=0,1,0: A batch-only replica never listens, so the gateway answers health checks.
+
+  - new AkanApp({ replica }): Stating a replica layout in code asks for the gateway that serves it.
+
+  - AKAN_SOLO=false: Forces the gateway even for one replica.
+
+  - akan start: The dev server always runs the gateway.
 
 runs this way
 
@@ -131,29 +144,29 @@ AkanAppOptions
 
 Every field is optional. With none, `AkanApp` runs one replica on port 8282, and each field can also come from the env named beside it; the option wins.
 
-- number | string — "0,0,1" — Replica counts as `federation,batch,all`. Passing it here keeps the gateway on.
+- replica (number | string, default "0,0,1", AKAN_REPLICA): Replica counts as `federation,batch,all`. Passing it here keeps the gateway on.
 
-- string — "./server" — The server module each replica runs, resolved next to `main.ts`.
+- serverPath (string, default "./server"): The server module each replica runs, resolved next to `main.ts`.
 
-- string — local/apps/<app>/runtime — Replica sockets and rotating logs. It is `./runtime` when `NODE_ENV=production`.
+- runtimeDir (string, default local/apps/<app>/runtime, AKAN_RUNTIME_DIR): Replica sockets and rotating logs. It is `./runtime` when `NODE_ENV=production`.
 
-- number — 8282 — The port the app listens on. A replica calling itself uses it too.
+- port (number, default 8282, PORT): The port the app listens on. A replica calling itself uses it too.
 
-- number — port + 10000 — Replica `i` takes WebSocket traffic from the gateway on this port plus `i`.
+- wsBasePort (number, default port + 10000, AKAN_WS_BASE_PORT): Replica `i` takes WebSocket traffic from the gateway on this port plus `i`.
 
-- boolean — false — Serves `/openapi.json`, a description of every endpoint.
+- openapi (boolean, default false, AKAN_OPENAPI): Serves `/openapi.json`, a description of every endpoint.
 
-- string — "/api" — Where endpoints are mounted. CSR and mobile bundles follow `api.prefix` in `akan.config.ts`.
+- prefix (string, default "/api", AKAN_API_PREFIX): Where endpoints are mounted. CSR and mobile bundles follow `api.prefix` in `akan.config.ts`.
 
-- string — "/ws" — Where the WebSocket upgrade sits, under `prefix`.
+- websocketPrefix (string, default "/ws", AKAN_WS_PREFIX): Where the WebSocket upgrade sits, under `prefix`.
 
-- string[] — Boot only these modules and the ones they reach. Empty boots every enabled module.
+- modules (string[], AKAN_MODULES): Boot only these modules and the ones they reach. Empty boots every enabled module.
 
-- string[] — Boot everything except these and whatever reaches them. Applied after `modules`.
+- disableModules (string[], AKAN_DISABLE_MODULES): Boot everything except these and whatever reaches them. Applied after `modules`.
 
-- string[] — Leave out every module the named libs registered, and whatever reaches them.
+- disableLibs (string[], AKAN_DISABLE_LIBS): Leave out every module the named libs registered, and whatever reaches them.
 
-- boolean — Overrides the automatic solo or gateway choice. The env can turn solo off, never on.
+- solo (boolean, AKAN_SOLO): Overrides the automatic solo or gateway choice. The env can turn solo off, never on.
 
 Reading replica
 
@@ -161,11 +174,11 @@ Reading replica
 
 Position · role
 
-- Takes traffic. Skips work declared `serverMode: "batch"`.
+- 1, federation: Takes traffic. Skips work declared `serverMode: "batch"`.
 
-- Never listens. Skips work declared `serverMode: "federation"`.
+- 2, batch: Never listens. Skips work declared `serverMode: "federation"`.
 
-- Takes traffic and runs every kind of work.
+- 3, all: Takes traffic and runs every kind of work.
 
 Three replicas behind a gateway, all booting only the `article` module:
 
@@ -183,15 +196,25 @@ What `openapi: true` serves at `/openapi.json`.
 
 Besides its API, an app serves up to two web surfaces: SSR pages, and the CSR bundle the mobile app ships. The build decides which exist; at runtime you can only turn them off.
 
-- API — /api
+API — /api
 
-- SSR — RSC worker
+SSR — RSC worker
 
-- CSR — /__csr
+CSR — /__csr
 
 - At build — `akan.config.ts`
 
+  - web: true: The default: pages, the mobile bundle and the API.
+
+  - web: { csr: false }: No mobile bundle, so `/__csr` and `?csr=true` are gone. Not allowed with a `mobile` section.
+
+  - web: false: An API-only build. Nothing under `page/` is served.
+
 - At runtime — env
+
+  - AKAN_CSR=false: Drops the CSR bundle for this deployment.
+
+  - AKAN_SSR=false: Drops pages and the RSC worker. CSR goes too, since its bundle reuses the SSR stylesheet.
 
 served
 
@@ -231,7 +254,7 @@ Method
 
 - setLlm(option | fn): The model the agent relay talks to: `apiKey`, `model`, `host` and more.
 
-- setCrossSite(option): Extra origins a browser may send mutations from. `{ enabled: false }` turns the check off.
+- setCrossSite(option): Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.
 
 A typical app option:
 
@@ -273,9 +296,9 @@ AkanResponse
 
 `AkanResponse` builds what a web proxy's `use()` returns. Each helper says whether the request goes on, moves to another URL, or ends here.
 
-- Helper
+Helper
 
-- What happens
+What happens
 
 - AkanResponse.next({ request: { headers } }) — Goes on to the next proxy and the page, carrying the headers you set.
 
@@ -315,19 +338,17 @@ What use() Returns
 
 Return value
 
-What happens
-
 - undefined: Passes the request on unchanged.
 
 - Response: Answers right away. Later proxies and the page do not run.
 
-- Goes on with new headers or a new URL, as the AkanResponse section shows.
+- AkanResponse.next, AkanResponse.rewrite: Goes on with new headers or a new URL, as the AkanResponse section shows.
 
 Matchers
 
 What it matches
 
-- Page paths only: skips `/__csr`, `/_akan/*` and paths with a file extension.
+- (omitted): Page paths only: skips `/__csr`, `/_akan/*` and paths with a file extension.
 
 - "/ko/shop": That path and everything under it.
 
@@ -355,7 +376,7 @@ Type
 
 - WebProxyReturn: `Response`, a `WebProxyResult`, or `undefined`.
 
-- What `next` and `rewrite` return, and the `{ request: { headers } }` they take.
+- WebProxyResult, WebProxyNextInit: What `next` and `rewrite` return, and the `{ request: { headers } }` they take.
 
 Try
 

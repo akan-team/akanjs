@@ -67,6 +67,13 @@ export default page().render(() => {
       }),
     },
     {
+      name: "resolveServerUrl",
+      desc: l.trans({
+        en: "Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.",
+        ko: "CSR 페이지가 데스크톱 앱처럼 다른 곳에서 뜰 때, 저장된 `/api/…` URL을 서버 origin의 URL로 바꿉니다.",
+      }),
+    },
+    {
       name: "Device",
       desc: l.trans({
         en: "Platform, safe area, keyboard, haptics and scroll of the device.",

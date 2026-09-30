@@ -35,7 +35,7 @@ Term
 
 - account: What the middleware leaves on the call. A guest's account holds neither `self` nor `me`.
 
-- The two identities an account can carry: `self` is the user, `me` is the admin.
+- self, me: The two identities an account can carry: `self` is the user, `me` is the admin.
 
 - scope: What a guard needs to answer: the caller alone (`account`) or the call's arguments (`resource`).
 
@@ -77,17 +77,17 @@ Keys of the slice guards map
 
 Each key guards the endpoints the slice generates for the model:
 
-- GuardCls | GuardCls[] — The root slice: an admin list API that takes a filter name and its args. Always `Admin`.
+- root (GuardCls | GuardCls[]): The root slice: an admin list API that takes a filter name and its args. Always `Admin`.
 
-- GuardCls | GuardCls[] — The single-document reads `icecreamOrder(id)` and `lightIcecreamOrder(id)`.
+- get (GuardCls | GuardCls[]): The single-document reads `icecreamOrder(id)` and `lightIcecreamOrder(id)`.
 
-- GuardCls | GuardCls[] — `createIcecreamOrder`, `updateIcecreamOrder` and `removeIcecreamOrder` together.
+- cru (GuardCls | GuardCls[]): `createIcecreamOrder`, `updateIcecreamOrder` and `removeIcecreamOrder` together.
 
-- GuardCls | GuardCls[] — cru — Overrides `cru` for `createIcecreamOrder` alone.
+- create (GuardCls | GuardCls[], default cru): Overrides `cru` for `createIcecreamOrder` alone.
 
-- GuardCls | GuardCls[] — cru — Overrides `cru` for `updateIcecreamOrder` alone.
+- update (GuardCls | GuardCls[], default cru): Overrides `cru` for `updateIcecreamOrder` alone.
 
-- GuardCls | GuardCls[] — cru — Overrides `cru` for `removeIcecreamOrder` alone.
+- remove (GuardCls | GuardCls[], default cru): Overrides `cru` for `removeIcecreamOrder` alone.
 
 Guards on the shelf
 
@@ -95,17 +95,35 @@ Guards on the shelf
 
 Guard
 
-- Guest
+Guest
 
-- user
+user
 
-- admin
+admin
 
-- superAdmin
+superAdmin
 
 - akanjs/signal
 
+  - Public: Passes everyone, guests and agents included. For a slice `get:`, never a mutation.
+
+  - None: Refuses everyone: the explicit way to close a generated endpoint.
+
 - @libs/shared/srvkit
+
+  - Every: Any signed-in caller: `user`, `admin` or `superAdmin`.
+
+  - User: The `user` role only. An admin who is not also a user is refused.
+
+  - Admin: `admin` or `superAdmin`. The admin-console guard, and every slice's `root:`.
+
+  - SuperAdmin: `superAdmin` only.
+
+  - Owner: The roles of `Every`, but `resource` scope: judged at call time, never in a listing.
+
+  - SelfOrAdmin: `resource` scope. The user the `userId` argument names, or an admin; no `userId` refuses all.
+
+  - Person: Passes any person and refuses an agent. Pair it with a role guard: `guards: [Every, Person]`.
 
 Passes
 
@@ -137,9 +155,9 @@ Every guard class also declares `static scope: GuardScope`, required and with no
 
 A guard that reads only the caller is `"account"`:
 
-- scope = "account" — The verdict reads the caller and nothing about the call, so it runs with no arguments. An agent listing uses it to hide what this caller certainly cannot use.
+- scope = "account" — `SignedIn · Every · Admin · Person` — The verdict reads the caller and nothing about the call, so it runs with no arguments. An agent listing uses it to hide what this caller certainly cannot use.
 
-- scope = "resource" — It reads the call's arguments through `context.getArg()` and refuses without them, so a listing never evaluates it. The entry stays visible and is stopped at call time.
+- scope = "resource" — `Can<Verb><Model> · Owner · SelfOrAdmin` — It reads the call's arguments through `context.getArg()` and refuses without them, so a listing never evaluates it. The entry stays visible and is stopped at call time.
 
 Marking it wrong
 
@@ -225,7 +243,7 @@ Internal argument
 
 - CurrentUserId: The workspace scaffold writes it to `srvkit/internalArgs.ts`, for handlers needing only an id.
 
-- From `akanjs/signal`: the caller's IP, the websocket, and the raw HTTP request and response.
+- Ip, Ws, Req, Res: From `akanjs/signal`: the caller's IP, the websocket, and the raw HTTP request and response.
 
 **Never take the acting user as a body or param.** A `userId` the client typed is a value the client chose: the handler cannot tell it from the caller's own id, and a guard that already passed says nothing about it.
 
@@ -239,7 +257,21 @@ Endpoint
 
 - Decided by the guards
 
+  - guards: [Every]: A real guard publishes the endpoint, and the same guard judges every call on both.
+
+  - no guards: Anyone may call it over HTTP, and it is never published. Write `guards: [Public]` if that is the intent.
+
+  - query · [Public]: Anonymous access, written down: a query publishes.
+
+  - mutation · [Public]: Not published: `[Public]` on a mutation is having no guard, spelled out.
+
+  - [Every, Person]: `Person` sets `static agents = false`: the act is gone from the catalogue, not hidden per caller.
+
 - Your own choice
+
+  - mcp: false: Off the shelf, guards untouched. Curation, not authorization: HTTP serves it as before.
+
+  - mcp: { cru: false }: The same on `slice()`, as a map keyed like its `guards` map.
 
 Served
 

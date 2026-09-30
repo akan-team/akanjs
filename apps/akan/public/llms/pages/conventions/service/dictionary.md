@@ -40,11 +40,11 @@ Stage
 
 What it holds
 
-- .endpoint<XEndpoint>((fn) => ({})): One entry per signal endpoint: a label, a `.desc()`, and an `.arg()` for every argument.
+- .endpoint<XEndpoint>((fn) => ({})): One entry per signal endpoint: a label, a `.desc()`, and an `.arg()` for every argument. — Example: `l("oauth.signal.exchangeOAuthToken")`
 
-- .error({}): Every key the service throws as `new Err("<service>.error.<key>")`. Korean ends in `다.`
+- .error({}): Every key the service throws as `new Err("<service>.error.<key>")`. Korean ends in `다.` — Example: `throw new Err("localFile.error.privateFilesNotServed")`
 
-- .translate({}): Every other phrase, neither an endpoint nor an error. It is read by the bare key under the module.
+- .translate({}): Every other phrase, neither an endpoint nor an error. It is read by the bare key under the module. — Example: `l("oauth.consentTitle")`
 
 **Every stage is optional.** Write the ones the module has something for: `_security` writes only `.endpoint()`, and `_localFile` has no `.translate()`.
 
@@ -68,15 +68,23 @@ People read the label; a model reads the description. Each piece shows up in the
 
 Text
 
-- API explorer
+API explorer
 
-- OpenAPI
+OpenAPI
 
-- MCP
+MCP
 
 - Endpoint
 
+  - label: The API explorer heading, the OpenAPI `summary` and the MCP tool `title`.
+
+  - .desc(): The description an agent picks a tool by. The API explorer shows it under the label.
+
 - Argument, in .arg()
+
+  - label: Shown beside the identifier in the API explorer, and nowhere else.
+
+  - .desc(): The argument's description in the MCP input schema and on OpenAPI path and query parameters.
 
 Shown there
 
@@ -112,11 +120,11 @@ The ending follows who the sentence speaks to. Both conventions in the file abov
 
 How it is written
 
-- .error(): Korean ends in `다.`: a statement of what went wrong, not an apology.
+- .error(): Korean ends in `다.`: a statement of what went wrong, not an apology. — Example: `"계속하려면 로그인해야 한다."`
 
-- .translate(): Plain `다.` only for a bare statement; a line addressed to the user ends in `습니다` (`consentScope`).
+- .translate(): Plain `다.` only for a bare statement; a line addressed to the user ends in `습니다` (`consentScope`). — Example: `"…할 수 있는 모든 일을 할 수 있습니다."`
 
-- label: English in Title Case, Korean as the plain domain term.
+- label: English in Title Case, Korean as the plain domain term. — Example: `["Disconnect App", "앱 연결 끊기"]`
 
 Reading A Key Back
 
@@ -124,15 +132,15 @@ Every key sits under the service's own name, and the stage decides what comes ne
 
 Where it comes from and how to read it
 
-- <service>.signal.<endpoint>: The endpoint label from `.endpoint()`. Read it with `l()`.
+- <service>.signal.<endpoint>: The endpoint label from `.endpoint()`. Read it with `l()`. — Example: `l("oauth.signal.approveOAuthConsent")`
 
-- <service>.signal.<endpoint>.desc: Its `.desc()`. Read it with `l()`, adding `.desc` to the label's key.
+- <service>.signal.<endpoint>.desc: Its `.desc()`. Read it with `l()`, adding `.desc` to the label's key. — Example: `l("oauth.signal.approveOAuthConsent.desc")`
 
-- <service>.signal.<endpoint>.arg.<arg>: An argument label from `.arg()`. Read it with `l()`.
+- <service>.signal.<endpoint>.arg.<arg>: An argument label from `.arg()`. Read it with `l()`. — Example: `l("oauth.signal.revokeOAuthConnection.arg.sessionId")`
 
-- <service>.error.<key>: An error from `.error()`. `new Err()` throws it on the server; `msg.error()` shows it on the client.
+- <service>.error.<key>: An error from `.error()`. `new Err()` throws it on the server; `msg.error()` shows it on the client. — Example: `msg.error("oauth.error.notSignedIn")`
 
-- <service>.<key>: A phrase from `.translate()`. Read it with `l()`.
+- <service>.<key>: A phrase from `.translate()`. Read it with `l()`. — Example: `l("oauth.consentTitle")`
 
 The OAuth consent page reads its phrases this way, on the server. Markup is trimmed here:
 
@@ -146,9 +154,9 @@ The OAuth consent page reads its phrases this way, on the server. Markup is trim
 
 Common mistakes
 
-- Instead of
+Instead of
 
-- Write
+Write
 
 - `import { OauthEndpoint } from "./oauth.signal"` — `import type`. A value import pulls the signal's runtime graph into the dictionary.
 

@@ -22,7 +22,14 @@ import { createLifecycle } from "./lifecycle.ts";
 import { appDataDir, appLocalDataDir, reservedDirs, serverDataDir } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
 import { nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
-import { createDesktopServer, pathWithFirst, readServerManifest, type ServerManifest } from "./server.ts";
+import {
+  createDesktopServer,
+  createServerStatus,
+  envValue,
+  pathWithFirst,
+  readServerManifest,
+  type ServerManifest,
+} from "./server.ts";
 
 declare const self: Worker;
 
@@ -61,7 +68,12 @@ export function startHost(plugins: DesktopPlugin[]): void {
   //? A Worker keeps its own copy of process.env, and Bun.spawn without `env` ignores it anyway: the server launcher
   //? and plugins that pass process.env get the app's executables first.
   const binDir = existsSync(join(paths.resources, "bin")) ? join(paths.resources, "bin") : null;
-  if (binDir) process.env.PATH = pathWithFirst(binDir, process.env.PATH);
+  if (binDir) {
+    //? One name for it from here on: a second PATH beside Windows' `Path` would hide the system's from a child.
+    const path = envValue(process.env, "PATH");
+    for (const name of Object.keys(process.env)) if (name.toUpperCase() === "PATH") delete process.env[name];
+    process.env.PATH = pathWithFirst(binDir, path);
+  }
   const lib = openNative(paths.lib);
   const native = lib.symbols;
   // One limit for every external open (L0): the page's links (shell) and the plugins' (here).
@@ -148,9 +160,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
   } catch (error) {
     manifestProblem = error;
   }
-  const carriesServer = manifest !== null || manifestProblem !== undefined;
-  let settleServer = (_ready: boolean) => {};
-  const serverReady = new Promise<boolean>((resolve) => (settleServer = resolve));
+  const serverStatus = manifest !== null || manifestProblem !== undefined ? createServerStatus() : null;
   const dispatcher = createDispatcher(
     plugins,
     {
@@ -159,7 +169,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       appDataDir: appDataDir(boot.app.id),
       appLocalDataDir: appLocalDataDir(boot.app.id),
       binDir,
-      server: carriesServer ? { ready: serverReady } : null,
+      server: serverStatus?.status ?? null,
       emit(window, message) {
         emitJs(window, `window.__AKAN_NATIVE__&&window.__AKAN_NATIVE__.receive(${JSON.stringify(message)})`);
       },
@@ -426,7 +436,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
   //? A page of an app that carries a server always gets a loopback URL, even one nothing answers: without it the page
   //? would call the backend its bundle was built for, and a desktop app would read and write another copy's data.
   const startServer = async (): Promise<Record<string, string> | undefined> => {
-    if (!carriesServer) return undefined;
+    if (!serverStatus) return undefined;
     const dataDir = serverDataDir(boot.app.id, boot.dev === true);
     try {
       if (!manifest) throw manifestProblem;
@@ -436,15 +446,17 @@ export function startHost(plugins: DesktopPlugin[]): void {
         manifest,
         binDir,
         onGiveUp: serverAlert,
+        onState: serverStatus.setState,
       });
-      void server.ready.then(settleServer);
+      void server.ready.then(serverStatus.settle);
       lifecycle.onQuit(() => server.stop());
       const { url, ready } = await server.start();
       console.info(`[akan-native] server ${ready ? "ready" : "not ready"} on ${url}`);
       return { PUBLIC_AKAN_SERVER_URL: url };
     } catch (error) {
       console.error("[akan-native] the app's server could not start", error);
-      settleServer(false);
+      serverStatus.settle(false);
+      serverStatus.setState("gaveUp");
       serverAlert(`The app's server cannot start: ${error instanceof Error ? error.message : String(error)}`);
       return { PUBLIC_AKAN_SERVER_URL: "http://127.0.0.1:0" };
     }

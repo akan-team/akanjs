@@ -50,13 +50,13 @@ Every abstract has four parts, and only the last is optional:
 
 Part
 
-- # <model> Abstract: One title line with the module name spelled as in its file name.
+- # <model> Abstract: One title line with the module name spelled as in its file name. — Example: `# user Abstract`
 
-- What the module owns, stated as fact, right under the title with no heading.
+- One sentence: What the module owns, stated as fact, right under the title with no heading.
 
 - ## Rules: Two to five bullets, each an invariant a reader could not derive from the code.
 
-- ## Workflow: Optional: a list under this heading, or one arrow chain with no heading at all.
+- ## Workflow: Optional: a list under this heading, or one arrow chain with no heading at all. — Example: `authorize -> pending -> approved | denied -> code -> token -> refresh -> revoked`
 
 In the Akan.js repository, 31 of the 33 abstracts are written with these parts, and six carry a `## Workflow` list. The other two belong to the app root services `_akan` and `_minimal`, which still hold the generated scaffold unedited.
 
@@ -84,9 +84,9 @@ What `akan create-module project` writes in an app that mounts `libs/shared`:
 
 Where each line goes:
 
-- Scaffold
+Scaffold
 
-- Becomes
+Becomes
 
 - # project Abstract — Written for you, spelled as in the file name. Keep it.
 
@@ -106,13 +106,27 @@ Read it before changing the constant, document, service, signal, store or any co
 
 Change
 
-- Update
+Update
 
-- Leave
+Leave
 
 - When the module's meaning changes
 
+  - A business invariant: A rule that must always hold, such as the uniqueness rule above.
+
+  - A workflow or state transition: How a record moves, such as from `prepare` to `active`.
+
+  - A permission: Who may do what, such as an admin adjusting a restriction.
+
+  - Public behavior: What callers of the module can observe.
+
 - When only how the code looks changes
+
+  - Formatting: Whitespace and line breaks the formatter decides.
+
+  - Imports: Adding, removing or reordering imports.
+
+  - Style: A code style change that alters no behavior.
 
 Do this
 
@@ -124,14 +138,14 @@ Not this
 
 ```markdown
 # ticket Abstract
-<l.trans({ en: "<one sentence: what this module owns>", ko: "<이 모듈이 맡는 일을 한 문장으로>" })>
+<one sentence: what this module owns>
 
 ## Rules
-- <l.trans({ en: "<an invariant the code cannot show>", ko: "<코드로는 보이지 않는 불변식>" })>
-- <l.trans({ en: "<two to five bullets in all>", ko: "<항목은 모두 두 개에서 다섯 개>" })>
+- <an invariant the code cannot show>
+- <two to five bullets in all>
 
 ## Workflow
-- <l.trans({ en: "<optional: how a ticket moves from state to state>", ko: "<선택: ticket이 어떤 상태를 거쳐 움직이는지>" })>
+- <optional: how a ticket moves from state to state>
 ```
 
 ### libs/shared/lib/user/user.abstract.md

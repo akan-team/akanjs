@@ -488,7 +488,7 @@ describe("launch phase", () => {
     expect(await createDispatcher(exits, services).launched).toEqual({ window: {}, exit: 3 });
   });
 
-  test("a failing or hanging setup does not hold the window; late launch calls are ignored", async () => {
+  test("a failing or hanging setup does not hold the window; a late exit quits the app instead", async () => {
     let late: (() => void) | undefined;
     const broken = defineDesktopPlugin({
       id: "broken",
@@ -506,11 +506,19 @@ describe("launch phase", () => {
       methods: {},
     });
     const started = Date.now();
-    const launch = await createDispatcher([broken, hangs], services, { setupTimeoutMs: 50 }).launched;
+    const quits: number[] = [];
+    const launch = await createDispatcher(
+      [broken, hangs],
+      { ...services, quit: (code) => void quits.push(code) },
+      {
+        setupTimeoutMs: 50,
+      },
+    ).launched;
     expect(Date.now() - started).toBeLessThan(1000);
     expect(launch).toEqual({ window: {} });
-    late!(); // warns, changes nothing
+    late!();
     expect(launch).toEqual({ window: {} });
+    expect(quits).toEqual([1]);
   });
 
   test("a page's call to a plugin still setting up waits for it; past the wait it is retryable", async () => {

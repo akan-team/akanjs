@@ -29,7 +29,7 @@ Term
 
 - action: A method of the store class. Components call it as `st.do.<action>()`.
 
-- How a client component reads a key (`st.use.<key>()`) and runs an action (`st.do.<action>()`).
+- st.use, st.do: How a client component reads a key (`st.use.<key>()`) and runs an action (`st.do.<action>()`).
 
 - model store: A store bound to a model's signal, `store(sig.<model>, …)`. Lists, forms and CRUD are generated.
 
@@ -59,15 +59,29 @@ A model store is built from its signal's slices, so list, form and CRUD state ar
 
 What exists
 
-- model store — store(sig.<model>, …)
+model store — store(sig.<model>, …)
 
-- service store — store("<name>" as const, …)
+service store — store("<name>" as const, …)
 
 - Generated from the model's slices
 
+  - <model>List · <model>Insight: A list and its insight for every slice.
+
+  - pageOf<Model> · limitOf<Model>: Pagination state for every slice.
+
+  - <model>Form · set<Field>On<Model>: The edit form, with one setter per field.
+
+  - create<Model> · remove<Model>: CRUD actions that call the generated endpoints.
+
 - Comes with every key you declare
 
+  - st.use.<key>(): Subscribes a component to that one key.
+
+  - st.do.set<Key>(value): A setter for the key, unless the key is `search`/`computed` or an action has that name.
+
 - Written by you
+
+  - <action>(): Methods in the class body. Besides the key setters, a service store has no other actions.
 
 Exists
 
@@ -109,21 +123,31 @@ Reading and writing inside an action
 
 Method
 
-- this.set(state): The only way a value leaves an action. An object merges shallowly; a function edits an immer draft.
+- this.set(state): The only way a value leaves an action. An object merges shallowly; a function edits an immer draft. — Example: `this.set({ mapZoom: 8 });`
 
-- this.get(): Returns the current state. Use it when a value may be missing.
+- this.get(): Returns the current state. Use it when a value may be missing. — Example: `const { mapZoom } = this.get();`
 
-- this.pick(...keys): Returns keys that must exist, and throws if one is `null`, `undefined` or `""`.
+- this.pick(...keys): Returns keys that must exist, and throws if one is `null`, `undefined` or `""`. — Example: `const { mapCenter } = this.pick("mapCenter");`
 
 Which returns are allowed
 
 Return
 
-- Allowed
+Allowed
 
-- Lint error
+Lint error
 
 - Inside a store class
+
+  - return value;: A value returned from an action. No caller can ever read it.
+
+  - return;: A bare guard clause that ends the action early.
+
+  - (x) => { return … }: A return that belongs to a nested callback.
+
+  - get total() { … }: A getter is not an action.
+
+  - static helper() { … }: A static method is not an action either.
 
 Applies
 
@@ -165,7 +189,19 @@ Import or call
 
 - Client-safe
 
+  - fetch.<endpoint>(): The generated client from `"../useClient"`, and the store's only way to the server.
+
+  - ../cnst · akanjs/client: Model classes, `router`, `setAuth` and other browser-side helpers.
+
+  - import type { … }: Erased before bundling, so a type from a server file is fine.
+
 - Server-side or route-only
+
+  - *.service · *.signal · *.document · *.dictionary: Server modules. One value import drags their whole graph into the browser bundle.
+
+  - srvkit/ · ../srv · ../db · ../sig · ../dict: Server-only folders and barrels, plus `option`, `useServer` and any `server` entrypoint.
+
+  - fetch.init<Model><Suffix>(): Loaded by the route before the first byte. The client reloads via `st.do.init<Model><Suffix>()`.
 
 **Reach another module's store through `RootStore`.** Write `import type { RootStore } from "../st"`, then call its actions or `.set({ … })` its state through `(this as unknown as RootStore)`, as the logout above does.
 

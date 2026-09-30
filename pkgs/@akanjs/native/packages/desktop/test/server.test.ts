@@ -267,6 +267,23 @@ describe("the server a desktop app carries", () => {
     expect(pathWithFirst(bin, undefined)).toBe(bin);
   });
 
+  test("on Windows reads the system variables whatever the case of their names, PATH included", () => {
+    const env = serverEnv(
+      { entry: "main.js", env: {} },
+      {
+        port: 1,
+        secret: "s",
+        dataDir: "C:\\data",
+        env: { Path: "C:\\WINDOWS\\system32;C:\\WINDOWS", windir: "C:\\WINDOWS", SystemRoot: "C:\\WINDOWS" },
+        binDir: "C:\\App\\resources\\bin",
+        platform: "win32",
+      },
+    );
+    expect(env.PATH).toBe("C:\\App\\resources\\bin;C:\\WINDOWS\\system32;C:\\WINDOWS");
+    expect(env.WINDIR).toBe("C:\\WINDOWS");
+    expect(Object.keys(env).filter((key) => key.toUpperCase() === "PATH")).toEqual(["PATH"]);
+  });
+
   test("passes the proxy, CA and desktop session variables, one of each name on Windows", () => {
     const env = {
       PATH: "/usr/bin",
@@ -331,13 +348,21 @@ describe("the server a desktop app carries", () => {
     expect(asked).toEqual([undefined, 52345]);
   });
 
-  test("a server that exits before its first ready starts again on a fresh port, until the page has its URL", async () => {
+  test("a server that exits before its first ready starts again on its port if free, else a fresh one, until the page has its URL", async () => {
     const ports = [52345, 52346, 52347];
-    const { server, children } = setup({ freePort: async () => ports.shift() ?? 1, readyTimeout: 1000 });
+    const asked: (number | undefined)[] = [];
+    const { server, children } = setup({
+      freePort: async (preferred) => {
+        asked.push(preferred);
+        return ports.shift() ?? 1;
+      },
+      readyTimeout: 1000,
+    });
     const started = server.start();
     await until(() => children.length === 1);
     children[0]?.exit(1);
     await until(() => children.length === 2);
+    expect(asked).toEqual([undefined, 52345]);
     expect(children[1]?.options.env.PORT).toBe("52346");
     children[1]?.ready();
     expect(await started).toEqual({ url: "http://127.0.0.1:52346", ready: true });
@@ -507,6 +532,69 @@ process.send({ type: "ready" });
       cleanup();
     }
   }, 15_000);
+});
+
+describe("where the carried server is", () => {
+  test("starting, up, restarting after a crash, up again, gave up, and stopped as the app quits", async () => {
+    const states: string[] = [];
+    const { server, children } = setup({ onState: (state) => void states.push(state), readyTimeout: 1000 });
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.ready();
+    await started;
+    expect(server.state).toBe("up");
+    children[0]?.exit(1);
+    await until(() => children.length === 2);
+    children[1]?.ready();
+    for (let n = 2; n <= 6; n++) {
+      await until(() => children.length === n);
+      children[n - 1]?.exit(1);
+    }
+    await until(() => server.state === "gaveUp");
+    await server.stop();
+    expect(states).toEqual(["up", "restarting", "up", "restarting", "gaveUp", "stopped"]);
+  });
+
+  test("a server that fails before it is ready leaves its reason in server-output.log", async () => {
+    const { server, children, root } = setup({ readyTimeout: 1000 });
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.options.onLine("booting", "stdout");
+    children[0]?.options.onLine("Error: no env file for production", "stderr");
+    children[0]?.ready();
+    await started;
+    children[0]?.options.onLine("a request log line", "stdout");
+    children[0]?.exit(1);
+    await until(() => children.length === 2);
+    const log = readFileSync(join(root, "data", "server", "runtime", "logs", "server-output.log"), "utf8");
+    expect(log).toContain("booting");
+    expect(log).toContain("Error: no env file for production");
+    expect(log).toContain("exited with 1");
+    expect(log).not.toContain("a request log line");
+  });
+
+  test("the last session's port is not reused while another program answers on it", async () => {
+    const other = Bun.listen({ hostname: "0.0.0.0", port: 0, socket: { data() {} } });
+    try {
+      const root = mkdtempSync(join(tmpdir(), "akan-native-server-"));
+      const dataDir = join(root, "data", "server");
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(join(dataDir, "port"), String(other.port));
+      const { spawn, children } = fakeSpawn();
+      const server = createDesktopServer({
+        resources: join(root, "Resources"),
+        dataDir,
+        manifest: { entry: "main.js", env: {} },
+        spawn,
+        readyTimeout: 20,
+      });
+      await server.start();
+      expect(children[0]?.options.env.PORT).not.toBe(String(other.port));
+      await server.stop();
+    } finally {
+      other.stop(true);
+    }
+  });
 });
 
 describe("the page's runtime env", () => {

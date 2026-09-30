@@ -22,6 +22,6 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     .body("files", [Upload])
     .body("memoId", ID)
     .exec(async function (files, memoId) {
-      return await this.memoService.attachImage(memoId, files[0] as File);
+      return await this.memoService.attachImage(memoId, files?.[0]);
     }),
 })) {}

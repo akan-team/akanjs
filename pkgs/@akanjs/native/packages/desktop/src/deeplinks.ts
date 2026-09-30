@@ -1,8 +1,9 @@
 // Deep links on Windows and Linux (plugins.md D6). macOS knows the app's schemes from Info.plist
 // and hands links to the running app (TAO Event::Opened). Windows and Linux start the executable
 // with the link as its argument instead:
-// - The schemes are registered for the current user at every start, since there is no installer
-//   yet (CLI-9): Windows HKCU\Software\Classes\<scheme> with shell\open\command `"<exe>" "%1"`,
+// - The schemes are registered for the current user at every start, so they follow the executable
+//   (the Windows uninstaller removes those still opening it): Windows HKCU\Software\Classes\<scheme>
+//   with shell\open\command `"<exe>" "%1"`,
 //   Linux a hidden <app id>.desktop in $XDG_DATA_HOME/applications with x-scheme-handler MIME
 //   types, made the default in $XDG_CONFIG_HOME/mimeapps.list. As tauri-plugins-workspace
 //   deep-link's register() does (plugins/deep-link/src/lib.rs), without xdg-mime.

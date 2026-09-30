@@ -3,8 +3,11 @@ import path from "node:path";
 import type { AkanPlugin } from "akanjs";
 import type { AkanMobileTargetConfig } from "../akanConfig";
 import type { App } from "../commandDecorators";
+import { tempDirs, writeText } from "../testHelpers";
 import { NativeApp } from "./nativeApp";
 import { NativeConfig } from "./nativeConfig";
+
+const makeTempRoot = tempDirs("akan-native-app-");
 
 const target = (config: Partial<AkanMobileTargetConfig> = {}) => ({
   name: config.name ?? "default",
@@ -39,6 +42,33 @@ describe("NativeApp", () => {
     expect(admin.web.dir).toBe(path.join(appDir, ".akan/mobile/admin/web"));
     expect(admin.outDir("ios")).toBe(path.join(appDir, ".akan/mobile/admin/native/ios"));
     expect(admin.outDir("android")).toBe(path.join(appDir, ".akan/mobile/admin/native/android"));
+    expect(admin.devOutDir("macos")).toBe(path.join(appDir, ".akan/mobile/admin/dev/macos"));
+  });
+
+  test("a dev build bundles no page a release build left, and builds apart from the release it would empty", async () => {
+    const app = {
+      ...fakeApp(),
+      cwdPath: await makeTempRoot(),
+      logger: { info: () => undefined, debug: () => undefined, warn: () => undefined },
+    } as unknown as App;
+    const nativeApp = new NativeApp(app, target());
+    await writeText(path.join(nativeApp.web.dir, "index.html"), "<html>the last release</html>");
+    const seen: { outDir?: string; leftover: boolean }[] = [];
+    nativeApp.prepare = async () =>
+      ({
+        config: {},
+        api: {
+          dev: async ({ outDir }: { outDir?: string }) => {
+            seen.push({ outDir, leftover: await Bun.file(path.join(nativeApp.web.dir, "index.html")).exists() });
+            return { gateway: "http://127.0.0.1:9", exited: Promise.resolve(0), stop: async () => undefined };
+          },
+        },
+      }) as never;
+
+    await nativeApp.dev("windows", { upstream: "http://localhost:8282", lang: "en" });
+
+    expect(seen).toEqual([{ outDir: nativeApp.devOutDir("windows"), leftover: false }]);
+    expect(path.relative(nativeApp.outDir("windows"), nativeApp.devOutDir("windows"))).toStartWith("..");
   });
 
   test("a dev boot that came up says so in one line: platform, device, dev server, time", () => {

@@ -55,13 +55,23 @@ Five kinds of code live here. Whether the file starts with `"use client"` decide
 
 Kind
 
-- Server — page · Unit · View
+Server — page · Unit · View
 
-- Client — "use client"
+Client — "use client"
 
 - No "use client" — server and client
 
+  - Render map: A shared table from an enum value to a recipe variant name or icon, never to class strings.
+
+  - Account helper: Reads the signed-in account and sends a guest away, like `getSelf` in `_layout.tsx`.
+
 - "use client" — client components only
+
+  - Browser helper: A small browser action: copy text, download a file, read a cookie, open a share link.
+
+  - Web hook: A reusable hook over a browser API: viewport, permissions, notifications, messaging.
+
+  - Vendor wrapper: Hides a browser package behind your own function, so pages never import it.
 
 Can use it
 
@@ -123,9 +133,9 @@ Barrel And File Names
 
 File name
 
-- use<Thing>.tsx: A React hook. The file is `.tsx` even when it holds no JSX.
+- use<Thing>.tsx: A React hook. The file is `.tsx` even when it holds no JSX. — Example: `libs/util/webkit/useSpeech.tsx`
 
-- <camelName>.ts: Every other helper, wrapper or map. One export per file, named like the file.
+- <camelName>.ts: Every other helper, wrapper or map. One export per file, named like the file. — Example: `libs/shared/webkit/downloadFile.ts // exports downloadFile`
 
 A component then imports the helper by its barrel path:
 
@@ -157,13 +167,25 @@ Server and shared files may name a webkit type with `import type`, but never imp
 
 Importing file
 
-- Value — import { x }
+Value — import { x }
 
-- Type — import type { X }
+Type — import type { X }
 
 - Files that render
 
+  - page/ · ui/: Allowed; a server component still calls only exports without "use client".
+
+  - <Model>.*.tsx · *.store.ts: Module components and stores import from the barrel, like `@libs/util/webkit`.
+
 - Server and shared files
+
+  - *.service.ts · *.document.ts: Server code runs in Bun with no DOM, so it may only name a webkit type.
+
+  - *.signal.ts · *.dictionary.ts: Contract files load on the server too, so the same rule holds.
+
+  - srvkit/: Server-only helpers and adaptors never reach into browser code.
+
+  - common/ · *.constant.ts: Shared files run on both sides, so they reach neither `webkit/` nor `srvkit/`.
 
 Allowed
 
@@ -182,6 +204,41 @@ Components that are not bound to one model.
 The hooks and helpers the framework itself ships.
 
 ## Code Examples
+
+### common/
+
+```ts
+libs/util/common/isHttpUri.ts
+// camelCase file, filename equals the single export
+```
+
+### webkit/
+
+```ts
+libs/util/webkit/useSpeech.tsx
+// use<Thing>.tsx — .tsx even with no JSX
+```
+
+### srvkit/
+
+```ts
+libs/util/srvkit/cloudflareApi.ts
+// camelCase file, PascalCase class
+```
+
+### ui/
+
+```ts
+apps/akan/ui/BrowserMockup.tsx
+// PascalCase component, camelCase sidecar
+```
+
+### plugin/
+
+```ts
+libs/util/plugin/pushNotification.plugin.ts
+// <name>.plugin.ts
+```
 
 ### apps/koyo/webkit/icecreamOrderStatusVariant.ts
 

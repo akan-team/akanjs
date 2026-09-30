@@ -80,9 +80,9 @@ Member
 
 - indexOf(value): The value's position in `values`, throwing for a value outside the enum.
 
-- The usual array methods, run over `values`.
+- map, filter, forEach: The usual array methods, run over `values`.
 
-- Like the array methods, but they throw when nothing matches.
+- find, findIndex: Like the array methods, but they throw when nothing matches.
 
 - refName: The name you passed to `enumOf`, here `postStatus`.
 
@@ -110,17 +110,17 @@ Method
 
 - new DataList(items): Builds a list from an array or another DataList, keeping the last item for a repeated id.
 
-- Add or replace, or remove, by id, changing this list in place and returning it.
+- set(item), delete(id): Add or replace, or remove, by id, changing this list in place and returning it.
 
-- Look up by id: `get` may return `undefined`, `pick` throws, `has` answers true or false.
+- get(id), pick(id), has(id): Look up by id: `get` may return `undefined`, `pick` throws, `has` answers true or false.
 
-- Position lookups, where `indexOf` and `pickAt` throw when nothing is there.
+- indexOf(id), at(idx), pickAt(idx): Position lookups, where `indexOf` and `pickAt` throw when nothing is there.
 
-- Return a new DataList, but `sort` also reorders the source array, so sort a copy.
+- filter, slice, sort: Return a new DataList, but `sort` also reorders the source array, so sort a copy.
 
-- The array methods over the items, where `map` returns a plain array.
+- map, find, some, every, reduce, forEach, flatMap: The array methods over the items, where `map` returns a plain array.
 
-- The item count and the underlying array, and the list itself works in `for…of` too.
+- length, values: The item count and the underlying array, and the list itself works in `for…of` too.
 
 - save(): Returns a new DataList with the same items, which is what a store needs.
 
@@ -152,11 +152,7 @@ Which One To Use
 
 A label-like value is an Enum; a collection of records with ids is a DataList.
 
-- Question
-
-- Enum
-
-- DataList
+Question
 
 - What it holds — One value from a fixed set — Records that each have an `id`
 

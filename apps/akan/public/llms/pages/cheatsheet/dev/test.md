@@ -63,9 +63,9 @@ akanjs/test helper
 
 - getOrSetupSignalTestFetch: Returns the test server's signed-out `fetch`, starting the server on the first call.
 
-- sampleOf: Fills every field of a constant class with a sample value, using the field's default when set.
+- sampleOf: Fills every field of a constant class with a sample value, using the field's default when set. — Example: `sampleOf(cnst.ArticleInput)`
 
-- sample: Makes one random value at a time, such as an email or a string of a given length.
+- sample: Makes one random value at a time, such as an email or a string of a given length. — Example: `sample.email() · sample.string({ length: 10 })`
 
 - configureSignalTest: Changes the test server's settings, covered in the Test File section below.
 
@@ -103,9 +103,9 @@ Changing the test server
 
 The test server uses an in-memory SQLite database by default. To change a setting, call `configureSignalTest` at the top of the test file:
 
-- "memory" | "tempFile" — "memory" — `tempFile` keeps SQLite in a temporary file instead of memory, deleted after the run.
+- storage ("memory" | "tempFile", default "memory"): `tempFile` keeps SQLite in a temporary file instead of memory, deleted after the run.
 
-- number — 38080 + worker id — The port the test server listens on.
+- port (number, default 38080 + worker id): The port the test server listens on.
 
 **Call it before any fixture runs.** Once the test server has started, `configureSignalTest` throws.
 
@@ -117,23 +117,23 @@ Kind
 
 Examples
 
-- Create, update, publish, archive.
+- Happy path: Create, update, publish, archive.
 
-- A guest cannot publish, the owner can edit, an admin can remove.
+- Permission: A guest cannot publish, the owner can edit, an admin can remove.
 
-- Missing title, invalid date, duplicated `accountId`.
+- Validation: Missing title, invalid date, duplicated `accountId`.
 
-- `draft` to `published`, `pending` to `approved`.
+- State transition: `draft` to `published`, `pending` to `approved`.
 
-- File upload, payment callback, message publish.
+- External dependency: File upload, payment callback, message publish.
 
 Command
 
 Run tests from the workspace root with `akan test`. It prepares the target, then runs `bun test --isolate` inside it:
 
-- app | lib | pkg — The app, library or package to test, such as `myapp` or `shared`.
+- <target> (app | lib | pkg): The app, library or package to test, such as `myapp` or `shared`.
 
-- boolean — true — `false` skips writing generated code before an app's tests run.
+- --write (boolean, default true): `false` skips writing generated code before an app's tests run.
 
 Running in another database mode
 
@@ -147,13 +147,19 @@ A signal suite runs in `single` mode. To run it in `multiple` or `cluster`, name
 
 Which command to use
 
-- Signal tests — apps · libs
+Signal tests — apps · libs
 
-- Package tests — pkgs
+Package tests — pkgs
 
 - Use
 
+  - akan test <target>: Run from the workspace root. It passes `--isolate` for you.
+
+  - bun test --isolate: Fine inside a package directory, but a signal test cannot find its app this way.
+
 - Never
+
+  - bun test: Without `--isolate`, test files share one global object and break each other.
 
 Works
 

@@ -27,9 +27,9 @@ Words used on this page
 
 Term
 
-- A small value object saved inside another model, such as a price, an address or a coordinate.
+- scalar: A small value object saved inside another model, such as a price, an address or a coordinate.
 
-- The model that embeds the scalar, such as a `Product` holding a `Price`.
+- parent model: The model that embeds the scalar, such as a `Product` holding a `Price`.
 
 - via(): Turns a list of fields into a class, imported from `akanjs/constant`.
 
@@ -43,7 +43,19 @@ A module constant declares five classes because its model keeps records of its o
 
 - model.constant.ts — lib/<model>/<model>.constant.ts
 
+  - Five classes: `XInput → XObject → LightX → X → XInsight`.
+
+  - Gets the base fields `id`, `createdAt`, `updatedAt` and `removedAt`.
+
+  - Saved as a record of its own.
+
 - scalar.constant.ts — lib/__scalar/<scalar>/<scalar>.constant.ts
+
+  - One `via()` class, plus its enums.
+
+  - No base fields at all.
+
+  - Saved as part of the parent model's record.
 
 Basic Shape
 
@@ -63,7 +75,7 @@ Type
 
 Use for
 
-- Text, true or false, and a point in time.
+- String, Boolean, Date: Text, true or false, and a point in time.
 
 - Int: Whole numbers such as counts and quantities.
 
@@ -93,17 +105,17 @@ What a new value starts as
 
 A field with neither a default nor `.optional()` is required. How you write a field decides what a new value starts as and whether the parent model saves with it empty:
 
-- "" — Required, so the parent model's form will not save while it is empty.
+- field(String) (default ""): Required, so the parent model's form will not save while it is empty.
 
-- 0 — Required, but `0` counts as a value and saves, and `field(Int)` works the same way.
+- field(Float) (default 0): Required, but `0` counts as a value and saves, and `field(Int)` works the same way.
 
-- false — Required, but `false` counts as a value and saves.
+- field(Boolean) (default false): Required, but `false` counts as a value and saves.
 
-- "KRW" — Required, but it starts filled, and clearing it blocks the save.
+- field(String, { default: "KRW" }) (default "KRW"): Required, but it starts filled, and clearing it blocks the save.
 
-- null — Optional, and an empty string is saved as `null`.
+- field(String).optional() (default null): Optional, and an empty string is saved as `null`.
 
-- [] — An empty list is valid, so it saves.
+- field([String]) (default []): An empty list is valid, so it saves.
 
 **A literal for a plain value, a function for anything built.** Write `default: 0` as is, but `default: () => dayjs()` for a date, so each new value gets its own time.
 
@@ -153,9 +165,9 @@ Why, and what to write
 
 - import dayjs from "dayjs": A third-party package, so import a re-export instead, such as `dayjs` from `akanjs/base`.
 
-- Server-only code, whose work belongs in the service.
+- *.service.ts, *.document.ts, srvkit/, db: Server-only code, whose work belongs in the service.
 
-- Client-only code, whose work belongs in the store and components.
+- *.store.ts, ui/, st: Client-only code, whose work belongs in the store and components.
 
 - #private: Not allowed in a constant file, so write a TypeScript `private` method instead.
 

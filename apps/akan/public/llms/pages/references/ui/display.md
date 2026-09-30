@@ -57,13 +57,21 @@ Store-bound or prop-bound
 
 The pager and the table each come in two versions, and swapping them is the usual mistake. Use the `Data.*` one for a model slice, and the plain one for values you already hold:
 
-- Store — slice
+Store — slice
 
-- Props
+Props
 
 - Pager
 
+  - Data.Pagination: Reads a slice's page, limit and count from the store.
+
+  - Pagination: Takes `currentPage`, `total` and `itemsPerPage` as props.
+
 - Table
+
+  - Data.TableList: A listing wired to a model: rows, pager and modals all come from the slice.
+
+  - Table: Rows you already hold, passed in as `dataSource`.
 
 Where its values come from
 
@@ -87,69 +95,69 @@ Every member takes the same `slice`, which tells it the model and the store keys
 
 Members
 
-- { slice, type?, query?, columns?, actions?, tools?, render…? } — The whole admin listing: toolbar, dashboard, rows or cards, and the CRUD modals.
+- Data.ListContainer ({ slice, type?, query?, columns?, actions?, tools?, render…? }): The whole admin listing: toolbar, dashboard, rows or cards, and the CRUD modals.
 
-- { slice, columns, init?, queryArgs?, actions?, renderView?, renderTemplate?, renderTitle?, onItemClick? } — The listing as rows, with its own edit and view modals. `queryArgs` makes it load on mount.
+- Data.TableList ({ slice, columns, init?, queryArgs?, actions?, renderView?, renderTemplate?, renderTitle?, onItemClick? }): The listing as rows, with its own edit and view modals. `queryArgs` makes it load on mount.
 
-- { slice, columns, renderItem, init?, actions?, renderView?, renderTemplate?, renderLoading? } — The listing as cards. Each `renderItem` result sits in a `Data.Item` with the row actions.
+- Data.CardList ({ slice, columns, renderItem, init?, actions?, renderView?, renderTemplate?, renderLoading? }): The listing as cards. Each `renderItem` result sits in a `Data.Item` with the row actions.
 
-- { slice, model, title?, actions?, columns?, onClick?, children? } — One card: `children` (or `title`) on top, then the listed columns and the action buttons.
+- Data.Item ({ slice, model, title?, actions?, columns?, onClick?, children? }): One card: `children` (or `title`) on top, then the listed columns and the action buttons.
 
-- { slice, className? } — The pager. It reads page state from the slice's store, not from props.
+- Data.Pagination ({ slice, className? }): The pager. It reads page state from the slice's store, not from props.
 
-- { slice, summary, columns?, presents?, hidePresents?, queryMap?, summaryRefName?, onSelect?, queryKey? } — Summary tiles above the list. A tile that knows its filter narrows the list on click.
+- Data.Dashboard ({ slice, summary, columns?, presents?, hidePresents?, queryMap?, summaryRefName?, onSelect?, queryKey? }): Summary tiles above the list. A tile that knows its filter narrows the list on click.
 
-- { slice, insight, columns? } — Tiles for the slice's insight values. The total count is already in the header.
+- Data.Insight ({ slice, insight, columns? }): Tiles for the slice's insight values. The total count is already in the header.
 
-- { slice, query?, onApply? } — Picks a declared filter and fills its args. `onApply` defaults to the slice's store.
+- Data.QueryMaker ({ slice, query?, onApply? }): Picks a declared filter and fills its args. `onApply` defaults to the slice's store.
 
-- { refName, value, onChange } — Picks a row of another model for a filter arg whose `ref` names it, such as an owner id.
+- Data.RefPicker ({ refName, value, onChange }): Picks a row of another model for a filter arg whose `ref` names it, such as an owner id.
 
 Data.ListContainer props
 
-- SliceMeta — The model's root slice, `fetch.slice.<model>`.
+- slice (SliceMeta): The model's root slice, `fetch.slice.<model>`.
 
-- "card" | "list" — "card" — The first rendering. The toolbar toggle switches between cards and rows.
+- type ("card" | "list", default "card"): The first rendering. The toolbar toggle switches between cards and rows.
 
-- QuerySetting — Fixes the filter. The query maker and the dashboard are then not drawn.
+- query (QuerySetting): Fixes the filter. The query maker and the dashboard are then not drawn.
 
-- { [column]: QuerySetting } — The filter per summary column. `?filter=<column>` opens the list on that filter.
+- queryMap ({ [column]: QuerySetting }): The filter per summary column. `?filter=<column>` opens the list on that filter.
 
-- FetchInitForm — The first fetch: page, limit, sort, and the defaults a new model starts from.
+- init (FetchInitForm): The first fetch: page, limit, sort, and the defaults a new model starts from.
 
-- DataColumn[] — ["id", "createdAt", "updatedAt"] — Fields shown in each row and card, and written by the CSV export.
+- columns (DataColumn[], default ["id", "createdAt", "updatedAt"]): Fields shown in each row and card, and written by the CSV export.
 
-- DataAction[] | (item, idx) => DataAction[] — ["remove", "edit", "view"] — Row buttons. A function decides them per row.
+- actions (DataAction[] | (item, idx) => DataAction[], default ["remove", "edit", "view"]): Row buttons. A function decides them per row.
 
-- DataTool[] | (list) => DataTool[] — [] — Extra entries in the toolbar's more menu, beside CSV and JSON export.
+- tools (DataTool[] | (list) => DataTool[], default []): Extra entries in the toolbar's more menu, beside CSV and JSON export.
 
-- boolean — true — Shows the New button, as long as `renderTemplate` is given.
+- create (boolean, default true): Shows the New button, as long as `renderTemplate` is given.
 
-- ReactNode — The heading. Defaults to the model's name from its dictionary.
+- title (ReactNode): The heading. Defaults to the model's name from its dictionary.
 
-- sort key — The initial sort. The toolbar offers the model's other sort keys.
+- sort (sort key): The initial sort. The toolbar offers the model's other sort keys.
 
-- string — Classes for the whole container.
+- className (string): Classes for the whole container.
 
-- string — Classes for the card grid.
+- cardListClassName (string): Classes for the card grid.
 
 Render slots
 
-- (props) => ReactNode — The card body in card mode. It gets `{ [model]: item, slice, actions, columns, idx }`.
+- renderItem ((props) => ReactNode): The card body in card mode. It gets `{ [model]: item, slice, actions, columns, idx }`.
 
-- (props) => ReactNode — The form inside the edit and new modals. Without it there is no New button.
+- renderTemplate ((props) => ReactNode): The form inside the edit and new modals. Without it there is no New button.
 
-- (model) => ReactNode — The body of the view modal. Without it the view button opens nothing.
+- renderView ((model) => ReactNode): The body of the view modal. Without it the view button opens nothing.
 
-- (model) => ReactNode — The modal title. Defaults to the model name and the id.
+- renderTitle ((model) => ReactNode): The modal title. Defaults to the model name and the id.
 
-- ({ summary, onSelect, queryKey, hidePresents }) => ReactNode — The area above the list, usually a `Data.Dashboard`. It needs the app's `summary` state.
+- renderDashboard (({ summary, onSelect, queryKey, hidePresents }) => ReactNode): The area above the list, usually a `Data.Dashboard`. It needs the app's `summary` state.
 
-- ({ insight }) => ReactNode — The insight area above the list, usually a `Data.Insight`.
+- renderInsight (({ insight }) => ReactNode): The insight area above the list, usually a `Data.Insight`.
 
-- () => ReactNode — Replaces the filter-argument form under the toolbar.
+- renderQueryMaker (() => ReactNode): Replaces the filter-argument form under the toolbar.
 
-- () => ReactNode — One placeholder card, repeated while the cards load.
+- renderLoading (() => ReactNode): One placeholder card, repeated while the cards load.
 
 Columns
 
@@ -157,9 +165,9 @@ You pass
 
 - "name": A field name. The header label comes from the model's dictionary.
 
-- Date fields with these and a few similar names are drawn as `RecentTime`.
+- "createdAt", "updatedAt", "startAt": Date fields with these and a few similar names are drawn as `RecentTime`.
 
-- A name containing `status` or `role` is drawn as a coloured badge.
+- "status", "role": A name containing `status` or `role` is drawn as a coloured badge.
 
 - { key, title?, render?, value?, responsive? }: Your own label and cell. `value` is what the CSV export writes instead of `render`.
 
@@ -167,7 +175,7 @@ You pass
 
 Actions and tools
 
-- Icon buttons wired to the store. `remove` asks for confirmation first.
+- "view", "edit", "remove": Icon buttons wired to the store. `remove` asks for confirmation first.
 
 - <YourButton />: Your own element. Rows put it in an Actions column, cards in the more menu.
 
@@ -201,21 +209,21 @@ RecentTime
 
 Shows a time as a relative label such as "3 minutes ago", in the page's language, with the exact date in a tooltip. Past `breakUnit` it prints a date instead.
 
-- Date | Dayjs | null — The time to show. `null` renders nothing.
+- date (Date | Dayjs | null): The time to show. `null` renders nothing.
 
-- Intl.RelativeTimeFormatUnit — Where relative labels stop. Unset, they never switch to a date. See the table below.
+- breakUnit (Intl.RelativeTimeFormatUnit): Where relative labels stop. Unset, they never switch to a date. See the table below.
 
-- "auto" | "full" — "auto" — How a date past the break is printed. See the table below.
+- format ("auto" | "full", default "auto"): How a date past the break is printed. See the table below.
 
-- "fromNow" | "always" | "auto" | (ctx) => string — "fromNow" — The wording of the relative label. See the table below.
+- relative ("fromNow" | "always" | "auto" | (ctx) => string, default "fromNow"): The wording of the relative label. See the table below.
 
-- string — Classes for the label itself.
+- className (string): Classes for the label itself.
 
 Where relative labels stop
 
 Relative label while
 
-- Always relative, never a date
+- Not set — Always relative, never a date
 
 - "second" — Never relative, always a date
 
@@ -257,13 +265,13 @@ Output for one day ago
 
 Wording from
 
-- "fromNow" — a day ago — dayjs locale strings. The default.
+- "fromNow" — Example: `a day ago` — dayjs locale strings. The default.
 
-- "always" — 1 day ago — `Intl.RelativeTimeFormat`, always as a number.
+- "always" — Example: `1 day ago` — `Intl.RelativeTimeFormat`, always as a number.
 
-- "auto" — yesterday — `Intl.RelativeTimeFormat`, with words like yesterday where the language has them.
+- "auto" — Example: `yesterday` — `Intl.RelativeTimeFormat`, with words like yesterday where the language has them.
 
-- (ctx) => string — … — Your own wording from `{ unit, count, date, now, defaultLabel }`.
+- (ctx) => string — Example: `…` — Your own wording from `{ unit, count, date, now, defaultLabel }`.
 
 A story byline that says "yesterday" rather than "a day ago", and a date after a week:
 
@@ -289,17 +297,17 @@ Use
 
 - A button or field is not rendered yet — Loading.Button · Loading.Input
 
-- { className?, indicator?, isCenter?, size?: "sm" | "md" | "lg" | number, tone? } — size "md", tone "primary" — The spinner. `size` is a step or pixels; `tone` is `"primary"`, `"current"` or `"muted"`.
+- Loading.Spin ({ className?, indicator?, isCenter?, size?: "sm" | "md" | "lg" | number, tone? }, default size "md", tone "primary"): The spinner. `size` is a step or pixels; `tone` is `"primary"`, `"current"` or `"muted"`.
 
-- { className?, active?, style? } — active true — Four grey text lines, pulsing while `active`. A good `fallback` for `Load.Stream`.
+- Loading.Skeleton ({ className?, active?, style? }, default active true): Four grey text lines, pulsing while `active`. A good `fallback` for `Load.Stream`.
 
-- { className?, value, max } — A determinate bar that animates to `value / max`. Use it when both numbers are real.
+- Loading.ProgressBar ({ className?, value, max }): A determinate bar that animates to `value / max`. Use it when both numbers are real.
 
-- { className?, active?, style? } — active true — A button-shaped placeholder for a control not there yet. Not a spinner inside a button.
+- Loading.Button ({ className?, active?, style? }, default active true): A button-shaped placeholder for a control not there yet. Not a spinner inside a button.
 
-- { className?, active?, style? } — active true — The same placeholder, shaped like an input field.
+- Loading.Input ({ className?, active?, style? }, default active true): The same placeholder, shaped like an input field.
 
-- { className?, indicator?, children? } — A blurred `absolute inset-0` cover with a spinner and a message (default: processing).
+- Loading.Area ({ className?, indicator?, children? }): A blurred `absolute inset-0` cover with a spinner and a message (default: processing).
 
 An upload row with a spinner and a progress bar:
 
@@ -315,13 +323,13 @@ Badge
 
 The status pill: a `<span>` with the `badgeRecipe` variants and nothing else. Every other attribute passes through, so `title`, `aria-*` and a click handler all work.
 
-- "default" | "primary" | "secondary" | "accent" | "neutral" | "success" | "warning" | "info" | "error" | "outline" — "default" — The colour. Map a model enum to it through a module-scope `as const` table.
+- variant ("default" | "primary" | "secondary" | "accent" | "neutral" | "success" | "warning" | "info" | "error" | "outline", default "default"): The colour. Map a model enum to it through a module-scope `as const` table.
 
-- "xs" | "sm" | "md" | "lg" — "md" — Height and text size.
+- size ("xs" | "sm" | "md" | "lg", default "md"): Height and text size.
 
-- boolean — Draws the variant's colour as an outline. `variant="outline"` is the plain, uncoloured one.
+- outline (boolean): Draws the variant's colour as an outline. `variant="outline"` is the plain, uncoloured one.
 
-- attributes — Everything a `<span>` takes. `className` is merged last and wins over the variant.
+- ...HTMLAttributes<HTMLSpanElement> (attributes): Everything a `<span>` takes. `className` is merged last and wins over the variant.
 
 A job status badge. The enum maps to a variant through a module-scope table:
 
@@ -333,15 +341,15 @@ Empty
 
 The standard "no data" state: an icon, a translated message, and room for a follow-up action below.
 
-- ReactNode — l("base.noData") — The empty-state text. The default is the translated no-data label.
+- description (ReactNode, default l("base.noData")): The empty-state text. The default is the translated no-data label.
 
-- ReactNode — The mark above the text. Defaults to an inbox icon.
+- icon (ReactNode): The mark above the text. Defaults to an inbox icon.
 
-- number — 300 — Minimum height of the empty body, in pixels.
+- minHeight (number, default 300): Minimum height of the empty body, in pixels.
 
-- string — Classes for the empty body. `children` sit outside it.
+- className (string): Classes for the empty body. `children` sit outside it.
 
-- ReactNode — Content under the empty body, such as a create button.
+- children (ReactNode): Content under the empty body, such as a create button.
 
 A product list whose empty state offers a create button, passed through `Load.Units`:
 
@@ -353,33 +361,33 @@ Table
 
 A responsive table for rows you already hold. For a model listing wired to the store, use `Data.TableList` instead.
 
-- { key?, title, dataIndex, render?, responsive? }[] — One header and cell per column. `responsive` lists the breakpoints where it shows.
+- columns ({ key?, title, dataIndex, render?, responsive? }[]): One header and cell per column. `responsive` lists the breakpoints where it shows.
 
-- any[] — The rows to draw, all of them. Slice it to the current page yourself.
+- dataSource (any[]): The rows to draw, all of them. Slice it to the current page yourself.
 
-- (row) => string — The React key per row. Defaults to the row index.
+- rowKey ((row) => string): The React key per row. Defaults to the row index.
 
-- boolean — Dims the rows and draws `loadingIndicator` over them.
+- loading (boolean): Dims the rows and draws `loadingIndicator` over them.
 
-- ReactNode — The mark shown over the rows while `loading`. Defaults to a spinner.
+- loadingIndicator (ReactNode): The mark shown over the rows while `loading`. Defaults to a spinner.
 
-- PaginationProps | false — Draws a `Pagination` under the table. Unset or `false` draws none.
+- pagination (PaginationProps | false): Draws a `Pagination` under the table. Unset or `false` draws none.
 
-- (record, index) => { onClick } — Row events such as click-to-open. Rows then show a pointer cursor.
+- onRow ((record, index) => { onClick }): Row events such as click-to-open. Rows then show a pointer cursor.
 
-- string | (record, index) => string — Classes for every row, or per row.
+- rowClassName (string | (record, index) => string): Classes for every row, or per row.
 
-- "small" | "middle" — `"small"` tightens the cell padding.
+- size ("small" | "middle"): `"small"` tightens the cell padding.
 
-- boolean — Draws a rounded border around the table.
+- bordered (boolean): Draws a rounded border around the table.
 
-- boolean | Responsive[] — true — Hides the header, or shows it only at the listed breakpoints.
+- showHeader (boolean | Responsive[], default true): Hides the header, or shows it only at the listed breakpoints.
 
-- ReactNode — Content drawn above the table.
+- header (ReactNode): Content drawn above the table.
 
-- ReactNode — Content drawn below the table, under the pager.
+- footer (ReactNode): Content drawn below the table, under the pager.
 
-- ReactNode — <Empty minHeight={160} /> — The placeholder for a table with no rows.
+- empty (ReactNode, default <Empty minHeight={160} />): The placeholder for a table with no rows.
 
 An invoice table that pages locally and hides the amount on small screens:
 
@@ -391,23 +399,23 @@ Pagination
 
 A standalone page-number control for page state you hold yourself. When the state belongs to a model slice, use `Data.Pagination`.
 
-- number — The current page, counted from 1.
+- currentPage (number): The current page, counted from 1.
 
-- number — The total item count. At 0 the pager renders `empty`, or nothing.
+- total (number): The total item count. At 0 the pager renders `empty`, or nothing.
 
-- number — Items per page. The page count is `total / itemsPerPage`, rounded up.
+- itemsPerPage (number): Items per page. The page count is `total / itemsPerPage`, rounded up.
 
-- (page: number) => void — Called with the chosen page, counted from 1.
+- onPageSelect ((page: number) => void): Called with the chosen page, counted from 1.
 
-- ReactNode — The mark inside the previous-page button. The button itself stays the framework's.
+- prev (ReactNode): The mark inside the previous-page button. The button itself stays the framework's.
 
-- ReactNode — The mark inside the next-page button.
+- next (ReactNode): The mark inside the next-page button.
 
-- ReactNode — The mark standing in for the pages a long pager skips.
+- ellipsis (ReactNode): The mark standing in for the pages a long pager skips.
 
-- ReactNode — The placeholder for a pager with no pages. Replaces the deprecated `renderEmpty`.
+- empty (ReactNode): The placeholder for a pager with no pages. Replaces the deprecated `renderEmpty`.
 
-- { className?, activePageNumClassName?, pageNumClassName? } — Classes for the wrapper, the current page button and the other page buttons.
+- classNames ({ className?, activePageNumClassName?, pageNumClassName? }): Classes for the wrapper, the current page button and the other page buttons.
 
 A photo grid that shows twelve items a page:
 

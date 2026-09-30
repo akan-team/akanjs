@@ -58,15 +58,15 @@ File
 
 What it does
 
-- Post.Util.tsx: **Button.** The user clicks it, and it only calls the store action.
+- Post.Util.tsx: **Button.** The user clicks it, and it only calls the store action. — Example: `st.do.publishPost(postId)`
 
-- post.store.ts: **Store action.** Calls the generated fetch function, stores the result, shows a toast.
+- post.store.ts: **Store action.** Calls the generated fetch function, stores the result, shows a toast. — Example: `fetch.publishPost(postId)`
 
-- post.signal.ts: **Endpoint.** Runs the guards, then hands the work to the service.
+- post.signal.ts: **Endpoint.** Runs the guards, then hands the work to the service. — Example: `this.postService.publish(postId, self.id)`
 
-- post.service.ts: **Service.** Loads the post, checks it belongs to the caller, and saves it.
+- post.service.ts: **Service.** Loads the post, checks it belongs to the caller, and saves it. — Example: `post.publish().save()`
 
-- post.document.ts: **Document.** Checks that the post is ready, then changes its state.
+- post.document.ts: **Document.** Checks that the post is ready, then changes its state. — Example: `this.status = "published"`
 
 **You never write the client call.** `fetch.publishPost` is generated from the endpoint you declare in the signal.
 
@@ -88,25 +88,25 @@ Arguments
 
 Builder
 
-- .param(name, Type): A required path segment: one scalar or `enumOf`, not a model or array. No optional arg before it.
+- .param(name, Type): A required path segment: one scalar or `enumOf`, not a model or array. No optional arg before it. — Example: `.param("postId", ID)`
 
-- .body(name, Type, options?): A request-body value, mostly for mutations. `{ nullable: true }` makes it optional.
+- .body(name, Type, options?): A request-body value, mostly for mutations. `{ nullable: true }` makes it optional. — Example: `.body("data", cnst.PostInput)`
 
-- .search(name, Type): A query-string value. Always optional, so `exec` may receive `undefined`.
+- .search(name, Type): A query-string value. Always optional, so `exec` may receive `undefined`. — Example: `.search("keyword", String)`
 
-- .with(InternalArg, options?): Server-filled, never sent by the client. Without `{ nullable: true }`, a `null` refuses the call.
+- .with(InternalArg, options?): Server-filled, never sent by the client. Without `{ nullable: true }`, a `null` refuses the call. — Example: `.with(Self)`
 
 Common options
 
 The second argument of `mutation()` or `query()` is the options object:
 
-- GuardCls[] — none — Guard classes that must all pass, run in order before the handler.
+- guards (GuardCls[], default none): Guard classes that must all pass, run in order before the handler.
 
-- number (ms) — 30 s (client) — Declare it for work over 30 s. Past it the caller gets `base.error.gatewayTimeout`.
+- timeout (number (ms), default 30 s (client)): Declare it for work over 30 s. Past it the caller gets `base.error.gatewayTimeout`.
 
-- boolean — true — `false` keeps it away from AI agents. Guards and HTTP stay the same.
+- mcp (boolean, default true): `false` keeps it away from AI agents. Guards and HTTP stay the same.
 
-- boolean — false — Allows a `null` return. Without it, `exec` may not return `null`.
+- nullable (boolean, default false): Allows a `null` return. Without it, `exec` may not return `null`.
 
 **The first guard that refuses answers the call.** The guards after it and the handler never run.
 
@@ -120,15 +120,23 @@ Business rules never go in the button or the endpoint. Where each check goes dep
 
 The check
 
-- Guard — post.signal.ts
+Guard — post.signal.ts
 
-- Service — post.service.ts
+Service — post.service.ts
 
-- Document — post.document.ts
+Document — post.document.ts
 
 - Who is calling
 
+  - may call at all: Request policy. `guards: [Every]` refuses anyone who is not signed in.
+
+  - owns this post: The service checks ownership again, even after a guard passed.
+
 - What is changing
+
+  - rule across documents: Load every document the rule reads, then save, then notify.
+
+  - state precondition: The post needs a title and content before it becomes `published`.
 
 Goes here
 

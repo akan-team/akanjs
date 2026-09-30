@@ -25,19 +25,33 @@ Open it when a list needs a new look, or a row should show another field. A Unit
 
 What
 
-- Unit
+Unit
 
-- Util
+Util
 
-- Template
+Template
 
-- Store
+Store
 
-- page
+page
 
 - What the Unit does itself
 
+  - Light model fields: Title, status, dates: drawn as a card, a row or a tile.
+
+  - usePage · l(): Translation works on the server, so labels need no client code.
+
+  - Link · href: Navigation belongs to the Unit; the caller decides where it goes.
+
 - What it hands to another file
+
+  - onClick: A thin action such as edit or remove is a Util that the Unit renders.
+
+  - Field.*: A form is a Template, never part of a list item.
+
+  - st.use · st.do: A larger interaction: a Util starts it and a store action runs it.
+
+  - fetch.*: The page loads the data and hands each record to the Unit as a prop.
 
 Lives here
 
@@ -49,7 +63,7 @@ Term
 
 - cnst.Light<Model>: The slim version of a model: only the fields its constant picks for lists, plus display methods.
 
-- A component without "use client". It becomes HTML on the server and ships no JavaScript.
+- server component: A component without "use client". It becomes HTML on the server and ships no JavaScript.
 
 - slice: A named list query such as `inProject`. Its name becomes the `<Suffix>` in generated names.
 
@@ -73,19 +87,21 @@ What ModelProps gives you
 
 The last three are filled in by `Data.ListContainer`, which takes a Unit directly as its `renderItem`:
 
-- cnst.LightArticle — The record to draw. The prop is named by the first type argument.
+- article (cnst.LightArticle): The record to draw. The prop is named by the first type argument.
 
-- string — Extra classes from the caller. Merge them last with `cn`.
+  - required
 
-- string — Where the Unit links to. Without it, `Layout.Unit` and `Link` render a plain `div`.
+- className (string): Extra classes from the caller. Merge them last with `cn`.
 
-- (model: L) => unknown — A click callback that a client parent can pass.
+- href (string): Where the Unit links to. Without it, `Layout.Unit` and `Link` render a plain `div`.
 
-- SliceMeta — The slice the list belongs to, passed by `Data.ListContainer`.
+- onClick ((model: L) => unknown): A click callback that a client parent can pass.
 
-- DataAction[] — Row actions (`edit`, `view`, `remove` or an element), passed by `Data.ListContainer`.
+- slice (SliceMeta): The slice the list belongs to, passed by `Data.ListContainer`.
 
-- DataColumn<L>[] — Which fields to show, passed by `Data.ListContainer`.
+- actions (DataAction[]): Row actions (`edit`, `view`, `remove` or an element), passed by `Data.ListContainer`.
+
+- columns (DataColumn<L>[]): Which fields to show, passed by `Data.ListContainer`.
 
 Unit Variants
 
@@ -93,7 +109,7 @@ One Unit file exports several shapes of the same model, each named by its purpos
 
 - Card: The normal card for lists and grids.
 
-- A compact row for dense lists. `Admin.Unit.Row` also carries its action buttons.
+- Mini, Row: A compact row for dense lists. `Admin.Unit.Row` also carries its action buttons.
 
 - Abstract: A short summary for feeds and list previews.
 
@@ -131,11 +147,11 @@ Load.Units And Direct Rendering
 
 A list of Units reaches the screen in one of three ways. Pick by what the page holds:
 
-- The page holds
+The page holds
 
-- Render with
+Render with
 
-- What you get
+What you get
 
 - `init` passed to a Zone — Load.Units — Loading, pagination, refresh and empty states, plus a hydrated store.
 
@@ -157,23 +173,23 @@ What Load.Units puts in the store
 
 Store key
 
-- <model>List<Suffix>: The list `Load.Units` draws, as it is on screen now.
+- <model>List<Suffix>: The list `Load.Units` draws, as it is on screen now. — Example: `articleListInProject: new DataList()`
 
-- <model>InitList<Suffix>: The first list the server sent, kept for reset and comparison.
+- <model>InitList<Suffix>: The first list the server sent, kept for reset and comparison. — Example: `articleInitListInProject: new DataList()`
 
-- <model>InitAt<Suffix>: When the server built that first list.
+- <model>InitAt<Suffix>: When the server built that first list. — Example: `articleInitAtInProject: new Date()`
 
-- <model>ListLoading<Suffix>: `false` once the list is hydrated, and `true` again while a refetch runs.
+- <model>ListLoading<Suffix>: `false` once the list is hydrated, and `true` again while a refetch runs. — Example: `articleListLoadingInProject: false`
 
-- <model>Insight<Suffix>: Insight returned with the slice, such as `count` or summary values.
+- <model>Insight<Suffix>: Insight returned with the slice, such as `count` or summary values. — Example: `articleInsightInProject: new cnst.ArticleInsight()`
 
-- Pagination state taken from the init object. — pageOfArticleInProject: 1 lastPageOfArticleInProject: 10 limitOfArticleInProject: 10
+- pageOf<Model><Suffix>, lastPageOf<Model><Suffix>, limitOf<Model><Suffix>: Pagination state taken from the init object.
 
-- Whether more rows follow, and whether the list keeps rows appended by `loadMoreOf<Model><Suffix>()`. — hasMoreOfArticleInProject: true isCumulativeOfArticleInProject: false
+- hasMoreOf<Model><Suffix>, isCumulativeOf<Model><Suffix>: Whether more rows follow, and whether the list keeps rows appended by `loadMoreOf<Model><Suffix>()`.
 
-- queryArgsOf<Model><Suffix>: The filter arguments the slice was loaded with.
+- queryArgsOf<Model><Suffix>: The filter arguments the slice was loaded with. — Example: `queryArgsOfArticleInProject: [projectId]`
 
-- sortOf<Model><Suffix>: The sort key the slice was loaded with.
+- sortOf<Model><Suffix>: The sort key the slice was loaded with. — Example: `sortOfArticleInProject: "latest"`
 
 Direct rendering on the server
 
@@ -203,9 +219,9 @@ Six rules keep a Unit reusable:
 
 Common mistakes
 
-- Mistake, then the fix
+Mistake, then the fix
 
-- Do this
+Do this
 
 - Util.Remove article={article} — A Util takes an id, so pass `articleId={article.id}`.
 
@@ -346,6 +362,21 @@ export const Card = ({ className, init, projectId }: CardProps) => {
     </>
   );
 };
+```
+
+### pageOf<Model><Suffix>, lastPageOf<Model><Suffix>, limitOf<Model><Suffix>
+
+```ts
+pageOfArticleInProject: 1
+lastPageOfArticleInProject: 10
+limitOfArticleInProject: 10
+```
+
+### hasMoreOf<Model><Suffix>, isCumulativeOf<Model><Suffix>
+
+```ts
+hasMoreOfArticleInProject: true
+isCumulativeOfArticleInProject: false
 ```
 
 ### apps/koyo/page/project/[projectId]/_index.tsx

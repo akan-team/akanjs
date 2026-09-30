@@ -25,17 +25,29 @@ Which folder does my code go in?
 
 Code
 
-- apps/
+apps/
 
-- libs/
+libs/
 
-- pkgs/
+pkgs/
 
 - Runs as one product
 
+  - customer site · admin portal · brand app: A product you run and deploy on its own.
+
+  - business code one app uses: Its pages, modules and UI stay inside that app.
+
 - Shared by several apps
 
+  - auth · upload · billing · notification: A common domain that more than one product needs.
+
+  - shared utilities and UI: Helpers and components that several apps import.
+
 - Akan itself, or an installable package
+
+  - framework · CLI · devkit · runtime: Code that belongs to Akan itself, and package-level tooling.
+
+  - a standalone package: Code that should behave like a package you install.
 
 Goes here
 
@@ -61,7 +73,7 @@ File
 
 - bunfig.toml: Bun's own config, which adds the Tailwind plugin and the `AKAN_PUBLIC_*` browser env prefix.
 
-- Coding-agent guide; `CLAUDE.md` points to `AGENTS.md`, which `akan agent install` refreshes.
+- AGENTS.md, CLAUDE.md: Coding-agent guide; `CLAUDE.md` points to `AGENTS.md`, which `akan agent install` refreshes.
 
 `.akan/`, `dist/` and `node_modules/` are written by the tools and gitignored, so you do not edit them by hand.
 
@@ -93,13 +105,19 @@ What you get
 
 Lint and sync
 
-- sync
+sync
 
-- lint
+lint
 
 - One target
 
+  - akan lint <target>: One app, lib or package; a package is linted without a sync.
+
 - Whole workspace
+
+  - akan lint-all: Syncs every app and lib, then lints every app, lib and package.
+
+  - akan sync-all: Syncs every lib, then every app, without linting.
 
 Runs
 

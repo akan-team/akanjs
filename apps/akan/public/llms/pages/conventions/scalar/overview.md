@@ -27,13 +27,13 @@ Words used on this page
 
 Term
 
-- A value defined only by its fields, like a price or an address, with no `id` of its own.
+- value object: A value defined only by its fields, like a price or an address, with no `id` of its own.
 
-- Putting a scalar inside another model as a field, so it is saved with that model.
+- embed: Putting a scalar inside another model as a field, so it is saved with that model.
 
-- The model that holds the scalar, such as `Product` holding a `Price`.
+- parent model: The model that holds the scalar, such as `Product` holding a `Price`.
 
-- A model with its own table, service, endpoints and screens, under `lib/<model>/`.
+- database module: A model with its own table, service, endpoints and screens, under `lib/<model>/`.
 
 When To Use A Scalar
 
@@ -41,13 +41,27 @@ Ask whether the value only exists inside another record. If it does, it is a sca
 
 When the value…
 
-- Scalar — lib/__scalar/
+Scalar — lib/__scalar/
 
-- Database module — lib/<model>/
+Database module — lib/<model>/
 
 - A scalar fits
 
+  - lives inside another record: Saved and loaded with its parent, with no `id` or `createdAt` of its own.
+
+  - the same fields repeat: One group of fields appears in several models, like a price in products and orders.
+
+  - an endpoint's input or result: A shape with no table behind it, like the `DocPage` list this docs app returns.
+
 - It needs a database module
+
+  - its own list page: People browse, search or page through the records.
+
+  - its own permissions: Guards decide who may read or change each record.
+
+  - its own service methods: Business operations such as `approve()` or `cancel()` run on it.
+
+  - an independent lifecycle: It is created and removed on its own, not together with a parent.
 
 Use this one
 

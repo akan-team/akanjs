@@ -19,7 +19,7 @@ Guideline
 
 Lists the guidelines bundled with the CLI, or prints one of them as Markdown. Use it when an agent, a documentation tool or a contributor needs more depth on one area than `AGENTS.md` carries.
 
-- action (String, list | show): `list` prints every guideline name, one per line; `show` prints one guideline.
+- action (String, list | show, required): `list` prints every guideline name, one per line; `show` prints one guideline.
 
 - name (String): Guideline to print, such as `framework`, `moduleOverview` or `modelSignal`; required for `show`.
 
@@ -41,7 +41,7 @@ Words Used On This Page
 
 Term
 
-- An instruction document for coding agents that ships inside the Akan CLI, one per area or file role.
+- guideline: An instruction document for coding agents that ships inside the Akan CLI, one per area or file role.
 
 - AGENTS.md: The guide an agent reads on every task: the short rules, plus which guideline covers the rest.
 
@@ -117,33 +117,33 @@ One Per Module File
 
 One guideline per file role, for database modules and scalars.
 
-- modelConstant: The data shape every layer shares, from Input to the full model.
+- modelConstant: The data shape every layer shares, from Input to the full model. — <model>.constant.ts
 
-- modelDictionary: Labels and text for fields, enums, queries, slices, endpoints and errors.
+- modelDictionary: Labels and text for fields, enums, queries, slices, endpoints and errors. — <model>.dictionary.ts
 
-- modelDocument: Filters, document chain methods, collection helpers and indexes.
+- modelDocument: Filters, document chain methods, collection helpers and indexes. — <model>.document.ts
 
-- modelService: Business workflows: what to load, which methods to chain, when to save.
+- modelService: Business workflows: what to load, which methods to chain, when to save. — <model>.service.ts
 
-- modelSignal: The callable API: internal jobs, slices, endpoints and their guards.
+- modelSignal: The callable API: internal jobs, slices, endpoints and their guards. — <model>.signal.ts
 
-- modelStore: Client state for forms, lists and details, and the actions the UI calls.
+- modelStore: Client state for forms, lists and details, and the actions the UI calls. — <model>.store.ts
 
-- modelTemplate: Form fragments bound to the store's form state and setters.
+- modelTemplate: Form fragments bound to the store's form state and setters. — <Model>.Template.tsx
 
-- modelUnit: Compact displays of the light model, such as cards, rows and badges.
+- modelUnit: Compact displays of the light model, such as cards, rows and badges. — <Model>.Unit.tsx
 
-- modelView: Full detail displays for detail pages and view modals.
+- modelView: Full detail displays for detail pages and view modals. — <Model>.View.tsx
 
-- modelUtil: Small model-specific controls, such as action buttons, toolbars and dialogs.
+- modelUtil: Small model-specific controls, such as action buttons, toolbars and dialogs. — <Model>.Util.tsx
 
-- modelZone: Page sections that compose loaders, lists, views and templates.
+- modelZone: Page sections that compose loaders, lists, views and templates. — <Model>.Zone.tsx
 
-- scalarModule: When a value is a scalar rather than a module, and what its folder holds.
+- scalarModule: When a value is a scalar rather than a module, and what its folder holds. — lib/__scalar/<scalar>/
 
-- scalarConstant: A small embedded value object that reads clearly without its parent model.
+- scalarConstant: A small embedded value object that reads clearly without its parent model. — <scalar>.constant.ts
 
-- scalarDictionary: Labels and descriptions for a scalar's fields and enum values.
+- scalarDictionary: Labels and descriptions for a scalar's fields and enum values. — <scalar>.dictionary.ts
 
 ## Code Examples
 

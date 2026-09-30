@@ -16,4 +16,5 @@ The page API is written with `definePlugin` from `akanjs/client/native` (which a
 `createLiveValue`, `useLiveValue` and `usePluginEvent`), and the desktop part with `defineDesktopPlugin` from the new
 `akanjs/native/desktop`. A `native/` folder is out of the scope of `no-throw-raw-error` (a plugin throws
 `AkanNativeError`) and of `no-web-only-api-outside-webkit`. A plugin a target names by folder in `native.plugins` is now
-granted by its id instead of its path, and ships once when it is also the app's own `native/<id>`.
+granted by its id instead of its path, and ships once when it is also the app's own `native/<id>`. A desktop plugin's
+`ctx.launch.exit(code)` after its setup ran past the launch phase's 3 s quits the app, since its window exists by then.

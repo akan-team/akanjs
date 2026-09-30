@@ -111,13 +111,35 @@ Only five kinds of feature actually need the browser. A component that uses none
 
 What the code uses
 
-- Server
+Server
 
-- Client — "use client"
+Client — "use client"
 
 - The five that need the browser
 
+  - useState · useEffect: React runs hooks in the browser. `usePage()`, `getSelf()` and `useServer()` are the exceptions and work on the server.
+
+  - onClick · onChange: An event handler has to be in the browser to catch the click, so its component goes there too.
+
+  - st.use · st.do: The store lives only in the client bundle. Importing `st` means the file needs `"use client"`.
+
+  - window · document · localStorage: Browser globals and APIs such as `matchMedia` and `WebSocket` do not exist on the server.
+
+  - client-only package: A map, editor or chart that touches the DOM when imported. Reach it through a lib re-export.
+
 - Everything else is server work
+
+  - markup and lists: Cards drawn from an array are plain HTML with nothing to hydrate.
+
+  - usePage · l · l.trans: Translation works on the server too, so localized text never needs `"use client"`.
+
+  - .param · .search: Route values arrive typed in the render callback before the first byte is sent.
+
+  - fetch.*: Called in a route, it finishes before the first byte. From a mounted client it costs two extra round-trips.
+
+  - getSelf({ unauthorize }): Check sign-in in `_layout.tsx` before any HTML is sent, not after rendering.
+
+  - show / hide a panel: Usually server: a `data-*` attribute or `<details>` keeps both states server-rendered.
 
 Belongs here
 
@@ -133,7 +155,17 @@ File
 
 - Files that draw data
 
+  - <Model>.Unit.tsx: One row, card or tile. Takes the model as a prop and only draws it.
+
+  - <Model>.View.tsx: The detail screen for one record. Takes the full model as a prop.
+
 - Files that hold state or an action
+
+  - <Model>.Zone.tsx: Fills the store from an init or view prop and reads it. Holds almost no markup.
+
+  - <Model>.Template.tsx: The form. Every field is bound to the store, so it holds no useState.
+
+  - <Model>.Util.tsx: One domain action as a control, such as Serve, Refund or Remove.
 
 Runs here
 
@@ -165,13 +197,13 @@ That is the whole client cost of a copy button: one handler and one children pas
 
 Four more ways to keep markup on the server
 
-- Split compound components — Tab is four small client pieces: Tab, Tab.Menus, Tab.Menu and Tab.Panel. Panel bodies arrive as children, so they never enter the bundle. One client file with a mode useState and every panel inlined is the opposite.
+- Split compound components — Tab is four small client pieces: Tab, Tab.Menus, Tab.Menu and Tab.Panel. Panel bodies arrive as children, so they never enter the bundle. One client file with a mode useState and every panel inlined is the opposite. — `<Tab.Panel menu="spec">…</Tab.Panel>`
 
-- Use named slots — Layout.Navbar takes title, back, left, right and children. A client shell holds server content in five places instead of swallowing it.
+- Use named slots — Layout.Navbar takes title, back, left, right and children. A client shell holds server content in five places instead of swallowing it. — `<Layout.Navbar title={…} right={…}>`
 
-- Derive on the server — Display and predicate logic goes on Light<Model>, which both sides hold. An enum-to-class lookup goes in a module-scope as const map.
+- Derive on the server — Display and predicate logic goes on Light<Model>, which both sides hold. An enum-to-class lookup goes in a module-scope as const map. — `order.isNew() · statusClass[order.status]`
 
-- Load heavy islands late — A map, editor or chart sits behind a ui/<Folder>/index_.tsx and lazy() pair, with a server-safe index.tsx beside it. Merging the pair into one file breaks RSC.
+- Load heavy islands late — A map, editor or chart sits behind a ui/<Folder>/index_.tsx and lazy() pair, with a server-safe index.tsx beside it. Merging the pair into one file breaks RSC. — `ui/Map/index_.tsx + lazy()`
 
 Measuring The Split
 
@@ -187,17 +219,17 @@ Rule
 
 Meaning → fix
 
-- unnecessary-use-client: →
+- unnecessary-use-client: The file starts with "use client" but uses none of the five features.→ Delete that first line.
 
-- client-static-component: →
+- client-static-component: A component in a client file draws four or more elements with no client feature.→ Move it to a file without "use client".
 
-- client-static-markup: →
+- client-static-markup: Ten or more elements wrap only one or two client features.→ Keep only the interactive leaf client and pass the rest in as children.
 
-- client-mount-load: →
+- client-mount-load: A useEffect(…, []) loads server data after the page mounts.→ Fetch it in the route and pass it down as an init prop.
 
-- module-missing-server-view: →
+- module-missing-server-view: A module draws only from Template, Zone and Util, with no Unit or View.→ Add a Unit or View and let the Zone hand its rows to it.
 
-- template-client-state: →
+- template-client-state: A Template keeps form state in useState instead of the store.→ Bind each field to the store: — Example: `value={xForm.field} onChange={st.do.setFieldOnX}`
 
 What is not flagged
 

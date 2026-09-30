@@ -20,62 +20,6 @@
 
 Querying
 
-plain value
-
-Equals. Several keys in one object are joined with AND.
-
-- q.eq: Equals, spelled out. Same as a plain value.
-
-- q.ne: Not equal.
-
-- q.oneOf: Equals any value in the list. An empty list matches nothing.
-
-- q.notOneOf: Equals none of the values. An empty list matches everything.
-
-- q.gt: Greater than.
-
-- q.gte: Greater than or equal to.
-
-- q.lt: Less than.
-
-- q.lte: Less than or equal to.
-
-- q.between: Inside a range, both ends included.
-
-- q.exists: The key is in the stored JSON, even when it holds `null`.
-
-- q.missing: The key is absent from the stored JSON. Use it only for rows older than the field.
-
-- q.empty: Has no value: the key is absent or holds `null`.
-
-- q.has: The array field contains the value.
-
-array field
-
-On an array field, a plain value or `q.oneOf` also checks the items.
-
-- q.contains: The text includes the value, bound as `%release%`.
-
-- q.search: Full-text search over `text`-role fields, compiled to a JOIN. Works in every database mode.
-
-- q.all: Every condition holds. `null`, `undefined` and `false` entries are skipped.
-
-- q.any: At least one condition holds.
-
-- q.not: The condition does not hold.
-
-- q.when: Adds the query when the condition is truthy, and nothing when it is falsy.
-
-nested path
-
-A dotted key reaches into a nested object.
-
-base column
-
-`id`, `createdAt`, `updatedAt` and `removedAt` are compared as real columns.
-
-- q.raw: Your own SQL fragment, wrapped in parentheses; write it in your database's dialect.
-
 In Akan, a database query is a named filter in `<model>.document.ts`. Services and slices call it by name instead of rebuilding the same condition in every place.
 
 Building Blocks
@@ -178,7 +122,7 @@ Column
 
 - _doc: A JSON column holding every declared field; SQLite reads one with `json_extract(_doc, '$.field')`.
 
-- Four real columns, compared directly: `"updatedAt" >= ?`.
+- id, createdAt, updatedAt, removedAt: Four real columns, compared directly: `"updatedAt" >= ?`.
 
 **Removed documents never match.** Every read adds `"removedAt" IS NULL`, so you never write that condition yourself.
 
@@ -188,13 +132,61 @@ Column
 
 - Compare Values
 
+  - plain value: Equals. Several keys in one object are joined with AND.
+
+  - q.eq: Equals, spelled out. Same as a plain value.
+
+  - q.ne: Not equal.
+
+  - q.oneOf: Equals any value in the list. An empty list matches nothing.
+
+  - q.notOneOf: Equals none of the values. An empty list matches everything.
+
+  - q.gt: Greater than.
+
+  - q.gte: Greater than or equal to.
+
+  - q.lt: Less than.
+
+  - q.lte: Less than or equal to.
+
+  - q.between: Inside a range, both ends included.
+
 - Presence
+
+  - q.exists: The key is in the stored JSON, even when it holds `null`.
+
+  - q.missing: The key is absent from the stored JSON. Use it only for rows older than the field.
+
+  - q.empty: Has no value: the key is absent or holds `null`.
 
 - Arrays And Text
 
+  - q.has: The array field contains the value.
+
+  - array field: On an array field, a plain value or `q.oneOf` also checks the items.
+
+  - q.contains: The text includes the value, bound as `%release%`.
+
+  - q.search: Full-text search over `text`-role fields, compiled to a JOIN. Works in every database mode.
+
 - Combine Conditions
 
+  - q.all: Every condition holds. `null`, `undefined` and `false` entries are skipped.
+
+  - q.any: At least one condition holds.
+
+  - q.not: The condition does not hold.
+
+  - q.when: Adds the query when the condition is truthy, and nothing when it is falsy.
+
 - Paths And Raw SQL
+
+  - nested path: A dotted key reaches into a nested object.
+
+  - base column: `id`, `createdAt`, `updatedAt` and `removedAt` are compared as real columns.
+
+  - q.raw: Your own SQL fragment, wrapped in parentheses; write it in your database's dialect.
 
 Helper
 
@@ -243,6 +235,176 @@ Mutating
 Atomic updates written with the same query helpers.
 
 ## Code Examples
+
+### plain value
+
+```ts
+{ status: "done" }
+// → json_extract(_doc, '$.status') = ?
+```
+
+### q.eq
+
+```ts
+{ priority: q.eq("high") }
+// → json_extract(_doc, '$.priority') = ?
+```
+
+### q.ne
+
+```ts
+{ status: q.ne("archived") }
+// → json_extract(_doc, '$.status') != ?
+```
+
+### q.oneOf
+
+```ts
+{ status: q.oneOf(["done", "reviewing"]) }
+// → json_extract(_doc, '$.status') IN (?, ?)
+```
+
+### q.notOneOf
+
+```ts
+{ status: q.notOneOf(["archived", "deleted"]) }
+// → json_extract(_doc, '$.status') NOT IN (?, ?)
+```
+
+### q.gt
+
+```ts
+{ score: q.gt(80) }
+// → json_extract(_doc, '$.score') > ?
+```
+
+### q.gte
+
+```ts
+{ progress: q.gte(50) }
+// → json_extract(_doc, '$.progress') >= ?
+```
+
+### q.lt
+
+```ts
+{ retryCount: q.lt(3) }
+// → json_extract(_doc, '$.retryCount') < ?
+```
+
+### q.lte
+
+```ts
+{ dueAt: q.lte(to) }
+// → json_extract(_doc, '$.dueAt') <= ?
+```
+
+### q.between
+
+```ts
+{ dueAt: q.between(from, to) }
+// → json_extract(_doc, '$.dueAt') >= ? AND json_extract(_doc, '$.dueAt') <= ?
+```
+
+### q.exists
+
+```ts
+q.exists("assignee")
+// → json_type(_doc, '$.assignee') IS NOT NULL
+```
+
+### q.missing
+
+```ts
+q.missing("deletedAt")
+// → json_type(_doc, '$.deletedAt') IS NULL
+```
+
+### q.empty
+
+```ts
+q.empty("assignee")
+// → json_type(_doc, '$.assignee') IS NULL OR json_type(_doc, '$.assignee') = 'null'
+```
+
+### q.has
+
+```ts
+{ tags: q.has("urgent") }
+// → EXISTS (SELECT 1 FROM json_each(json_extract(_doc, '$.tags')) WHERE json_each.value = ?)
+```
+
+### array field
+
+```ts
+{ watchers: userId }
+// → EXISTS (SELECT 1 FROM json_each(json_extract(_doc, '$.watchers')) WHERE json_each.value = ?)
+```
+
+### q.contains
+
+```ts
+{ title: q.contains("release") }
+// → json_extract(_doc, '$.title') LIKE ?
+```
+
+### q.search
+
+```ts
+q.search(text, { prefix: true })
+// → JOIN (SELECT … FROM search_fts … WHERE search_fts MATCH ?) …
+```
+
+### q.all
+
+```ts
+q.all({ project }, { status: "active" })
+// → (json_extract(_doc, '$.project') = ?) AND (json_extract(_doc, '$.status') = ?)
+```
+
+### q.any
+
+```ts
+q.any({ status: "done" }, { status: "reviewing" })
+// → (json_extract(_doc, '$.status') = ?) OR (json_extract(_doc, '$.status') = ?)
+```
+
+### q.not
+
+```ts
+q.not({ status: "archived" })
+// → NOT (json_extract(_doc, '$.status') = ?)
+```
+
+### q.when
+
+```ts
+q.when(userIds.length, { user: q.oneOf(userIds) })
+// → json_extract(_doc, '$.user') IN (?, ...)
+q.when(false, { user })
+// → 1 = 1
+```
+
+### nested path
+
+```ts
+{ "profile.city": "Seoul" }
+// → json_extract(_doc, '$.profile.city') = ?
+```
+
+### base column
+
+```ts
+{ updatedAt: q.gte(from) }
+// → "updatedAt" >= ?
+```
+
+### q.raw
+
+```ts
+q.raw("json_extract(_doc, '$.score') > ?", [minScore])
+// → (json_extract(_doc, '$.score') > ?)
+```
 
 ### apps/myapp/lib/task/task.document.ts
 

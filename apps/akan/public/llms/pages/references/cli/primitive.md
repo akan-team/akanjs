@@ -15,12 +15,6 @@
 
 Primitive
 
-- --app (String, -a): Target app or library name.
-
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
-
-- afterwards: Run `akan sync <app>` and then `akan lint <app>`.
-
 Primitive CLI
 
 Three commands that add one field or one UI file to a module that already exists. They write the mechanical part people get wrong by hand: a dictionary label left out, an import never added, a component in the wrong file.
@@ -45,7 +39,13 @@ Command
 
 - Add a UI file
 
+  - create-ui: Writes one View, Unit or Template file and nothing else.
+
 - Add a field
+
+  - add-field: Adds the field to the Input class and its label to the dictionary.
+
+  - add-enum-field: Declares an enum class first, then adds a field typed as that class.
 
 Written
 
@@ -65,9 +65,13 @@ Rules All Three Share
 
 Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or a Template. It writes from the same template `akan create-module` uses, and touches no other file. It is the flag form of `akan create-view`, `create-unit` and `create-template`.
 
-- --module (String, -m): Target module name, such as `icecreamOrder`.
+- --app (String, -a, required): Target app or library name.
+
+- --module (String, -m, required): Target module name, such as `icecreamOrder`.
 
 - --surface (String, default template, view | unit | template · -u): Which file to write; Zone and Util are not built by this command.
+
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
 
 - view: `<Module>.View.tsx` exporting `General`, the detail screen, as a server component.
 
@@ -79,17 +83,23 @@ Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or 
 
 - existing file: A file already at that path is overwritten with the scaffold, so commit first.
 
+- afterwards: Run `akan sync <app>` and then `akan lint <app>`.
+
 `akan add-field --app <name> --module <name> --field <name> --type <type> [--default <value>] [--format <markdown|json>]`
 
 Add one field to a module's constant and dictionary. The field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`. For `Int` and `Float` it also adds the `akanjs/base` import.
 
-- --module (String, -m): Target module, whose constant and dictionary files must both exist already.
+- --app (String, -a, required): Target app or library name.
 
-- --field (String, -f): Field name; a name already in the Input class is refused.
+- --module (String, -m, required): Target module, whose constant and dictionary files must both exist already.
 
-- --type (String, -t): Field type or scalar name; lowercase aliases such as `int` are normalized as listed in Notes.
+- --field (String, -f, required): Field name; a name already in the Input class is refused.
+
+- --type (String, -t, required): Field type or scalar name; lowercase aliases such as `int` are normalized as listed in Notes.
 
 - --default (String, -d): Optional default, converted to the type; a value the type rejects writes nothing.
+
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
 
 - number aliases: `int` and `integer` become `Int`; `float`, `double` and `decimal` become `Float`.
 
@@ -109,15 +119,23 @@ Add one field to a module's constant and dictionary. The field goes into `<Modul
 
 - components: No component is edited, so add the field to the Template form yourself.
 
+- afterwards: Run `akan sync <app>` and then `akan lint <app>`.
+
 `akan add-enum-field --app <name> --module <name> --field <name> --values <a,b,c> [--default <value>] [--format <markdown|json>]`
 
 Add a field that takes one value from a fixed set. First it declares the enum: an `enumOf` class named `<Module><Field>` in the constant, with the `enumOf` import added, and its options in the dictionary's `.enum` stage. Then it adds the field, typed as that class, exactly as `add-field` does.
 
-- --field (String, -f): Field name, which also names the enum: `status` on module `order` declares `OrderStatus`.
+- --app (String, -a, required): Target app or library name.
 
-- --values (String, -l): Comma-separated enum values, such as `pending,serving,served`.
+- --module (String, -m, required): Target module, whose constant and dictionary files must both exist already.
+
+- --field (String, -f, required): Field name, which also names the enum: `status` on module `order` declares `OrderStatus`.
+
+- --values (String, -l, required): Comma-separated enum values, such as `pending,serving,served`.
 
 - --default (String, -d): Optional default, which must be one of `--values`.
+
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person to read; `json` is the same report as one object.
 
 - no --type: The type is always the new enum class, which is why the command takes `--values` instead.
 
@@ -127,6 +145,8 @@ Add a field that takes one value from a fixed set. First it declares the enum: a
 
 - option labels: Each value gets a Title Case English label in both languages, so translate the Korean ones.
 
+- afterwards: Run `akan sync <app>` and then `akan lint <app>`.
+
 Primitive or Workflow
 
 A primitive is one edit you already decided on. A workflow is the same edit, plus a plan you read first, the UI it can also touch, and a validation step after.
@@ -135,7 +155,17 @@ What you get
 
 - Both
 
+  - the source edit: The same field or UI file, written by the same code; a workflow calls these commands.
+
 - Workflow only
+
+  - a plan to review: You read what will change, then `akan workflow apply` writes it.
+
+  - surfaces: ["template"]: Writes the field into a simple Template form, passed only through MCP `plan_workflow`.
+
+  - includeInLight: true: Adds the field to the Light model too, and is also passed only through MCP.
+
+  - akan workflow validate: Runs sync and lint, plus typecheck after a field change, and sorts failures by cause.
 
 Included
 

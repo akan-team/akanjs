@@ -13,6 +13,7 @@ import {
 } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
+import { DesktopServerStage } from "@akanjs/devkit/mobile";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
@@ -323,11 +324,12 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     const mobileTarget = await ApplicationRunner.startTarget(app, undefined, options.target);
     //? A desktop app that carries its server calls no other backend, so its dev build needs this app's dev server.
     if (!ApplicationRunner.carriesServer(mobileTarget)) return await this.applicationRunner.startDesktop(app, options);
+    DesktopServerStage.assertCarriable(await app.getConfig());
     const upstream = `http://localhost:${await app.getDevPort()}`;
-    if (await ApplicationRunner.answers(upstream, app.name))
-      app.log(`The desktop app follows the dev server on ${upstream}.`);
-    else await this.#startDevServerFor(app, upstream);
     try {
+      if (await ApplicationRunner.answers(upstream, app.name, app.workspace.workspaceRoot))
+        app.log(`The desktop app follows the dev server on ${upstream}.`);
+      else await this.#startDevServerFor(app, upstream);
       await this.applicationRunner.startDesktop(app, { ...options, interrupt: this.#interrupt });
     } finally {
       await this.#interrupt.runAll();

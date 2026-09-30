@@ -15,10 +15,6 @@
 
 Workspace
 
-- --fix (Boolean, default true): Write the formatter and lint fixes. With `--fix false` it only reports.
-
-- --max-diagnostics (Number, default 200): How many diagnostics Biome prints before it truncates. `0` removes the limit.
-
 Workspace CLI
 
 These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
@@ -49,7 +45,13 @@ The three upkeep commands differ in scope and in whether they lint after the syn
 
 - One target
 
+  - lint: You changed one app, library or package. A package is linted without a sync.
+
 - Whole workspace
+
+  - lint-all: Before a wide check, where generated files, app code and libraries must agree.
+
+  - sync-all: Generated files look stale, or you changed the shared workspace setup.
 
 Runs it
 
@@ -59,9 +61,9 @@ Skips it
 
 Create a new workspace and its first app in one go. It runs these steps in order:Write the workspace files into `<dir>/<workspaceName>`, with `--registry` saved to `.npmrc`.Run `bun install`. `--init false` skips it.Install the `util` and `shared` libraries, only with `--libs true`.Create the first app, named by `--app`.Write the agent rules and the MCP config. `--agent-install` and `--mcp-install` turn them off.Make the first git commit. If git fails, the workspace still works; commit by hand.It ends by printing the next step: `cd <dir>/<workspaceName> && akan start <app>`.
 
-- workspaceName (String): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
+- workspaceName (String, required): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
 
-- --app (String): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
+- --app (String, required): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
 
 - --dir (String, default .): Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.
 
@@ -89,7 +91,11 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 Format and lint one app, library or package with Biome. Fixes are written by default, and an app or library is synced first. After Biome come the three checks under Notes.
 
-- app|lib|pkg (String): App, library or package name. Picked from a list when omitted.
+- app|lib|pkg (String, required): App, library or package name. Picked from a list when omitted.
+
+- --fix (Boolean, default true): Write the formatter and lint fixes. With `--fix false` it only reports.
+
+- --max-diagnostics (Number, default 200): How many diagnostics Biome prints before it truncates. `0` removes the limit.
 
 - theme contrast: Fails when a color pair in `page/styles.css` misses the WCAG contrast threshold.
 
@@ -100,6 +106,10 @@ Format and lint one app, library or package with Biome. Fixes are written by def
 `akan lint-all [--fix <boolean>] [--max-diagnostics <n>]`
 
 Sync every app and library, then lint every app, library and package. Each one gets the same checks as `lint`. Run it before a wide check where generated files, app code and shared libraries must agree.
+
+- --fix (Boolean, default true): Write the formatter and lint fixes. With `--fix false` it only reports.
+
+- --max-diagnostics (Number, default 200): How many diagnostics Biome prints before it truncates. `0` removes the limit.
 
 `akan sync-all`
 

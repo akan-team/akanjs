@@ -8,12 +8,18 @@
 //    shortcut, the uninstall entry, and the app started,
 // 2. lets the app the installer started take A, as a deployed one would: applied, confirmed, the uninstaller beside
 //    the folder still there, and the entry showing A's version,
-// 3. installs it again over the running app: the copy running from the folder is stopped first,
-// 4. a setup that cannot unpack its files fails with 2 and never stops the running app,
+// 3. installs it again over the running app: the copy running from the folder is stopped first, and a junction in the
+//    folder goes with the old folder while the files it pointed to stay,
+// 4. a setup that cannot start (another setup holds the lock, or a file sits where it unpacks) fails with 2 and never
+//    stops the running app; an uninstall while the lock is held fails with 2 too,
 // 5. a setup with /RUN that cannot swap the folder (another program works in it) fails with 2, leaves the installed
 //    build as it was and starts it again,
 // 6. uninstalls it silently: the folder, what updates and setups left beside it, the uninstaller, the shortcut, the
-//    entry, the launch at login and the shell's update state are gone, and the server's data stays.
+//    entry, the launch at login, the shell's update state (a debug build's too) and an update's RunOnce recovery,
+//    the deep link scheme the app registered and its notification id are gone, and the server's data and what
+//    junctions pointed to stay,
+// 7. installs it with /D= elsewhere, then again without /D=: the second setup replaces the app where it is and makes
+//    no copy in the default folder; the uninstall leaves a scheme another program took over.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,6 +39,9 @@ const exe = join(installDir, `${fileName}.exe`);
 const shortcut = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", `${name}.lnk`);
 const uninstallKey = `HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${id}`;
 const runKey = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const runOnceKey = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce";
+const aumidKey = `HKCU:\\Software\\Classes\\AppUserModelId\\${id}`;
+const schemes = sampleConfig.deepLinks?.schemes ?? [];
 const localData = join(process.env.LOCALAPPDATA ?? "", id);
 const nextVersion = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
 
@@ -44,13 +53,20 @@ function powershell(command: string): string {
   return p.stdout.toString().trim();
 }
 
+const quoted = (text: string) => text.replace(/'/g, "''");
+
 const runningFromInstall = () =>
-  powershell(`(Get-Process | Where-Object { $_.Path -eq '${exe.replace(/'/g, "''")}' }).Id -join ','`)
+  powershell(`(Get-Process | Where-Object { $_.Path -eq '${quoted(exe)}' }).Id -join ','`)
     .split(",")
     .filter(Boolean)
     .map(Number);
 
 const entryValue = (value: string) => powershell(`(Get-ItemProperty -LiteralPath '${uninstallKey}').${value}`);
+
+const schemeCommand = (scheme: string) =>
+  powershell(
+    `(Get-Item -LiteralPath 'HKCU:\\Software\\Classes\\${scheme}\\shell\\open\\command' -ErrorAction SilentlyContinue).GetValue('')`,
+  );
 
 const installedBuild = (): number | undefined => {
   try {
@@ -76,7 +92,13 @@ async function runSetup(setup: string, args: string[], env: Record<string, strin
   if (code !== expected) throw new Error(`${setup} ${args.join(" ")} exited with ${code}, not ${expected}`);
 }
 
-const leftBeside = () => [".setup-new", ".setup-old"].map((s) => `${installDir}${s}`).filter((p) => existsSync(p));
+function junction(link: string, target: string) {
+  const made = powershell(`(New-Item -ItemType Junction -Path '${quoted(link)}' -Target '${quoted(target)}').LinkType`);
+  if (made !== "Junction") throw new Error(`could not make a junction at ${link}`);
+}
+
+const leftBeside = () =>
+  [".setup-new", ".setup-old", ".setup-uninstall.exe"].map((s) => `${installDir}${s}`).filter((p) => existsSync(p));
 
 const out = join(scratch, "updates");
 mkdirSync(out, { recursive: true });
@@ -153,11 +175,18 @@ try {
   await until("the entry to show A's version", () => entryValue("DisplayVersion") === nextVersion);
   console.info(`  app ${updated} runs A, the uninstaller stays, the entry says ${nextVersion}`);
 
-  step("3. installing again over the running app");
+  step("3. installing again over the running app, with a junction in its folder");
+  const outside = join(scratch, "outside");
+  const kept = join(outside, "keep.txt");
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(kept, "");
+  junction(join(installDir, "media"), outside);
   await runSetup(setup, ["/S"]);
   if (runningFromInstall().includes(updated ?? -1)) throw new Error(`the running app ${updated} was not stopped`);
   if (!existsSync(exe)) throw new Error("the reinstall left no app");
-  console.info(`  app ${updated} stopped, ${exe} in place`);
+  if (!existsSync(kept)) throw new Error("the reinstall emptied the folder a junction in the app pointed to");
+  if (existsSync(join(installDir, "media"))) throw new Error("the new folder still holds the old folder's junction");
+  console.info(`  app ${updated} stopped, ${exe} in place, the junction's target kept`);
 
   Bun.spawn([exe], { cwd: process.env.LOCALAPPDATA, stdout: "ignore", stderr: "ignore" });
   const [running] = await until("the app started again", () => {
@@ -166,13 +195,38 @@ try {
   });
   const buildBefore = installedBuild();
 
-  step("4. a setup that cannot unpack its files");
-  writeFileSync(`${installDir}.setup-new`, "a file where the setup unpacks");
+  step("4. a setup that cannot start");
+  const marker = join(scratch, "lock-held");
+  const lock = Bun.spawn(
+    [
+      "powershell.exe",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `$m = New-Object System.Threading.Mutex($false, 'Local\\akan-native-setup-${id}'); Set-Content -LiteralPath '${quoted(marker)}' held; Start-Sleep 120`,
+    ],
+    { stdout: "ignore", stderr: "ignore" },
+  );
+  try {
+    await until("another process to hold the setup lock", () => existsSync(marker));
+    await runSetup(setup, ["/S", "/RUN"], {}, 2);
+    await runSetup(uninstaller, ["/S", `_?=${process.env.SystemDrive ?? "C:"}\\`], {}, 2);
+  } finally {
+    lock.kill();
+    await lock.exited;
+  }
+  if (!runningFromInstall().includes(running ?? -1)) throw new Error(`the running app ${running} was stopped`);
+  if (installedBuild() !== buildBefore || !existsSync(uninstaller))
+    throw new Error("the refused setup changed the app");
+  if (leftBeside().length) throw new Error(`the refused setup left ${leftBeside().join(", ")}`);
+  const blocker = "a file where the setup unpacks";
+  writeFileSync(`${installDir}.setup-new`, blocker);
   await runSetup(setup, ["/S", "/RUN"], {}, 2);
+  if (readFileSync(`${installDir}.setup-new`, "utf8") !== blocker) throw new Error("the setup changed that file");
   rmSync(`${installDir}.setup-new`, { force: true });
   if (!runningFromInstall().includes(running ?? -1)) throw new Error(`the running app ${running} was stopped`);
   if (installedBuild() !== buildBefore) throw new Error("the installed build changed");
-  console.info(`  exited with 2, app ${running} still running`);
+  console.info(`  both exited with 2 (the lock, then the file), app ${running} still running`);
 
   step("5. a setup with /RUN that cannot swap the folder");
   const holder = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 300"], {
@@ -203,11 +257,35 @@ try {
     `${installDir}.setup-new`,
     `${installDir}.setup-old`,
     join(localData, "akan-native-updates"),
+    join(localData, "akan-native-updates-debug"),
   ];
   for (const dir of leftovers) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "left.txt"), "");
   }
+  writeFileSync(`${installDir}.setup-uninstall.exe`, "");
+  leftovers.push(`${installDir}.setup-uninstall.exe`);
+  junction(join(installDir, "media"), outside);
+  junction(join(`${installDir}.setup-old`, "media"), outside);
+  for (const scheme of schemes)
+    await until(`the app to register its ${scheme}: scheme`, () => {
+      const command = schemeCommand(scheme).toLowerCase();
+      return command === `"${exe}" "%1"`.toLowerCase();
+    });
+  powershell(
+    `New-Item -Force -Path '${aumidKey}' | Out-Null; New-ItemProperty -LiteralPath '${aumidKey}' -Name DisplayName -Value '${quoted(name)}' -Force | Out-Null`,
+  );
+  const icon = join(localData, "notification-icon.png");
+  writeFileSync(icon, "");
+  const recovery = `akan-native-update ${id}`;
+  const recoveryLeft = () =>
+    powershell(
+      `$null -ne (Get-ItemProperty -LiteralPath '${runOnceKey}' -Name '${recovery}' -ErrorAction SilentlyContinue)`,
+    ) === "True";
+  powershell(
+    `if (-not (Test-Path -LiteralPath '${runOnceKey}')) { New-Item -Path '${runOnceKey}' | Out-Null }; New-ItemProperty -LiteralPath '${runOnceKey}' -Name '${recovery}' -Value 'cmd.exe /d /c exit' -PropertyType String -Force | Out-Null`,
+  );
+  if (!recoveryLeft()) throw new Error("could not leave an update's recovery command in RunOnce");
   const serverDir = join(localData, "server");
   const serverData = join(serverDir, "installer-check.txt");
   const serverDirExisted = existsSync(serverDir);
@@ -217,7 +295,7 @@ try {
     powershell(`$null -ne (Get-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -ErrorAction SilentlyContinue)`) ===
     "True";
   powershell(
-    `New-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -Value '"${exe.replace(/'/g, "''")}"' -PropertyType String -Force | Out-Null`,
+    `New-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -Value '"${quoted(exe)}"' -PropertyType String -Force | Out-Null`,
   );
   if (!startsAtLogin()) throw new Error("could not register the app to start at login");
   await runSetup(uninstaller, ["/S"]);
@@ -228,11 +306,42 @@ try {
   if (existsSync(shortcut)) throw new Error("the shortcut is still there");
   if (powershell(`Test-Path -LiteralPath '${uninstallKey}'`) !== "False") throw new Error("the entry is still there");
   if (startsAtLogin()) throw new Error("the app still starts at login");
+  const linked = schemes.filter((scheme) => schemeCommand(scheme) !== "");
+  if (linked.length) throw new Error(`the uninstall left the deep link scheme ${linked.join(", ")}`);
+  if (powershell(`Test-Path -LiteralPath '${aumidKey}'`) !== "False" || existsSync(icon))
+    throw new Error("the uninstall left the notification registration");
+  if (recoveryLeft()) throw new Error("the uninstall left an update's recovery command in RunOnce");
+  if (!existsSync(kept)) throw new Error("the uninstall emptied a folder a junction pointed to");
   if (!existsSync(serverData)) throw new Error("the uninstall took the server's data");
   rmSync(serverDirExisted ? serverData : serverDir, { recursive: true, force: true });
   console.info(
-    "  folder, leftovers, uninstaller, shortcut, entry, launch at login and update state gone; server data kept",
+    "  folder, leftovers, uninstaller, shortcut, entry, launch at login, update state, link scheme and notification id gone; server data and junction targets kept",
   );
+
+  step("7. a setup without /D= goes where the app is installed");
+  const elsewhere = join(scratch, "installed elsewhere", name);
+  // /D= takes the rest of the command line as the folder, unquoted: Start-Process passes its argument as it is.
+  const code = powershell(
+    `(Start-Process -FilePath '${quoted(setup)}' -ArgumentList '/S /D=${quoted(elsewhere)}' -Wait -PassThru).ExitCode`,
+  );
+  if (code !== "0") throw new Error(`the /D= install exited with ${code}`);
+  if (!existsSync(join(elsewhere, `${fileName}.exe`)) || existsSync(installDir))
+    throw new Error(`the /D= install is not (only) in ${elsewhere}`);
+  await runSetup(setup, ["/S"]);
+  if (existsSync(installDir)) throw new Error("a setup without /D= made a copy in the default folder");
+  if (entryValue("InstallLocation") !== elsewhere) throw new Error("the entry no longer names the /D= folder");
+  const other = '"C:\\Other Program\\other.exe" "%1"';
+  for (const scheme of schemes)
+    powershell(
+      `$k = 'HKCU:\\Software\\Classes\\${scheme}\\shell\\open\\command'; New-Item -Force -Path $k | Out-Null; Set-Item -LiteralPath $k -Value '${quoted(other)}'`,
+    );
+  await runSetup(`${elsewhere}.uninstall.exe`, ["/S"]);
+  await until("the /D= folder and its uninstaller to go", () => !existsSync(`${elsewhere}.uninstall.exe`));
+  if (existsSync(elsewhere)) throw new Error(`the uninstall left ${elsewhere}`);
+  const taken = schemes.filter((scheme) => schemeCommand(scheme) !== other);
+  for (const scheme of schemes) powershell(`Remove-Item -LiteralPath 'HKCU:\\Software\\Classes\\${scheme}' -Recurse`);
+  if (taken.length) throw new Error(`the uninstall removed ${taken.join(", ")}, which another program had taken over`);
+  console.info(`  reinstalled in ${elsewhere}, no copy in the default folder; another program's scheme kept`);
   console.info("\ninstaller-check passed");
 } finally {
   for (const pid of runningFromInstall()) process.kill(pid);

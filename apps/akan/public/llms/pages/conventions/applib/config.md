@@ -47,9 +47,41 @@ Library
 
 - Serving the web
 
+  - routes: Which domains open the app, and which basePath each one maps to.
+
+  - web: Which web surfaces the build produces: SSR pages, the CSR shell, or API only.
+
+  - api: Where endpoints and the websocket are mounted. Defaults to `/api` and `/ws`.
+
+  - i18n: The locales the app serves and the default one.
+
+  - images: Sizes, formats and allowed sources for the image optimizer.
+
+  - syncPageLibs: Which libraries' page folders this app serves as its own routes.
+
 - Mobile, data and env
 
+  - mobile: The native app's identity and one target per native package.
+
+  - database: The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
+
+  - publicEnv: An allowlist of extra env names for browser code. The build does not read it yet.
+
+  - secrets: Private files that ship with `akan upload-env` and stay out of git.
+
 - Build and image
+
+  - externalLibs: Packages kept out of the bundle and installed in the production image.
+
+  - barrelImports: Extra barrels whose imports the build rewrites to the exact file.
+
+  - optimizeImports: Extra packages the browser build parses only as far as they are used.
+
+  - docker: The production image. A library adds `preRuns` and `postRuns` only.
+
+  - assets: Which fonts the build prunes from its `public/` copy. A library sets `keepFonts` only.
+
+  - plugins: Akan plugins the CLI reads for runtime packages, native setup and assets.
 
 Can be declared
 
@@ -79,9 +111,9 @@ routes
 
 `routes` tells the server which domains open the app. Give each route a `basePath` when one app serves several clients, such as a shop and its admin:
 
-The client this route opens, with pages under `page/<basePath>`. Omit it for a single client.
+- basePath (string): The client this route opens, with pages under `page/<basePath>`. Omit it for a single client.
 
-Hosts that open this route, keyed by branch: `debug`, `develop`, `main` or your own key.
+- domains ({ [branch]: string[] }): Hosts that open this route, keyed by branch: `debug`, `develop`, `main` or your own key.
 
 **The host picks the client.** A request whose host is listed under a route is served from that route's `basePath`.
 
@@ -97,23 +129,19 @@ mobile
 
 Values at the mobile root are defaults for every target, and a target overrides only what it sets:
 
-the app name
+- appName (string, default the app name): Display name of the native app.
 
-Display name of the native app.
+- appId (string, default com.<repo>.<app>): Android applicationId and iOS bundle id.
 
-Android applicationId and iOS bundle id.
+- version (string, default 0.0.1): User-facing version: Android versionName and the iOS marketing version.
 
-User-facing version: Android versionName and the iOS marketing version.
+- buildNum (number, default 1): Store build number: Android versionCode and the iOS build number.
 
-Store build number: Android versionCode and the iOS build number.
+- targets (Record<string, Target>, default one target): One entry per native package. The key is the target's name.
 
-one target
+- targets.*.basePath (string): The client this package opens. It must be a basePath declared in `routes`.
 
-One entry per native package. The key is the target's name.
-
-The client this package opens. It must be a basePath declared in `routes`.
-
-Native permissions. Each one turns on the matching plugin's native setup.
+- targets.*.permissions (("camera" | "contacts" | "location" | "push" | "speech")[], default []): Native permissions. Each one turns on the matching plugin's native setup.
 
 **More target fields.** `indexPath`, `assets`, `deepLinks`, `files` and `native` (extra runtime plugins, Info.plist and entitlements, Android manifest XML, google-services.json) are listed in the config reference.
 
@@ -167,6 +195,12 @@ Value
 
 - What each value builds
 
+  - web: true: The default. Pages and the mobile shell, for an app that also ships a native app.
+
+  - web: { csr: false }: Pages without the mobile shell, for a web-only app.
+
+  - web: false: API only. Nothing under `page/` or `public/` is served, synced library routes included.
+
 Built and served
 
 Left out
@@ -185,29 +219,29 @@ images
 
 `images` configures the built-in image optimizer: the widths, formats and qualities it serves, and the sources it may fetch. Write only the fields you change:
 
-- { protocol?, hostname?, port?, pathname?, search? }[] — [] — Remote sources the optimizer may fetch. A host not listed is refused.
+- remotePatterns ({ protocol?, hostname?, port?, pathname?, search? }[], default []): Remote sources the optimizer may fetch. A host not listed is refused.
 
-- { pathname?, search? }[] — [{ pathname: "/**" }] — Local `public/` paths it may serve.
+- localPatterns ({ pathname?, search? }[], default [{ pathname: "/**" }]): Local `public/` paths it may serve.
 
-- number[] — [640, 750, 828, 1080, 1200, 1920, 2048, 3840] — Widths for full-width images. A width in neither size list is refused.
+- deviceSizes (number[], default [640, 750, 828, 1080, 1200, 1920, 2048, 3840]): Widths for full-width images. A width in neither size list is refused.
 
-- number[] — [32, 48, 64, 96, 128, 256, 384] — Widths for smaller, fixed-size images such as avatars and icons.
+- imageSizes (number[], default [32, 48, 64, 96, 128, 256, 384]): Widths for smaller, fixed-size images such as avatars and icons.
 
-- ("image/webp" | "image/avif")[] — ["image/webp"] — Output formats in order of preference. The first one the browser accepts wins.
+- formats (("image/webp" | "image/avif")[], default ["image/webp"]): Output formats in order of preference. The first one the browser accepts wins.
 
-- number[] — [75] — Allowed quality values. A request for any other quality is refused.
+- qualities (number[], default [75]): Allowed quality values. A request for any other quality is refused.
 
-- number — 14400 — Minimum cache lifetime in seconds, even when the source asks for less.
+- minimumCacheTTL (number, default 14400): Minimum cache lifetime in seconds, even when the source asks for less.
 
-- boolean — false — Serve SVG sources. Off by default because an SVG can carry script.
+- dangerouslyAllowSVG (boolean, default false): Serve SVG sources. Off by default because an SVG can carry script.
 
-- number — 3 — Redirects followed while fetching a remote source.
+- maximumRedirects (number, default 3): Redirects followed while fetching a remote source.
 
-- number — 7000 — Timeout for fetching a remote source, in milliseconds.
+- fetchTimeoutMs (number, default 7000): Timeout for fetching a remote source, in milliseconds.
 
-- number — 26214400 (25 MB) — The largest remote source it downloads.
+- maxRemoteBytes (number, default 26214400 (25 MB)): The largest remote source it downloads.
 
-- number — 0 — Images encoded at once. `0` uses half the CPUs of the serving machine, at least one.
+- maxConcurrency (number, default 0): Images encoded at once. `0` uses half the CPUs of the serving machine, at least one.
 
 **A list replaces its default.** Setting `formats` or `remotePatterns` replaces that list; lists you leave out keep their defaults.
 
@@ -219,9 +253,9 @@ i18n
 
 `i18n` lists the languages the app serves. Every route sits under a locale segment such as `/en/…`:
 
-Locale segments the app serves. Each one prefixes every route.
+- locales (string[], default ["en", "ko"]): Locale segments the app serves. Each one prefixes every route.
 
-The fallback when none of the browser's languages match. Must be one of `locales`.
+- defaultLocale (string, default "en"): The fallback when none of the browser's languages match. Must be one of `locales`.
 
 **A bare path redirects.** A URL without a locale goes to the best match for the browser's `Accept-Language`, or to `defaultLocale`.
 
@@ -289,7 +323,7 @@ A barrel is an index file that re-exports many files. When code imports `X` from
 
 Already included
 
-The framework facets.
+- akanjs/webkit, akanjs/common, akanjs/ui, akanjs/server: The framework facets.
 
 - @apps/<app>/{ui,webkit,common,client,server}: This app's own facets.
 
@@ -317,13 +351,13 @@ docker
 
 The generated image installs `ca-certificates` and `tzdata` and nothing else, so `ffmpeg`, a headless browser or a native toolchain goes into `preRuns`:
 
-The base image. The object form picks one per architecture.
+- image (string | { amd64?, arm64? }, default oven/bun:1-slim): The base image. The object form picks one per architecture.
 
-Steps run before `bun install --production`, so native builds find their tools.
+- preRuns ((string | { amd64?, arm64? })[], default []): Steps run before `bun install --production`, so native builds find their tools.
 
-Steps run after the install, before the app files are copied.
+- postRuns ((string | { amd64?, arm64? })[], default []): Steps run after the install, before the app files are copied.
 
-The container's `CMD`.
+- command (string[], default ["bun", "main.js"]): The container's `CMD`.
 
 Order of the generated Dockerfile
 

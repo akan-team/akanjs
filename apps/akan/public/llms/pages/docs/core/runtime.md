@@ -66,49 +66,51 @@ Environment variables prefixed with AKAN_PUBLIC_ are public. They can be read by
 
 Four of those names answer who this app is and where it runs, and the first two are required:
 
-required
+- AKAN_PUBLIC_REPO_NAME (string): Organization or repository namespace, usually fixed for the life of the project.
 
-Organization or repository namespace, usually fixed for the life of the project.
+  - required
 
-The domain the app builds links, callbacks, and domain-based routes from.
+- AKAN_PUBLIC_SERVE_DOMAIN (string): The domain the app builds links, callbacks, and domain-based routes from.
 
-Which data set the app runs against, from local test data up to production-like main.
+- AKAN_PUBLIC_ENV (local | debug | develop | main | testing, default debug): Which data set the app runs against, from local test data up to production-like main.
 
-local when ENV=local, else cloud
-
-Where clients connect: local runtime, cloud, or edge paths; module is only in the type.
+- AKAN_PUBLIC_OPERATION_MODE (local | edge | cloud | module, default local when ENV=local, else cloud): Where clients connect: local runtime, cloud, or edge paths; module is only in the type.
 
 In practice you move two of them together. Build a feature with ENV=local and OPERATION_MODE=local, switch ENV to debug or develop when you need shared data or shared services, and deploy with ENV=main against whichever operation mode the cluster serves:
+
+Two more narrow who reaches the server, for one only its own computer calls, such as the server a desktop app carries:
+
+- AKAN_LISTEN_HOST (string, default every interface): The one address the server binds, such as 127.0.0.1.
+
+- AKAN_ALLOWED_HOSTS (host:port, …): The Host headers it answers; any other request, socket upgrade and preflight included, gets 403.
+
+A server that renders pages calls itself at localhost:<PORT>, so list that in AKAN_ALLOWED_HOSTS too, and keep AKAN_LISTEN_HOST on an address localhost reaches.
 
 Database Variables
 
 Which database mode a deployment runs and where its data lives are the deployment's to say. These variables win over the same values in `env.server.ts`, so one image can serve several deployments:
 
-the first declared mode
+- AKAN_DATABASE_MODE (single | multiple | cluster, default the first declared mode): One of `database.modes`; a deployment of a build that declares several must set it.
 
-One of `database.modes`; a deployment of a build that declares several must set it.
+- AKAN_SQLITE_DIR (string, default /workspace/sqlite in the image): The folder for any SQLite file no path names: the database, and `single`'s cache and queue file.
 
-/workspace/sqlite in the image
+- SQLITE_DATABASE_PATH (string): Moves the database file alone, in `single` and `multiple`; it wins over `AKAN_SQLITE_DIR`.
 
-The folder for any SQLite file no path names: the database, and `single`'s cache and queue file.
+- AKAN_SOLID_DB_PATH (string): The SQLite file where `single` keeps its cache, queue and pubsub.
 
-Moves the database file alone, in `single` and `multiple`; it wins over `AKAN_SQLITE_DIR`.
+- POSTGRES_URL (string): The `cluster` database (alias `POSTGRES_URI`), with pool size and SSL in its query string.
 
-The SQLite file where `single` keeps its cache, queue and pubsub.
+- POSTGRES_HOST (string, default localhost): The URL in parts, with `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
 
-The `cluster` database (alias `POSTGRES_URI`), with pool size and SSL in its query string.
+- POSTGRES_INSIGHT_URL (string): Logs the SQL console in on `cluster`, as a role that may read base columns only.
 
-The URL in parts, with `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+- LIBSQL_URL (string): Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.
 
-Logs the SQL console in on `cluster`, as a role that may read base columns only.
+- REDIS_URI (string): The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.
 
-Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.
+  - required outside local
 
-required outside local
-
-The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.
-
-Every instance mounts one upload volume; disk uploads in `multiple` and `cluster` need it.
+- AKAN_STORAGE_SHARED (true | 1): Every instance mounts one upload volume; disk uploads in `multiple` and `cluster` need it.
 
 An app that declares `database: { modes: ["single", "cluster"] }` ships one image that serves both of these:
 
@@ -122,11 +124,9 @@ Text Search Variables
 
 Full-text search is on unless you switch it off, and both of its variables are deployment-wide decisions rather than per-process ones, so give every process in one deployment the same pair.
 
-unset means on
+- AKAN_SEARCH_ENABLED (0 | 1 | false | true, default unset means on): Turns the full-text index off, reversibly.
 
-Turns the full-text index off, reversibly.
-
-fts5 tokenizer (Postgres: unicode61 or trigram); `database.search.tokenizer` in env.server.ts wins.
+- AKAN_SEARCH_TOKENIZER (string, default unicode61 remove_diacritics 2): fts5 tokenizer (Postgres: unicode61 or trigram); `database.search.tokenizer` in env.server.ts wins.
 
 Changing the tokenizer rebuilds the index from the mirror on the next boot. Of processes restarted at once, the first rebuilds and the rest wait for it; on SQLite a process waits only up to its busy timeout, so stagger the restart when the mirror is large.
 
@@ -134,45 +134,41 @@ Logging Variables
 
 The level ladder is trace, verbose, debug, info, warn, error, and three destinations read it independently: the container's stdout, the rotating log file, and any sink the app registered. Everything else here decides how much structure travels with a record and who is allowed to ask for more.
 
-How much runtime output the console carries; the deprecated log means info.
+- AKAN_PUBLIC_LOG_LEVEL (trace | verbose | debug | info | warn | error, default info): How much runtime output the console carries; the deprecated log means info.
 
-What goes to the container's stdout, in either format; info is the production pick.
+- AKAN_LOG_STDOUT_LEVEL (trace | verbose | debug | info | warn | error, default AKAN_PUBLIC_LOG_LEVEL): What goes to the container's stdout, in either format; info is the production pick.
 
-How much structured Logger output goes to files, independent of the console level.
+- AKAN_LOG_FILE_LEVEL (trace | verbose | debug | info | warn | error, default trace): How much structured Logger output goes to files, independent of the console level.
 
-text for people; ndjson makes stdout one JSON record per line, ndjson-only the file too.
+- AKAN_LOG_FORMAT (text | ndjson | ndjson-only, default text): text for people; ndjson makes stdout one JSON record per line, ndjson-only the file too.
 
-Writes gateway and child logs to runtime/logs; off in the production image.
+- AKAN_LOG_TO_FILE (0 | 1, default 1): Writes gateway and child logs to runtime/logs; off in the production image.
 
-Where file logging writes, when the default directory is not where the volume is mounted.
+- AKAN_LOG_DIR (string, default runtime/logs): Where file logging writes, when the default directory is not where the volume is mounted.
 
-Create the next sequence file when a process log reaches this size.
+- AKAN_LOG_MAX_SIZE_MB (number, default 50): Create the next sequence file when a process log reaches this size.
 
-Keep this many rotated files per process key, such as gateway or child-0.
+- AKAN_LOG_MAX_FILES (number, default 100): Keep this many rotated files per process key, such as gateway or child-0.
 
-Tags each call's records with traceId, endpoint and origin; independent of AKAN_TRACE.
+- AKAN_LOG_CONTEXT (0 | 1, default 1): Tags each call's records with traceId, endpoint and origin; independent of AKAN_TRACE.
 
-1 forwards child records to the gateway always, not only while akan logs or .tail listens.
+- AKAN_LOG_STREAM (0 | 1, default 0): 1 forwards child records to the gateway always, not only while akan logs or .tail listens.
 
-unset — route absent
+- AKAN_LOG_STREAM_TOKEN (string, default unset — route absent): Mounts GET /_akan/app/logs, an SSE stream of the ring buffer, for a matching bearer token.
 
-Mounts GET /_akan/app/logs, an SSE stream of the ring buffer, for a matching bearer token.
+- AKAN_LOG_CANONICAL (0 | 1 | all | slow, default 0): One record per call at its end; 1 or all logs every call, slow only failed or slow ones.
 
-One record per call at its end; 1 or all logs every call, slow only failed or slow ones.
+- AKAN_LOG_FLIGHT (0 | 1, default 0): Buffers each call's last 64 sub-level records; promotes them if it failed or ran slow.
 
-Buffers each call's last 64 sub-level records; promotes them if it failed or ran slow.
+- AKAN_LOG_FLIGHT_MS (number, default 1000): A call at least this long is slow, for the flight recorder and the slow canonical mode.
 
-A call at least this long is slow, for the flight recorder and the slow canonical mode.
+- AKAN_LOG_FLIGHT_MAX (number, default 65536): Caps the records the process holds at once; a call past the cap runs unrecorded.
 
-Caps the records the process holds at once; a call past the cap runs unrecorded.
+- AKAN_LOG_BUFFER (number, default 2000): How many records the in-memory hub keeps for akan logs and the SSE stream to replay.
 
-How many records the in-memory hub keeps for akan logs and the SSE stream to replay.
+- AKAN_LOG_BUFFER_MB (number, default 4): The same buffer's byte ceiling; whichever limit is reached first applies.
 
-The same buffer's byte ceiling; whichever limit is reached first applies.
-
-unset — local only
-
-The secret x-akan-debug must carry outside local to log that one request at trace.
+- AKAN_LOG_DEBUG_HEADER (string, default unset — local only): The secret x-akan-debug must carry outside local to log that one request at trace.
 
 The ring the gateway (or the solo replica) keeps for akan logs --replay and .trace holds AKAN_LOG_BUFFER records or AKAN_LOG_BUFFER_MB, 2,000 or 4 MB by default, whichever fills first, and the older record goes first.
 

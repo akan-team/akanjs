@@ -69,6 +69,8 @@ export interface UpdateManifest {
   archive?: { sha256: string; url: string; size: number; gzSha256: string };
   /** App updates: gzip deltas from earlier releases' tars (`from` = that tar's sha256). */
   patches?: { from: string; url: string; sha256: string; size: number }[];
+  /** App updates: whether the app carries a server; an installed app refuses a release that differs from itself. */
+  server?: boolean;
 }
 
 /** Every file of a web bundle as the app serves it: index.html with the init script and CSP, public/, env.runtime.json. */

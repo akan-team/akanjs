@@ -28,11 +28,11 @@ You open it when a page needs a new call or list, or the server needs a schedule
 
 Class
 
-- Work the server runs by itself: computed fields, schedules, lifecycle hooks, queue jobs.
+- StoryInternal, internal(): Work the server runs by itself: computed fields, schedules, lifecycle hooks, queue jobs.
 
-- Lists a page loads, like `inRoot`. Each one becomes fetch methods and store state.
+- StorySlice, slice(): Lists a page loads, like `inRoot`. Each one becomes fetch methods and store state.
 
-- Calls a client makes: queries, mutations, websocket messages and pubsub rooms.
+- StoryEndpoint, endpoint(): Calls a client makes: queries, mutations, websocket messages and pubsub rooms.
 
 Words used on this page
 
@@ -76,17 +76,17 @@ Defining Internal Tasks
 
 Builder
 
-- resolveField(Type): Computes a `resolve` field of the constant. `exec` gets the parent document first.
+- resolveField(Type): Computes a `resolve` field of the constant. `exec` gets the parent document first. — Example: `like: resolveField(Int).exec(...)`
 
-- interval(ms): Runs every `ms` milliseconds.
+- interval(ms): Runs every `ms` milliseconds. — Example: `sync: interval(1000 * 60).exec(...)`
 
-- cron(expression): Runs on a cron schedule, such as every midnight.
+- cron(expression): Runs on a cron schedule, such as every midnight. — Example: `cleanup: cron("0 0 * * *").exec(...)`
 
-- timeout(ms): Runs once, `ms` milliseconds after the server starts.
+- timeout(ms): Runs once, `ms` milliseconds after the server starts. — Example: `warmup: timeout(5000).exec(...)`
 
-- Runs when the server process starts or stops. — seed: initialize().exec(...)
+- initialize(options?), destroy(options?): Runs when the server process starts or stops. — Example: `seed: initialize().exec(...)`
 
-- process(Type): A background queue job. `.msg()` declares its payload, and a service enqueues it.
+- process(Type): A background queue job. `.msg()` declares its payload, and a service enqueues it. — Example: `archive: process(Boolean).msg("storyId", ID).exec(...)`
 
 A computed like count and a nightly cleanup look like this:
 
@@ -100,13 +100,13 @@ Schedule options
 
 Every builder except `resolveField` takes these in its last argument:
 
-- "federation" | "batch" | "all" — "all" — Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
+- serverMode ("federation" | "batch" | "all", default "all"): Which server roles run it. `"batch"` runs on batch and `"all"` servers, never on federation.
 
-- ("cloud" | "edge" | "local")[] — every mode — Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
+- operationMode (("cloud" | "edge" | "local")[], default every mode): Runs only where `AKAN_PUBLIC_OPERATION_MODE` is in the list, like `["cloud"]`.
 
-- boolean — true — `interval` and `cron` skip a run while the previous one is still running in this process.
+- lock (boolean, default true): `interval` and `cron` skip a run while the previous one is still running in this process.
 
-- boolean — true — `false` turns the job off without deleting its code.
+- enabled (boolean, default true): `false` turns the job off without deleting its code.
 
 **`lock` does not coordinate servers.** It only skips an overlapping run inside one process. Every server whose role matches runs its own copy, so give a job that must run once `serverMode: "batch"` and run only one server that takes batch work.
 
@@ -118,13 +118,21 @@ Four kinds
 
 Kind
 
-- HTTP
+HTTP
 
-- WebSocket
+WebSocket
 
 - Request and answer
 
+  - query(Type, options?): Reads data with a `GET`. The client awaits the answer.
+
+  - mutation(Type, options?): Writes data or runs a business action with a `POST`.
+
 - Realtime
+
+  - message(Type, options?): One message a client sends over the socket. `.msg()` declares its fields.
+
+  - pubsub(Type, options?): A room clients subscribe to and the server publishes into. `.room()` names it.
 
 Travels over this
 
@@ -134,17 +142,17 @@ Argument builders
 
 Each builder says where one argument comes from. `exec` receives them in the order you declare them, then the `.with()` values:
 
-- .param(name, Type): A required URL path segment. One scalar or `enumOf`, never a model or an array.
+- .param(name, Type): A required URL path segment. One scalar or `enumOf`, never a model or an array. — Example: `.param("storyId", ID)`
 
-- .search(name, Type): A query-string value. Always optional, so `exec` may receive `undefined`.
+- .search(name, Type): A query-string value. Always optional, so `exec` may receive `undefined`. — Example: `.search("title", String)`
 
-- .body(name, Type, options?): A request-body value of a mutation. A query is sent without a body, so give it `.search()` instead. `{ nullable: true }` makes it optional.
+- .body(name, Type, options?): A request-body value of a mutation. A query is sent without a body, so give it `.search()` instead. `{ nullable: true }` makes it optional. — Example: `.body("data", cnst.StoryInput)`
 
-- .msg(name, Type, options?): A payload field of a `message` or of a `process` job.
+- .msg(name, Type, options?): A payload field of a `message` or of a `process` job. — Example: `.msg("roomId", ID)`
 
-- .room(name, Type): A key that names the pubsub room a client joins.
+- .room(name, Type): A key that names the pubsub room a client joins. — Example: `.room("roomId", ID)`
 
-- .with(InternalArg, options?): A server-supplied value: `Self`, `Me`, `Req`, `Res`, `Ws`, `Ip`, or your own. Missing means 401.
+- .with(InternalArg, options?): A server-supplied value: `Self`, `Me`, `Req`, `Res`, `Ws`, `Ip`, or your own. Missing means 401. — Example: `.with(Self, { nullable: true })`
 
 Optional arguments go last: a required `.param`, `.msg` or `.room` cannot come after a `.search` or a nullable argument.
 
@@ -182,13 +190,13 @@ Declared
 
 What the client gets
 
-- storyBySlug: query(…): Resolves to the `Story`.
+- storyBySlug: query(…): Resolves to the `Story`. — Example: `await fetch.storyBySlug(slug)`
 
-- publishStory: mutation(…): Resolves to the published `Story`. `.with(Self)` is not a client argument.
+- publishStory: mutation(…): Resolves to the published `Story`. `.with(Self)` is not a client argument. — Example: `await fetch.publishStory(storyId, note)`
 
-- readChat: message(…): Returns nothing; it only sends. `fetch.listenReadChat(fn)` receives the replies.
+- readChat: message(…): Returns nothing; it only sends. `fetch.listenReadChat(fn)` receives the replies. — Example: `fetch.readChat(roomId)`
 
-- chatAdded: pubsub(…): Returns a function that unsubscribes. `fn` runs on every publish.
+- chatAdded: pubsub(…): Returns a function that unsubscribes. `fn` runs on every publish. — Example: `fetch.subscribeChatAdded(roomId, fn)`
 
 The Options Object
 
@@ -228,49 +236,47 @@ budget spent
 
 Access and caching
 
-- GuardCls[] — none — Run in order after every middleware; the first refusal answers 403. Without it, nothing is checked.
+- guards (GuardCls[], default none): Run in order after every middleware; the first refusal answers 403. Without it, nothing is checked.
 
-- boolean — true — `false` keeps it away from AI agents. Guards and HTTP stay exactly the same.
+- mcp (boolean, default true): `false` keeps it away from AI agents. Guards and HTTP stay exactly the same.
 
-- number (ms) — client's 30 s — Past it the caller gets `base.error.gatewayTimeout`. The client waits the same budget.
+- timeout (number (ms), default client's 30 s): Past it the caller gets `base.error.gatewayTimeout`. The client waits the same budget.
 
-- number (ms) — not cached — Reuses the answer this long. Only for a query with no `.with()`; looked up after the guards pass.
+- cache (number (ms), default not cached, query): Reuses the answer this long. Only for a query with no `.with()`; looked up after the guards pass.
 
-- boolean — false — Allows a `null` return. Without it, a handler that returns `null` fails.
+- nullable (boolean, default false): Allows a `null` return. Without it, a handler that returns `null` fails.
 
-- MiddlewareCls[] — none — Extra middleware for this endpoint only, run after the registered chain.
+- middlewares (MiddlewareCls[], default none): Extra middleware for this endpoint only, run after the registered chain.
 
 Routing and transport
 
-- "POST" | "PATCH" | "PUT" | "DELETE" — "POST" — The HTTP verb of a mutation. Change it only when a foreign protocol requires another.
+- method ("POST" | "PATCH" | "PUT" | "DELETE", default "POST", mutation): The HTTP verb of a mutation. Change it only when a foreign protocol requires another.
 
-- string — the endpoint key — A fixed route instead of the key. A trailing `*` matches the rest of the path.
+- path (string, default the endpoint key): A fixed route instead of the key. A trailing `*` matches the rest of the path.
 
-- false | string — the model refName — Replaces the model segment in front of the path, or drops it with `false`.
+- prefix (false | string, default the model refName): Replaces the model segment in front of the path, or drops it with `false`.
 
-- false — the API prefix — `false` drops the API prefix too. With `prefix: false`, the route sits at the site root.
+- globalPrefix (false, default the API prefix): `false` drops the API prefix too. With `prefix: false`, the route sits at the site root.
 
-- boolean — false — Marks the mutation the generated upload action calls. The shared `file` module already has one.
+- fileUpload (boolean, default false, mutation): Marks the mutation the generated upload action calls. The shared `file` module already has one.
 
-- "coalesce" | "queue" — "coalesce" — When a subscriber falls behind: keep only the newest frame, or queue every frame.
+- backpressure ("coalesce" | "queue", default "coalesce", pubsub(Binary)): When a subscriber falls behind: keep only the newest frame, or queue every frame.
 
 What An Argument May Be
 
 Every argument builder takes the same four kinds of type:
 
-- Kind
+Example
 
-- Example
+Note
 
-- Note
+- Scalar — Example: `ID · String · Int · Float · Boolean · Date` — From `akanjs/base`; `String`, `Boolean` and `Date` are the JS globals.
 
-- Scalar — ID · String · Int · Float · Boolean · Date — From `akanjs/base`; `String`, `Boolean` and `Date` are the JS globals.
+- Model — Example: `cnst.StoryInput` — A class from the module's constant, usually the `Input`.
 
-- Model — cnst.StoryInput — A class from the module's constant, usually the `Input`.
+- enumOf — Example: `cnst.StoryStatus` — A value outside its list is refused.
 
-- enumOf — cnst.StoryStatus — A value outside its list is refused.
-
-- Array — [ID] · [cnst.StoryInput] — Any of the above in `[ ]`. Not allowed in `.param`.
+- Array — Example: `[ID] · [cnst.StoryInput]` — Any of the above in `[ ]`. Not allowed in `.param`.
 
 Three mistakes are worth knowing up front, because two of them are not type errors:
 
@@ -296,13 +302,29 @@ The slice's guards map protects them: `get` guards the reads, `cru` the writes.
 
 Generated method
 
-- get
+get
 
-- cru
+cru
 
 - Read
 
+  - <model>(id): Loads the full model.
+
+  - light<Model>(id): Loads the Light model.
+
+  - view<Model>(id): Data for a detail page. Destructure it for one promise per field, or await it whole.
+
+  - edit<Model>(id): Data for an edit form, shaped like `view<Model>`. Exists only with a create, update or remove guard.
+
 - Write
+
+  - create<Model>(data): Creates one from an input.
+
+  - update<Model>(id, data): Updates one by id.
+
+  - merge<Model>(modelOrId, data): Calls `update<Model>` with only the fields you pass. Takes the model or its id.
+
+  - remove<Model>(id): Removes one. Removal is always soft.
 
 Guarded by this key
 
@@ -336,15 +358,15 @@ Each slice key becomes the `Suffix` of these methods, so `inRoot` gives `storyLi
 
 Method
 
-- <model>List<Suffix>(...args, skip, limit, sort): One page of the list.
+- <model>List<Suffix>(...args, skip, limit, sort): One page of the list. — Example: `await fetch.storyListInRoot(rootId, 0, 20, "latest")`
 
-- <model>Insight<Suffix>(...args): The aggregate numbers for the same query.
+- <model>Insight<Suffix>(...args): The aggregate numbers for the same query. — Example: `await fetch.storyInsightInRoot(rootId)`
 
-- init<Model><Suffix>(...args, option?): List and insight together, as one promise per field. Hand `storyInitInRoot` to a Zone.
+- init<Model><Suffix>(...args, option?): List and insight together, as one promise per field. Hand `storyInitInRoot` to a Zone. — Example: `const { storyInitInRoot } = fetch.initStoryInRoot(rootId)`
 
-- get<Model>Init<Suffix>(...args, option?): The same init data as one awaited object.
+- get<Model>Init<Suffix>(...args, option?): The same init data as one awaited object. — Example: `const storyInit = await fetch.getStoryInitInRoot(rootId)`
 
-- init<Model>(queryKey?, args?): The root slice. `queryKey` names a model filter (none means `any`), `args` its arguments.
+- init<Model>(queryKey?, args?): The root slice. `queryKey` names a model filter (none means `any`), `args` its arguments. — Example: `const { storyInit } = fetch.initStory("byOwner", [ownerId])`
 
 Order and page size go in the last option: `fetch.initStoryInRoot(rootId, { sort: "latest", limit: 20 })`.
 
@@ -374,13 +396,29 @@ What reaches an AI agent
 
 What you declare
 
-- Client — fetch.*
+Client — fetch.*
 
-- AI agent — /mcp
+AI agent — /mcp
 
 - Published to agents
 
+  - query · guards: [Public]: Any guard is a decision, `Public` included, so a read publishes.
+
+  - mutation · guards: [Every]: A write with a real guard publishes.
+
 - Served, but hidden from agents
+
+  - no guards: Anyone can call it, and no agent can see it.
+
+  - mutation · guards: [Public]: `Public` alone on a write counts as no guard.
+
+  - mcp: false: Taken off the agent shelf on purpose. Guards are unchanged.
+
+  - guards: [Every, Person]: `Person` reserves the act for a human.
+
+  - message · pubsub: They ride the websocket, which an MCP call does not have.
+
+  - Any · Binary · Upload: A return typed `Any` or `Binary`, or a file upload, cannot be described to a model.
 
 Can call it
 

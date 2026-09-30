@@ -44,13 +44,27 @@ What the store owns
 
 The work
 
-- store — *.store.ts
+store — *.store.ts
 
-- Other layers — constant · document · service · signal
+Other layers — constant · document · service · signal
 
 - UI orchestration
 
+  - fetch.*: Calling the server and tracking its loading state.
+
+  - msg.*: Toast messages around a call: loading, success, error.
+
+  - modal · selection: Which modal is open and which rows are selected.
+
+  - form · list: Form values and loaded lists. A model store generates both.
+
+  - router.push: Client navigation after an action succeeds.
+
 - Business rules
+
+  - domain rule: Validation and state transitions live in constant, document and service.
+
+  - access check: Who may call an endpoint is decided by its guards in the signal.
 
 Belongs here
 
@@ -130,13 +144,13 @@ Declared as
 
 Builder options
 
-- T | () => T — Starting value. Without it: `[]` for arrays, the first enum value, else the type's own default.
+- default (T | () => T, persist, session, search): Starting value. Without it: `[]` for arrays, the first enum value, else the type's own default.
 
-- boolean — false — Allows `null`, and starts at `null` when no default is given.
+- nullable (boolean, default false, persist, session, search): Allows `null`, and starts at `null` when no default is given.
 
-- string — the state key — Name used in browser storage.
+- key (string, default the state key, persist, session): Name used in browser storage.
 
-- (a, b) => boolean — Object.is — Decides whether a recomputed value counts as a change.
+- equals ((a, b) => boolean, default Object.is, computed): Decides whether a recomputed value counts as a change.
 
 **`computed` reads writable keys only.** Every name in `deps` must be a writable key of the same store, generated keys such as `ticketForm` included, and never another `search` or `computed` key.
 
@@ -150,9 +164,9 @@ Inside an action, three methods on `this` cover every read and write. Use `pick`
 
 Method
 
-- get(): Returns the current state. Use it when a value may be `null`.
+- get(): Returns the current state. Use it when a value may be `null`. — Example: `const { ticket, ticketList } = this.get();`
 
-- pick(...keys): Returns required keys; throws if one is `null`, `undefined` or `""`.
+- pick(...keys): Returns required keys; throws if one is `null`, `undefined` or `""`. — Example: `const { ticketForm } = this.pick("ticketForm");`
 
 - set(state): Writes state. An object merges shallowly; a function mutates an immer copy in place.
 
@@ -210,19 +224,19 @@ Base actions
 
 - reset<Model>(model?): Clears `<model>` or sets the one given, resets the form and closes the modal.
 
-- Drive the form draft. `Load.Edit`, `Model.EditModal` and `Model.New` call them for you.
+- load<Model>FormDraft, restore<Model>FormDraft, discard<Model>FormDraft: Drive the form draft. `Load.Edit`, `Model.EditModal` and `Model.New` call them for you.
 
 `create<Model>…`, `update<Model>…` and `submit<Model>` take the same options:
 
-- (model) => void | Promise<void> — Runs after the save with the saved model, e.g. to navigate.
+- onSuccess ((model) => void | Promise<void>): Runs after the save with the saved model, e.g. to navigate.
 
-- (error: string) => void — Runs when the request fails.
+- onError ((error: string) => void): Runs when the request fails.
 
-- string — null — Modal to show after saving. Left out, the modal closes.
+- modal (string, default null): Modal to show after saving. Left out, the modal closes.
 
-- string — <model> — Slice whose list receives a created row, such as `ticketInProject`.
+- sliceName (string, default <model>): Slice whose list receives a created row, such as `ticketInProject`.
 
-- string — Also writes the saved model into this state key.
+- path (string): Also writes the saved model into this state key.
 
 Form setters
 
@@ -304,19 +318,19 @@ Slice actions
 
 `init<Model><Suffix>` and `refresh<Model><Suffix>` take an optional `initForm` last:
 
-- number — current, 1 at first — Page to load.
+- page (number, default current, 1 at first): Page to load.
 
-- number — current, 20 at first — Rows per page.
+- limit (number, default current, 20 at first): Rows per page.
 
-- string — current, "latest" at first — A sort key the filter declares.
+- sort (string, default current, "latest" at first): A sort key the filter declares.
 
-- boolean — true — `false` skips the count query; the count becomes the rows loaded.
+- insight (boolean, default true): `false` skips the count query; the count becomes the rows loaded.
 
-- Partial<DefaultOf<Input>> — Starting values `new<Model>` fills a new form with.
+- default (Partial<DefaultOf<Input>>): Starting values `new<Model>` fills a new form with.
 
-- boolean — `true` always refetches; `false` reuses an identical query already loaded.
+- invalidate (boolean, init: false, refresh: true): `true` always refetches; `false` reuses an identical query already loaded.
 
-- Args — Replaces the leading query args; the rest keep their current values.
+- queryArgs (Args, refresh): Replaces the leading query args; the rest keep their current values.
 
 Usage Patterns
 
@@ -437,6 +451,13 @@ export class TicketStore extends store(
     hasKeyword: computed(["draftKeyword"], (keyword) => keyword.length > 0),
   }),
 ) {}
+```
+
+### set(state)
+
+```ts
+this.set({ ticketModal: null });
+this.set((state) => { state.ticketForm.title = ""; });
 ```
 
 ### apps/koyo/lib/ticket/ticket.store.ts

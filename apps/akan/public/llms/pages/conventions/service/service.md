@@ -30,7 +30,7 @@ Term
 
 - injection callback: The function passed to `serve()` that returns the service's dependencies.
 
-- Process roles: federation serves requests, batch runs background work and serves none.
+- federation, batch: Process roles: federation serves requests, batch runs background work and serves none.
 
 Both kinds of service start with `serve()`. What differs is the first argument:
 
@@ -66,19 +66,19 @@ Reaching further down this list than you had to is how a module ends up owning a
 
 Injector
 
-- service<srv.XService>(): Another module's service. The first choice when the work belongs to an existing module.
+- service<srv.XService>(): Another module's service. The first choice when the work belongs to an existing module. — Example: `securityService: service<srv.util.SecurityService>()`
 
-- An `adapt()` singleton found by its own class or by a role, so nothing goes in `option.ts`. — corpus: plug(DocCorpus)
+- plug(TheClass), plug(StorageAdaptorRole): An `adapt()` singleton found by its own class or by a role, so nothing goes in `option.ts`. — Example: `corpus: plug(DocCorpus)`
 
-- use<T>(): A legacy value registered in `lib/option.ts`; move it to `adapt()` only when you touch it anyway.
+- use<T>(): A legacy value registered in `lib/option.ts`; move it to `adapt()` only when you touch it anyway. — Example: `jwtSecret: use<string>()`
 
 State, configuration and your own signal
 
-- memory(Map, { of: T }): Per-service state that outlives one call, in Redis or sqlite; `T` is a scalar or a model class.
+- memory(Map, { of: T }): Per-service state that outlives one call, in Redis or sqlite; `T` is a scalar or a model class. — Example: `grants: memory(Map, { of: cnst.OauthGrant })`
 
-- env(() => ...): A config value computed from the server environment once, when the service is injected.
+- env(() => ...): A config value computed from the server environment once, when the service is injected. — Example: `masterPhones: env(() => process.env.MASTER_PHONES?.split(",") ?? [])`
 
-- signal<sig.X>(): This module's own signal, so the service can publish to a pubsub room the signal declares.
+- signal<sig.X>(): This module's own signal, so the service can publish to a pubsub room the signal declares. — Example: `minimalSignal: signal<sig.Minimal>()`
 
 The field name is part of the declaration:
 
@@ -124,9 +124,9 @@ The Options Argument
 
 `serve()` takes an optional options object between the name and the injection callback. It has two keys:
 
-Loads the service only in processes of that role, and in an `all` process.
+- serverMode ("batch" | "federation"): Loads the service only in processes of that role, and in an `all` process.
 
-Turns the module on or off and wins over `serverMode`; a function runs once, on first read.
+- enabled (boolean | (() => boolean)): Turns the module on or off and wins over `serverMode`; a function runs once, on first read.
 
 A library's or an app's root container is often this entire file:
 
@@ -156,11 +156,11 @@ One public method from the OAuth service, with two of the helpers it calls:
 
 It has one throw and two returns, and the difference between them is the rule:
 
-- Case
+Case
 
-- Write
+Write
 
-- Why
+Why
 
 - A precondition is broken — `throw new Err("oauth.error.notSignedIn", …)` — The dictionary translates the key; the third argument sets the status, which defaults to 400.
 
@@ -180,15 +180,31 @@ A service file is a server file, and the boundary sits at the import statement r
 
 Import from
 
-- import
+import
 
-- import type
+import type
 
 - Server side
 
+  - akanjs/service · akanjs/base: Framework facets, except client ones such as `akanjs/client`, `akanjs/ui` and `akanjs/store`.
+
+  - ../dict · ../cnst · ../srv: The module's generated barrels; a service imports `srv` as `import type * as srv`.
+
+  - @libs/<lib>/srvkit: Adapters and server helpers, where vendor code lives.
+
 - Client side: types only
 
+  - *.store · st · store · useClient: Client state. Server code holds none.
+
+  - *.Template · Unit · Util · View · Zone: Module components. Server code never renders JSX.
+
+  - ui/ · webkit/ · */client: Client entrypoints, including `@libs/<lib>/client` and `akanjs/client`.
+
 - Outside the workspace: never
+
+  - third-party package: Wrap it in a `srvkit/` adapter and reach it through `plug()` or an exported type.
+
+  - node:*: Built-ins count too: `node:crypto` goes through `@libs/util/srvkit`.
 
 Allowed
 

@@ -6,6 +6,7 @@ import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { installMockHost, type MockHost } from "../../../packages/core/src/testing.ts";
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
 import { createLifecycle } from "../../../packages/desktop/src/lifecycle.ts";
+import { createServerStatus } from "../../../packages/desktop/src/server.ts";
 import manifest from "../native-plugin.json";
 import desktop from "../src/desktop.ts";
 import { app, onBeforeQuit } from "../src/index.ts";
@@ -68,11 +69,36 @@ describe("app desktop implementation", () => {
   });
 });
 
+describe("serverState (desktop)", () => {
+  test("tells the page where the carried server is when it listens, then every change", async () => {
+    const { status, setState } = createServerStatus();
+    const emitted: unknown[] = [];
+    const dispatcher = createDispatcher([desktop], {
+      app: { id: "dev.test", name: "Test", version: "1.2.3", build: 4 },
+      appDataDir: join(mkdtempSync(join(tmpdir(), "akan-native-app-")), "data"),
+      server: status,
+      emit: (_window, { event, data }) => emitted.push({ event, data }),
+      registerFile: () => ({ url: "", mime: "", size: 0 }),
+    });
+    await dispatcher.launched;
+    await dispatcher.handle(
+      JSON.stringify({ v: 1, id: 1, plugin: "app", method: "$listen", args: { event: "serverState" } }),
+    );
+    setState("up");
+    setState("restarting");
+    expect(emitted).toEqual([
+      { event: "serverState", data: { state: "starting" } },
+      { event: "serverState", data: { state: "up" } },
+      { event: "serverState", data: { state: "restarting" } },
+    ]);
+  });
+});
+
 describe("beforeQuit (plugins.md D4)", () => {
   test("declared on macOS only", () => {
     const plugin = { spec: "app", dir: `${import.meta.dir}/..`, manifest: manifest as never };
     expect(pluginDecls([plugin], "macos").app).toMatchObject({
-      events: ["urlOpen", "backButton", "beforeQuit", "backProgress"],
+      events: ["urlOpen", "backButton", "beforeQuit", "backProgress", "serverState"],
     });
     for (const [platform, events] of [
       ["ios", ["urlOpen", "backButton"]],

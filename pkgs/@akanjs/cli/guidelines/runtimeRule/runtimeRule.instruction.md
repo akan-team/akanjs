@@ -187,27 +187,34 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
 A mobile target that declares `native: { desktop: { server: true } }` carries the app's server: `akan build-desktop`,
-`start-desktop --release` and `publish-update` put the backend `akan build` made into the app — the dist `.js`,
-`akan.build.json` and `private/` — and install it on their own with `bun install --production`, and `start-desktop`
-without `--release` starts `akan start` beside the app when no dev server answers. The setting is the app's backend,
+`start-desktop --release` and `publish-update` put the backend `akan build` made into the app — everything the
+backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`, `.wasm` or file asset)
+but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its packages first with
+`bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without `--release` starts
+`akan start` beside the app when no dev server of this checkout answers. The setting is the app's backend,
 so it does not change under an installed app: an update whose release carries a server when the app has none, or
 none when it has one, is refused, and switching means a reinstall.
 A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
 on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
-server's adapter. It runs in one process, so a `main.ts` asking for replicas (`replica`, `solo: false`) does not
-boot in the app. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server` on Windows, never
-Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate store and takes the session's
-`HTTP(S)_PROXY` / `NO_PROXY` / `NODE_EXTRA_CA_CERTS`, and nothing else of the user's environment.
+server's adapter. It refuses a `Host` other than its own, but any program on the computer can still call that port:
+guard its endpoints as a network server's. It runs in one process, so a `main.ts` or an env asking for replicas (`replica`,
+`solo: false`, `AKAN_SOLO=false`, `AKAN_REPLICA`, `AKAN_COMMAND_TYPE=start`) does not boot in the app. Its data lives in the app's local data folder (`%LOCALAPPDATA%\<id>\server`
+on Windows, never Roaming; `server-debug` for a `--debug` build). It trusts the OS certificate store, and of the
+user's environment it takes a fixed set and nothing else: the system's own (`PATH`, `HOME`, the temp folder, `LANG`,
+`TZ`, Windows' folders and `ComSpec`), the desktop session a `bin` tool needs for the screen or the audio server
+(`DISPLAY`, `XAUTHORITY`, `WAYLAND_DISPLAY`, the session bus, `PULSE_*`, `XDG_*`), and the proxy and CA variables
+(`HTTP(S)_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`).
 
-**Everything it carries is on the user's computer, readable.** That is `private/` as it is, and the server env of
-the one environment the build is for (`--env`: `debug` for `build-desktop`, `main` for `publish-update`, unless
-named): the build keeps `env/env.server.<env>.ts` and swaps every other environment's file for exports that refuse to
-be read. The server env each lib exports as its defaults (spread into every environment by `env.server.type.ts`)
-ships as well. Keep a key in those files only if every user of the app may hold it; a secret the server needs belongs
-to a cloud server its adapter calls. There is no `public/`: a file the server reads at runtime goes in `private/` and is
-read from `AKAN_APP_DIR` (the folder `server.js` sits in), never from `process.cwd()`, which is the app's data
-folder.
+**Everything it carries is on the user's computer, readable.** That is `private/` as it is — each lib's too, under
+`private/libs/<lib>` — and the server env of the one environment the build is for (`--env`: `debug` for
+`build-desktop`, `local` for `start-desktop --release`, `main` for `publish-update`, unless named): the build keeps
+`env/env.server.<env>.ts` and swaps every other environment's file for exports that refuse to be read. The server env
+each lib exports as its defaults (the lib's `env.server.testing.ts`, spread into every environment by
+`env.server.type.ts`) ships as well. Keep a key in those files only if every user of the app may hold it; a secret the
+server needs belongs to a cloud server its adapter calls. There is no `public/`: a file the server reads at runtime
+goes in `private/` and is read from `AKAN_APP_DIR` (the folder `server.js` sits in), never from `process.cwd()`, which
+is the app's data folder.
 
 **Nothing from `docker` reaches it.** `preRuns`, `postRuns` and a whole Dockerfile install into a Linux image the
 desktop app never runs in, and the build warns when an app has them and carries no `bin`. What the server needs
@@ -265,9 +272,11 @@ Windows, VAAPI or NVENC on Linux. Codec patents are a separate question to settl
 **A server bound to its machine stays a service.** A server that needs a whole environment — ROS, system services,
 root to change the network or the clock — runs as a service on that machine (the image), and the desktop app's
 target leaves `desktop.server` off, pinned to it with `AKAN_PUBLIC_SERVER_URL` at build time. A carried server runs
-as the signed-in user and stops with the app, and so does what it started: on macOS and Linux the server leads its
-own process group, which ends with it, also when the app was killed or crashed; on Windows the job object does the
-same.
+as the signed-in user and stops with the app, and so does what it started. On macOS and Linux the server leads its
+own process group: quitting the app ends the group, and when the app was killed or crashed — even while the server
+was still starting — the server sees its parent gone and ends the group itself, SIGTERM first and SIGKILL a second
+later for whatever ignored it. On Windows the job object ends them all with the app. A process started `detached`
+leaves the group, or the job, and keeps running.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
 ["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,

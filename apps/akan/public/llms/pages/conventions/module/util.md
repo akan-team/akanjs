@@ -23,21 +23,21 @@ A Util file holds a module's small client components, each doing one action: a r
 
 Clicks and store actions gather here, so Unit and View stay server-rendered and Page, Zone and Template keep to their own jobs.
 
-- Always a client file — "use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
+- Always a client file — `"use client";` — "use client" goes on line 1 by file role. A Util exists to handle a click, a hook or the store.
 
-- Named after its action — Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
+- Named after its action — `Project.Util.Remove` — Name it after the verb without the model, such as Remove, Resolve or SetOrg. The namespace adds the model.
 
-- Takes ids, not models — A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
+- Takes ids, not models — `projectId: string` — A model prop would cross the server-client boundary as a class instance. Read the rest from the store.
 
-- Calls, never decides — It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
+- Calls, never decides — `st.do.resolveReport(reportId)` — It calls a store action or a Model wrapper. Who may act and what changes is decided by the service and document.
 
 Words used on this page
 
 Term
 
-- Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
+- Model.Edit, Model.Remove: Components from `akanjs/ui` that run a module's generated edit or remove flow for you.
 
-- The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
+- st.do, st.use: The client store: `st.do.x()` runs an action, and `st.use.x()` reads a key and re-renders on change.
 
 - fetch.slice.<name>: Slice metadata that tells a wrapper which model and list to act on. It sends no request.
 
@@ -61,7 +61,7 @@ Part
 
 - "use client": Always line 1, above the imports. Template and Zone carry it too; Unit and View never do.
 
-- Named exports only. Callers write `Project.Util.Remove`, so no name repeats the model.
+- Remove, Toolbox, SetOrg, QueryMakerInSelf, BackButton: Named exports only. Callers write `Project.Util.Remove`, so no name repeats the model.
 
 - interface RemoveProps: Declared right above its component and named after it. It takes ids and plain values.
 
@@ -73,11 +73,11 @@ Most Utils are thin controls around the Model wrappers. A toolbox gathers severa
 
 Wrapper
 
-- Model.Edit: Draws an Edit button that opens its Template child in an edit modal.
+- Model.Edit: Draws an Edit button that opens its Template child in an edit modal. — Example: `<Model.Edit slice={fetch.slice.project} modelId={projectId} renderTitle="name">`
 
-- Model.Remove: Its children become the trigger. It asks for confirmation, then removes the record.
+- Model.Remove: Its children become the trigger. It asks for confirmation, then removes the record. — Example: `<Model.Remove slice={fetch.slice.project} modelId={projectId}>…</Model.Remove>`
 
-- Model.SureToRemove: A stricter remove that shows the record's `name`. `typeNameToRemove` makes the user retype it.
+- Model.SureToRemove: A stricter remove that shows the record's `name`. `typeNameToRemove` makes the user retype it. — Example: `<Model.SureToRemove slice={fetch.slice.project} modelId={projectId} name={name} />`
 
 A project toolbox in a dropdown menu. Only the owner sees the remove item:
 
@@ -155,17 +155,35 @@ What belongs in a Util, and which file takes everything else:
 
 The work
 
-- Util
+Util
 
-- View — Unit · View
+View — Unit · View
 
-- Form — Template
+Form — Template
 
-- Logic — store · service
+Logic — store · service
 
 - The Util's job
 
+  - onClick → st.do.*: A button that runs one store action.
+
+  - Model.Edit · Model.Remove: Wrappers that open the generated edit and remove flows.
+
+  - Dialog · Modal: A dialog trigger, and the draft value only that dialog uses.
+
+  - setQueryArgsOf…: Filter controls that change a slice list's query args.
+
+  - st.use.path · Link.Back: Helpers that read the route to decide what to show.
+
 - Another file's job
+
+  - fields and markup: A Unit draws one row, and a View draws one record in full.
+
+  - Field.* · <model>Form: A form whose fields are bound to the store.
+
+  - who may act, what changes: Business rules run on the server, in the service and document.
+
+  - multi-step async flow: A store action that the Util calls in one line.
 
 Belongs here
 
@@ -187,9 +205,9 @@ Writing a Util
 
 Common mistakes
 
-- Mistake
+Mistake
 
-- Instead
+Instead
 
 - {isOwner && <Remove />} — Write `isOwner ? <Remove /> : null`, the house form for conditional render.
 

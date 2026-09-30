@@ -54,17 +54,35 @@ What you prepare
 
 Item
 
-- Web
+Web
 
-- Android
+Android
 
-- iOS
+iOS
 
 - In the consoles
 
+  - Firebase app: One Firebase project, with the web app and the Android app registered in it.
+
+  - VAPID key: A Web Push certificate key pair, generated in Firebase's Cloud Messaging settings.
+
+  - Push capability: Push Notifications turned on for the App ID in Apple Developer, so its profiles carry the entitlement.
+
+  - APNs auth key (.p8): Created under Keys in Apple Developer, with its Key ID and your Team ID. It goes to your server.
+
 - In the app folder
 
+  - env.client.*: The public Firebase web config and `vapidKey`, under `firebase`.
+
+  - google-services.json: The Android Firebase config, named by `native.android.googleServices` in the mobile target.
+
+  - permissions: ["push"]: Adds the native push plugin to the mobile target in `akan.config.ts`.
+
 - On the server
+
+  - pushNoti.firebase: In `env.server.*`: the service account the server sends to FCM with.
+
+  - pushNoti.apns: In `env.server.*`: the APNs key, its Key ID, your Team ID and the app's bundle id.
 
 Needed
 
@@ -310,21 +328,23 @@ Load, save, then notify, with the push fire-and-forget:
 
 What push() takes
 
-- string — The notification title.
+- title (string): The notification title.
 
-- cnst.NotiLevel — `actionRequired`, `notice`, `essential`, `suggestion` or `advertise`. The settings gate reads it.
+  - required
 
-- string — The notification body.
+- level (cnst.NotiLevel): `actionRequired`, `notice`, `essential`, `suggestion` or `advertise`. The settings gate reads it.
 
-- string — A dictionary key for the body instead, resolved in the app's default locale.
+- content (string): The notification body.
 
-- string — Where a tap lands: a path inside the app.
+- contentKey (string): A dictionary key for the body instead, resolved in the app's default locale.
 
-- string — A collapse key: a second push with the same tag replaces the first.
+- url (string): Where a tap lands: a path inside the app.
 
-- string — An image shown in the notification.
+- tag (string): A collapse key: a second push with the same tag replaces the first.
 
-- number — The app icon's badge count.
+- imageUrl (string): An image shown in the notification.
+
+- badge (number): The app icon's badge count.
 
 **No topics.** A topic cannot hold an APNs token, cannot ask a person's settings and never reports a dead token, so every send goes to stored tokens. Without `libs/shared`, call `PushNotificationServer.sendEach(targets, message)` from `@libs/util/srvkit` with `{ token, provider }` targets, and stop storing the `invalidTokens` it returns.
 

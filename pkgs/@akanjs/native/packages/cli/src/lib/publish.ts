@@ -3,7 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { publishAppUpdate } from "../platforms/desktop-update.ts";
+import { assertSameServer, publishAppUpdate } from "../platforms/desktop-update.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError, log } from "./log.ts";
 import type { BuildContext } from "./prepare.ts";
@@ -42,6 +42,23 @@ export function nextSequence(dir: string, channel: string, now = Math.floor(Date
   return previous + 1;
 }
 
+/** `<out>/<os>-<arch>` for a desktop release, `<out>/<platform>` for a phone's web bundle. */
+export function releaseDir(out: string, platform: ReleasePlatform): string {
+  const desktop = platform === "macos" || platform === "windows" || platform === "linux";
+  return join(out, desktop ? `${platform}-${hostArch()}` : platform);
+}
+
+/** Refuses before the build a desktop release the apps of its channel would refuse for its server (assertSameServer). */
+export function assertServerOfChannel(
+  config: { desktop?: { server?: unknown } },
+  platform: ReleasePlatform,
+  out: string,
+  channel: string,
+): void {
+  if (platform === "macos" || platform === "windows" || platform === "linux")
+    assertSameServer(releaseDir(out, platform), channel, !!config.desktop?.server);
+}
+
 /** Refuses before the build a release that could not be signed: no key on this machine, or another app's. */
 export function assertSigningKey(config: { app: { id: string }; updates?: { publicKey: string } | null }): void {
   if (!config.updates)
@@ -74,16 +91,16 @@ export async function publishRelease(
     throw new CliError("akan-native.config.ts has no updates: { url, publicKey } (run `akan-native update keygen`)");
   const desktop = platform === "macos" || platform === "windows" || platform === "linux" ? platform : null;
   // A desktop app runs on one CPU: x64 and arm64 releases of the same OS live side by side.
-  const dir = join(out, desktop ? `${desktop}-${hostArch()}` : platform);
+  const dir = releaseDir(out, platform);
   assertChannel(channel);
   assertSigningKey(config);
   const keyPath = updateKeyPath(config.app.id);
   const sequence = nextSequence(dir, channel);
 
   let manifest: UpdateManifest;
-  let superseded: string | null = null;
+  let leftovers: string[] = [];
   if (desktop) {
-    ({ manifest, superseded } = await publishAppUpdate(ctx, desktop, artifact, dir, channel, sequence));
+    ({ manifest, leftovers } = await publishAppUpdate(ctx, desktop, artifact, dir, channel, sequence));
   } else {
     const info = readBundleInfo(join(ctx.outDir, BUNDLE_FILE));
     manifest = webManifest({
@@ -100,6 +117,6 @@ export async function publishRelease(
   const signature = `${signManifest(bytes, keyPath, config.updates.publicKey)}\n`;
   mkdirSync(dir, { recursive: true });
   writeSigned(dir, channel, bytes, signature);
-  if (superseded) rmSync(superseded, { force: true });
+  for (const file of leftovers) rmSync(file, { force: true });
   return { dir, manifest };
 }

@@ -3,12 +3,14 @@ import { useLiveValue } from "../../../packages/react/src/index.ts";
 
 /**
  * Over-the-air updates. On iOS and Android they replace the web bundle (UP-2); the native code
- * stays, so a bundle only runs in a binary with the same native API (UP-3, `nativeApi`). Releases
- * are made with `akan-native update publish <platform>` and signed with the key of `akan-native update keygen`.
+ * stays, so a bundle only runs in a binary with the same native API (UP-3, `nativeApi`). On macOS,
+ * Windows and Linux they replace the whole app (UP-1). Releases are made with
+ * `akan-native update publish <platform>` and signed with the key of `akan-native update keygen`.
  *
  * A new bundle first runs on trial: the app calls notifyReady() once it works. A trial that does
  * not confirm within `updates.readyTimeout` (akan-native.config.ts, default 10 s), or that crashes and is
- * launched again, is rolled back to the previous bundle.
+ * launched again, is rolled back to the previous bundle. On a desktop app that carries a server, the
+ * trial also waits for that server to answer and stay up.
  */
 export interface UpdateState {
   /** The downloaded bundle running now; null = the one inside the app. */
@@ -28,7 +30,10 @@ export interface UpdateState {
 }
 
 export interface UpdateCheck {
-  /** A newer bundle for this binary exists (not rolled back before). */
+  /**
+   * A newer bundle for this binary exists (not rolled back before). Desktop: never the release on trial, nor one whose
+   * server presence differs from this app's.
+   */
   available: boolean;
   bundle: string | null;
   /** The app version it was published with. */
@@ -49,11 +54,18 @@ export interface UpdatesApi {
   check(): Promise<UpdateCheck>;
   /** Downloads and verifies the latest bundle; it runs at the next launch (or apply()). */
   download(): Promise<{ bundle: string }>;
-  /** Reloads the page into the downloaded bundle now (on trial). Rejects NOT_FOUND without one. */
+  /**
+   * Phones: reloads the page into the downloaded bundle now (on trial). Desktop: replaces the app with the download and
+   * relaunches it (on trial); rejects NOT_ALLOWED while the running release is still on trial. Rejects NOT_FOUND
+   * without a download.
+   */
   apply(): Promise<void>;
   /** The running bundle works: keep it. Call it once the app has started; harmless otherwise. */
   notifyReady(): Promise<void>;
-  /** Back to the app's own bundle from the next launch on. */
+  /**
+   * Phones: back to the app's own bundle from the next launch on. Desktop: drops the download and forgets the refused
+   * releases; the running app stays, and a trial keeps its record.
+   */
   reset(): Promise<void>;
 }
 

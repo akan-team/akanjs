@@ -40,7 +40,7 @@ Component
 
 - Constant.Doc.Print: Everything expanded on one long page, ready to print or save as a PDF.
 
-- One model or scalar as a collapsible panel, picked by `refName`.
+- Constant.Doc.Model, Constant.Doc.Scalar: One model or scalar as a collapsible panel, picked by `refName`.
 
 - Constant.Doc.Enum: Every registered enum in one table, with its values and the fields that use it.
 
@@ -56,13 +56,13 @@ First, the client component:
 
 **Pick what to show with props.** Both components take the same lists, described below.
 
-- string[] — all — Database models to show, by `refName`, in the order you list them.
+- models (string[], default all): Database models to show, by `refName`, in the order you list them.
 
-- string[] — all — Scalar models to show, by `refName`.
+- scalars (string[], default all): Scalar models to show, by `refName`.
 
-- string[] — all — Enums to show: the class name, first letter lowercased (`BizContractStatus` → `bizContractStatus`).
+- enums (string[], default all): Enums to show: the class name, first letter lowercased (`BizContractStatus` → `bizContractStatus`).
 
-- boolean — false — Opens every model and scalar panel. `Doc.Print` is always fully open and ignores it.
+- openAll (boolean, default false, Doc.Zone): Opens every model and scalar panel. `Doc.Print` is always fully open and ignores it.
 
 **An empty list means all.** `models={[]}` shows every model, the same as leaving the prop out.
 
@@ -84,9 +84,9 @@ Generated Schema
 
 What is on screen
 
-- Part
+Part
 
-- What it does
+What it does
 
 - Summary cards — Counts of database models, scalar models, enums and relations.
 
@@ -128,13 +128,33 @@ Printable Definition
 
 Feature
 
-- Doc.Zone
+Doc.Zone
 
-- Doc.Print
+Doc.Print
 
 - Browsing on screen
 
+  - Search
+
+  - Relation diagram
+
+  - Variant tabs: One variant at a time.
+
+  - Collapsible panels: `openAll` opens them all.
+
+  - Field detail modal
+
 - Printing
+
+  - All five variants at once: Printed one after another per model.
+
+  - Field details in the table: `ref`, `refPath`, `example` and `meta` inline, in place of the modal.
+
+  - Enum value labels: Written in a column. `Doc.Zone` shows them only on hover.
+
+  - Page breaks: Each database model gets its own page, and scalars and enums start on a new one.
+
+  - Print colors: Switches to black text on white when printed, even from dark mode.
 
 has it
 

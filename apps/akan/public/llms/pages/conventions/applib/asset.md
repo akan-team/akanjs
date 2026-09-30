@@ -23,9 +23,9 @@ Asset Folders
 
 Apps and libraries keep file assets in two folders at their root, beside `lib/` and `ui/`. Which one a file goes in depends on one question: may the browser download it?
 
-- public/ — The browser may download it — Served as static files by URL. Images, PDFs, downloadable JSON and icons go here.
+- public/ — The browser may download it — Served as static files by URL. Images, PDFs, downloadable JSON and icons go here. — `public/images/hero.png → /images/hero.png`
 
-- private/ — Only the server reads it — Never served. Seed data, private JSON, model files and resources for server jobs go here. A desktop app that carries its server ships the folder in plain text on the user's computer.
+- private/ — Only the server reads it — Never served. Seed data, private JSON, model files and resources for server jobs go here. A desktop app that carries its server ships the folder in plain text on the user's computer. — `private/model/yolo.onnx`
 
 **No wrapping folder.** There is no `asset/` folder; `public/` and `private/` sit directly at the root.
 
@@ -81,9 +81,7 @@ Private Assets
 
 Files under `private/` are never served, so no URL reaches them. Server code reads them from disk to load data, run inference or start a service. They are not secret from whoever holds the server's files, though: a desktop app that carries the server (`native.desktop.server`) holds them in plain text, so keep keys and license files that must stay yours out of such an app.
 
-- File
-
-- Used for
+Used for
 
 - apps/myapp/private/seed/products.json — Seed data the server loads.
 
@@ -119,19 +117,21 @@ Where
 
 Path
 
-- `libs/shared/public/banner/logo.png`
+- Library's public/: `libs/shared/public/banner/logo.png`
 
-- `apps/myapp/public/libs/shared/banner/logo.png`
+- Inside the app: `apps/myapp/public/libs/shared/banner/logo.png`
 
-- `/libs/shared/banner/logo.png`
+- Browser URL: `/libs/shared/banner/logo.png`
 
-- `libs/shared/private/recommendation/default-rules.json`
+- Library's private/: `libs/shared/private/recommendation/default-rules.json`
 
-- `apps/myapp/private/libs/shared/recommendation/default-rules.json`
+- Inside the app: `apps/myapp/private/libs/shared/recommendation/default-rules.json`
 
-- `privateFile("libs/shared/recommendation/default-rules.json")`
+- Server code reads: `privateFile("libs/shared/recommendation/default-rules.json")`
 
 **`public/libs` and `private/libs` are generated.** `akan sync` rebuilds them and git ignores them, so never put your own files there.
+
+**A desktop app that carries its server carries these files too.** Any app that depends on the library may turn on `native.desktop.server`, and then its users can read the library's `private/` in plain text, so keep keys and license files that must stay yours out of it.
 
 **Library server code reads through the app too.** It runs inside the app, and the library's source folder is not in a build.
 
@@ -145,13 +145,25 @@ Ask whether anyone on the internet may download the file. Yes means `public/`, n
 
 Example file
 
-- public/
+public/
 
-- private/
+private/
 
 - Anyone may download it
 
+  - images/hero.png: UI images and icons, drawn with `Image` from `akanjs/ui`.
+
+  - docs/product-guide.pdf: PDFs and other files a user downloads.
+
+  - data/sample-products.json: JSON the browser loads by URL.
+
 - Only the server may read it
+
+  - seed/products.json: Internal data such as seed records.
+
+  - model/yolo.onnx: Model weights.
+
+  - recommendation/default-rules.json: Server-only configuration and rules.
 
 Goes here
 
@@ -167,9 +179,9 @@ What a build ships
 
 `akan build` copies both folders into `dist`. Only that copy is trimmed; your source folders keep every file.
 
-- Folder
+Folder
 
-- In the build
+In the build
 
 - `private/` — Copied into every build.
 

@@ -22,16 +22,24 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? resolve(import.meta.dir, "../.."));
+const PACKAGE = resolve(import.meta.dir, "../..");
+const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? PACKAGE);
 const VM_DIR = join(homedir(), ".akan", "native", "vm");
 const WORK = "C:\\akan-native-work";
 // robocopy /MIR onto the copy: another tree mirrored onto this package's copy would delete it, and a name that is
-// empty or only dots would mirror onto the work root or above it.
+// empty or only dots would mirror onto the work root or above it. Windows ignores a folder name's case and trailing
+// dots, so `Akan-Native.` is this package's copy too.
 if (process.env.AKAN_NATIVE_VM_SRC && !process.env.AKAN_NATIVE_VM_WORK_NAME)
   throw new Error("AKAN_NATIVE_VM_SRC copies another tree: name its copy with AKAN_NATIVE_VM_WORK_NAME");
-const COPY = (process.env.AKAN_NATIVE_VM_WORK_NAME || "akan-native").replace(/[^A-Za-z0-9._-]/g, "");
+const COPY = (process.env.AKAN_NATIVE_VM_WORK_NAME || "akan-native")
+  .replace(/[^A-Za-z0-9._-]/g, "")
+  .replace(/\.+$/, "");
 if (!/[A-Za-z0-9]/.test(COPY))
   throw new Error(`AKAN_NATIVE_VM_WORK_NAME names no folder: ${JSON.stringify(process.env.AKAN_NATIVE_VM_WORK_NAME)}`);
+if (REPO !== PACKAGE && COPY.toLowerCase() === "akan-native")
+  throw new Error(
+    `AKAN_NATIVE_VM_SRC copies another tree (${REPO}): akan-native is this package's copy, name another one`,
+  );
 
 function target(): string {
   let host = process.env.AKAN_NATIVE_VM_HOST;
@@ -85,8 +93,20 @@ function ps(script: string, quiet = false): { code: number; out: string } {
   );
 }
 
+/** What kind of tree REPO is (its root package's name): a copy mirrors one kind only. */
+function treeName(): string {
+  try {
+    const { name } = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { name?: unknown };
+    if (typeof name === "string" && /^[@\w./-]+$/.test(name)) return name;
+  } catch {
+    // No readable package.json: named below by whether it is this package.
+  }
+  return REPO === PACKAGE ? "@akanjs/native" : "an unnamed tree";
+}
+
 function sync(): void {
   const archive = join(tmpdir(), `${COPY}-sync.tar.gz`);
+  const tree = treeName();
   console.info("sync: packing the repository");
   //? .git, .claude (its worktrees) and local are gigabytes in the monorepo and nothing a VM build reads; no tracked
   //? folder carries one of these names.
@@ -101,8 +121,14 @@ function sync(): void {
   rmSync(archive, { force: true });
   // Mirror the sources, keeping what the VM built (node_modules, target, .akan, dist) for
   // incremental builds: robocopy /MIR leaves excluded folders alone. Exit codes below 8 are success.
+  //? Beside the copy, what it was mirrored from: another kind of tree mirrored onto it (this package onto a monorepo copy,
+  //? or the other way) would delete everything the two do not share.
   const r = ps(`
 $ErrorActionPreference = 'Stop'
+$marker = '${WORK}\\${COPY}.source'
+if ((Test-Path $marker) -and ((Get-Content -Raw $marker).Trim() -ne '${tree}')) {
+  throw "${WORK}\\${COPY} is a copy of $((Get-Content -Raw $marker).Trim()), not ${tree}: name another copy with AKAN_NATIVE_VM_WORK_NAME, or remove $marker"
+}
 $staging = '${WORK}\\sync-${COPY}'
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $staging
 New-Item -ItemType Directory -Force -Path $staging, '${WORK}\\${COPY}' | Out-Null
@@ -113,6 +139,7 @@ Remove-Item "$HOME\\${COPY}-sync.tar.gz"
 robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist .git .claude local /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 Remove-Item -Recurse -Force $staging
+Set-Content -NoNewline -Path $marker -Value '${tree}'
 Set-Location '${WORK}\\${COPY}'
 if (-not (Test-Path node_modules)) { & "$HOME\\.bun\\bin\\bun.exe" install --silent | Out-Null }
 exit 0

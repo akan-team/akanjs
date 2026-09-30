@@ -75,15 +75,15 @@ Field
 
 - children[].status: Where the replica is in its lifecycle; see the table below.
 
-- How often the replica restarted and why; read these first when it keeps coming back.
+- restartCount, lastRestartReason, lastErrorMessage: How often the replica restarted and why; read these first when it keeps coming back.
 
 - solo: Appears only in solo, where the replica's entry carries no restart fields.
 
 Replica status
 
-- status
+status
 
-- Meaning
+Meaning
 
 - starting — The process was spawned and is still booting.
 
@@ -117,13 +117,35 @@ With a gateway, or solo
 
 A solo replica has no gateway counting for it, so several fields come back empty:
 
-- Gateway
+Gateway
 
-- Solo
+Solo
 
 - Top level
 
+  - rooms · sockets: Pubsub rooms with a subscriber, and the sockets subscribed to them.
+
+  - gateway: The gateway process's own memory and event-loop sample.
+
+  - proxyHop: Time to hand a request from the gateway to a replica, only with `AKAN_TRACE=1`.
+
 - Each replica, in children[]
+
+  - activeRequests · totalRequests: Requests in flight now, and requests since the replica started.
+
+  - activeWebSockets: Open WebSocket connections passed to this replica.
+
+  - restartCount · lastRestartReason: How often the replica restarted, and why the last time.
+
+  - rssBytes · heapUsedBytes: The replica's memory in the last sample.
+
+  - rscWorkerRssBytes: Memory of the replica's RSC worker, which is a separate process.
+
+  - eventLoopLagP99Ms: How late timers fired in the last window; high means something blocks the process.
+
+  - rscPendingRenderCount: Renders sent to the RSC worker that have not come back yet.
+
+  - trace: Per-endpoint timings and query counts, only with `AKAN_TRACE=1`.
 
 Has a value
 
@@ -139,9 +161,9 @@ What it tells you
 
 - activeRequests: Requests being handled now; if it stays high, a slow endpoint may be holding work.
 
-- Realtime load: open connections, and the rooms they subscribe to.
+- activeWebSockets, rooms, sockets: Realtime load: open connections, and the rooms they subscribe to.
 
-- Memory size; watch the trend across samples, not one value.
+- rssBytes, heapUsedBytes: Memory size; watch the trend across samples, not one value.
 
 - rscWorkerRssBytes: Add it to the replica's `rssBytes`; the sum is what the replica really costs.
 
@@ -149,9 +171,9 @@ What it tells you
 
 - eventLoopLagP99Ms: How late the event loop ran its timers; a high value means work is blocking requests.
 
-- Replica restarts and the last reason; a rising count means the replica keeps failing.
+- restartCount, lastRestartReason: Replica restarts and the last reason; a rising count means the replica keeps failing.
 
-- Planned RSC worker swaps at a limit such as `rss>…MiB`; frequent swaps point at render memory.
+- rscWorkerRecycleCount, rscWorkerLastRecycleReason: Planned RSC worker swaps at a limit such as `rss>…MiB`; frequent swaps point at render memory.
 
 **Most numbers are samples, not live values.** Memory, lag and render counts refresh every `AKAN_MEMORY_LOG_INTERVAL_MS` (60 s by default), and `reportedAt` says when. Compare responses at least one interval apart.
 
@@ -161,11 +183,11 @@ When one metrics response cannot pin down a memory problem, log every sample and
 
 Set these in the environment the server starts with: the workspace `.env` locally, or the container env in a deployment:
 
-- "1" — Logs one `memory role=…` line per process on every sample.
+- AKAN_MEMORY_LOG ("1", default off): Logs one `memory role=…` line per process on every sample.
 
-- number (ms) — 60000 — Sample interval for these lines and for the numbers in `/_akan/app/metrics`.
+- AKAN_MEMORY_LOG_INTERVAL_MS (number (ms), default 60000): Sample interval for these lines and for the numbers in `/_akan/app/metrics`.
 
-- "1" — Forces a full GC before each sample so heap numbers show live memory, and adds `gcDurationMs`.
+- AKAN_MEMORY_GC_ON_REPORT ("1", default off): Forces a full GC before each sample so heap numbers show live memory, and adds `gcDurationMs`.
 
 Each sample then prints one line per process. Pick those lines out of the running app with `akan logs`:
 

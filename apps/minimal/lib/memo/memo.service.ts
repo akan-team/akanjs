@@ -8,8 +8,6 @@ export class MemoService extends serve(db.memo, ({ use }) => ({
   blobStorageApi: use<BlobStorageApi>(),
 })) {
   static readonly imageLimit = 5 * 1024 * 1024;
-  //? The stored name takes its extension from the type checked here, never from the uploaded name: the file is
-  //? served by that extension, and an `x.html` sent as image/png would otherwise be stored as a page.
   static readonly imageExtensions: { readonly [type: string]: string | undefined } = {
     "image/png": "png",
     "image/jpeg": "jpg",
@@ -17,8 +15,10 @@ export class MemoService extends serve(db.memo, ({ use }) => ({
     "image/gif": "gif",
   };
 
-  async attachImage(memoId: string, upload: File) {
+  async attachImage(memoId: string, upload: File | undefined) {
+    if (!upload) throw new Err("memo.error.imageMissing");
     const image = await (upload as unknown as Promise<File>);
+    //? Bun's formData() types an upload by its file name's extension and ignores the part's Content-Type.
     const extension = MemoService.imageExtensions[image.type];
     if (!extension || image.size > MemoService.imageLimit) throw new Err("memo.error.imageRejected");
     const memo = await this.getMemo(memoId);

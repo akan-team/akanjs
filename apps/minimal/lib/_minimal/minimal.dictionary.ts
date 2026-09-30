@@ -8,6 +8,7 @@ export const dictionary = serviceDictionary(["en", "ko"])
     benchEcho: fn(["benchEcho", "Bench Echo"]),
     benchFanout: fn(["benchFanout", "Bench Fanout"]),
     benchPublish: fn(["benchPublish", "Bench Publish"]),
+    holdProbeTool: fn(["holdProbeTool", "Hold Probe Tool"]),
   }))
   .translate({
     healthy: ["Healthy", "정상"],

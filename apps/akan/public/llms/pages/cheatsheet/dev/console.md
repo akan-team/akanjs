@@ -130,7 +130,7 @@ Name
 
 - env: The server config the app booted with (`env/env.server.<env>.ts`), which can hold secrets.
 
-- Look an instance up by its refName, as in `service("user")`.
+- service, signal, adaptor: Look an instance up by its refName, as in `service("user")`.
 
 - get: Look an instance up by its service, signal or adaptor class, as in `get(srv.shared.UserService)`.
 
@@ -138,7 +138,7 @@ Name
 
 - debug: Summarizes status, server mode, environment, and every registered service, signal and adaptor.
 
-- The app's generated exports, as `server.ts` exports them.
+- srv, sig, db, cnst, dict, option: The app's generated exports, as `server.ts` exports them.
 
 **A lib's exports sit under the lib's name.** The user service from `libs/shared` is `srv.shared.UserService`.
 
@@ -152,11 +152,11 @@ Dot commands
 
 - .clear: Throws away the pending multi-line input.
 
-- Closes the console.
+- .exit, .quit: Closes the console.
 
-- .tail: Follows the running server's logs through filters until `.tail off`.
+- .tail: Follows the running server's logs through filters until `.tail off`. — Example: `.tail level=warn grep=payment endpoint=mutation:*`
 
-- .trace: Prints every buffered record of one request.
+- .trace: Prints every buffered record of one request. — Example: `.trace <traceId>`
 
 **`.tail` takes the `akan logs` filters as `key=value`:** `level`, `grep`, `endpoint`, `origin`, `trace`, `child`, `role`, `since`. A bare `.tail` shows what it follows.
 

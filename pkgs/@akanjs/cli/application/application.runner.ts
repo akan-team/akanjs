@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
@@ -326,7 +327,7 @@ try {
       return;
     }
     const upstream = `http://localhost:${await app.getDevPort()}`;
-    if (!(await ApplicationRunner.answers(upstream, app.name)))
+    if (!(await ApplicationRunner.answers(upstream, app.name, app.workspace.workspaceRoot)))
       throw new Error(`No dev server answers on ${upstream}; run \`akan start ${app.name}\` first.`);
     const { i18n } = await app.getConfig();
     const session = await nativeApp.dev(platform, { upstream, lang: i18n.defaultLocale, ...selection });
@@ -353,16 +354,23 @@ try {
   }
   //? The health and info routes, not the page: the gateway answers them itself, while `/` waits for a cold render (or a
   //? builder that idled out) past these 3 s. Another app's dev server may hold the port, so the name has to match.
-  static async answers(url: string, appName: string) {
+  static async answers(url: string, appName: string, workspaceRoot: string) {
     const signal = AbortSignal.timeout(3_000);
     const health = await fetch(new URL("/_akan/app/health", url), { signal }).catch(() => null);
     // Nothing listening, which the caller turns into what to run.
     if (!health) return false;
     const info = (await fetch(new URL("/_akan/app/info", url), { signal })
       .then(async (res) => (res.ok ? await res.json() : null))
-      .catch(() => null)) as { appName?: unknown } | null;
-    if (info?.appName === appName) return true;
+      .catch(() => null)) as { appName?: unknown; workspaceRoot?: unknown } | null;
     const stopIt = `Stop it (\`akan start ${appName} --kill\` takes the port over) or give ${appName} another port with AKAN_DEV_PORT`;
+    if (info?.appName === appName) {
+      if (typeof info.workspaceRoot !== "string" || ApplicationRunner.#sameCheckout(info.workspaceRoot, workspaceRoot))
+        return true;
+      //? Another checkout's server of the app (a worktree) would hand it that checkout's pages, API and data.
+      throw new Error(
+        `${url} is the dev server of ${appName} in ${info.workspaceRoot}, not in ${workspaceRoot}. ${stopIt}.`,
+      );
+    }
     if (typeof info?.appName === "string")
       throw new Error(`${url} is the dev server of ${info.appName}, not ${appName}. ${stopIt}.`);
     //? An akan older than /_akan/app/info still puts its pid in the health answer.
@@ -372,6 +380,16 @@ try {
         ? `${url} is an akan dev server (pid ${pid}) too old to say which app it serves. ${stopIt}.`
         : `${url} answers, but not as an akan dev server. Stop what holds the port or give ${appName} another port with AKAN_DEV_PORT.`,
     );
+  }
+  static #sameCheckout(reported: string, own: string) {
+    const canonical = (root: string) => {
+      try {
+        return realpathSync.native(root);
+      } catch {
+        return path.resolve(root);
+      }
+    };
+    return canonical(reported) === canonical(own);
   }
 
   async releaseIos(app: App, { target, env = "main", teamId, adHoc = false }: IosReleaseOptions = {}) {
@@ -447,6 +465,12 @@ try {
   ) {
     const targets = await resolveMobileTargets(app, target);
     const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    //? Every target before anything builds: one refused after the build would leave the targets before it published.
+    for (const mobileTarget of targets)
+      await new NativeApp(app, mobileTarget, env).assertPublishable(nativePlatform, {
+        server: ApplicationRunner.carriesServer(mobileTarget, nativePlatform),
+        ...(channel ? { channel } : {}),
+      });
     const carried = await this.#stageMobile(app, nativePlatform, targets, env);
     for (const mobileTarget of targets) {
       const nativeApp = new NativeApp(app, mobileTarget, env);
@@ -475,12 +499,14 @@ try {
   static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
     return platform !== "ios" && platform !== "android" && config.native?.desktop?.server === true;
   }
-  //* The web build, and the server once for every target that carries it: they build from the same dist.
+  //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
   async #stageMobile(app: App, platform: NativePlatform, targets: ResolvedMobileTarget[], env: MobileEnv) {
-    const carries = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform));
-    if (carries) DesktopServerStage.assertCarriable(await app.getConfig());
+    const stage = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform))
+      ? new DesktopServerStage(app)
+      : null;
+    await stage?.install();
     await this.#buildMobileCsr(app, env);
-    return carries ? await new DesktopServerStage(app).prepare(env) : undefined;
+    return await stage?.prepare(env);
   }
   async #buildMobileCsr(app: App, env: MobileEnv) {
     const prevEnv = {

@@ -31,17 +31,31 @@ Which file owns the work
 
 The work
 
-- document — *.document.ts
+document — *.document.ts
 
-- service — *.service.ts
+service — *.service.ts
 
-- signal — *.signal.ts
+signal — *.signal.ts
 
 - Changing one document
 
+  - state change: A chain method such as `story.approve()` validates, changes the document and returns `this`.
+
+  - state precondition: The chain method throws when the document is in the wrong state for the change.
+
 - Running a business action
 
+  - multi-document workflow: Load the documents, call their chain methods, save, then notify.
+
+  - cross-document rule: A rule that compares several documents throws its `Err` here.
+
+  - external API · job · server-only code: Reached through injected adapters, signals and env values.
+
 - Exposing it
+
+  - who may call it: The endpoint's guards decide access.
+
+  - the endpoint: Its `exec` calls one service method and nothing more.
 
 Belongs here
 
@@ -93,13 +107,29 @@ What serve() Gives You
 
 What you get
 
-- Database — serve(db.x, …)
+Database — serve(db.x, …)
 
-- Plain — serve("x", …)
+Plain — serve("x", …)
 
 - From the model
 
+  - <model>Model: The model adaptor, such as `this.storyModel`.
+
+  - get<Model> … remove<Model>: The six CRUD methods listed under Generated Methods.
+
+  - list<Query> … updateOne<Query>: Fourteen methods for each filter in the document.
+
+  - _preCreate … _postRemove: Hooks around create, update and remove.
+
 - On every service
+
+  - logger: A Logger named after the class, such as `StoryService`.
+
+  - onInit · onDestroy: Run once at boot and once at shutdown.
+
+  - injected properties: Every key your injection builder returns.
+
+  - ...extendServices: Service classes passed after the builder, mixed in.
 
 Included
 
@@ -107,23 +137,23 @@ Not included
 
 Arguments
 
-- DatabaseModel — First argument for a database service. — serve(db.story, ({ service }) => ({ actionLogService: service<srv.ActionLogService>() }))
+- db.<model> (DatabaseModel): First argument for a database service. — Example: `serve(db.story, ({ service }) => ({ actionLogService: service<srv.ActionLogService>() }))`
 
-- string — First argument for a plain service. — serve("base" as const, ({ signal }) => ({ baseSignal: signal<Base>() }))
+- "<name>" as const (string): First argument for a plain service. — Example: `serve("base" as const, ({ signal }) => ({ baseSignal: signal<Base>() }))`
 
-- { enabled?, serverMode? } — Goes second when present. See Service Option below. — serve("myapp" as const, { serverMode: "batch" }, ({ service }) => ({ summaryService: service<srv.SummaryService>(), }))
+- option ({ enabled?, serverMode? }, optional): Goes second when present. See Service Option below.
 
-- ({ service, use, … }) => ({ … }) — Returns the properties to inject. See Injection Builder.
+- injectBuilder (({ service, use, … }) => ({ … })): Returns the properties to inject. See Injection Builder.
 
-- ServiceCls[] — Mixes in their methods, injections and hooks. See Service Extension. — serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)
+- ...extendServices (ServiceCls[], optional): Mixes in their methods, injections and hooks. See Service Extension. — Example: `serve(db.user, ({ use }) => ({ githubApp: use<GithubApp>() }), ...user.services)`
 
 Service Option
 
 The option decides which processes run the service. A `batch` process runs background work and takes no traffic; a `federation` process serves traffic. The default single process runs as `all`, so both are on there.
 
-- boolean | (() => boolean) — true — `false` leaves the service out. A function runs once, the first time it is read.
+- enabled (boolean | (() => boolean), default true): `false` leaves the service out. A function runs once, the first time it is read.
 
-- "batch" | "federation" — On only where `SERVER_MODE` is that value or `all`. `enabled` wins when both are set.
+- serverMode ("batch" | "federation"): On only where `SERVER_MODE` is that value or `all`. `enabled` wins when both are set.
 
 Generated Methods
 
@@ -133,25 +163,25 @@ Predefined Properties
 
 Property
 
-- <model>Model: The model adaptor, injected automatically. Call the model's own methods and filters on it.
+- <model>Model: The model adaptor, injected automatically. Call the model's own methods and filters on it. — Example: `const story = await this.storyModel.getStory(storyId);`
 
-- logger: A Logger named after the service class.
+- logger: A Logger named after the service class. — Example: `this.logger.info("service is ready");`
 
 CRUD Methods
 
 Method
 
-- get<Model>(id): Loads one document by id. Throws when it does not exist.
+- get<Model>(id): Loads one document by id. Throws when it does not exist. — Example: `const story = await this.getStory(storyId);`
 
-- load<Model>(id?): Loads one document by id. Returns null when it does not exist or the id is empty.
+- load<Model>(id?): Loads one document by id. Returns null when it does not exist or the id is empty. — Example: `const story = await this.loadStory(storyId);`
 
-- load<Model>Many(ids): Loads several documents by id in one batch.
+- load<Model>Many(ids): Loads several documents by id in one batch. — Example: `const stories = await this.loadStoryMany(storyIds);`
 
-- create<Model>(data): Creates a document through `_preCreate` and `_postCreate`.
+- create<Model>(data): Creates a document through `_preCreate` and `_postCreate`. — Example: `const story = await this.createStory(data);`
 
-- update<Model>(id, data): Applies a patch through `_preUpdate` and `_postUpdate`, then returns the document.
+- update<Model>(id, data): Applies a patch through `_preUpdate` and `_postUpdate`, then returns the document. — Example: `const story = await this.updateStory(storyId, { status: "active" });`
 
-- remove<Model>(id): Soft-removes (sets `removedAt`) through the remove hooks, then runs cascades.
+- remove<Model>(id): Soft-removes (sets `removedAt`) through the remove hooks, then runs cascades. — Example: `await this.removeStory(storyId);`
 
 Filter Methods
 
@@ -159,37 +189,37 @@ Every filter in the document generates fourteen methods. `<Query>` is the filter
 
 Reads
 
-- list<Query>(...args, option?): Lists the matching documents.
+- list<Query>(...args, option?): Lists the matching documents. — Example: `const stories = await this.listInRoot(root);`
 
-- listIds<Query>(...args, option?): Lists the ids of the matching documents.
+- listIds<Query>(...args, option?): Lists the ids of the matching documents. — Example: `const ids = await this.listIdsInRoot(root);`
 
-- find<Query>(...args, option?): Finds one match, or returns null.
+- find<Query>(...args, option?): Finds one match, or returns null. — Example: `const story = await this.findByTitle(title);`
 
-- findId<Query>(...args, option?): Finds the id of one match, or returns null.
+- findId<Query>(...args, option?): Finds the id of one match, or returns null. — Example: `const id = await this.findIdByTitle(title);`
 
-- pick<Query>(...args, option?): Finds one match. Throws when there is none.
+- pick<Query>(...args, option?): Finds one match. Throws when there is none. — Example: `const story = await this.pickByTitle(title);`
 
-- pickId<Query>(...args, option?): Finds the id of one match. Throws when there is none.
+- pickId<Query>(...args, option?): Finds the id of one match. Throws when there is none. — Example: `const id = await this.pickIdByTitle(title);`
 
-- exists<Query>(...args): Checks for a match. Returns the id of one match, or null.
+- exists<Query>(...args): Checks for a match. Returns the id of one match, or null. — Example: `const existingId = await this.existsByTitle(title);`
 
-- count<Query>(...args): Counts the matching documents.
+- count<Query>(...args): Counts the matching documents. — Example: `const count = await this.countInRoot(root);`
 
-- insight<Query>(...args): Computes the model's insight over the matching documents.
+- insight<Query>(...args): Computes the model's insight over the matching documents. — Example: `const insight = await this.insightInRoot(root);`
 
-- query<Query>(...args): Returns the query descriptor itself, without running it.
+- query<Query>(...args): Returns the query descriptor itself, without running it. — Example: `const query = this.queryInRoot(root);`
 
 **The trailing option.** `list` and `listIds` take `{ sort, skip, limit, sample, select }`; `find`, `findId`, `pick` and `pickId` take the same without `limit`. The rest take none.
 
 Query-level writes
 
-- remove<Query>(...args): Soft-removes every match in one atomic update.
+- remove<Query>(...args): Soft-removes every match in one atomic update. — Example: `await this.removeInRoot(root);`
 
-- removeOne<Query>(...args): Soft-removes the newest match by `createdAt`. For at-most-one queries, not for queues.
+- removeOne<Query>(...args): Soft-removes the newest match by `createdAt`. For at-most-one queries, not for queues. — Example: `await this.removeOneInRoot(root);`
 
-- update<Query>(...args).set(patch): Updates every match atomically. The patch goes in `.set()`; the chain alone runs nothing.
+- update<Query>(...args).set(patch): Updates every match atomically. The patch goes in `.set()`; the chain alone runs nothing. — Example: `await this.updateInRoot(root).set({ status: "archived" });`
 
-- updateOne<Query>(...args).set(patch): Updates the newest match by `createdAt`. The result has counts, not which row changed.
+- updateOne<Query>(...args).set(patch): Updates the newest match by `createdAt`. The result has counts, not which row changed. — Example: `await this.updateOneInRoot(root).set({ status: "archived" });`
 
 **Query-level writes skip hooks and cascades.** Each is one atomic update, so no `_postRemove` runs and no `cascade` follows. When a model has either, remove its documents one at a time with `remove<Model>(id)`.
 
@@ -233,17 +263,17 @@ Helper
 
 - service<T>(): Another service, a lib's included. The key must end in `Service`; the rest names the target.
 
-- use<T>(): A value registered with `option.use()` in `lib/option.ts`. The key must match its name.
+- use<T>(): A value registered with `option.use()` in `lib/option.ts`. The key must match its name. — Example: `storageApi: use<StorageApi>(),`
 
-- signal<T>(): A server signal, for queueing a background job or publishing an event. Key ends in `Signal`.
+- signal<T>(): A server signal, for queueing a background job or publishing an event. Key ends in `Signal`. — Example: `dbBackupSignal: signal<sig.DbBackup>(),`
 
-- plug(Adaptor): An `adapt()` adapter. If an implementation was applied to that role, you get it instead.
+- plug(Adaptor): An `adapt()` adapter. If an implementation was applied to that role, you get it instead. — Example: `ipfsApi: plug(IpfsApi),`
 
-- env(factory): A value built at boot from the server env or `process.env`. Pass a factory, not `env("KEY")`.
+- env(factory): A value built at boot from the server env or `process.env`. Pass a factory, not `env("KEY")`. — Example: `dockerRegistry: env((options: ModulesOptions) => options.dockerRegistry),`
 
-- memory(ref, opts): State kept in the cache adaptor, or on the instance with `local: true`. See below.
+- memory(ref, opts): State kept in the cache adaptor, or on the instance with `local: true`. See below. — Example: `remoteMap: memory(Map, { of: String }),`
 
-- database(): This service's own model. A database service already has it as `<model>Model`.
+- database(): This service's own model. A database service already has it as `<model>Model`. — Example: `const story = await this.storyModel.getStory(storyId);`
 
 use() and plug() in real code
 
@@ -257,25 +287,25 @@ memory() in detail
 
 `memory(ref, opts)` gives the service state that outlives one call. Without `local`, it lives in the app's cache adaptor. Its options:
 
-- boolean — false — Keep a plain writable value on this instance instead of in the cache; on a `Map`, a real `Map`.
+- local (boolean, default false): Keep a plain writable value on this instance instead of in the cache; on a `Map`, a real `Map`.
 
-- What a single value reads before its first `set()`, else `null`; a `local` one starts with it.
+- default: What a single value reads before its first `set()`, else `null`; a `local` one starts with it.
 
-- The value type of a `Map` memory, a scalar or model class. Required when `ref` is `Map`.
+- of: The value type of a `Map` memory, a scalar or model class. Required when `ref` is `Map`.
 
-- number (ms) — How long each write lives, unless that `set()` passes its own `{ expireAt }`.
+- ttl (number (ms)): How long each write lives, unless that `set()` passes its own `{ expireAt }`.
 
-- (stored) => value — Maps the stored value (a Map's entry value) to what code reads. Give it with `set` or not at all.
+- get ((stored) => value): Maps the stored value (a Map's entry value) to what code reads. Give it with `set` or not at all.
 
-- (value) => stored — The inverse of `get`: turns what code writes back into the stored value.
+- set ((value) => stored): The inverse of `get`: turns what code writes back into the stored value.
 
 What `this.x` turns out to be depends on how it was declared:
 
 Declared as
 
-- memory(ref, { local: true }): A plain value you read and assign directly.
+- memory(ref, { local: true }): A plain value you read and assign directly. — Example: `this.localCounter += 1;`
 
-- memory(ref): An object with three async methods.
+- memory(ref): An object with three async methods. — Example: `get() · set(value, { expireAt }?) · delete()`
 
 - memory(Map, { of: ref }): An async key–value map.
 
@@ -311,23 +341,23 @@ Hooks run around the service's `create<Model>`, `update<Model>` and `remove<Mode
 
 Hook
 
-- _preCreate(data): Runs before `create<Model>`. Return the data to create; you may change it.
+- _preCreate(data): Runs before `create<Model>`. Return the data to create; you may change it. — Example: `override async _preCreate(data) { return data; }`
 
-- _postCreate(doc): Runs after the document is created. Return the document.
+- _postCreate(doc): Runs after the document is created. Return the document. — Example: `override async _postCreate(doc) { return doc; }`
 
-- _preUpdate(id, data): Runs before `update<Model>`. Return the patch to apply.
+- _preUpdate(id, data): Runs before `update<Model>`. Return the patch to apply. — Example: `override async _preUpdate(id, data) { return data; }`
 
-- _postUpdate(doc): Runs after the update. Return the document.
+- _postUpdate(doc): Runs after the update. Return the document. — Example: `override async _postUpdate(doc) { return doc; }`
 
-- _preRemove(id): Runs before `remove<Model>`. Check or clean up here; throw to stop the removal.
+- _preRemove(id): Runs before `remove<Model>`. Check or clean up here; throw to stop the removal. — Example: `override async _preRemove(id) { … }`
 
 - _postRemove(doc): Runs after the soft remove. Return the document.
 
-- cascade: A cascade field removes its targets through their services, so their `_postRemove` runs too.
+- cascade: A cascade field removes its targets through their services, so their `_postRemove` runs too. — Example: `image: field(File, { cascade: "removeRef" }).optional()`
 
-- onInit(): Runs once at boot, after this service's injections are filled in.
+- onInit(): Runs once at boot, after this service's injections are filled in. — Example: `override async onInit() { this.logger.info("service is ready"); }`
 
-- onDestroy(): Runs once when the server shuts down.
+- onDestroy(): Runs once when the server shuts down. — Example: `override async onDestroy() { this.logger.info("service is closing"); }`
 
 **Only the service's own writes run these hooks.** `create<Model>`, `update<Model>` and `remove<Model>` go through them; a chain's `.save()` and the query-level writes do not.
 
@@ -399,6 +429,14 @@ export class BaseService extends serve("base" as const, ({ env, signal }) => ({
 }
 ```
 
+### option
+
+```ts
+serve("myapp" as const, { serverMode: "batch" }, ({ service }) => ({
+  summaryService: service<srv.SummaryService>(),
+}))
+```
+
 ### apps/koyo/lib/story/
 
 ```ts
@@ -467,6 +505,13 @@ export class ExampleService extends serve(
 ) {}
 ```
 
+### service<T>()
+
+```ts
+actionLogService: service<srv.ActionLogService>(),
+fileService: service<srv.shared.FileService>(),
+```
+
 ### libs/shared/lib/file/file.service.ts
 
 ```ts
@@ -500,6 +545,14 @@ export class DevProjectService extends serve(db.devProject, ({ service, env }) =
     return { ...data, registry: this.dockerRegistry };
   }
 }
+```
+
+### memory(Map, { of: ref })
+
+```ts
+get(key) · set(key, value) · delete(key) · clear()
+getOrInsert(key, value) · getOrInsertComputed(key, fn)
+keys() · entries() · forEach(fn)
 ```
 
 ### apps/koyo/lib/_runtime/runtime.service.ts
@@ -551,6 +604,15 @@ export class DbBackupService extends serve(db.dbBackup, ({ service, signal }) =>
     // archive, upload, clean up, then mark the backup active
     return await dbBackup.set({ status: "active" }).save();
   }
+}
+```
+
+### _postRemove(doc)
+
+```ts
+override async _postRemove(file) {
+  await this.storageApi.deleteData(file.url);
+  return file;
 }
 ```
 

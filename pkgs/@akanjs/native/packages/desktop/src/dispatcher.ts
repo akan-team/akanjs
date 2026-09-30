@@ -218,6 +218,7 @@ export function createDispatcher(
     if (launching) apply();
     else console.warn(`[akan-native] ${plugin.id}: ctx.launch.${what} after the window was created is ignored`);
   };
+  const quit = (code: number) => (services.lifecycle ? void services.lifecycle.quit(code) : services.quit?.(code));
   const contexts = new Map<string, DesktopContext>();
   const context = (plugin: DesktopPlugin): DesktopContext => {
     let ctx = contexts.get(plugin.id);
@@ -252,7 +253,7 @@ export function createDispatcher(
         deepLinkSchemes: services.deepLinkSchemes ?? [],
         externalSchemes: externalSchemes(services.externalSchemes ?? []),
         openLinks: (args) => services.openLinks?.(args),
-        quit: (code = 0) => (services.lifecycle ? void services.lifecycle.quit(code) : services.quit?.(code)),
+        quit: (code = 0) => quit(code),
         onQuit: (fn) => services.lifecycle?.onQuit(fn) ?? (() => {}),
         onDocumentEnd: (fn) => {
           const entry = { fn };
@@ -265,7 +266,13 @@ export function createDispatcher(
           services.lifecycle ? void services.lifecycle.closeWindow(window) : services.quit?.(0),
         launch: {
           setWindow: (bounds) => duringLaunch(plugin, "setWindow", () => Object.assign(launch.window, bounds)),
-          exit: (code = 0) => duringLaunch(plugin, "exit", () => (launch.exit ??= code)),
+          exit: (code = 0) => {
+            if (launching) launch.exit ??= code;
+            else {
+              console.warn(`[akan-native] ${plugin.id}: ctx.launch.exit after the window was created quits the app`);
+              quit(code);
+            }
+          },
         },
       };
       contexts.set(plugin.id, ctx);

@@ -31,7 +31,7 @@ What happens
 
 - order.dictionary.ts: 1. Declare: register each error sentence as an `[en, ko]` pair in `.error({})`.
 
-- 2. Throw: when a business rule fails, throw `new Err("order.error.notDraft")`.
+- order.document.ts, order.service.ts: 2. Throw: when a business rule fails, throw `new Err("order.error.notDraft")`.
 
 - HTTP · WebSocket: 3. Send: the server answers with the untranslated key, a status code and `data`.
 
@@ -73,11 +73,11 @@ File
 
 How
 
-- Server files import it from the module's `dict` barrel. — import { Err } from "../dict";
+- *.document.ts, *.service.ts, *.signal.ts: Server files import it from the module's `dict` barrel. — Example: `import { Err } from "../dict";`
 
-- *.tsx: UI files import it from the app's client entry; a lib uses `@libs/<lib>/client`.
+- *.tsx: UI files import it from the app's client entry; a lib uses `@libs/<lib>/client`. — Example: `import { Err } from "@apps/<app>/client";`
 
-- No import path for `Err` exists here, so keep throwing code out of these folders.
+- common/**, env/**: No import path for `Err` exists here, so keep throwing code out of these folders.
 
 **Never `throw new Error`.** The `no-throw-raw-error` lint rule fails the build everywhere in `apps/**` and `libs/**` except tests, `*.constant.ts`, `common/**` and `env/**`. A plain `Error` also reaches the user only as a generic 500.
 
@@ -85,17 +85,17 @@ Choose Status
 
 `new Err()` answers with status 400. When the HTTP meaning matters, throw a named helper instead; each one takes the same arguments as `new Err()`.
 
-- 400 — The default: a business rule rejected the request.
+- new Err(key) (400): The default: a business rule rejected the request.
 
-- 400 — The same 400, named explicitly.
+- Err.BadRequest (400): The same 400, named explicitly.
 
-- 401 — The caller has not signed in or proven who they are.
+- Err.Unauthorized (401): The caller has not signed in or proven who they are.
 
-- 403 — The user is known but may not do this action.
+- Err.Forbidden (403): The user is known but may not do this action.
 
-- 404 — The requested record does not exist.
+- Err.NotFound (404): The requested record does not exist.
 
-- 409 — The current state cannot accept this action.
+- Err.Conflict (409): The current state cannot accept this action.
 
 In a service, the order's state and the product's existence pick different statuses:
 
@@ -161,9 +161,9 @@ Thrown
 
 What the caller gets
 
-- Answered with its own `statusCode`, and `error` holds the dictionary key.
+- Err, Err.*: Answered with its own `statusCode`, and `error` holds the dictionary key.
 
-- Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
+- Error, getOrder(missingId): Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
 
 **In development you see everything.** Under `akan start` the response carries the real message and the stack.
 

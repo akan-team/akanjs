@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, InstallCommand, ShowcaseThumbnail, Tesseract } from "@apps/akan/ui";
+import { Code, InstallCommand, ShowcaseThumbnail, Tesseract, TesseractFlight } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BsArrowRight, BsArrowUpRight, BsCheckCircle } from "react-icons/bs";
@@ -400,16 +400,21 @@ export default page().render(() => {
   ];
 
   return (
-    <main className="relative min-h-screen overflow-hidden break-keep bg-background text-foreground">
+    <main className="relative min-h-screen overflow-x-clip break-keep bg-background text-foreground">
+      <TesseractFlight labels={workflowLayers} />
+      <div className="hyper-grid pointer-events-none absolute inset-x-0 top-0 h-screen" />
       <div className="absolute inset-x-0 top-20 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
 
-      <section className="relative mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 pt-32 pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
+      <section
+        data-tesseract="orbit"
+        className="relative mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 pt-[calc(var(--akanjs-header-offset)+3rem)] pb-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8"
+      >
         <div>
           <Link
             href="/blog/v3release"
             className={badgeRecipe(
               undefined,
-              "mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary transition hover:bg-primary/15",
+              "intro-rise mb-6 border-primary/20 bg-primary/10 px-4 py-3 text-primary transition hover:bg-primary/15",
             )}
           >
             <BsCheckCircle />
@@ -419,7 +424,7 @@ export default page().render(() => {
             })}
             <BsArrowRight />
           </Link>
-          <h1 className="max-w-5xl font-black text-3xl text-foreground tracking-tight sm:text-4xl lg:text-5xl">
+          <h1 className="intro-rise max-w-5xl font-black text-3xl text-foreground tracking-tight [--intro-delay:90ms] sm:text-4xl lg:text-5xl">
             <span className="text-primary">
               {l.trans({
                 en: "The tesseract TypeScript framework.",
@@ -427,13 +432,13 @@ export default page().render(() => {
               })}
             </span>
           </h1>
-          <p className="mt-6 max-w-3xl font-semibold text-foreground/85 text-xl leading-8 sm:text-2xl sm:leading-9">
+          <p className="intro-rise mt-6 max-w-3xl font-semibold text-foreground/85 text-xl leading-8 [--intro-delay:180ms] sm:text-2xl sm:leading-9">
             {l.trans({
               en: "One line of business code ships web, iOS, Android, Linux, macOS, Windows, server, database — and agents.",
               ko: "비즈니스 코드 한 줄이 웹, iOS, Android, Linux, macOS, Windows, 서버, DB — 그리고 에이전트까지 배포됩니다.",
             })}
           </p>
-          <p className="mt-6 max-w-2xl text-foreground/60 text-lg leading-8">
+          <p className="intro-rise mt-6 max-w-2xl text-foreground/60 text-lg leading-8 [--intro-delay:270ms]">
             {l.trans({
               en: "Akan is a Bun-first full-stack framework. Declare a model once — schema, API, state, UI and agent tools follow, type-safe from database to screen.",
               ko: "Akan은 Bun 기반 풀스택 프레임워크입니다. 모델을 한 번 선언하면 스키마, API, 상태, UI, 에이전트 도구가 DB부터 화면까지 타입 안전하게 따라옵니다.",
@@ -442,9 +447,14 @@ export default page().render(() => {
               {l.trans({ en: "One source, every face.", ko: "하나의 소스, 모든 면." })}
             </span>
           </p>
-          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+          <div className="intro-rise mt-10 flex flex-col gap-3 [--intro-delay:360ms] sm:flex-row">
             <Link href="/docs/intro/quickstart">
-              <button className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}>
+              <button
+                className={buttonRecipe(
+                  undefined,
+                  "w-full border-none bg-primary text-background hover:bg-primary/80 sm:w-auto",
+                )}
+              >
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
@@ -452,13 +462,27 @@ export default page().render(() => {
               {l.trans({ en: "See the showcase", ko: "쇼케이스 보기" })}
             </Link>
           </div>
-          <InstallCommand className="mt-4" />
+          <InstallCommand className="intro-rise mt-4 [--intro-delay:450ms]" />
         </div>
 
+        <div
+          data-tesseract-stage
+          className="intro-rise pointer-events-none absolute top-[calc(var(--akanjs-header-offset)+0.5rem)] -right-16 size-72 opacity-45 [--intro-delay:200ms] sm:relative sm:inset-auto sm:order-first sm:mx-auto sm:size-80 sm:opacity-100 lg:order-none lg:aspect-square lg:size-auto lg:w-full lg:max-w-136"
+        >
+          <div className="absolute inset-[16%] rounded-full bg-primary/15 blur-3xl" />
+          <div data-tesseract-static className="absolute inset-[4%]">
+            <Tesseract className="size-full opacity-60" />
+          </div>
+        </div>
+      </section>
+
+      <section className="relative mx-auto w-full max-w-7xl px-6 pb-16 lg:px-8">
         <div className="relative">
-          <Tesseract className="pointer-events-none absolute -top-24 -right-12 size-104 opacity-50 lg:-right-28" />
-          <div className="absolute inset-0 rotate-3 rounded-4xl bg-primary/15 blur-2xl" />
-          <div className="relative overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-5 shadow-2xl backdrop-blur-md">
+          <div className="absolute inset-0 rotate-1 rounded-4xl bg-primary/10 blur-2xl" />
+          <div
+            data-tesseract="frame"
+            className="reveal-rise relative overflow-clip rounded-4xl border border-foreground/10 bg-foreground/6 p-5 shadow-2xl backdrop-blur-md md:p-6"
+          >
             <div className="mb-5 flex items-center justify-between rounded-2xl border border-foreground/10 bg-background/70 px-4 py-3">
               <div>
                 <p className="text-foreground/40 text-xs tracking-[0.24em]">Akan.js</p>
@@ -466,36 +490,40 @@ export default page().render(() => {
                   {l.trans({ en: "One object, every projection", ko: "하나의 대상, 모든 투영" })}
                 </p>
               </div>
-              <div className="rounded-xl bg-primary/10 px-3 py-2 font-medium text-primary text-sm">1 → All</div>
+              <div className="shrink-0 whitespace-nowrap rounded-xl bg-primary/10 px-3 py-2 font-medium text-primary text-sm">
+                1 → All
+              </div>
             </div>
-            <Code.Snippet
-              className="w-full"
-              title="product.constant.ts"
-              showLineNumbers={false}
-              code={`export class ProductInput extends via((field) => ({
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <Code.Snippet
+                className="w-full"
+                title="product.constant.ts"
+                showLineNumbers={false}
+                code={`export class ProductInput extends via((field) => ({
   name: field(String, { text: "title" }), // [!code highlight]
   price: field(Int),
 })) {}`}
-            />
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {heroFaces.map((face) => (
-                <div key={face.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
-                  <p className="font-bold text-foreground">{face.title}</p>
-                  <p className="text-foreground/40 text-xs">{face.surface}</p>
-                  <p className="mt-3 break-all font-mono text-foreground/60 text-xs leading-5">
-                    {face.before}
-                    <span className="rounded bg-primary/15 px-1 text-primary">name</span>
-                    {face.after}
-                  </p>
-                </div>
-              ))}
+              />
+              <div className="reveal-cascade grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {heroFaces.map((face) => (
+                  <div key={face.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
+                    <p className="font-bold text-foreground">{face.title}</p>
+                    <p className="text-foreground/40 text-xs">{face.surface}</p>
+                    <p className="mt-3 break-all font-mono text-foreground/60 text-xs leading-5">
+                      {face.before}
+                      <span className="rounded bg-primary/15 px-1 text-primary">name</span>
+                      {face.after}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
-        <div className="grid gap-px overflow-hidden rounded-3xl border border-foreground/10 bg-foreground/10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="reveal-rise grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-foreground/10 bg-foreground/10 sm:grid-cols-2 lg:grid-cols-4">
           {proofItems.map((item) => (
             <div key={item.value} className="bg-background/90 px-6 py-5">
               <p className="font-black font-mono text-2xl text-primary">{item.value}</p>
@@ -517,7 +545,7 @@ export default page().render(() => {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
-        <div className="mb-10 text-center">
+        <div className="reveal-rise mb-10 text-center">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "Start from the face that hurts.", ko: "아픈 면에서 시작하세요." })}
           </h2>
@@ -528,7 +556,7 @@ export default page().render(() => {
             })}
           </p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div data-tesseract="frame" className="reveal-cascade grid grid-cols-1 gap-4 lg:grid-cols-3">
           {personaCards.map((card, index) => (
             <div key={card.title} className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur">
               <div className="mb-5 flex items-center justify-between gap-4">
@@ -545,7 +573,7 @@ export default page().render(() => {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="mb-8 text-center md:mb-12">
+        <div className="reveal-rise mb-8 text-center md:mb-12">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "One field unfolds into eight layers.", ko: "필드 하나가 8개 레이어로 펼쳐집니다." })}
           </h2>
@@ -556,43 +584,62 @@ export default page().render(() => {
             })}
           </p>
         </div>
-        <div className="relative overflow-hidden rounded-4xl border border-primary/20 bg-foreground/5 p-5 shadow-2xl backdrop-blur md:p-8">
-          <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/70 to-transparent" />
-          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-3xl border border-foreground/10 bg-background/80 p-6">
-              <div className={badgeRecipe(undefined, "mb-4 border-destructive/20 bg-destructive/10 text-destructive")}>
-                {l.trans({ en: "Before", ko: "Before" })}
-              </div>
-              <h3 className="font-bold text-2xl">
-                {l.trans({
-                  en: "Adding one field the traditional way",
-                  ko: "기존 풀스택에서 필드 하나 추가하려면",
-                })}
-              </h3>
-              <p className="mt-3 text-foreground/60 text-sm leading-6">
-                {l.trans({
-                  en: "Adding a single business field usually means wiring all of this by hand.",
-                  ko: "비즈니스 필드 하나를 추가하려면 보통 이만큼을 직접 손으로 해야 합니다.",
-                })}
-              </p>
-              <div className="mt-5 grid gap-2">
-                {workflowLayers.map((layer, index) => (
-                  <div key={layer} className="flex items-center gap-3 rounded-2xl bg-foreground/5 px-4 py-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/10 font-bold text-destructive text-xs">
-                      {index + 1}
-                    </span>
-                    <span className="font-medium text-foreground text-sm">{layer}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-5 text-foreground/60 text-sm leading-6">
-                {l.trans({
-                  en: "Change one place, chase eight. Miss one, and types break — or it blows up at runtime.",
-                  ko: "한 곳만 바뀌어도 8곳을 따라 고쳐야 하고, 한 곳을 빠뜨리면 타입이 깨지거나 런타임에서 터집니다.",
-                })}
-              </p>
+        <div data-tesseract="orbit" className="grid grid-cols-1 gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
+          <div className="reveal-rise rounded-4xl border border-foreground/10 bg-foreground/5 p-6 backdrop-blur md:p-8">
+            <div className={badgeRecipe(undefined, "mb-4 border-destructive/20 bg-destructive/10 text-destructive")}>
+              {l.trans({ en: "Before", ko: "Before" })}
             </div>
-            <div className="rounded-3xl border border-primary/20 bg-background/80 p-6">
+            <h3 className="font-bold text-2xl">
+              {l.trans({
+                en: "Adding one field the traditional way",
+                ko: "기존 풀스택에서 필드 하나 추가하려면",
+              })}
+            </h3>
+            <p className="mt-3 text-foreground/60 text-sm leading-6">
+              {l.trans({
+                en: "Adding a single business field usually means wiring all of this by hand.",
+                ko: "비즈니스 필드 하나를 추가하려면 보통 이만큼을 직접 손으로 해야 합니다.",
+              })}
+            </p>
+            <ol className="mt-5 grid grid-cols-1 gap-2">
+              {workflowLayers.map((layer, index) => (
+                <li
+                  key={layer}
+                  data-tesseract-cell={index}
+                  className="pass-lit flex items-center gap-3 rounded-2xl bg-foreground/5 px-4 py-3"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/10 font-bold text-destructive text-xs">
+                    {index + 1}
+                  </span>
+                  <span className="font-medium text-foreground text-sm">{layer}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-5 text-foreground/60 text-sm leading-6">
+              {l.trans({
+                en: "Change one place, chase eight. Miss one, and types break — or it blows up at runtime.",
+                ko: "한 곳만 바뀌어도 8곳을 따라 고쳐야 하고, 한 곳을 빠뜨리면 타입이 깨지거나 런타임에서 터집니다.",
+              })}
+            </p>
+          </div>
+          <div
+            data-tesseract-stage
+            className="relative mx-auto aspect-square w-full max-w-sm lg:sticky lg:top-[calc(var(--akanjs-header-offset)+3rem)] lg:max-w-md lg:self-start"
+          >
+            <div className="absolute inset-[18%] rounded-full bg-primary/10 blur-3xl" />
+            <div data-tesseract-static className="absolute inset-[6%]">
+              <Tesseract className="size-full opacity-60" />
+            </div>
+          </div>
+        </div>
+        <div
+          data-tesseract="frame"
+          data-tesseract-glow
+          className="reveal-rise relative mt-10 overflow-clip rounded-4xl border border-primary/20 bg-foreground/5 p-6 shadow-2xl backdrop-blur md:p-8"
+        >
+          <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/70 to-transparent" />
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div>
               <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                 {l.trans({ en: "After — Akan.js", ko: "After — Akan.js" })}
               </div>
@@ -616,20 +663,20 @@ export default page().render(() => {
                   ko: "필드 선언 한 줄로 스키마와 타입이 동시에 정의됩니다. 위 8개 레이어는 전부 자동 생성됩니다.",
                 })}
               </p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {workflowLayers.map((layer) => (
-                  <div key={layer} className="rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3">
-                    <p className="font-medium text-primary text-sm">{layer}</p>
-                  </div>
-                ))}
-              </div>
+            </div>
+            <div className="reveal-cascade grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {workflowLayers.map((layer) => (
+                <div key={layer} className="rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3">
+                  <p className="font-medium text-primary text-sm">{layer}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="mb-10 text-center">
+        <div className="reveal-rise mb-10 text-center">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({
               en: "Every app is agent-ready from the first line.",
@@ -643,33 +690,35 @@ export default page().render(() => {
             })}
           </p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {agentSurfaces.map((item) => (
-            <div
-              key={item.title}
-              className="flex flex-col rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur"
-            >
-              <h3 className="font-bold text-foreground text-xl">{item.title}</h3>
-              <p className="mt-3 text-foreground/60 text-sm leading-6">{item.description}</p>
-              <Code.Snippet className="mt-5 w-full" title={item.codeTitle} code={item.code} showLineNumbers={false} />
-            </div>
-          ))}
-        </div>
-        <div className="mt-6 flex flex-col items-start justify-between gap-4 rounded-4xl border border-primary/20 bg-primary/5 p-6 md:flex-row md:items-center md:p-8">
-          <p className="max-w-3xl text-foreground/70 leading-7">
-            {l.trans({
-              en: "With libs/shared, OAuth 2.1 comes built in: an agent signs in as the user and acts with exactly that user's rights.",
-              ko: "libs/shared를 쓰면 OAuth 2.1이 내장됩니다. 에이전트는 사용자로 로그인하고 정확히 그 사용자의 권한으로만 움직입니다.",
-            })}
-          </p>
-          <Link href="/blog/v3release" className={buttonRecipe({ variant: "primary" }, "shrink-0")}>
-            {l.trans({ en: "What's new in v3", ko: "v3에서 달라진 점" })} <BsArrowRight className="ml-2" />
-          </Link>
+        <div data-tesseract="frame">
+          <div className="reveal-cascade grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {agentSurfaces.map((item) => (
+              <div
+                key={item.title}
+                className="flex flex-col rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur"
+              >
+                <h3 className="font-bold text-foreground text-xl">{item.title}</h3>
+                <p className="mt-3 text-foreground/60 text-sm leading-6">{item.description}</p>
+                <Code.Snippet className="mt-5 w-full" title={item.codeTitle} code={item.code} showLineNumbers={false} />
+              </div>
+            ))}
+          </div>
+          <div className="reveal-rise mt-6 flex flex-col items-start justify-between gap-4 rounded-4xl border border-primary/20 bg-primary/5 p-6 md:flex-row md:items-center md:p-8">
+            <p className="max-w-3xl text-foreground/70 leading-7">
+              {l.trans({
+                en: "With libs/shared, OAuth 2.1 comes built in: an agent signs in as the user and acts with exactly that user's rights.",
+                ko: "libs/shared를 쓰면 OAuth 2.1이 내장됩니다. 에이전트는 사용자로 로그인하고 정확히 그 사용자의 권한으로만 움직입니다.",
+              })}
+            </p>
+            <Link href="/blog/v3release" className={buttonRecipe({ variant: "primary" }, "shrink-0")}>
+              {l.trans({ en: "What's new in v3", ko: "v3에서 달라진 점" })} <BsArrowRight className="ml-2" />
+            </Link>
+          </div>
         </div>
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="mb-10 max-w-4xl">
+        <div className="reveal-rise mb-10 max-w-4xl">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({
               en: "AI coding turns to spaghetti past a certain size.",
@@ -683,33 +732,41 @@ export default page().render(() => {
             })}
           </p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {qualityItems.map((item) => (
-            <div key={item.title} className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur">
-              <h3 className="font-bold text-foreground text-lg">{item.title}</h3>
-              <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-6 rounded-4xl border border-primary/20 bg-primary/5 p-6 md:p-8">
-          <h3 className="font-bold text-2xl text-primary">
-            {l.trans({
-              en: "This is what we mean by agentic full-stack.",
-              ko: "이것이 우리가 말하는 에이전틱 풀스택입니다.",
-            })}
-          </h3>
-          <p className="mt-3 max-w-3xl text-foreground/65 leading-7">
-            {l.trans({
-              en: "It runs in both directions. Agents build the app on strict rules and fixed blocks — upload, login, admin, chat, boards, alerts — so they produce nothing but consistent code. And agents use the app through the same guards people do. Not an abstract idea, but quality that rules make.",
-              ko: "에이전틱 풀스택은 양방향입니다. 에이전트는 엄격한 규칙과 업로드, 로그인, 관리자, 채팅, 게시판, 알림 같은 정해진 블록 위에서 앱을 만들기에 일관된 코드만 생산합니다. 그리고 에이전트는 사람과 같은 가드를 거쳐 그 앱을 씁니다. 추상적인 개념이 아니라, 규칙이 만든 품질입니다.",
-            })}
-          </p>
+        <div data-tesseract="frame">
+          <div className="reveal-cascade grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {qualityItems.map((item) => (
+              <div
+                key={item.title}
+                className="rounded-3xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur"
+              >
+                <h3 className="font-bold text-foreground text-lg">{item.title}</h3>
+                <p className="mt-2 text-foreground/60 text-sm leading-6">{item.description}</p>
+              </div>
+            ))}
+          </div>
+          <div className="reveal-rise mt-6 rounded-4xl border border-primary/20 bg-primary/5 p-6 md:p-8">
+            <h3 className="font-bold text-2xl text-primary">
+              {l.trans({
+                en: "This is what we mean by agentic full-stack.",
+                ko: "이것이 우리가 말하는 에이전틱 풀스택입니다.",
+              })}
+            </h3>
+            <p className="mt-3 max-w-3xl text-foreground/65 leading-7">
+              {l.trans({
+                en: "It runs in both directions. Agents build the app on strict rules and fixed blocks — upload, login, admin, chat, boards, alerts — so they produce nothing but consistent code. And agents use the app through the same guards people do. Not an abstract idea, but quality that rules make.",
+                ko: "에이전틱 풀스택은 양방향입니다. 에이전트는 엄격한 규칙과 업로드, 로그인, 관리자, 채팅, 게시판, 알림 같은 정해진 블록 위에서 앱을 만들기에 일관된 코드만 생산합니다. 그리고 에이전트는 사람과 같은 가드를 거쳐 그 앱을 씁니다. 추상적인 개념이 아니라, 규칙이 만든 품질입니다.",
+              })}
+            </p>
+          </div>
         </div>
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="mb-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-8">
-          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div
+          data-tesseract="frame"
+          className="reveal-rise mb-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-8"
+        >
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
               <h2 className="font-black text-3xl tracking-tight md:text-5xl">
                 {l.trans({
@@ -724,7 +781,7 @@ export default page().render(() => {
                 })}
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {platformSurfaces.map((surface) => (
                 <div key={surface} className="rounded-2xl border border-foreground/10 bg-background/80 px-4 py-3">
                   <p className="font-medium text-foreground text-sm">{surface}</p>
@@ -734,7 +791,10 @@ export default page().render(() => {
           </div>
         </div>
 
-        <div className="mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
+        <div
+          data-tesseract="frame"
+          className="reveal-rise mb-10 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8"
+        >
           <div className="mb-8 text-center">
             <h2 className="font-black text-3xl tracking-tight md:text-5xl">
               {l.trans({ en: "Stop repeating the same plumbing", ko: "반복작업은 이제 그만" })}
@@ -746,7 +806,7 @@ export default page().render(() => {
               })}
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {automationItems.map((item, index) => (
               <div key={item.title} className="rounded-3xl border border-foreground/10 bg-background/80 p-6">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 font-black text-primary">
@@ -759,7 +819,10 @@ export default page().render(() => {
           </div>
         </div>
 
-        <div className="mb-14 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
+        <div
+          data-tesseract="frame"
+          className="reveal-rise mb-14 rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8"
+        >
           <div className="mb-6 max-w-3xl">
             <h3 className="font-black text-2xl tracking-tight md:text-4xl">
               {l.trans({
@@ -780,7 +843,7 @@ export default page().render(() => {
               })}
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {transitionItems.map((item) => (
               <div
                 key={item.title}
@@ -805,7 +868,7 @@ export default page().render(() => {
           </div>
         </div>
 
-        <div className="mx-auto mb-10 max-w-4xl text-center">
+        <div className="reveal-rise mx-auto mb-10 max-w-4xl text-center">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({ en: "See the business, not the system", ko: "시스템이 아니라 비즈니스를 보세요" })}
           </h2>
@@ -817,8 +880,11 @@ export default page().render(() => {
           </p>
         </div>
 
-        <div className="rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
-          <h2 className="mb-8 text-center font-black text-3xl tracking-tight md:mb-12 md:text-5xl">
+        <div
+          data-tesseract="frame"
+          className="rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8"
+        >
+          <h2 className="reveal-rise mb-8 text-center font-black text-3xl tracking-tight md:mb-12 md:text-5xl">
             {l.trans({
               en: "How One Business Definition Unfolds",
               ko: "하나의 비즈니스 정의가 펼쳐지는 방식",
@@ -828,9 +894,9 @@ export default page().render(() => {
             {procedureItems.map((item, index) => (
               <div
                 key={item.title}
-                className="overflow-hidden rounded-3xl border border-foreground/10 bg-background/80 shadow-xl"
+                className="reveal-rise overflow-hidden rounded-3xl border border-foreground/10 bg-background/80 shadow-xl"
               >
-                <div className="grid items-center gap-6 p-5 md:p-6 lg:grid-cols-[0.8fr_1.2fr]">
+                <div className="grid grid-cols-1 items-center gap-6 p-5 md:p-6 lg:grid-cols-[0.8fr_1.2fr]">
                   <div className={index % 2 === 1 ? "lg:order-2" : ""}>
                     <div className={badgeRecipe(undefined, "mb-4 border-primary/20 bg-primary/10 text-primary")}>
                       {String(index + 1).padStart(2, "0")}
@@ -849,7 +915,7 @@ export default page().render(() => {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-10 lg:px-8">
-        <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div className="reveal-rise mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <h2 className="font-black text-3xl tracking-tight md:text-5xl">
               {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 것들" })}
@@ -859,7 +925,7 @@ export default page().render(() => {
             {l.trans({ en: "See all projects", ko: "모든 프로젝트 보기" })} <BsArrowRight />
           </Link>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div data-tesseract="frame" className="reveal-cascade grid grid-cols-1 gap-4 md:grid-cols-3">
           {showcasePreviews.map((item) => (
             <Link
               key={item.name}
@@ -887,7 +953,10 @@ export default page().render(() => {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 py-10 lg:px-8">
-        <div className="grid gap-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-10 lg:grid-cols-2 lg:items-center">
+        <div
+          data-tesseract="frame"
+          className="reveal-rise grid grid-cols-1 gap-8 rounded-4xl border border-foreground/10 bg-foreground/4 p-6 backdrop-blur md:p-10 lg:grid-cols-2 lg:items-center"
+        >
           <div>
             <h2 className="font-black text-3xl tracking-tight md:text-5xl">
               {l.trans({ en: "From build to a live URL", ko: "빌드에서 라이브 URL까지" })}
@@ -920,28 +989,37 @@ export default page().render(() => {
         </div>
       </section>
 
-      <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
-        <div className="overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
+      <section
+        data-tesseract="orbit"
+        className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 pt-20 pb-28 lg:grid-cols-[1.1fr_0.9fr] lg:px-8"
+      >
+        <div className="reveal-rise">
           <div className={badgeRecipe(undefined, "mb-5 border-primary/20 bg-primary/10 text-primary")}>
             {l.trans({ en: "Agentic full-stack", ko: "에이전틱 풀스택" })}
           </div>
-          <h2 className="font-black text-3xl tracking-tight md:text-5xl">
+          <h2 className="font-black text-4xl tracking-tight md:text-6xl">
             {l.trans({ en: "Read for humans.", ko: "읽는 건 사람이," })}{" "}
             <span className="text-primary">{l.trans({ en: "Write for agents.", ko: "쓰는 건 에이전트가." })}</span>
           </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-foreground/65 leading-7">
+          <p className="mt-6 max-w-2xl text-foreground/65 text-lg leading-8">
             {l.trans({
               en: "Agents write through strict conventions and fixed blocks, so every line lands where it belongs. You read only what matters: less code, one shape for every module — fewer tokens for the agent, a shorter review for you.",
               ko: "에이전트는 엄격한 컨벤션과 고정된 블록을 따라 코드를 쓰기에 모든 줄이 제자리에 놓입니다. 사람은 핵심만 읽습니다. 적은 코드, 모든 모듈에 같은 형태 — 에이전트에겐 적은 토큰, 사람에겐 짧은 리뷰.",
             })}
           </p>
-          <InstallCommand className="mt-8" />
-          <div className="mt-4">
+          <div className="mt-8 flex flex-col items-start gap-4">
+            <InstallCommand />
             <Link href="/docs/intro/quickstart">
               <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
                 {l.trans({ en: "Get Started", ko: "시작하기" })} <BsArrowRight className="ml-2" />
               </button>
             </Link>
+          </div>
+        </div>
+        <div data-tesseract-stage className="relative mx-auto aspect-square w-full max-w-sm lg:max-w-md">
+          <div className="absolute inset-[16%] rounded-full bg-primary/15 blur-3xl" />
+          <div data-tesseract-static className="absolute inset-[4%]">
+            <Tesseract className="size-full opacity-60" />
           </div>
         </div>
       </section>

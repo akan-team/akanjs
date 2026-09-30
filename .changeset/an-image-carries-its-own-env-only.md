@@ -1,7 +1,7 @@
 ---
-"akanjs": patch
-"@akanjs/devkit": patch
-"@akanjs/cli": patch
+"akanjs": minor
+"@akanjs/devkit": minor
+"@akanjs/cli": minor
 ---
 
 An app image carries the server env of the environment it runs and no other.
@@ -19,3 +19,7 @@ An app image carries the server env of the environment it runs and no other.
 - Keys that already shipped in an image stay readable in it. Rotate them.
 - A build for a named `--env` (a mobile or desktop build) writes that env into the Dockerfile too, so the image boots
   the environment its `server.js` carries.
+
+**Breaking for an image started under another `AKAN_PUBLIC_ENV`, and for code importing `env` from an app's
+`server.ts`:** the image stops at boot until it runs the environment it was built for, and the import moves to
+`./env/env.server.testing`.

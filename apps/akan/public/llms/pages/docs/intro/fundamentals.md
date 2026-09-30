@@ -256,64 +256,64 @@ Akan.js is always open to your feedback. If you have any questions, please leave
 ### Code
 
 ```bash
-├── apps/                   # <l.trans({ en: "Application list", ko: "애플리케이션 목록" })>
-│   └── appA/               # <l.trans({ en: "Individual application", ko: "개별 애플리케이션" })>
-│   └── appB/               # <l.trans({ en: "Individual application", ko: "개별 애플리케이션" })>
-└── libs/                   # <l.trans({ en: "Library list", ko: "라이브러리 목록" })>
-    ├── shared/             # <l.trans({ en: "Shared library", ko: "공통 라이브러리" })>
-    ├── util/               # <l.trans({ en: "Utility library", ko: "유틸리티 라이브러리" })>
-    └── [other libs]/       # <l.trans({ en: "Other specific libraries", ko: "기타 특화 라이브러리" })>
+├── apps/                   # Application list
+│   └── appA/               # Individual application
+│   └── appB/               # Individual application
+└── libs/                   # Library list
+    ├── shared/             # Shared library
+    ├── util/               # Utility library
+    └── [other libs]/       # Other specific libraries
 ```
 
 ### Code
 
 ```bash
-└── {apps,libs}/            # <l.trans({ en: "Application or library code", ko: "애플리케이션 또는 라이브러리 코드" })>
-    └── {appA,libA}/        # <l.trans({ en: "Individual application or library", ko: "개별 애플리케이션 또는 라이브러리" })>
-        ├── page/           # <l.trans({ en: "File-routed pages (apps)", ko: "파일 라우팅 page (앱)" })>
-        ├── lib/            # <l.trans({ en: "Domain modules", ko: "도메인 모듈" })>
-        ├── public/         # <l.trans({ en: "Assets files", ko: "애셋 파일" })>
-        ├── ui/             # <l.trans({ en: "UI code (modularized)", ko: "UI 코드 (모듈화 O)" })>
-        ├── akan.config.ts  # <l.trans({ en: "App configuration (apps)", ko: "앱 설정 (앱)" })>
-        └── main.ts         # <l.trans({ en: "Akan runtime entry (apps)", ko: "Akan runtime entry (앱)" })>
+└── {apps,libs}/            # Application or library code
+    └── {appA,libA}/        # Individual application or library
+        ├── page/           # File-routed pages (apps)
+        ├── lib/            # Domain modules
+        ├── public/         # Assets files
+        ├── ui/             # UI code (modularized)
+        ├── akan.config.ts  # App configuration (apps)
+        └── main.ts         # Akan runtime entry (apps)
 ```
 
 ### Code
 
 ```bash
-└── apps/               # <l.trans({ en: "Application list", ko: "애플리케이션 목록" })>
-    └── appA/           # <l.trans({ en: "Individual application", ko: "개별 애플리케이션" })>
-        └── page/       # <l.trans({ en: "File-routed pages", ko: "파일 라우팅 page" })>
-            ├── pageA/  # <l.trans({ en: "Page folder", ko: "페이지 폴더" })>
-            │   ├── _layout.tsx    # <l.trans({ en: "Layout component", ko: "레이아웃 컴포넌트" })>
-            │   └── _index.tsx       # <l.trans({ en: "Page component", ko: "페이지 컴포넌트" })>
-            └── pageB/             # <l.trans({ en: "Another page", ko: "다른 페이지" })>
-                ├── _layout.tsx    # <l.trans({ en: "Layout component", ko: "레이아웃 컴포넌트" })>
-                ├── _index.tsx       # <l.trans({ en: "Page component", ko: "페이지 컴포넌트" })>
-                └── [param]/       # <l.trans({ en: "Dynamic segment", ko: "동적 세그먼트" })>
-                    ├── _layout.tsx # <l.trans({ en: "Layout component", ko: "레이아웃 컴포넌트" })>
-                    └── _index.tsx  # <l.trans({ en: "Page component", ko: "페이지 컴포넌트" })>
+└── apps/               # Application list
+    └── appA/           # Individual application
+        └── page/       # File-routed pages
+            ├── pageA/  # Page folder
+            │   ├── _layout.tsx    # Layout component
+            │   └── _index.tsx       # Page component
+            └── pageB/             # Another page
+                ├── _layout.tsx    # Layout component
+                ├── _index.tsx       # Page component
+                └── [param]/       # Dynamic segment
+                    ├── _layout.tsx # Layout component
+                    └── _index.tsx  # Page component
 ```
 
 ### Code
 
 ```bash
-└── {apps,libs}/          # <l.trans({ en: "Application or library code", ko: "애플리케이션 또는 라이브러리 코드" })>
-    └── {appA,libA}/      # <l.trans({ en: "Individual application or library", ko: "개별 애플리케이션 또는 라이브러리" })>
-        └── lib/          # <l.trans({ en: "Domain modules", ko: "도메인 모듈" })>
-            └── moduleA/  # <l.trans({ en: "Feature module", ko: "기능 모듈" })>
-                ├── moduleA.abstract.md   # <l.trans({ en: "Business intent", ko: "비즈니스 의도" })>
-                ├── moduleA.constant.ts   # <l.trans({ en: "Types and schemas", ko: "타입과 스키마" })>
-                ├── moduleA.dictionary.ts # <l.trans({ en: "Translations", ko: "번역" })>
-                ├── moduleA.document.ts   # <l.trans({ en: "Document", ko: "문서" })>
-                ├── moduleA.service.ts    # <l.trans({ en: "Business logic", ko: "비즈니스 로직" })>
-                ├── moduleA.signal.ts     # <l.trans({ en: "API endpoints", ko: "API 엔드포인트" })>
-                ├── moduleA.store.ts      # <l.trans({ en: "State management", ko: "상태 관리" })>
-                ├── moduleA.Template.tsx  # <l.trans({ en: "Form UI", ko: "수정/생성 UI" })>
-                ├── moduleA.Unit.tsx      # <l.trans({ en: "Overview UI", ko: "개요 UI" })>
-                ├── moduleA.Util.tsx      # <l.trans({ en: "Utility UI", ko: "유틸리티 UI" })>
-                ├── moduleA.View.tsx      # <l.trans({ en: "Detail view UI", ko: "상세 뷰 UI" })>
-                └── moduleA.Zone.tsx      # <l.trans({ en: "Integration UI", ko: "통합 UI" })>
+└── {apps,libs}/          # Application or library code
+    └── {appA,libA}/      # Individual application or library
+        └── lib/          # Domain modules
+            └── moduleA/  # Feature module
+                ├── moduleA.abstract.md   # Business intent
+                ├── moduleA.constant.ts   # Types and schemas
+                ├── moduleA.dictionary.ts # Translations
+                ├── moduleA.document.ts   # Document
+                ├── moduleA.service.ts    # Business logic
+                ├── moduleA.signal.ts     # API endpoints
+                ├── moduleA.store.ts      # State management
+                ├── moduleA.Template.tsx  # Form UI
+                ├── moduleA.Unit.tsx      # Overview UI
+                ├── moduleA.Util.tsx      # Utility UI
+                ├── moduleA.View.tsx      # Detail view UI
+                └── moduleA.Zone.tsx      # Integration UI
 ```
 
 ## Agent Notes

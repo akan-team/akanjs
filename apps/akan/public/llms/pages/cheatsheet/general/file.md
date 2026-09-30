@@ -28,7 +28,7 @@ A file feature splits one upload in two. The bytes go to storage, and the databa
 
 Where
 
-- **File model.** Stores the File record with its name, url, size, status and progress.
+- file.constant.ts, file.document.ts: **File model.** Stores the File record with its name, url, size, status and progress.
 
 - file.signal.ts: **Upload endpoint.** Receives `Upload` files and hands them to the service.
 
@@ -36,7 +36,7 @@ Where
 
 - StorageAdaptorRole: **Storage adaptor.** Where the bytes live; the default `BlobStorage` writes to local disk.
 
-- **Store and UI.** Upload from a file input and show the result once it is `active`.
+- file.store.ts, File.Util.tsx: **Store and UI.** Upload from a file input and show the result once it is `active`.
 
 - localFile.getBlob: **Serve endpoint.** Ships in `@libs/util` and streams a local file back during development.
 
@@ -120,6 +120,8 @@ An image shows as a preview, and every file gets a download link:
 
 **Images show `url`; every file can be downloaded from it.** `download={filename}` restores the name the user picked, since the stored path holds only the id.
 
+**A link goes through `resolveServerUrl`.** The stored `url` is relative to the server, and a page a native shell or a desktop app serves is on another origin. `Image` already resolves it.
+
 Auto-attach To A Model Field
 
 Writing that for every model gets repetitive. Mark one upload mutation with `{ fileUpload: true }`, and every model gets helpers that upload into its File fields:
@@ -130,19 +132,19 @@ You get
 
 - st.do.upload<Field>On<Model>: Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s.
 
-- Form controls in `@libs/shared/ui` that call `add<Model>Files` for the `slice` you pass.
+- Field.Img, Field.Imgs, Field.File, Field.Files: Form controls in `@libs/shared/ui` that call `add<Model>Files` for the `slice` you pass.
 
 The marked mutation takes four fixed body fields in this shape. For the service method it calls, see `FileService.addFiles` in `libs/shared/lib/file`:
 
 The four fields
 
-- [Upload] — The files, in the order they were picked.
+- files ([Upload]): The files, in the order they were picked.
 
-- String — A JSON array with one `{ lastModifiedAt, size }` per file.
+- metas (String): A JSON array with one `{ lastModifiedAt, size }` per file.
 
-- String — The owning model's name, such as `user`.
+- type (String): The owning model's name, such as `user`.
 
-- ID — The id of the form being edited, left out when there is none.
+- parentId (ID, nullable): The id of the form being edited, left out when there is none.
 
 **Mark exactly one mutation.** If two carry the flag, the first one found is used and a warning is printed.
 
@@ -170,9 +172,9 @@ Grow Later
 
 Start on local disk. Once the feature works, move to S3, R2 or MinIO by swapping the storage adaptor, not by rewriting the upload API.
 
-- Local disk — The default and the easiest to debug. Files land in `local/<app>/backend`, and `localFile.getBlob` streams them back.
+- Local disk — `BlobStorage` — The default and the easiest to debug. Files land in `local/<app>/backend`, and `localFile.getBlob` streams them back.
 
-- Object storage — For production and shared access. Write an `adapt()` class that implements `StorageAdaptor` and apply it in `lib/option.ts`.
+- Object storage — `option.applyAdaptor(StorageAdaptorRole, S3Storage)` — For production and shared access. Write an `adapt()` class that implements `StorageAdaptor` and apply it in `lib/option.ts`.
 
 Applying your own adaptor is one line in the app's option file:
 
@@ -349,6 +351,7 @@ export class FileStore extends store(sig.file, () => ({
 ```ts
 "use client";
 import { st, usePage } from "@apps/myapp/client";
+import { resolveServerUrl } from "akanjs/client";
 import { Image } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
 
@@ -367,7 +370,7 @@ export const Upload = () => {
           {uploadedFile.mimetype.startsWith("image/") ? (
             <Image src={uploadedFile.url} alt={uploadedFile.filename} />
           ) : null}
-          <a href={uploadedFile.url} download={uploadedFile.filename}>
+          <a href={resolveServerUrl(uploadedFile.url)} download={uploadedFile.filename}>
             {l.trans({ en: "Download", ko: "다운로드" })}
           </a>
         </>

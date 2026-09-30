@@ -50,15 +50,15 @@ Five kinds of helper usually live here. Each needs nothing but its arguments, so
 
 Kind
 
-- Formatting that a service's output and the UI share, such as bytes, money or short labels. — // apps/koyo/common/formatBytes.ts export const formatBytes = (bytes: number) => { if (bytes < 1) return "0B"; const units = ["B", "KB", "MB", "GB", "TB"]; const idx = Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1); return `${(bytes / 1024 ** idx).toFixed(1)}${units[idx]}`; };
+- Formatter: Formatting that a service's output and the UI share, such as bytes, money or short labels.
 
-- A validation or predicate that must give the same answer on the server and in the browser. — // apps/koyo/common/isWebUrl.ts export const isWebUrl = (value: string) => { try { const { protocol } = new URL(value); return protocol === "http:" || protocol === "https:"; } catch { return false; } };
+- Validator: A validation or predicate that must give the same answer on the server and in the browser.
 
-- A small generic helper: random codes, padding, shuffling or a short string transform. — // libs/util/common/randomCode.ts import { pad } from "./pad"; export const randomCode = (length = 6) => pad(Math.floor(Math.random() * 10 ** length), length);
+- Random and string utility: A small generic helper: random codes, padding, shuffling or a short string transform.
 
-- A small object or builder that describes a query, filter or display without running it. — // libs/shared/lib/summary/summary.constant.ts import { getQueryMeta } from "@libs/shared/common"; activeUser: field(Int, { default: 0 }).meta( getQueryMeta<UserFilter>("user").query("byStatuses").args([["active"]]), ),
+- Metadata builder: A small object or builder that describes a query, filter or display without running it.
 
-- A pure transform of stored content, such as rich-editor JSON into plain text. — // libs/shared/common/richEditor.ts export class RichEditor { static richTextToPlain(content: unknown): string { const walk = (node: unknown): string => { if (!node || typeof node !== "object") return ""; const { type, text, children } = node as ContentNode; if (typeof text === "string") return text; const inner = Array.isArray(children) ? children.map(walk).join("") : ""; return type === "paragraph" ? `${inner}\n` : inner; }; return walk((content as { root?: unknown } | null)?.root).trim(); } }
+- Content transform: A pure transform of stored content, such as rich-editor JSON into plain text.
 
 **Two are hypothetical, three are real.** `formatBytes` and `isWebUrl` sit in a sample app; the other three are files in this workspace.
 
@@ -84,17 +84,33 @@ A common helper runs wherever it is imported: in Bun for a service, in the brows
 
 What the helper uses
 
-- common/
+common/
 
-- webkit/
+webkit/
 
-- srvkit/
+srvkit/
 
 - Both sides have it
 
+  - ./<sibling> · akanjs/base: A sibling file and `akanjs/base` are the only value imports a common file makes.
+
+  - URL · Intl · Math · JSON: Standard JavaScript built-ins exist in Bun and in every browser.
+
+  - import type: Erased before bundling, so the type may come from any package.
+
 - Only the browser has it
 
+  - window · document · navigator: Browser globals do not exist on the server.
+
+  - akanjs/client/native · React hook: The native-app bridge is browser-only, and a React hook needs a client component.
+
 - Only the server has it
+
+  - node:* · fs · Bun: Server runtime APIs that a browser bundle cannot load.
+
+  - process.env · secret: Server settings and secrets must never reach the browser bundle.
+
+  - server SDK: A vendor client for payment, mail or storage.
 
 Put it here
 
@@ -112,13 +128,13 @@ Runs on
 
 Call
 
-- user.service.ts — `withRedirectQuery(signupRedirect, { userId: user.id })`
+- user.service.ts — Server — `withRedirectQuery(signupRedirect, { userId: user.id })`
 
-- user.service.ts — `randomCode(6)`
+- user.service.ts — Server — `randomCode(6)`
 
-- user.store.ts — `router.push(withRedirectQuery(redirect, { userId }))`
+- user.store.ts — Browser — `router.push(withRedirectQuery(redirect, { userId }))`
 
-- User.Util.tsx — `pad(phoneCodeRemain.minute, 2)`
+- User.Util.tsx — Browser — `pad(phoneCodeRemain.minute, 2)`
 
 **One import for both.** The service and the store import the same name from `@libs/shared/common`; nothing changes per side.
 
@@ -147,6 +163,106 @@ Inside a common file
 **A common file imports neither side.** Lint rejects a value import from the client side (a store, a module component, `ui/`, `webkit/`, `akanjs/client`) and from the server side (a service, document, signal, dictionary, `srvkit/`, `akanjs/server`). `import type` is erased before bundling, so a type from either side stays legal.
 
 ## Code Examples
+
+### common/
+
+```ts
+libs/util/common/isHttpUri.ts
+// camelCase file, filename equals the single export
+```
+
+### webkit/
+
+```ts
+libs/util/webkit/useSpeech.tsx
+// use<Thing>.tsx — .tsx even with no JSX
+```
+
+### srvkit/
+
+```ts
+libs/util/srvkit/cloudflareApi.ts
+// camelCase file, PascalCase class
+```
+
+### ui/
+
+```ts
+apps/akan/ui/BrowserMockup.tsx
+// PascalCase component, camelCase sidecar
+```
+
+### plugin/
+
+```ts
+libs/util/plugin/pushNotification.plugin.ts
+// <name>.plugin.ts
+```
+
+### Formatter
+
+```ts
+// apps/koyo/common/formatBytes.ts
+export const formatBytes = (bytes: number) => {
+  if (bytes < 1) return "0B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const idx = Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
+  return `${(bytes / 1024 ** idx).toFixed(1)}${units[idx]}`;
+};
+```
+
+### Validator
+
+```ts
+// apps/koyo/common/isWebUrl.ts
+export const isWebUrl = (value: string) => {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+```
+
+### Random and string utility
+
+```ts
+// libs/util/common/randomCode.ts
+import { pad } from "./pad";
+
+export const randomCode = (length = 6) =>
+  pad(Math.floor(Math.random() * 10 ** length), length);
+```
+
+### Metadata builder
+
+```ts
+// libs/shared/lib/summary/summary.constant.ts
+import { getQueryMeta } from "@libs/shared/common";
+
+activeUser: field(Int, { default: 0 }).meta(
+  getQueryMeta<UserFilter>("user").query("byStatuses").args([["active"]]),
+),
+```
+
+### Content transform
+
+```ts
+// libs/shared/common/richEditor.ts
+export class RichEditor {
+  static richTextToPlain(content: unknown): string {
+    const walk = (node: unknown): string => {
+      if (!node || typeof node !== "object") return "";
+      const { type, text, children } = node as ContentNode;
+      if (typeof text === "string") return text;
+      const inner = Array.isArray(children) ? children.map(walk).join("") : "";
+      return type === "paragraph" ? `${inner}\n` : inner;
+    };
+    return walk((content as { root?: unknown } | null)?.root).trim();
+  }
+}
+```
 
 ### libs/util/common/index.ts
 

@@ -85,6 +85,36 @@ describe("compressResponse", () => {
     expect((await compressResponse(req("br"), json())).headers.get("Content-Encoding")).toBeNull();
   });
 
+  test("leaves a Range request, and a partial, failed or redirecting answer, as they are", async () => {
+    const ranged = json();
+    const rangeReq = new Request("http://localhost/api/x", {
+      headers: { "accept-encoding": "br", range: "bytes=0-9" },
+    });
+    const partial = new Response(body, {
+      status: 206,
+      headers: { "Content-Type": "application/json", "Content-Range": `bytes 0-${body.length - 1}/${body.length * 2}` },
+    });
+    const failed = new Response(body, { status: 500, headers: { "Content-Type": "application/json" } });
+    const moved = new Response(body, { status: 302, headers: { "Content-Type": "text/html", Location: "/next" } });
+
+    for (const [request, response] of [
+      [rangeReq, ranged],
+      [req("br"), partial],
+      [req("br"), failed],
+      [req("br"), moved],
+    ] as const)
+      expect(await compressResponse(request, response)).toBe(response);
+  });
+
+  test("sends a body declared past 4 MiB as it is, without reading it", async () => {
+    const large = new Response(body, {
+      headers: { "Content-Type": "application/json", "Content-Length": String(4 * 1024 * 1024 + 1) },
+    });
+
+    expect(await compressResponse(req("br"), large)).toBe(large);
+    expect(large.bodyUsed).toBe(false);
+  });
+
   test("carries the status and the headers the handler set", async () => {
     const created = new Response(body, {
       status: 201,
@@ -96,6 +126,60 @@ describe("compressResponse", () => {
     expect(response.status).toBe(201);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Content-Type")).toBe("application/json");
+  });
+});
+
+describe("compressResponse behind Bun.serve", () => {
+  const blobPath = path.join(dir, "rows.json");
+  const blob = JSON.stringify(Array.from({ length: 20_000 }, (_, i) => ({ id: i, title: "repeated title" })));
+  fs.writeFileSync(blobPath, blob);
+
+  const serve = () =>
+    Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      routes: {
+        "/blob": (request) =>
+          compressResponse(
+            request,
+            new Response(Bun.file(blobPath).stream(), { headers: { "x-content-type-options": "nosniff" } }),
+          ),
+        "/typed": (request) => compressResponse(request, new Response(Bun.file(blobPath))),
+        "/api": (request) => compressResponse(request, json()),
+      },
+    });
+
+  test("a file body goes out whole, typed by its name, and a Range of it as Bun's own 206", async () => {
+    const server = serve();
+    try {
+      const whole = await fetch(`http://127.0.0.1:${server.port}/blob`, { headers: { "accept-encoding": "br" } });
+      expect(whole.headers.get("content-encoding")).toBeNull();
+      expect(whole.headers.get("content-type")).toBe("application/json;charset=utf-8");
+      expect(whole.headers.get("content-length")).toBe(String(blob.length));
+      expect(await whole.text()).toBe(blob);
+
+      for (const route of ["/blob", "/typed"]) {
+        const ranged = await fetch(`http://127.0.0.1:${server.port}${route}`, {
+          headers: { "accept-encoding": "br", range: "bytes=10-19" },
+        });
+        expect(ranged.status).toBe(206);
+        expect(ranged.headers.get("content-range")).toBe(`bytes 10-19/${blob.length}`);
+        expect(await ranged.text()).toBe(blob.slice(10, 20));
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("an API answer is still compressed", async () => {
+    const server = serve();
+    try {
+      const api = await fetch(`http://127.0.0.1:${server.port}/api`, { headers: { "accept-encoding": "br" } });
+      expect(api.headers.get("content-encoding")).toBe("br");
+      expect(await api.text()).toBe(await json().text());
+    } finally {
+      server.stop(true);
+    }
   });
 });
 

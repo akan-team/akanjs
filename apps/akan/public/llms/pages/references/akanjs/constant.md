@@ -33,17 +33,17 @@ Export
 
 - field: The builder `via` hands you. Each call declares one stored field.
 
-- Variants of `field` that keep a value away from agents, the client, or default reads.
+- field.visual, field.hidden, field.secret: Variants of `field` that keep a value away from agents, the client, or default reads.
 
 - resolve: Declares a field the server computes for each response instead of storing it.
 
 - getDefault: Builds the blank object a new record or form starts from.
 
-- Types for the stored shape, the default shape, a query, a purified value, and a file.
+- DocumentModel, DefaultOf, QueryOf, PurifiedModel, ProtoFile, ProtoLightFile: Types for the stored shape, the default shape, a query, a purified value, and a file.
 
-- Turn raw data into model values, and a model back into a checked plain object.
+- crystalize, makePurify: Turn raw data into model values, and a model back into a checked plain object.
 
-- Convert values to and from the payload that crosses a boundary.
+- serialize, deserialize: Convert values to and from the payload that crosses a boundary.
 
 - ConstantRegistry: Finds model classes, refNames and enums at runtime.
 
@@ -85,9 +85,9 @@ via
 
 `via` is one overloaded function, not a namespace: there is no `via.model` or `via.scalar`. What you pass decides which class you get.
 
-- Arguments
+Arguments
 
-- Declares
+Declares
 
 - (field) => ({ … }) — `BannerInput`, or a scalar. A lone builder callback is either one.
 
@@ -113,7 +113,7 @@ field
 
 Types
 
-- Write
+Write
 
 - field(String) — One value: `String`, `Boolean`, `Date`, `ID`, `Int`, `Float` or `Any`.
 
@@ -141,27 +141,27 @@ The second argument is an options object. `nullable`, `select`, `enum` and `meta
 
 Value and Checks
 
-- T | ((doc: { id: string }) => T) — The starting value. A function runs again for every record.
+- default (T | ((doc: { id: string }) => T)): The starting value. A function runs again for every record.
 
-- (value, model) => boolean — Your own check, run by `purify` and on every document save. `false` rejects the value.
+- validate ((value, model) => boolean): Your own check, run by `purify` and on every document save. `false` rejects the value.
 
-- boolean — false — Changing it in a document save throws. Query-level writes skip the check.
+- immutable (boolean, default false): Changing it in a document save throws. Query-level writes skip the check.
 
-- The value type of a `Map` field, such as `String` or a scalar. Required for `Map`.
+- of: The value type of a `Map` field, such as `String` or a scalar. Required for `Map`.
 
-- boolean — false — The same as declaring it with `field.visual`.
+- visual (boolean, default false): The same as declaring it with `field.visual`.
 
-- query object — Insight fields only: the condition this counter counts. `{}` counts every match.
+- accumulate (query object): Insight fields only: the condition this counter counts. `{}` counts every match.
 
 Search and Relations
 
-- "title" | "desc" | "tag" | "thumb" | "filter" — Adds the field to full-text search in that role. `thumb` is kept for display, never matched.
+- text ("title" | "desc" | "tag" | "thumb" | "filter"): Adds the field to full-text search in that role. `thumb` is kept for display, never matched.
 
-- "removeRef" | "removeWith" | "removeWithAny" — Removes related documents together. The value says which side follows which.
+- cascade ("removeRef" | "removeWith" | "removeWithAny"): Removes related documents together. The value says which side follows which.
 
-- string — The refName an `ID` field points at, as in `{ ref: "org", cascade: "removeWith" }`.
+- ref (string): The refName an `ID` field points at, as in `{ ref: "org", cascade: "removeWith" }`.
 
-- string — The field naming which model the id points at: an `enumOf`, or a `String` with `removeWithAny`.
+- refPath (string): The field naming which model the id points at: an `enumOf`, or a `String` with `removeWithAny`.
 
 **`text` needs a string.** `title`, `desc` and `tag` take `String`; `thumb` and `filter` also take an `ID` or a relation. A `Map` or a nested array takes no role.
 
@@ -171,19 +171,19 @@ Docs and Samples Only
 
 These describe the field for the schema docs, the API explorer and `sampleOf()`. Nothing enforces them, so put a rule that must hold in `validate`.
 
-- number — A lower bound shown in the schema docs. `sampleOf()` uses it as the sample.
+- min (number): A lower bound shown in the schema docs. `sampleOf()` uses it as the sample.
 
-- number — An upper bound, used the same way as `min`.
+- max (number): An upper bound, used the same way as `min`.
 
-- number — A shortest length for the schema docs. On an array, `purify` does check the item count.
+- minlength (number): A shortest length for the schema docs. On an array, `purify` does check the item count.
 
-- number — A longest length, handled the same way as `minlength`.
+- maxlength (number): A longest length, handled the same way as `minlength`.
 
-- "email" | "password" | "url" — Makes `sampleOf()` produce a realistic email, password or URL.
+- type ("email" | "password" | "url"): Makes `sampleOf()` produce a realistic email, password or URL.
 
-- T — A sample value for the schema docs and the API explorer's example requests.
+- example (T): A sample value for the schema docs and the API explorer's example requests.
 
-- "child" | "parent" | "relation" — A label the schema docs show on a relation.
+- refType ("child" | "parent" | "relation"): A label the schema docs show on a relation.
 
 Chained Methods
 
@@ -191,7 +191,7 @@ Method
 
 - .optional(): Allows `null`. Without a `default`, the field starts at `null`.
 
-- .meta(obj): Attaches free-form metadata. A summary counter uses it to name the list it counts.
+- .meta(obj): Attaches free-form metadata. A summary counter uses it to name the list it counts. — Example: `field(Int, { default: 0 }).meta(getQueryMeta<UserFilter>("user").query("byStatuses").args([["active"]]))`
 
 **Give a per-record default as a function.** `default: dayjs()` freezes the moment the module loaded, and a literal `{}` is one object every record shares. Write `() => dayjs()` and `() => ({})`.
 
@@ -201,19 +201,27 @@ Three variants of `field`. All three are stored like any other field; they diffe
 
 Field
 
-- Read
+Read
 
-- Page
+Page
 
-- Agent — MCP
+Agent — MCP
 
-- Draft
+Draft
 
-- Search
+Search
 
 - Sent to the page
 
+  - field: An ordinary field. Every side reads it.
+
+  - field.visual: Drawn on the page, stripped from everything an agent reads.
+
 - Kept on the server
+
+  - field.hidden: Server code reads it. The client gets `null`.
+
+  - field.secret: Read only through a projection that names it.
 
 The value can reach it
 
@@ -251,9 +259,7 @@ getDefault
 
 `getDefault` builds the blank object a new record or form starts from. You usually call it through the model as `Model.getDefault()`.
 
-- Field
-
-- Starts at
+Starts at
 
 - `field.hidden` · `field.secret` — `null`, always.
 
@@ -283,15 +289,15 @@ Type helpers that documents, stores and tests use to name a model's other shapes
 
 Type
 
-- DocumentModel<T>: The stored shape. Relations become id strings, and a list of them `string[]`.
+- DocumentModel<T>: The stored shape. Relations become id strings, and a list of them `string[]`. — Example: `type BannerDoc = DocumentModel<cnst.Banner>;`
 
-- DefaultOf<T>: What `getDefault()` returns. Methods are dropped, and relation fields may be `null`.
+- DefaultOf<T>: What `getDefault()` returns. Methods are dropped, and relation fields may be `null`. — Example: `type BannerDefault = DefaultOf<cnst.Banner>;`
 
-- QueryOf<T>: An opaque query descriptor, typed `any`. A slice's `exec` returns one.
+- QueryOf<T>: An opaque query descriptor, typed `any`. A slice's `exec` returns one. — Example: `type BannerQuery = QueryOf<BannerDoc>;`
 
 - PurifiedModel<T>: What `purify` returns. Relations become ids; dates keep the `Dayjs` type.
 
-- The shape of a `File` and a `LightFile`, for UI code that takes a file prop.
+- ProtoFile, ProtoLightFile: The shape of a `File` and a `LightFile`, for UI code that takes a file prop.
 
 **A `QueryOf` does not chain.** You cannot call `.sort()` or `.limit()` on what a slice returns. Pass `{ sort, page, limit }` to the store's `init` fetch instead.
 
@@ -335,7 +341,7 @@ Call
 
 - deserialize(ref, arrDepth, value, opts): `opts` is `{ nullable?, key?, enum?, convertFn? }`. With `enum`, a value outside it throws.
 
-- The short form, `(ref, value, nullable?)`. Takes a primitive, `Map` or model; `[Ref]` for a list.
+- ConstantRegistry.serialize, ConstantRegistry.deserialize: The short form, `(ref, value, nullable?)`. Takes a primitive, `Map` or model; `[Ref]` for a list.
 
 A date on its way out and back:
 
@@ -349,19 +355,19 @@ ConstantRegistry
 
 Static method
 
-- getRefName(Model): The model's refName. Throws for an unknown class unless `{ allowEmpty: true }` is given.
+- getRefName(Model): The model's refName. Throws for an unknown class unless `{ allowEmpty: true }` is given. — Example: `ConstantRegistry.getRefName(cnst.Banner); // "banner"`
 
-- getModelName(Model): The class name for its role, such as `BannerInput` or `LightBanner`.
+- getModelName(Model): The class name for its role, such as `BannerInput` or `LightBanner`. — Example: `ConstantRegistry.getModelName(cnst.LightBanner); // "LightBanner"`
 
-- getModelRef(refName, modelType?): The class for a refName and role. With no role it finds a primitive such as `"Int"`.
+- getModelRef(refName, modelType?): The class for a refName and role. With no role it finds a primitive such as `"Int"`. — Example: `ConstantRegistry.getModelRef("banner", "light");`
 
-- A module's registered entry: its five classes, or a scalar's one. Throws unless `allowEmpty`.
+- getDatabase(refName), getScalar(refName): A module's registered entry: its five classes, or a scalar's one. Throws unless `allowEmpty`.
 
 - has(Model): Whether the class is registered.
 
-- Which role a class plays.
+- isFull, isLight, isObject, isInsight, isScalar: Which role a class plays.
 
-- The short forms from the `serialize` / `deserialize` section above.
+- serialize, deserialize: The short forms from the `serialize` / `deserialize` section above.
 
 ## Code Examples
 

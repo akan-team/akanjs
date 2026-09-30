@@ -31,7 +31,7 @@ Term
 
 - articleForm: The store's copy of the record being written. `st.use.articleForm()` reads it.
 
-- A wrapper such as `Load.Edit` or `Model.Edit` that fills, opens and saves the form.
+- edit shell: A wrapper such as `Load.Edit` or `Model.Edit` that fills, opens and saves the form.
 
 - fetch.slice.<name>: Tells a shell which model to save and which list a new record joins.
 
@@ -133,31 +133,31 @@ Options And Tips
 
 Load.Edit props
 
-- SliceMeta — Required. `fetch.slice.<name>`: the model to save and the list a new record joins.
+- slice (SliceMeta): Required. `fetch.slice.<name>`: the model to save and the list a new record joins.
 
-- Partial<Model> | ClientEdit — Required. A seed object opens a new form; `fetch.edit<Model>` opens a saved record.
+- edit (Partial<Model> | ClientEdit): Required. A seed object opens a new form; `fetch.edit<Model>` opens a saved record.
 
-- "modal" | "form" | "empty" — "modal" — `form` draws the form in place with a save button; `empty` draws the fields only.
+- type ("modal" | "form" | "empty", default "modal"): `form` draws the form in place with a save button; `empty` draws the fields only.
 
-- string — "edit" — The store's modal name that opens this form. Give a second form of the same model its own name.
+- modal (string, default "edit"): The store's modal name that opens this form. Give a second form of the same model its own name.
 
-- string — After saving: a path, `back`, or `reset`. `[articleId]` in a path becomes the saved id.
+- onSubmit (string): After saving: a path, `back`, or `reset`. `[articleId]` in a path becomes the saved id.
 
-- string — When the modal closes: a path, `back`, or `reset`. `type=form` draws no cancel control.
+- onCancel (string): When the modal closes: a path, `back`, or `reset`. `type=form` draws no cancel control.
 
-- CreateOption — Store options for the save. `{ path: "self" }` also writes the saved record into `self`.
+- submitOption (CreateOption): Store options for the save. `{ path: "self" }` also writes the saved record into `self`.
 
-- string — Save button label. Without it, the button reads Create or Update plus the model name.
+- submitText (string): Save button label. Without it, the button reads Create or Update plus the model name.
 
-- boolean — true — `false` hides the save button, so you can call `st.do.submitArticle()` from your own.
+- renderSubmit (boolean, default true): `false` hides the save button, so you can call `st.do.submitArticle()` from your own.
 
-- boolean — true — Keeps save disabled until the form passes the model's input rules.
+- checkSubmit (boolean, default true): Keeps save disabled until the form passes the model's input rules.
 
-- ReactNode — Loading.Skeleton — Shown while an un-awaited `edit` promise is still pending.
+- loading (ReactNode, default Loading.Skeleton): Shown while an un-awaited `edit` promise is still pending.
 
-- boolean | string — true — Draft recovery. `false` turns it off; a string names the scope.
+- draft (boolean | string, default true): Draft recovery. `false` turns it off; a string names the scope.
 
-- string — Wrapper classes. `modalClassName` and `submitClassName` style the modal and the save button.
+- className (string): Wrapper classes. `modalClassName` and `submitClassName` style the modal and the save button.
 
 Tips
 

@@ -8,6 +8,7 @@ import {
   AkanNativeError,
   API_VERSION,
   build,
+  checkPublishUpdate,
   compareBundles,
   doctor,
   type LogEvent,
@@ -143,6 +144,30 @@ describe("programmatic API", () => {
       );
       expect(unsigned.code).toBe("CONFIG_INVALID");
       expect(unsigned.message).toContain("no update signing key");
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
+  });
+
+  test("checkPublishUpdate refuses without building what publishUpdate would, a server change of the channel too", () => {
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "check.update.key");
+    try {
+      const { publicKey } = updateKeygen({ config: config() });
+      const updates = { url: "https://updates.example.com", publicKey };
+      const out = join(root, "check-out");
+      const releases = join(out, `linux-${process.arch}`);
+      mkdirSync(releases, { recursive: true });
+      writeFileSync(join(releases, "production.json"), JSON.stringify({ bundle: "1.0.0-1", server: true }));
+      const check = (options: { server?: boolean; channel?: string } = {}) =>
+        checkPublishUpdate({ appDir: app("check"), config: config({ updates }), platform: "linux", out, ...options });
+      expect(check({ server: true })).toEqual({ channel: "production", out });
+      expect(() => check()).toThrow("carries a server and this build does not");
+      expect(check({ channel: "pilot" })).toEqual({ channel: "pilot", out });
+      expect(() => checkPublishUpdate({ appDir: app("check"), config: config(), platform: "linux" })).toThrow(
+        "the config has no updates",
+      );
     } finally {
       if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
       else process.env.AKAN_NATIVE_UPDATE_KEY = previous;

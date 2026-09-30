@@ -32,7 +32,7 @@ akanjs/client
 
 Export
 
-- The route chain: the one default export of every route file.
+- page, layout, rootLayout: The route chain: the one default export of every route file.
 
 - PageConfig: What `.config()` takes: transition, safe area, cache and SSR mode.
 
@@ -40,19 +40,21 @@ Export
 
 - cn: Joins class names and resolves Tailwind conflicts.
 
-- Prop types for components that draw one record or a list.
+- ModelProps, ModelsProps: Prop types for components that draw one record or a list.
 
-- Runtime proxies without your app's types. Import the typed ones from `@apps/<app>/client`.
+- usePage, msg, Err, fetch, sig: Runtime proxies without your app's types. Import the typed ones from `@apps/<app>/client`.
 
-- Read cookies, the auth token and the signed-in account.
+- getCookie, getAccount, getAuthToken: Read cookies, the auth token and the signed-in account.
 
-- Save or clear the auth token in fetch, the cookie and storage at once.
+- setAuth, initAuth, resetAuth: Save or clear the auth token in fetch, the cookie and storage at once.
+
+- resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
-- Used by route loaders. App code never calls them.
+- resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
 
@@ -110,27 +112,29 @@ ModelProps / ModelsProps
 
 `ModelProps` types a Unit that draws one record: `ModelProps<"user", cnst.LightUser>` puts the record under `user`. `ModelsProps` types a component that draws a list.
 
-- cnst.LightUser — The record, under the key named by the first type argument.
+- user (cnst.LightUser): The record, under the key named by the first type argument.
 
-- string — Classes from the caller.
+  - required
 
-- string — Where the card links to.
+- className (string): Classes from the caller.
 
-- (model) => unknown — Called with the record when it is clicked.
+- href (string): Where the card links to.
 
-- SliceMeta — The slice the record came from.
+- onClick ((model) => unknown): Called with the record when it is clicked.
 
-- DataAction[] — `"edit"`, `"view"`, `"remove"` or an element, shown as row actions.
+- slice (SliceMeta): The slice the record came from.
 
-- DataColumn[] — Columns to show when the record is drawn as a table row.
+- actions (DataAction[]): `"edit"`, `"view"`, `"remove"` or an element, shown as row actions.
 
-- FetchInitForm — How to load the list: `page`, `limit`, `sort`, `insight` and so on.
+- columns (DataColumn[]): Columns to show when the record is drawn as a table row.
 
-- QuerySetting — Which filter to list with, as `{ queryKey, args }`.
+- init (FetchInitForm): How to load the list: `page`, `limit`, `sort`, `insight` and so on.
 
-- SliceMeta — The slice the list came from.
+- query (QuerySetting): Which filter to list with, as `{ queryKey, args }`.
 
-- (model) => unknown — Called with the clicked record.
+- slice (SliceMeta): The slice the list came from.
+
+- onClickItem ((model) => unknown): Called with the clicked record.
 
 A Unit card that links to the record:
 
@@ -152,19 +156,49 @@ Stages by chain
 
 Stage
 
-- page
+page
 
-- layout
+layout
 
-- rootLayout
+rootLayout
 
 - Every chain
 
+  - .param(name, Type): One `[name]` segment of the path. A page declares every segment in its path.
+
+  - .search(name, Type): One query key. Written as `[Type]`, it is a list.
+
+  - .config(options): A `PageConfig`: transition, safe area, cache and SSR mode.
+
+  - .head(node | fn): The `<title>`, `<meta>` and `<link>` tags, written as JSX.
+
+  - .loading(fn): Shown while render awaits. It gets path values but no search values.
+
+  - .render(fn): The last stage. Draws the route from the typed arguments.
+
 - Page only
+
+  - .prompt(name, desc): Publishes the screen as an MCP prompt.
 
 - Layouts only
 
+  - .notFound(fn): What the subtree shows when a page is not found.
+
+  - .error(fn): What the subtree shows when rendering throws.
+
 - Root layout only
+
+  - .fonts(Font[]): Fonts the build subsets and preloads.
+
+  - .theme(name): The theme the page opens with.
+
+  - .manifest(obj): The web app manifest.
+
+  - .layoutStyle(…): Full-width web layout, or a centered phone column.
+
+  - .reconnect(on?): The connection-lost overlay.
+
+  - .wsConnect(on?): Opens the websocket when the page loads.
 
 Available
 
@@ -174,11 +208,11 @@ What render receives
 
 Each declared argument arrives already typed:
 
-- Declared as
+Declared as
 
-- Arrives as
+Arrives as
 
-- Note
+Note
 
 - ID · String — string
 
@@ -210,25 +244,25 @@ layout / rootLayout Stages
 
 layout() adds
 
-- ({ pathname, params, searchParams }) => node — What the subtree shows when a page is not found. Replaces the legacy `NotFound` export.
+- .notFound(fn) (({ pathname, params, searchParams }) => node): What the subtree shows when a page is not found. Replaces the legacy `NotFound` export.
 
-- ({ error, digest, pathname }) => node — What the subtree shows when rendering throws. Replaces the legacy `Error` export.
+- .error(fn) (({ error, digest, pathname }) => node): What the subtree shows when rendering throws. Replaces the legacy `Error` export.
 
 rootLayout() adds
 
 These are app-wide settings, so only the root `_layout.tsx` of an app or a basePath sets them.
 
-- Font[] — Fonts to subset and preload. Write the list inline; see `Font / createFont` below.
+- .fonts(fonts) (Font[]): Fonts to subset and preload. Write the list inline; see `Font / createFont` below.
 
-- "system" | "css" | string — `system` follows the OS, `css` sets no `data-theme`, and any other name is set as is.
+- .theme(theme) ("system" | "css" | string): `system` follows the OS, `css` sets no `data-theme`, and any other name is set as is.
 
-- WebAppManifest — The PWA manifest, emitted as a data URL.
+- .manifest(manifest) (WebAppManifest): The PWA manifest, emitted as a data URL.
 
-- "web" | "mobile" — "web" — `mobile` centers the app in a column at most 600px wide, and fills a narrower screen.
+- .layoutStyle(style) ("web" | "mobile", default "web"): `mobile` centers the app in a column at most 600px wide, and fills a narrower screen.
 
-- boolean — operationMode === "local" — Shows an overlay while the websocket is disconnected.
+- .reconnect(on = true) (boolean, default operationMode === "local"): Shows an overlay while the websocket is disconnected.
 
-- boolean — true — Connects the websocket on load. With `false`, call `fetch.instance.connect()` before subscribing.
+- .wsConnect(on = true) (boolean, default true): Connects the websocket on load. With `false`, call `fetch.instance.connect()` before subscribing.
 
 An app's root layout. `import "./styles.css";` stays its first line:
 
@@ -242,25 +276,25 @@ PageConfig
 
 `PageConfig` is the object `.config()` takes. It sets how a route enters, how much room it keeps for the device edges, and how the server sends it.
 
-- "none" | "fade" | "bottomUp" | "stack" | "scaleOut" — by platform — Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default by platform): Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.
 
-- boolean | "top" | "bottom" | { top, bottom, android } — on in the app, off on the web — Pads the page for the notch and the home bar.
+- safeArea (boolean | "top" | "bottom" | { top, bottom, android }, default on in the app, off on the web): Pads the page for the notch and the home bar.
 
-- number | boolean — 0 — Space kept for a fixed top bar, in px. `true` means 48.
+- topInset (number | boolean, default 0): Space kept for a fixed top bar, in px. `true` means 48.
 
-- number | boolean — 0 — Space kept for a fixed bottom bar, in px. `true` means 48.
+- bottomInset (number | boolean, default 0): Space kept for a fixed bottom bar, in px. `true` means 48.
 
-- boolean — on for nested routes on iOS — Allows swipe-back.
+- gesture (boolean, default on for nested routes on iOS): Allows swipe-back.
 
-- boolean — true for top-level routes — In the app shell, keeps the page's last render to show again on return.
+- cache (boolean, default true for top-level routes): In the app shell, keeps the page's last render to show again on return.
 
-- "stream" | "block" — "stream" — `stream` sends the shell first; `block` waits for every section before the first byte.
+- ssr ("stream" | "block", default "stream"): `stream` sends the shell first; `block` waits for every section before the first byte.
 
-- string — background color — Color painted behind the top safe area.
+- topSafeAreaColor (string, default background color): Color painted behind the top safe area.
 
-- string — background color — Color painted behind the bottom safe area.
+- bottomSafeAreaColor (string, default background color): Color painted behind the bottom safe area.
 
-- boolean — false — Keeps the route out of `akan build`. It still serves under `akan start`.
+- devOnly (boolean, default false): Keeps the route out of `akan build`. It still serves under `akan start`.
 
 A playground page that slides up, pads for the notch, and never ships to production:
 
@@ -290,9 +324,9 @@ What an agent gets back
 
 `prompts/get` runs the page body under the caller's token and renders nothing. What it answers depends on how the body went:
 
-- When
+When
 
-- prompts/get answers
+prompts/get answers
 
 - The page renders — The description, one resource per `fetch.*` query, and a `Tools for this screen: …` line.
 
@@ -332,25 +366,25 @@ Font / createFont
 
 `Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads it.
 
-- string — Family name. It also names the `--font-<name>` variable and the `font-<name>` class.
+- name (string): Family name. It also names the `--font-<name>` variable and the `font-<name>` class.
 
-- { src, weight, style? }[] — One file per weight and style. `src` starts with `/` and is read from `public/`.
+- paths ({ src, weight, style? }[]): One file per weight and style. `src` starts with `/` and is read from `public/`.
 
-- boolean — Applies this font to the whole app. One font per root layout at most.
+- default (boolean): Applies this font to the whole app. One font per root layout at most.
 
-- string[] — ["latin"] — Character sets to keep, such as `latin` or `ks-x-1001` for Korean.
+- subsets (string[], default ["latin"]): Character sets to keep, such as `latin` or `ks-x-1001` for Korean.
 
-- false — Skips subsetting. The file is only converted to woff2.
+- subset (false): Skips subsetting. The file is only converted to woff2.
 
-- boolean — true — `false` serves the file from `src` as is, with no build step and no preload.
+- optimize (boolean, default true): `false` serves the file from `src` as is, with no build step and no preload.
 
-- boolean — true — Adds a preload link for each optimized file.
+- preload (boolean, default true): Adds a preload link for each optimized file.
 
-- "auto" | "block" | "swap" | "fallback" | "optional" — "swap" — The CSS `font-display` value.
+- display ("auto" | "block" | "swap" | "fallback" | "optional", default "swap"): The CSS `font-display` value.
 
-- string — --font-<name> — The CSS variable that holds the font family.
+- variable (string, default --font-<name>): The CSS variable that holds the font family.
 
-- string — font-<name> — The class a `default` font puts on the app.
+- className (string, default font-<name>): The class a `default` font puts on the app.
 
 A Korean font in two weights, applied to the whole app:
 
@@ -380,7 +414,7 @@ Call
 
 - new Err(key, data?): The translated error class. Keys look like `<module>.error.<key>`; the status is 400.
 
-- Subclasses with their own status: 400, 401, 403, 404 and 409.
+- Err.BadRequest, Err.Unauthorized, Err.Forbidden, Err.NotFound, Err.Conflict: Subclasses with their own status: 400, 401, 403, 404 and 409.
 
 `usePage()` works in a server View, so translated text never needs a client component:
 
@@ -402,7 +436,7 @@ Member
 
 - fetch.init<Model><Suffix>(...args): Loads a slice's list and insight in a route, for a Zone's `init` prop.
 
-- Loads one record as `{ project, projectView }` or `{ project, projectEdit }`.
+- fetch.view<Model>(id), fetch.edit<Model>(id): Loads one record as `{ project, projectView }` or `{ project, projectEdit }`.
 
 - fetch.instance: The client itself, with `setTimeout(ms)` and `connect()`.
 
@@ -468,17 +502,17 @@ Device
 
 - lang: The locale the app opened with.
 
-- Notch and home-bar insets in px. 0 on the web.
+- topSafeArea, bottomSafeArea: Notch and home-bar insets in px. 0 on the web.
 
 - isMobile: True on a touch device or a mobile browser. `isMobileDevice()` is the same check.
 
 - vibrate(type?): Haptic feedback: `"light"`, `"medium"` (default), `"heavy"`, or a duration in ms.
 
-- Opens or closes the native keyboard.
+- showKeyboard(), hideKeyboard(): Opens or closes the native keyboard.
 
-- Reports the keyboard height as it opens and closes.
+- listenKeyboardChanged(fn), unlistenKeyboardChanged(): Reports the keyboard height as it opens and closes.
 
-- Reads or sets the page's scroll position.
+- getScrollTop(), setScrollTop(y): Reads or sets the page's scroll position.
 
 A button that vibrates lightly before it acts:
 

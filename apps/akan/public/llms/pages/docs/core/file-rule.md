@@ -41,29 +41,29 @@ The five UI suffixes are not five sizes of component either. Each one answers a 
 
 File
 
-- model.abstract.md — shared — Business intent, domain rules, workflows and agent notes beside the module code.
+- model.abstract.md: Business intent, domain rules, workflows and agent notes beside the module code. — shared
 
-- model.constant.ts — shared — Constants, status values, default options, and shared model types.
+- model.constant.ts: Constants, status values, default options, and shared model types. — shared
 
-- model.dictionary.ts — shared — Labels, field names, and text keys the model uses, such as the price label.
+- model.dictionary.ts: Labels, field names, and text keys the model uses, such as the price label. — shared
 
-- model.document.ts — server — Stored data shape, filters, and document model definition.
+- model.document.ts: Stored data shape, filters, and document model definition. — server
 
-- model.service.ts — server — Server-side business logic, such as creating an order or applying a coupon.
+- model.service.ts: Server-side business logic, such as creating an order or applying a coupon. — server
 
-- model.signal.ts — shared — Public actions, slices, endpoints, and internal jobs that pages can call.
+- model.signal.ts: Public actions, slices, endpoints, and internal jobs that pages can call. — shared
 
-- model.store.ts — client — Client or model state used across screens, such as selected filters or a cart.
+- model.store.ts: Client or model state used across screens, such as selected filters or a cart. — client
 
-- Model.Template.tsx — client — The create and edit form: reads st.use.productForm(), writes through generated setters.
+- Model.Template.tsx: The create and edit form: reads st.use.productForm(), writes through generated setters. — client
 
-- Model.Unit.tsx — server — One item in a list or grid, such as a row or card; takes the trimmed LightProduct.
+- Model.Unit.tsx: One item in a list or grid, such as a row or card; takes the trimmed LightProduct. — server
 
-- Model.Util.tsx — client — A domain UI helper named for the endpoint verb minus the model noun, like Refund.
+- Model.Util.tsx: A domain UI helper named for the endpoint verb minus the model noun, like Refund. — client
 
-- Model.View.tsx — server — One record in full detail: the full model, with fields a list never loads.
+- Model.View.tsx: One record in full detail: the full model, with fields a list never loads. — server
 
-- Model.Zone.tsx — client — A composed page section: feeds the store to Load.Units or Load.View; Unit and View draw it.
+- Model.Zone.tsx: A composed page section: feeds the store to Load.Units or Load.View; Unit and View draw it. — client
 
 The client boundary follows the suffix, not your judgment. Template, Zone, and Util always carry "use client" on line 1; Unit and View never do, so they render on the server and ship no JavaScript.
 
@@ -101,15 +101,39 @@ Not every folder type uses every file type. Database modules can have the full s
 
 Choose the file set by the business role of the folder. product is a thing you store, so it can have document and store files. _payment is something you do, so it usually focuses on service and signal files. money is a reusable value shape, so it stays small and definition-oriented.
 
-- lib/product/ — Database
+- database: Database — lib/product/
 
-- lib/_payment/ — Service
+- service: Service — lib/_payment/
 
-- lib/__scalar/money/ — Scalar
+- scalar: Scalar — lib/__scalar/money/
 
 - Business files — model
 
+  - .abstract.md
+
+  - .constant.ts
+
+  - .dictionary.ts
+
+  - .document.ts
+
+  - .service.ts
+
+  - .signal.ts
+
+  - .store.ts
+
 - UI files — Model
+
+  - .Template.tsx
+
+  - .Unit.tsx
+
+  - .Util.tsx
+
+  - .View.tsx
+
+  - .Zone.tsx
 
 {num} files
 

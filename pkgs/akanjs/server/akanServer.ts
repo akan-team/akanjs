@@ -170,6 +170,7 @@ export class AkanServer {
   #ops: OpsRoute | null | undefined;
   #lastMetrics: AkanMetricsReport = {};
   #stopping: Promise<void> | null = null;
+  #parentGone: boolean = false;
   #orphanExiting = false;
   constructor(
     name = "AkanServer",
@@ -473,7 +474,7 @@ export class AkanServer {
     this.#di.registerSchedule(this.serverMode);
     this.logger.verbose(`🚀 ${this.name} is running on ${unix ? `unix://${unix}` : `port ${port}`}`);
     const wsPort = this.#wsServer?.port;
-    process.send?.({
+    this.#sendReady({
       type: "ready",
       pid: process.pid,
       replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
@@ -482,7 +483,7 @@ export class AkanServer {
       wsUpstream: typeof wsPort === "number" ? { type: "tcp", host: "127.0.0.1", port: wsPort } : undefined,
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
-    } satisfies AkanIpcMessage);
+    });
     await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());
     return this;
@@ -491,7 +492,10 @@ export class AkanServer {
   async start({ listen, web }: { listen?: boolean; web?: AkanWebOption } = {}) {
     const isNoListenCommand = process.env.AKAN_COMMAND_TYPE === "script" || process.env.AKAN_COMMAND_TYPE === "console";
     const shouldListen = (listen ?? !isNoListenCommand) && this.serverMode !== "batch";
+    //? Before init: once an adaptor listens for `message`, Bun emits `disconnect` at the close only to listeners there.
+    if (shouldListen || !isNoListenCommand) this.#registerParentIpc();
     await this.init({ routes: shouldListen, web });
+    if (this.#parentGone) return this;
     if (!shouldListen) {
       const websocket = this.#di.getWebsocketAdaptor();
       if (websocket)
@@ -501,20 +505,18 @@ export class AkanServer {
         Logger.role = this.serverMode;
         this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
         this.#di.registerSchedule(this.serverMode);
-        this.#registerParentIpc();
         await this.#startLogTransport();
-        process.send?.({
+        this.#sendReady({
           type: "ready",
           pid: process.pid,
           replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
           role: this.serverMode,
-        } satisfies AkanIpcMessage);
+        });
         await this.#di.runSchedulerInit();
         ShutdownManager.register(this.logger, () => this.stop());
       }
       return this;
     }
-    this.#registerParentIpc();
     return this.listen();
   }
   stop(): Promise<void> {
@@ -561,10 +563,19 @@ export class AkanServer {
   #registerParentIpc() {
     process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
     process.on("disconnect", () => this.#handleParentDisconnect());
+    //? A channel that closed before these listeners existed never calls them; `connected` is what is left of it.
+    if (process.send && !process.connected) this.#handleParentDisconnect();
+  }
+
+  //? Bun answers a send on a closed channel with false and throws nothing.
+  #sendReady(message: AkanIpcMessage) {
+    if (process.send?.(message) === false) this.#handleParentDisconnect();
   }
 
   // Fires when the gateway dies, even by SIGKILL; exiting keeps orphan replicas from holding ports into the next boot.
   #handleParentDisconnect() {
+    if (this.#parentGone) return;
+    this.#parentGone = true;
     this.logger.warn("Parent IPC channel closed; shutting down to avoid an orphaned replica");
     setTimeout(() => this.#exitOrphaned(1), this.shutdownTimeoutMs + 1_000);
     void this.stop()

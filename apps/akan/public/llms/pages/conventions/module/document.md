@@ -35,15 +35,15 @@ Term
 
 - document: One loaded record: a class instance with `set()`, `save()` and your own chain methods.
 
-- A document method that changes `this` and returns it, so calls chain before one `save()`.
+- chain method: A document method that changes `this` and returns it, so calls chain before one `save()`.
 
 - model: The class for work on the whole collection. A service reaches it as `this.ticketModel`.
 
 - this.Ticket: The table facade inside the model class: `pickById`, `find`, `updateOne` and more.
 
-- A function that runs before or after a document is written.
+- hook: A function that runs before or after a document is written.
 
-- One UPDATE over every match. Fast, but no hook runs.
+- query-level write: One UPDATE over every match. Fast, but no hook runs.
 
 Standard Document Shape
 
@@ -51,11 +51,11 @@ A database module's document file declares three classes, always in this order. 
 
 Class
 
-- TicketFilter: Named queries and sort orders. Each query becomes fourteen methods on the model and the service.
+- TicketFilter: Named queries and sort orders. Each query becomes fourteen methods on the model and the service. — Example: `from(cnst.Ticket, (filter) => ({ query: {}, sort: {} }))`
 
-- Ticket: One loaded record. Its chain methods change state and return the document itself.
+- Ticket: One loaded record. Its chain methods change state and return the document itself. — Example: `by(cnst.Ticket)`
 
-- TicketModel: Work on the whole collection: atomic writes, loaders, indexes and hooks.
+- TicketModel: Work on the whole collection: atomic writes, loaders, indexes and hooks. — Example: `into(Ticket, TicketFilter, cnst.ticket, () => ({}))`
 
 **The order is fixed.** `TicketFilter` → `Ticket` → `TicketModel`, and `sort: {}` is written even when it is empty.
 
@@ -97,61 +97,61 @@ Most helpers sit in a field's position, as in `{ status: q.oneOf(list) }`. The t
 
 Helper
 
-- AND, OR and NOT. `all` and `any` skip `false` and `null`; an `{}` inside `any` matches every row. — q.any({ owner: userId }, { assignee: userId })
+- q.all, q.any, q.not: AND, OR and NOT. `all` and `any` skip `false` and `null`; an `{}` inside `any` matches every row. — Example: `q.any({ owner: userId }, { assignee: userId })`
 
-- Equal or not equal. A bare value such as `{ status }` already means equal.
+- q.eq, q.ne: Equal or not equal. A bare value such as `{ status }` already means equal.
 
-- In or not in a list. An empty `oneOf` matches nothing; an empty `notOneOf` matches everything. — { status: q.oneOf(statuses) }
+- q.oneOf, q.notOneOf: In or not in a list. An empty `oneOf` matches nothing; an empty `notOneOf` matches everything. — Example: `{ status: q.oneOf(statuses) }`
 
-- Range comparisons for numbers and dates. — { price: q.gte(minPrice) }
+- q.gt, q.gte, q.lt, q.lte, q.between: Range comparisons for numbers and dates. — Example: `{ price: q.gte(minPrice) }`
 
-- An array field contains this element. A bare value on an array field means the same. — { tags: q.has(tag) }
+- q.has: An array field contains this element. A bare value on an array field means the same. — Example: `{ tags: q.has(tag) }`
 
-- A text field contains this substring. — { title: q.contains(word) }
+- q.contains: A text field contains this substring. — Example: `{ title: q.contains(word) }`
 
-- The field has no value: absent or `null`. This is the one for "has no value". — q.empty("assignee")
+- q.empty(path): The field has no value: absent or `null`. This is the one for "has no value". — Example: `q.empty("assignee")`
 
-- The key is stored, or absent. `missing` is for rows written before the field existed.
+- q.exists(path), q.missing(path): The key is stored, or absent. `missing` is for rows written before the field existed.
 
-- Returns the query when the condition is truthy, `{}` otherwise. — q.when(onlyOpen, { status: "opened" })
+- q.when: Returns the query when the condition is truthy, `{}` otherwise. — Example: `q.when(onlyOpen, { status: "opened" })`
 
-- Full-text match over fields with a `text` role. See Text Search Query below.
+- q.search: Full-text match over fields with a `text` role. See Text Search Query below.
 
-- A raw SQL fragment with bound parameters. It ties the query to one database dialect.
+- q.raw(sql, params): A raw SQL fragment with bound parameters. It ties the query to one database dialect.
 
 Fourteen generated methods
 
 Every query generates fourteen methods, identically on the model and the service. Ten of them only read:
 
-- Promise<Doc[]> — Every match. Options: `sort`, `skip`, `limit`, `select`.
+- list<Filter> (Promise<Doc[]>): Every match. Options: `sort`, `skip`, `limit`, `select`.
 
-- Promise<string[]> — The same, ids only.
+- listIds<Filter> (Promise<string[]>): The same, ids only.
 
-- Promise<Doc | null> — One match or `null`.
+- find<Filter> (Promise<Doc | null>): One match or `null`.
 
-- Promise<string | null> — The same, id only.
+- findId<Filter> (Promise<string | null>): The same, id only.
 
-- Promise<Doc> — One match; throws when there is none.
+- pick<Filter> (Promise<Doc>): One match; throws when there is none.
 
-- Promise<string> — The same, id only.
+- pickId<Filter> (Promise<string>): The same, id only.
 
-- Promise<string | null> — The matching id or `null` — not a boolean.
+- exists<Filter> (Promise<string | null>): The matching id or `null` — not a boolean.
 
-- Promise<number> — How many match.
+- count<Filter> (Promise<number>): How many match.
 
-- Promise<Insight> — Every counter the Insight class declares.
+- insight<Filter> (Promise<Insight>): Every counter the Insight class declares.
 
-- QueryOf<Doc> — Builds the query without running it, synchronously. A slice's `exec` returns this.
+- query<Filter> (QueryOf<Doc>): Builds the query without running it, synchronously. A slice's `exec` returns this.
 
 The other four are **query-level writes**: one statement straight to the database, with no hook:
 
-- Promise<UpdateResult> — One atomic UPDATE marking every match removed.
+- remove<Filter> (Promise<UpdateResult>): One atomic UPDATE marking every match removed.
 
-- Promise<UpdateResult> — The same, on the newest match only.
+- removeOne<Filter> (Promise<UpdateResult>): The same, on the newest match only.
 
-- UpdateChain<Doc> — A chain; the patch goes on a terminal `.set(patch)`.
+- update<Filter> (UpdateChain<Doc>): A chain; the patch goes on a terminal `.set(patch)`.
 
-- UpdateChain<Doc> — The same, on the newest match only.
+- updateOne<Filter> (UpdateChain<Doc>): The same, on the newest match only.
 
 In a service they read like this:
 
@@ -171,17 +171,17 @@ Generated CRUD methods
 
 Next to the query methods, every model gets these six CRUD methods.
 
-- Promise<Doc> — Loads through the id loader and throws when the document does not exist.
+- get<Model>(id) (Promise<Doc>): Loads through the id loader and throws when the document does not exist.
 
-- Promise<Doc | null> — The same, but resolves to `null` instead of throwing, also for an empty id.
+- load<Model>(id?) (Promise<Doc | null>): The same, but resolves to `null` instead of throwing, also for an empty id.
 
-- Promise<Doc[]> — Loads several ids in one batched query.
+- load<Model>Many(ids) (Promise<Doc[]>): Loads several ids in one batched query.
 
-- Promise<Doc> — Inserts one document. The `save` and `create` hooks run.
+- create<Model>(data) (Promise<Doc>): Inserts one document. The `save` and `create` hooks run.
 
-- Promise<Doc> — Patches and saves one document. The `save` and `update` hooks run.
+- update<Model>(id, data) (Promise<Doc>): Patches and saves one document. The `save` and `update` hooks run.
 
-- Promise<Doc> — Soft-deletes one document by stamping `removedAt`. The `remove` hooks run.
+- remove<Model>(id) (Promise<Doc>): Soft-deletes one document by stamping `removedAt`. The `remove` hooks run.
 
 Called from a service:
 
@@ -195,11 +195,11 @@ It is an ordinary query node, so it combines with normal conditions:
 
 Search options
 
-- boolean — false — Treats the last word as a prefix, which a search-as-you-type box needs.
+- prefix (boolean, default false): Treats the last word as a prefix, which a search-as-you-type box needs.
 
-- ("title" | "desc" | "tag" | "filter")[] — Limits the match to some columns, e.g. `{ columns: ["title"] }`. Omitted, all four match.
+- columns (("title" | "desc" | "tag" | "filter")[]): Limits the match to some columns, e.g. `{ columns: ["title"] }`. Omitted, all four match.
 
-- number[] — [10, 1, 3, 0] — Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.
+- weights (number[], default [10, 1, 3, 0]): Ranking weights in the order title, desc, tag, filter: four finite, non-negative numbers.
 
 A service calls it like any other query:
 
@@ -251,23 +251,23 @@ The table facade
 
 Method
 
-- One document, or throw. The second argument is a bare projection, e.g. `{ secret: true }`.
+- pickById, pickOne: One document, or throw. The second argument is a bare projection, e.g. `{ secret: true }`.
 
-- `null` or a list instead of throwing. `find` chains `.sort()`, `.skip()` and `.limit()`.
+- findById, findOne, find: `null` or a list instead of throwing. `find` chains `.sort()`, `.skip()` and `.limit()`.
 
-- A number, or the matching id or `null`. `countDocuments` is the deprecated name.
+- count, exists: A number, or the matching id or `null`. `countDocuments` is the deprecated name.
 
-- Load, `set()` and `save()` in one call, so the save hooks run. — await this.Story.pickAndWrite(storyId, { status: "approved" })
+- pickAndWrite, pickOneAndWrite: Load, `set()` and `save()` in one call, so the save hooks run. — Example: `await this.Story.pickAndWrite(storyId, { status: "approved" })`
 
-- Query-level writes: one statement, no hooks. `One` hits the newest match.
+- updateOne, updateMany, removeOne, removeMany: Query-level writes: one statement, no hooks. `One` hits the newest match.
 
-- The same hookless writes, narrowed to one id. Not the document path.
+- updateById, removeById: The same hookless writes, narrowed to one id. Not the document path.
 
-- Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks. — return await new this.Story(data).save();
+- new this.Story(data): Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks. — Example: `return await new this.Story(data).save();`
 
-- Random documents that match the query.
+- sample, sampleOne: Random documents that match the query.
 
-- Several `updateOne` operations in one call, each optionally upserting.
+- bulkWrite: Several `updateOne` operations in one call, each optionally upserting.
 
 Extending A Library Model
 
@@ -331,9 +331,9 @@ An index speeds up a lookup you run often:
 
 The second argument of `schema.index()`:
 
-- boolean — false — Refuses a second document with the same values in these fields.
+- unique (boolean, default false): Refuses a second document with the same values in these fields.
 
-- string — <table>_<fields>_<position> — Fixes the index name. The default depends on the index's position in `_onSchema`.
+- name (string, default <table>_<fields>_<position>): Fixes the index name. The default depends on the index's position in `_onSchema`.
 
 **Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
 
@@ -351,15 +351,23 @@ Which writes run which hook event:
 
 Event
 
-- create — create<Model>
+create — create<Model>
 
-- update — update<Model> · save()
+update — update<Model> · save()
 
-- remove — remove<Model>
+remove — remove<Model>
 
-- query-level — update<Filter>
+query-level — update<Filter>
 
 - `schema.pre("…", fn)` · `schema.post("…", fn)`
+
+  - "save": Every document write except a removal.
+
+  - "create": Only when a document is inserted.
+
+  - "update": When an existing document is saved.
+
+  - "remove": When `remove<Model>(id)` stamps `removedAt`.
 
 runs
 
@@ -381,19 +389,37 @@ Where each kind of code goes, across the three classes and the service:
 
 What you are writing
 
-- Filter — from()
+Filter — from()
 
-- Document — by()
+Document — by()
 
-- Model — into()
+Model — into()
 
-- Service — serve()
+Service — serve()
 
 - Reading
 
+  - reusable condition: A list or lookup you would otherwise repeat in service methods.
+
+  - sort order: A named order such as `highPriority`.
+
+  - frequent lookup: A loader for a key you look up often, or an index for a query you run often.
+
 - Writing
 
+  - state transition: One record moves between states: `open()`, `approve()`.
+
+  - state precondition: The chain method throws `Err` when the record is in the wrong state.
+
+  - counter · bulk write: One UPDATE through the facade, returning `!!modifiedCount`.
+
+  - derived field · index: Small persistence work in `_onSchema`.
+
 - Orchestrating
+
+  - cross-document rule: Load every document involved, then throw `Err` or save.
+
+  - side effect of a write: `_postCreate`, `_postRemove` and the other service hooks.
 
 goes here
 

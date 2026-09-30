@@ -2,7 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nextRelaunchDelay, RELAUNCH_HEALTHY, RELAUNCH_LIMIT } from "../src/relaunch.ts";
+import {
+  nextRelaunchDelay,
+  RELAUNCH_HEALTHY,
+  RELAUNCH_LIMIT,
+  recoveryCommand,
+  recoveryScript,
+} from "../src/relaunch.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "akan-native-relaunch-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -75,6 +81,65 @@ process.exit(0);
     await Bun.sleep(1500);
     expect(readFileSync(marker, "utf8").trim().split(/\r?\n/)).toEqual(["gone"]);
   }, 30_000);
+});
+
+describe("relaunchAfterExit on macOS and Linux", () => {
+  test("puts the first rename back when the second one fails", async () => {
+    if (windows) return;
+    const script = join(dir, "half.ts");
+    writeFileSync(join(dir, "app-folder"), "");
+    writeFileSync(
+      script,
+      `import { relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
+const moves = [[${JSON.stringify(join(dir, "app-folder"))}, ${JSON.stringify(join(dir, "app-folder.previous"))}], [${JSON.stringify(join(dir, "missing"))}, ${JSON.stringify(join(dir, "app-folder"))}]];
+await relaunchAfterExit("/usr/bin/true", moves).then(() => process.exit(3), () => process.exit(0));
+`,
+    );
+    const run = Bun.spawn([process.execPath, script], { stdout: "inherit", stderr: "ignore" });
+    expect(await run.exited).toBe(0);
+    expect([existsSync(join(dir, "app-folder")), existsSync(join(dir, "app-folder.previous"))]).toEqual([true, false]);
+  });
+
+  test("starts the app once its parent is gone, even when nobody reaps that parent", async () => {
+    if (windows) return;
+    const marker = join(dir, "marker-zombie");
+    const app = standIn(marker);
+    const script = join(dir, "zombie.ts");
+    writeFileSync(
+      script,
+      `import { relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
+await relaunchAfterExit(${JSON.stringify(app)});
+process.exit(0);
+`,
+    );
+    //? `exec sleep` replaces the shell that started the app with a parent that never waits: the app stays a zombie.
+    const keeper = Bun.spawn(["/bin/sh", "-c", `"${process.execPath}" "${script}" & exec sleep 8`], {
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    try {
+      for (let waited = 0; !existsSync(marker) && waited < 5_000; waited += 100) await Bun.sleep(100);
+      expect(existsSync(marker)).toBe(true);
+    } finally {
+      keeper.kill("SIGKILL");
+    }
+  }, 20_000);
+});
+
+describe("the recovery of a Windows swap cut short", () => {
+  test("puts back only what a missing app lost, then starts it; a command RunOnce can run", () => {
+    const script = recoveryScript("C:\\Users\\O'Brien\\App\\app.exe", [
+      ["C:\\Users\\O'Brien\\App", "C:\\Users\\O'Brien\\App.previous"],
+      ["C:\\Users\\O'Brien\\App.update-1\\App", "C:\\Users\\O'Brien\\App"],
+    ]);
+    expect(script).toContain("$exe = 'C:\\Users\\O''Brien\\App\\app.exe'");
+    expect(script).toContain("if (Test-Path -LiteralPath $exe) { exit }");
+    expect(script).toContain("[array]::Reverse($moves)");
+    expect(recoveryCommand("C:\\Users\\me\\AppData\\Local\\dev.app\\akan-native-updates\\recover.ps1")).toContain(
+      "[IO.File]::ReadAllText('C:\\Users\\me",
+    );
+    expect(recoveryCommand(`C:\\${"x".repeat(300)}\\recover.ps1`)).toBeNull();
+  });
 });
 
 describe("relaunching after the browser process ended", () => {

@@ -23,13 +23,13 @@ Lint tells you a line is wrong. `akan quality` tells you the shape of the codeba
 
 What It Catches
 
-- Files Grown Too Long — A service past 500 lines, a Template or Zone past 800, or a Util past 1,000.
+- Files Grown Too Long — A service past 500 lines, a Template or Zone past 800, or a Util past 1,000. — `akan.file.recommended-max-lines`
 
-- Helpers In The Wrong File — A helper function declared in `order.service.ts` next to `OrderService`.
+- Helpers In The Wrong File — A helper function declared in `order.service.ts` next to `OrderService`. — `akan.convention.service`
 
-- Modules With No Server View — Its UI renders only from Template, Zone and Util, so all of it ships to the browser as JavaScript.
+- Modules With No Server View — Its UI renders only from Template, Zone and Util, so all of it ships to the browser as JavaScript. — `akan.ssr.module-missing-server-view`
 
-- Markup In The Bundle — A client component wraps a large static subtree around one or two handlers.
+- Markup In The Bundle — A client component wraps a large static subtree around one or two handlers. — `akan.ssr.client-static-markup`
 
 Run it before a review, after a refactor, and after any change to a `.tsx` file. The render share is the one number a UI change can quietly lower.
 
@@ -113,13 +113,13 @@ Fires when
 
 - akan.convention.<role>: A top-level declaration the module file does not allow; the table below lists what it does.
 
-- Over 500 lines for a service, 800 for a Template or Zone, 1,000 for a Util, 2,000 for any file.
+- akan.file.recommended-max-lines, akan.file.max-lines: Over 500 lines for a service, 800 for a Template or Zone, 1,000 for a Util, 2,000 for any file.
 
 - akan.file.abstract-max-lines: An `*.abstract.md` is over 300 lines; keep only what the code cannot show.
 
 - akan.file.class-export-global-declaration: A file that exports a class declares something else at top level, other than `<Class>Options`.
 
-- A component file exports a non-component, or keeps a local type or function besides `<X>Props`.
+- akan.file.component-export, akan.file.component-internal-declaration: A component file exports a non-component, or keeps a local type or function besides `<X>Props`.
 
 - akan.file.bang-comment-in-client: A `//!` or `/*!` marker in browser code, which survives minification; write `// FIXME:`.
 
@@ -127,13 +127,13 @@ Fires when
 
 - akan.file.dictionary-stale-text: A dictionary still holds scaffold text such as `Order description`.
 
-- A `declare global`, a `Window` interface or a `.prototype.` write; isolate it in one low-level file.
+- akan.file.global-declaration, akan.file.window-augmentation, akan.file.prototype-mutation: A `declare global`, a `Window` interface or a `.prototype.` write; isolate it in one low-level file.
 
 - akan.global.duplicate-exported-function-name: Two files export a function or class with the same name.
 
 - akan.global.duplicate-exported-function-body: Exports with different names share one body; extract a single helper.
 
-- A file or folder at an app or library root that is not on the allowed list.
+- akan.layout.app-root-file, akan.layout.app-root-folder, akan.layout.lib-root-file, akan.layout.lib-root-folder: A file or folder at an app or library root that is not on the allowed list.
 
 - akan.layout.lib-facet-file: A file directly in `lib/` other than `cnst.ts`, `option.ts` and the other support files.
 

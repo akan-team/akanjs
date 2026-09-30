@@ -21,11 +21,11 @@ Realtime
 
 Realtime keeps one WebSocket open, so the server and the browser trade small events without a new request each time. Chat, games, live editors, dashboards and presence all run on it.
 
-- Tool
+Tool
 
-- Direction
+Direction
 
-- Use it for
+Use it for
 
 - message — Browser → server — e.g. read receipts, cursor moves, typing status, game input
 

@@ -48,13 +48,25 @@ Reach for them in this order; the first that fits is the right one. The marks sh
 
 Injector
 
-- serve()
+serve()
 
-- adapt()
+adapt()
 
 - Pick in this order: the first that fits wins
 
+  - service<T>(): Another service's business method.
+
+  - plug(Class): A replaceable tool such as storage, a cache or a message API.
+
+  - use<T>(): A legacy singleton registered in `option.ts`. Recognise it; do not write new ones.
+
+  - env(factory): Runtime configuration, read without passing it through every function.
+
 - For one specific job
+
+  - memory(Type): A small value that survives between calls.
+
+  - signal<T>(): A server signal, to publish an event or queue a job. The field name ends in `Signal`.
 
 Available
 
@@ -102,11 +114,11 @@ The service names the class with `plug()` and calls it like any field:
 
 Framework infrastructure is plugged by role. `plug(StorageAdaptorRole)` gets whatever fills that role, and these are the nine roles with their defaults:
 
-- Role
+Role
 
-- Default
+Default
 
-- Used for
+Used for
 
 - DatabaseAdaptorRole — SqliteDatabase — Documents and queries
 
@@ -140,9 +152,9 @@ Read Environment
 
 `env()` builds a value from runtime configuration when the service or adaptor starts. Use it when code needs the app's identity, a hostname or a feature flag.
 
-- What you need
+What you need
 
-- Read it with
+Read it with
 
 - A server env field: hostname, a feature flag, an API option — `env((options: ModulesOptions) => options.hostname)`
 

@@ -5,7 +5,6 @@ import { Field, Layout } from "akanjs/ui";
 interface GeneralProps {
   className?: string;
 }
-
 export const General = ({ className }: GeneralProps) => {
   const { l } = usePage();
   const memoForm = st.use.memoForm();

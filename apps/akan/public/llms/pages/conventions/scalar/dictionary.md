@@ -25,11 +25,11 @@ Words used on this page
 
 Term
 
-- The name a person reads, one string per language: `t(["Amount", "금액"])`.
+- label: The name a person reads, one string per language: `t(["Amount", "금액"])`.
 
 - .desc(): A one-sentence explanation chained after a label.
 
-- One string per language, in the order `scalarDictionary(["en", "ko"])` lists them.
+- language tuple: One string per language, in the order `scalarDictionary(["en", "ko"])` lists them.
 
 - key: The dotted path code reads a label by, such as `price.amount`.
 
@@ -39,17 +39,35 @@ A scalar is a value embedded in a model, so it has no list or API of its own to 
 
 Stage
 
-- model — modelDictionary
+model — modelDictionary
 
-- scalar — scalarDictionary
+scalar — scalarDictionary
 
-- service — serviceDictionary
+service — serviceDictionary
 
 - What a scalar labels
 
+  - .of(): The name of the scalar or model itself.
+
+  - .model(): One label per field of the constant.
+
+  - .enum(): One label per value of an `enumOf()` enum.
+
 - Messages every kind has
 
+  - .error(): Error messages thrown with `new Err()`.
+
+  - .translate(): Any other short text.
+
 - Only for a stored list or an API
+
+  - .insight(): Summary numbers of a list, such as its count.
+
+  - .query() · .sort(): The filters and sort orders of a list.
+
+  - .slice(): The data views a client store loads.
+
+  - .endpoint(): Signal endpoints and their arguments.
 
 has this stage
 
@@ -79,9 +97,9 @@ Write the stages in this order and skip the ones you have nothing for. Each stag
 
 - .enum<Currency>("currency"): Every value of one enum, under the enum's own name.
 
-- .error({}): Error messages thrown with `new Err()`, rarely needed in a scalar.
+- .error({}): Error messages thrown with `new Err()`, rarely needed in a scalar. — Example: `new Err("price.error.<key>")`
 
-- .translate({}): Any other short text that belongs to the scalar.
+- .translate({}): Any other short text that belongs to the scalar. — Example: `l("price.free")`
 
 **The order is a convention, not a check.** Every stage returns the same builder, so any order compiles. Keep this one so a reader finds each stage where they expect it.
 
@@ -163,6 +181,27 @@ export const dictionary = scalarDictionary(["en", "ko"])
   .translate({
     free: ["Free", "무료"],
   });
+```
+
+### .of()
+
+```ts
+l("price.modelName")
+l("price.modelDesc")
+```
+
+### .model<Price>()
+
+```ts
+l("price.amount")
+l("price.amount.desc")
+```
+
+### .enum<Currency>("currency")
+
+```ts
+l("currency.KRW")
+l("currency.KRW.desc")
 ```
 
 ### apps/myapp/lib/__scalar/price/price.dictionary.ts

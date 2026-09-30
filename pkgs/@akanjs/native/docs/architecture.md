@@ -224,7 +224,7 @@ Akan Native Sample.app/Contents/
 - single-instance: Windows에서는 사용자별 named pipe(`\\.\pipe\akan-native-<hash>`)를 쓴다. node:net이 Windows에서는 파이프만 listen한다.
 - 딥 링크(D6):
   - macOS는 Apple Event로 링크를 받는다. Windows·Linux는 링크를 인자로 새 프로세스를 띄운다.
-  - 등록: 앱이 시작할 때마다 현재 사용자로 스킴을 등록한다(`packages/desktop/src/deeplinks.ts`). 아직 설치 프로그램이 없기 때문이다(CLI-9).
+  - 등록: 앱이 시작할 때마다 현재 사용자로 스킴을 등록한다(`packages/desktop/src/deeplinks.ts`). 그래서 설치 프로그램 없이 복사하거나 옮긴 폴더에서도 링크가 지금 실행 파일로 온다. Windows 설치 프로그램은 스킴을 등록하지 않고, 제거 프로그램이 명령이 자기 실행 파일을 가리키는 스킴 키만 지운다.
     - Windows: `HKCU\Software\Classes\<scheme>`
     - Linux: 숨긴 `<id>.desktop`과 `mimeapps.list`
   - 전달:
@@ -240,10 +240,19 @@ Akan Native Sample.app/Contents/
   - Windows exe는 `bun build --compile --windows-hide-console`로 만들고, 아이콘(.ico)과 버전 정보를 넣는다.
   - DLL은 C 런타임을 정적으로 링크한다(`+crt-static`). 그래서 VC++ 재배포 패키지가 필요 없다.
   - Windows 설치 프로그램은 `--installer`의 NSIS다(2026-09-30, `platforms/windows-installer.ts`). 사용자 단위로 설치해 업데이터가 관리자 권한 없이 폴더를 바꿀 수 있고, 제거 항목은 app id 키, 시작 메뉴 바로가기는 앱 이름이다. deb·AppImage와 서명은 CLI-9다.
-    - 설치 폴더는 앱의 것이다. 업데이트가 폴더를 통째로 바꾸므로 제거 프로그램은 폴더 밖, 옆에 둔다(`<폴더>.uninstall.exe`). 제거 프로그램은 제거 항목의 `InstallLocation`으로 폴더를 찾고, 폴더와 업데이트가 옆에 남긴 것(`.previous`, `.update-*`, `.failed-*`), 자기 자신까지 지운다. 다시 설치할 때와 제거할 때 앱 실행 파일이 있는 폴더는 통째로 지우고, 없으면 이 빌드가 만든 항목만 지운다. 그래서 `/D=`로 고른 폴더는 비어 있거나 이미 앱이 설치된 곳이어야 한다(아니면 거부). 기본 폴더(`%LOCALAPPDATA%\Programs\<name>`)만은 예외로 받는다. 같은 이름의 이전 앱(예: Electron으로 만든 전광판)이 그 폴더에 있으면, 처음 설치할 때는 이 빌드의 항목만 바꾸므로 이전 앱의 나머지 파일이 남는다. 앱 실행 파일이 생긴 뒤의 재설치·제거가 폴더를 통째로 지운다. 제거 프로그램을 쓸 수 없는 곳(드라이브 바로 아래의 `/D=` 등)이면 설치를 실패로 끝낸다.
+    - 설치 폴더는 앱의 것이다. 업데이트가 폴더를 통째로 바꾸므로 제거 프로그램은 폴더 밖, 옆에 둔다(`<폴더>.uninstall.exe`). 제거 프로그램은 제거 항목의 `InstallLocation`으로 폴더를 찾는다(비었거나 드라이브 루트면 제거하지 않는다). 다시 설치할 때와 제거할 때 앱 실행 파일이 있는 폴더는 통째로 지우고, 없으면 이 빌드가 만든 항목만 지운다. 그래서 `/D=`로 고른 폴더는 비어 있거나 이미 앱이 설치된 곳이어야 한다(아니면 거부). 기본 폴더(`%LOCALAPPDATA%\Programs\<name>`)만은 예외로 받는다. 같은 이름의 이전 앱(예: Electron으로 만든 전광판)이 그 폴더에 있으면, 처음 설치할 때는 이 빌드의 항목만 바꾸므로 이전 앱의 나머지 파일이 남는다. 앱 실행 파일이 생긴 뒤의 재설치·제거가 폴더를 통째로 지운다. 제거 프로그램을 쓸 수 없는 곳(드라이브 바로 아래의 `/D=` 등)이면 설치를 실패로 끝낸다.
+    - 설치 위치: `/D=`가 없으면 제거 항목의 `InstallLocation`, 곧 이미 설치된 곳에 다시 설치한다(`InstallDirRegKey`). 항목이 없을 때만 기본 폴더다. 원격 업데이트는 `/S /RUN`만 넘기므로, 전에는 `/D=D:\Board`로 설치한 PC에 기본 폴더 사본이 하나 더 생기고 옛 앱이 계속 돌았다. `app.name`이 버전 사이에 바뀌어도 같은 폴더에 설치된다(2026-09-30 10 리뷰).
+    - 한 번에 하나: 설치와 제거는 app id로 이름 지은 세션 뮤텍스(`Local\akan-native-setup-<id>`)를 잡고, 이미 잡혀 있으면 아무것도 건드리지 않고 2로 끝난다. 전에는 겹쳐 돈 두 설치가 서로 푼 파일을 지워, 실행 파일이 빠진 폴더를 0으로 설치할 수 있었다(2026-09-30 10 리뷰). 다른 사용자의 설치는 그 사용자의 폴더에 설치하므로 `Global\`을 쓰지 않는다.
+    - 앱을 멈추기 전: 앞선 설치가 남긴 `<폴더>.setup-new`·`.setup-old`를 지운다(지우지 못하면 2) → 여유 공간 → WebView2 → 새 파일을 `<폴더>.setup-new`에 푼다 → 실행 파일과 `resources\boot.json`이 있는지 본다 → 새 제거 프로그램을 `<폴더>.setup-uninstall.exe`로 쓴다. 여기서 실패하면 설치된 앱은 멈춘 적 없이 그대로 돈다.
+    - 교체: 설치 폴더에서 도는 앱을 경로로 찾아 멈추고, 풀어 둔 파일을 한 번 더 본 뒤 이름 바꾸기 두 번으로 폴더를 바꾼다(`<폴더>` → `.setup-old`, `.setup-new` → `<폴더>`, 각각 10초까지 재시도). 두 번째가 실패하면 `.setup-old`를 제자리로 되돌린다. 되돌리기도 실패하면 앱은 `.setup-old`에 남고, 다음 설치가 시작할 때 되살린다. 교체가 끝나면 `.setup-old`를 지우고, 제거 프로그램을 `<폴더>.uninstall.exe`로 옮기고, 바로가기와 제거 항목을 쓴다.
+    - 실패한 설치(종료 코드 2)는 `.setup-new`와 새 제거 프로그램을 지운다(`.onInstFailed`). 디스크가 차면 NSIS는 `File` 안에서 곧바로 섹션을 끝내서, 풀기 뒤의 검사가 돌지 않는다(VM에서 확인). 앱을 멈춘 뒤에 실패했고 `/RUN`이면, 그때 자리에 있는 앱(보통 되살린 옛 빌드)을 다시 띄운다. 정지 스크립트가 설치 폴더에서 도는 프로세스가 남았다고 답했으면 띄우지 않는다. 하나 더 뜨기 때문이다.
+    - 교체 뒤의 실패(제거 프로그램 옮기기, 바로가기, 제거 항목 쓰기)는 새 빌드가 이미 자리에 있으므로 0으로 끝나고, 설치 로그와 대화형 창으로만 알린다.
+    - 여유 공간: 설치 드라이브에는 새 앱의 크기, `%TEMP%` 드라이브에는 설치 프로그램이 싣는 전부(앱과 WebView2 부트스트래퍼)가 비어 있어야 한다. `SetCompressor /SOLID`는 풀린 데이터를 `%TEMP%`의 파일에 먼저 쓰기 때문이다. 두 드라이브가 같으면 합을 본다. 크기는 빌드가 4 KiB 클러스터로 센다. 옛 앱은 교체 뒤에 지우므로 가장 많이 쓸 때는 옛 앱 + 임시 파일 + 새 앱이다.
+    - 정션: 설치와 제거는 폴더를 NSIS `RMDir /r` 대신 `cmd /d /c rmdir /s /q`로 지운다. `RMDir /r`은 정션을 따라 들어가 가리키는 폴더를 비운다. `rd /s`(Vista부터)는 정션과 디렉터리 심볼릭 링크를 링크만 지운다(VM에서 확인, 설치 프로그램이 쓰는 32비트 cmd도 같다). 그래서 설치 폴더 안의 정션(예: `media` → `D:\SignageMedia`)은 재설치·제거 때 사라지지만 가리키던 파일은 남는다. 경로는 환경 변수로 넘겨 cmd가 `%`·`^`·`&`를 읽지 않는다. `rd`는 파일이 남아도 0으로 답하므로 폴더가 남았는지로 결과를 본다.
+    - 제거 범위: 폴더, 옆에 남은 `.previous`·`.update-*`·`.failed-*`·`.setup-*`, 제거 프로그램, 바로가기, 제거 항목, 자동 시작(`Run`, `StartupApproved`), 셸의 업데이트 상태(`akan-native-updates`, debug 빌드의 `akan-native-updates-debug`, `akan-native-relaunch.json`), 업데이트가 옮기는 동안 걸어 둔 `RunOnce` 복구 명령(`akan-native-update <id>`), 알림 AUMID 키(`HKCU\Software\Classes\AppUserModelId\<id>`)와 알림 아이콘, 명령이 이 실행 파일을 가리키는 딥 링크 스킴 키. 다른 프로그램이 가져간 스킴과, 서버 데이터를 비롯한 `%LOCALAPPDATA%\<id>`의 나머지는 남긴다. 제거 프로그램은 `%TEMP%`의 사본으로 돌고 시작한 프로세스는 곧바로 끝나므로, 제거 프로그램 파일을 맨 마지막에 지운다. 그 파일이 없어지면 제거가 끝난 것이다.
     - 바로가기의 시작 위치와 `/RUN`·완료 페이지로 띄운 앱의 작업 폴더는 설치 폴더가 아니라 `%LOCALAPPDATA%`다. Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못하므로, 설치 폴더에서 시작한 앱과 그 업데이트 도우미는 폴더를 교체하지 못한다(재시도 10초 뒤 실패). 탐색기에서 exe를 직접 여는 경우는 셸이 launch 단계 뒤, 창(WebView2 프로세스)을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮기는 것으로 막는다(`main.ts` `leaveInstallFolder`; launch 단계에서는 single-instance가 두 번째 실행의 작업 폴더를 넘긴다).
     - `/RUN`은 `/S`일 때만 앱을 띄운다. 대화형 설치는 완료 페이지의 실행 체크로 띄우므로, 둘 다 띄우면 두 번 뜬다.
-    - `/S`에서 끝내지 못한 설치는 0이 아닌 종료 코드(2)로 끝난다: 파일을 쓰지 못함(`ManifestLongPathAware`는 PC가 긴 경로를 허용할 때만 효과가 있다), WebView2 부트스트래퍼 뒤에도 런타임이 없음(대화형이면 묻는다), 남의 파일이 있는 `/D=` 폴더. 빌드는 설치 뒤·업데이트 압축 해제 중 가장 긴 경로(사용자 이름 20자 가정)가 260자에 가까우면 경고한다.
+    - `/S`에서 끝내지 못한 설치는 0이 아닌 종료 코드(2)로 끝난다: 다른 설치·제거가 도는 중, 앞선 설치가 남긴 것을 지우지 못함, 여유 공간 부족, 파일을 쓰지 못함(`ManifestLongPathAware`는 PC가 긴 경로를 허용할 때만 효과가 있다), 풀어 둔 파일이 빠짐, WebView2 부트스트래퍼 뒤에도 런타임이 없음(대화형이면 묻는다), 남의 파일이 있는 `/D=` 폴더, 폴더를 바꾸지 못함. 빌드는 설치 뒤·업데이트 압축 해제 중 가장 긴 경로(사용자 이름 20자, bundle id는 문법의 최대 80자 가정)가 260자에 가까우면 경고한다.
     - WebView2 부트스트래퍼는 런타임을 인터넷에서 받는다. 인터넷이 없는 PC(LTSC 전광판 등)에는 Evergreen Standalone 설치 파일을 따로 설치해 두어야 한다. 설치 프로그램에 넣는 선택지는 아직 없다.
 - 빌드는 그 OS에서만 한다(`requireHost`). Mac에서 테스트하는 방법(Linux는 Docker, Windows는 VM)은 [testing-windows-linux.md](testing-windows-linux.md)에 있다.
 
@@ -823,10 +832,12 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - env: 셸의 환경은 넘기지 않는다(`akan start-desktop`이 띄운 셸에는 CLI의 `AKAN_PUBLIC_*`·`PORT`가 있다). PATH·HOME 같은 시스템 변수 몇 개(프록시 `HTTP(S)_PROXY`·`NO_PROXY`, CA `NODE_EXTRA_CA_CERTS`·`NODE_USE_SYSTEM_CA`·`SSL_CERT_FILE`, 서버가 띄우는 도구가 화면·오디오·세션 버스에 닿는 데스크톱 세션 변수 `DISPLAY`·`XAUTHORITY`(GDM 세션의 X 서버는 쿠키 없는 클라이언트를 거부한다)·`WAYLAND_DISPLAY`·`DBUS_SESSION_BUS_ADDRESS`·`PULSE_SERVER`·`PULSE_COOKIE`·`PULSE_RUNTIME_PATH`·`XDG_*`, Windows의 `ProgramFiles`·`ComSpec`·`PATHEXT` 등 포함) + `server.json` env + launcher 값(`PORT`, `AKAN_LISTEN_HOST=127.0.0.1`, `AKAN_ALLOWED_HOSTS`, `JWT_SECRET`, `AKAN_SQLITE_DIR`, `AKAN_WORKSPACE_ROOT`, `AKAN_RUNTIME_DIR`, `BUN_BE_BUN`, `BUN_RUNTIME_TRANSPILER_CACHE_PATH=<서버 데이터>/runtime/transpiler-cache`). launcher 값이 이긴다. akanjs는 부팅 때 `BUN_BE_BUN`을 `process.env`에서 빼고, 자기 실행 파일을 다시 띄울 때만(ops snapshot) 돌려준다.
   - 인자: `--no-env-file --no-install --config=<빈 bunfig> --use-system-ca`. Bun은 기본으로 자기에게 든 CA 목록만 믿는다. 회사가 OS에 넣은 루트 CA(TLS 검사 프록시, 사설 CA)를 WebView는 믿고 서버는 믿지 않는 일이 없게 OS 저장소를 쓴다.
   - PATH: 플러그인 호스트가 시작할 때 `resources/bin`(설정 `desktop.bin`, akanjs `bin`)을 자기 `process.env.PATH` 맨 앞에 붙이고(`host.ts`, 이미 맨 앞이면 다시 붙이지 않는다: 재실행한 앱은 붙인 PATH를 물려받는다), 서버는 그 PATH를 시스템 변수로 받는다. `server.json` env가 PATH를 정해도 bin을 다시 맨 앞에 둔다. 그래서 서버 코드의 `spawn("ffmpeg")`가 앱이 싣고 온 파일을 쓴다.
+    - Windows: 컴파일된 앱의 플러그인 호스트 Worker가 가진 `process.env` 사본은 이름을 Windows가 준 대소문자(`Path`, `windir`)로만 찾는다. 프로세스 자신의 env는 대소문자를 가리지 않는다. 그래서 예전에는 host가 `process.env.PATH`를 찾지 못해 PATH를 bin 폴더 하나로 새로 만들었고, 실린 서버는 `cmd.exe`조차 이름으로 띄우지 못했다(2026-10-01, 11의 E2E가 찾음). 지금 host는 PATH를 대소문자와 상관없이 읽어 `PATH` 한 이름으로 맞추고, launcher는 시스템 변수를 대소문자와 상관없이 읽는다(`envValue`).
   - 데이터: `<서버 데이터>` = `<app local data>/server`(작업 폴더, `db/`, `runtime/logs`, `jwt.secret`, `port`). `<app local data>`는 Windows에서 `%LOCALAPPDATA%\<id>`(Roaming은 사용자를 따라 동기화되고 파일 서버로 리디렉션될 수 있어 SQLite WAL이 동작하지 않는다), macOS·Linux에서는 `<app data>`다. debug 빌드는 release와 같은 app id이므로 `server-debug`를 따로 쓴다. `jwt.secret`은 macOS·Linux에서 0600이고 이미 있는 파일도 좁힌다(Windows는 사용자 프로필의 ACL). FileRef가 서빙하지 않는 예약 폴더다(L4).
   - IPC `ready`를 최대 8초 기다린다. 넘기면 창을 먼저 띄우고, 서버는 계속 뜬다. 포기가 정해지면(아래 크래시, 또는 데이터 폴더를 만들거나 `jwt.secret`을 읽지 못함) 기다리지 않는다.
   - 서버를 띄우지 못해도 페이지에는 loopback URL을 넘긴다(`server.json`을 읽지 못하면 `http://127.0.0.1:0`). URL이 없으면 페이지가 빌드 때의 서버(cloud 주소)를 불러 다른 데이터를 읽고 쓰기 때문이다. 이때도 `alert.show`로 알린다. 셸은 `akan_native_run` 전에는 op를 받지 않으므로, launch 단계에서 난 알림은 `drain`이 셸의 첫 프레임을 받을 때까지 호스트가 들고 있다. 호스트가 스스로 만드는 이벤트(콜드 스타트 딥 링크의 `openLinks`)는 `akan_native_run` 전에 올 수 있어 세지 않는다(예전에는 이것이 알림을 먼저 풀어 대화상자 없이 사라졌다. 2026-09-30 08 리뷰).
-  - 플러그인은 `ctx.server`(서버를 싣지 않으면 null)의 `ready`로 서버가 떴는지 안다. file-picker는 서버를 실은 debug 빌드에도 IPC grant를 준다(실린 서버는 edge라 dev grant를 받지 않는다). updates는 서버가 ready가 된 뒤에만 확정한다. ready도 종료도 없이 부팅 중에 멈춘 서버는 `SERVER_BOOT_ALLOWANCE`(120초) 뒤 실패로 본다.
+  - 플러그인은 `ctx.server`(서버를 싣지 않으면 null)의 `ready`로 서버가 떴는지, `state`·`onState`로 지금 어떤지 안다(`starting`, `up`, `restarting`, `gaveUp`, `stopped`). 페이지는 `app` 플러그인의 `serverState` 이벤트로 받는다. file-picker는 서버를 실은 debug 빌드에도 IPC grant를 준다(실린 서버는 edge라 dev grant를 받지 않는다). updates는 서버가 ready 뒤 `SERVER_SETTLE`(5초) 동안 살아 있었고 지금 `up`일 때만 확정한다. 부팅 중에 멈춘 서버는 `SERVER_BOOT_ALLOWANCE`(120초) 뒤 실패로 본다.
+  - 서버의 표준 오류, 그리고 ready 전의 표준 출력은 `<서버 데이터>/runtime/logs/server-output.log`에도 남는다(1 MiB를 넘으면 `.1`로 옮긴다). 서버 자신의 로그 파일은 listen에서야 시작해서, 그 전에 실패한 이유(solo 거부, 없는 env 파일, DI init 실패)가 포기 알림이 가리키는 폴더에 남지 않았다(2026-09-30 10 리뷰).
 - 크래시: 같은 포트로 다시 띄운다. 1초에서 두 배씩 30초까지. 연속 5회면 멈추고 `alert.show`로 알린다. 한 번도 ready가 되지 않은 서버는 250ms 간격(`BOOT_RESTART_DELAY`)으로 다시 띄운다. 부팅 때 죽는 서버의 포기가 창이 기다리는 8초 안에 정해져 창이 알림과 함께 뜬다(1·2·4·8초였을 때는 포기가 약 15초에 와서, 창은 8초 뒤 아무도 답하지 않는 URL로 떴다). 60초 이상 떠 있던 실행의 크래시는 횟수를 처음부터 센다. 다시 띄우다 예외가 나면(실행 중에 데이터 폴더가 지워짐, 프로세스 한도) 실패 한 번으로 센다. 플러그인 호스트 Worker는 끝나지 않는다.
 - 종료: `onQuit`에서 IPC `shutdown` → 1.5초 안에 안 끝나면 SIGKILL(서버의 `AKAN_SHUTDOWN_TIMEOUT_MS`는 1초라 그 안에 끝난다. SIGTERM은 핸들러가 있는 서버를 끝내지 못한다). 셸이 먼저 죽으면 macOS·Linux에서는 서버가 IPC 끊김을 보고 스스로 내려간다(akanjs `AkanServer`). Windows에서는 Bun이 자식을 넣는 job object가 셸과 함께 서버를 바로 끝낸다(서버 로그에 종료 줄이 없다). SQLite WAL이 있어 데이터는 남는다.
   - macOS·Linux: 서버는 자기 프로세스 그룹의 리더로 뜬다(`detached`). 서버가 끝나면(정상 종료든 크래시든) 그룹에 남은 프로세스(서버가 띄운 bin 도구 등)를 끝낸다. 크래시면 SIGTERM, 유예 뒤 SIGKILL. 유예 안에 앱이 끝나면 `stop()`이 그 SIGKILL을 바로 보낸다(SIGTERM을 무시하는 도구가 남지 않게). Windows는 job object가 같은 일을 한다. 서버가 터미널의 SIGINT를 직접 받지 않으므로 IPC `shutdown`으로 멈춘다.
@@ -1079,7 +1090,9 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - `<channel>.json`: 매니페스트
   - `<channel>.json.sig`: 매니페스트 바이트 전체에 대한 서명
   - 웹 번들은 `files/<sha256>`에 내용 주소로 저장한다.
-  - 앱은 `app/<tar sha>.tar.gz`와 직전 릴리스로부터의 `app/<from>-<to>.delta.gz`를 저장한다.
+  - 앱은 `app/<tar sha>.tar.gz`와 직전 릴리스로부터의 `app/<from>-<to>.delta.gz`를 저장한다. 다음 delta는 직전 릴리스의 `.tar.gz`를 풀어 만든다. 예전에는 비압축 `<tar sha>.tar`를 같은 폴더에 두었는데, 폴더를 그대로 올리면 같이 올라가서 다음 게시가 지운다(2026-09-30 10 리뷰).
+  - 매니페스트의 `server`는 앱이 서버를 싣는지다. 같은 채널의 직전 릴리스와 다르면 게시하지 않는다. 설치된 앱이 모두 그 릴리스와 그 뒤의 릴리스를 거부하기 때문이다. 다른 채널(`updates.channel`)로 게시하거나, `<channel>.json`을 지워 채널을 새로 시작한다.
+  - 게시 폴더는 받을 수 있는 누구나 읽는다. 데스크톱 릴리스는 앱 전체이므로 실린 서버의 `private/`와 env 파일도 들어 있다. 업데이터는 인증 헤더를 보내지 않는다.
 
   `akan-native update serve`는 이 폴더를 `0.0.0.0:8790`에서 서빙한다. Android 에뮬레이터는 `adb reverse`를 거쳐 `127.0.0.1`로 들어온다.
 - 채널 이름은 설정 `updates.channel`과 같은 규칙(소문자·숫자·`.`·`_`·`-`, 42자까지)이어야 게시된다. `--channel`과 API `publishUpdate({ channel })`는 빌드 전에 확인한다. 대문자나 경로 구분자가 든 이름은 파일은 써져도 어떤 앱도 받지 못하거나 폴더 밖에 쓰인다.
@@ -1107,17 +1120,21 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
     - `apply`: 지금 새 번들로 다시 로드한다.
     - `notifyReady`, `reset`
 - 앱(UP-1, macOS·Windows·Linux): 데스크톱 플러그인(Bun Worker)이 앱 전체를 바꾼다. macOS는 `.app`, Windows·Linux는 앱 폴더다.
-  - 상태(`state.json`)와 다음 delta의 기준 tar는 `<app local data>/akan-native-updates`에 둔다(`ctx.appLocalDataDir`, Windows `%LOCALAPPDATA%\<id>`). 기준 tar는 앱 전체이고 trial은 이 PC의 설치에 속하므로, 사용자를 따라 옮겨 다니는 Roaming에 두지 않는다(2026-09-30 08 리뷰, 배포한 적 없는 위치라 옮기지 않았다).
+  - 상태(`state.json`)와 다음 delta의 기준 tar는 `<app local data>/akan-native-updates`에 둔다(`ctx.appLocalDataDir`, Windows `%LOCALAPPDATA%\<id>`). 기준 tar는 앱 전체이고 trial은 이 PC의 설치에 속하므로, 사용자를 따라 옮겨 다니는 Roaming에 두지 않는다(2026-09-30 08 리뷰, 배포한 적 없는 위치라 옮기지 않았다). debug 빌드(`--debug`, dev 빌드 포함. boot.json `dev`)는 배포본과 같은 id라 `akan-native-updates-debug`를 따로 쓴다. 서버 데이터의 `server-debug`와 같은 규칙이다. 예전에는 같은 폴더를 써서, 새로 빌드한 debug 앱이 배포본이 받아 둔 릴리스를 자기보다 오래된 것으로 보고 지웠다(2026-09-30 10 리뷰).
+  - `state.json`은 임시 파일에 쓰고 fsync한 뒤, 이전 파일을 `state.json.bak`으로 옮기고 rename한다(macOS·Linux는 폴더도 fsync). 읽지 못하면 `.bak`을 읽는다. 정전 뒤 trial·`failed`를 잃으면 망가진 릴리스가 되돌려지지 않거나 되돌린 릴리스를 다시 받는다(2026-09-30 10 리뷰).
   - 릴리스는 tar다. macOS는 `/usr/bin/tar --no-mac-metadata`, Windows는 Windows 10부터 들어 있는 bsdtar(`tar.exe`)로 만든다. 받은 뒤의 tar sha256이 매니페스트와 맞아야 한다.
   - 자기 릴리스의 tar를 가진 앱(업데이트로 설치된 앱)은 delta만 받는다(`packages/desktop/src/delta.ts`). 처음 설치된 앱은 전체를 받는다. 직전 릴리스로부터의 패치만 게시하는 방식은 Electrobun과 같다(`electrobun-v1/package/src/cli/index.ts:3788-3927`).
   - delta 방식: bsdiff 대신 rsync식 블록 매칭(8 KiB 블록, 롤링 체크섬 + 강한 해시)을 쓴다.
     - bsdiff는 옛 파일 전체의 접미사 배열(크기의 약 8배 메모리)을 만든다. JS로 62 MB bun 실행 파일을 처리하면 수 분이 걸린다.
     - 릴리스 사이의 변화는 대부분 블록 단위(런타임 뒤에 붙은 앱 JS, 리소스)라서 한 번의 스캔으로 찾을 수 있다.
     - 측정: 샘플 앱 두 릴리스 사이 delta는 gzip 33 KiB(전체 26 MiB)이고, 만드는 데 0.6초, 적용에 약 40 ms가 걸렸다. 적용할 때 원본과 결과의 sha256을 모두 확인한다.
-  - 적용 전 검사: 앱 옆(`<App>.app.update-<id>`, 같은 볼륨이라 rename 가능)에 풀고 앱 id를 확인한다. 릴리스의 앱은 tar의 최상위 항목 하나다. 이름은 빌드의 것(`app.name`, `<Name>.app`)이고 교체가 설치된 앱의 이름을 준다. 그래서 `/D=`로 다른 이름의 폴더에 설치한 앱과 이름을 바꾼 `.app`도 업데이트된다.
+  - 적용 전 검사: 앱 옆(`<App>.app.update-<id>`, 같은 볼륨이라 rename 가능)에 풀고 앱 id를 확인한다. 받기 전에 그 폴더를 만들어 본다. 이 사용자가 쓸 수 없는 곳(관리자가 설치한 `/Applications`, Program Files, `/opt`)이면 받지 않고 `NOT_ALLOWED`로 답한다(로그는 세션에 한 번). 푼 파일은 교체 전에 디스크까지 내린다(Linux는 `sync`, 나머지는 파일마다 fsync). 릴리스의 앱은 tar의 최상위 항목 하나다. 이름은 빌드의 것(`app.name`, `<Name>.app`)이고 교체가 설치된 앱의 이름을 준다. 그래서 `/D=`로 다른 이름의 폴더에 설치한 앱과 이름을 바꾼 `.app`도 업데이트된다.
     - macOS: bundle id와 `codesign --verify --deep --strict`
     - Windows·Linux: `resources/boot.json`의 app id. Authenticode와 패키지 서명은 CLI-9다. 바이트는 매니페스트 서명이 이미 보증한다.
-    - 서버를 싣는지(`resources/server.json`)가 설치된 앱과 같아야 한다. 다르면 받은 것을 지우고 그 릴리스를 `failed`에 넣은 뒤 `NOT_ALLOWED`로 거부한다. 서버를 빼면 페이지가 빌드 때의 백엔드 주소로 붙고, 더하면 빈 로컬 DB로 시작해 어느 쪽이든 앱의 데이터가 자리를 옮긴다. akanjs 타깃의 `native.desktop.server`를 바꾼 앱은 다시 설치한다(2026-09-30 08 리뷰 P1-3).
+    - 서버를 싣는지(`resources/server.json`)가 설치된 앱과 같아야 한다. 서버를 빼면 페이지가 빌드 때의 백엔드 주소로 붙고, 더하면 빈 로컬 DB로 시작해 어느 쪽이든 앱의 데이터가 자리를 옮긴다. akanjs 타깃의 `native.desktop.server`를 바꾼 앱은 다시 설치한다(2026-09-30 08 리뷰 P1-3).
+      - 매니페스트에 `server`가 있으면 받기 전에 판정한다. `check()`는 `available: false`, `download()`는 `NOT_ALLOWED`로 답하고 `failed`에는 넣지 않는다(매니페스트만 보면 되므로).
+      - `server`가 없는 매니페스트(그 전의 게시)는 풀어 본 뒤 판정한다. 다르면 받은 것을 지우고 `failed`에 넣은 뒤 `NOT_ALLOWED`로 거부한다.
+      - `apply()`도 pending의 서버 유무를 다시 본다. 재설치로 서버 유무가 바뀐 뒤에 남은 pending을 적용하지 않는다.
   - 교체 순서: `apply()`가 `<App>.app → .previous`, 새 앱 → `<App>.app`으로 rename한 뒤 재실행한다.
     - macOS·Linux: 실행 중인 앱의 폴더도 rename된다. 재실행은 `/bin/sh`가 이전 PID가 끝나기를 기다렸다가 새 실행 파일을 exec하는 방식이다. 그래서 single-instance, 잠금, 환경이 이어진다.
     - Windows: 실행 중인 프로그램의 폴더는 rename되지 않는다. 그래서 숨긴 PowerShell 도우미가 앱이 끝나기를 기다렸다가 rename하고 실행한다. 경로는 환경 변수로 넘긴다. 잠금이 풀릴 때까지 다시 시도하고, 실패하면 옮긴 것을 되돌린다. 롤백도 같은 도우미로 한다.
@@ -1128,15 +1145,31 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
       - 도우미는 새 앱을 `Start-Process -NoNewWindow`로 실행한다. 그래서 새 앱이 이전 앱의 표준 입출력을 물려받는다. macOS·Linux의 exec와 같다.
       - 도우미와 새 앱의 작업 폴더는 임시 폴더다(`cmd.exe`의 `cwd`, `Start-Process -WorkingDirectory`). Windows는 어떤 프로세스의 작업 폴더인 폴더의 이름을 바꾸지 못한다. 설치 폴더에서 뜬 앱(설치 프로그램, 시작 메뉴, 탐색기)의 도우미가 그 폴더를 물려받으면 교체가 10초 재시도 끝에 실패한다(2026-09-30 리뷰 50번. 그때는 옛 앱이 받은 릴리스를 버리고 다음에 또 받았고, 지금은 그 릴리스를 `failed`에 넣는다). 셸도 창을 만들기 전에 작업 폴더를 `%LOCALAPPDATA%\<id>`로 옮긴다.
       - 설치 프로그램으로 설치한 앱(폴더 옆에 `<폴더>.uninstall.exe`가 있음)은 확정할 때 제거 항목의 `DisplayVersion`을 새 버전으로 고친다. `reg.exe` 출력은 OEM 코드 페이지라 경로를 비교하지 않고 종료 코드만 본다.
+      - 도우미는 옮기기 직전에 `HKCU\…\RunOnce`에 복구 명령을 걸고, 옮기기(또는 되돌리기)를 마치면 지운다. 옮기는 도중 정전이나 종료로 도우미가 끊기면 다음 로그온에 복구 스크립트(`akan-native-updates\recover.ps1`)가 돈다. 앱 실행 파일이 없을 때만, 옮긴 것을 거꾸로 되돌리고 앱을 띄운다. 스크립트는 `-File`이 아니라 텍스트로 읽어 실행하므로 .ps1을 막는 실행 정책에 걸리지 않는다. RunOnce 명령은 260자까지라 경로가 더 길면 걸지 않는다(2026-09-30 10 리뷰).
+    - 적용 도구: 앱은 tar를 macOS·Linux는 `/usr/bin/tar`(없으면 `/bin/tar`), Windows는 `%SystemRoot%\System32\tar.exe`(bsdtar)로 푼다. PATH의 `tar.exe`는 쓰지 않는다. Git for Windows의 GNU tar가 앞에 있으면 `C:`를 원격 호스트로 읽는다.
 - 시험 실행과 롤백(두 종류 공통):
-  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다. 서버를 싣는 데스크톱 앱은 그 서버가 ready를 보낸 뒤에만 확정한다(부팅 때 서버가 죽는 릴리스도 되돌린다). 그런 앱의 `readyTimeout` 시계는 서버가 ready가 되거나, 포기하거나, 앱이 시작한 뒤 `SERVER_BOOT_ALLOWANCE`(120초)가 지나면 시작한다. 새 릴리스의 첫 실행에서 백신 검사로 서버가 늦게 떠도 정상 릴리스를 되돌리지 않고, ready도 종료도 없이 부팅 중에 멈춘 서버의 릴리스는 되돌린다(상한이 없으면 확정도 롤백도 되지 않아 계속 켜 두는 전광판이 깨진 릴리스로 돌았다. 2026-09-30 08 리뷰 P1).
+  - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다.
+  - trial 중에는 그 릴리스가 실행 중인 릴리스다. `check()`는 그 릴리스를 새것으로 보지 않고, `apply()`는 `NOT_ALLOWED`로 거부한다. 예전에는 trial을 보지 않고 빌드 시각과 비교해, 앱이 시작할 때 확인·적용하면 trial 중인 자기 릴리스를 다시 받아 `.previous`(마지막으로 확정된 앱)를 지웠다(2026-09-30 10 리뷰 P1).
+  - 서버를 싣는 데스크톱 앱(2026-09-30 08 리뷰 P1, 10 리뷰):
+    - 서버가 ready를 보낸 뒤 `SERVER_SETTLE`(5초) 동안 죽지 않아야 확정할 수 있다. ready 뒤에 init이 throw하는 서버는 ready를 먼저 보낸다.
+    - `readyTimeout` 시계는 그때 시작한다. 새 릴리스의 첫 실행에서 백신 검사로 서버가 늦게 떠도 정상 릴리스를 되돌리지 않는다.
+    - `notifyReady()`는 서버가 지금 `up`일 때 확정한다. 재시작 중이면 다시 `up`이 될 때까지 기다린다.
+    - 서버가 포기하거나, 앱이 시작한 뒤 `SERVER_BOOT_ALLOWANCE`(120초) 안에 자리 잡지 못하면 곧바로 되돌린다. 원인이 그 PC의 순간적인 상태(다른 프로그램의 잠금, 백신)일 수 있으므로 `failed`에는 넣지 않고 횟수(`strikes`)만 센다. 되돌린 릴리스는 `<앱>.update-<id>/`에 pending으로 남아 다음 `apply()`가 받지 않고 다시 적용한다. `MAX_STRIKES`(3)번째에 `failed`에 넣는다. 더 새 릴리스를 이미 받아 두었으면 되돌린 것은 남기지 않는다.
+    - 로그와 `state.json`의 `reasons`에 실제 이유를 남긴다("its server gave up", "its server was not up within 120 s").
   - 부르지 않거나, 확정 전에 한 번 더 실행되면(크래시·멈춤) 실패로 표시하고 이전 번들이나 `.previous` 앱으로 되돌린다.
   - 이전 것은 새 것이 확정될 때까지 지우지 않는다. Electrobun은 새 앱이 실행되자마자 `.previous`를 지우고(`extractor/main.zig:7811-7818`), Tauri는 마지막 rename이 실패하면 백업을 잃는다(`updater.rs:1429-1476`).
   - 데스크톱 보완(2026-09-26 검토 반영):
     - trial에 실행 중인 PID를 기록한다. trial 도중 두 번째 인스턴스가 뜨면(Windows·Linux는 딥 링크가 새 프로세스를 띄운다) 예전에는 그 인스턴스가 시도 횟수를 올리고 실행 중인 정상 앱을 `.failed-*`로 옮겼다. 지금은 기록된 PID가 살아 있으면 trial을 건드리지 않는다.
+      - PID와 함께 시스템 시작 시각(`boot`)도 기록한다. 크래시나 정전 뒤 재부팅에서 다른 프로세스가 그 PID를 쓰면 확정도 롤백도 되지 않았다(2026-09-30 10 리뷰). 시작 시각이 다르면 그 PID는 trial이 아니다.
+      - 서버를 싣는 앱은 PID를 보지 않는다. 늘 single-instance가 있어서(빌드가 없으면 거부한다) 두 번째 인스턴스는 gate에서 끝나고 updates의 setup까지 오지 않는다.
     - macOS·Linux `apply()`는 교체 전에 trial을 기록한다. 교체 도중 멈추면, 앱이 바뀌지 않은 trial은 다음 시작에 버려진다(바뀐 앱이 trial 없이 남지 않는다). rename이 실패하면 pending을 되돌린다. Windows는 원래 도우미가 교체하기 전에 기록했다.
     - 재설치(2026-09-30 08 리뷰): 지금 설치된 빌드보다 새롭지 않은 pending(재설치 전에 받아 둔 것)은 시작할 때 버리고, `apply()`도 적용하지 않는다. 그대로 두면 새로 설치한 앱이 옛 릴리스로 내려간다.
-    - Windows 도우미가 교체하지 못하고 옛 앱을 되살리면(잠금이 10초 재시도를 넘김) 그 릴리스를 `failed`에 넣는다. trial에 적용한 빌드(`from`)를 남겨, 다음 시작에 여전히 그 빌드가 돌면 교체 실패로 본다. 넣지 않으면 받기·적용·재실행을 되풀이한다. 다른 빌드가 설치돼 trial의 앱이 없어진 경우는 실패로 보지 않는다. 다시 받게 하려면 `reset()`.
+    - Windows 도우미가 교체하지 못하고 옛 앱을 되살리면(잠금이 10초 재시도를 넘김), 또는 도우미가 돌지 못하면(적용 직후 로그오프, PowerShell을 막은 정책) 다음 시작에도 적용한 빌드(`from`)가 돈다. 이것을 교체 실패로 보고 횟수를 센다. 받은 릴리스(`staged`)는 pending으로 되살려 다음 `apply()`가 다시 받지 않고 다시 시도한다. `MAX_STRIKES`(3)번째에 `failed`에 넣는다. 예전에는 한 번에 영구히 뺐다(2026-09-30 10 리뷰). 다른 빌드가 설치돼 trial의 앱이 없어진 경우는 실패로 보지 않는다.
+    - 롤백은 옮기기 전에 표시(`rollback`)를 남긴다. 옮기기가 일어나지 않으면(rename 거부, 도우미가 첫 이동에서 실패) 다음 시작에 실패한 빌드가 그 표시를 보고 다시 옮긴다(세 번까지). 예전에는 trial을 먼저 지워 실패한 릴리스가 계속 돌았다.
+    - 확정 뒤 `.previous`를 지우지 못하면(잠금) 확정은 그대로 두고 경고만 한다. 다음 시작에 확정된 릴리스가 돌고 있으면 지운다.
+    - 재설치: 실행 중인 빌드가 기록된 설치 빌드(`installed`)와 다르고 업데이트로 받은 릴리스도 아니면 다시 설치된 것으로 보고 `failed`와 횟수를 비운다. 예전 설치가 거부한 릴리스(서버 유무가 달랐던 것 등)가 새 설치에서도 막혔다.
+    - `reset()`은 받은 것과 거부 목록만 지운다. trial과 롤백 표시는 남긴다. 그것 없이는 실행 중인 앱을 확정하지도 되돌리지도 못한다.
+    - setup이 3초를 넘긴 뒤의 `ctx.launch.exit`는 앱을 끝낸다. launch 단계의 롤백이 늦어도 도우미가 기다리는 앱이 창을 열고 계속 돌지 않는다.
     - 알려진 한계: 새 앱이 JS setup에 닿기 전에 죽으면(네이티브 크래시) 롤백하는 코드가 돌지 않는다. 재실행 도우미가 "setup 도달"을 기다리게 하는 방법이 있으나 아직 하지 않았다.
 - 개발 빌드: Android 개발 빌드는 localhost·127.0.0.1·10.0.2.2로의 평문 HTTP만 허용한다(network security config). release 빌드는 기본 정책 그대로다.
 - 2026-09-26 다시 확인(`<os>-<arch>` 경로, 크기 상한, trial PID): macOS·Linux·Windows 모두 A 전체 → 확정, B delta → 롤백, 남은 폴더 없음. 확인 스크립트는 이제 `--debug`로 빌드·게시한다(`akan-native build`가 모드와 상관없이 release가 됐기 때문). Windows에서 한 번은 B 게시 단계에서 출력 없이 끝났고(원인 미확인), 다시 돌리자 통과했다. 실패한 실행은 임시 폴더의 앱을 남겨 다음 실행이 single-instance로 넘겨 버리므로, 그런 프로세스를 먼저 끝내야 한다.

@@ -30,13 +30,13 @@ Drawn by
 
 A View file draws one record in full: the body of a detail page or a detail section. It takes the full model as a prop and only draws it.
 
-- Takes the full model — Every field is there, including long text and nested data that a list leaves out.
+- Takes the full model — `ticket: cnst.Ticket` — Every field is there, including long text and nested data that a list leaves out.
 
-- Only draws — It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
+- Only draws — `Ticket.Util.* · Ticket.Unit.*` — It may render Units, Utils, Zones and its own subcomponents. Saving and deciding happen elsewhere.
 
-- Exports General — `General` is the main export. A long screen adds named sections beside it.
+- Exports General — `Ticket.View.General` — `General` is the main export. A long screen adds named sections beside it.
 
-- Drawn through a Zone — A detail Zone hands the model from the server to it through `Load.View`.
+- Drawn through a Zone — `renderView={(ticket) => …}` — A detail Zone hands the model from the server to it through `Load.View`.
 
 Words used on this page
 
@@ -54,9 +54,25 @@ View vs Unit
 
 Both files only draw a model. They differ in how much of the model they get and in the role they play on the page.
 
-- View: For one detail page or detail section.
+- View: For one detail page or detail section. — one record in full
 
-- Unit: For list rows, cards and compact summaries.
+  - `cnst.Ticket`
+
+  - `Ticket.View.General`
+
+  - `GeneralProps`
+
+  - `Load.View → renderView`
+
+- Unit: For list rows, cards and compact summaries. — one item of many
+
+  - `cnst.LightTicket`
+
+  - `Ticket.Unit.Card`
+
+  - `ModelProps<"ticket", cnst.LightTicket>`
+
+  - `Load.Units → renderItem`
 
 **One record in detail is a View.** It needs fields such as a long body, so it takes the full model.
 
@@ -132,13 +148,13 @@ Before the View renders, `Load.View` sets four keys for the model:
 
 Store key
 
-- <model>: The full model instance, built from the payload's `<model>Obj`.
+- <model>: The full model instance, built from the payload's `<model>Obj`. — Example: `ticket: new cnst.Ticket().set(ticketObj)`
 
-- <model>Loading: Set to `false`, so the View draws right away with no loading state.
+- <model>Loading: Set to `false`, so the View draws right away with no loading state. — Example: `ticketLoading: false`
 
-- <model>Modal: Set to `"view"`, so a modal wrapper opens the record to read, not its edit form.
+- <model>Modal: Set to `"view"`, so a modal wrapper opens the record to read, not its edit form. — Example: `ticketModal: "view"`
 
-- <model>ViewAt: The `Date` the server stamped on the payload, used to compare it with the store.
+- <model>ViewAt: The `Date` the server stamped on the payload, used to compare it with the store. — Example: `ticketViewAt: ticketView.ticketViewAt`
 
 **Newer store data wins.** If the store already holds this record with a later `<model>ViewAt`, `Load.View` keeps the store's copy instead of the older payload.
 
@@ -150,17 +166,35 @@ What belongs in a View, and which file takes everything else:
 
 The work
 
-- View — *.View.tsx
+View — *.View.tsx
 
-- Util — *.Util.tsx
+Util — *.Util.tsx
 
-- Zone — *.Zone.tsx
+Zone — *.Zone.tsx
 
-- page — page/**
+page — page/**
 
 - Drawing — the View's job
 
+  - fields and markup: Titles, body text, nested data and formatted numbers from the full model.
+
+  - l() · l.trans(): Field names, enum values and headings come from the dictionary.
+
+  - General · Discord: A large View splits into named sections, as `User.View` does, not one giant `General`.
+
+  - <Model>.Unit · <Model>.Util: A View may render Units, Utils and Zones; each keeps its own job.
+
 - Behaviour — another file
+
+  - onClick · submit: A button or action is a Util the View renders, such as `User.Util.ChangePassword`.
+
+  - useState · useEffect: Hooks need the browser, so they live in a Util or a Zone.
+
+  - st.use · st.do: Store reads and writes. The store, signal and service do the actual mutation.
+
+  - Load.View: Hydrates the store from the view payload and hands the model to the View.
+
+  - fetch.view<Model>: Called in the route, so the query starts before the first byte is sent.
 
 Belongs here
 

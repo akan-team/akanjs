@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { request } from "node:http";
 import { homedir, networkInterfaces } from "node:os";
 import path from "node:path";
@@ -61,6 +62,21 @@ class DesktopApp {
   static async until(check: () => Promise<boolean>, timeout = 10_000) {
     for (const started = Date.now(); Date.now() - started < timeout; await Bun.sleep(100)) if (await check()) return;
     throw new Error(`timed out after ${timeout} ms`);
+  }
+
+  //? A container whose init reaps nothing keeps an ended process as a zombie, which still answers signal 0.
+  static alive(pid: number) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return false;
+    }
+    if (process.platform !== "linux") return true;
+    try {
+      return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+    } catch {
+      return false;
+    }
   }
 
   static async answers(url: string) {
@@ -212,11 +228,16 @@ describe.skipIf(!enabled)("a desktop app carrying its server (build-desktop mini
     expect((await fetch(`${app.url}${kept?.imageUrl ?? ""}`)).status).toBe(200);
   }, 60_000);
 
-  test("a killed shell takes its server down with it", async () => {
+  test("a killed shell takes its server down with it, and what the server started", async () => {
     const { url } = app;
+    const held = await post(`${url}/api/holdProbeTool`, {});
+    expect(held.status).toBe(200);
+    const tool = Number(await held.json());
+    expect(DesktopApp.alive(tool)).toBe(true);
     app.proc.kill("SIGKILL");
     await app.proc.exited;
     await DesktopApp.until(async () => !(await DesktopApp.answers(url)), 10_000);
+    await DesktopApp.until(async () => !DesktopApp.alive(tool), 10_000);
     app = await DesktopApp.launch();
   }, 60_000);
 });

@@ -32,31 +32,31 @@ Export
 
 - sleep: Waits the given number of milliseconds.
 
-- Changes the case of the first character only.
+- capitalize, lowerlize: Changes the case of the first character only.
 
-- Adds dashes to a Korean phone number and checks the dashed form.
+- formatPhone, isPhoneNumber: Adds dashes to a Korean phone number and checks the dashed form.
 
 - isEmail: Checks that a string looks like an email address.
 
 - RestClient: Calls a REST API that is not an Akan server.
 
-- Reads and writes a nested value by a path such as `items[0].name`.
+- pathGet, pathSet: Reads and writes a nested value by a path such as `items[0].name`.
 
-- Picks one or several random items from a list.
+- randomPick, randomPicks: Picks one or several random items from a list.
 
 More in akanjs/common
 
-- clamp: Keeps a number between `min` and `max`.
+- clamp: Keeps a number between `min` and `max`. — Example: `clamp(120, 0, 100); // 100`
 
-- formatNumber: Adds thousands separators to a number string and keeps the decimals as written.
+- formatNumber: Adds thousands separators to a number string and keeps the decimals as written. — Example: `formatNumber("1234567.89"); // "1,234,567.89"`
 
 - isValidDate: Tells whether a `YYYY-MM-DD` string, `Date` or `Dayjs` parses, though `2024-02-30` still passes.
 
 - isDayjs: Tells whether a value is a `Dayjs`.
 
-- Splits "1.2.3" into major, minor and patch, and joins them back. — splitVersion("1.2.3"); // { major: "1", minor: "2", patch: "3" }
+- splitVersion, mergeVersion: Splits "1.2.3" into major, minor and patch, and joins them back. — Example: `splitVersion("1.2.3"); // { major: "1", minor: "2", patch: "3" }`
 
-- Copy data fields without methods, and only `plainFieldsOf` keeps a model's `Date` fields.
+- objectify, plainFieldsOf: Copy data fields without methods, and only `plainFieldsOf` keeps a model's `Date` fields.
 
 - deepObjectify: Makes a deep plain copy, JSON-ready when you pass `serializable` or `convertDate`.
 
@@ -64,7 +64,7 @@ More in akanjs/common
 
 - isThenable: Tells whether a value can be awaited.
 
-- interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written.
+- interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`
 
 The same import also carries route-convention helpers and wire contracts that the framework uses itself. App code rarely needs them.
 
@@ -100,11 +100,11 @@ Methods
 
 Environment variables
 
-- LogLevel — info — The console level, below which lines are not printed.
+- AKAN_PUBLIC_LOG_LEVEL (LogLevel, default info): The console level, below which lines are not printed.
 
-- LogLevel — AKAN_PUBLIC_LOG_LEVEL — The level the container's stdout carries, and it overrides `AKAN_PUBLIC_LOG_LEVEL` when set.
+- AKAN_LOG_STDOUT_LEVEL (LogLevel, default AKAN_PUBLIC_LOG_LEVEL): The level the container's stdout carries, and it overrides `AKAN_PUBLIC_LOG_LEVEL` when set.
 
-- LogLevel — trace — The floor for a sink that sets no `minLevel`.
+- AKAN_LOG_FILE_LEVEL (LogLevel, default trace): The floor for a sink that sets no `minLevel`.
 
 **Never call `.log()`.** It is deprecated and writes at `info`, so it looks like its own level but is not; lint rejects it. `AKAN_PUBLIC_LOG_LEVEL=log` likewise means `info`.
 
@@ -132,9 +132,9 @@ formatPhone / isPhoneNumber
 
 `formatPhone` adds dashes to a Korean phone number as it is typed, and `isPhoneNumber` accepts only the dashed form. `Field.Phone` already runs both, so a form seldom calls them itself.
 
-- Call
+Call
 
-- Result
+Result
 
 - formatPhone("0101234567") — "010-123-4567"
 
@@ -188,11 +188,11 @@ Constructor options
 
 Pass an options object, or just a base URL: `new RestClient("https://api.example.com")` is short for `{ baseUrl: "https://api.example.com" }`.
 
-- string — Joined in front of a relative path, while an absolute `http(s)` URL ignores it.
+- baseUrl (string): Joined in front of a relative path, while an absolute `http(s)` URL ignores it.
 
-- HeadersInit — Sent with every request, and a call's own `headers` win on a clash.
+- headers (HeadersInit): Sent with every request, and a call's own `headers` win on a clash.
 
-- number (ms) — Aborts a slower request; unset means no limit, and a call's own `timeout` wins.
+- timeout (number (ms)): Aborts a slower request; unset means no limit, and a call's own `timeout` wins.
 
 Method
 

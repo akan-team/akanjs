@@ -76,6 +76,9 @@ describe("createServerEnvPlugin", () => {
     expect(proc.stderr.toString()).toContain(
       "env/env.server.develop.ts is not in this build: `akan build` bundles the server env of AKAN_PUBLIC_ENV=main alone",
     );
+    expect(proc.stderr.toString()).toContain(
+      "To run develop, build for it: AKAN_PUBLIC_ENV=develop in the workspace's .env, which outranks the shell, or --env develop on a desktop or mobile build.",
+    );
   });
 
   test("a custom branch is its own environment", async () => {

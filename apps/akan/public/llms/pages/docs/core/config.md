@@ -28,41 +28,41 @@ akan.config.ts is the app-level settings file. You do not need to understand eve
 
 This is the whole key set. Every one of them has a default that a working app can live with, and the slides below cover the ones you are most likely to change:
 
-- AkanRouteConfig[] — Public domains for the app, optionally split per client with basePath.
+- routes (AkanRouteConfig[]): Public domains for the app, optionally split per client with basePath.
 
-- { prefix, websocketPrefix } — /api, /ws — Where signal endpoints and the websocket upgrade are mounted. Baked into every client bundle.
+- api ({ prefix, websocketPrefix }, default /api, /ws): Where signal endpoints and the websocket upgrade are mounted. Baked into every client bundle.
 
-- boolean | { csr: boolean } — true — Which web surfaces the build produces and the app mounts at boot.
+- web (boolean | { csr: boolean }, default true): Which web surfaces the build produces and the app mounts at boot.
 
-- { defaultLocale, locales } — en, ["en", "ko"] — The locale segment every route sits under. defaultLocale must be one of locales.
+- i18n ({ defaultLocale, locales }, default en, ["en", "ko"]): The locale segment every route sits under. defaultLocale must be one of locales.
 
-- AkanMobileConfig — Native app identity plus one entry per mobile package that Android and iOS commands read.
+- mobile (AkanMobileConfig): Native app identity plus one entry per mobile package that Android and iOS commands read.
 
-- AkanImageConfig — webp, quality 75 — Allow-list, sizes, and limits for the image optimizer. A remote host not listed is refused.
+- images (AkanImageConfig, default webp, quality 75): Allow-list, sizes, and limits for the image optimizer. A remote host not listed is refused.
 
-- string[] — [] — Extra process.env names the browser build may inline, beyond the built-in AKAN_PUBLIC_* pattern.
+- publicEnv (string[], default []): Extra process.env names the browser build may inline, beyond the built-in AKAN_PUBLIC_* pattern.
 
-- string[] — [] — Globs for files that cannot live inside env.server.*.ts. Shipped by upload-env and git-ignored.
+- secrets (string[], default []): Globs for files that cannot live inside env.server.*.ts. Shipped by upload-env and git-ignored.
 
-- { pruneFonts, keepFonts } — true, [] — How akan build trims the public/ copy it ships. Source trees are never touched.
+- assets ({ pruneFonts, keepFonts }, default true, []): How akan build trims the public/ copy it ships. Source trees are never touched.
 
-- string[] | boolean — false — Which library page folders this app mounts as its own routes.
+- syncPageLibs (string[] | boolean, default false): Which library page folders this app mounts as its own routes.
 
-- AkanPlugin[] — [] — Akan plugins this app contributes, read live by the CLI.
+- plugins (AkanPlugin[], default []): Akan plugins this app contributes, read live by the CLI.
 
-- string | DockerImageConfig — oven/bun:1-slim — A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
-- { modes: DatabaseMode[] } — { modes: ["single"] } — The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
+- database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 
-- string[] — [] — Packages kept as production runtime dependencies instead of being bundled.
+- externalLibs (string[], default []): Packages kept as production runtime dependencies instead of being bundled.
 
-- string[] — [] — Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
+- trustedDependencies (string[], default []): Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
 
-- Record<string, { [platform]: AkanBinSource }> — {} — Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
 
-- string[] — akanjs + workspace — Barrel paths Akan flattens while scanning and bundling.
+- barrelImports (string[], default akanjs + workspace): Barrel paths Akan flattens while scanning and bundling.
 
-- string[] — built-in list — Extra packages whose imports the client build rewrites to the exact source file.
+- optimizeImports (string[], default built-in list): Extra packages whose imports the client build rewrites to the exact source file.
 
 Start small
 
@@ -96,7 +96,7 @@ File
 
 - env.server.*: Server-only values: server options, connection settings, private service configuration.
 
-Suffixes chosen by AKAN_PUBLIC_ENV: your machine, tests, two shared stages, production.
+- local, testing, debug, develop, main: Suffixes chosen by AKAN_PUBLIC_ENV: your machine, tests, two shared stages, production.
 
 - env.*.type.ts: The shape of env values, so a missing or misspelled setting is caught while coding.
 
@@ -116,7 +116,7 @@ Stage
 
 - setMcp: MCP server settings such as instructions, readOnly, and auth.
 
-Register env-derived use<T>() singletons, signal middleware, adaptor overrides, web proxies.
+- use, applyMiddleware, applyAdaptor, applyWebProxy: Register env-derived use<T>() singletons, signal middleware, adaptor overrides, web proxies.
 
 Read the LLM key from the env object, never write it in option.ts: env.server.* is gitignored, this file is not.
 
@@ -126,9 +126,9 @@ Routes and Domains
 
 routes is where you list the public domains for the app. If your app has several clients, each route can also name the client with basePath. The multi-client page explains that structure in detail; here we focus on the config fields.
 
-The client this route opens and its first page folder; without one, the route is the app.
+- basePath (string): The client this route opens and its first page folder; without one, the route is the app.
 
-Hosts that open this route, keyed by branch: debug, develop, main, or any key you add.
+- domains (Record<branch, string[]>, default {}): Hosts that open this route, keyed by branch: debug, develop, main, or any key you add.
 
 If you declare basePath, the page folder must follow the same name. See Multi Client for the full page layout rule.
 
@@ -136,11 +136,11 @@ Web Surfaces And Prefixes
 
 web decides which web surfaces the build produces, and api decides where the server mounts its endpoints. Both are declared here rather than only in main.ts, because both are baked into the client bundles: a prebuilt CSR shell or a mobile package never reaches a server that could tell it otherwise.
 
-true builds SSR and CSR, false is API-only, and { csr: false } drops only the CSR shell.
+- web (boolean | { csr: boolean }, default true): true builds SSR and CSR, false is API-only, and { csr: false } drops only the CSR shell.
 
-Where signal endpoints are mounted; read it back with getApiPrefix() from akanjs/base.
+- api.prefix (string, default /api): Where signal endpoints are mounted; read it back with getApiPrefix() from akanjs/base.
 
-Where the websocket upgrade sits; read it back with getWsPrefix().
+- api.websocketPrefix (string, default /ws): Where the websocket upgrade sits; read it back with getWsPrefix().
 
 Never write either prefix as a literal; new AkanApp({ prefix, websocketPrefix }) still overrides both for the server and every page it renders.
 
@@ -152,45 +152,59 @@ Mobile Metadata
 
 mobile describes the native app identity used by Android and iOS commands. Think of it as the name, package id, and version information that will appear in native app projects. Values at the mobile root are defaults; a target overrides the ones it names.
 
-- string — the app name — Display name of the native app.
+- appName (string, default the app name): Display name of the native app.
 
-- string — com.<repo>.<app> — Native package identifier: Android applicationId and iOS bundle id.
+- appId (string, default com.<repo>.<app>): Native package identifier: Android applicationId and iOS bundle id.
 
-- string — 0.0.1 — User-facing app version, written to Android versionName and iOS MARKETING_VERSION.
+- version (string, default 0.0.1): User-facing app version, written to Android versionName and iOS MARKETING_VERSION.
 
-- number — 1 — Store build number, written to Android versionCode and iOS CURRENT_PROJECT_VERSION.
+- buildNum (number, default 1): Store build number, written to Android versionCode and iOS CURRENT_PROJECT_VERSION.
 
-- Record<string, Target> — one target — Named mobile packages built from the same Akan app.
+- targets (Record<string, Target>, default one target): Named mobile packages built from the same Akan app.
 
-- string — The client this native package opens; it must be a basePath declared in routes.
+- targets.*.basePath (string): The client this native package opens; it must be a basePath declared in routes.
 
-- string — Start and fallback CSR path: app startup, deep-link stack recovery, back-button fallback.
+- targets.*.indexPath (string): Start and fallback CSR path: app startup, deep-link stack recovery, back-button fallback.
 
-- camera | contacts | location | push | speech — [] — Native permission hints; each activates the matching plugin's native configuration.
+- targets.*.permissions (camera | contacts | location | push | speech, default []): Native permission hints; each activates the matching plugin's native configuration.
 
-- { icon, splash } — App icon and splash source paths, relative to the app root.
+- targets.*.assets ({ icon, splash }): App icon and splash source paths, relative to the app root.
 
-- Record<string, string> — Files copied into the app, keyed by where they land (ios/<path>, android/res/<type>/<file> or android/assets/<path>), valued by an app-relative source; merged target over root.
+- targets.*.files (Record<string, string>): Files copied into the app, keyed by where they land (ios/<path>, android/res/<type>/<file> or android/assets/<path>), valued by an app-relative source; merged target over root.
 
-- AkanMobileTargetDeepLinks — Native URL schemes and verified HTTPS app links for this target.
+- targets.*.deepLinks (AkanMobileTargetDeepLinks): Native URL schemes and verified HTTPS app links for this target.
 
-- string[] — Custom URL schemes such as example://.
+- deepLinks.schemes (string[]): Custom URL schemes such as example://.
 
-- string[] — App-link and universal-link hosts, normalized to the bare host.
+- deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- string — Apple Developer Team ID for apple-app-site-association; universal links need it.
+- deepLinks.ios.teamId (string): Apple Developer Team ID for apple-app-site-association; universal links need it.
 
-- string[] — assetlinks.json signing fingerprints: debug for a local build, release for Play Store.
+- deepLinks.android.sha256CertFingerprints (string[]): assetlinks.json signing fingerprints: debug for a local build, release for Play Store.
 
-- string[] — Native runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder; root and target lists are joined.
+- native.plugins (string[]): Native runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder; root and target lists are joined.
 
-- { infoPlist, entitlements } — Info.plist keys and entitlements for the iOS app, merged target over root.
+- native.ios ({ infoPlist, entitlements }): Info.plist keys and entitlements for the iOS app, merged target over root.
 
-- { manifest, application, activity, googleServices, autoplay } — XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.
+- native.android ({ manifest, application, activity, googleServices, autoplay }): XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.
 
-- { server?: boolean, recovery?: "errorPage" | "reload", window?: { fullscreen?, skipTaskbar? }, screenCapture?: "picker" | "auto" } — server carries the app's own server in the desktop app, on a loopback port, and its pages call nothing else; an installed app refuses an update that adds or drops it. The rest is for a desktop app nobody attends, such as a kiosk or a signage screen. recovery "reload" loads a page whose process ended again every time, waiting longer after each end in a row, and relaunches the app when the webview's browser process ends; the default "errorPage" reloads once, then shows an error page. window opens the main window fullscreen and without a taskbar button from its first frame. screenCapture "auto" (Windows) answers getDisplayMedia() with the first screen, without the picker or a tap, for remote support on a screen nobody attends; it covers every media request, so leave it off in an app that asks for a camera or a microphone.
+- native.desktop.server (boolean, default false): Carries the app's server in the desktop app on a loopback port; its pages call nothing else. An installed app takes no update that adds or drops it.
 
-- { url, publicKey, channel?, readyTimeout? } — Where installed apps look for newer releases of themselves: a static base URL, such as a storage bucket, holding what akan publish-update writes; the public key akan update-keygen prints; and the channel the app follows (default the --env it is built with, so it takes only releases of its own env; a pilot target names its own). Root and target merge field by field. A new release runs on trial until its first page mounts, and is rolled back if it never does. A phone looks for a newer web bundle by itself (akan pack-update writes one unsigned for a signer elsewhere); on the desktop, when to check, download and apply is the app's own call through updates from akanjs/client/native.
+- native.desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a page whose process ended every time, waiting longer each time in a row, and relaunches the app when the webview's browser process ends. "errorPage" reloads once, then shows an error page.
+
+- native.desktop.window ({ fullscreen?, skipTaskbar? }): Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.
+
+- native.desktop.screenCapture ("picker" | "auto", default "picker"): "auto" (Windows) answers getDisplayMedia() with the first screen, no picker or tap, for remote support; it covers every media request, so not in an app that asks for a camera.
+
+- updates ({ url, publicKey, channel?, readyTimeout? }): Where installed apps look for newer releases of themselves; root and target merge field by field. A phone updates its web bundle by itself, a desktop app when it calls updates from akanjs/client/native.
+
+- updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
+
+- updates.publicKey (string): The public key akan update-keygen prints; an app takes no release it does not verify. akan pack-update writes a phone update unsigned, for a signer elsewhere.
+
+- updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
+
+- updates.readyTimeout (number, default 10000): How long, in ms, a new release on trial has for its first page to mount before it is rolled back; with a carried server, from 5 s after the server is up.
 
 indexPath is read per target only, so one written at the mobile root is dropped. Firebase app registration must use the same appId.
 
@@ -220,27 +234,27 @@ Build And Runtime
 
 The rest of the config is for the build system and the production image. Most apps never touch it, but it is where a package stays external, a font survives pruning, a library's routes join the app, and the image gains a system dependency.
 
-- string[] — [] — Unbundled packages, installed in production at the workspace-pinned version.
+- externalLibs (string[], default []): Unbundled packages, installed in production at the workspace-pinned version.
 
-- string[] — [] — Packages allowed to run their install scripts, for an addon that builds itself at install.
+- trustedDependencies (string[], default []): Packages allowed to run their install scripts, for an addon that builds itself at install.
 
-- Record<string, { [platform]: AkanBinSource }> — {} — { url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): { url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.
 
-- string[] — built-in list — Extra packages the client build imports by exact file, so an icon set does not ship whole.
+- optimizeImports (string[], default built-in list): Extra packages the client build imports by exact file, so an icon set does not ship whole.
 
-- string[] — akanjs + workspace — Extra barrels to flatten while scanning and bundling, for ones outside the workspace.
+- barrelImports (string[], default akanjs + workspace): Extra barrels to flatten while scanning and bundling, for ones outside the workspace.
 
-- ("single" | "multiple" | "cluster")[] — ["single"] — Every declared mode's drivers ship: multiple adds bullmq and ioredis, cluster also postgres.
+- database.modes (("single" | "multiple" | "cluster")[], default ["single"]): Every declared mode's drivers ship: multiple adds bullmq and ioredis, cluster also postgres.
 
-- boolean — true — Drops unreferenced fonts from dist's public/ copy; an optimize-on font's source goes too.
+- assets.pruneFonts (boolean, default true): Drops unreferenced fonts from dist's public/ copy; an optimize-on font's source goes too.
 
-- string[] — [] — Font globs kept whatever the scan concludes, such as a URL assembled at runtime.
+- assets.keepFonts (string[], default []): Font globs kept whatever the scan concludes, such as a URL assembled at runtime.
 
-- string[] | boolean — false — true mounts every dependency lib with a page folder, an array only those; false unlinks all.
+- syncPageLibs (string[] | boolean, default false): true mounts every dependency lib with a page folder, an array only those; false unlinks all.
 
-- AkanPlugin[] — [] — Read live by the CLI for runtime packages, native project setup, and public/ assets.
+- plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
-- string | DockerImageConfig — oven/bun:1-slim — A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.
+- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.
 
 A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 

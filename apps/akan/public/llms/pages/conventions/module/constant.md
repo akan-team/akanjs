@@ -48,15 +48,15 @@ Write all five even when one is empty, and build each with `via()`. Later files 
 
 Class
 
-- TicketInput: Fields a user fills in when creating or editing the model.
+- TicketInput: Fields a user fills in when creating or editing the model. — Example: `via((field) => ({ … }))`
 
-- TicketObject: Input plus stored fields that the system or a service manages.
+- TicketObject: Input plus stored fields that the system or a service manages. — Example: `via(TicketInput, (field) => ({ … }))`
 
-- LightTicket: The few fields a list, a relation or a card returns. Server and client both hold it.
+- LightTicket: The few fields a list, a relation or a card returns. Server and client both hold it. — Example: `via(TicketObject, ["title", "status"] as const, (resolve) => ({}))`
 
-- Ticket: The full model: Object and Light combined. Collection helpers go here as statics.
+- Ticket: The full model: Object and Light combined. Collection helpers go here as statics. — Example: `via(TicketObject, LightTicket, (resolve) => ({}))`
 
-- TicketInsight: Counters for dashboards. It always has `count`, and you write it even when it is empty.
+- TicketInsight: Counters for dashboards. It always has `count`, and you write it even when it is empty. — Example: `via(Ticket, (field) => ({ … }))`
 
 Here is the complete file for a support ticket:
 
@@ -74,9 +74,9 @@ Types
 
 Type
 
-- JavaScript globals, so no import. A `Date` field reads back as a `Dayjs`.
+- String, Boolean, Date: JavaScript globals, so no import. A `Date` field reads back as a `Dayjs`.
 
-- Whole and decimal numbers from `akanjs/base`. `Number` does not typecheck as a field type.
+- Int, Float: Whole and decimal numbers from `akanjs/base`. `Number` does not typecheck as a field type.
 
 - ID: Another document's id. Name the model it points at with the `ref` option.
 
@@ -92,49 +92,49 @@ Type
 
 - File: A model class, which makes the field a relation. It stores the id.
 
-- Never a model field. Store bytes by referencing the `File` model instead.
+- Binary, Upload: Never a model field. Store bytes by referencing the `File` model instead.
 
 Values And References
 
-- T | (doc) => T — [] for an array, else null — A literal for a plain value, a thunk such as `() => dayjs()` for anything constructed.
+- default (T | (doc) => T, default [] for an array, else null): A literal for a plain value, a thunk such as `() => dayjs()` for anything constructed.
 
-- string — The model an `ID` field points at, when you store an id instead of a relation.
+- ref (string): The model an `ID` field points at, when you store an id instead of a relation.
 
-- string — The field holding a polymorphic owner's model name: an `enumOf`, or a `String` for `removeWithAny`.
+- refPath (string): The field holding a polymorphic owner's model name: an `enumOf`, or a `String` for `removeWithAny`.
 
-- scalar or model class — The value type of a `Map` field. Required for a Map.
+- of (scalar or model class): The value type of a `Map` field. Required for a Map.
 
-- "child" | "parent" | "relation" — A label for the kind of relation, shown in the schema docs. It changes no behavior.
+- refType ("child" | "parent" | "relation"): A label for the kind of relation, shown in the schema docs. It changes no behavior.
 
 Search, Cascade And Agents
 
-- "title" | "desc" | "tag" | "thumb" | "filter" — Adds the field to the full-text index under this role. See Text Search Fields.
+- text ("title" | "desc" | "tag" | "thumb" | "filter"): Adds the field to the full-text index under this role. See Text Search Fields.
 
-- "removeRef" | "removeWith" | "removeWithAny" — Which side of the relation is removed along with the other. See Cascade Remove Fields.
+- cascade ("removeRef" | "removeWith" | "removeWithAny"): Which side of the relation is removed along with the other. See Cascade Remove Fields.
 
-- boolean — false — The page renders it and an agent never sees it. `field.visual(T)` is the short form.
+- visual (boolean, default false): The page renders it and an agent never sees it. `field.visual(T)` is the short form.
 
 Validation
 
-- (value, doc) => boolean — Runs when a document is created or saved, and `false` refuses it. `null` and `undefined` skip it.
+- validate ((value, doc) => boolean): Runs when a document is created or saved, and `false` refuses it. `null` and `undefined` skip it.
 
-- boolean — false — Changing it in a document save throws. Query-level writes skip the check.
+- immutable (boolean, default false): Changing it in a document save throws. Query-level writes skip the check.
 
-- number — A lower bound for the schema docs and `sampleOf()`. Enforce it with `validate`.
+- min (number): A lower bound for the schema docs and `sampleOf()`. Enforce it with `validate`.
 
-- number — An upper bound, used the same way.
+- max (number): An upper bound, used the same way.
 
-- number — A length lower bound shown in the schema docs. On an array, the store checks the item count.
+- minlength (number): A length lower bound shown in the schema docs. On an array, the store checks the item count.
 
-- number — A length upper bound, handled the same way.
+- maxlength (number): A length upper bound, handled the same way.
 
 Samples And Counters
 
-- T — A sample value for the schema docs and the API explorer's example request and response.
+- example (T): A sample value for the schema docs and the API explorer's example request and response.
 
-- "email" | "password" | "url" — Makes `sampleOf()` produce a realistic email, password or URL. It does not validate.
+- type ("email" | "password" | "url"): Makes `sampleOf()` produce a realistic email, password or URL. It does not validate.
 
-- query object — Insight fields only: the condition this counter counts. `{}` counts every match.
+- accumulate (query object): Insight fields only: the condition this counter counts. `{}` counts every match.
 
 Not In The Options Object
 
@@ -160,9 +160,17 @@ AI agent
 
 - Plain
 
+  - field(T): An ordinary stored property. Every side gets it.
+
 - Secrecy: the value stays on the server
 
+  - field.hidden(T): Stored and read by the server, never sent to a client. Always nullable.
+
+  - field.secret(T): Like hidden, and even the server's default read skips it until a projection asks.
+
 - Cost: only the agent skips it
+
+  - field.visual(T): Sent to the page as usual; stripped from agent reads, MCP results and the MCP schema.
 
 Gets the value
 
@@ -190,11 +198,11 @@ Put it on
 
 Logic about
 
-- Light<Model>: Methods about one record: display text and predicates.
+- Light<Model>: Methods about one record: display text and predicates. — Example: `board.canWrite(user)`
 
-- <Model> static: Helpers about a list of records.
+- <Model> static: Helpers about a list of records. — Example: `Board.getBoard(boardList, boardId)`
 
-- <Scalar> static: Math that belongs to the value itself, not to whoever stored it.
+- <Scalar> static: Math that belongs to the value itself, not to whoever stored it. — Example: `Coordinate.getDistanceKm(from, to)`
 
 The board model shows the first two in one file:
 

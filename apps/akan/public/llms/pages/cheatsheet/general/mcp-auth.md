@@ -144,7 +144,7 @@ The access token is your app's own access JWT: the claims a browser session carr
 
 Claim
 
-- The same identity a browser session carries; `AccountMiddleware` reads it as before.
+- self, me: The same identity a browser session carries; `AccountMiddleware` reads it as before.
 
 - iss: The issuer: your app's public origin.
 
@@ -198,9 +198,9 @@ Redirect URI
 
 - https://…: Always accepted, and must match exactly.
 
-- Loopback: always accepted, and only the port may differ.
+- http://127.0.0.1, http://[::1], http://localhost: Loopback: always accepted, and only the port may differ.
 
-- Accepted only when `allowedRedirectSchemes` names the scheme, then matched exactly.
+- cursor://…, <scheme>://…: Accepted only when `allowedRedirectSchemes` names the scheme, then matched exactly.
 
 - http://<other host>: Never accepted.
 
@@ -222,27 +222,27 @@ Everything lives under one `oauth` key in the app's server env, beside the other
 
 An app that ships its own desktop client, with its own URL scheme, adds this:
 
-- boolean — true — Off removes the authorization server and `/mcp`'s credential check, so `/mcp` goes anonymous.
+- enabled (boolean, default true): Off removes the authorization server and `/mcp`'s credential check, so `/mcp` goes anonymous.
 
-- string — the app's host — The public origin clients compare byte for byte; set it behind a tunnel or a host-renaming edge.
+- issuer (string, default the app's host): The public origin clients compare byte for byte; set it behind a tunnel or a host-renaming edge.
 
-- string — <issuer>/mcp — The MCP endpoint's canonical URL and every token's `aud`; set it if MCP moved off `/mcp`.
+- resource (string, default <issuer>/mcp): The MCP endpoint's canonical URL and every token's `aud`; set it if MCP moved off `/mcp`.
 
-- string — /oauth/consent — Route of the consent page, basePath included: `/office/oauth/consent`.
+- consentPath (string, default /oauth/consent): Route of the consent page, basePath included: `/office/oauth/consent`.
 
-- string — /signin — Where an anonymous browser goes first, with `?redirect=` back to consent; basePath included.
+- signinPath (string, default /signin): Where an anonymous browser goes first, with `?redirect=` back to consent; basePath included.
 
-- OAuthStaticClient[] — [] — Clients you declare yourself; the fields are listed below.
+- clients (OAuthStaticClient[], default []): Clients you declare yourself; the fields are listed below.
 
-- boolean — true — RFC 7591 self-registration; off answers 404, leaving static and metadata-document clients.
+- dynamicRegistration (boolean, default true): RFC 7591 self-registration; off answers 404, leaving static and metadata-document clients.
 
-- string[] — ["cursor"] — Private-use redirect schemes accepted besides HTTPS and loopback.
+- allowedRedirectSchemes (string[], default ["cursor"]): Private-use redirect schemes accepted besides HTTPS and loopback.
 
-- number — 3600 — Access token lifetime, and how long a revoked grant's id stays denylisted.
+- accessTokenSeconds (number, default 3600): Access token lifetime, and how long a revoked grant's id stays denylisted.
 
-- boolean — true — Reads an HTTPS `client_id` as a metadata document; off also stops advertising it.
+- clientIdMetadata.enabled (boolean, default true): Reads an HTTPS `client_id` as a metadata document; off also stops advertising it.
 
-- boolean — true — Resolves the document's host before fetching; off trusts the host name alone.
+- clientIdMetadata.refusePrivateAddresses (boolean, default true): Resolves the document's host before fetching; off trusts the host name alone.
 
 **The default issuer** is `http://localhost:<port>` in `local`, and `https://<host>` elsewhere, where the host is `HOST_NAME`, then `hostname`, then `<app>-<environment>.<serveDomain>`.
 
@@ -256,15 +256,17 @@ A static client
 
 Each entry of `clients` is an `OAuthStaticClient`:
 
-- string — The `client_id` this client presents.
+- clientId (string): The `client_id` this client presents.
 
-- string[] — Every redirect URI it may use; a request must name one exactly, a loopback one on any port.
+  - required
 
-- string — The name the consent page shows the user.
+- redirectUris (string[]): Every redirect URI it may use; a request must name one exactly, a loopback one on any port.
 
-- string — Makes the client confidential; omit it for a public client.
+- clientName (string): The name the consent page shows the user.
 
-- "none" | "client_secret_post" | "client_secret_basic" — client_secret_post — How a confidential client sends its secret; a client without one is always `none`.
+- clientSecret (string): Makes the client confidential; omit it for a public client.
+
+- tokenEndpointAuthMethod ("none" | "client_secret_post" | "client_secret_basic", default client_secret_post): How a confidential client sends its secret; a client without one is always `none`.
 
 Revocation Is Whole-Grant
 
@@ -316,13 +318,17 @@ Two levers read that signal, and they answer different questions:
 
 Lever
 
-- Refuses
+Refuses
 
-- Listed
+Listed
 
-- Branches
+Branches
 
 - What each lever does to an agent's call
+
+  - guards: [Every, Person]: Refuses the call, and takes the endpoint out of the MCP catalogue.
+
+  - .with(AgentCall): Hands the handler the verdict as a boolean to branch on.
 
 Yes
 

@@ -25,19 +25,19 @@ CRUD is usually the first screen you build: list records, open one, create one, 
 
 What you write
 
-- post.signal.ts: The slice. It decides which records this screen can read and edit.
+- post.signal.ts: The slice. It decides which records this screen can read and edit. — Example: `inAdmin: init({ guards: [Admin] })`
 
-- Post.Template.tsx: Draws the form fields. Create and edit use the same one.
+- Post.Template.tsx: Draws the form fields. Create and edit use the same one. — Example: `onChange={st.do.setTitleOnPost}`
 
-- Post.Zone.tsx: Connects the slice to UI behaviour with the `Load` and `Model` components.
+- Post.Zone.tsx: Connects the slice to UI behaviour with the `Load` and `Model` components. — Example: `<Load.Units init={init} renderItem={…} />`
 
 Each task maps to the components and generated store actions that do it:
 
-- Task
+Task
 
-- Store key or action
+Store key or action
 
-- Component
+Component
 
 - List — Load.Units — postListInAdmin
 

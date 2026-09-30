@@ -57,15 +57,15 @@ What akanjs/ui gives you
 
 Export
 
-- Data shells: seed the store from a fetch handle and render loading, empty and list states.
+- Load.Units, Load.View, Load.Edit: Data shells: seed the store from a fetch handle and render loading, empty and list states.
 
 - Load.Stream: Awaits one promise behind its own Suspense boundary; a resolved value renders inline.
 
-- Create, edit and remove modals wired to the generated store actions.
+- Model.New, Model.Edit, Model.SureToRemove: Create, edit and remove modals wired to the generated store actions.
 
 - Field: The control for every model field type. Never a bare input for a model field.
 
-- Composition primitives. Tab keeps panel bodies on the server; Link adds the locale prefix.
+- Tab, Layout, Link, Image, Empty: Composition primitives. Tab keeps panel bodies on the server; Link adds the locale prefix.
 
 - cn: The only class merge, from akanjs/client. Pass the caller's className last.
 
@@ -167,7 +167,7 @@ Shell
 
 - Load.Stream: of takes a promise or a value; children renders it. Takes a slice's x<Model>List<Suffix>.
 
-- The paging control alone, and the shared SSR/CSR page loader.
+- Load.Pagination, Load.Page: The paging control alone, and the shared SSR/CSR page loader.
 
 Don't wait for the slowest query
 

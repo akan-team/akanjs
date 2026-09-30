@@ -90,13 +90,13 @@ Most rules here catch code that compiles, runs and looks right, yet quietly does
 
 Say you write `bg-blue-500` on a badge. The page renders and the class is in the DOM, but the badge has no colour, and neither the build nor the browser complains.
 
-- A Class With No CSS — The raw palette is stripped from the stylesheet, so the badge renders with no colour.
+- A Class With No CSS — `className="bg-blue-500"` — The raw palette is stripped from the stylesheet, so the badge renders with no colour.
 
-- A Field No Agent Can Reach — An arrow around the setter hides it, so the field publishes no agent tool.
+- A Field No Agent Can Reach — `onChange={(v) => st.do.setTitleOnTicket(v)}` — An arrow around the setter hides it, so the field publishes no agent tool.
 
-- A Return Value Nobody Gets — Store actions are dispatched as `void`, so the caller never sees the value.
+- A Return Value Nobody Gets — `return ticket;` — Store actions are dispatched as `void`, so the caller never sees the value.
 
-- A Note Every Visitor Downloads — A bang comment survives minification and ships in the browser bundle.
+- A Note Every Visitor Downloads — `//! remove before launch` — A bang comment survives minification and ships in the browser bundle.
 
 Words used on this page
 
@@ -122,13 +122,29 @@ Each diagnostic prints the name of the rule that fired. Find that name below; th
 
 - raw-palette — no-raw-palette-class — A Colour Outside The Vocabulary — The raw Tailwind palette is stripped from the compiled stylesheet, so `bg-blue-500` has no CSS behind it. The badge renders unstyled while the DOM still shows the class. — Use a semantic token such as `bg-primary`. The hex colour in `style` goes too (`no-inline-color`).
 
+  - apps/myapp/ui/StatusBadge.tsx
+
 - throw-raw-error — no-throw-raw-error — A Raw Error — A bare `Error` reaches the caller as `Internal Server Error`, with no message and no translation. — Throw an `Err` that names a key, and register that key in the module dictionary as an `[en, ko]` pair.
+
+  - apps/myapp/lib/ticket/ticket.service.ts
+
+  - Then register the key in the same module's dictionary: — apps/myapp/lib/ticket/ticket.dictionary.ts
 
 - form-setter — no-unpublished-form-setter — A Setter Wrapped In An Arrow — Both lines run the same code, but the arrow is an anonymous closure. The control then emits no `data-akan-action` and publishes no agent tool for the field. — Pass the setter by reference. Normalize a value with the control's `transform` prop; do several writes in a `_postSet<Field>` store method.
 
+  - apps/myapp/lib/ticket/Ticket.Template.tsx
+
 - store-return — no-return-in-store-action — A Value Returned From A Store Action — Every store method is dispatched through `st.do.<action>()`, which is typed `void`. The returned value reaches no call site. — Write the value into state with `this.set({ ... })`. A bare `return;` guard stays legal.
 
+  - apps/myapp/lib/ticket/ticket.store.ts
+
 - init-fetch — no-init-fetch-in-client — A Hydration Call Made From The Client — `fetch.init<Model><Suffix>` builds the snapshot `Load.Units` seeds the store from. Called after hydration, it costs two extra round trips for a shell the browser already painted. — Start it in the route, where it resolves before the first byte, and hand the promise to the Zone as `init`. To reload from the client, call `st.do.init<Model><Suffix>()`.
+
+  - Before, the Zone loads the list on mount: — apps/myapp/lib/ticket/Ticket.Zone.tsx
+
+  - After, the route starts the load and hands the promise down: — apps/myapp/page/project/[projectId]/_index.tsx
+
+  - The Zone only renders what it is handed: — apps/myapp/lib/ticket/Ticket.Zone.tsx
 
 - private-methods — no-js-private-class-method — #private In One Of Four Suffixes — The framework merges `constant`, `document`, `service` and `store` classes by copying methods onto another class. A copied method that calls a `#` member throws. — Use a TypeScript `private` method with an underscore prefix. Everywhere else, `srvkit/` included, `#private` stays the house style.
 
@@ -261,6 +277,122 @@ Where the configuration lives
 **`biome.json` is strict JSON, and one comment breaks it.** `akan lint` reports the parse error on its line, but a bare `biome check` silently falls back to other configs and names a file you did not edit, or runs without your rules. Rename it to `biome.jsonc` to document a disabled rule.
 
 ## Code Examples
+
+### Code
+
+```ts
+export const StatusBadge = ({ label }: StatusBadgeProps) => {
+  return (
+    <span
+      className="rounded bg-blue-500 px-2 text-white" // [!code --]
+      style={{ borderColor: "#e5e7eb" }} // [!code --]
+      className="rounded border border-border bg-primary px-2 text-primary-foreground" // [!code ++]
+    >
+      {label}
+    </span>
+  );
+};
+```
+
+### Code
+
+```ts
+import { Err } from "../dict"; // [!code ++]
+
+async openTicket(ticketId: string) {
+  const ticket = await this.getTicket(ticketId);
+  if (ticket.status !== "active") throw new Error("ticket is not active"); // [!code --]
+  if (ticket.status !== "active") throw new Err("ticket.error.notActive"); // [!code ++]
+  return await ticket.open().save();
+}
+```
+
+### Code
+
+```ts
+.error({
+    notActive: ["The ticket is not active", "티켓이 활성 상태가 아니다."], // [!code ++]
+  })
+```
+
+### Code
+
+```ts
+<Field.Text
+  label={l("ticket.title")}
+  value={ticketForm.title}
+  onChange={(v) => st.do.setTitleOnTicket(v)} // [!code --]
+  onChange={st.do.setTitleOnTicket} // [!code ++]
+/>
+```
+
+### Code
+
+```ts
+async openTicket(ticketId: string) {
+  const ticket = await fetch.openTicket(ticketId);
+  return ticket; // [!code --]
+  this.set({ ticket }); // [!code ++]
+}
+```
+
+### Code
+
+```ts
+"use client";
+
+export const Card = ({ projectId }: CardProps) => {
+  const [init, setInit] = useState<ClientInit<"ticket", cnst.LightTicket>>();
+  useEffect(() => {
+    void fetch.initTicketInProject(projectId).then(setInit); // [!code highlight]
+  }, []);
+  return init ? (
+    <Load.Units
+      init={init}
+      renderItem={(ticket) => <Ticket.Unit.Card ticket={ticket} />}
+    />
+  ) : null;
+};
+```
+
+### Code
+
+```ts
+export default page()
+  .param("projectId", ID)
+  .render(({ projectId }) => {
+    const { ticketInitInProject } = fetch.initTicketInProject(projectId);
+    return <Ticket.Zone.Card init={ticketInitInProject} />;
+  });
+```
+
+### Code
+
+```ts
+"use client";
+
+export const Card = ({ init }: CardProps) => {
+  return (
+    <Load.Units
+      init={init}
+      renderItem={(ticket) => <Ticket.Unit.Card ticket={ticket} />}
+    />
+  );
+};
+```
+
+### Code
+
+```ts
+async #syncStock() { // [!code --]
+private async _syncStock() { // [!code ++]
+  return await this.ticketModel.syncStock();
+}
+async refreshStock() {
+  return await this.#syncStock(); // [!code --]
+  return await this._syncStock(); // [!code ++]
+}
+```
 
 ### apps/myapp/ui/BrowserChrome.tsx
 

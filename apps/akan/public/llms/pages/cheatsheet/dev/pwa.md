@@ -45,7 +45,19 @@ Two Ways To Declare It
 
 - Static JSON File — apps/<app>/public/manifest.json
 
+  - Keys — Standard snake_case, exactly what the browser reads.
+
+  - Linked by — A `<link rel="manifest">` you write in `.head()`.
+
+  - Pick it when — Designers or operators need to review the JSON directly.
+
 - .manifest() Object — apps/<app>/page/_layout.tsx
+
+  - Keys — camelCase, converted to snake_case for you.
+
+  - Linked by — A `data:` URL link Akan adds to the head, so no file is served.
+
+  - Pick it when — You want TypeScript help and app metadata in one place.
 
 When To Use PWA
 
@@ -53,13 +65,23 @@ A PWA makes a web app easier to come back to. It does not replace every native a
 
 Situation
 
-- PWA alone
+PWA alone
 
-- Native too
+Native too
 
 - Good fit
 
+  - Daily workflow: Users return to the same flow every day: office tasks, approvals, reports or checklists.
+
+  - No app store first: One deployed web app covers desktop and mobile before any app-store release.
+
 - Be careful
+
+  - Deep native features: The core of the product needs device features the browser does not expose.
+
+  - Heavy background work: The app has to do heavy work while it is not on screen.
+
+  - App-store presence: Being listed in the app stores is a hard requirement.
 
 Applies
 
@@ -101,37 +123,37 @@ Keys You Can Write
 
 The argument is typed as `WebAppManifest` from `akanjs/client`. Every key is optional.
 
-- string — Full app name shown in the install dialog and the app list.
+- name (string): Full app name shown in the install dialog and the app list.
 
-- string — Short name shown under the home-screen icon.
+- shortName (string): Short name shown under the home-screen icon.
 
-- string — One-line description of the app.
+- description (string): One-line description of the app.
 
-- string — The page the installed app opens first.
+- startUrl (string): The page the installed app opens first.
 
-- string — The URLs that stay inside the installed app window.
+- scope (string): The URLs that stay inside the installed app window.
 
-- "fullscreen" | "standalone" | "minimal-ui" | "browser" — How the window opens; `standalone` hides the browser toolbar.
+- display ("fullscreen" | "standalone" | "minimal-ui" | "browser"): How the window opens; `standalone` hides the browser toolbar.
 
-- string[] — Display modes to try in order before `display`.
+- displayOverride (string[]): Display modes to try in order before `display`.
 
-- string — Default screen orientation, such as `portrait`.
+- orientation (string): Default screen orientation, such as `portrait`.
 
-- string — Color of the title bar and system UI around the app.
+- themeColor (string): Color of the title bar and system UI around the app.
 
-- string — Background of the splash screen shown while the app loads.
+- backgroundColor (string): Background of the splash screen shown while the app loads.
 
-- string — Language of text values such as `name` and `description`, for example `ko`.
+- lang (string): Language of text values such as `name` and `description`, for example `ko`.
 
-- "ltr" | "rtl" | "auto" — Text direction of those same text values.
+- dir ("ltr" | "rtl" | "auto"): Text direction of those same text values.
 
-- WebAppManifestIcon[] — App icons; each entry takes `src`, plus optional `sizes`, `type` and `purpose`.
+- icons (WebAppManifestIcon[]): App icons; each entry takes `src`, plus optional `sizes`, `type` and `purpose`.
 
-- string[] — Categories that describe the app, such as `business`.
+- categories (string[]): Categories that describe the app, such as `business`.
 
-- WebAppManifestIcon[] — Images for richer install dialogs, in the same shape as `icons`.
+- screenshots (WebAppManifestIcon[]): Images for richer install dialogs, in the same shape as `icons`.
 
-- unknown — Any other member, such as `shortcuts` or `id`, passes through with its keys converted.
+- [key: string] (unknown): Any other member, such as `shortcuts` or `id`, passes through with its keys converted.
 
 Required Assets
 
@@ -139,7 +161,7 @@ Before testing installation, make sure every URL in the manifest loads on the de
 
 File or key
 
-- Good first sizes for install prompts; Chrome needs at least one icon of 144px or larger.
+- /icon-192x192.png, /icon-512x512.png: Good first sizes for install prompts; Chrome needs at least one icon of 144px or larger.
 
 - startUrl: The page the installed app opens at launch, so it must load on the deployed app.
 

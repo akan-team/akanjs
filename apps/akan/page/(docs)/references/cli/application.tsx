@@ -122,8 +122,8 @@ export default page().render(() => {
   const carriedServerNote: ReferenceRow = {
     name: l.trans({ en: "carried server", ko: "내장 서버" }),
     desc: l.trans({
-      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/`, the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.",
-      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다(Windows는 `%LOCALAPPDATA%` 아래, `--debug` 빌드는 `server-debug/`). `private/`, `--env` 환경의 `env.server.<env>.ts`, 앱이 쓰는 lib의 서버 env 기본값(lib마다 `env.server.testing.ts`)이 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로, 배포용 비밀·키·라이선스 파일을 두지 마세요. `public/`은 없고 작업 폴더는 데이터 폴더이므로, 실행 중에 읽는 파일은 `process.cwd()`가 아니라 앱 폴더(`AKAN_APP_DIR`, 없으면 `Bun.main`의 폴더) 기준으로 읽습니다. 이미지의 `docker` 단계는 하나도 실행하지 않습니다. 서버가 실행하는 파일은 `bin`에, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
+      en: "The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header; any program on the computer can still call it, so guard its endpoints as a network server's. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/` (each lib's too, under `private/libs/<lib>`), the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.",
+      ko: "서버는 앱에 든 Bun으로 API만 서빙합니다(`operationMode` edge, DB 모드 `single`, SSR·CSR·MCP 끔). 127.0.0.1에만 바인딩하고 다른 Host 헤더는 거부합니다. 그래도 이 컴퓨터의 다른 프로그램은 부를 수 있으므로, 엔드포인트는 네트워크 서버처럼 가드합니다. 앱의 `database.modes`에 `single`이 있어야 합니다. 데이터와 설치마다 만드는 JWT 시크릿은 앱 데이터 폴더의 `server/`에 둡니다(Windows는 `%LOCALAPPDATA%` 아래, `--debug` 빌드는 `server-debug/`). `private/`(lib의 것도 `private/libs/<lib>`로), `--env` 환경의 `env.server.<env>.ts`, 앱이 쓰는 lib의 서버 env 기본값(lib마다 `env.server.testing.ts`)이 앱을 가진 누구나 읽을 수 있는 평문으로 들어가므로, 배포용 비밀·키·라이선스 파일을 두지 마세요. `public/`은 없고 작업 폴더는 데이터 폴더이므로, 실행 중에 읽는 파일은 `process.cwd()`가 아니라 앱 폴더(`AKAN_APP_DIR`, 없으면 `Bun.main`의 폴더) 기준으로 읽습니다. 이미지의 `docker` 단계는 하나도 실행하지 않습니다. 서버가 실행하는 파일은 `bin`에, 설치하면서 스스로 빌드하는 패키지는 `trustedDependencies`에 적습니다.",
     }),
   };
   const binNote: ReferenceRow = {
@@ -1078,13 +1078,33 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
           type: "Boolean",
           defaultValue: "false",
           desc: l.trans({
-            en: "Windows: also build `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`). It installs for the current user under `%LOCALAPPDATA%\\Programs`, where updates can swap the app without an administrator; `/S` installs silently and `/RUN` starts the app afterwards; it installs the WebView2 Runtime where it is missing.",
-            ko: "Windows: NSIS로 `<file>-<version>-<arch>-setup.exe`도 만듭니다(`winget install NSIS.NSIS`). 현재 사용자로 `%LOCALAPPDATA%\\Programs` 아래에 설치하므로 업데이트가 관리자 권한 없이 앱을 바꿀 수 있습니다. `/S`는 무인 설치, `/RUN`은 설치 뒤 실행이며, WebView2 Runtime이 없는 PC에는 함께 설치합니다.",
+            en: "Windows: also build `<file>-<version>-<arch>-setup.exe`, a setup program, with NSIS (`winget install NSIS.NSIS`).",
+            ko: "Windows: NSIS로 설치 프로그램 `<file>-<version>-<arch>-setup.exe`도 만듭니다(`winget install NSIS.NSIS`).",
           }),
         },
         writeOption,
       ],
-      notes: [aliasNote("bd"), serverSwitchNote, carriedServerNote, binNote, outputNote("<macos|windows|linux>")],
+      notes: [
+        aliasNote("bd"),
+        serverSwitchNote,
+        carriedServerNote,
+        binNote,
+        {
+          name: l.trans({ en: "installer", ko: "설치 프로그램" }),
+          desc: l.trans({
+            en: "It installs for the current user under `%LOCALAPPDATA%\\Programs`, where updates swap the app without an administrator, and adds the WebView2 Runtime where it is missing. `/S` installs silently and `/RUN` starts the app afterwards.",
+            ko: "현재 사용자로 `%LOCALAPPDATA%\\Programs` 아래에 설치하므로 업데이트가 관리자 권한 없이 앱을 바꾸고, WebView2 Runtime이 없는 PC에는 함께 설치합니다. `/S`는 무인 설치, `/RUN`은 설치 뒤 실행입니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "reinstall", ko: "다시 설치" }),
+          desc: l.trans({
+            en: "`/D=<folder>` picks the install folder. Run again without it, the setup installs where the app already is; one started while another runs refuses to start.",
+            ko: "`/D=<folder>`로 설치 폴더를 고릅니다. 이것 없이 다시 실행하면 앱이 이미 있는 폴더에 설치하고, 다른 설치 프로그램이 도는 동안 띄운 것은 시작하지 않습니다.",
+          }),
+        },
+        outputNote("<macos|windows|linux>"),
+      ],
       examples: `akan build-desktop myapp --target default
 akan build-desktop myapp --target kiosk --env main
 akan build-desktop myapp --installer true --env main`,
@@ -1182,8 +1202,8 @@ akan update-keygen myapp --platform android`,
       signature:
         "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`; upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 씁니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`, which holds only what you upload: upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1223,6 +1243,20 @@ akan update-keygen myapp --platform android`,
           desc: l.trans({
             en: "A release keeps its build's channel: give a pilot group a target whose `updates.channel` is the pilot's.",
             ko: "릴리스는 빌드할 때의 채널을 가집니다. pilot 그룹에는 `updates.channel`이 pilot인 타깃을 씁니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "server change", ko: "서버 유무 변경" }),
+          desc: l.trans({
+            en: "Refused before it builds when the channel's last release differs in carrying a server, as installed apps would refuse it: publish on another channel (`updates.channel`) or remove its `<channel>.json` from the output folder to start over.",
+            ko: "채널의 직전 릴리스와 서버 유무가 다르면, 설치된 앱이 거부할 것이므로 빌드 전에 거부합니다. 다른 채널(`updates.channel`)로 게시하거나 출력 폴더에서 그 `<channel>.json`을 지워 새로 시작합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "readable", ko: "공개" }),
+          desc: l.trans({
+            en: "Anyone who reaches `updates.url` can read the release; the updater sends no credentials. A desktop release is the whole app, the carried server's `private/` and env file included.",
+            ko: "`updates.url`에 닿는 누구나 릴리스를 읽을 수 있고, 업데이터는 인증 정보를 보내지 않습니다. 데스크톱 릴리스는 앱 전체이므로 내장 서버의 `private/`와 env 파일도 들어 있습니다.",
           }),
         },
       ],

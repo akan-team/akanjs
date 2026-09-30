@@ -26,9 +26,9 @@ Term
 
 - sys:module: How the CLI names a module: `shop:product` is `lib/product/` in the `shop` app.
 
-- A folder in parentheses, such as `(public)`. It groups files and adds nothing to the URL.
+- route group: A folder in parentheses, such as `(public)`. It groups files and adds nothing to the URL.
 
-- The starter code a command writes, meant to be edited.
+- scaffold: The starter code a command writes, meant to be edited.
 
 Pages It Writes
 
@@ -37,6 +37,14 @@ File
 Default
 
 - Written into the target folder, by default `page/(<app>)/(public)/<module>/`
+
+  - _index.tsx: `/<module>`: the list of cards, with a create button. Under `--single` the button opens a modal.
+
+  - new/_index.tsx: `/<module>/new`: the create form, built from `Template.General`.
+
+  - [<module>Id]/_index.tsx: `/<module>/<id>`: the detail from `Zone.View`, with a link to the edit page.
+
+  - [<module>Id]/edit/_index.tsx: `/<module>/<id>/edit`: the edit form, filled with the saved record.
 
 Written
 
@@ -50,7 +58,7 @@ Part
 
 - inPublic: The slice the list and both forms load and save through.
 
-- The list of cards and the detail screen.
+- Zone.Card, Zone.View: The list of cards and the detail screen.
 
 - Template.General: The form body, shared by the create and edit pages.
 

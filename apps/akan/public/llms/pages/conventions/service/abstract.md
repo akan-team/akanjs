@@ -49,11 +49,11 @@ Part
 
 - # <service> Service Abstract: One title line: the module name as the folder spells it, minus the underscore.
 
-- What the module owns, stated as fact rather than a promise. No heading above it.
+- One sentence: What the module owns, stated as fact rather than a promise. No heading above it.
 
 - ## Rules: Two to five bullets, each an invariant a reader could not derive from the code.
 
-- Optional. One line with no heading: bare arrows between states. — authorize -> pending -> approved | denied -> code
+- Workflow chain: Optional. One line with no heading: bare arrows between states. — Example: `authorize -> pending -> approved | denied -> code`
 
 A real one: oauth
 
@@ -85,9 +85,9 @@ Becomes
 
 - ## Rules: Stays. Both placeholder bullets become the module's real invariants, two to five in all.
 
-- Not in the scaffold. Add one last line of arrows if the service moves something through states.
+- Workflow chain: Not in the scaffold. Add one last line of arrows if the service moves something through states.
 
-- Not here: a trailing comment beside the field, in the constant.ts that declares it.
+- A field's meaning: Not here: a trailing comment beside the field, in the constant.ts that declares it.
 
 **A line still in angle brackets means nobody has written the abstract yet.** The next reader — a person or an agent — opens this file before changing the module, and a placeholder tells them nothing true about it. Write the sentence and the rules in the same change that adds the first endpoint.
 
@@ -101,13 +101,13 @@ Kind
 
 Example from oauth
 
-- A code lives sixty seconds; an authorization request lives ten minutes.
+- A lifetime or threshold, and its reason: A code lives sixty seconds; an authorization request lives ten minutes.
 
-- Revocation answers 200 whether or not the token was live, so it cannot probe tokens.
+- A refusal that looks like an oversight: Revocation answers 200 whether or not the token was live, so it cannot probe tokens.
 
-- A client holding the same refresh token twice is not a thief.
+- Why an obvious alternative was rejected: A client holding the same refresh token twice is not a thief.
 
-- A late reuse revokes that grant's lineage only, never the account's other sessions.
+- A scope boundary enforced call by call: A late reuse revokes that grant's lineage only, never the account's other sessions.
 
 Not worth a bullet
 

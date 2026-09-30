@@ -6,7 +6,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.ts";
 import { bold, CliError, dim, log } from "../lib/log.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
-import { assertSigningKey, publishRelease } from "../lib/publish.ts";
+import { assertServerOfChannel, assertSigningKey, publishRelease } from "../lib/publish.ts";
 import { assertChannel, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
 import { BOOLEAN_FLAGS, buildFromArgs } from "./build.ts";
 
@@ -40,7 +40,14 @@ async function publish(args: ParsedArgs): Promise<number> {
   const platform = desktop ?? (arg as "ios" | "android");
   const requested = stringFlag(args, "channel");
   if (requested !== undefined) assertChannel(requested);
-  assertSigningKey((await loadProject(findAppDir(stringFlag(args, "app") ?? process.cwd()))).config);
+  const project = await loadProject(findAppDir(stringFlag(args, "app") ?? process.cwd()));
+  assertSigningKey(project.config);
+  assertServerOfChannel(
+    project.config,
+    platform,
+    outDir(args, project.appDir),
+    requested ?? project.config.updates?.channel ?? "production",
+  );
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
     { mode: "production", profile: "release" },

@@ -28,11 +28,11 @@ Words used on this page
 
 Term
 
-- Path segments after the language and basePath: `/chat` is 1, `/chat/[chatId]` is 2.
+- Route depth: Path segments after the language and basePath: `/chat` is 1, `/chat/[chatId]` is 2.
 
-- Space the device itself covers, such as the notch, the status bar and the home indicator.
+- Safe area: Space the device itself covers, such as the notch, the status bar and the home indicator.
 
-- Space the app reserves for its own bars, such as a navbar on top or a composer below.
+- Inset: Space the app reserves for its own bars, such as a navbar on top or a composer below.
 
 - keyboard accessory layer: A layer that rides on top of the software keyboard and moves with it.
 
@@ -60,15 +60,25 @@ Leave `transition` out and the platform and route depth pick one for you:
 
 Transition
 
-- iOS — depth ≥ 2
+iOS — depth ≥ 2
 
-- Android — depth ≥ 2
+Android — depth ≥ 2
 
-- Web · Root
+Web · Root
 
 - Drag to go back
 
+  - stack: Slides in from the right.
+
+  - bottomUp: Rises from the bottom.
+
 - No drag
+
+  - scaleOut: Scales up slightly into place.
+
+  - fade: Cross-fades between pages.
+
+  - none: Swaps instantly with no animation.
 
 Default here
 
@@ -92,7 +102,19 @@ The two drags
 
 - stack
 
+  - Drag to the right, starting anywhere on the page.
+
+  - Goes back past a third of the screen width, or on a quick flick even if it travelled less.
+
+  - Hides the keyboard only once the touch is read as a drag.
+
 - bottomUp
+
+  - Drag down, starting near the top of the screen.
+
+  - Closes past half the screen width; a shorter drag snaps back.
+
+  - Hides the keyboard as soon as the drag starts.
 
 **Intent before movement.** A `stack` touch stays pending until it travels 8px, then locks to drag or scroll by whichever axis moved clearly more (1.25×).
 
@@ -104,33 +126,23 @@ The Frame Config
 
 One `.config()` object sets the whole page frame: animation, gesture, reserved space and caching. Write it on a layout and every route under it inherits it.
 
-iOS stack · Android scaleOut · none on web and at depth ≤ 1
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default iOS stack · Android scaleOut · none on web and at depth ≤ 1): The animation played when this route is entered.
 
-The animation played when this route is entered.
+- gesture (boolean, default true on iOS at depth ≥ 2, else false): Drag to go back, attached only by the `stack` and `bottomUp` transitions.
 
-true on iOS at depth ≥ 2, else false
+- topInset (number | boolean, default 0): Space reserved for a top bar in px; `true` means 48px, `false` or unset means 0.
 
-Drag to go back, attached only by the `stack` and `bottomUp` transitions.
+- bottomInset (number | boolean, default 0): Space reserved for a bottom bar, in px, with the same 48px meaning for `true`.
 
-Space reserved for a top bar in px; `true` means 48px, `false` or unset means 0.
+- safeArea (boolean | "top" | "bottom" | { top?, bottom?, android? }, default iOS true · Android { android: "auto" } · web false): Device insets to reserve; `"top"` or `"bottom"` keeps one side only.
 
-Space reserved for a bottom bar, in px, with the same 48px meaning for `true`.
+- safeArea.android ("auto" | "edge-to-edge" | "none", default "auto"): How Android measures the safe area; `none` reserves nothing.
 
-iOS true · Android { android: "auto" } · web false
+- cache (boolean, default true at depth ≤ 1, else false): Keeps one page for the route, mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.
 
-Device insets to reserve; `"top"` or `"bottom"` keeps one side only.
+- topSafeAreaColor (string, default the background color): CSS color painted behind the top safe-area strip.
 
-How Android measures the safe area; `none` reserves nothing.
-
-true at depth ≤ 1, else false
-
-Keeps one page for the route, mounted in a hidden cache layer after you navigate away; its effects stop until it is shown again.
-
-the background color
-
-CSS color painted behind the top safe-area strip.
-
-CSS color painted behind the bottom safe-area strip.
+- bottomSafeAreaColor (string, default the background color): CSS color painted behind the bottom safe-area strip.
 
 **The closest config wins.** A page's value overrides its layouts', while a `safeArea` object merges key by key.
 

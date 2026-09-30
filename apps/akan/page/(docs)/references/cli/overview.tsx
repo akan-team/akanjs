@@ -375,11 +375,15 @@ export default page().render(() => {
       }),
       commands: [
         {
-          name: ["build-ios <app>", "build-android <app>"],
-          href: ["/references/cli/application#build-ios", "/references/cli/application#build-android"],
+          name: ["build-ios <app>", "build-android <app>", "build-desktop <app>"],
+          href: [
+            "/references/cli/application#build-ios",
+            "/references/cli/application#build-android",
+            "/references/cli/application#build-desktop",
+          ],
           desc: l.trans({
-            en: "Builds the iOS or Android app on the native runtime. Aliases `bi` and `ba`.",
-            ko: "네이티브 런타임으로 iOS나 Android 앱을 빌드합니다. 별칭은 `bi`, `ba`입니다.",
+            en: "Builds the iOS, Android or desktop app on the native runtime. Aliases `bi`, `ba` and `bd`.",
+            ko: "네이티브 런타임으로 iOS, Android, 데스크톱 앱을 빌드합니다. 별칭은 `bi`, `ba`, `bd`입니다.",
           }),
         },
         {
@@ -404,6 +408,18 @@ export default page().render(() => {
           desc: l.trans({
             en: "Builds and packages a release for the App Store or the Play Store.",
             ko: "App Store나 Play Store에 낼 릴리스를 빌드하고 패키징합니다.",
+          }),
+        },
+        {
+          name: ["update-keygen <app>", "publish-update <app>", "pack-update <app>"],
+          href: [
+            "/references/cli/application#update-keygen",
+            "/references/cli/application#publish-update",
+            "/references/cli/application#pack-update",
+          ],
+          desc: l.trans({
+            en: "Makes the update key, signs and publishes releases installed apps update to, or packs a phone update unsigned.",
+            ko: "업데이트 키를 만들고, 설치된 앱이 받을 릴리스를 서명해 게시하거나, 폰 업데이트를 서명 없이 묶습니다.",
           }),
         },
       ],

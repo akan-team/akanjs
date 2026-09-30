@@ -27,7 +27,7 @@ import {
   type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { assertSigningKey, publishRelease } from "./lib/publish.ts";
+import { assertServerOfChannel, assertSigningKey, publishRelease } from "./lib/publish.ts";
 import {
   assertChannel,
   generateUpdateKey,
@@ -55,7 +55,7 @@ export type {
 };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.8.0";
+export const API_VERSION = "0.9.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -257,6 +257,35 @@ export interface PublishResult {
   size: number;
 }
 
+export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "config"> {
+  platform: Exclude<TargetPlatform, "web">;
+  channel?: string;
+  out?: string;
+  /** Whether the release will carry a server; the config's `desktop.server` by default. */
+  server?: boolean;
+}
+
+/**
+ * What publishUpdate() refuses before it builds, without building (CONFIG_INVALID): no updates settings, a channel no
+ * app could be configured for, no signing key on this machine or another app's, and a desktop release whose server
+ * presence is not the channel's previous release's. For a caller with a long build of its own before publishUpdate.
+ */
+export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
+  if (!options.config.updates)
+    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
+  const channel = options.channel ?? options.config.updates.channel ?? "production";
+  const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
+  try {
+    if (options.channel !== undefined) assertChannel(options.channel);
+    assertSigningKey(options.config);
+    const server = options.server ?? !!options.config.desktop?.server;
+    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel);
+  } catch (error) {
+    throw toAkanNativeError(error, "CONFIG_INVALID");
+  }
+  return { channel, out };
+}
+
 /**
  * A signed release for the updates plugin (UP-1, UP-2): a release build, then `<channel>.json`, its signature and
  * its files under `out` (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
@@ -265,17 +294,8 @@ export function publishUpdate(
   options: TaskOptions & { platform: Exclude<TargetPlatform, "web">; channel?: string; out?: string },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
-    if (!options.config.updates)
-      throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
-    try {
-      if (options.channel !== undefined) assertChannel(options.channel);
-      assertSigningKey(options.config);
-    } catch (error) {
-      throw toAkanNativeError(error, "CONFIG_INVALID");
-    }
+    const { channel, out } = checkPublishUpdate(options);
     const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings);
-    const channel = options.channel ?? ctx.project.config.updates?.channel ?? "production";
-    const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
     const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
       throw toAkanNativeError(error, "CONFIG_INVALID");
     });
