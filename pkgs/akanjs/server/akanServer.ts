@@ -416,10 +416,11 @@ export class AkanServer {
     } as Parameters<typeof Bun.serve>[0]);
     if (unix && process.env.AKAN_CHILD_WS_PORT) {
       const preferredWsPort = Number(process.env.AKAN_CHILD_WS_PORT);
+      //? Only the gateway dials this port, at the loopback address the ready message names below.
       const wsServeOptions = (port: number) => ({
         idleTimeout: 0,
         port,
-        hostname,
+        hostname: "127.0.0.1",
         routes: buildRoutes((req, data) => this.#wsServer?.upgrade(req, { data }) ?? false),
         websocket: websocketHandlers,
       });
