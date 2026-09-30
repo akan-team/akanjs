@@ -14,6 +14,7 @@ export interface DesktopServerConfig {
 }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const LAUNCHER_KEYS = new Set<string>(LAUNCHER_ENV_KEYS);
 
 export function validateDesktopServer(
   desktop: AkanNativeConfig["desktop"],
@@ -43,9 +44,15 @@ export function validateDesktopServer(
     problems.push("desktop.server.env must be an object of strings");
   else
     for (const [key, value] of Object.entries(server.env ?? {})) {
+      //? Windows keeps one variable per name whatever its case, so `Port` would be the launcher's PORT there and
+      //? `Path` a second PATH beside the one the launcher extends.
+      const upper = key.toUpperCase();
       if (!ENV_NAME.test(key)) problems.push(`desktop.server.env: ${JSON.stringify(key)} is not a variable name`);
-      else if ((LAUNCHER_ENV_KEYS as readonly string[]).includes(key))
+      else if (LAUNCHER_KEYS.has(upper))
         problems.push(`desktop.server.env.${key}: the launcher sets it at every start`);
+      else if (upper === "PATH" && key !== "PATH") problems.push(`desktop.server.env.${key}: write it as PATH`);
+      else if (Object.keys(env).some((kept) => kept.toUpperCase() === upper))
+        problems.push(`desktop.server.env.${key}: Windows reads it as the same variable as another one here`);
       else if (typeof value !== "string") problems.push(`desktop.server.env.${key} must be a string`);
       else env[key] = value;
     }

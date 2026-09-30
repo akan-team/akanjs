@@ -22,7 +22,8 @@ bun scripts/vm/linux.ts --shell        # 컨테이너 안의 셸
   - rustup(툴체인 없이 설치하고, `rust-toolchain.toml`이 고정한다), Bun
 - 저장소 복사: 저장소는 읽기 전용으로 마운트하고, 볼륨(`akan-native-linux-work`)에 rsync로 복사한다.
   - 복사하지 않는 것: `node_modules`, `target`, `.akan`, `dist`. 이것들은 컨테이너가 따로 가진다. 그래서 Mac 쪽 트리에 Linux 빌드 결과가 섞이지 않는다.
-  - 여러 작업을 동시에 돌릴 때는 `AKAN_NATIVE_LINUX_WORK=<이름>`으로 복사본을 나눈다.
+  - 여러 작업을 동시에 돌릴 때는 `AKAN_NATIVE_LINUX_WORK=<이름>`으로 복사본을 나눈다(볼륨 `akan-native-linux-work-<이름>`).
+  - `AKAN_NATIVE_LINUX_SRC=<폴더>`는 이 패키지 대신 다른 트리(akanjs 모노레포 등)를 복사한다. 이때는 `AKAN_NATIVE_LINUX_WORK`도 줘야 한다. 없으면 멈춘다. rsync `--delete`가 이 패키지의 복사본을 지우기 때문이다.
 - 캐시: cargo registry, rustup, `~/.akan/native`도 볼륨이라 두 번째 실행부터 증분 빌드다.
 - 세션: 명령마다 데스크톱 세션과 비슷한 환경을 만든다.
   - `DISPLAY=:99`에 Xvfb
@@ -65,6 +66,10 @@ bun scripts/vm/windows.ts desktop 'bun run akan-native run windows --app example
 bun scripts/vm/windows.ts screenshot shot.png           # VM 화면을 Mac으로 가져온다
 ```
 
+- 복사본은 `C:\akan-native-work\<이름>`이다. 이름은 `AKAN_NATIVE_VM_WORK_NAME`(기본 `akan-native`)이다.
+  - `AKAN_NATIVE_VM_SRC=<폴더>`는 이 패키지 대신 다른 트리(akanjs 모노레포, 앱을 빌드하는 e2e)를 복사한다. 이때는 `AKAN_NATIVE_VM_WORK_NAME`도 줘야 한다. 없으면 멈춘다. `robocopy /MIR`이 이 패키지의 복사본을 지우기 때문이다.
+  - 예: `AKAN_NATIVE_VM_SRC=$PWD AKAN_NATIVE_VM_WORK_NAME=desktop-server bun pkgs/@akanjs/native/scripts/vm/windows.ts sync`(모노레포 루트에서)
+  - 모노레포 복사본에서는 명령이 모노레포 루트에서 돈다. 이 패키지의 스크립트는 `Set-Location pkgs\@akanjs\native; bun scripts/vm/installer-check.ts`처럼 부른다.
 - `ssh` 세션에는 데스크톱이 없다. 여기서 연 창은 보이지 않고, WebView2도 그리지 않는다.
 - 그래서 창을 띄우는 명령(`desktop`, `test`, `screenshot`)은 로그인한 사용자 세션에서만 도는 예약 작업(`schtasks /IT`)으로 실행한다.
   - 출력은 로그 파일에 쓴다. 스크립트는 그 파일을 따라가며 보여 주고, 끝나면 종료 코드를 돌려준다.

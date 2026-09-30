@@ -14,6 +14,9 @@
 
 import { resolve } from "node:path";
 
+// rsync --delete onto the copy: another tree synced into this package's volume would replace it.
+if (process.env.AKAN_NATIVE_LINUX_SRC && !process.env.AKAN_NATIVE_LINUX_WORK)
+  throw new Error("AKAN_NATIVE_LINUX_SRC copies another tree: name its copy with AKAN_NATIVE_LINUX_WORK");
 const REPO = resolve(process.env.AKAN_NATIVE_LINUX_SRC ?? resolve(import.meta.dir, "../.."));
 const IMAGE = "akan-native-linux:latest";
 const HOME = "/home/akan-native";

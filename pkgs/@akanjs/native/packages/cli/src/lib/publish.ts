@@ -1,7 +1,7 @@
 // A signed release for @akanjs/native/plugins/updates (UP-1, UP-2) from a finished release build: `akan-native
 // update publish` and the API's publishUpdate() both end here. The layout and its rules are in lib/updates.ts.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { publishAppUpdate } from "../platforms/desktop-update.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
@@ -10,6 +10,7 @@ import type { BuildContext } from "./prepare.ts";
 import {
   assertChannel,
   hostArch,
+  signingKey,
   signManifest,
   type UpdateManifest,
   updateKeyPath,
@@ -41,6 +42,25 @@ export function nextSequence(dir: string, channel: string, now = Math.floor(Date
   return previous + 1;
 }
 
+/** Refuses before the build a release that could not be signed: no key on this machine, or another app's. */
+export function assertSigningKey(config: { app: { id: string }; updates?: { publicKey: string } | null }): void {
+  if (!config.updates)
+    throw new CliError("akan-native.config.ts has no updates: { url, publicKey } (run `akan-native update keygen`)");
+  signingKey(updateKeyPath(config.app.id), config.updates.publicKey);
+}
+
+/**
+ * `<channel>.json` and its `.sig` land together, the signature first: an app that reads a manifest beside another
+ * one's signature refuses every release until the next publish.
+ */
+function writeSigned(dir: string, channel: string, bytes: Uint8Array, signature: string): void {
+  const json = join(dir, `${channel}.json`);
+  writeFileSync(`${json}.tmp`, bytes);
+  writeFileSync(`${json}.sig.tmp`, signature);
+  renameSync(`${json}.sig.tmp`, `${json}.sig`);
+  renameSync(`${json}.tmp`, json);
+}
+
 /** Writes the release of `artifact` (the app a release build made) and its signed `<channel>.json` under `out`. */
 export async function publishRelease(
   ctx: BuildContext,
@@ -56,12 +76,14 @@ export async function publishRelease(
   // A desktop app runs on one CPU: x64 and arm64 releases of the same OS live side by side.
   const dir = join(out, desktop ? `${desktop}-${hostArch()}` : platform);
   assertChannel(channel);
+  assertSigningKey(config);
   const keyPath = updateKeyPath(config.app.id);
   const sequence = nextSequence(dir, channel);
 
   let manifest: UpdateManifest;
+  let superseded: string | null = null;
   if (desktop) {
-    manifest = await publishAppUpdate(ctx, desktop, artifact, dir, channel, sequence);
+    ({ manifest, superseded } = await publishAppUpdate(ctx, desktop, artifact, dir, channel, sequence));
   } else {
     const info = readBundleInfo(join(ctx.outDir, BUNDLE_FILE));
     manifest = webManifest({
@@ -75,8 +97,9 @@ export async function publishRelease(
     });
   }
   const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
+  const signature = `${signManifest(bytes, keyPath, config.updates.publicKey)}\n`;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${channel}.json`), bytes);
-  writeFileSync(join(dir, `${channel}.json.sig`), `${signManifest(bytes, keyPath, config.updates.publicKey)}\n`);
+  writeSigned(dir, channel, bytes, signature);
+  if (superseded) rmSync(superseded, { force: true });
   return { dir, manifest };
 }

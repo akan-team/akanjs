@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.8.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰; 0.7.0: `desktop.screenCapture`; 0.8.0: `packUpdate`, `compareBundles`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.8.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`, `windows.installer`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰; 0.7.0: `desktop.screenCapture`; 0.8.0: `packUpdate`, `compareBundles`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -111,7 +111,7 @@ interface Artifact {
 
 - 기본 profile은 release다(CLI `akan-native build`와 같다). run과 dev는 debug로 빌드한다.
 - iOS: 기본은 시뮬레이터 .app이다. `ios: { device: true, signing? }`(아래 release와 같은 `IosSigning`)를 주면 실기기 .app(O1-2)을 만든다.
-- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치(끝내지 못하면 종료 코드 2), `/S /RUN`이면 설치 뒤 실행, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
+- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치(끝내지 못하면 종료 코드 2), `/S /RUN`이면 설치 뒤 실행, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. WebView2 확인과 새 파일 풀기(폴더 옆 `<name>.setup-new`)는 앱을 멈추기 전에 하고, 폴더는 이름 바꾸기 두 번으로 바꾼다. 도중에 실패하면 옛 폴더를 되살리고, `/RUN`이면 옛 앱을 다시 띄운다. 제거는 자동 시작 등록(`Run` 값)과 셸의 업데이트 상태(`%LOCALAPPDATA%\<id>\akan-native-updates`)도 지우고, 서버 데이터는 남긴다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
 
 ### run — 빌드하고 띄우기
 
@@ -241,7 +241,7 @@ const { publicKey, keyPath, created } = updateKeygen({ config });
 const { dir, bundle, channel, files, size, build } = await publishUpdate({ appDir, config, platform: "windows", channel: "pilot", out });
 ```
 - `updateKeygen`: 앱 id의 Ed25519 키를 한 번 만들고 그 뒤로는 읽는다(`AKAN_NATIVE_UPDATE_KEY`, 없으면 `~/.akan/native/keys/<app id>.update.key`). `publicKey`는 설정의 `updates.publicKey`로 간다.
-- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없거나 `channel`이 설정 `updates.channel`의 규칙(소문자·숫자·`.`·`_`·`-`)을 어기면 빌드 전에 `CONFIG_INVALID`. `sequence`는 `max(그 채널에 이미 있는 매니페스트 + 1, 지금)`이다(시계가 늦으면 경고).
+- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`, 폰은 `<platform>/`에 `<channel>.json`, `.sig`, 파일을 쓴다. `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없거나, `channel`이 설정 `updates.channel`의 규칙(소문자·숫자·`.`·`_`·`-`, `packUpdate`의 파일과 겹치는 `bundle`·`manifest.template`·`compat`은 안 됨)을 어기거나, 이 PC에 서명 키가 없거나 `updates.publicKey`의 키가 아니면 빌드 전에 `CONFIG_INVALID`. 매니페스트는 서명한 뒤 `.sig`와 함께 쓴다. `sequence`는 `max(그 채널에 이미 있는 매니페스트 + 1, 지금)`이다(시계가 늦으면 경고).
 - akanjs: `akan update-keygen`, `akan publish-update`(devkit `NativeApp.updateKeygen`·`publishUpdate`).
 
 ### packUpdate와 compareBundles — 서명하지 않은 웹 번들 업데이트 (UP-2, UP-3)

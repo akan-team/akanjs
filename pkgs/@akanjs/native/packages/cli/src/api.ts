@@ -27,7 +27,7 @@ import {
   type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { publishRelease } from "./lib/publish.ts";
+import { assertSigningKey, publishRelease } from "./lib/publish.ts";
 import {
   assertChannel,
   generateUpdateKey,
@@ -267,12 +267,11 @@ export function publishUpdate(
   return task(options, async (warnings) => {
     if (!options.config.updates)
       throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
-    if (options.channel !== undefined) {
-      try {
-        assertChannel(options.channel);
-      } catch (error) {
-        throw toAkanNativeError(error, "CONFIG_INVALID");
-      }
+    try {
+      if (options.channel !== undefined) assertChannel(options.channel);
+      assertSigningKey(options.config);
+    } catch (error) {
+      throw toAkanNativeError(error, "CONFIG_INVALID");
     }
     const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings);
     const channel = options.channel ?? ctx.project.config.updates?.channel ?? "production";

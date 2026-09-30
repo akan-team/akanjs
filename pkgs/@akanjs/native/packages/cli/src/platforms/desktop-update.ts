@@ -10,7 +10,7 @@
 // code signature files; --no-mac-metadata leaves out AppleDouble files (xattrs break codesign).
 // Windows has bsdtar as tar.exe (since Windows 10), which plugins/updates unpacks with.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createDelta } from "../../../desktop/src/delta.ts";
 import { runtimeVersion } from "../lib/boot.ts";
@@ -33,7 +33,7 @@ export async function publishAppUpdate(
   out: string,
   channel: string,
   sequence: number,
-): Promise<UpdateManifest> {
+): Promise<{ manifest: UpdateManifest; superseded: string | null }> {
   const { config } = ctx.project;
   const dir = join(out, "app");
   mkdirSync(dir, { recursive: true });
@@ -47,6 +47,7 @@ export async function publishAppUpdate(
 
   // A delta from the release this channel had before, if its tar is still here.
   const patches: NonNullable<UpdateManifest["patches"]> = [];
+  let superseded: string | null = null;
   const previousPath = join(out, `${channel}.json`);
   if (existsSync(previousPath)) {
     const previous = JSON.parse(readFileSync(previousPath, "utf8")) as UpdateManifest;
@@ -64,11 +65,11 @@ export async function publishAppUpdate(
         ),
       );
     }
-    // Only the newest tar is needed for the next delta.
-    if (from && from !== tarSha) rmSync(base, { force: true });
+    // Only the newest tar is needed for the next delta; the caller drops this one once the new manifest is written.
+    if (from && from !== tarSha) superseded = base;
   }
 
-  return {
+  const manifest: UpdateManifest = {
     schema: 1,
     kind: "app",
     app: config.app.id,
@@ -86,4 +87,5 @@ export async function publishAppUpdate(
     archive: { sha256: tarSha, url: `app/${tarSha}.tar.gz`, size: gz.length, gzSha256: sha256(gz) },
     patches,
   };
+  return { manifest, superseded };
 }

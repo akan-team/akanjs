@@ -186,6 +186,15 @@ describe("desktop.server", () => {
       "desktop.server.env.JWT_SECRET: the launcher sets it at every start",
       "desktop.server.env.A must be a string",
     ]);
+    expect(
+      problems({ dir: "server", entry: "main.js", env: { Port: "1", jwt_secret: "x", Path: "C:\\x", A: "1", a: "2" } }),
+    ).toEqual([
+      "desktop.server.env.Port: the launcher sets it at every start",
+      "desktop.server.env.jwt_secret: the launcher sets it at every start",
+      "desktop.server.env.Path: write it as PATH",
+      "desktop.server.env.a: Windows reads it as the same variable as another one here",
+    ]);
+    expect(problems({ dir: "server", entry: "main.js", env: { PATH: "/opt/x" } })).toEqual([]);
     expect(problems({ dir: "server", entry: "main.js", cwd: "/" })).toEqual([
       expect.stringContaining("unknown key desktop.server.cwd"),
     ]);

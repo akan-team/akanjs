@@ -136,6 +136,17 @@ describe("programmatic API", () => {
     );
     expect(outside.code).toBe("CONFIG_INVALID");
     expect(outside.message).toContain('channel "../x"');
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "missing.update.key");
+    try {
+      const unsigned = await failure(
+        publishUpdate({ appDir: app("publish3"), config: config({ updates }), platform: "android" }),
+      );
+      expect(unsigned.code).toBe("CONFIG_INVALID");
+      expect(unsigned.message).toContain("no update signing key");
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
   });
 
   test("desktop.recovery, desktop.window, desktop.screenCapture and android.autoplay are checked", () => {

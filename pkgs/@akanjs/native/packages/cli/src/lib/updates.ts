@@ -131,11 +131,15 @@ export function webManifest(release: {
 
 /** A channel is a file name in the release folder and a string an app's config compares: lowercase, no separators. */
 const CHANNEL_NAME = /^[a-z0-9][a-z0-9._-]{0,40}$/;
+/** `<channel>.json` of these would overwrite what an unsigned phone update (packUpdate) writes to the same folder. */
+const RESERVED_CHANNELS = ["bundle", "manifest.template", "compat"];
 
 /** Refuses a channel no app could be configured for: it would be written but never taken. */
 export function assertChannel(channel: string): void {
   if (!CHANNEL_NAME.test(channel))
     throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
+  if (RESERVED_CHANNELS.includes(channel))
+    throw new CliError(`channel "${channel}" would overwrite ${channel}.json of an unsigned update: name another`);
 }
 
 export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig | null {
@@ -149,7 +153,10 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     problems.push("updates.url must be an http(s) URL");
   if (typeof r.publicKey !== "string" || Buffer.from(r.publicKey, "base64").length !== 32)
     problems.push("updates.publicKey must be a base64 Ed25519 public key (akan-native update keygen)");
-  if (r.channel !== undefined && (typeof r.channel !== "string" || !CHANNEL_NAME.test(r.channel)))
+  if (
+    r.channel !== undefined &&
+    (typeof r.channel !== "string" || !CHANNEL_NAME.test(r.channel) || RESERVED_CHANNELS.includes(r.channel))
+  )
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
@@ -193,11 +200,16 @@ function publicKeyOf(privateKey: ReturnType<typeof createPrivateKey>): string {
   return der.subarray(der.length - 32).toString("base64");
 }
 
-export function signManifest(bytes: Uint8Array, keyPath: string, expectedPublicKey: string): string {
+/** The key at `keyPath`, refused unless it is the one whose public half the apps were built with. */
+export function signingKey(keyPath: string, expectedPublicKey: string) {
   const key = readPrivateKey(keyPath);
   if (publicKeyOf(key) !== expectedPublicKey)
     throw new CliError(`the key at ${keyPath} does not match updates.publicKey in akan-native.config.ts`);
-  return sign(null, bytes, key).toString("base64");
+  return key;
+}
+
+export function signManifest(bytes: Uint8Array, keyPath: string, expectedPublicKey: string): string {
+  return sign(null, bytes, signingKey(keyPath, expectedPublicKey)).toString("base64");
 }
 
 /** Verifies like the apps do: raw public key, base64 signature over the exact manifest bytes. */

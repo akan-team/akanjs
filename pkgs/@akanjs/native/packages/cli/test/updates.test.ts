@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { nextSequence } from "../src/lib/publish.ts";
+import { assertSigningKey, nextSequence } from "../src/lib/publish.ts";
 import {
   assertChannel,
   generateUpdateKey,
@@ -87,6 +87,35 @@ describe("publishing a release", () => {
       expect(() => assertChannel(channel)).not.toThrow();
     for (const channel of ["../x", "Pilot", "", "a/b", "a\\b", ".hidden", "x".repeat(42)])
       expect(() => assertChannel(channel)).toThrow("is not a short lowercase name");
+    for (const channel of ["bundle", "manifest.template", "compat"]) {
+      expect(() => assertChannel(channel)).toThrow("would overwrite");
+      const problems: string[] = [];
+      validateUpdates({ url: "https://x", publicKey: Buffer.alloc(32).toString("base64"), channel }, problems);
+      expect(problems).toEqual(['updates.channel must be a short name like "production"']);
+    }
+  });
+
+  test("refuses to start a publish that could not be signed", () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-keys-"));
+    const path = join(home, "app.update.key");
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = path;
+    try {
+      const app = { id: "dev.x" };
+      expect(() => assertSigningKey({ app })).toThrow("has no updates");
+      expect(() => assertSigningKey({ app, updates: { publicKey: Buffer.alloc(32).toString("base64") } })).toThrow(
+        `no update signing key at ${path}`,
+      );
+      const { publicKey } = generateUpdateKey(path);
+      expect(() => assertSigningKey({ app, updates: { publicKey } })).not.toThrow();
+      expect(() => assertSigningKey({ app, updates: { publicKey: Buffer.alloc(32).toString("base64") } })).toThrow(
+        "does not match updates.publicKey",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("numbers a release past the one already published here, whatever this computer's clock says", () => {
