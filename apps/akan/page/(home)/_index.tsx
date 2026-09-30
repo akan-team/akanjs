@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, ShowcaseThumbnail } from "@apps/akan/ui";
+import { Code, InstallCommand, ShowcaseThumbnail, Tesseract } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BsArrowRight, BsArrowUpRight, BsCheckCircle } from "react-icons/bs";
@@ -33,8 +33,8 @@ export default page().render(() => {
         ko: "혼자, 혹은 둘이 다 해야 하나요?",
       }),
       description: l.trans({
-        en: "One full-stack developer owns all five surfaces. One person, a quarter of the time.",
-        ko: "풀스택 1명이 7개 표현을 책임집니다. 사람 한 명, 시간 1/5.",
+        en: "One full-stack developer owns every face of the product. One person, a quarter of the time.",
+        ko: "풀스택 1명이 제품의 모든 면을 책임집니다. 사람 한 명, 시간 1/5.",
       }),
     },
   ];
@@ -64,10 +64,10 @@ export default page().render(() => {
       }),
     },
     {
-      title: l.trans({ en: "A Guide Agents Actually Read", ko: "에이전트가 실제로 읽는 가이드" }),
+      title: l.trans({ en: "Rules Agents Can't Route Around", ko: "에이전트가 우회할 수 없는 규칙" }),
       description: l.trans({
-        en: "Every workspace ships a generated AGENTS.md, a plan-then-apply workflow MCP and akan code, so an agent edits through the rules, not around them.",
-        ko: "모든 워크스페이스에 생성된 AGENTS.md, 계획 후 적용하는 워크플로 MCP, akan code가 들어 있어 에이전트는 규칙을 우회하지 않고 규칙을 따라 고칩니다.",
+        en: "Every workspace ships a plan-then-apply workflow MCP and akan code, so an agent edits through the rules, not around them.",
+        ko: "모든 워크스페이스에 계획 후 적용하는 워크플로 MCP와 akan code가 들어 있어 에이전트는 규칙을 우회하지 않고 규칙을 따라 고칩니다.",
       }),
     },
     {
@@ -79,8 +79,8 @@ export default page().render(() => {
     },
   ];
   const platformSurfaces = [
-    l.trans({ en: "SEO-ready server-side rendering", ko: "SEO 최적화 서버사이드 렌더링" }),
     l.trans({ en: "iOS / Android client rendering", ko: "iOS / Android 클라이언트 렌더링" }),
+    l.trans({ en: "SEO-ready server-side rendering", ko: "SEO 최적화 서버사이드 렌더링" }),
     l.trans({ en: "Linux / macOS / Windows desktop app", ko: "Linux / macOS / Windows 데스크톱 앱" }),
     l.trans({ en: "Bun HTTP / WebSocket server", ko: "Bun HTTP / WebSocket 서버" }),
     l.trans({ en: "SQLite first, Postgres / Redis ready", ko: "SQLite 우선, Postgres / Redis 확장" }),
@@ -220,48 +220,30 @@ export default page().render(() => {
       }),
     },
   ];
-  const heroSurfaces = [
+  const heroFaces = [
     {
-      title: l.trans({ en: "Web / App / Desktop", ko: "웹 / 앱 / 데스크탑" }),
-      description: l.trans({
-        en: "SEO web and native-feeling client transitions.",
-        ko: "SEO 가능한 웹과 앱다운 페이지 전환.",
-      }),
+      title: l.trans({ en: "App", ko: "앱" }),
+      surface: "iOS · Android · Web · Desktop",
+      before: "<Field.Text value={productForm.",
+      after: "} />",
     },
     {
-      title: l.trans({ en: "Server / Realtime", ko: "서버 / 실시간" }),
-      description: l.trans({
-        en: "Bun-powered HTTP and WebSocket surfaces.",
-        ko: "Bun 기반 HTTP와 WebSocket 표현.",
-      }),
+      title: l.trans({ en: "Server", ko: "서버" }),
+      surface: "HTTP · WebSocket",
+      before: "await fetch.createProduct({ ",
+      after: ", price })",
     },
     {
-      title: l.trans({ en: "Database / Validation", ko: "DB / 검증" }),
-      description: l.trans({
-        en: "SQLite first, scalable, and schema validated.",
-        ko: "SQLite 우선, 확장 가능, 스키마 검증.",
-      }),
+      title: l.trans({ en: "Database", ko: "데이터베이스" }),
+      surface: "SQLite · Postgres · Search",
+      before: "(await productModel.pickById(id)).",
+      after: "",
     },
     {
-      title: l.trans({ en: "Docs / Plugins", ko: "문서 / 플러그인" }),
-      description: l.trans({
-        en: "Live docs and official feature blocks.",
-        ko: "실시간 문서와 공식 기능 블록.",
-      }),
-    },
-    {
-      title: l.trans({ en: "MCP / Prompts", ko: "MCP / 프롬프트" }),
-      description: l.trans({
-        en: "Every guarded endpoint becomes an agent tool.",
-        ko: "가드가 있는 모든 엔드포인트가 에이전트 도구로.",
-      }),
-    },
-    {
-      title: l.trans({ en: "In-page agent", ko: "인페이지 에이전트" }),
-      description: l.trans({
-        en: "An assistant that works the screen with your users.",
-        ko: "사용자와 함께 화면을 다루는 어시스턴트.",
-      }),
+      title: l.trans({ en: "Agents", ko: "에이전트" }),
+      surface: "MCP · In-page agent",
+      before: "fillProductForm({ ",
+      after: ': "Tesseract" })',
     },
   ];
   const proofItems = [
@@ -437,55 +419,29 @@ export default page().render(() => {
             })}
             <BsArrowRight />
           </Link>
-          <h1 className="max-w-4xl font-black text-5xl text-foreground tracking-tight sm:text-5xl lg:text-6xl">
-            {l.trans({
-              en: "One line of business code ships web, iOS, Android, desktop, server, database — and agents",
-              ko: "한 줄의 비즈니스 코드로 웹·iOS·Android·데스크탑·서버·DB, 에이전트까지",
-            })}
+          <h1 className="max-w-5xl font-black text-3xl text-foreground tracking-tight sm:text-4xl lg:text-5xl">
             <span className="text-primary">
               {l.trans({
-                en: " together.",
-                ko: " 한 번에.",
+                en: "The tesseract TypeScript framework.",
+                ko: "테서랙트 TypeScript 프레임워크.",
               })}
             </span>
           </h1>
-          <p className="mt-6 max-w-2xl text-foreground/70 text-lg leading-8">
+          <p className="mt-6 max-w-3xl font-semibold text-foreground/85 text-xl leading-8 sm:text-2xl sm:leading-9">
             {l.trans({
-              en: "No more framework assembly, duplicated declarations, or per-platform rewrites. Write business intent in one place: five surfaces follow, and AI agents use it too — as MCP tools, page prompts and an in-page assistant, behind the same guards.",
-              ko: "프레임워크 조립, 중복 선언, 플랫폼별 재작성은 이제 그만. 비즈니스 코드 한 곳만 작성하면 7개 표현이 따라오고, 같은 가드 뒤에서 MCP 도구, 페이지 프롬프트, 인페이지 어시스턴트로 AI 에이전트도 그대로 씁니다.",
+              en: "One line of business code ships web, iOS, Android, Linux, macOS, Windows, server, database — and agents.",
+              ko: "비즈니스 코드 한 줄이 웹, iOS, Android, Linux, macOS, Windows, 서버, DB — 그리고 에이전트까지 배포됩니다.",
             })}
           </p>
-          <p className="mt-3 max-w-2xl text-base text-foreground/60 leading-7">
+          <p className="mt-6 max-w-2xl text-foreground/60 text-lg leading-8">
             {l.trans({
-              en: "Akan starts with the result people feel first, then keeps the method explainable from database to UI.",
-              ko: "Akan은 먼저 체감되는 결과를 만들고, 그 방법론을 데이터베이스부터 UI까지 납득 가능하게 유지합니다.",
-            })}
+              en: "Akan is a Bun-first full-stack framework. Declare a model once — schema, API, state, UI and agent tools follow, type-safe from database to screen.",
+              ko: "Akan은 Bun 기반 풀스택 프레임워크입니다. 모델을 한 번 선언하면 스키마, API, 상태, UI, 에이전트 도구가 DB부터 화면까지 타입 안전하게 따라옵니다.",
+            })}{" "}
+            <span className="font-semibold text-foreground">
+              {l.trans({ en: "One source, every face.", ko: "하나의 소스, 모든 면." })}
+            </span>
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            {[
-              "Web",
-              "iOS",
-              "Android",
-              "Linux",
-              "macOS",
-              "Windows",
-              "Server",
-              "DB",
-              "MCP",
-              "In-page agent",
-              "Type-safe",
-            ].map((surface) => (
-              <span
-                key={surface}
-                className={badgeRecipe(
-                  undefined,
-                  "border-foreground/10 bg-foreground/10 px-3 py-1 text-foreground text-sm",
-                )}
-              >
-                {surface}
-              </span>
-            ))}
-          </div>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <Link href="/docs/intro/quickstart">
               <button className={buttonRecipe(undefined, "border-none bg-primary text-background hover:bg-primary/80")}>
@@ -496,31 +452,41 @@ export default page().render(() => {
               {l.trans({ en: "See the showcase", ko: "쇼케이스 보기" })}
             </Link>
           </div>
+          <InstallCommand className="mt-4" />
         </div>
 
         <div className="relative">
-          <div className="absolute inset-0 rotate-3 rounded-4xl bg-primary/20 blur-2xl" />
-          <div className="relative overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-5 shadow-2xl backdrop-blur">
+          <Tesseract className="pointer-events-none absolute -top-24 -right-12 size-104 opacity-50 lg:-right-28" />
+          <div className="absolute inset-0 rotate-3 rounded-4xl bg-primary/15 blur-2xl" />
+          <div className="relative overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-5 shadow-2xl backdrop-blur-md">
             <div className="mb-5 flex items-center justify-between rounded-2xl border border-foreground/10 bg-background/70 px-4 py-3">
               <div>
                 <p className="text-foreground/40 text-xs tracking-[0.24em]">Akan.js</p>
                 <p className="font-semibold text-foreground text-lg">
-                  {l.trans({ en: "Business code becomes the whole product", ko: "비즈니스 코드가 제품 전체가 됩니다" })}
+                  {l.trans({ en: "One object, every projection", ko: "하나의 대상, 모든 투영" })}
                 </p>
               </div>
               <div className="rounded-xl bg-primary/10 px-3 py-2 font-medium text-primary text-sm">1 → All</div>
             </div>
             <Code.Snippet
+              className="w-full"
+              title="product.constant.ts"
               showLineNumbers={false}
               code={`export class ProductInput extends via((field) => ({
-  name: field(String),
+  name: field(String, { text: "title" }), // [!code highlight]
+  price: field(Int),
 })) {}`}
             />
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {heroSurfaces.map((item) => (
-                <div key={item.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
-                  <p className="font-bold text-foreground">{item.title}</p>
-                  <p className="mt-1 text-foreground/60 text-sm leading-6">{item.description}</p>
+              {heroFaces.map((face) => (
+                <div key={face.title} className="rounded-2xl border border-foreground/10 bg-background/80 p-4">
+                  <p className="font-bold text-foreground">{face.title}</p>
+                  <p className="text-foreground/40 text-xs">{face.surface}</p>
+                  <p className="mt-3 break-all font-mono text-foreground/60 text-xs leading-5">
+                    {face.before}
+                    <span className="rounded bg-primary/15 px-1 text-primary">name</span>
+                    {face.after}
+                  </p>
                 </div>
               ))}
             </div>
@@ -553,12 +519,12 @@ export default page().render(() => {
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-20 lg:px-8">
         <div className="mb-10 text-center">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({ en: "Built for the pain you already feel.", ko: "각자의 페인포인트를 먼저 해결합니다." })}
+            {l.trans({ en: "Start from the face that hurts.", ko: "아픈 면에서 시작하세요." })}
           </h2>
           <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
             {l.trans({
-              en: "Web, app, desktop, server, database, and team size all hurt in different ways. Akan lets each developer recognize their own bottleneck first.",
-              ko: "웹, 앱, 데스크탑, 서버, DB, 팀 규모는 저마다 다른 방식으로 발목을 잡습니다. Akan은 각 개발자가 자기 병목을 먼저 인지하게 합니다.",
+              en: "Web, app, desktop, server, database, and team size all hurt in different ways. Start from the face you already know — the rest of the tesseract comes with it.",
+              ko: "웹, 앱, 데스크탑, 서버, DB, 팀 규모는 저마다 다른 방식으로 발목을 잡습니다. 익숙한 면에서 시작하세요. 테서랙트의 나머지 면은 함께 따라옵니다.",
             })}
           </p>
         </div>
@@ -581,12 +547,12 @@ export default page().render(() => {
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="mb-8 text-center md:mb-12">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({ en: "One field. Eight layers follow.", ko: "필드 하나. 8개 레이어가 따라옵니다." })}
+            {l.trans({ en: "One field unfolds into eight layers.", ko: "필드 하나가 8개 레이어로 펼쳐집니다." })}
           </h2>
           <p className="mx-auto mt-4 max-w-4xl text-foreground/60 leading-7">
             {l.trans({
-              en: "This is why one developer can own web, app, server, and database at once: the scattered wiring compresses into a single business declaration.",
-              ko: "1명이 웹, 앱, 서버, DB를 함께 책임질 수 있는 이유입니다. 흩어진 배선이 하나의 비즈니스 선언으로 압축됩니다.",
+              en: "A tesseract unfolds into eight cubes; an Akan field unfolds into eight layers. That is why one developer can own web, app, server, and database at once: the scattered wiring folds into a single business declaration.",
+              ko: "테서랙트를 펼치면 8개의 입방체가 되듯, Akan의 필드 하나는 8개 레이어로 펼쳐집니다. 1명이 웹, 앱, 서버, DB를 함께 책임질 수 있는 이유입니다. 흩어진 배선이 하나의 비즈니스 선언으로 접힙니다.",
             })}
           </p>
         </div>
@@ -632,8 +598,8 @@ export default page().render(() => {
               </div>
               <h3 className="font-bold text-2xl">
                 {l.trans({
-                  en: "One declaration becomes every layer",
-                  ko: "선언 하나가 모든 레이어가 됩니다",
+                  en: "One declaration, folded into every layer",
+                  ko: "선언 하나에 모든 레이어가 접혀 있습니다",
                 })}
               </h3>
               <div className="mt-5">
@@ -747,14 +713,14 @@ export default page().render(() => {
             <div>
               <h2 className="font-black text-3xl tracking-tight md:text-5xl">
                 {l.trans({
-                  en: "Everything a business app needs, connected",
-                  ko: "비즈니스 앱에 필요한 모든 것을 연결합니다",
+                  en: "Every face of a business app, one shape",
+                  ko: "비즈니스 앱의 모든 면, 하나의 형태",
                 })}
               </h2>
               <p className="mt-4 text-foreground/60 leading-7">
                 {l.trans({
-                  en: "Akan supports web, iOS, Android, desktop, server, database, validation, and internationalization as one coherent stack.",
-                  ko: "Akan은 웹, iOS, Android, 데스크톱, 서버, 데이터베이스, 검증, 다국어를 하나의 일관된 스택으로 지원합니다.",
+                  en: "Web, iOS, Android, desktop, server, database, validation, internationalization and agents are not parts you bolt together — they are faces of one coherent stack.",
+                  ko: "웹, iOS, Android, 데스크톱, 서버, 데이터베이스, 검증, 다국어, 에이전트는 따로 조립하는 부품이 아니라 하나의 일관된 스택이 가진 면입니다.",
                 })}
               </p>
             </div>
@@ -854,8 +820,8 @@ export default page().render(() => {
         <div className="rounded-4xl border border-foreground/10 bg-foreground/4 p-5 backdrop-blur md:p-8">
           <h2 className="mb-8 text-center font-black text-3xl tracking-tight md:mb-12 md:text-5xl">
             {l.trans({
-              en: "How Conventions Expand Your Business Definition",
-              ko: "컨벤션이 비즈니스 정의를 확장하는 방식",
+              en: "How One Business Definition Unfolds",
+              ko: "하나의 비즈니스 정의가 펼쳐지는 방식",
             })}
           </h2>
           <div className="space-y-6 md:space-y-8">
@@ -957,21 +923,19 @@ export default page().render(() => {
       <section className="relative mx-auto w-full max-w-7xl px-6 py-20 lg:px-8">
         <div className="overflow-hidden rounded-4xl border border-foreground/10 bg-foreground/6 p-8 text-center shadow-2xl backdrop-blur md:p-12">
           <div className={badgeRecipe(undefined, "mb-5 border-primary/20 bg-primary/10 text-primary")}>
-            {l.trans({ en: "One person, a whole product", ko: "한 사람이, 제품 전체를" })}
+            {l.trans({ en: "Agentic full-stack", ko: "에이전틱 풀스택" })}
           </div>
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({
-              en: "Run the business with one quarter of the code.",
-              ko: "기존 대비 1/5의 코드로 비즈니스를 운영하세요.",
-            })}
+            {l.trans({ en: "Read for humans.", ko: "읽는 건 사람이," })}{" "}
+            <span className="text-primary">{l.trans({ en: "Write for agents.", ko: "쓰는 건 에이전트가." })}</span>
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-foreground/65 leading-7">
             {l.trans({
-              en: "Less code means fewer tokens, clearer intent, easier reviews, and calmer updates. Akan is optimized for the happiness of developers who ship real products.",
-              ko: "적은 코드량은 적은 토큰소모, 선명한 의도, 쉬운 리뷰, 안정적인 업데이트로 이어집니다. Akan은 실제 제품을 출시하는 개발자의 행복에 최적화되어 있습니다.",
+              en: "Agents write through strict conventions and fixed blocks, so every line lands where it belongs. You read only what matters: less code, one shape for every module — fewer tokens for the agent, a shorter review for you.",
+              ko: "에이전트는 엄격한 컨벤션과 고정된 블록을 따라 코드를 쓰기에 모든 줄이 제자리에 놓입니다. 사람은 핵심만 읽습니다. 적은 코드, 모든 모듈에 같은 형태 — 에이전트에겐 적은 토큰, 사람에겐 짧은 리뷰.",
             })}
           </p>
-          <Code.Snippet title="Terminal" code="bunx create-akan-workspace@latest" language="bash" />
+          <InstallCommand className="mt-8" />
           <div className="mt-4">
             <Link href="/docs/intro/quickstart">
               <button className={buttonRecipe({ variant: "primary", size: "lg" })}>
