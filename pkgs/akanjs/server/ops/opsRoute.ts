@@ -68,7 +68,7 @@ export class OpsRoute {
     const args = ["ops", "snapshot", "--id", request.id, "--out", dir, "--db", sources.main, "--json"];
     if (sources.solid) args.push("--solid-db", sources.solid);
     if (request.includeSolid) args.push("--include-solid");
-    const proc = Bun.spawn([process.execPath, Bun.main, ...args], {
+    const proc = Bun.spawn(SelfExec.command(Bun.main, ...args), {
       env: SelfExec.env(),
       stdout: "pipe",
       stderr: "pipe",

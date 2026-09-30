@@ -14,4 +14,10 @@ export class SelfExec {
   static env(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
     return SelfExec.#beBun === undefined ? env : { ...env, BUN_BE_BUN: SelfExec.#beBun };
   }
+
+  //? The runtime flags this process started with (a carried server's --no-env-file, --use-system-ca, …) go along too:
+  //? the child runs in the same working folder, where they are what keeps a stray .env or bunfig.toml out.
+  static command(script: string, ...args: string[]): string[] {
+    return [process.execPath, ...process.execArgv, script, ...args];
+  }
 }

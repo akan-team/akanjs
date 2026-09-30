@@ -49,7 +49,7 @@ export class NativeFile {
     const rest: string[] = [];
     for (let current = target; ; current = path.dirname(current)) {
       try {
-        return path.join(realpathSync(current), ...rest);
+        return path.join(realpathSync.native(current), ...rest);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT" || path.dirname(current) === current) throw error;
         if (NativeFile.#exists(current)) throw new Error(`${target} is a link to nothing.`);

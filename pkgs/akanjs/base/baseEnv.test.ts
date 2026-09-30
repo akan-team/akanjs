@@ -353,7 +353,17 @@ describe("getEnv", () => {
       resetEnv();
       Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVER_URL: "https://api.example.com/" });
       expect(await originOf("app://localhost/")).toBe("https://api.example.com");
+      delete process.env.AKAN_PUBLIC_SERVER_URL;
+
+      resetEnv();
+      Object.assign(process.env, { AKAN_PUBLIC_ENV: "debug", AKAN_PUBLIC_SERVER_PORT: "8283" });
+      Object.assign(holder, {
+        __AKAN_NATIVE__: { platform: "macos", env: { PUBLIC_AKAN_SERVER_URL: "http://127.0.0.1:51234" } },
+        __AKAN_NATIVE_DEV__: { gateway: "http://localhost:52011" },
+      });
+      expect(await originOf("app://localhost/en?csr=true")).toBe("http://127.0.0.1:51234");
       delete holder.__AKAN_NATIVE__;
+      delete holder.__AKAN_NATIVE_DEV__;
 
       resetEnv();
       Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_RENDER_ENV: "ssr" });
