@@ -228,6 +228,9 @@ const config: AppConfig = {
   },
   ```
 
+- **A platform section may name its own `indexPath`**, which wins on that platform: `indexPath: "/mobile"` with
+  `desktop: { indexPath: "/" }` opens the phones on `/mobile` and the desktop app on `/`, from one target, so no
+  command needs `--target`. It moves the dev build's first page and the `indexPath` its bundle carries alike.
 - **`basePath` is the client a target opens.** An app with no basePaths leaves it out. Without `targets`, the one
   target opens the basePath named like the app when there is one; in an app with basePaths, a target that names
   none is a template, and `--target <basePath>` builds that client from it.

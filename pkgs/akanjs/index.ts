@@ -142,6 +142,8 @@ export interface AkanNativeUpdatesConfig {
 }
 
 export interface AkanNativeIosConfig {
+  /** Where the iOS app starts, over the section's `indexPath`. */
+  indexPath?: string;
   /** The Apple team id: the universal links of `deepLinks.domains` (apple-app-site-association). */
   teamId?: string;
   infoPlist?: Record<string, AkanNativeValue>;
@@ -153,6 +155,8 @@ export interface AkanNativeIosConfig {
 }
 
 export interface AkanNativeAndroidConfig {
+  /** Where the Android app starts, over the section's `indexPath`. */
+  indexPath?: string;
   /** The signing certificates' SHA-256 fingerprints: the app links of `deepLinks.domains` (assetlinks.json). */
   sha256CertFingerprints?: string[];
   /** The Firebase project's google-services.json, relative to the app folder, for FCM push. */
@@ -172,6 +176,8 @@ export interface AkanNativeAndroidConfig {
 }
 
 export interface AkanNativeDesktopConfig {
+  /** Where the desktop app starts, over the section's `indexPath`. */
+  indexPath?: string;
   /**
    * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
    * nothing else. `build-desktop`, `start-desktop` and `publish-update` all read it, and an installed app refuses
@@ -201,7 +207,10 @@ export interface AkanNativeDesktopConfig {
 export interface AkanNativeSettings {
   /** The client the app opens, a basePath the routes declare; an app without basePaths leaves it out. */
   basePath?: string;
-  /** Where the app starts, and falls back to for a deep link's stack and a back with no history. Default `/`. */
+  /**
+   * Where the app starts, and falls back to for a deep link's stack and a back with no history. Default `/`. A platform
+   * section's own `indexPath` (`desktop.indexPath`) wins on that platform.
+   */
   indexPath?: string;
   /** Default: the app's folder name. */
   appName?: string;

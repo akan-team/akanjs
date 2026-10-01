@@ -142,8 +142,8 @@ const nativeFields = [
     key: "indexPath",
     type: "string",
     default: "/",
-    en: "Start path, and where a deep link's stack and a back with no history fall back to.",
-    ko: "시작 경로이며, 딥링크로 열 때 아래에 쌓는 화면이자 기록 없는 뒤로 가기가 돌아가는 곳입니다.",
+    en: "Start path, and where a deep link's stack and a back with no history fall back to. ios.indexPath, android.indexPath and desktop.indexPath win on their platform.",
+    ko: "시작 경로이며, 딥링크로 열 때 아래에 쌓는 화면이자 기록 없는 뒤로 가기가 돌아가는 곳입니다. ios.indexPath, android.indexPath, desktop.indexPath는 그 플랫폼에서 이 값보다 우선합니다.",
   },
   {
     key: "appName",
@@ -907,8 +907,8 @@ export default config;`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: 'When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }.',
-              ko: '첫 페이지가 /가 아니면 그 옆에 indexPath를 더합니다: native: { indexPath: "/board", desktop: { server: true } }.',
+              en: 'When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }. When one platform starts elsewhere, give that platform section its own: native: { indexPath: "/mobile", desktop: { indexPath: "/", server: true } } opens the phones on /mobile and the desktop app on /.',
+              ko: '첫 페이지가 /가 아니면 그 옆에 indexPath를 더합니다: native: { indexPath: "/board", desktop: { server: true } }. 한 플랫폼만 다른 곳에서 시작하면 그 플랫폼 섹션에 indexPath를 따로 적습니다: native: { indexPath: "/mobile", desktop: { indexPath: "/", server: true } }는 폰 앱을 /mobile로, 데스크톱 앱을 /로 엽니다.',
             })}
           </div>
           <Docs.SubSubTitle>{l.trans({ en: "Targets", ko: "Target" })}</Docs.SubSubTitle>

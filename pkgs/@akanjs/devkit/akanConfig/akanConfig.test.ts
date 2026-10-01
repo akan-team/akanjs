@@ -491,6 +491,29 @@ describe("AkanAppConfig", () => {
     expect(config.native.targets.default).toMatchObject({ indexPath: "/explore", desktop: { server: true } });
   });
 
+  test("a platform section may name its own indexPath, normalized like the section's", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        native: {
+          indexPath: "/mobile",
+          ios: { indexPath: "cockpit/" },
+          desktop: { indexPath: " / ", server: true },
+        },
+      },
+      baseDevEnv,
+    );
+
+    expect(config.native.targets.default).toMatchObject({
+      indexPath: "/mobile",
+      ios: { indexPath: "/cockpit" },
+      desktop: { indexPath: "/", server: true },
+    });
+    expect(config.native.targets.default.android).toBeUndefined();
+  });
+
   test("a target takes the native section with its own fields over it: objects merge, lists and values replace", () => {
     const config = new AkanAppConfig(
       app,

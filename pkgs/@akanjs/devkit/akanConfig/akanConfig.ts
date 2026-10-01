@@ -293,9 +293,11 @@ export class AkanAppConfig implements AppConfigResult {
         } = merged;
         const indexPath = normalizeIndexPath(rawIndexPath);
         const deepLinks = normalizeDeepLinks(rawDeepLinks);
-        const { teamId: rawTeamId, ...iosRest } = merged.ios ?? {};
+        const { teamId: rawTeamId, ...iosRest } = AkanAppConfig.#platformIndexPath(merged.ios ?? {});
         const teamId = rawTeamId?.trim();
-        const { sha256CertFingerprints: rawFingerprints, ...androidRest } = merged.android ?? {};
+        const { sha256CertFingerprints: rawFingerprints, ...androidRest } = AkanAppConfig.#platformIndexPath(
+          merged.android ?? {},
+        );
         const fingerprints = normalizeStringList(rawFingerprints);
         const target: AkanNativeTarget = {
           ...rest,
@@ -307,6 +309,7 @@ export class AkanAppConfig implements AppConfigResult {
           ...(merged.android
             ? { android: { ...androidRest, ...(fingerprints ? { sha256CertFingerprints: fingerprints } : {}) } }
             : {}),
+          ...(merged.desktop ? { desktop: AkanAppConfig.#platformIndexPath(merged.desktop) } : {}),
           appName: merged.appName ?? this.app.name,
           appId: merged.appId ?? appId,
           version: merged.version ?? version,
@@ -317,6 +320,11 @@ export class AkanAppConfig implements AppConfigResult {
       }),
     );
     return { appName, appId, ...(root.fileName ? { fileName: root.fileName } : {}), version, buildNum, targets };
+  }
+  static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
+    const { indexPath: rawIndexPath, ...rest } = section;
+    const indexPath = normalizeIndexPath(rawIndexPath);
+    return { ...rest, ...(indexPath ? { indexPath } : {}) } as T;
   }
   /** `own` over `base`: plain objects merge key by key, and any other value, a list included, replaces. */
   static #overlay(base: AkanNativeSettings, own: AkanNativeSettings): AkanNativeSettings {
@@ -356,8 +364,9 @@ export class AkanAppConfig implements AppConfigResult {
       "android",
       "desktop",
     ],
-    ios: ["teamId", "infoPlist", "entitlements", "privacy", "files"],
+    ios: ["indexPath", "teamId", "infoPlist", "entitlements", "privacy", "files"],
     android: [
+      "indexPath",
       "sha256CertFingerprints",
       "googleServices",
       "push",
@@ -367,7 +376,7 @@ export class AkanAppConfig implements AppConfigResult {
       "activity",
       "files",
     ],
-    desktop: ["server", "recovery", "window", "screenCapture"],
+    desktop: ["indexPath", "server", "recovery", "window", "screenCapture"],
     deepLinks: ["schemes", "domains"],
   } as const;
   //* Settings that moved when `mobile` became `native` are named with where they went, instead of "unknown".

@@ -74,14 +74,24 @@ export class NativeApp {
     return path.join(this.targetRoot, "dev", platform);
   }
 
+  /** Where the app starts on `platform`: its platform section's `indexPath`, else the target's. */
+  indexPath(platform: NativePlatform) {
+    const { config } = this.target;
+    const section = platform === "ios" ? config.ios : platform === "android" ? config.android : config.desktop;
+    return section?.indexPath ?? config.indexPath;
+  }
+
   /** The web root, from the production build the native commands run first. */
-  async assembleWeb() {
+  async assembleWeb(platform: NativePlatform) {
     const dist = this.app.dist.cwdPath;
-    return await this.web.assemble(this.target.config, {
-      html: path.join(dist, "csr", targetHtmlFilename(this.target.config)),
-      publicDir: path.join(dist, "public"),
-      fontsDir: path.join(dist, ".akan", "artifact", "fonts"),
-    });
+    return await this.web.assemble(
+      { ...this.target.config, indexPath: this.indexPath(platform) },
+      {
+        html: path.join(dist, "csr", targetHtmlFilename(this.target.config)),
+        publicDir: path.join(dist, "public"),
+        fontsDir: path.join(dist, ".akan", "artifact", "fonts"),
+      },
+    );
   }
 
   /** Where a desktop build stages the executables it carries (akan.config.ts `bin`). */
@@ -168,7 +178,7 @@ export class NativeApp {
   async build(platform: NativePlatform, { profile = "release", server, installer = false }: NativeBuildOptions = {}) {
     NativeApp.#assertServerPlatform(platform, server);
     if (installer && platform !== "windows") throw new Error(`An installer is built for Windows, not for ${platform}.`);
-    await this.assembleWeb();
+    await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server);
     return await api.build({
       ...this.#task(platform, config),
@@ -182,7 +192,7 @@ export class NativeApp {
     { device, teamId, profile = "debug", server }: NativeRunOptions & NativeBuildOptions = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
-    await this.assembleWeb();
+    await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server);
     return await api.run({
       ...this.#task(platform, config),
@@ -211,7 +221,7 @@ export class NativeApp {
         wsPaths: [`${routes.prefix}${routes.websocketPrefix}`],
         reversePorts: [Number(new URL(upstream).port)],
         onLine: this.#appLine,
-        startPath: this.startPath(lang),
+        startPath: this.startPath(lang, platform),
         ...(device ? { device } : {}),
         ...(teamId ? { ios: { signing: { teamId } } } : {}),
       });
@@ -242,7 +252,7 @@ export class NativeApp {
   }
 
   async releaseIos({ teamId, adHoc = false }: { teamId?: string; adHoc?: boolean } = {}) {
-    await this.assembleWeb();
+    await this.assembleWeb("ios");
     const { api, config } = await this.prepare("ios");
     return await api.release({
       ...this.#task("ios", config),
@@ -263,7 +273,7 @@ export class NativeApp {
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     this.#assertUpdates();
-    await this.assembleWeb();
+    await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server);
     return await api.publishUpdate({
       ...this.#task(platform, config),
@@ -324,14 +334,14 @@ export class NativeApp {
 
   async releaseAndroid({ formats = ["aab"] }: { formats?: ("aab" | "apk")[] } = {}) {
     const signing = NativeApp.androidSigning();
-    await this.assembleWeb();
+    await this.assembleWeb("android");
     const { api, config } = await this.prepare("android");
     return await api.release({ ...this.#task("android", config), platform: "android", signing, formats });
   }
 
   /** An unsigned OTA update of this target's web bundle for `platform`, and the channel its binary follows. */
   async packUpdate(platform: MobilePlatform, { out }: { out?: string } = {}) {
-    await this.assembleWeb();
+    await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform);
     if (!config.updates)
       throw new Error(
@@ -370,12 +380,13 @@ export class NativeApp {
 
   /** The first page of a dev build, the target's home as a release bundle opens it; the dev server answers the CSR
    * shell only for `?csr=true`. */
-  startPath(lang: string) {
+  startPath(lang: string, platform: NativePlatform) {
     const basePath = this.target.config.basePath?.replace(/^\/+|\/+$/g, "");
+    const indexPath = this.indexPath(platform);
     const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name });
     if (basePath) params.set("akanMobileBasePath", basePath);
-    if (this.target.config.indexPath) params.set("akanMobileIndexPath", this.target.config.indexPath);
-    const home = [lang, basePath, this.target.config.indexPath]
+    if (indexPath) params.set("akanMobileIndexPath", indexPath);
+    const home = [lang, basePath, indexPath]
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;

@@ -154,7 +154,7 @@ native describes the app the Android, iOS and desktop commands build from this a
 
 An app without basePaths leaves basePath out, and an app that ships one native app needs no targets. So the shortest config for a desktop app that carries the app's server is this:
 
-When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }.
+When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }. When one platform starts elsewhere, give that platform section its own: native: { indexPath: "/mobile", desktop: { indexPath: "/", server: true } } opens the phones on /mobile and the desktop app on /.
 
 Targets
 
@@ -162,7 +162,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - basePath (string): The client the app opens, a basePath routes declares. An app without basePaths leaves it out.
 
-- indexPath (string, default /): Start path, and where a deep link's stack and a back with no history fall back to.
+- indexPath (string, default /): Start path, and where a deep link's stack and a back with no history fall back to. ios.indexPath, android.indexPath and desktop.indexPath win on their platform.
 
 - appName (string, default the app name): Display name of the native app.
 

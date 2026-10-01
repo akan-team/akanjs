@@ -370,7 +370,8 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   declares the steps its own runtime needs and every mounting app inherits them.
 - **Native apps are the `native` section** — iOS, Android and a desktop app (macOS, Windows, Linux), each shipping
   the CSR bundle on the native runtime. Shared fields (`appName`, `appId`, `version`, `indexPath`, `permissions`,
-  `plugins`, `deepLinks`, `updates`, …) sit beside one section per platform: `ios`, `android`, `desktop`. Without
+  `plugins`, `deepLinks`, `updates`, …) sit beside one section per platform: `ios`, `android`, `desktop`, and a
+  platform section's own `indexPath` wins on that platform (`desktop: { indexPath: "/" }`). Without
   `targets` the app has one target, `default`, and an app with no basePaths leaves `basePath` out; a target takes
   the same shape and overrides the section field by field — objects merge key by key, a list or any other value
   replaces the section's. `akan start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages

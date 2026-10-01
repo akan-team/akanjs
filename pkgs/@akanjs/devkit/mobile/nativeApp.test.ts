@@ -87,12 +87,38 @@ describe("NativeApp", () => {
   });
 
   test("opens a dev build on its target's home, the CSR shell under the locale", () => {
-    expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en")).toBe(
+    expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en", "ios")).toBe(
       "/en/explore?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",
     );
-    expect(new NativeApp(fakeApp(), target({ name: "admin", basePath: "/admin/" })).startPath("ko")).toBe(
+    expect(new NativeApp(fakeApp(), target({ name: "admin", basePath: "/admin/" })).startPath("ko", "android")).toBe(
       "/ko/admin?csr=true&akanMobileTarget=admin&akanMobileBasePath=admin",
     );
+  });
+
+  test("a platform section's indexPath wins on that platform, and the others keep the target's", () => {
+    const app = new NativeApp(fakeApp(), target({ indexPath: "/mobile", desktop: { indexPath: "/", server: true } }));
+
+    expect(app.indexPath("ios")).toBe("/mobile");
+    expect(app.indexPath("android")).toBe("/mobile");
+    expect(app.indexPath("macos")).toBe("/");
+    expect(app.indexPath("windows")).toBe("/");
+    expect(app.startPath("en", "macos")).toBe("/en?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2F");
+    expect(app.startPath("en", "ios")).toBe(
+      "/en/mobile?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fmobile",
+    );
+  });
+
+  test("assembles each platform's web root with that platform's indexPath", async () => {
+    const root = await makeTempRoot();
+    await writeText(path.join(root, "dist/csr/index.html"), "<html><head></head><body></body></html>");
+    const app = { ...fakeApp(), cwdPath: root, dist: { cwdPath: path.join(root, "dist") } } as unknown as App;
+    const nativeApp = new NativeApp(app, target({ indexPath: "/mobile", desktop: { indexPath: "/console" } }));
+    const injected = async () => await Bun.file(path.join(nativeApp.web.dir, "index.html")).text();
+
+    await nativeApp.assembleWeb("linux");
+    expect(await injected()).toContain('"indexPath":"/console"');
+    await nativeApp.assembleWeb("android");
+    expect(await injected()).toContain('"indexPath":"/mobile"');
   });
 
   test("builds its config from the app's locales and the plugins' native contributions", async () => {
