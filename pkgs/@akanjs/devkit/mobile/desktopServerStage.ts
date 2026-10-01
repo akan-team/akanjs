@@ -1,6 +1,6 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AkanAppConfig, MobileEnv } from "../akanConfig";
+import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
 import { DesktopBin } from "./desktopBin";
@@ -40,11 +40,11 @@ export class DesktopServerStage {
   static assertCarriable(config: AkanAppConfig) {
     if (!config.database.modes.includes("single"))
       throw new Error(
-        `native.desktop.server puts the server in the app, where only database mode single runs (no Redis or Postgres); apps/${config.app.name}/akan.config.ts declares ${config.database.modes.join(", ")}.`,
+        `desktop.server in native puts the server in the app, where only database mode single runs (no Redis or Postgres); apps/${config.app.name}/akan.config.ts declares ${config.database.modes.join(", ")}.`,
       );
   }
 
-  static env(config: AkanAppConfig, environment: MobileEnv): Record<string, string> {
+  static env(config: AkanAppConfig, environment: NativeEnv): Record<string, string> {
     //? The launcher picks the port, and the log file stays on: a user's computer has no log collector.
     const { PORT: _port, AKAN_LOG_TO_FILE: _fileLog, ...image } = config.getProductionEnv(environment);
     return {
@@ -122,7 +122,7 @@ export class DesktopServerStage {
   }
 
   //? Copies the build beside what `install` put in the stage, so it runs after both.
-  async prepare(environment: MobileEnv): Promise<DesktopServerBundle> {
+  async prepare(environment: NativeEnv): Promise<DesktopServerBundle> {
     const config = await this.app.getConfig();
     const dist = this.app.dist.cwdPath;
     await mkdir(this.dir, { recursive: true });

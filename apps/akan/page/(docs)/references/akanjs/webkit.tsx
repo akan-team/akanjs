@@ -1325,14 +1325,14 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Declare the permission.</strong> <code>"camera"</code> in the mobile target&apos;s{" "}
-                    <code>permissions</code> adds the camera plugin and its usage texts. There is no package to install.
+                    <strong>Declare the permission.</strong> <code>"camera"</code> in <code>native.permissions</code>{" "}
+                    adds the camera plugin and its usage texts. There is no package to install.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>권한을 선언합니다.</strong> 모바일 타깃의 <code>permissions</code>에 <code>"camera"</code>를
-                    넣으면 camera 플러그인과 사용 목적 문구가 들어갑니다. 설치할 패키지는 없습니다.
+                    <strong>권한을 선언합니다.</strong> <code>native.permissions</code>에 <code>"camera"</code>를 넣으면
+                    camera 플러그인과 사용 목적 문구가 들어갑니다. 설치할 패키지는 없습니다.
                   </span>
                 ),
               })}
@@ -1376,8 +1376,8 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
                 href: "/cheatsheet/mobile/setup#native-plugins",
                 title: l.trans({ en: "Native Plugins", ko: "네이티브 플러그인" }),
                 desc: l.trans({
-                  en: "The mobile target, its permissions, and the plugins they add.",
-                  ko: "모바일 타깃과 권한, 그리고 권한이 넣는 플러그인입니다.",
+                  en: "Native permissions, and the plugins they add.",
+                  ko: "네이티브 권한과 그 권한이 넣는 플러그인입니다.",
                 }),
               },
             ]}
@@ -1486,14 +1486,14 @@ export const useMapCenter = () => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Declare the permission.</strong> <code>"location"</code> in the mobile target&apos;s{" "}
-                    <code>permissions</code> adds the geolocation plugin and its usage texts.
+                    <strong>Declare the permission.</strong> <code>"location"</code> in <code>native.permissions</code>{" "}
+                    adds the geolocation plugin and its usage texts.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>권한을 선언합니다.</strong> 모바일 타깃의 <code>permissions</code>에 <code>"location"</code>
-                    을 넣으면 geolocation 플러그인과 사용 목적 문구가 들어갑니다.
+                    <strong>권한을 선언합니다.</strong> <code>native.permissions</code>에 <code>"location"</code>을
+                    넣으면 geolocation 플러그인과 사용 목적 문구가 들어갑니다.
                   </span>
                 ),
               })}
@@ -1705,14 +1705,14 @@ export const BuyCoins = ({ className }: BuyCoinsProps) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Add the plugin to the target.</strong> The iap plugin is not a permission: name it with{" "}
-                    <code>native: {'{ plugins: ["iap"] }'}</code> on the mobile target.
+                    <strong>Add the plugin to the native app.</strong> The iap plugin is not a permission: name it with{" "}
+                    <code>native: {'{ plugins: ["iap"] }'}</code> in <code>akan.config.ts</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>타깃에 플러그인을 넣습니다.</strong> iap 플러그인은 권한이 아니므로, 모바일 타깃에{" "}
-                    <code>native: {'{ plugins: ["iap"] }'}</code>로 적습니다.
+                    <strong>네이티브 앱에 플러그인을 넣습니다.</strong> iap 플러그인은 권한이 아니므로,{" "}
+                    <code>akan.config.ts</code>에 <code>native: {'{ plugins: ["iap"] }'}</code>로 적습니다.
                   </span>
                 ),
               })}

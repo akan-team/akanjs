@@ -1,6 +1,6 @@
 import path from "node:path";
 import { optimize } from "@tailwindcss/node";
-import type { AkanMobileAppId, AkanWebConfig } from "akanjs";
+import type { AkanNativeAppId, AkanWebConfig } from "akanjs";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
@@ -85,15 +85,15 @@ export class SsrBaseArtifactBuilder {
       i18n: akanConfig.i18n,
       imageConfig: akanConfig.images,
       web: SsrBaseArtifactBuilder.servedWeb(this.#command, akanConfig.web),
-      deepLinkAssociations: Object.values(akanConfig.mobile.targets)
+      deepLinkAssociations: Object.values(akanConfig.native.targets)
         .filter((target) => (target.deepLinks?.domains?.length ?? 0) > 0)
         .map((target) => ({
           targetName: target.name,
           iosAppId: SsrBaseArtifactBuilder.#appIdOn(target.appId, "ios"),
           androidAppId: SsrBaseArtifactBuilder.#appIdOn(target.appId, "android"),
           domains: target.deepLinks?.domains ?? [],
-          iosTeamId: target.deepLinks?.ios?.teamId,
-          androidSha256CertFingerprints: target.deepLinks?.android?.sha256CertFingerprints,
+          iosTeamId: target.ios?.teamId,
+          androidSha256CertFingerprints: target.android?.sha256CertFingerprints,
         })),
     };
     await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
@@ -224,7 +224,7 @@ export class SsrBaseArtifactBuilder {
   }
 
   // Checked against the written asset, not the compiled text: it is the only stylesheet an SSR render serves.
-  static #appIdOn(appId: AkanMobileAppId, platform: "ios" | "android"): string | null {
+  static #appIdOn(appId: AkanNativeAppId, platform: "ios" | "android"): string | null {
     return typeof appId === "string" ? appId : (appId[platform] ?? appId.default ?? null);
   }
 

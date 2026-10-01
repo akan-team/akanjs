@@ -28,7 +28,7 @@ const stage = async (
   bin: AkanBinConfig,
   { libBins = [], libs = [] }: { libBins?: { lib: string; bin: AkanBinConfig }[]; libs?: string[] } = {},
 ) => {
-  const binDir = path.join(root, "apps/portal/.akan/mobile/default/bin");
+  const binDir = path.join(root, "apps/portal/.akan/native/default/bin");
   const config = { app: { name: "portal" }, bin, libBins } as never;
   const carried = await new DesktopBin(fakeApp(path.join(root, "apps/portal"), libs), config).stage(binDir);
   return { carried, binDir };

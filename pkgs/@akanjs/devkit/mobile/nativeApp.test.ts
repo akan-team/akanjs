@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import type { AkanPlugin } from "akanjs";
-import type { AkanMobileTargetConfig } from "../akanConfig";
+import type { AkanNativeTarget } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import { tempDirs, writeText } from "../testHelpers";
 import { NativeApp } from "./nativeApp";
@@ -9,7 +9,7 @@ import { NativeConfig } from "./nativeConfig";
 
 const makeTempRoot = tempDirs("akan-native-app-");
 
-const target = (config: Partial<AkanMobileTargetConfig> = {}) => ({
+const target = (config: Partial<AkanNativeTarget> = {}) => ({
   name: config.name ?? "default",
   config: {
     name: config.name ?? "default",
@@ -39,10 +39,10 @@ describe("NativeApp", () => {
   test("keeps each target's web root and each platform's output apart", () => {
     const admin = new NativeApp(fakeApp(), target({ name: "admin", basePath: "admin" }));
 
-    expect(admin.web.dir).toBe(path.join(appDir, ".akan/mobile/admin/web"));
-    expect(admin.outDir("ios")).toBe(path.join(appDir, ".akan/mobile/admin/native/ios"));
-    expect(admin.outDir("android")).toBe(path.join(appDir, ".akan/mobile/admin/native/android"));
-    expect(admin.devOutDir("macos")).toBe(path.join(appDir, ".akan/mobile/admin/dev/macos"));
+    expect(admin.web.dir).toBe(path.join(appDir, ".akan/native/admin/web"));
+    expect(admin.outDir("ios")).toBe(path.join(appDir, ".akan/native/admin/build/ios"));
+    expect(admin.outDir("android")).toBe(path.join(appDir, ".akan/native/admin/build/android"));
+    expect(admin.devOutDir("macos")).toBe(path.join(appDir, ".akan/native/admin/dev/macos"));
   });
 
   test("a dev build bundles no page a release build left, and builds apart from the release it would empty", async () => {
@@ -106,7 +106,7 @@ describe("NativeApp", () => {
 
     expect(warnings).toEqual([]);
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);
-    expect(config.web.dir).toBe(path.join(appDir, ".akan/mobile/default/web"));
+    expect(config.web.dir).toBe(path.join(appDir, ".akan/native/default/web"));
   });
 
   test("a config nothing is built from (the update key's) stages no desktop bin", async () => {

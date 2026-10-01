@@ -338,8 +338,8 @@ describe("Workspace and app executor environment contracts", () => {
     await writeFile(path.join(root, "apps/startclean/akan.config.ts"), "export default {};\n");
     const akan = path.join(root, "apps/startclean/.akan");
     const kept = [
-      "mobile/desktop/updates/macos-arm64/main.json",
-      "mobile/desktop/native/macos/App.app",
+      "native/desktop/updates/macos-arm64/main.json",
+      "native/desktop/build/macos/App.app",
       "cache/bin/ffmpeg",
     ];
     const removed = [
@@ -347,6 +347,7 @@ describe("Workspace and app executor environment contracts", () => {
       "generated/dict/index.ts",
       "cache/cssCandidates.json",
       "desktop/server/main.js",
+      "mobile/desktop/native/macos/App.app",
     ];
     for (const file of [...kept, ...removed]) await writeText(path.join(akan, file), "x");
 
@@ -354,7 +355,7 @@ describe("Workspace and app executor environment contracts", () => {
     await app.prepareCommand("start");
 
     for (const file of kept) expect(existsSync(path.join(akan, file))).toBe(true);
-    for (const file of [...removed, "artifact", "generated", "desktop"])
+    for (const file of [...removed, "artifact", "generated", "desktop", "mobile"])
       expect(existsSync(path.join(akan, file))).toBe(false);
   });
 

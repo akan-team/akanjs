@@ -17,6 +17,7 @@ and verified by `akan lint akan`.
 Import from `@apps/akan/ui`:
 - `cardGridRecipe`(cols: two*|three|mdTwo) — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
 - `panelRecipe`(tone: solid*|glass · radius: none|lg|xl*|2xl · padding: none|sm|md*|lg|xl|row · shadow?) — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+- `plateRecipe`(tone: plain*|primary · padding: md*|lg) — 모서리 재단 표식 판 — 테두리 없이 `crop-marks` 네 모서리와 옅은 바탕만 남긴 표면. primary 는 표식·바탕을 강조색으로.
 
 Import from `@libs/util/ui`:
 - `alertRecipe`(variant: default*|info|success|warning|error) — Alert bar. Mirrors daisyUI's grid-flow-col layout and padding; the tinted variants replace

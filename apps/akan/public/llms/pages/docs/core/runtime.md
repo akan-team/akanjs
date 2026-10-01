@@ -32,7 +32,7 @@ API (HTTP, WebSocket): public communication for data requests and realtime updat
 
 SSR Pages (Web): web pages rendered by the server and sent to the browser.
 
-CSR Page (Android, iOS): client-rendered pages used by mobile targets.
+CSR Page (Android, iOS): client-rendered pages used by native targets.
 
 Runtime overview
 

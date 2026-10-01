@@ -57,7 +57,7 @@ const config: AppConfig = {};
 export default config;
 ```
 
-프로덕션 앱은 `akan.config.ts`에서 routes, base paths, domains, mobile metadata, deployment options로
+프로덕션 앱은 `akan.config.ts`에서 routes, base paths, domains, native app settings, deployment options로
 자연스럽게 확장됩니다.
 
 ## 오래 읽히는 코드
@@ -66,7 +66,7 @@ Akan은 오래 운영되는 애플리케이션을 이해하기 쉽게 유지하�
 가능한 형태로 둡니다.
 
 - **하나의 설정 표면**: `akan.config.ts`가 앱 단위 설정의 중심입니다. routes, domains, base paths,
-  mobile settings, deployment options가 필요해질 때까지 비워둘 수 있습니다.
+  native app settings, deployment options가 필요해질 때까지 비워둘 수 있습니다.
 - **모노리포 기반 재사용**: shared library와 domain module이 기본 단위이므로 검증된 비즈니스 코드를
   앱마다 다시 만들지 않고 함께 사용할 수 있습니다.
 - **엄격한 구조, 익숙한 코드**: 파일 위치, 파일명, 선언 방식, module boundary가 워크스페이스 전반에서
@@ -229,7 +229,7 @@ akan update
 ## 애플리케이션 설정
 
 `akan.config.ts`는 앱 단위 설정의 중심입니다. 단순한 앱에서는 비어 있을 수 있고, 필요할 때만
-routes, domains, base paths, mobile settings로 확장됩니다.
+routes, domains, base paths, native app settings로 확장됩니다.
 
 ```ts
 import type { AppConfig } from "akanjs";
@@ -239,7 +239,8 @@ const config: AppConfig = {
     { domains: { main: ["example.com", "www.example.com"] }, basePath: "web" },
     { domains: {}, basePath: "app" },
   ],
-  mobile: {
+  native: {
+    basePath: "app",
     appName: "Example",
     appId: "com.example.app",
     version: "1.0.0",

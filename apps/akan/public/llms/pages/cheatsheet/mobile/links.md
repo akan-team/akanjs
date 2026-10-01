@@ -9,7 +9,7 @@
 ## Headings
 
 - Deep Link Setup (#deep-link-setup)
-- The deepLinks Block (#deep-link-fields)
+- Link Fields (#deep-link-fields)
 
 ## Content
 
@@ -17,7 +17,7 @@ Deep Links
 
 Deep Link Setup
 
-A deep link opens a specific screen of the app from a URL outside it, such as a link in a message or a tapped push notification. You set it up once, in the `deepLinks` block of a mobile target in `akan.config.ts`.
+A deep link opens a specific screen of the app from a URL outside it, such as a link in a message or a tapped push notification. You set it up once, in the `native` section of `akan.config.ts`: `deepLinks` names the links, and `ios` and `android` hold what verifies a domain.
 
 Two Kinds Of Link
 
@@ -29,13 +29,13 @@ Deep link is the feature; `schemes` and `domains` are the two usual ways to buil
 
 Declare It
 
-Write `deepLinks` inside a target under `mobile.targets`:
+Write `deepLinks` in `native`, and the values that verify a domain in its `ios` and `android` sections:
 
-**One block per target.** `default` is the target name; each target declares its own `deepLinks`.
+**Every target takes them.** A target that sets `schemes` or `domains` replaces that list; it does not add to it.
 
 **Hosts only in `domains`.** Write `shop.example.com`; an `https://` or a path you add is dropped.
 
-**`ios` and `android` serve `domains`.** If you only use scheme links, leave both out.
+**`ios.teamId` and `android.sha256CertFingerprints` serve `domains`.** If you only use scheme links, leave both out.
 
 **Rerun the app to apply.** After a change, run `akan start-ios` or `akan start-android` again.
 
@@ -55,21 +55,21 @@ What it opens
 
 **Back works after a cold start.** When a link launches the app, the parent screen or the start screen is stacked first, so back stays inside the app.
 
-Mobile Config
+Native Config
 
-Mobile targets and the rest of the `mobile` block.
+Targets and the rest of the `native` block.
 
 Push Notifications
 
 Sending a `url` so a tap lands on a screen.
 
-The deepLinks Block
+Link Fields
 
 Every field is optional. Each platform reads only what it needs, so declare only what your link style requires:
 
-- schemes (string[]): App-only URL schemes, such as `shop` in `shop://orders/1`. — Example: `schemes: ["shop"]`
+- deepLinks.schemes (string[]): App-only URL schemes, such as `shop` in `shop://orders/1`. — Example: `deepLinks: { schemes: ["shop"] }`
 
-- domains (string[]): Hosts whose HTTPS links open the app once iOS and Android verify them. — Example: `domains: ["shop.example.com"]`
+- deepLinks.domains (string[]): Hosts whose HTTPS links open the app once iOS and Android verify them. — Example: `deepLinks: { domains: ["shop.example.com"] }`
 
 - ios.teamId (string): Your Apple Developer Team ID. iOS uses it to verify `domains`. — Example: `ios: { teamId: "TEAMID" }`
 
@@ -87,11 +87,11 @@ Android
 
 - Scheme links
 
-  - schemes
+  - deepLinks.schemes
 
 - Domain links
 
-  - domains
+  - deepLinks.domains
 
   - ios.teamId
 
@@ -105,7 +105,7 @@ Domain Verification
 
 A domain link opens the app only after the platform confirms that the app belongs to the domain. It checks a file served from that domain:
 
-**The Akan server serves both files.** It answers `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` from this block, so point the domain at your app's server and redeploy it after a change.
+**The Akan server serves both files.** It answers `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` from these fields, so point the domain at your app's server and redeploy it after a change.
 
 **iOS checks the Team ID and appId.** The file lists `<teamId>.<appId>` from `ios.teamId` and the target's `appId`, so both must be your real values.
 
@@ -137,21 +137,13 @@ Release builds are signed with the upload key akan release-android reads from th
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
-    targets: {
-      default: {
-        deepLinks: {
-          schemes: ["shop"],
-          domains: ["shop.example.com"],
-          ios: {
-            teamId: "TEAMID",
-          },
-          android: {
-            sha256CertFingerprints: ["AA:BB:CC:DD:..."],
-          },
-        },
-      },
+  native: {
+    deepLinks: {
+      schemes: ["shop"],
+      domains: ["shop.example.com"],
     },
+    ios: { teamId: "TEAMID" },
+    android: { sha256CertFingerprints: ["AA:BB:CC:DD:..."] },
   },
 };
 

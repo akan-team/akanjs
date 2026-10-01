@@ -133,16 +133,16 @@ export default page().render(() => {
         {
           name: "google-services.json",
           desc: l.trans({
-            en: "The Android Firebase config, named by `native.android.googleServices` in the mobile target.",
-            ko: "Android용 Firebase 설정 파일이며, 모바일 타깃의 `native.android.googleServices`로 지정합니다.",
+            en: "The Android Firebase config, named by `native.android.googleServices` in `akan.config.ts`.",
+            ko: "Android용 Firebase 설정 파일이며, `akan.config.ts`의 `native.android.googleServices`로 지정합니다.",
           }),
           marks: { android: true },
         },
         {
           name: 'permissions: ["push"]',
           desc: l.trans({
-            en: "Adds the native push plugin to the mobile target in `akan.config.ts`.",
-            ko: "`akan.config.ts`의 모바일 타깃에 네이티브 푸시 플러그인을 넣습니다.",
+            en: "Adds the native push plugin; it goes in `native` in `akan.config.ts`.",
+            ko: "네이티브 푸시 플러그인을 넣습니다. `akan.config.ts`의 `native`에 적습니다.",
           }),
           marks: { android: true, ios: true },
         },
@@ -293,7 +293,7 @@ export default page().render(() => {
           <strong>
             <code>permissions: ["push"]</code>
           </strong>{" "}
-          adds the push plugin and <code>POST_NOTIFICATIONS</code> to this target.
+          adds the push plugin and <code>POST_NOTIFICATIONS</code> to the app.
         </>
       ),
       ko: (
@@ -301,7 +301,7 @@ export default page().render(() => {
           <strong>
             <code>permissions: ["push"]</code>
           </strong>
-          가 이 타깃에 푸시 플러그인과 <code>POST_NOTIFICATIONS</code> 권한을 넣습니다.
+          가 앱에 푸시 플러그인과 <code>POST_NOTIFICATIONS</code> 권한을 넣습니다.
         </>
       ),
     }),
@@ -339,14 +339,18 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Channel, icon and color.</strong> Firebase posts into its default channel with the launcher icon;{" "}
-          <code>akan.config.ts</code> does not name a channel, icon or color of its own yet.
+          <strong>Channel, icon and color.</strong> Firebase posts into its default channel with the launcher icon,
+          which the status bar draws as a gray square. <code>native.android.push</code> names a <code>channel</code> (
+          <code>{"{ id, name, importance? }"}</code>), a <code>smallIcon</code> (a white-on-transparent PNG in the app
+          folder) and an accent <code>color</code> instead.
         </>
       ),
       ko: (
         <>
-          <strong>채널, 아이콘, 색.</strong> Firebase는 기본 채널에 런처 아이콘으로 올립니다. 채널, 아이콘, 색을 정하는
-          설정은 아직 <code>akan.config.ts</code>에 없습니다.
+          <strong>채널, 아이콘, 색.</strong> Firebase는 기본 채널에 런처 아이콘으로 올리고, 상태 표시줄은 그 아이콘을
+          회색 사각형으로 그립니다. <code>native.android.push</code>로 <code>channel</code>(
+          <code>{"{ id, name, importance? }"}</code>), <code>smallIcon</code>(앱 폴더 안의 흰색·투명 PNG), 강조{" "}
+          <code>color</code>를 대신 정합니다.
         </>
       ),
     }),
@@ -706,7 +710,7 @@ export default page().render(() => {
           </strong>{" "}
           <code>privateKey</code> is the file&apos;s text (<code>\n</code> escapes are fine), <code>keyId</code> and{" "}
           <code>teamId</code> come from Apple Developer, and <code>bundleId</code> is the app&apos;s{" "}
-          <code>mobile.appId</code>. iOS needs it.
+          <code>native.appId</code>. iOS needs it.
         </>
       ),
       ko: (
@@ -715,7 +719,7 @@ export default page().render(() => {
             <code>apns</code>는 <code>.p8</code> 키입니다.
           </strong>{" "}
           <code>privateKey</code>는 파일의 텍스트이고(<code>\n</code> 이스케이프도 됩니다), <code>keyId</code>와{" "}
-          <code>teamId</code>는 Apple Developer에서, <code>bundleId</code>는 앱의 <code>mobile.appId</code>입니다. iOS에
+          <code>teamId</code>는 Apple Developer에서, <code>bundleId</code>는 앱의 <code>native.appId</code>입니다. iOS에
           필요합니다.
         </>
       ),
@@ -913,13 +917,13 @@ export default page().render(() => {
               en: (
                 <span>
                   A native app gets push from the runtime&apos;s <code>push</code> plugin, and{" "}
-                  <code>permissions: ["push"]</code> on the mobile target is all that adds it. There is no package to
+                  <code>permissions: ["push"]</code> in <code>native</code> is all that adds it. There is no package to
                   install. The plugin speaks each platform&apos;s own service:
                 </span>
               ),
               ko: (
                 <span>
-                  네이티브 앱의 푸시는 런타임의 <code>push</code> 플러그인이 맡고, 모바일 타깃의{" "}
+                  네이티브 앱의 푸시는 런타임의 <code>push</code> 플러그인이 맡고, <code>native</code>의{" "}
                   <code>permissions: ["push"]</code>만으로 들어갑니다. 설치할 패키지는 없습니다. 플러그인은 플랫폼마다
                   그 플랫폼의 서비스를 씁니다:
                 </span>
@@ -1066,14 +1070,14 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  Android push is a Firebase Android app whose package name matches <code>mobile.appId</code> exactly,
-                  plus one config file the mobile target names.
+                  Android push is a Firebase Android app whose package name matches <code>native.appId</code> exactly,
+                  plus one config file <code>native.android.googleServices</code> names.
                 </span>
               ),
               ko: (
                 <span>
-                  Android 푸시는 패키지 이름이 <code>mobile.appId</code>와 정확히 같은 Firebase Android 앱 등록, 그리고
-                  모바일 타깃이 지정하는 설정 파일 하나로 끝납니다.
+                  Android 푸시는 패키지 이름이 <code>native.appId</code>와 정확히 같은 Firebase Android 앱 등록, 그리고{" "}
+                  <code>native.android.googleServices</code>가 지정하는 설정 파일 하나로 끝납니다.
                 </span>
               ),
             })}
@@ -1100,12 +1104,12 @@ export default page().render(() => {
               {l.trans({
                 en: (
                   <span>
-                    Enter the same package name as <code>mobile.appId</code>.
+                    Enter the same package name as <code>native.appId</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>mobile.appId</code>와 같은 패키지 이름을 입력합니다.
+                    <code>native.appId</code>와 같은 패키지 이름을 입력합니다.
                   </span>
                 ),
               })}
@@ -1147,12 +1151,12 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  Then name it in the target&apos;s native config in <code>akan.config.ts</code>:
+                  Then name it in <code>native.android</code> in <code>akan.config.ts</code>:
                 </span>
               ),
               ko: (
                 <span>
-                  그리고 <code>akan.config.ts</code>의 타깃 native 설정에서 지정합니다:
+                  그리고 <code>akan.config.ts</code>의 <code>native.android</code>에서 지정합니다:
                 </span>
               ),
             })}
@@ -1165,16 +1169,10 @@ export default page().render(() => {
 
 const config: AppConfig = {
   secrets: ["secrets/**"],
-  mobile: {
+  native: {
     appId: "com.myapp.app",
-    targets: {
-      default: {
-        permissions: ["push"],
-        native: {
-          android: { googleServices: "secrets/google-services.json" },
-        },
-      },
-    },
+    permissions: ["push"],
+    android: { googleServices: "secrets/google-services.json" },
   },
 };
 
@@ -1247,13 +1245,13 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    In Apple Developer, open Identifiers, pick the App ID that matches <code>mobile.appId</code>, and
+                    In Apple Developer, open Identifiers, pick the App ID that matches <code>native.appId</code>, and
                     turn on Push Notifications.
                   </span>
                 ),
                 ko: (
                   <span>
-                    Apple Developer의 Identifiers에서 <code>mobile.appId</code>와 같은 App ID를 골라 Push
+                    Apple Developer의 Identifiers에서 <code>native.appId</code>와 같은 App ID를 골라 Push
                     Notifications를 켭니다.
                   </span>
                 ),
@@ -1304,12 +1302,12 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    Add <code>permissions: ["push"]</code> to the mobile target.
+                    Add <code>permissions: ["push"]</code> to <code>native</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    모바일 타깃에 <code>permissions: ["push"]</code>를 추가합니다.
+                    <code>native</code>에 <code>permissions: ["push"]</code>를 추가합니다.
                   </span>
                 ),
               })}
@@ -1317,8 +1315,8 @@ export default config;`}
           </ol>
           <div>
             {l.trans({
-              en: "The target needs nothing else:",
-              ko: "타깃에는 그 밖에 더 넣을 것이 없습니다:",
+              en: "Nothing else goes in the config:",
+              ko: "설정에는 그 밖에 더 넣을 것이 없습니다:",
             })}
           </div>
         </Docs.Description>
@@ -1328,13 +1326,9 @@ export default config;`}
           code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
+  native: {
     appId: "com.myapp.app",
-    targets: {
-      default: {
-        permissions: ["push"],
-      },
-    },
+    permissions: ["push"],
   },
 };
 

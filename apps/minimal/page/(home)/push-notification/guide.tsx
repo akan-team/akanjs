@@ -18,7 +18,7 @@ export default page().render(() => (
 
       <GuideSection title="Native">
         <ol className="list-decimal space-y-2 pl-5">
-          <li>Keep `permissions: ["push"]` on the mobile target in `akan.config.ts`.</li>
+          <li>Keep `permissions: ["push"]` in the `native` section of `akan.config.ts`.</li>
           <li>
             Android: point `native.android.googleServices` at `google-services.json` (here `secrets/`). The app gets FCM
             tokens.
@@ -28,7 +28,7 @@ export default page().render(() => (
             Give the server `pushNoti.apns` (team id, key id, the .p8 key, bundle id) for iOS and `pushNoti.firebase`
             for Android and the web.
           </li>
-          <li>Run the mobile target and open `/push-notification`.</li>
+          <li>Run the native app and open `/push-notification`.</li>
         </ol>
       </GuideSection>
 

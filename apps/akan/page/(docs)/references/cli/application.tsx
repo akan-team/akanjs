@@ -27,8 +27,8 @@ export default page().render(() => {
     name: "--target",
     type: "String",
     desc: l.trans({
-      en: "A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.",
-      ko: "`akan.config.ts`의 `mobile.targets` 키 또는 `all`입니다. 타깃이 여럿이면 물어봅니다.",
+      en: "A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.",
+      ko: "`akan.config.ts`의 `native.targets` 키 또는 `all`입니다. 타깃이 여럿이면 물어봅니다.",
     }),
   };
   const envDesc = l.trans({
@@ -115,8 +115,8 @@ export default page().render(() => {
   const serverSwitchNote: ReferenceRow = {
     name: "desktop.server",
     desc: l.trans({
-      en: "A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.",
-      ko: "`akan.config.ts`에서 `native: { desktop: { server: true } }`를 준 타깃은 앱의 서버를 싣습니다. 서버는 창과 함께 loopback 포트로 뜨고, 페이지는 그 서버만 부릅니다. `build-desktop`, `start-desktop --release`, `publish-update`가 모두 이 값을 읽습니다. 설치된 앱은 서버를 더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서 켜거나 끄려면 다시 설치해야 합니다.",
+      en: "With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.",
+      ko: "`akan.config.ts`에 `native: { desktop: { server: true } }`를 주거나 한 타깃에 `desktop.server`를 주면, 데스크톱 앱이 앱의 서버를 싣습니다. 서버는 창과 함께 loopback 포트로 뜨고, 페이지는 그 서버만 부릅니다. `build-desktop`, `start-desktop --release`, `publish-update`가 모두 이 값을 읽습니다. 설치된 앱은 서버를 더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서 켜거나 끄려면 다시 설치해야 합니다.",
     }),
   };
   const carriedServerNote: ReferenceRow = {
@@ -136,15 +136,22 @@ export default page().render(() => {
   const oneTargetNote: ReferenceRow = {
     name: l.trans({ en: "one target", ko: "타깃 하나" }),
     desc: l.trans({
-      en: "Runs one mobile target at a time; with several, pass `--target <name>`.",
-      ko: "모바일 타깃을 한 번에 하나만 실행합니다. 여럿이면 `--target <name>`을 줍니다.",
+      en: "Runs one native target at a time; with several, pass `--target <name>`.",
+      ko: "네이티브 타깃을 한 번에 하나만 실행합니다. 여럿이면 `--target <name>`을 줍니다.",
     }),
   };
   const outputNote = (platform: string): ReferenceRow => ({
     name: l.trans({ en: "output", ko: "결과물" }),
     desc: l.trans({
-      en: `Written under \`apps/<app>/.akan/mobile/<target>/native/${platform}\`; the command prints each file's path.`,
-      ko: `\`apps/<app>/.akan/mobile/<target>/native/${platform}\` 아래에 만들어지며, 명령이 파일마다 경로를 출력합니다.`,
+      en: `Written under \`apps/<app>/.akan/native/<target>/build/${platform}\`; the command prints each file's path.`,
+      ko: `\`apps/<app>/.akan/native/<target>/build/${platform}\` 아래에 만들어지며, 명령이 파일마다 경로를 출력합니다.`,
+    }),
+  });
+  const devOutputNote = (platform: string): ReferenceRow => ({
+    name: l.trans({ en: "output", ko: "결과물" }),
+    desc: l.trans({
+      en: `A dev build goes under \`apps/<app>/.akan/native/<target>/dev/${platform}\`; a \`--release\` run under \`…/build/${platform}\`.`,
+      ko: `개발 빌드는 \`apps/<app>/.akan/native/<target>/dev/${platform}\`, \`--release\` 실행은 \`…/build/${platform}\` 아래에 만들어집니다.`,
     }),
   });
   const androidSigningNote: ReferenceRow = {
@@ -984,7 +991,7 @@ akan build myapp --write true --fast false --quiet false`,
         ko: "iOS 시뮬레이터나 페어링한 iPhone에서 앱을 실행합니다. 기본은 로컬 개발 서버에서 화면을 불러오는 디버그 빌드이고, `--release`를 주면 자기 번들을 담은 릴리스 빌드를 실행합니다.",
       }),
       options: [targetOption, localEnvOption, releaseModeOption, deviceOption, teamOption, writeOption],
-      notes: [aliasNote("si"), devServerNote, oneTargetNote],
+      notes: [aliasNote("si"), devServerNote, oneTargetNote, devOutputNote("ios")],
       examples: `akan start-ios myapp --target default --env local
 akan start-ios myapp --device "iPhone 17"
 akan start-ios myapp --device "Jane's iPhone" --team ABCDE12345`,
@@ -998,7 +1005,7 @@ akan start-ios myapp --device "Jane's iPhone" --team ABCDE12345`,
         ko: "Android 에뮬레이터나 연결된 기기에서 앱을 실행합니다. `start-ios`와 같이 기본은 개발 서버를, `--release`면 번들을 담은 릴리스 빌드를 씁니다.",
       }),
       options: [targetOption, localEnvOption, releaseModeOption, deviceOption, writeOption],
-      notes: [aliasNote("sa"), devServerNote, oneTargetNote],
+      notes: [aliasNote("sa"), devServerNote, oneTargetNote, devOutputNote("android")],
       examples: `akan start-android myapp --target default --env local
 akan start-android myapp --device Pixel_10`,
     },
@@ -1006,8 +1013,8 @@ akan start-android myapp --device Pixel_10`,
       name: "start-desktop",
       signature: "akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]",
       desc: l.trans({
-        en: "Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.",
-        ko: "모바일 타깃을 이 컴퓨터에서 데스크톱 앱으로 실행합니다. 데스크톱 앱은 자기 OS에서만 빌드되므로 macOS, Windows, Linux 중 지금 컴퓨터의 것을 씁니다. `start-ios`와 같이 동작하며, 고를 기기나 팀은 없습니다.",
+        en: "Run a native target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.",
+        ko: "네이티브 타깃을 이 컴퓨터에서 데스크톱 앱으로 실행합니다. 데스크톱 앱은 자기 OS에서만 빌드되므로 macOS, Windows, Linux 중 지금 컴퓨터의 것을 씁니다. `start-ios`와 같이 동작하며, 고를 기기나 팀은 없습니다.",
       }),
       options: [targetOption, localEnvOption, releaseModeOption, writeOption],
       notes: [
@@ -1024,6 +1031,7 @@ akan start-android myapp --device Pixel_10`,
         carriedServerNote,
         binNote,
         oneTargetNote,
+        devOutputNote("<macos|windows|linux>"),
       ],
       examples: `akan start-desktop myapp --target default
 akan start-desktop myapp --target kiosk
@@ -1178,8 +1186,8 @@ akan release-android myapp --assemble-type apk --target all --env main`,
       name: "update-keygen",
       signature: "akan update-keygen <app> [--platform <platform>] [--target <target>]",
       desc: l.trans({
-        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
-        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `mobile.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `native.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
       }),
       options: [
         {
@@ -1202,8 +1210,8 @@ akan update-keygen myapp --platform android`,
       signature:
         "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`, which holds only what you upload: upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/mobile/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `mobile.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/native/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `.akan/native/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `native.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1285,8 +1293,8 @@ akan publish-update myapp --platform android --env main`,
           name: "--out",
           type: "String",
           desc: l.trans({
-            en: "Default `.akan/mobile/<target>/updates/<platform>`.",
-            ko: "기본값은 `.akan/mobile/<target>/updates/<platform>`입니다.",
+            en: "Default `.akan/native/<target>/updates/<platform>`.",
+            ko: "기본값은 `.akan/native/<target>/updates/<platform>`입니다.",
           }),
         },
         {

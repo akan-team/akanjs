@@ -53,8 +53,8 @@ void run();`}
             </li>
             <li>
               {l.trans({
-                en: "CSR Page (Android, iOS): client-rendered pages used by mobile targets.",
-                ko: "CSR Page (Android, iOS): Android, iOS 같은 모바일 대상에서 사용하는 클라이언트 렌더링 페이지입니다.",
+                en: "CSR Page (Android, iOS): client-rendered pages used by native targets.",
+                ko: "CSR Page (Android, iOS): Android, iOS 같은 네이티브 target에서 사용하는 클라이언트 렌더링 페이지입니다.",
               })}
             </li>
           </ul>

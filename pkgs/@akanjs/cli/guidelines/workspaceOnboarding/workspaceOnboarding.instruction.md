@@ -7,6 +7,8 @@
 - `apps/<app>/page` holds server-side file-routed pages: `<routeName>.tsx` serves `/routeName`, a directory's
   `_index.tsx` serves that directory, `_layout.tsx` nests a layout, and `[modelId]` is a dynamic segment. Each route
   file is one chain — `export default page()…render()`, or `layout()` / `rootLayout()` in a `_layout.tsx`.
+- The `native` section of `akan.config.ts` makes the app an iOS, Android and desktop app built from the same pages,
+  and `apps/<app>/native/<id>` holds a native plugin the app owns.
 
 The file roles inside a module — which file owns persistence, business logic, state, and each UI shape — are in
 the convention set above under **Domain Module Conventions**.
@@ -112,6 +114,22 @@ For the default generated app, start with:
 akan start <%= appName %>
 ```
 
+### Native Apps — iOS, Android, Desktop
+
+`native: { desktop: { server: true } }` in `akan.config.ts` is all a desktop app that carries its own server needs.
+A `start-*` command loads its pages from `akan start`, so run that first; a desktop app that carries its server
+starts it itself. The full contract — targets, updates, what the carried server ships — is
+`akan guideline show runtimeRule`.
+
+```bash
+akan start-desktop <%= appName %>                   # Run the desktop app on this computer
+akan start-ios <%= appName %>                       # Run it in a simulator or on an iPhone (start-android alike)
+akan build-desktop <%= appName %>                   # Build it for this computer into .akan/native/<target>/build
+akan build-desktop <%= appName %> --installer true  # Windows: add a per-user setup program
+akan update-keygen <%= appName %>                   # Make the update signing key once; print its public key
+akan publish-update <%= appName %>                  # Build and sign a desktop release to upload to updates.url
+```
+
 ### The Essential Loop: Workflow -> Sync -> Check
 
 Almost every Akan.js change follows this pattern. **Missing sync or repair is the #1 cause of agent confusion.**
@@ -200,6 +218,8 @@ final fallback when no CLI command covers the change.
 | Add a React hook or browser helper | `webkit/` → camelCase `.ts` with `"use client"` | `akan sync <name>` |
 | Add a server-only guard, middleware, or adaptor | `srvkit/` → PascalCase `.ts` | `akan sync <name>` |
 | Add a pure helper (no DOM, no server API) | `common/` → camelCase `.ts` | `akan sync <name>` |
+| Make the app an iOS, Android or desktop app | `akan.config.ts` → `native: { … }`; `desktop: { server: true }` puts the server in the desktop app | `akan start-desktop <name>` (or `start-ios` / `start-android`) |
+| Add a device capability the framework lacks | `native/<id>/` → `native-plugin.json`, `src/index.ts` (page API, used from a `webkit/` hook), `src/desktop.ts`, Kotlin, Swift | the platform's `akan start-*` |
 
 ## Workflow Recipes
 

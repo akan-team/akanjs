@@ -33,10 +33,10 @@ const configKeys = [
     ko: "모든 라우트가 놓이는 locale 세그먼트입니다. defaultLocale은 locales 안에 있어야 합니다.",
   },
   {
-    key: "mobile",
-    type: "AkanMobileConfig",
-    en: "Native app identity plus one entry per mobile package that Android and iOS commands read.",
-    ko: "Android·iOS 명령이 읽는 네이티브 앱 정보와 모바일 패키지별 target 정의입니다.",
+    key: "native",
+    type: "AkanNativeAppConfig",
+    en: "The iOS, Android and desktop app: its identity, platform settings and targets.",
+    ko: "iOS·Android·데스크톱 앱의 정보, 플랫폼 설정, target입니다.",
   },
   {
     key: "images",
@@ -131,7 +131,20 @@ const configKeys = [
   },
 ];
 
-const mobileFields = [
+const nativeFields = [
+  {
+    key: "basePath",
+    type: "string",
+    en: "The client the app opens, a basePath routes declares. An app without basePaths leaves it out.",
+    ko: "앱이 여는 클라이언트이며 routes에 선언된 basePath입니다. basePath가 없는 앱은 적지 않습니다.",
+  },
+  {
+    key: "indexPath",
+    type: "string",
+    default: "/",
+    en: "Start path, and where a deep link's stack and a back with no history fall back to.",
+    ko: "시작 경로이며, 딥링크로 열 때 아래에 쌓는 화면이자 기록 없는 뒤로 가기가 돌아가는 곳입니다.",
+  },
   {
     key: "appName",
     type: "string",
@@ -141,10 +154,17 @@ const mobileFields = [
   },
   {
     key: "appId",
-    type: "string",
+    type: "string | { default?, ios?, android?, macos?, windows?, linux? }",
     default: "com.<repo>.<app>",
-    en: "Native package identifier: Android applicationId and iOS bundle id.",
-    ko: "네이티브 패키지 식별자이며, Android applicationId와 iOS bundle id로 쓰입니다.",
+    en: "Android applicationId and iOS bundle id; one per platform when the store listings already differ.",
+    ko: "Android applicationId이자 iOS bundle id이며, 스토어마다 id가 이미 다르면 플랫폼별로 적습니다.",
+  },
+  {
+    key: "fileName",
+    type: "string",
+    default: "the app folder name",
+    en: "Name of the executables and archives: letters, digits, `.`, `_` and `-`.",
+    ko: "실행 파일과 아카이브의 이름이며, 영문자, 숫자, `.`, `_`, `-`만 씁니다.",
   },
   {
     key: "version",
@@ -161,48 +181,30 @@ const mobileFields = [
     ko: "스토어 제출 빌드 번호이며, Android versionCode와 iOS CURRENT_PROJECT_VERSION에 기록됩니다.",
   },
   {
-    key: "targets",
-    type: "Record<string, Target>",
-    default: "one target",
-    en: "Named mobile packages built from the same Akan app.",
-    ko: "같은 Akan 앱에서 만드는 이름 있는 모바일 패키지입니다.",
+    key: "icon",
+    type: "string | { image, backgroundColor? }",
+    en: "A square PNG relative to the app folder, or it with the color behind its transparent areas.",
+    ko: "앱 폴더 기준의 정사각형 PNG이거나, 그 이미지와 투명한 부분 뒤에 칠할 색입니다.",
   },
   {
-    key: "targets.*.basePath",
-    type: "string",
-    en: "The client this native package opens; it must be a basePath declared in routes.",
-    ko: "이 네이티브 패키지가 여는 클라이언트이며, routes에 선언된 basePath여야 합니다.",
+    key: "splash",
+    type: "string | { image?, backgroundColor?, autoHide?, timeout? }",
+    en: "A PNG shown centered at launch, or the launch screen's image, color and when it hides.",
+    ko: "실행할 때 가운데에 보이는 PNG이거나, 시작 화면의 이미지, 색, 숨기는 시점입니다.",
   },
   {
-    key: "targets.*.indexPath",
-    type: "string",
-    en: "Start and fallback CSR path: app startup, deep-link stack recovery, back-button fallback.",
-    ko: "시작·fallback CSR 경로이며, 모바일 시작, 딥링크 스택 복원, 뒤로가기 fallback에 씁니다.",
-  },
-  {
-    key: "targets.*.permissions",
+    key: "permissions",
     type: "camera | contacts | location | push | speech",
     default: "[]",
     en: "Native permission hints; each activates the matching plugin's native configuration.",
     ko: "네이티브 권한 힌트이며, 각 값이 해당 플러그인의 네이티브 설정을 켭니다.",
   },
   {
-    key: "targets.*.assets",
-    type: "{ icon, splash }",
-    en: "App icon and splash source paths, relative to the app root.",
-    ko: "앱 루트 기준의 앱 아이콘·splash 이미지 경로입니다.",
-  },
-  {
-    key: "targets.*.files",
-    type: "Record<string, string>",
-    en: "Files copied into the app, keyed by where they land (ios/<path>, android/res/<type>/<file> or android/assets/<path>), valued by an app-relative source; merged target over root.",
-    ko: "앱에 복사할 파일이며, 도착 위치(ios/<path>, android/res/<type>/<file>, android/assets/<path>)를 키로, 앱 기준 원본 경로를 값으로 둡니다. root 위에 target을 얹어 병합합니다.",
-  },
-  {
-    key: "targets.*.deepLinks",
-    type: "AkanMobileTargetDeepLinks",
-    en: "Native URL schemes and verified HTTPS app links for this target.",
-    ko: "이 target이 받을 네이티브 URL scheme과 검증된 HTTPS 앱 링크입니다.",
+    key: "plugins",
+    type: "string[]",
+    default: "[]",
+    en: "Runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder.",
+    ko: "권한이 가져오는 것 외에 더 싣는 런타임 플러그인이며, 내장 id(iap)나 절대 경로 폴더로 적습니다.",
   },
   {
     key: "deepLinks.schemes",
@@ -217,67 +219,10 @@ const mobileFields = [
     ko: "app link·universal link 호스트이며, 호스트만 남도록 정규화됩니다.",
   },
   {
-    key: "deepLinks.ios.teamId",
-    type: "string",
-    en: "Apple Developer Team ID for apple-app-site-association; universal links need it.",
-    ko: "apple-app-site-association에 쓰는 Apple Developer Team ID이며, universal link에 필요합니다.",
-  },
-  {
-    key: "deepLinks.android.sha256CertFingerprints",
-    type: "string[]",
-    en: "assetlinks.json signing fingerprints: debug for a local build, release for Play Store.",
-    ko: "assetlinks.json에 쓰는 서명 인증서 fingerprint이며, debug는 로컬 빌드, release는 Play Store 빌드용입니다.",
-  },
-  {
-    key: "native.plugins",
-    type: "string[]",
-    en: "Native runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder; root and target lists are joined.",
-    ko: "권한이 가져오는 것 외에 더 싣는 네이티브 런타임 플러그인이며, 내장 id(iap)나 절대 경로 폴더로 적습니다. root와 target 목록을 합칩니다.",
-  },
-  {
-    key: "native.ios",
-    type: "{ infoPlist, entitlements }",
-    en: "Info.plist keys and entitlements for the iOS app, merged target over root.",
-    ko: "iOS 앱의 Info.plist 키와 entitlements이며, root 위에 target을 얹어 병합합니다.",
-  },
-  {
-    key: "native.android",
-    type: "{ manifest, application, activity, googleServices, autoplay }",
-    en: "XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.",
-    ko: "<manifest> 수준, <application> 안, activity 안에 넣을 XML(root와 target을 합치고 applicationId 자리표시자를 채움), FCM 푸시가 읽는 google-services.json 경로, 그리고 autoplay입니다. autoplay를 켜면 iOS·데스크톱처럼 소리 있는 미디어가 터치 없이 재생됩니다.",
-  },
-  {
-    key: "native.desktop.server",
-    type: "boolean",
-    default: "false",
-    en: "Carries the app's server in the desktop app on a loopback port; its pages call nothing else. An installed app takes no update that adds or drops it.",
-    ko: "앱의 서버를 데스크톱 앱에 loopback 포트로 싣고, 페이지는 그 서버만 부릅니다. 설치된 앱은 서버를 더하거나 빼는 업데이트를 받지 않습니다.",
-  },
-  {
-    key: "native.desktop.recovery",
-    type: '"errorPage" | "reload"',
-    default: '"errorPage"',
-    en: '"reload" reloads a page whose process ended every time, waiting longer each time in a row, and relaunches the app when the webview\'s browser process ends. "errorPage" reloads once, then shows an error page.',
-    ko: '"reload"는 프로세스가 끝난 페이지를 매번 다시 불러오되 연달아 끝날수록 오래 기다리고, webview 브라우저 프로세스가 끝나면 앱을 다시 띄웁니다. "errorPage"는 한 번 다시 불러온 뒤 오류 화면을 보여 줍니다.',
-  },
-  {
-    key: "native.desktop.window",
-    type: "{ fullscreen?, skipTaskbar? }",
-    en: "Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.",
-    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux) 엽니다.",
-  },
-  {
-    key: "native.desktop.screenCapture",
-    type: '"picker" | "auto"',
-    default: '"picker"',
-    en: '"auto" (Windows) answers getDisplayMedia() with the first screen, no picker or tap, for remote support; it covers every media request, so not in an app that asks for a camera.',
-    ko: '"auto"(Windows)는 getDisplayMedia()에 선택 창도 터치도 없이 첫 화면으로 답하는 원격 지원용입니다. 모든 미디어 요청에 적용되므로 카메라를 요청하는 앱에서는 켜지 않습니다.',
-  },
-  {
     key: "updates",
     type: "{ url, publicKey, channel?, readyTimeout? }",
-    en: "Where installed apps look for newer releases of themselves; root and target merge field by field. A phone updates its web bundle by itself, a desktop app when it calls updates from akanjs/client/native.",
-    ko: "설치된 앱이 자신의 새 릴리스를 찾는 곳이며, root와 target을 필드별로 병합합니다. 폰은 웹 번들을 스스로 업데이트하고, 데스크톱 앱은 akanjs/client/native의 updates를 부를 때 업데이트합니다.",
+    en: "Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.",
+    ko: "설치된 앱이 새 릴리스를 찾는 곳이며, 폰은 스스로, 데스크톱 앱은 updates를 부를 때 업데이트합니다.",
   },
   {
     key: "updates.url",
@@ -288,8 +233,8 @@ const mobileFields = [
   {
     key: "updates.publicKey",
     type: "string",
-    en: "The public key akan update-keygen prints; an app takes no release it does not verify. akan pack-update writes a phone update unsigned, for a signer elsewhere.",
-    ko: "akan update-keygen이 출력한 공개 키이며, 앱은 이 키로 검증되지 않는 릴리스를 받지 않습니다. akan pack-update는 다른 곳에서 서명할 폰 업데이트를 서명 없이 씁니다.",
+    en: "The public key akan update-keygen prints; an app takes no release it cannot verify with it.",
+    ko: "akan update-keygen이 출력한 공개 키이며, 앱은 이 키로 검증되지 않는 릴리스를 받지 않습니다.",
   },
   {
     key: "updates.channel",
@@ -302,8 +247,121 @@ const mobileFields = [
     key: "updates.readyTimeout",
     type: "number",
     default: "10000",
-    en: "How long, in ms, a new release on trial has for its first page to mount before it is rolled back; with a carried server, from 5 s after the server is up.",
-    ko: "시험 실행 중인 새 릴리스가 첫 페이지를 마운트하기까지의 시간(ms)이며, 넘기면 되돌립니다. 서버를 싣는 앱은 서버가 뜨고 5초 뒤부터 잽니다.",
+    en: "How long, in ms, a release on trial has to mount its first page before it is rolled back.",
+    ko: "시험 실행 중인 릴리스가 첫 페이지를 마운트하기까지의 시간(ms)이며, 넘기면 되돌립니다.",
+  },
+  {
+    key: "ios.teamId",
+    type: "string",
+    en: "Apple Developer Team ID for apple-app-site-association; universal links need it.",
+    ko: "apple-app-site-association에 쓰는 Apple Developer Team ID이며, universal link에 필요합니다.",
+  },
+  {
+    key: "ios.infoPlist",
+    type: "Record<string, AkanNativeValue>",
+    en: "Info.plist keys added to the iOS app.",
+    ko: "iOS 앱의 Info.plist에 더할 키입니다.",
+  },
+  {
+    key: "ios.entitlements",
+    type: "Record<string, AkanNativeValue>",
+    en: "Entitlements added to the iOS app.",
+    ko: "iOS 앱에 더할 entitlements입니다.",
+  },
+  {
+    key: "ios.privacy",
+    type: "{ tracking?, trackingDomains?, collectedDataTypes?, accessedApis? }",
+    en: "The app's part of the privacy manifest, PrivacyInfo.xcprivacy, which an App Store upload requires.",
+    ko: "App Store 업로드에 필요한 개인정보 매니페스트(PrivacyInfo.xcprivacy) 중 앱의 몫입니다.",
+  },
+  {
+    key: "ios.files",
+    type: "Record<string, string>",
+    en: "Files copied into the app bundle, keyed by their path there; the value is app-relative.",
+    ko: "앱 번들에 복사할 파일이며, 키는 번들 안 경로, 값은 앱 폴더 기준 경로입니다.",
+  },
+  {
+    key: "android.sha256CertFingerprints",
+    type: "string[]",
+    en: "assetlinks.json signing fingerprints: debug for a local build, release for Play Store.",
+    ko: "assetlinks.json에 쓰는 서명 인증서 fingerprint이며, debug는 로컬 빌드, release는 Play Store 빌드용입니다.",
+  },
+  {
+    key: "android.googleServices",
+    type: "string",
+    en: "The google-services.json FCM push reads, relative to the app folder.",
+    ko: "FCM 푸시가 읽는 google-services.json의 앱 폴더 기준 경로입니다.",
+  },
+  {
+    key: "android.push",
+    type: "{ channel?, smallIcon?, color? }",
+    en: "The channel pushes arrive in, the status bar icon (an app-relative PNG) and the accent color.",
+    ko: "푸시가 들어갈 알림 채널, 상태 표시줄 아이콘(앱 폴더 기준 PNG), 강조 색입니다.",
+  },
+  {
+    key: "android.autoplay",
+    type: "boolean",
+    default: "false",
+    en: "Media plays with sound without a tap first, as it does on iOS and the desktop.",
+    ko: "iOS·데스크톱처럼 소리 있는 미디어가 터치 없이 재생됩니다.",
+  },
+  {
+    key: "android.manifest",
+    type: "string[]",
+    en: "XML added at the <manifest> level, with the applicationId placeholder filled in.",
+    ko: "<manifest> 수준에 넣을 XML이며, applicationId 자리표시자를 채워 넣습니다.",
+  },
+  {
+    key: "android.application",
+    type: "string[]",
+    en: "XML added inside <application>.",
+    ko: "<application> 안에 넣을 XML입니다.",
+  },
+  {
+    key: "android.activity",
+    type: "string[]",
+    en: "XML added inside the app's activity.",
+    ko: "앱의 activity 안에 넣을 XML입니다.",
+  },
+  {
+    key: "android.files",
+    type: "Record<string, string>",
+    en: "Files copied into the app, keyed res/<type>/<file> or assets/<path>; the value is app-relative.",
+    ko: "앱에 복사할 파일이며, 키는 res/<type>/<file>이나 assets/<path>, 값은 앱 폴더 기준 경로입니다.",
+  },
+  {
+    key: "desktop.server",
+    type: "boolean",
+    default: "false",
+    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall.",
+    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다.",
+  },
+  {
+    key: "desktop.recovery",
+    type: '"errorPage" | "reload"',
+    default: '"errorPage"',
+    en: '"reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.',
+    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄웁니다. "errorPage"는 오류 화면을 보여 줍니다.',
+  },
+  {
+    key: "desktop.window",
+    type: "{ fullscreen?, skipTaskbar? }",
+    en: "Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.",
+    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux) 엽니다.",
+  },
+  {
+    key: "desktop.screenCapture",
+    type: '"picker" | "auto"',
+    default: '"picker"',
+    en: '"auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.',
+    ko: '"auto"(Windows)는 선택 창 없이 첫 화면을 공유합니다. 카메라를 요청하는 앱에서는 켜지 않습니다.',
+  },
+  {
+    key: "targets",
+    type: "Record<string, AkanNativeSettings>",
+    default: "{ default: {} }",
+    en: "Several native apps from one Akan app; each takes the fields above, without targets.",
+    ko: "Akan 앱 하나에서 만드는 여러 네이티브 앱이며, 각각 targets를 뺀 위 필드를 받습니다.",
   },
 ];
 
@@ -442,8 +500,8 @@ export default config;`}
               {
                 title: l.trans({ en: "One source of truth", ko: "하나의 기준점" }),
                 desc: l.trans({
-                  en: "CLI commands, production builds, and mobile commands all read this file.",
-                  ko: "CLI 명령, 프로덕션 빌드, 모바일 명령이 모두 이 파일을 기준으로 동작합니다.",
+                  en: "CLI commands, production builds, and native app commands all read this file.",
+                  ko: "CLI 명령, 프로덕션 빌드, 네이티브 앱 명령이 모두 이 파일을 기준으로 동작합니다.",
                 }),
               },
             ].map(({ title, desc }) => (
@@ -485,7 +543,7 @@ export default config;`}
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = (app) => ({
-  mobile: {
+  native: {
     appName: app.name,
     appId: "com.example.app",
   },
@@ -726,8 +784,8 @@ export default config;`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "web decides which web surfaces the build produces, and api decides where the server mounts its endpoints. Both are declared here rather than only in main.ts, because both are baked into the client bundles: a prebuilt CSR shell or a mobile package never reaches a server that could tell it otherwise.",
-              ko: "web은 빌드가 어떤 웹 표면을 만들지 정하고, api는 서버가 엔드포인트를 어디에 마운트할지 정합니다. 둘 다 main.ts만이 아니라 여기에 선언합니다. 두 값 모두 클라이언트 번들에 구워지며, 미리 빌드된 CSR 셸이나 모바일 패키지는 이를 알려 줄 서버에 닿지 못하기 때문입니다.",
+              en: "web decides which web surfaces the build produces, and api decides where the server mounts its endpoints. Both are declared here rather than only in main.ts, because both are baked into the client bundles: a prebuilt CSR shell or a native app never reaches a server that could tell it otherwise.",
+              ko: "web은 빌드가 어떤 웹 표면을 만들지 정하고, api는 서버가 엔드포인트를 어디에 마운트할지 정합니다. 둘 다 main.ts만이 아니라 여기에 선언합니다. 두 값 모두 클라이언트 번들에 구워지며, 미리 빌드된 CSR 셸이나 네이티브 앱은 이를 알려 줄 서버에 닿지 못하기 때문입니다.",
             })}
           </div>
         </Docs.Description>
@@ -788,67 +846,104 @@ export default config;`}
         </div>
         <Docs.Alert type="warning">
           {l.trans({
-            en: "A mobile app ships the CSR shell, so web: { csr: false } and a mobile section do not go together — drop the mobile section or leave CSR on.",
-            ko: "모바일 앱은 CSR 셸을 싣고 나가므로 web: { csr: false }와 mobile 섹션은 함께 쓸 수 없습니다. mobile 섹션을 빼거나 CSR을 켠 채로 두세요.",
+            en: "A native app ships the CSR shell, so web: { csr: false } and a native section do not go together — drop the native section or leave CSR on.",
+            ko: "네이티브 앱은 CSR 셸을 싣고 나가므로 web: { csr: false }와 native 섹션은 함께 쓸 수 없습니다. native 섹션을 빼거나 CSR을 켠 채로 두세요.",
           })}
         </Docs.Alert>
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="mobile" title={l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}>
-        <Docs.Title>{l.trans({ en: "Mobile Metadata", ko: "모바일 메타데이터" })}</Docs.Title>
+      <Scroll.Slide id="native" title={l.trans({ en: "Native Apps", ko: "네이티브 앱" })}>
+        <Docs.Title>{l.trans({ en: "Native Apps", ko: "네이티브 앱" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "mobile describes the native app identity used by Android and iOS commands. Think of it as the name, package id, and version information that will appear in native app projects. Values at the mobile root are defaults; a target overrides the ones it names.",
-              ko: "mobile은 Android와 iOS 명령에서 사용할 네이티브 앱 정보를 설명합니다. 네이티브 앱 프로젝트에 들어갈 이름, 패키지 ID, 버전 정보를 적는 곳이라고 생각하면 됩니다. mobile 루트의 값은 기본값이고, target이 적은 값이 그 위를 덮습니다.",
+              en: "native describes the app the Android, iOS and desktop commands build from this app's CSR client: its name, package id, version, permissions and plugins. A value only one platform reads sits in that platform's section, ios, android or desktop.",
+              ko: "native는 Android·iOS·데스크톱 명령이 이 앱의 CSR 클라이언트로 만드는 앱을 설명합니다. 이름, 패키지 ID, 버전, 권한, 플러그인을 적고, 한 플랫폼만 읽는 값은 그 플랫폼의 섹션인 ios, android, desktop에 둡니다.",
             })}
           </div>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="Mobile config"
+          title="Native config"
           code={`const config: AppConfig = {
-  mobile: {
+  native: {
     appName: "Example",
     appId: "com.example.app",
     version: "1.0.0",
     buildNum: 1,
+    indexPath: "/explore",
+    icon: "public/icon.png",
+    splash: "public/splash.png",
+    permissions: ["camera", "push"],
+    plugins: ["iap"],
+    deepLinks: { schemes: ["example"], domains: ["example.com"] },
+    ios: { teamId: "TEAMID" },
+    android: {
+      googleServices: "secrets/google-services.json",
+      sha256CertFingerprints: [
+        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+      ],
+      files: { "res/raw/chime.mp3": "public/chime.mp3" },
+    },
+  },
+};`}
+        />
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "An app without basePaths leaves basePath out, and an app that ships one native app needs no targets. So the shortest config for a desktop app that carries the app's server is this:",
+              ko: "basePath가 없는 앱은 basePath를 적지 않고, 네이티브 앱을 하나만 내는 앱에는 targets가 필요 없습니다. 그래서 앱의 서버를 싣는 데스크톱 앱의 가장 짧은 설정은 이렇습니다:",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="native without basePath"
+          code={`const config: AppConfig = {
+  native: { desktop: { server: true } },
+};`}
+        />
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: 'When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }.',
+              ko: '첫 페이지가 /가 아니면 그 옆에 indexPath를 더합니다: native: { indexPath: "/board", desktop: { server: true } }.',
+            })}
+          </div>
+          <Docs.SubSubTitle>{l.trans({ en: "Targets", ko: "Target" })}</Docs.SubSubTitle>
+          <div>
+            {l.trans({
+              en: "targets builds several native apps from one Akan app, such as a store app and an admin app that each open their own basePath. A target takes every field of native but targets, and its own values win: objects (deepLinks, updates, ios, android, desktop and the objects inside them) merge key by key, while lists, icon, splash and every other value are replaced, so a target's permissions replace native's instead of adding to them. Without targets the app has one target, named default, or named after the app and opening that basePath when routes declares one with the app's name.",
+              ko: "targets는 Akan 앱 하나로 네이티브 앱 여러 개를 만듭니다. 각자 자기 basePath를 여는 스토어 앱과 관리자 앱 같은 경우입니다. target은 targets를 뺀 native의 모든 필드를 받고, target이 적은 값이 이깁니다. 객체(deepLinks, updates, ios, android, desktop과 그 안의 객체)는 키마다 합치고, 목록, icon, splash와 나머지 값은 통째로 바꿉니다. 그래서 target의 permissions는 native의 목록에 더해지지 않고 그 목록을 대신합니다. targets가 없으면 앱에는 default라는 target 하나가 있고, routes에 앱 이름과 같은 basePath가 있으면 그 target은 앱 이름을 갖고 그 basePath를 엽니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="native.targets"
+          code={`const config: AppConfig = {
+  routes: [
+    { domains: { main: ["store.example.com"] }, basePath: "store" },
+    { domains: { main: ["admin.example.com"] }, basePath: "admin" },
+  ],
+  native: {
+    appId: "com.example.store",
+    permissions: ["push"],
     targets: {
-      default: {
-        basePath: "store",
-        indexPath: "/explore",
+      store: { basePath: "store" },
+      admin: {
+        basePath: "admin",
+        appName: "Example Admin",
+        appId: "com.example.admin",
         permissions: ["camera", "push"],
-        assets: {
-          icon: "public/icon.png",
-          splash: "public/splash.png",
-        },
-        files: {
-          "android/res/raw/chime.mp3": "public/chime.mp3",
-        },
-        deepLinks: {
-          schemes: ["example"],
-          domains: ["example.com"],
-          ios: {
-            teamId: "TEAMID",
-          },
-          android: {
-            sha256CertFingerprints: [
-              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
-            ],
-          },
-        },
-        native: {
-          plugins: ["iap"],
-          android: { googleServices: "secrets/google-services.json" },
-        },
       },
     },
   },
 };`}
         />
         <Docs.OptionTable
-          items={mobileFields.map(({ key, type, default: fallback, en, ko }) => ({
+          items={nativeFields.map(({ key, type, default: fallback, en, ko }) => ({
             key,
             type,
             default: fallback,
@@ -857,15 +952,15 @@ export default config;`}
         />
         <Docs.Alert type="warning">
           {l.trans({
-            en: "indexPath is read per target only, so one written at the mobile root is dropped. Firebase app registration must use the same appId.",
-            ko: "indexPath는 target 안에서만 읽히므로, mobile 루트에 쓴 값은 버려집니다. Firebase 앱 등록도 같은 appId를 써야 합니다.",
+            en: "Firebase app registration and the stores must use the same appId.",
+            ko: "Firebase 앱 등록과 스토어에도 같은 appId를 써야 합니다.",
           })}
         </Docs.Alert>
         <Docs.Alert type="info">
           <span>
             {l.trans({
-              en: "files copies app-relative source files into the native app, keyed by where they land, such as a notification sound under android/res/raw. Android FCM push reads google-services.json from native.android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. The Capacitor-era plugins, ios and android keys are refused with the native setting that replaces them. Keep server service account JSON out of client/native file mappings. For platform setup steps, see ",
-              ko: "files는 앱 기준 원본 파일을 네이티브 앱 안으로 복사하며, android/res/raw 아래 알림음처럼 도착 위치를 키로 씁니다. Android FCM 푸시는 google-services.json을 native.android.googleServices에서 읽고, iOS 푸시는 APNs로 가므로 GoogleService-Info.plist가 필요 없습니다. Capacitor 시절의 plugins, ios, android 키는 대신할 native 설정을 알려 주며 거부됩니다. 서버 service account JSON은 client/native file mapping에 넣지 마세요. 플랫폼별 설정 절차는 ",
+              en: "ios.files and android.files copy app-relative source files into the app, keyed by where they land, such as a notification sound at res/raw/chime.mp3. Android FCM push reads google-services.json from android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. Keep server service account JSON out of these file mappings. For platform setup steps, see ",
+              ko: "ios.files와 android.files는 앱 기준 원본 파일을 앱 안으로 복사하며, res/raw/chime.mp3의 알림음처럼 도착 위치를 키로 씁니다. Android FCM 푸시는 google-services.json을 android.googleServices에서 읽고, iOS 푸시는 APNs로 가므로 GoogleService-Info.plist가 필요 없습니다. 서버 service account JSON은 이 파일 목록에 넣지 마세요. 플랫폼별 설정 절차는 ",
             })}
           </span>
           <Link
@@ -878,8 +973,8 @@ export default config;`}
         </Docs.Alert>
         <Docs.Alert type="info">
           {l.trans({
-            en: "When a multi-client app needs separate mobile apps per client, define mobile targets with basePath. The Multi Client page shows that pattern.",
-            ko: "다중 클라이언트 앱에서 클라이언트별 모바일 앱이 필요하다면 basePath가 있는 mobile target을 정의합니다. 이 패턴은 Multi Client 페이지에서 다룹니다.",
+            en: "When a multi-client app needs a separate native app per client, give each a target with its own basePath. The Multi Client page shows that pattern.",
+            ko: "다중 클라이언트 앱에서 클라이언트별 네이티브 앱이 필요하다면 target마다 자기 basePath를 줍니다. 이 패턴은 Multi Client 페이지에서 다룹니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>
@@ -1102,7 +1197,7 @@ const config: AppConfig = {
               }),
             },
             {
-              title: l.trans({ en: "Mobile", ko: "모바일" }),
+              title: l.trans({ en: "Native apps", ko: "네이티브 앱" }),
               desc: l.trans({
                 en: "appName defaults to the app name, appId defaults to com.<repoName>.<appName>, version defaults to 0.0.1, and buildNum defaults to 1. Pin a real reverse-DNS appId before you ship: a placeholder such as com.example.app has almost always been claimed in Apple's portal already.",
                 ko: "appName은 앱 이름, appId는 com.<repoName>.<appName>, version은 0.0.1, buildNum은 1이 기본값입니다. 출시 전에는 조직의 실제 reverse-DNS appId를 지정해야 합니다. com.example.app 같은 placeholder id는 Apple 포털에서 이미 선점되어 있는 경우가 대부분입니다.",
@@ -1131,8 +1226,8 @@ const config: AppConfig = {
         </div>
         <Docs.Alert type="info">
           {l.trans({
-            en: "Recommended order: start with an empty config, fill env/ values as the app needs them, add routes when domains are needed, add mobile when native apps are needed, and add advanced build options only after the default build is not enough.",
-            ko: "추천 순서: 빈 config로 시작하고, 앱에 필요한 env/ 값을 채운 뒤, 도메인이 필요할 때 routes를 추가하고, 네이티브 앱이 필요할 때 mobile을 추가하고, 기본 빌드로 부족할 때만 고급 빌드 옵션을 추가하세요.",
+            en: "Recommended order: start with an empty config, fill env/ values as the app needs them, add routes when domains are needed, add native when native apps are needed, and add advanced build options only after the default build is not enough.",
+            ko: "추천 순서: 빈 config로 시작하고, 앱에 필요한 env/ 값을 채운 뒤, 도메인이 필요할 때 routes를 추가하고, 네이티브 앱이 필요할 때 native를 추가하고, 기본 빌드로 부족할 때만 고급 빌드 옵션을 추가하세요.",
           })}
         </Docs.Alert>
       </Scroll.Slide>

@@ -260,7 +260,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 Run the iOS app on a simulator or a paired iPhone. By default it is a debug build whose pages come from your local dev server; `--release` runs a release build of its own bundle instead.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default local, local | debug | develop | main): Backend environment the app connects to.
 
@@ -276,13 +276,15 @@ Run the iOS app on a simulator or a paired iPhone. By default it is a debug buil
 
 - dev server: Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
-- one target: Runs one mobile target at a time; with several, pass `--target <name>`.
+- one target: Runs one native target at a time; with several, pass `--target <name>`.
+
+- output: A dev build goes under `apps/<app>/.akan/native/<target>/dev/ios`; a `--release` run under `…/build/ios`.
 
 `akan start-android <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--write <boolean>]`
 
 Run the Android app on an emulator or a connected device. It works like `start-ios`: the dev server by default, a bundled release build with `--release`.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default local, local | debug | develop | main): Backend environment the app connects to.
 
@@ -296,13 +298,15 @@ Run the Android app on an emulator or a connected device. It works like `start-i
 
 - dev server: Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
-- one target: Runs one mobile target at a time; with several, pass `--target <name>`.
+- one target: Runs one native target at a time; with several, pass `--target <name>`.
+
+- output: A dev build goes under `apps/<app>/.akan/native/<target>/dev/android`; a `--release` run under `…/build/android`.
 
 `akan start-desktop <app> [--target <target>] [--env <env>] [--release <boolean>] [--write <boolean>]`
 
-Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
+Run a native target as a desktop app on this computer: macOS, Windows or Linux, whichever it is, since a desktop app builds only on its own OS. It works like `start-ios`, with no device or team to pick.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default local, local | debug | develop | main): Backend environment the app connects to.
 
@@ -316,19 +320,21 @@ Run a mobile target as a desktop app on this computer: macOS, Windows or Linux, 
 
 - a server without --release: For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
 
-- desktop.server: A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
+- desktop.server: With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
 - carried server: The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header; any program on the computer can still call it, so guard its endpoints as a network server's. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/` (each lib's too, under `private/libs/<lib>`), the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.
 
 - bin: An executable `bin` names in `akan.config.ts` is fetched for this computer and carried in every desktop app, whether or not it carries a server: it is first on the app's PATH, so the carried server's `spawn("ffmpeg")` runs it, and a native plugin finds it in `ctx.binDir`.
 
-- one target: Runs one mobile target at a time; with several, pass `--target <name>`.
+- one target: Runs one native target at a time; with several, pass `--target <name>`.
+
+- output: A dev build goes under `apps/<app>/.akan/native/<target>/dev/<macos|windows|linux>`; a `--release` run under `…/build/<macos|windows|linux>`.
 
 `akan build-ios <app> [--target <target>] [--env <env>] [--debug <boolean>] [--write <boolean>]`
 
 Build the iOS app on the native runtime. It first makes a production web build against `--env`, then builds a simulator app for each target.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default debug, local | debug | develop | main): Backend environment the app connects to.
 
@@ -338,13 +344,13 @@ Build the iOS app on the native runtime. It first makes a production web build a
 
 - alias: `akan bi` runs this command.
 
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/ios`; the command prints each file's path.
+- output: Written under `apps/<app>/.akan/native/<target>/build/ios`; the command prints each file's path.
 
 `akan build-android <app> [--target <target>] [--env <env>] [--debug <boolean>] [--write <boolean>]`
 
 Build an APK of the Android app on the native runtime. Like `build-ios`, it makes a production web build against `--env` first.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default debug, local | debug | develop | main): Backend environment the app connects to.
 
@@ -356,13 +362,13 @@ Build an APK of the Android app on the native runtime. Like `build-ios`, it make
 
 - signing: Signed with `~/.akan/native/debug.keystore`, which is fine for testing; a Play Store file comes from `release-android`.
 
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/android`; the command prints each file's path.
+- output: Written under `apps/<app>/.akan/native/<target>/build/android`; the command prints each file's path.
 
 `akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--write <boolean>]`
 
 Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default debug, local | debug | develop | main): Backend environment the app connects to.
 
@@ -374,7 +380,7 @@ Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or wit
 
 - alias: `akan bd` runs this command.
 
-- desktop.server: A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
+- desktop.server: With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
 - carried server: The server runs on the app's own Bun as an API-only server (`operationMode` edge, database mode `single`, SSR, CSR and MCP off) bound to 127.0.0.1, refusing any other Host header; any program on the computer can still call it, so guard its endpoints as a network server's. The app needs `single` in `database.modes`. Its data and a per-install JWT secret stay in the app data folder's `server/` (under `%LOCALAPPDATA%` on Windows; a `--debug` build keeps `server-debug/`). It carries `private/` (each lib's too, under `private/libs/<lib>`), the `--env` environment's `env.server.<env>.ts` and the server env defaults of the libs it uses (each lib's `env.server.testing.ts`), in plain text that anyone with the app can read, so keep deployment secrets, keys and license files out of them. It has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`. It runs none of the image's `docker` steps: an executable it spawns comes from `bin`, and a package that builds itself at install from `trustedDependencies`.
 
@@ -384,13 +390,13 @@ Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or wit
 
 - reinstall: `/D=<folder>` picks the install folder. Run again without it, the setup installs where the app already is; one started while another runs refuses to start.
 
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/<macos|windows|linux>`; the command prints each file's path.
+- output: Written under `apps/<app>/.akan/native/<target>/build/<macos|windows|linux>`; the command prints each file's path.
 
 `akan release-ios <app> [--target <target>] [--env <env>] [--team <team>] [--ad-hoc <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
 
 Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa`. It defaults to the `main` backend and refuses `--env local` unless `--allow-local-release` is passed.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
@@ -404,7 +410,7 @@ Build and sign the iOS app for an App Store release: an iPhone app and its `.ipa
 
 - signing: The certificate and profile are found among the ones Xcode keeps on this Mac: the profile must cover the app id and every capability the app asks for. The command prints the one it used.
 
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/ios`; the command prints each file's path.
+- output: Written under `apps/<app>/.akan/native/<target>/build/ios`; the command prints each file's path.
 
 `akan release-android <app> [--assemble-type <type>] [--target <target>] [--env <env>] [--write <boolean>] [--allow-local-release <boolean>]`
 
@@ -412,7 +418,7 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 - --assemble-type (String, default aab, aab | apk): `aab` for a Play Store upload, `apk` for direct installs.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
@@ -422,23 +428,23 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 - signing: Signed with the upload key the environment names: `MYAPP_RELEASE_STORE_FILE`, `MYAPP_RELEASE_STORE_PASSWORD` and `MYAPP_RELEASE_KEY_ALIAS`, plus `MYAPP_RELEASE_KEY_PASSWORD` when the key has its own. A missing one stops the command before it builds.
 
-- output: Written under `apps/<app>/.akan/mobile/<target>/native/android`; the command prints each file's path.
+- output: Written under `apps/<app>/.akan/native/<target>/build/android`; the command prints each file's path.
 
 `akan update-keygen <app> [--platform <platform>] [--target <target>]`
 
-Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `mobile.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
 
 - --platform (String, default desktop, desktop | android | ios): The platform whose app id the key signs for.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 `akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/mobile/<target>/updates`, which holds only what you upload: upload that folder to `mobile.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `.akan/native/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.
 
 - --platform (String, default desktop, desktop | android | ios): `desktop` is this computer's own OS and CPU.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
@@ -448,7 +454,7 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
 
-- desktop.server: A target with `native: { desktop: { server: true } }` in `akan.config.ts` carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
+- desktop.server: With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
 - --env: An app takes releases on `updates.channel`, else on the `--env` it was built with: publish with that `--env`.
 
@@ -464,11 +470,11 @@ Pack an Android or iOS web bundle update unsigned, for a signer that keeps the k
 
 - --platform (String, ios | android): The app it updates.
 
-- --target (String): A key of `mobile.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
-- --out (String): Default `.akan/mobile/<target>/updates/<platform>`.
+- --out (String): Default `.akan/native/<target>/updates/<platform>`.
 
 - --against (String): The `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.
 

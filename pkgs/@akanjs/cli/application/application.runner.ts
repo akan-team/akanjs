@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
-import type { DatabaseMode, MobileEnv } from "@akanjs/devkit/akanConfig";
+import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
 import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
@@ -37,7 +37,7 @@ export interface LogsOptions {
 }
 export interface MobileTargetOptions {
   target?: string;
-  env?: MobileEnv;
+  env?: NativeEnv;
 }
 export interface MobileUpdatePackOptions extends MobileTargetOptions {
   out?: string;
@@ -342,13 +342,13 @@ try {
   async startDesktop(app: App, options: Omit<MobileStartOptions, "device" | "teamId"> = {}) {
     await this.startMobile(app, NativeApp.desktopPlatform(), options);
   }
-  /** The one mobile target a `start-*` session runs; `platform` defaults to this computer's desktop. */
+  /** The one native target a `start-*` session runs; `platform` defaults to this computer's desktop. */
   static async startTarget(app: App, platform: NativePlatform = NativeApp.desktopPlatform(), target?: string) {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
     if (!mobileTarget || targets.length > 1)
       throw new Error(
-        `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one mobile target at a time; pass --target <name>.`,
+        `start-${platform === "ios" || platform === "android" ? platform : "desktop"} runs one native target at a time; pass --target <name>.`,
       );
     return mobileTarget;
   }
@@ -419,7 +419,7 @@ try {
     const targets = await resolveMobileTargets(app, target);
     const [mobileTarget] = targets;
     if (!mobileTarget || targets.length > 1)
-      throw new Error("pack-update packs one mobile target at a time; pass --target <name>.");
+      throw new Error("pack-update packs one native target at a time; pass --target <name>.");
     await this.#buildMobileCsr(app, env);
     const packed = await new NativeApp(app, mobileTarget, env).packUpdate(platform, { out });
     const size = packed.manifest.files.reduce((sum, file) => sum + file.size, 0);
@@ -449,11 +449,11 @@ try {
       app.log(
         `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
       );
-      app.log(`  mobile: { updates: { url: "https://…/${app.name}", publicKey: ${JSON.stringify(publicKey)} } }`);
+      app.log(`  native: { updates: { url: "https://…/${app.name}", publicKey: ${JSON.stringify(publicKey)} } }`);
       const declared = mobileTarget.config.updates?.publicKey;
       if (declared && declared !== publicKey)
         app.logger.warn(
-          `mobile.targets.${mobileTarget.name}.updates.publicKey is another key's; releases would not verify.`,
+          `native.targets.${mobileTarget.name}.updates.publicKey is another key's; releases would not verify.`,
         );
     }
   }
@@ -497,10 +497,10 @@ try {
   }
 
   static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
-    return platform !== "ios" && platform !== "android" && config.native?.desktop?.server === true;
+    return platform !== "ios" && platform !== "android" && config.desktop?.server === true;
   }
   //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
-  async #stageMobile(app: App, platform: NativePlatform, targets: ResolvedMobileTarget[], env: MobileEnv) {
+  async #stageMobile(app: App, platform: NativePlatform, targets: ResolvedMobileTarget[], env: NativeEnv) {
     const stage = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform))
       ? new DesktopServerStage(app)
       : null;
@@ -508,7 +508,7 @@ try {
     await this.#buildMobileCsr(app, env);
     return await stage?.prepare(env);
   }
-  async #buildMobileCsr(app: App, env: MobileEnv) {
+  async #buildMobileCsr(app: App, env: NativeEnv) {
     const prevEnv = {
       AKAN_PUBLIC_ENV: process.env.AKAN_PUBLIC_ENV,
       AKAN_PUBLIC_OPERATION_MODE: process.env.AKAN_PUBLIC_OPERATION_MODE,
@@ -542,9 +542,9 @@ try {
     if (failures.length === 0) return;
     for (const failure of failures) {
       const message = failure.error instanceof Error ? failure.error.message : String(failure.error);
-      Logger.rawLog(`Mobile target ${failure.target} failed: ${message}`, undefined, "error");
+      Logger.rawLog(`Native target ${failure.target} failed: ${message}`, undefined, "error");
     }
-    throw new Error(`${failures.length}/${results.length} mobile targets failed`);
+    throw new Error(`${failures.length}/${results.length} native targets failed`);
   }
 
   // multiple keeps its data in the SQLite file single uses, so only Redis joins it; cluster adds Postgres.

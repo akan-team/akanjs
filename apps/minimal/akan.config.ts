@@ -13,33 +13,22 @@ const config: AppConfig = {
     },
   },
 
-  mobile: {
+  native: {
     appName: "minimal",
     appId: "com.minimal.dev.app",
     version: "0.0.1",
     buildNum: 1,
-    targets: {
-      default: {
-        indexPath: "/explore",
-        permissions: ["push"],
-        native: {
-          android: { googleServices: "secrets/google-services.json" },
-          desktop: { server: true },
-        },
-        deepLinks: {
-          schemes: ["minimal"],
-          domains: ["example.com"],
-          ios: {
-            teamId: "TEAMID",
-          },
-          android: {
-            sha256CertFingerprints: [
-              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
-            ],
-          },
-        },
-      },
+    indexPath: "/explore",
+    permissions: ["push"],
+    deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
+    ios: { teamId: "TEAMID" },
+    android: {
+      googleServices: "secrets/google-services.json",
+      sha256CertFingerprints: [
+        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+      ],
     },
+    desktop: { server: true },
   },
 };
 

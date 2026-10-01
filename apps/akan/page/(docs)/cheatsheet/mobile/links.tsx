@@ -55,22 +55,22 @@ export default page().render(() => {
 
   const fieldItems = [
     {
-      key: "schemes",
+      key: "deepLinks.schemes",
       type: "string[]",
       desc: l.trans({
         en: "App-only URL schemes, such as `shop` in `shop://orders/1`.",
         ko: "`shop://orders/1`의 `shop`처럼 앱 전용 URL scheme입니다.",
       }),
-      example: 'schemes: ["shop"]',
+      example: 'deepLinks: { schemes: ["shop"] }',
     },
     {
-      key: "domains",
+      key: "deepLinks.domains",
       type: "string[]",
       desc: l.trans({
         en: "Hosts whose HTTPS links open the app once iOS and Android verify them.",
         ko: "HTTPS 링크를 앱으로 여는 호스트입니다. iOS와 Android가 검증한 뒤에 동작합니다.",
       }),
-      example: 'domains: ["shop.example.com"]',
+      example: 'deepLinks: { domains: ["shop.example.com"] }',
     },
     {
       key: "ios.teamId",
@@ -99,12 +99,12 @@ export default page().render(() => {
   const fieldGroups = [
     {
       label: l.trans({ en: "Scheme links", ko: "scheme 링크" }),
-      rows: [{ name: "schemes", marks: { ios: true, android: true } }],
+      rows: [{ name: "deepLinks.schemes", marks: { ios: true, android: true } }],
     },
     {
       label: l.trans({ en: "Domain links", ko: "domain 링크" }),
       rows: [
-        { name: "domains", marks: { ios: true, android: true } },
+        { name: "deepLinks.domains", marks: { ios: true, android: true } },
         { name: "ios.teamId", marks: { ios: true } },
         {
           name: (
@@ -130,15 +130,17 @@ export default page().render(() => {
               en: (
                 <span>
                   A deep link opens a specific screen of the app from a URL outside it, such as a link in a message or a
-                  tapped push notification. You set it up once, in the <code>deepLinks</code> block of a mobile target
-                  in <code>akan.config.ts</code>.
+                  tapped push notification. You set it up once, in the <code>native</code> section of{" "}
+                  <code>akan.config.ts</code>: <code>deepLinks</code> names the links, and <code>ios</code> and{" "}
+                  <code>android</code> hold what verifies a domain.
                 </span>
               ),
               ko: (
                 <span>
                   딥 링크는 앱 바깥의 URL로 앱 안의 특정 화면을 바로 여는 기능입니다. 메시지 속 링크나 푸시 알림을
-                  누르면 해당 화면이 열립니다. 설정은 <code>akan.config.ts</code>의 mobile target에 있는{" "}
-                  <code>deepLinks</code> 블록 하나로 끝납니다.
+                  누르면 해당 화면이 열립니다. 설정은 <code>akan.config.ts</code>의 <code>native</code> 섹션에서
+                  끝납니다. <code>deepLinks</code>가 링크를 정하고, <code>ios</code>와 <code>android</code>가 도메인을
+                  검증할 값을 가집니다.
                 </span>
               ),
             })}
@@ -178,12 +180,14 @@ export default page().render(() => {
             {l.trans({
               en: (
                 <span>
-                  Write <code>deepLinks</code> inside a target under <code>mobile.targets</code>:
+                  Write <code>deepLinks</code> in <code>native</code>, and the values that verify a domain in its{" "}
+                  <code>ios</code> and <code>android</code> sections:
                 </span>
               ),
               ko: (
                 <span>
-                  <code>mobile.targets</code> 아래 target 안에 <code>deepLinks</code>를 적습니다:
+                  <code>native</code>에 <code>deepLinks</code>를 적고, 도메인을 검증할 값은 그 안의 <code>ios</code>와{" "}
+                  <code>android</code> 섹션에 적습니다:
                 </span>
               ),
             })}
@@ -194,21 +198,13 @@ export default page().render(() => {
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
-    targets: {
-      default: {
-        deepLinks: {
-          schemes: ["shop"],
-          domains: ["shop.example.com"],
-          ios: {
-            teamId: "TEAMID",
-          },
-          android: {
-            sha256CertFingerprints: ["AA:BB:CC:DD:..."],
-          },
-        },
-      },
+  native: {
+    deepLinks: {
+      schemes: ["shop"],
+      domains: ["shop.example.com"],
     },
+    ios: { teamId: "TEAMID" },
+    android: { sha256CertFingerprints: ["AA:BB:CC:DD:..."] },
   },
 };
 
@@ -219,14 +215,14 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>One block per target.</strong> <code>default</code> is the target name; each target declares
-                    its own <code>deepLinks</code>.
+                    <strong>Every target takes them.</strong> A target that sets <code>schemes</code> or{" "}
+                    <code>domains</code> replaces that list; it does not add to it.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>target마다 따로 적습니다.</strong> <code>default</code>는 target 이름이고, target이 여럿이면
-                    각자 <code>deepLinks</code>를 가집니다.
+                    <strong>모든 target이 이 값을 받습니다.</strong> target이 <code>schemes</code>나{" "}
+                    <code>domains</code>를 적으면 그 목록을 바꾸며, 이어 붙이지 않습니다.
                   </span>
                 ),
               })}
@@ -256,7 +252,8 @@ export default config;`}
                 en: (
                   <span>
                     <strong>
-                      <code>ios</code> and <code>android</code> serve <code>domains</code>.
+                      <code>ios.teamId</code> and <code>android.sha256CertFingerprints</code> serve <code>domains</code>
+                      .
                     </strong>{" "}
                     If you only use scheme links, leave both out.
                   </span>
@@ -264,7 +261,8 @@ export default config;`}
                 ko: (
                   <span>
                     <strong>
-                      <code>ios</code>·<code>android</code>는 <code>domains</code>용입니다.
+                      <code>ios.teamId</code>·<code>android.sha256CertFingerprints</code>는 <code>domains</code>
+                      용입니다.
                     </strong>{" "}
                     scheme 링크만 쓴다면 둘 다 생략합니다.
                   </span>
@@ -329,11 +327,11 @@ export default config;`}
           <Docs.LinkGrid
             items={[
               {
-                href: "/cheatsheet/mobile/setup#mobile-config",
-                title: l.trans({ en: "Mobile Config", ko: "mobile 설정" }),
+                href: "/cheatsheet/mobile/setup#native-config",
+                title: l.trans({ en: "Native Config", ko: "native 설정" }),
                 desc: l.trans({
-                  en: "Mobile targets and the rest of the `mobile` block.",
-                  ko: "mobile target과 `mobile` 블록의 나머지 설정.",
+                  en: "Targets and the rest of the `native` block.",
+                  ko: "target과 `native` 블록의 나머지 설정.",
                 }),
               },
               {
@@ -350,8 +348,8 @@ export default config;`}
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="deep-link-fields" title={l.trans({ en: "The deepLinks Block", ko: "deepLinks 블록" })}>
-        <Docs.Title>{l.trans({ en: "The deepLinks Block", ko: "deepLinks 블록" })}</Docs.Title>
+      <Scroll.Slide id="deep-link-fields" title={l.trans({ en: "Link Fields", ko: "링크 필드" })}>
+        <Docs.Title>{l.trans({ en: "Link Fields", ko: "링크 필드" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
@@ -392,14 +390,14 @@ export default config;`}
                   <span>
                     <strong>The Akan server serves both files.</strong> It answers{" "}
                     <code>/.well-known/apple-app-site-association</code> and <code>/.well-known/assetlinks.json</code>{" "}
-                    from this block, so point the domain at your app's server and redeploy it after a change.
+                    from these fields, so point the domain at your app's server and redeploy it after a change.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>두 파일은 Akan 서버가 응답합니다.</strong> 이 블록으로{" "}
+                    <strong>두 파일은 Akan 서버가 응답합니다.</strong> 이 필드로{" "}
                     <code>/.well-known/apple-app-site-association</code>과 <code>/.well-known/assetlinks.json</code>을
-                    만들어 주므로, 도메인이 앱 서버를 가리키게 하고 블록을 바꾸면 서버도 다시 배포합니다.
+                    만들어 주므로, 도메인이 앱 서버를 가리키게 하고 필드를 바꾸면 서버도 다시 배포합니다.
                   </span>
                 ),
               })}

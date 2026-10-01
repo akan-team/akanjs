@@ -14,7 +14,7 @@
 - Server Option (#server-option)
 - Routes and Domains (#routes)
 - Web Surfaces And Prefixes (#web-surfaces)
-- Mobile Metadata (#mobile)
+- Native Apps (#native)
 - Images And Public Env (#images-env)
 - Secret Files (#secret-files)
 - Build And Runtime (#build-runtime)
@@ -36,7 +36,7 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - i18n ({ defaultLocale, locales }, default en, ["en", "ko"]): The locale segment every route sits under. defaultLocale must be one of locales.
 
-- mobile (AkanMobileConfig): Native app identity plus one entry per mobile package that Android and iOS commands read.
+- native (AkanNativeAppConfig): The iOS, Android and desktop app: its identity, platform settings and targets.
 
 - images (AkanImageConfig, default webp, quality 75): Allow-list, sizes, and limits for the image optimizer. A remote host not listed is refused.
 
@@ -74,7 +74,7 @@ Define only the parts your app actually needs to customize.
 
 One source of truth
 
-CLI commands, production builds, and mobile commands all read this file.
+CLI commands, production builds, and native app commands all read this file.
 
 Config Shape
 
@@ -134,7 +134,7 @@ If you declare basePath, the page folder must follow the same name. See Multi Cl
 
 Web Surfaces And Prefixes
 
-web decides which web surfaces the build produces, and api decides where the server mounts its endpoints. Both are declared here rather than only in main.ts, because both are baked into the client bundles: a prebuilt CSR shell or a mobile package never reaches a server that could tell it otherwise.
+web decides which web surfaces the build produces, and api decides where the server mounts its endpoints. Both are declared here rather than only in main.ts, because both are baked into the client bundles: a prebuilt CSR shell or a native app never reaches a server that could tell it otherwise.
 
 - web (boolean | { csr: boolean }, default true): true builds SSR and CSR, false is API-only, and { csr: false } drops only the CSR shell.
 
@@ -146,75 +146,101 @@ Never write either prefix as a literal; new AkanApp({ prefix, websocketPrefix })
 
 AKAN_SSR and AKAN_CSR narrow the same choice at boot, and can only narrow it: a deployment cannot switch on a surface the build left out. akan start ignores web entirely, so the dev surface stays whole.
 
-A mobile app ships the CSR shell, so web: { csr: false } and a mobile section do not go together — drop the mobile section or leave CSR on.
+A native app ships the CSR shell, so web: { csr: false } and a native section do not go together — drop the native section or leave CSR on.
 
-Mobile Metadata
+Native Apps
 
-mobile describes the native app identity used by Android and iOS commands. Think of it as the name, package id, and version information that will appear in native app projects. Values at the mobile root are defaults; a target overrides the ones it names.
+native describes the app the Android, iOS and desktop commands build from this app's CSR client: its name, package id, version, permissions and plugins. A value only one platform reads sits in that platform's section, ios, android or desktop.
+
+An app without basePaths leaves basePath out, and an app that ships one native app needs no targets. So the shortest config for a desktop app that carries the app's server is this:
+
+When the first page is not /, add indexPath beside it: native: { indexPath: "/board", desktop: { server: true } }.
+
+Targets
+
+targets builds several native apps from one Akan app, such as a store app and an admin app that each open their own basePath. A target takes every field of native but targets, and its own values win: objects (deepLinks, updates, ios, android, desktop and the objects inside them) merge key by key, while lists, icon, splash and every other value are replaced, so a target's permissions replace native's instead of adding to them. Without targets the app has one target, named default, or named after the app and opening that basePath when routes declares one with the app's name.
+
+- basePath (string): The client the app opens, a basePath routes declares. An app without basePaths leaves it out.
+
+- indexPath (string, default /): Start path, and where a deep link's stack and a back with no history fall back to.
 
 - appName (string, default the app name): Display name of the native app.
 
-- appId (string, default com.<repo>.<app>): Native package identifier: Android applicationId and iOS bundle id.
+- appId (string | { default?, ios?, android?, macos?, windows?, linux? }, default com.<repo>.<app>): Android applicationId and iOS bundle id; one per platform when the store listings already differ.
+
+- fileName (string, default the app folder name): Name of the executables and archives: letters, digits, `.`, `_` and `-`.
 
 - version (string, default 0.0.1): User-facing app version, written to Android versionName and iOS MARKETING_VERSION.
 
 - buildNum (number, default 1): Store build number, written to Android versionCode and iOS CURRENT_PROJECT_VERSION.
 
-- targets (Record<string, Target>, default one target): Named mobile packages built from the same Akan app.
+- icon (string | { image, backgroundColor? }): A square PNG relative to the app folder, or it with the color behind its transparent areas.
 
-- targets.*.basePath (string): The client this native package opens; it must be a basePath declared in routes.
+- splash (string | { image?, backgroundColor?, autoHide?, timeout? }): A PNG shown centered at launch, or the launch screen's image, color and when it hides.
 
-- targets.*.indexPath (string): Start and fallback CSR path: app startup, deep-link stack recovery, back-button fallback.
+- permissions (camera | contacts | location | push | speech, default []): Native permission hints; each activates the matching plugin's native configuration.
 
-- targets.*.permissions (camera | contacts | location | push | speech, default []): Native permission hints; each activates the matching plugin's native configuration.
-
-- targets.*.assets ({ icon, splash }): App icon and splash source paths, relative to the app root.
-
-- targets.*.files (Record<string, string>): Files copied into the app, keyed by where they land (ios/<path>, android/res/<type>/<file> or android/assets/<path>), valued by an app-relative source; merged target over root.
-
-- targets.*.deepLinks (AkanMobileTargetDeepLinks): Native URL schemes and verified HTTPS app links for this target.
+- plugins (string[], default []): Runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder.
 
 - deepLinks.schemes (string[]): Custom URL schemes such as example://.
 
 - deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- deepLinks.ios.teamId (string): Apple Developer Team ID for apple-app-site-association; universal links need it.
-
-- deepLinks.android.sha256CertFingerprints (string[]): assetlinks.json signing fingerprints: debug for a local build, release for Play Store.
-
-- native.plugins (string[]): Native runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder; root and target lists are joined.
-
-- native.ios ({ infoPlist, entitlements }): Info.plist keys and entitlements for the iOS app, merged target over root.
-
-- native.android ({ manifest, application, activity, googleServices, autoplay }): XML added at <manifest>, inside <application> and inside the activity (root and target joined, the applicationId placeholder filled in), the google-services.json path FCM push reads, and autoplay: media plays with sound without a tap first, as on iOS and the desktop.
-
-- native.desktop.server (boolean, default false): Carries the app's server in the desktop app on a loopback port; its pages call nothing else. An installed app takes no update that adds or drops it.
-
-- native.desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a page whose process ended every time, waiting longer each time in a row, and relaunches the app when the webview's browser process ends. "errorPage" reloads once, then shows an error page.
-
-- native.desktop.window ({ fullscreen?, skipTaskbar? }): Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.
-
-- native.desktop.screenCapture ("picker" | "auto", default "picker"): "auto" (Windows) answers getDisplayMedia() with the first screen, no picker or tap, for remote support; it covers every media request, so not in an app that asks for a camera.
-
-- updates ({ url, publicKey, channel?, readyTimeout? }): Where installed apps look for newer releases of themselves; root and target merge field by field. A phone updates its web bundle by itself, a desktop app when it calls updates from akanjs/client/native.
+- updates ({ url, publicKey, channel?, readyTimeout? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
-- updates.publicKey (string): The public key akan update-keygen prints; an app takes no release it does not verify. akan pack-update writes a phone update unsigned, for a signer elsewhere.
+- updates.publicKey (string): The public key akan update-keygen prints; an app takes no release it cannot verify with it.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 
-- updates.readyTimeout (number, default 10000): How long, in ms, a new release on trial has for its first page to mount before it is rolled back; with a carried server, from 5 s after the server is up.
+- updates.readyTimeout (number, default 10000): How long, in ms, a release on trial has to mount its first page before it is rolled back.
 
-indexPath is read per target only, so one written at the mobile root is dropped. Firebase app registration must use the same appId.
+- ios.teamId (string): Apple Developer Team ID for apple-app-site-association; universal links need it.
 
-files copies app-relative source files into the native app, keyed by where they land, such as a notification sound under android/res/raw. Android FCM push reads google-services.json from native.android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. The Capacitor-era plugins, ios and android keys are refused with the native setting that replaces them. Keep server service account JSON out of client/native file mappings. For platform setup steps, see
+- ios.infoPlist (Record<string, AkanNativeValue>): Info.plist keys added to the iOS app.
+
+- ios.entitlements (Record<string, AkanNativeValue>): Entitlements added to the iOS app.
+
+- ios.privacy ({ tracking?, trackingDomains?, collectedDataTypes?, accessedApis? }): The app's part of the privacy manifest, PrivacyInfo.xcprivacy, which an App Store upload requires.
+
+- ios.files (Record<string, string>): Files copied into the app bundle, keyed by their path there; the value is app-relative.
+
+- android.sha256CertFingerprints (string[]): assetlinks.json signing fingerprints: debug for a local build, release for Play Store.
+
+- android.googleServices (string): The google-services.json FCM push reads, relative to the app folder.
+
+- android.push ({ channel?, smallIcon?, color? }): The channel pushes arrive in, the status bar icon (an app-relative PNG) and the accent color.
+
+- android.autoplay (boolean, default false): Media plays with sound without a tap first, as it does on iOS and the desktop.
+
+- android.manifest (string[]): XML added at the <manifest> level, with the applicationId placeholder filled in.
+
+- android.application (string[]): XML added inside <application>.
+
+- android.activity (string[]): XML added inside the app's activity.
+
+- android.files (Record<string, string>): Files copied into the app, keyed res/<type>/<file> or assets/<path>; the value is app-relative.
+
+- desktop.server (boolean, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall.
+
+- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.
+
+- desktop.window ({ fullscreen?, skipTaskbar? }): Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.
+
+- desktop.screenCapture ("picker" | "auto", default "picker"): "auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.
+
+- targets (Record<string, AkanNativeSettings>, default { default: {} }): Several native apps from one Akan app; each takes the fields above, without targets.
+
+Firebase app registration and the stores must use the same appId.
+
+ios.files and android.files copy app-relative source files into the app, keyed by where they land, such as a notification sound at res/raw/chime.mp3. Android FCM push reads google-services.json from android.googleServices instead, and iOS needs no GoogleService-Info.plist because its push goes to APNs. Keep server service account JSON out of these file mappings. For platform setup steps, see
 
 Mobile Development
 
 .
 
-When a multi-client app needs separate mobile apps per client, define mobile targets with basePath. The Multi Client page shows that pattern.
+When a multi-client app needs a separate native app per client, give each a target with its own basePath. The Multi Client page shows that pattern.
 
 Images And Public Env
 
@@ -278,7 +304,7 @@ Routes
 
 Skip routes until you need custom domains or multiple clients.
 
-Mobile
+Native apps
 
 appName defaults to the app name, appId defaults to com.<repoName>.<appName>, version defaults to 0.0.1, and buildNum defaults to 1. Pin a real reverse-DNS appId before you ship: a placeholder such as com.example.app has almost always been claimed in Apple's portal already.
 
@@ -290,7 +316,7 @@ i18n
 
 Locales default to en and ko with en first. Change it only to move the default locale or to serve a different set — defaultLocale must be one of locales.
 
-Recommended order: start with an empty config, fill env/ values as the app needs them, add routes when domains are needed, add mobile when native apps are needed, and add advanced build options only after the default build is not enough.
+Recommended order: start with an empty config, fill env/ values as the app needs them, add routes when domains are needed, add native when native apps are needed, and add advanced build options only after the default build is not enough.
 
 ## Code Examples
 
@@ -322,7 +348,7 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = (app) => ({
-  mobile: {
+  native: {
     appName: app.name,
     appId: "com.example.app",
   },
@@ -408,43 +434,59 @@ const config: AppConfig = {
 export default config;
 ```
 
-### Mobile config
+### Native config
 
 ```ts
 const config: AppConfig = {
-  mobile: {
+  native: {
     appName: "Example",
     appId: "com.example.app",
     version: "1.0.0",
     buildNum: 1,
+    indexPath: "/explore",
+    icon: "public/icon.png",
+    splash: "public/splash.png",
+    permissions: ["camera", "push"],
+    plugins: ["iap"],
+    deepLinks: { schemes: ["example"], domains: ["example.com"] },
+    ios: { teamId: "TEAMID" },
+    android: {
+      googleServices: "secrets/google-services.json",
+      sha256CertFingerprints: [
+        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+      ],
+      files: { "res/raw/chime.mp3": "public/chime.mp3" },
+    },
+  },
+};
+```
+
+### native without basePath
+
+```ts
+const config: AppConfig = {
+  native: { desktop: { server: true } },
+};
+```
+
+### native.targets
+
+```ts
+const config: AppConfig = {
+  routes: [
+    { domains: { main: ["store.example.com"] }, basePath: "store" },
+    { domains: { main: ["admin.example.com"] }, basePath: "admin" },
+  ],
+  native: {
+    appId: "com.example.store",
+    permissions: ["push"],
     targets: {
-      default: {
-        basePath: "store",
-        indexPath: "/explore",
+      store: { basePath: "store" },
+      admin: {
+        basePath: "admin",
+        appName: "Example Admin",
+        appId: "com.example.admin",
         permissions: ["camera", "push"],
-        assets: {
-          icon: "public/icon.png",
-          splash: "public/splash.png",
-        },
-        files: {
-          "android/res/raw/chime.mp3": "public/chime.mp3",
-        },
-        deepLinks: {
-          schemes: ["example"],
-          domains: ["example.com"],
-          ios: {
-            teamId: "TEAMID",
-          },
-          android: {
-            sha256CertFingerprints: [
-              "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
-            ],
-          },
-        },
-        native: {
-          plugins: ["iap"],
-          android: { googleServices: "secrets/google-services.json" },
-        },
       },
     },
   },

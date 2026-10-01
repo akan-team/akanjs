@@ -23,8 +23,8 @@ const situations = [
     en: "Android and iOS packages released per brand, region, or user type",
     ko: "브랜드·지역·사용자 유형별로 따로 출시하는 Android·iOS 패키지",
     split: true,
-    whyEn: "A mobile target points at a basePath, so each package opens its own client from the same backend.",
-    whyKo: "모바일 target이 basePath를 가리키므로, 각 패키지가 같은 백엔드에서 자기 클라이언트를 엽니다.",
+    whyEn: "A native target points at a basePath, so each package opens its own client from the same backend.",
+    whyKo: "네이티브 target이 basePath를 가리키므로, 각 패키지가 같은 백엔드에서 자기 클라이언트를 엽니다.",
   },
   {
     en: "White-label or regional sites on shared business rules",
@@ -301,8 +301,8 @@ https://partner-main.example.com -> partner`}
         <Docs.Description>
           <div>
             {l.trans({
-              en: "When the app is built, Akan can prepare CSR web output per basePath. Mobile targets can also point to a basePath, so Android and iOS apps can open the right client from the same backend.",
-              ko: "앱을 빌드하면 Akan은 basePath별 CSR 웹 결과물을 준비할 수 있습니다. 모바일 target도 basePath를 바라볼 수 있으므로, Android와 iOS 앱이 같은 백엔드를 사용하면서 고객군별 클라이언트를 열 수 있습니다.",
+              en: "When the app is built, Akan can prepare CSR web output per basePath. Native targets can also point to a basePath, so Android and iOS apps can open the right client from the same backend.",
+              ko: "앱을 빌드하면 Akan은 basePath별 CSR 웹 결과물을 준비할 수 있습니다. 네이티브 target도 basePath를 바라볼 수 있으므로, Android와 iOS 앱이 같은 백엔드를 사용하면서 고객군별 클라이언트를 열 수 있습니다.",
             })}
           </div>
         </Docs.Description>
@@ -323,15 +323,13 @@ https://partner-main.example.com -> partner`}
         />
         <Code.Snippet
           className="w-full"
-          title="Mobile targets"
+          title="Native targets"
           code={`const config = {
   routes: [
     { domains: { main: ["store.example.com"] }, basePath: "store" },
     { domains: { main: ["admin.example.com"] }, basePath: "admin" },
   ],
-  mobile: {
-    appName: "Example App",
-    appId: "com.example.app",
+  native: {
     version: "1.0.0",
     buildNum: 1,
     targets: {

@@ -50,7 +50,7 @@ const loadExtAppConfig = async (tmpPrefix: string, appConfig: string, libConfig:
 };
 
 describe("AkanAppConfig", () => {
-  test("applies defaults for route domains, i18n, image, mobile, and imports", () => {
+  test("applies defaults for route domains, i18n, image, native, and imports", () => {
     const config = new AkanAppConfig(app, ["shared"], packageJson, {}, baseDevEnv);
 
     expect([...config.domains].sort()).toEqual([
@@ -62,7 +62,7 @@ describe("AkanAppConfig", () => {
     expect(config.i18n.defaultLocale).toBe("en");
     expect(config.i18n.locales).toContain("en");
     expect(config.images.formats).toEqual(["image/webp"]);
-    expect(config.mobile).toMatchObject({
+    expect(config.native).toMatchObject({
       appName: "portal",
       appId: "com.akanjs.portal",
       version: "0.0.1",
@@ -102,7 +102,7 @@ describe("AkanAppConfig", () => {
           },
         ],
         i18n: { locales: ["ko", "en"], defaultLocale: "ko" },
-        mobile: {
+        native: {
           appName: "Portal App",
           appId: "com.portal.mobile",
           version: "1.2.3",
@@ -135,8 +135,8 @@ describe("AkanAppConfig", () => {
     expect(config.i18n.defaultLocale).toBe("ko");
     expect(config.images.qualities).toEqual([80, 90]);
     expect(config.images.dangerouslyAllowSVG).toBe(true);
-    expect(config.mobile.buildNum).toBe(7);
-    expect(config.mobile.targets.default).toMatchObject({
+    expect(config.native.buildNum).toBe(7);
+    expect(config.native.targets.default).toMatchObject({
       name: "default",
       appName: "Portal App",
       appId: "com.portal.mobile",
@@ -241,10 +241,10 @@ describe("AkanAppConfig", () => {
     expect(lines(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile)).toEqual(lines(before.join("\n")));
   });
 
-  test("refuses a csr-less build that ships a mobile app", () => {
+  test("refuses a csr-less build that ships a native app", () => {
     expect(
-      () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, mobile: { appName: "portal" } }, baseDevEnv),
-    ).toThrow("the mobile apps ship that bundle");
+      () => new AkanAppConfig(app, [], packageJson, { web: { csr: false }, native: { appName: "portal" } }, baseDevEnv),
+    ).toThrow("the native apps ship that bundle");
   });
 
   test("installs only ca-certificates and tzdata in the default image", () => {
@@ -427,14 +427,14 @@ describe("AkanAppConfig", () => {
     ]);
   });
 
-  test("normalizes multiple mobile targets and validates base paths", () => {
+  test("normalizes the native targets and validates base paths", () => {
     const config = new AkanAppConfig(
       app,
       [],
       packageJson,
       {
         routes: [{ basePath: "admin", domains: {} }],
-        mobile: {
+        native: {
           appName: "Portal",
           appId: "com.portal.app",
           version: "1.0.0",
@@ -447,12 +447,9 @@ describe("AkanAppConfig", () => {
               appId: "com.portal.admin",
               buildNum: 8,
               permissions: ["camera"],
-              deepLinks: {
-                schemes: ["portal-admin", "portal-admin"],
-                domains: ["https://Portal.Admin/"],
-                ios: { teamId: " TEAMID " },
-                android: { sha256CertFingerprints: ["AA:BB", "AA:BB"] },
-              },
+              deepLinks: { schemes: ["portal-admin", "portal-admin"], domains: ["https://Portal.Admin/"] },
+              ios: { teamId: " TEAMID " },
+              android: { sha256CertFingerprints: ["AA:BB", "AA:BB"] },
             },
           },
         },
@@ -460,7 +457,7 @@ describe("AkanAppConfig", () => {
       baseDevEnv,
     );
 
-    expect(config.mobile.targets.admin).toMatchObject({
+    expect(config.native.targets.admin).toMatchObject({
       name: "admin",
       basePath: "admin",
       indexPath: "/admin/home",
@@ -469,46 +466,51 @@ describe("AkanAppConfig", () => {
       version: "1.0.0",
       buildNum: 8,
       permissions: ["camera"],
-      deepLinks: {
-        schemes: ["portal-admin"],
-        domains: ["portal.admin"],
-        ios: { teamId: "TEAMID" },
-        android: { sha256CertFingerprints: ["AA:BB"] },
-      },
+      deepLinks: { schemes: ["portal-admin"], domains: ["portal.admin"] },
+      ios: { teamId: "TEAMID" },
+      android: { sha256CertFingerprints: ["AA:BB"] },
     });
 
     expect(
       () =>
-        new AkanAppConfig(
-          app,
-          [],
-          packageJson,
-          {
-            mobile: { targets: { bad: { basePath: "missing" } } },
-          },
-          baseDevEnv,
-        ),
+        new AkanAppConfig(app, [], packageJson, { native: { targets: { bad: { basePath: "missing" } } } }, baseDevEnv),
     ).toThrow("unknown basePath");
   });
 
-  test("merges the mobile-wide files and native settings into each target, the target winning", () => {
+  test("an app without basePaths has one target, default, with no basePath and the section's settings", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { native: { indexPath: "/explore", desktop: { server: true } } },
+      baseDevEnv,
+    );
+
+    expect(Object.keys(config.native.targets)).toEqual(["default"]);
+    expect(config.native.targets.default.basePath).toBeUndefined();
+    expect(config.native.targets.default).toMatchObject({ indexPath: "/explore", desktop: { server: true } });
+  });
+
+  test("a target takes the native section with its own fields over it: objects merge, lists and values replace", () => {
     const config = new AkanAppConfig(
       app,
       [],
       packageJson,
       {
-        mobile: {
+        native: {
           fileName: "portal",
-          files: { "android/res/raw/chime.mp3": "assets/chime.mp3" },
-          native: {
-            plugins: ["iap"],
-            ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
-            android: { manifest: ["<queries/>"], googleServices: "secrets/google-services.json" },
+          plugins: ["iap"],
+          ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false }, files: { "sound.caf": "assets/sound.caf" } },
+          android: {
+            manifest: ["<queries/>"],
+            googleServices: "secrets/google-services.json",
+            files: { "res/raw/chime.mp3": "assets/chime.mp3" },
           },
           targets: {
             default: {
-              files: { "ios/sound.caf": "assets/sound.caf" },
-              native: { plugins: ["iap", "share"], android: { manifest: ["<uses-feature/>"] } },
+              plugins: ["share"],
+              ios: { files: { "extra.caf": "assets/extra.caf" } },
+              android: { manifest: ["<uses-feature/>"] },
             },
           },
         },
@@ -516,44 +518,46 @@ describe("AkanAppConfig", () => {
       baseDevEnv,
     );
 
-    expect(config.mobile.targets.default).toMatchObject({
+    expect(config.native.targets.default).toMatchObject({
       fileName: "portal",
-      files: { "android/res/raw/chime.mp3": "assets/chime.mp3", "ios/sound.caf": "assets/sound.caf" },
-      native: {
-        plugins: ["iap", "share"],
-        ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
-        android: { manifest: ["<queries/>", "<uses-feature/>"], googleServices: "secrets/google-services.json" },
+      plugins: ["share"],
+      ios: {
+        infoPlist: { ITSAppUsesNonExemptEncryption: false },
+        files: { "sound.caf": "assets/sound.caf", "extra.caf": "assets/extra.caf" },
+      },
+      android: {
+        manifest: ["<uses-feature/>"],
+        googleServices: "secrets/google-services.json",
+        files: { "res/raw/chime.mp3": "assets/chime.mp3" },
       },
     });
   });
 
-  test("gives every target the mobile-wide updates, a target overriding a field", () => {
+  test("gives every target the section's updates, a target overriding a field", () => {
     const updates = { url: "https://releases.example.com/portal", publicKey: "key=" };
     const config = new AkanAppConfig(
       app,
       [],
       packageJson,
-      {
-        mobile: {
-          updates,
-          targets: { default: {}, pilot: { updates: { channel: "pilot" } } },
-        },
-      },
+      { native: { updates, targets: { default: {}, pilot: { updates: { channel: "pilot" } } } } },
       baseDevEnv,
     );
 
-    expect(config.mobile.targets.default?.updates).toEqual(updates);
-    expect(config.mobile.targets.pilot?.updates).toEqual({ ...updates, channel: "pilot" });
+    expect(config.native.targets.default.updates).toEqual(updates);
+    expect(config.native.targets.pilot.updates).toEqual({ ...updates, channel: "pilot" });
     expect(
       () =>
         new AkanAppConfig(
           app,
           [],
           packageJson,
-          { mobile: { targets: { pilot: { updates: { channel: "pilot" } } } } },
+          { native: { targets: { pilot: { updates: { channel: "pilot" } } } } },
           baseDevEnv,
         ),
-    ).toThrow("mobile.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKey");
+    ).toThrow("native.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKey");
+    expect(
+      () => new AkanAppConfig(app, [], packageJson, { native: { updates: { channel: "pilot" } } }, baseDevEnv),
+    ).toThrow("native.updates in apps/portal/akan.config.ts has no url or publicKey.");
   });
 
   test("merges the desktop settings field by field, the target winning", () => {
@@ -562,80 +566,93 @@ describe("AkanAppConfig", () => {
       [],
       packageJson,
       {
-        mobile: {
-          native: { desktop: { recovery: "reload", window: { fullscreen: true } } },
-          targets: { default: { native: { desktop: { window: { skipTaskbar: true } } } } },
+        native: {
+          desktop: { recovery: "reload", window: { fullscreen: true } },
+          targets: { default: { desktop: { window: { skipTaskbar: true } } } },
         },
       },
       baseDevEnv,
     );
 
-    expect(config.mobile.targets.default?.native?.desktop).toEqual({
+    expect(config.native.targets.default.desktop).toEqual({
       recovery: "reload",
       window: { fullscreen: true, skipTaskbar: true },
     });
   });
 
-  test("merges the mobile-wide updates, push and privacy into each target field by field, the target winning", () => {
+  test("merges the section's push and privacy into each target field by field; an icon object is one value", () => {
     const publicKey = Buffer.alloc(32, 7).toString("base64");
     const config = new AkanAppConfig(
       app,
       [],
       packageJson,
       {
-        mobile: {
+        native: {
           updates: { url: "https://updates.example.com/portal", publicKey },
-          native: { push: { android: { color: "#ff5a5f" } }, privacy: { tracking: false } },
+          icon: { image: "assets/icon.png", backgroundColor: "#000000" },
+          android: { push: { color: "#ff5a5f" } },
+          ios: { privacy: { tracking: false } },
           targets: {
             default: {},
             beta: {
               updates: { channel: "beta" },
-              native: { push: { android: { smallIcon: "assets/noti.png" } } },
+              icon: { image: "assets/beta.png" },
+              android: { push: { smallIcon: "assets/noti.png" } },
             },
           },
         },
-      } as never,
+      },
       baseDevEnv,
     );
 
-    expect(config.mobile.targets.default?.updates).toEqual({ url: "https://updates.example.com/portal", publicKey });
-    expect(config.mobile.targets.beta).toMatchObject({
+    expect(config.native.targets.default.updates).toEqual({ url: "https://updates.example.com/portal", publicKey });
+    expect(config.native.targets.beta).toMatchObject({
       updates: { url: "https://updates.example.com/portal", publicKey, channel: "beta" },
-      native: { push: { android: { color: "#ff5a5f", smallIcon: "assets/noti.png" } }, privacy: { tracking: false } },
+      android: { push: { color: "#ff5a5f", smallIcon: "assets/noti.png" } },
+      ios: { privacy: { tracking: false } },
     });
+    expect(config.native.targets.beta.icon).toEqual({ image: "assets/beta.png" });
   });
 
-  test("refuses the Capacitor-era keys with the setting that replaces them", () => {
-    const make = (mobile: Record<string, unknown>) => () =>
-      new AkanAppConfig(app, [], packageJson, { mobile } as never, baseDevEnv);
+  test("refuses `mobile` and every setting that moved, naming where it went", () => {
+    const make = (config: Record<string, unknown>) => () =>
+      new AkanAppConfig(app, [], packageJson, config as never, baseDevEnv);
 
-    expect(make({ plugins: { Keyboard: { resize: "none" } } })).toThrow(
-      "mobile.plugins in apps/portal/akan.config.ts is a Capacitor setting",
+    expect(make({ mobile: { appName: "portal" } })).toThrow("declares `mobile`, which is now `native`");
+    expect(make({ native: { assets: { icon: "assets/icon.png" } } })).toThrow(
+      "native.assets in apps/portal/akan.config.ts has moved: icon and splash sit directly in the native section.",
     );
-    expect(make({ targets: { default: { ios: { scheme: "App" } } } })).toThrow(
-      "mobile.targets.default.ios in apps/portal/akan.config.ts is a Capacitor setting",
+    expect(make({ native: { targets: { default: { native: { desktop: { server: true } } } } } })).toThrow(
+      "native.targets.default.native in apps/portal/akan.config.ts has moved",
     );
-    expect(make({ targets: { default: { files: { android: { "app/google-services.json": "x.json" } } } } })).toThrow(
-      "google-services.json goes to native.android.googleServices",
+    expect(make({ native: { files: { "ios/sound.caf": "assets/sound.caf" } } })).toThrow(
+      "native.files in apps/portal/akan.config.ts has moved: ios.files",
     );
-    expect(make({ files: { "App/App/Info.plist": "x.plist" } })).toThrow(
-      "must land under ios/<path>, android/res/<type>/<file> or android/assets/<path>",
+    expect(make({ native: { deepLinks: { ios: { teamId: "TEAMID" } } } })).toThrow(
+      "native.deepLinks.ios in apps/portal/akan.config.ts has moved: ios.teamId.",
     );
-    expect(make({ server: { url: "http://x" } })).toThrow(
-      "mobile.server in apps/portal/akan.config.ts is not a mobile setting",
+    expect(make({ native: { android: { files: { "App/x.json": "x.json" } } } })).toThrow(
+      'native.android.files["App/x.json"] in apps/portal/akan.config.ts must land at res/<type>/<file> or assets/<path>.',
+    );
+    expect(make({ native: { targets: { kiosk: { ios: { files: { "../x.caf": "x.caf" } } } } } })).toThrow(
+      'native.targets.kiosk.ios.files["../x.caf"] in apps/portal/akan.config.ts must land at <path in the app bundle>.',
+    );
+    expect(make({ native: { ios: { scheme: "App" } } })).toThrow(
+      "native.ios.scheme in apps/portal/akan.config.ts is not a native setting",
+    );
+    expect(make({ native: { server: { url: "http://x" } } })).toThrow(
+      "native.server in apps/portal/akan.config.ts is not a native setting",
     );
   });
 
-  test("derives a repo-scoped default appId and records explicit-mobile intent", () => {
-    // No mobile section: appId defaults to the repo-scoped reverse-DNS id, and mobile is not explicit.
-    const withoutMobile = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
-    expect(withoutMobile.mobile.appId).toBe("com.akanjs.portal");
-    expect(withoutMobile.hasMobileConfig).toBe(false);
+  test("derives a repo-scoped default appId and records an explicit native section", () => {
+    const withoutNative = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+    expect(withoutNative.native.appId).toBe("com.akanjs.portal");
+    expect(withoutNative.hasNativeConfig).toBe(false);
 
-    // Explicit mobile section without appId still uses the repo-scoped default but marks intent.
-    const withMobile = new AkanAppConfig(app, [], packageJson, { mobile: { version: "2.0.0" } }, baseDevEnv);
-    expect(withMobile.mobile.appId).toBe("com.akanjs.portal");
-    expect(withMobile.hasMobileConfig).toBe(true);
+    const withNative = new AkanAppConfig(app, [], packageJson, { native: { version: "2.0.0" } }, baseDevEnv);
+    expect(withNative.native.appId).toBe("com.akanjs.portal");
+    expect(withNative.hasNativeConfig).toBe(true);
   });
 });
 

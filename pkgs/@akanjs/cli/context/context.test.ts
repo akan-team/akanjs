@@ -596,6 +596,8 @@ describe("AgentRunner", () => {
     expect(agents).toMatch(/<!-- akan:agent:version \S+ -->/);
     expect(agents).not.toContain("<%= appName %>");
     expect(agents).toContain("akan start demo");
+    expect(agents).toContain("Native apps are the `native` section");
+    expect(agents).toContain("akan build-desktop demo");
 
     const claude = await Bun.file(`${root}/CLAUDE.md`).text();
     expect(claude).toContain("@AGENTS.md");

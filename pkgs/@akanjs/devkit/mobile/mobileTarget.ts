@@ -1,5 +1,5 @@
-import type { AkanMobileAppId } from "akanjs";
-import type { AkanAppConfig, AkanMobileTargetConfig, MobileEnv } from "../akanConfig";
+import type { AkanNativeAppId } from "akanjs";
+import type { AkanAppConfig, AkanNativeTarget, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 
 export type MobilePlatform = "ios" | "android";
@@ -9,26 +9,26 @@ export type MobileTargetSelection = string | "all" | undefined;
 
 export interface ResolvedMobileTarget {
   name: string;
-  config: AkanMobileTargetConfig;
+  config: AkanNativeTarget;
 }
 
-export const MOBILE_ENVS = ["local", "debug", "develop", "main"] as const satisfies readonly MobileEnv[];
+export const MOBILE_ENVS = ["local", "debug", "develop", "main"] as const satisfies readonly NativeEnv[];
 
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, "");
 
 export const getMobileTargets = async (app: App): Promise<ResolvedMobileTarget[]> => {
   const config = await app.getConfig();
-  return Object.entries(config.mobile.targets).map(([name, target]) => ({ name, config: target }));
+  return Object.entries(config.native.targets).map(([name, target]) => ({ name, config: target }));
 };
 
 //* An app with basePaths builds a CSR page per basePath and none at its root, so a target naming no basePath opens
 //* nothing on its own there; it is the template each basePath's target is made from.
-const isTemplateOnly = ({ basePaths, mobile }: Pick<AkanAppConfig, "basePaths" | "mobile">) =>
-  basePaths.size > 0 && Object.values(mobile.targets).every((target) => !target.basePath);
+const isTemplateOnly = ({ basePaths, native }: Pick<AkanAppConfig, "basePaths" | "native">) =>
+  basePaths.size > 0 && Object.values(native.targets).every((target) => !target.basePath);
 
 export const getMobileTargetChoices = async (app: App): Promise<string[]> => {
   const config = await app.getConfig();
-  const targetNames = Object.keys(config.mobile.targets);
+  const targetNames = Object.keys(config.native.targets);
   if (targetNames.length > 0 && !isTemplateOnly(config)) return targetNames;
   return [...config.basePaths];
 };
@@ -56,15 +56,15 @@ export const resolveMobileTargets = async (
 ): Promise<ResolvedMobileTarget[]> => {
   const config = await app.getConfig();
   const targets = await getMobileTargets(app);
-  if (targets.length === 0) throw new Error(`No mobile targets configured for ${app.name}`);
+  if (targets.length === 0) throw new Error(`No native targets configured for ${app.name}`);
   if (!selection && targets.length === 1 && !isTemplateOnly(config)) return targets;
   if (!selection) {
     const choices = await getMobileTargetChoices(app);
     if (choices.length === 1) return resolveMobileTargets(app, choices[0]);
-    throw new Error(`Multiple mobile targets found for ${app.name}. Pass --target <${choices.join("|")}|all>.`);
+    throw new Error(`Multiple native targets found for ${app.name}. Pass --target <${choices.join("|")}|all>.`);
   }
   if (selection === "all") {
-    if (Object.keys(config.mobile.targets).length > 1) return targets;
+    if (Object.keys(config.native.targets).length > 1) return targets;
     const basePaths = [...config.basePaths];
     if (basePaths.length > 1 || isTemplateOnly(config)) {
       return basePaths.flatMap((basePath) => {
@@ -79,20 +79,20 @@ export const resolveMobileTargets = async (
   const basePathTarget = resolveMobileTargetByBasePath(targets, selection);
   if (basePathTarget && config.basePaths.has(trimSlashes(selection))) return [basePathTarget];
   const choices = await getMobileTargetChoices(app);
-  throw new Error(`Mobile target '${selection}' was not found. Available: ${choices.join(", ")}`);
+  throw new Error(`Native target '${selection}' was not found. Available: ${choices.join(", ")}`);
 };
 
-export const resolveAppId = (appId: AkanMobileAppId, platform: NativePlatform): string => {
+export const resolveAppId = (appId: AkanNativeAppId, platform: NativePlatform): string => {
   if (typeof appId === "string") return appId;
   const id = appId[platform] ?? appId.default;
-  if (!id) throw new Error(`mobile.appId names no id for ${platform}; give it ${platform} or default.`);
+  if (!id) throw new Error(`native.appId names no id for ${platform}; give it ${platform} or default.`);
   return id;
 };
 
-export const appIdsOf = (appId: AkanMobileAppId): string[] =>
+export const appIdsOf = (appId: AkanNativeAppId): string[] =>
   typeof appId === "string" ? [appId] : Object.values(appId).filter((id): id is string => !!id);
 
-export const resolveMobilePath = (target: AkanMobileTargetConfig, pathname: string) => {
+export const resolveMobilePath = (target: AkanNativeTarget, pathname: string) => {
   const basePath = trimSlashes(target.basePath ?? "");
   const normalizedPath = `/${pathname.replace(/^\/+/, "")}`;
   if (!basePath) return normalizedPath;
@@ -100,7 +100,7 @@ export const resolveMobilePath = (target: AkanMobileTargetConfig, pathname: stri
   return `/${basePath}${normalizedPath === "/" ? "" : normalizedPath}`;
 };
 
-export const targetHtmlFilename = (target: AkanMobileTargetConfig) => {
+export const targetHtmlFilename = (target: AkanNativeTarget) => {
   const basePath = trimSlashes(target.basePath ?? "");
   return basePath ? `${basePath}.html` : "index.html";
 };

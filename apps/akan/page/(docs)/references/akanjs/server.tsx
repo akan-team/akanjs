@@ -392,8 +392,8 @@ export default page().render(() => {
         {
           name: "web: { csr: false }",
           desc: l.trans({
-            en: "No mobile bundle, so `/__csr` and `?csr=true` are gone. Not allowed with a `mobile` section.",
-            ko: "모바일 번들이 없어 `/__csr`와 `?csr=true`가 사라집니다. `mobile` 설정이 있으면 쓸 수 없습니다.",
+            en: "No mobile bundle, so `/__csr` and `?csr=true` are gone. Not allowed with a `native` section.",
+            ko: "모바일 번들이 없어 `/__csr`와 `?csr=true`가 사라집니다. `native` 설정이 있으면 쓸 수 없습니다.",
           }),
           marks: { api: true, ssr: true },
         },

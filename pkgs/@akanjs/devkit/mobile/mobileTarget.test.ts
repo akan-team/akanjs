@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AkanMobileTargetConfig } from "../akanConfig";
+import type { AkanNativeTarget } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import {
   appIdsOf,
@@ -17,9 +17,9 @@ const target = {
   appId: "com.akanjs.app",
   version: "1.0.0",
   buildNum: 1,
-} as AkanMobileTargetConfig;
+} as AkanNativeTarget;
 
-describe("mobile target helpers", () => {
+describe("native target helpers", () => {
   test("maps deep links into target base paths without duplicating prefixes", () => {
     expect(resolveMobilePath(target, "/order/123")).toBe("/akanjs/order/123");
     expect(resolveMobilePath(target, "/akanjs/order/123")).toBe("/akanjs/order/123");
@@ -32,7 +32,7 @@ describe("mobile target helpers", () => {
     expect(resolveAppId(appId, "android")).toBe("com.yeollege");
     expect(resolveAppId("com.one.app", "macos")).toBe("com.one.app");
     expect(() => resolveAppId({ ios: "com.puffinplanet.yeollege" }, "android")).toThrow(
-      "mobile.appId names no id for android",
+      "native.appId names no id for android",
     );
     expect(appIdsOf(appId)).toEqual(["com.yeollege", "com.puffinplanet.yeollege"]);
   });
@@ -42,11 +42,11 @@ describe("mobile target helpers", () => {
     expect(targetHtmlFilename({ ...target, basePath: undefined })).toBe("index.html");
   });
 
-  test("uses the configured mobile target as the only choice when one target is configured", async () => {
+  test("uses the configured native target as the only choice when one target is configured", async () => {
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["akanjs", "soft", "office"]),
-        mobile: { targets: { akanjs: target } },
+        native: { targets: { akanjs: target } },
       }),
     } as unknown as App;
 
@@ -59,13 +59,13 @@ describe("mobile target helpers", () => {
     const appWith = (basePaths: string[]) =>
       ({
         name: "angelo",
-        getConfig: async () => ({ basePaths: new Set(basePaths), mobile: { targets: { default: template } } }),
+        getConfig: async () => ({ basePaths: new Set(basePaths), native: { targets: { default: template } } }),
       }) as unknown as App;
 
     const two = appWith(["soft", "office"]);
     await expect(getMobileTargetChoices(two)).resolves.toEqual(["soft", "office"]);
     await expect(resolveMobileTargets(two, undefined)).rejects.toThrow(
-      "Multiple mobile targets found for angelo. Pass --target <soft|office|all>.",
+      "Multiple native targets found for angelo. Pass --target <soft|office|all>.",
     );
     await expect(resolveMobileTargets(two, "office")).resolves.toEqual([
       { name: "office", config: { ...template, name: "office", basePath: "office" } },
@@ -85,11 +85,11 @@ describe("mobile target helpers", () => {
     ]);
   });
 
-  test("resolves a route base path onto the default mobile target config", async () => {
+  test("resolves a route base path onto the default native target config", async () => {
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["akanjs", "soft", "office"]),
-        mobile: { targets: { akanjs: target } },
+        native: { targets: { akanjs: target } },
       }),
     } as unknown as App;
 

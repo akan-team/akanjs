@@ -1,4 +1,4 @@
-# Runtime Rule — Serving, Processes, Logging, Image, Desktop Server, Assets
+# Runtime Rule — Serving, Processes, Logging, Image, Native Apps, Desktop Server, Assets
 
 How an Akan app is built, what it serves, how many processes it runs, where its logs go, and what ends up in
 its image. Everything here is declared in `akan.config.ts` or narrowed by an env at boot; none of it is reached
@@ -11,14 +11,14 @@ on; the other two are declared in `akan.config.ts` as **`web: true | false | { c
 narrowed again per deployment.
 
 ```ts
-const config: AppConfig = { web: { csr: false } }; // web without the mobile bundle
+const config: AppConfig = { web: { csr: false } }; // web without the CSR bundle the native apps ship
 const config: AppConfig = { web: false }; // api only
 ```
 
 - **`web: { csr: false }`** drops the CSR build phase and the `/__csr` + `?csr=true` routes. The CSR bundle is
-  what the native mobile build ships, so a web-only deployment never needs it — and an app that declares a
-  `mobile` section is refused, because `akan build-ios` copies `dist/apps/<app>/csr/<target>.html` into the
-  target's web root, `.akan/mobile/<target>/web`.
+  what the native apps ship, so a web-only deployment never needs it — and an app that declares a `native` section
+  is refused, because every native build copies `dist/apps/<app>/csr/<target>.html` into the target's web root,
+  `.akan/native/<target>/web`.
 - **`web: false`** is an API-only build: no base artifact, no pages or client bundles, no RSC worker
   entrypoint, and no `public/` in the image (the web router's catch-all is its only reader). Nothing under
   `page/` is served, including routes a lib contributed through `syncPageLibs`.
@@ -184,16 +184,88 @@ const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, 
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
 
+## Native Apps — The `native` Section
+
+An app's iOS, Android and desktop (macOS, Windows, Linux) apps are the `native` section of its `akan.config.ts`.
+Each ships the CSR bundle on the native runtime, so one set of pages serves the web and every app.
+
+```ts
+const config: AppConfig = {
+  native: {
+    appName: "Board",
+    appId: "com.example.board", // or one per platform: { default, ios, android, macos, windows, linux }
+    version: "1.2.0",
+    buildNum: 12,
+    indexPath: "/explore", // the first page, and where a deep link's stack and a back with no history land
+    permissions: ["camera", "push"],
+    plugins: ["file-picker", "keep-awake"],
+    deepLinks: { schemes: ["board"], domains: ["board.example.com"] },
+    ios: { teamId: "ABCDE12345" }, // universal links for deepLinks.domains
+    android: { googleServices: "secrets/google-services.json", sha256CertFingerprints: ["…"] }, // FCM, app links
+    desktop: { server: true },
+  },
+};
+```
+
+- **Without `targets` the app has one target, `default`** — the usual case, with every setting in the section
+  itself; `native: { desktop: { server: true } }` alone is a whole desktop app that carries its server. Defaults:
+  the app's folder name for `appName` and `fileName`, an id made from the repository's and the app's names for
+  `appId`, `0.0.1` and `1`.
+- **A target is another app made from the section.** It has the section's shape minus `targets` and overrides it
+  field by field: plain objects merge key by key — `ios`, `android`, `desktop`, `deepLinks`, `updates` and the
+  objects inside them — and every other value replaces the section's, a list included, so a target's `plugins` or
+  `permissions` is its whole list. An `icon` or `splash` object is one value. Once `targets` is declared, only the
+  targets it names are built:
+
+  ```ts
+  native: {
+    appId: "com.example.board",
+    plugins: ["file-picker"],
+    targets: {
+      board: {},
+      lobby: { appId: "com.example.lobby", plugins: ["file-picker", "keep-awake"], desktop: { recovery: "reload" } },
+    },
+  },
+  ```
+
+- **`basePath` is the client a target opens.** An app with no basePaths leaves it out. Without `targets`, the one
+  target opens the basePath named like the app when there is one; in an app with basePaths, a target that names
+  none is a template, and `--target <basePath>` builds that client from it.
+- Every native command takes `--target <name>`. `build-*`, `release-*`, `update-keygen` and `publish-update` also
+  take `all`; `start-*` and `pack-update` handle one target at a time.
+- **Everything a build makes is under `apps/<app>/.akan/native/<target>/`**: `build/<platform>` (`build-ios`,
+  `build-android`, `build-desktop`), `dev/<platform>` (the dev builds `start-*` run), `updates` (what
+  `publish-update` signs and `pack-update` packs), `web` (the bundle the app loads) and `bin`. `akan start` leaves
+  the folder alone.
+- **`start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages from `akan start`.** It has
+  to be running — except for a desktop app that carries its server, which starts it when none of this checkout
+  answers. `--release true` runs a release build of the app's own bundle instead.
+- **A desktop app builds only for the computer that builds it** — a `.app` on macOS, signed ad hoc or with the
+  development identity, and an unsigned folder on Windows and Linux. `build-desktop --installer true` adds a
+  per-user NSIS setup on Windows (`/S` installs silently). Distribution signing and notarization are not akan
+  commands yet.
+- **`updates: { url, publicKey }` lets an installed app update itself** — the whole app on a desktop, the web
+  bundle on a phone. `akan update-keygen <app>` makes the signing key once
+  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints the
+  `publicKey`. `akan publish-update <app>` builds and signs a release into `updates/`: upload that folder to `url`,
+  the manifests last. `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign. The
+  channel is the backend env the binary was built for unless `channel` names one, and a release that does not
+  come up is rolled back to the one before.
+- **An unattended screen** — signage, a kiosk — takes `desktop.recovery: "reload"` (a crashed page loads again,
+  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar }`,
+  `desktop.screenCapture: "auto"` (Windows answers `getDisplayMedia()` with the first screen, no picker) and
+  `android.autoplay` (media plays with sound without a tap).
+
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
-A mobile target that declares `native: { desktop: { server: true } }` carries the app's server: `akan build-desktop`,
-`start-desktop --release` and `publish-update` put the backend `akan build` made into the app — everything the
-backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`, `.wasm` or file asset)
-but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its packages first with
-`bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without `--release` starts
-`akan start` beside the app when no dev server of this checkout answers. The setting is the app's backend,
-so it does not change under an installed app: an update whose release carries a server when the app has none, or
-none when it has one, is refused, and switching means a reinstall.
+A desktop app whose `native` section, or target, declares `desktop: { server: true }` carries the app's server:
+`akan build-desktop`, `start-desktop --release` and `publish-update` put the backend `akan build` made into the
+app — everything the backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`,
+`.wasm` or file asset) but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its
+packages first with `bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without
+`--release` starts `akan start` beside the app when no dev server of this checkout answers. The setting is the
+app's backend, so it does not change under an installed app: an update whose release carries a server when the app
+has none, or none when it has one, is refused, and switching means a reinstall.
 A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
 on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
@@ -278,8 +350,8 @@ was still starting — the server sees its parent gone and ends the group itself
 later for whatever ignored it. On Windows the job object ends them all with the app. A process started `detached`
 leaves the group, or the job, and keeps running.
 
-**A file the user picks reaches the server as a grant, never as a copy or a path.** With `native.plugins:
-["file-picker"]` on the target, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
+**A file the user picks reaches the server as a grant, never as a copy or a path.** With `"file-picker"` in
+`native.plugins`, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
 from `akanjs/client/native`) copies nothing, whatever the size: its FileRefs serve the originals for a preview, and
 each result carries a `grant`. The page hands the grant to an endpoint, and the server exchanges it:
 
@@ -293,8 +365,9 @@ and nothing else, and no page ever holds a path. Behind a dev build `akan start`
 against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
 
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
-(`window`), the system volume and mute (`volume`), global shortcuts, keep-awake and launch at login are native
-runtime plugins, each added to the target's `native.plugins`. Every builtin plugin's page API is
+(`window`), the system volume and mute (`volume`), global shortcuts (`global-shortcut`), keep-awake (`keep-awake`)
+and launch at login (`autostart`) are native runtime plugins, each added to `native.plugins`. Every builtin plugin's
+page API is
 `akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
 hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.

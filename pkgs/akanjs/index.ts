@@ -99,79 +99,24 @@ export interface AkanAssetsConfig {
 export type LibAssetsConfig = Pick<AkanAssetsConfig, "keepFonts">;
 
 export type DatabaseMode = "single" | "multiple" | "cluster";
-export type MobileEnv = "local" | "debug" | "develop" | "main";
-export type MobilePermission = "camera" | "contacts" | "location" | "push" | "speech";
-
-export interface AkanMobileTargetAssets {
-  /** A square PNG, relative to the app folder, or it with the color behind its transparent areas. */
-  icon?: string | { image: string; backgroundColor?: string };
-  /** A PNG shown centered at launch, or the launch screen's color, image and when it hides. */
-  splash?: string | NonNullable<AkanNativeConfig["splash"]>;
-}
-
-export interface AkanMobileTargetDeepLinks {
-  schemes?: string[];
-  domains?: string[];
-  ios?: {
-    teamId?: string;
-  };
-  android?: {
-    sha256CertFingerprints?: string[];
-  };
-}
-
-/**
- * Files copied into the app, keyed by where they land: `ios/<path>` (the app bundle), `android/res/<type>/<file>` or
- * `android/assets/<path>`. The value is the source, relative to the app folder.
- */
-export type AkanMobileTargetFiles = Record<string, string>;
+export type NativeEnv = "local" | "debug" | "develop" | "main";
+export type NativePermission = "camera" | "contacts" | "location" | "push" | "speech";
 
 export type AkanNativeValue = string | number | boolean | AkanNativeValue[] | { [key: string]: AkanNativeValue };
 
-export interface AkanMobileNativeConfig {
-  /** Native runtime plugins beyond the ones the permissions bring, by builtin id (`"iap"`) or absolute folder. */
-  plugins?: string[];
-  ios?: {
-    infoPlist?: Record<string, AkanNativeValue>;
-    entitlements?: Record<string, AkanNativeValue>;
-  };
-  android?: {
-    /** XML at the `<manifest>` level; `${applicationId}` is replaced. */
-    manifest?: string[];
-    /** XML inside `<application>`. */
-    application?: string[];
-    /** XML inside the app's activity. */
-    activity?: string[];
-    /** The Firebase project's google-services.json, relative to the app folder, for FCM push on Android. */
-    googleServices?: string;
-    /** Media plays with sound without a tap first, as it does on iOS and the desktop: a signage screen. */
-    autoplay?: boolean;
-  };
-  /** Android's notification channel, status bar icon (relative to the app folder) and accent color. */
-  push?: AkanNativeConfig["push"];
-  /** The app's part of the iOS privacy manifest (PrivacyInfo.xcprivacy), which an App Store upload requires. */
-  privacy?: AkanNativeConfig["privacy"];
-  desktop?: {
-    /**
-     * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
-     * nothing else. `build-desktop`, `start-desktop` and `publish-update` all read it, and an installed app refuses
-     * a release that carries a server when it has none, or none when it has one.
-     */
-    server?: boolean;
-    /**
-     * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
-     * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an
-     * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.
-     */
-    recovery?: "errorPage" | "reload";
-    /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
-    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
-    /**
-     * Windows: `"auto"` answers getDisplayMedia() with the first screen at once, no picker or gesture — remote
-     * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
-     */
-    screenCapture?: "picker" | "auto";
-  };
+/**
+ * One bundle id, or one per platform, for an app whose store listings already carry different ids. A platform without
+ * its own takes `default`.
+ */
+export type AkanNativeAppId =
+  | string
+  | { default?: string; ios?: string; android?: string; macos?: string; windows?: string; linux?: string };
+
+export interface AkanNativeDeepLinks {
+  /** Custom URL schemes the app opens (`board://…`). */
+  schemes?: string[];
+  /** Hosts whose https links open the app: universal links (iOS, `ios.teamId`) and app links (Android). */
+  domains?: string[];
 }
 
 /**
@@ -179,7 +124,7 @@ export interface AkanMobileNativeConfig {
  * desktop, the web bundle on a phone. `akan publish-update` writes and signs a release with a key on this machine;
  * `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign.
  */
-export interface AkanMobileUpdatesConfig {
+export interface AkanNativeUpdatesConfig {
   /**
    * A static base URL, https in a release build: `<url>/<os>-<arch>/<channel>.json` (desktop) or `<url>/<platform>/…`
    * (a phone's web bundle).
@@ -196,43 +141,115 @@ export interface AkanMobileUpdatesConfig {
   readyTimeout?: number;
 }
 
-/**
- * One bundle id, or one per platform, for an app whose store listings already carry different ids. A platform without
- * its own takes `default`.
- */
-export type AkanMobileAppId =
-  | string
-  | { default?: string; ios?: string; android?: string; macos?: string; windows?: string; linux?: string };
-
-export interface AkanMobileTargetConfig {
-  name: string;
-  basePath?: string;
-  indexPath?: string;
-  appName: string;
-  appId: AkanMobileAppId;
-  /** Executables, archives and the Swift module; letters, digits, `.`, `_` and `-`. Default: the app's folder name. */
-  fileName?: string;
-  version: string;
-  buildNum: number;
-  assets?: AkanMobileTargetAssets;
-  permissions?: MobilePermission[];
-  deepLinks?: AkanMobileTargetDeepLinks;
-  files?: AkanMobileTargetFiles;
-  native?: AkanMobileNativeConfig;
-  /** Over mobile.updates, field by field: a pilot target names its own channel. */
-  updates?: Partial<AkanMobileUpdatesConfig>;
+export interface AkanNativeIosConfig {
+  /** The Apple team id: the universal links of `deepLinks.domains` (apple-app-site-association). */
+  teamId?: string;
+  infoPlist?: Record<string, AkanNativeValue>;
+  entitlements?: Record<string, AkanNativeValue>;
+  /** The app's part of the iOS privacy manifest (PrivacyInfo.xcprivacy), which an App Store upload requires. */
+  privacy?: AkanNativeConfig["privacy"];
+  /** Files copied into the app bundle, keyed by their path there; the value is the source, relative to the app folder. */
+  files?: Record<string, string>;
 }
 
-export interface AkanMobileConfig {
+export interface AkanNativeAndroidConfig {
+  /** The signing certificates' SHA-256 fingerprints: the app links of `deepLinks.domains` (assetlinks.json). */
+  sha256CertFingerprints?: string[];
+  /** The Firebase project's google-services.json, relative to the app folder, for FCM push. */
+  googleServices?: string;
+  /** The notification channel, status bar icon (relative to the app folder) and accent color of pushes. */
+  push?: NonNullable<AkanNativeConfig["push"]>["android"];
+  /** Media plays with sound without a tap first, as it does on iOS and the desktop: a signage screen. */
+  autoplay?: boolean;
+  /** XML at the `<manifest>` level; `${applicationId}` is replaced. */
+  manifest?: string[];
+  /** XML inside `<application>`. */
+  application?: string[];
+  /** XML inside the app's activity. */
+  activity?: string[];
+  /** Files copied into the app, keyed `res/<type>/<file>` or `assets/<path>`; the value is the source. */
+  files?: Record<string, string>;
+}
+
+export interface AkanNativeDesktopConfig {
+  /**
+   * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
+   * nothing else. `build-desktop`, `start-desktop` and `publish-update` all read it, and an installed app refuses
+   * a release that carries a server when it has none, or none when it has one.
+   */
+  server?: boolean;
+  /**
+   * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
+   * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an
+   * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.
+   */
+  recovery?: "errorPage" | "reload";
+  /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
+  window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+  /**
+   * Windows: `"auto"` answers getDisplayMedia() with the first screen at once, no picker or gesture — remote
+   * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
+   */
+  screenCapture?: "picker" | "auto";
+}
+
+/**
+ * What a native app (iOS, Android, desktop) is: the app's `native` section and each of its targets have this shape. A
+ * target takes the section and overrides it field by field: objects merge key by key, and any other value — a list
+ * included — replaces the section's.
+ */
+export interface AkanNativeSettings {
+  /** The client the app opens, a basePath the routes declare; an app without basePaths leaves it out. */
+  basePath?: string;
+  /** Where the app starts, and falls back to for a deep link's stack and a back with no history. Default `/`. */
+  indexPath?: string;
+  /** Default: the app's folder name. */
+  appName?: string;
+  /** Default: one made from the repository's and the app's names. */
+  appId?: AkanNativeAppId;
+  /** Executables, archives and the Swift module; letters, digits, `.`, `_` and `-`. Default: the app's folder name. */
+  fileName?: string;
+  /** Default `0.0.1`. */
+  version?: string;
+  /** Default 1. */
+  buildNum?: number;
+  /** A square PNG, relative to the app folder, or it with the color behind its transparent areas. */
+  icon?: string | { image: string; backgroundColor?: string };
+  /** A PNG shown centered at launch, or the launch screen's color, image and when it hides. */
+  splash?: string | NonNullable<AkanNativeConfig["splash"]>;
+  permissions?: NativePermission[];
+  /** Native runtime plugins beyond the ones the permissions bring: a builtin id (`"iap"`) or a folder, from the app's. */
+  plugins?: string[];
+  deepLinks?: AkanNativeDeepLinks;
+  updates?: Partial<AkanNativeUpdatesConfig>;
+  ios?: AkanNativeIosConfig;
+  android?: AkanNativeAndroidConfig;
+  desktop?: AkanNativeDesktopConfig;
+}
+
+/** `native` in akan.config.ts. Without `targets` the app has one target, named `default`. */
+export interface AkanNativeAppConfig extends AkanNativeSettings {
+  targets?: Record<string, AkanNativeSettings>;
+}
+
+/** One target of the app, its fields over the app's `native` section and the defaults. */
+export interface AkanNativeTarget
+  extends Omit<AkanNativeSettings, "appName" | "appId" | "version" | "buildNum" | "updates"> {
+  name: string;
   appName: string;
-  appId: AkanMobileAppId;
+  appId: AkanNativeAppId;
+  version: string;
+  buildNum: number;
+  updates?: AkanNativeUpdatesConfig;
+}
+
+export interface AkanNativeAppResult {
+  appName: string;
+  appId: AkanNativeAppId;
   fileName?: string;
   version: string;
   buildNum: number;
-  files?: AkanMobileTargetFiles;
-  native?: AkanMobileNativeConfig;
-  updates?: AkanMobileUpdatesConfig;
-  targets: Record<string, AkanMobileTargetConfig>;
+  targets: Record<string, AkanNativeTarget>;
 }
 
 // Structural, so the devkit scan classes (AppInfo/LibInfo) satisfy it without a dependency.
@@ -273,9 +290,9 @@ export interface AkanSyncContext {
   readEnvClient(): Promise<Record<string, unknown> | null>;
 }
 
-/** What a plugin adds to a mobile app whose target asks for its permission; the native build merges every one. */
+/** What a plugin adds to a native app whose target asks for its permission; the native build merges every one. */
 export interface AkanPluginNativeConfig {
-  permission: MobilePermission;
+  permission: NativePermission;
   /** Native runtime plugins, by builtin id (`"camera"`). */
   plugins?: string[];
   /** iOS usage texts by description name (`cameraUsageDescription`); `$(PRODUCT_NAME)` becomes the app name. */
@@ -337,7 +354,7 @@ export interface AppConfigResult {
   images: AkanImageConfig;
   i18n: AkanI18nConfig;
   publicEnv: string[];
-  mobile: AkanMobileConfig;
+  native: AkanNativeAppResult;
   secrets: string[];
   assets: AkanAssetsConfig;
 }
@@ -367,10 +384,11 @@ export interface LibConfigContext {
   readonly type: "lib";
 }
 
-export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin"> & {
+export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin" | "native"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
   bin?: AkanBinConfig;
+  native?: AkanNativeAppConfig;
   plugins?: AkanPlugin[];
 };
 export type LibConfigInput = Omit<DeepPartial<LibConfigResult>, "bin"> & {

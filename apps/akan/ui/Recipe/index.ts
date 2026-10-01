@@ -17,3 +17,4 @@ export {
 } from "akanjs/ui";
 export { type CardGridVariants, cardGridRecipe } from "./cardGrid";
 export { type PanelVariants, panelRecipe } from "./panel";
+export { type PlateVariants, plateRecipe } from "./plate";

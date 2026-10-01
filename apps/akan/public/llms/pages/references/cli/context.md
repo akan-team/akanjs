@@ -40,7 +40,7 @@ Reports where the workspace drifts from Akan conventions, such as stray files or
 
 - --strict (Boolean, default false): Turns recommended conventions into errors; today that is a missing module abstract.
 
-- --ios (Boolean, default false): Checks only the mobile config instead, for a placeholder bundle id Apple has likely claimed.
+- --ios (Boolean, default false): Checks only the native config instead, for a placeholder bundle id Apple has likely claimed.
 
 - Status: `failed` when any diagnostic is an error, `passed` otherwise.
 
@@ -176,7 +176,7 @@ Meaning
 
 - `recipe-inline-duplicate` — warning — An inline `className` repeats a recipe's look instead of using the recipe.
 
-- `mobile-appid-placeholder` — warning (`--ios` only) — A mobile target still uses a placeholder bundle id.
+- `mobile-appid-placeholder` — warning (`--ios` only) — A native target still uses a placeholder bundle id.
 
 **doctor never fails the process.** It exits with code 0 even when the status is `failed`, so a CI gate must read `status` from `--format json`.
 

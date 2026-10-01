@@ -67,13 +67,13 @@ export default page().render(() => {
       ],
     },
     {
-      label: l.trans({ en: "Mobile, data and env", ko: "모바일, 데이터, 환경변수" }),
+      label: l.trans({ en: "Native apps, data and env", ko: "네이티브 앱, 데이터, 환경변수" }),
       rows: [
         {
-          name: "mobile",
+          name: "native",
           desc: l.trans({
-            en: "The native app's identity and one target per native package.",
-            ko: "네이티브 앱 정보와 네이티브 패키지별 target입니다.",
+            en: "The iOS, Android and desktop app: its identity, platform settings and targets.",
+            ko: "iOS·Android·데스크톱 앱의 정보, 플랫폼 설정, target입니다.",
           }),
           marks: appOnly,
         },
@@ -368,14 +368,15 @@ export default page().render(() => {
               en: (
                 <span>
                   Every app and library keeps one <code>akan.config.ts</code> at its root. It declares how that app is
-                  served, built and packaged: domains, web surfaces, the mobile app, the database modes and the Docker
+                  served, built and packaged: domains, web surfaces, the native app, the database modes and the Docker
                   image.
                 </span>
               ),
               ko: (
                 <span>
                   모든 앱과 라이브러리는 루트에 <code>akan.config.ts</code>를 하나씩 둡니다. 이 파일에는 앱을 서비스하고
-                  빌드하고 패키징하는 방법, 즉 도메인, 웹 표면, 모바일 앱, 데이터베이스 모드, Docker 이미지를 적습니다.
+                  빌드하고 패키징하는 방법, 즉 도메인, 웹 표면, 네이티브 앱, 데이터베이스 모드, Docker 이미지를
+                  적습니다.
                 </span>
               ),
             })}
@@ -430,8 +431,8 @@ export default config;`}
                 href: "/docs/core/config",
                 title: l.trans({ en: "Config reference", ko: "설정 레퍼런스" }),
                 desc: l.trans({
-                  en: "Types and defaults for every key, including every mobile field.",
-                  ko: "모든 키의 타입과 기본값, 모바일 필드 전체를 봅니다.",
+                  en: "Types and defaults for every key, including every native field.",
+                  ko: "모든 키의 타입과 기본값, native 필드 전체를 봅니다.",
                 }),
               },
               {
@@ -498,7 +499,7 @@ export default config;`}
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = (app) => ({
-  mobile: {
+  native: {
     appName: app.name,
     appId: \`com.koyo.\${app.name}\`,
   },
@@ -669,14 +670,14 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  <strong>Declare a basePath here before a mobile target uses it.</strong> A target's{" "}
-                  <code>basePath</code> must be one of the basePaths in <code>routes</code>.
+                  <strong>Declare a basePath here before the native app uses it.</strong> A <code>basePath</code> in{" "}
+                  <code>native</code> or one of its targets must be one of the basePaths in <code>routes</code>.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>mobile target이 쓰는 basePath는 먼저 여기에 선언합니다.</strong> target의{" "}
-                  <code>basePath</code>는 <code>routes</code>에 있는 basePath 중 하나여야 합니다.
+                  <strong>네이티브 앱이 쓰는 basePath는 먼저 여기에 선언합니다.</strong> <code>native</code>나 그
+                  target의 <code>basePath</code>는 <code>routes</code>에 있는 basePath 중 하나여야 합니다.
                 </span>
               ),
             })}
@@ -685,29 +686,31 @@ export default config;`}
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="mobile" title="mobile">
-        <Docs.Title>mobile</Docs.Title>
+      <Scroll.Slide id="native" title="native">
+        <Docs.Title>native</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
               en: (
                 <span>
-                  <code>mobile</code> defines the native app the <code>@akanjs/native</code> runtime builds from this
-                  app's web surface: its name, bundle id, version, and one target per package.
+                  <code>native</code> defines the iOS, Android and desktop app the <code>@akanjs/native</code> runtime
+                  builds from this app's web surface: its name, bundle id, version and permissions, with what only one
+                  platform reads under <code>ios</code>, <code>android</code> or <code>desktop</code>.
                 </span>
               ),
               ko: (
                 <span>
-                  <code>mobile</code>은 <code>@akanjs/native</code> 런타임이 이 앱의 웹 화면으로 만드는 네이티브 앱을
-                  정의합니다. 앱 이름, 번들 ID, 버전, 그리고 패키지별 target을 여기에 적습니다.
+                  <code>native</code>는 <code>@akanjs/native</code> 런타임이 이 앱의 웹 화면으로 만드는
+                  iOS·Android·데스크톱 앱을 정의합니다. 앱 이름, 번들 ID, 버전, 권한을 적고, 한 플랫폼만 읽는 값은{" "}
+                  <code>ios</code>, <code>android</code>, <code>desktop</code> 아래에 둡니다.
                 </span>
               ),
             })}
           </div>
           <div>
             {l.trans({
-              en: "Values at the mobile root are defaults for every target, and a target overrides only what it sets:",
-              ko: "mobile 루트의 값은 모든 target의 기본값이고, target은 자기가 적은 값만 덮어씁니다:",
+              en: "One native app is written straight into native. To ship several, add targets: each takes the same fields and overrides native's field by field, merging objects key by key and replacing lists and every other value. Without targets the app has one target, named default:",
+              ko: "네이티브 앱이 하나면 native에 바로 적습니다. 여럿을 내려면 targets를 더합니다. target은 같은 필드를 받아 native의 값을 필드별로 덮어쓰며, 객체는 키마다 합치고 목록과 나머지 값은 통째로 바꿉니다. targets가 없으면 앱에는 default라는 target 하나가 있습니다:",
             })}
           </div>
           <Code.Snippet
@@ -716,18 +719,14 @@ export default config;`}
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  routes: [{ domains: {}, basePath: "shop" }],
-  mobile: {
+  routes: [{ domains: {}, basePath: "store" }],
+  native: {
+    basePath: "store",
     appName: "Shop",
     appId: "com.koyo.shop",
     version: "1.0.0",
     buildNum: 12,
-    targets: {
-      shop: {
-        basePath: "shop",
-        permissions: ["camera", "push"],
-      },
-    },
+    permissions: ["camera", "push"],
   },
 };
 
@@ -769,29 +768,29 @@ export default config;`}
                 }),
               },
               {
-                key: "targets",
-                type: "Record<string, Target>",
-                default: l.trans({ en: "one target", ko: "target 하나" }),
-                desc: l.trans({
-                  en: "One entry per native package. The key is the target's name.",
-                  ko: "네이티브 패키지마다 하나씩 둡니다. 키가 target의 이름이 됩니다.",
-                }),
-              },
-              {
-                key: "targets.*.basePath",
+                key: "basePath",
                 type: "string",
                 desc: l.trans({
-                  en: "The client this package opens. It must be a basePath declared in `routes`.",
-                  ko: "이 패키지가 여는 클라이언트입니다. `routes`에 선언된 basePath여야 합니다.",
+                  en: "The client the app opens, a basePath declared in `routes`. Leave it out when the app has none.",
+                  ko: "앱이 여는 클라이언트이며 `routes`에 선언된 basePath입니다. basePath가 없는 앱은 적지 않습니다.",
                 }),
               },
               {
-                key: "targets.*.permissions",
+                key: "permissions",
                 type: '("camera" | "contacts" | "location" | "push" | "speech")[]',
                 default: "[]",
                 desc: l.trans({
                   en: "Native permissions. Each one turns on the matching plugin's native setup.",
                   ko: "네이티브 권한입니다. 값마다 해당 플러그인의 네이티브 설정이 켜집니다.",
+                }),
+              },
+              {
+                key: "targets",
+                type: "Record<string, AkanNativeSettings>",
+                default: "{ default: {} }",
+                desc: l.trans({
+                  en: "One entry per native app, keyed by its name. Each takes the fields of `native` but `targets`.",
+                  ko: "네이티브 앱마다 하나씩 두며, 키가 그 이름입니다. 각각 `targets`를 뺀 `native`의 필드를 받습니다.",
                 }),
               },
             ]}
@@ -801,10 +800,12 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>More target fields.</strong> <code>indexPath</code>, <code>assets</code>,{" "}
-                    <code>deepLinks</code>, <code>files</code> and <code>native</code> (extra runtime plugins,
-                    Info.plist and entitlements, Android manifest XML, google-services.json) are listed in the{" "}
-                    <Link href="/docs/core/config#mobile" className={inlineLink}>
+                    <strong>More fields.</strong> <code>indexPath</code>, <code>icon</code>, <code>splash</code>,{" "}
+                    <code>plugins</code>, <code>deepLinks</code>, <code>updates</code> and the platform sections{" "}
+                    <code>ios</code> (Info.plist, entitlements, the privacy manifest, bundle files),{" "}
+                    <code>android</code> (google-services.json, manifest XML, files) and <code>desktop</code> (a carried
+                    server, kiosk settings) are listed in the{" "}
+                    <Link href="/docs/core/config#native" className={inlineLink}>
                       config reference
                     </Link>
                     .
@@ -812,10 +813,11 @@ export default config;`}
                 ),
                 ko: (
                   <span>
-                    <strong>target 필드는 더 있습니다.</strong> <code>indexPath</code>, <code>assets</code>,{" "}
-                    <code>deepLinks</code>, <code>files</code>, <code>native</code>(추가 런타임 플러그인, Info.plist와
-                    entitlements, Android manifest XML, google-services.json)는{" "}
-                    <Link href="/docs/core/config#mobile" className={inlineLink}>
+                    <strong>필드는 더 있습니다.</strong> <code>indexPath</code>, <code>icon</code>, <code>splash</code>,{" "}
+                    <code>plugins</code>, <code>deepLinks</code>, <code>updates</code>, 그리고 플랫폼 섹션인{" "}
+                    <code>ios</code>(Info.plist, entitlements, 개인정보 매니페스트, 번들 파일), <code>android</code>
+                    (google-services.json, manifest XML, 파일), <code>desktop</code>(앱에 싣는 서버, 키오스크 설정)은{" "}
+                    <Link href="/docs/core/config#native" className={inlineLink}>
                       설정 레퍼런스
                     </Link>
                     에 있습니다.
@@ -844,13 +846,13 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>Keep the CSR shell on.</strong> The native app ships it, so a <code>mobile</code> section
+                    <strong>Keep the CSR shell on.</strong> The native app ships it, so a <code>native</code> section
                     cannot sit beside <code>{"web: { csr: false }"}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>CSR 셸은 켜 둡니다.</strong> 네이티브 앱이 이 셸을 싣고 나가므로, <code>mobile</code> 섹션은{" "}
+                    <strong>CSR 셸은 켜 둡니다.</strong> 네이티브 앱이 이 셸을 싣고 나가므로, <code>native</code> 섹션은{" "}
                     <code>{"web: { csr: false }"}</code>와 함께 쓸 수 없습니다.
                   </span>
                 ),
@@ -1187,13 +1189,13 @@ export default config;`}
             {l.trans({
               en: (
                 <span>
-                  <strong>A mobile app needs the CSR shell.</strong> Do not combine a <code>mobile</code> section with{" "}
+                  <strong>A native app needs the CSR shell.</strong> Do not combine a <code>native</code> section with{" "}
                   <code>{"web: { csr: false }"}</code> or <code>web: false</code>; drop one of the two.
                 </span>
               ),
               ko: (
                 <span>
-                  <strong>모바일 앱에는 CSR 셸이 필요합니다.</strong> <code>mobile</code> 섹션을{" "}
+                  <strong>네이티브 앱에는 CSR 셸이 필요합니다.</strong> <code>native</code> 섹션을{" "}
                   <code>{"web: { csr: false }"}</code>나 <code>web: false</code>와 함께 쓰지 말고, 둘 중 하나를 빼세요.
                 </span>
               ),

@@ -1,6 +1,6 @@
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import type { AkanMobileTargetConfig } from "akanjs";
+import type { AkanNativeTarget } from "akanjs";
 
 export interface NativeWebDirSources {
   /** The target's CSR bundle: one HTML file with its scripts and styles inlined. */
@@ -19,7 +19,7 @@ export class NativeWebDir {
 
   //* The bundle is inlined into this page and its own code names the global, so only the tag marks an injection;
   //* it goes first in <head>, ahead of every script, because the page reads it as it boots.
-  static injectTarget(html: string, target: Pick<AkanMobileTargetConfig, "name" | "basePath" | "indexPath">) {
+  static injectTarget(html: string, target: Pick<AkanNativeTarget, "name" | "basePath" | "indexPath">) {
     if (html.includes(NativeWebDir.#targetTag)) return html;
     const basePath = target.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
     const script = `${NativeWebDir.#targetTag}${JSON.stringify({
@@ -40,9 +40,9 @@ export class NativeWebDir {
   }
 
   /** Rebuilds the folder from scratch and answers its files as web paths: relative, `/`-separated and sorted. */
-  async assemble(target: AkanMobileTargetConfig, { html, publicDir, fontsDir }: NativeWebDirSources) {
+  async assemble(target: AkanNativeTarget, { html, publicDir, fontsDir }: NativeWebDirSources) {
     if (!(await Bun.file(html).exists()))
-      throw new Error(`CSR html for mobile target '${target.name}' not found: ${html}`);
+      throw new Error(`CSR html for native target '${target.name}' not found: ${html}`);
     await this.clear();
     if (publicDir && (await NativeWebDir.#isDir(publicDir))) await cp(publicDir, this.dir, { recursive: true });
     if (fontsDir && (await NativeWebDir.#isDir(fontsDir)))

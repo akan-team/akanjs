@@ -5,8 +5,8 @@ import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 import { ApplicationScript } from "./application.script";
 
 const mobileTargetOption = {
-  desc: "mobile target name or all",
-  ask: "Select mobile target",
+  desc: "native target name (a key of native.targets) or all",
+  ask: "Select native target",
   enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
 };
 const deviceOption = {
@@ -277,7 +277,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("target", String, mobileTargetOption)
     .option("env", String, releaseEnvOption)
     .option("out", String, {
-      desc: "output folder (default: .akan/mobile/<target>/updates/<platform>)",
+      desc: "output folder (default: .akan/native/<target>/updates/<platform>)",
       nullable: true,
     })
     .option("against", String, {

@@ -7,15 +7,15 @@
 Mobile apps build and run on `@akanjs/native` instead of Capacitor.
 
 The runtime ships inside `akanjs` (vendored, not published on its own), so an app installs nothing extra for it.
-It generates each target's native projects under `.akan/mobile/<target>/native/<platform>` and loads the web
-root it assembles in `.akan/mobile/<target>/web` from the production CSR build — nothing native is committed.
+It generates each target's native projects under `.akan/native/<target>/build/<platform>` and loads the web
+root it assembles in `.akan/native/<target>/web` from the production CSR build — nothing native is committed.
 
-- **Configuration (`akan.config.ts`).** A `mobile` section or target takes `appName`, `appId`, `fileName`,
-  `version`, `buildNum`, `basePath`, `indexPath`, `assets`, `permissions`, `deepLinks`, `files` and `native`.
-  `files` maps where a file lands (`ios/<path>`, `android/res/<type>/<file>`, `android/assets/<path>`) to its
-  source. `native` carries `plugins` (builtin ids such as `iap`), `ios.{infoPlist, entitlements}` and
-  `android.{manifest, application, activity, googleServices}`; the mobile-wide one merges into each target. Any
-  Capacitor-era key fails with the setting that replaces it.
+- **Configuration (`akan.config.ts`).** A `native` section, and each of its `targets`, takes `appName`, `appId`,
+  `fileName`, `version`, `buildNum`, `basePath`, `indexPath`, `icon`, `splash`, `permissions`, `plugins` (builtin
+  ids such as `iap`), `deepLinks`, `ios.{infoPlist, entitlements, files}` and
+  `android.{manifest, application, activity, googleServices, files}`; a target overrides the section field by field.
+  `files` maps where a file lands (a path in the iOS app bundle, `res/<type>/<file>` or `assets/<path>` on Android)
+  to its source. A Capacitor-era key fails, naming the keys the section takes.
 - **Plugins declare, they do not edit projects.** `AkanPlugin.native` names the permission it serves and what the
   target then needs: native plugins, usage texts, plist and entitlement entries, Android permissions and features.
   It replaces `capacitor.configureNative`, `editIosAppDelegate` and `runtimePackages`. A release build names each

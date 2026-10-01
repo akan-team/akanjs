@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AkanMobileTargetConfig } from "../akanConfig";
+import type { AkanNativeTarget } from "../akanConfig";
 import { tempDirs } from "../testHelpers";
 import { NativeWebDir } from "./nativeWebDir";
 
 const makeTempRoot = tempDirs("akan-native-web-");
 
-const target: AkanMobileTargetConfig = {
+const target: AkanNativeTarget = {
   name: "admin",
   basePath: "/admin/",
   indexPath: "/home",
@@ -68,7 +68,7 @@ describe("NativeWebDir", () => {
     const root = await makeTempRoot();
     const web = new NativeWebDir(path.join(root, "web"));
     await expect(web.assemble(target, { html: path.join(root, "none.html") })).rejects.toThrow(
-      "CSR html for mobile target 'admin' not found",
+      "CSR html for native target 'admin' not found",
     );
 
     await write(path.join(root, "index.html"), "<html><head></head></html>");

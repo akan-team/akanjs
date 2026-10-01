@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
-import type { MobileEnv } from "akanjs";
+import type { NativeEnv } from "akanjs";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import { DesktopBin } from "./desktopBin";
@@ -36,7 +36,7 @@ interface NativeDevBoot {
 
 export interface NativeBuildOptions {
   profile?: "debug" | "release";
-  /** The server a desktop app carries (the target's `native.desktop.server`), staged by DesktopServerStage. */
+  /** The server a desktop app carries (the target's `desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
   /** Windows: an NSIS setup program beside the app folder. */
   installer?: boolean;
@@ -48,7 +48,7 @@ export interface NativeDevOptions extends NativeRunOptions {
   lang: string;
 }
 
-/** One mobile target of an app on the native runtime (a phone, or this computer as a desktop app): where it builds,
+/** One native target of an app on the native runtime (a phone, or this computer as a desktop app): where it builds,
  * what it ships, and the calls into the API. */
 export class NativeApp {
   readonly targetRoot: string;
@@ -59,14 +59,14 @@ export class NativeApp {
   constructor(
     readonly app: App,
     readonly target: ResolvedMobileTarget,
-    readonly env?: MobileEnv,
+    readonly env?: NativeEnv,
   ) {
-    this.targetRoot = path.join(app.cwdPath, ".akan", "mobile", target.name);
+    this.targetRoot = path.join(app.cwdPath, ".akan", "native", target.name);
     this.web = new NativeWebDir(path.join(this.targetRoot, "web"));
   }
 
   outDir(platform: NativePlatform) {
-    return path.join(this.targetRoot, "native", platform);
+    return path.join(this.targetRoot, "build", platform);
   }
 
   //? Apart from the builds: a desktop build empties its folder first, which would take a release and its installer.
@@ -74,7 +74,7 @@ export class NativeApp {
     return path.join(this.targetRoot, "dev", platform);
   }
 
-  /** The web root, from the production build the mobile commands run first. */
+  /** The web root, from the production build the native commands run first. */
   async assembleWeb() {
     const dist = this.app.dist.cwdPath;
     return await this.web.assemble(this.target.config, {
@@ -135,7 +135,7 @@ export class NativeApp {
     const problems = api.validateConfig(config, { appDir: this.app.cwdPath });
     if (problems.length)
       throw new Error(
-        `Mobile target '${this.target.name}' makes an invalid native config:\n- ${problems.join("\n- ")}`,
+        `Native target '${this.target.name}' makes an invalid native config:\n- ${problems.join("\n- ")}`,
       );
   }
 
@@ -298,7 +298,7 @@ export class NativeApp {
       });
     } catch (error) {
       throw new Error(
-        `Mobile target '${this.target.name}': ${error instanceof Error ? error.message : String(error)}`,
+        `Native target '${this.target.name}': ${error instanceof Error ? error.message : String(error)}`,
         {
           cause: error,
         },
@@ -309,7 +309,7 @@ export class NativeApp {
   #assertUpdates() {
     if (!this.target.config.updates)
       throw new Error(
-        `Mobile target '${this.target.name}' has no updates: { url, publicKey } in akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
+        `Native target '${this.target.name}' has no updates: add native.updates: { url, publicKey } to akan.config.ts; \`akan update-keygen ${this.app.name}\` prints the key.`,
       );
   }
 
@@ -335,7 +335,7 @@ export class NativeApp {
     const { api, config } = await this.prepare(platform);
     if (!config.updates)
       throw new Error(
-        `Mobile target '${this.target.name}' takes no updates: add mobile.updates: { url, publicKey } to akan.config.ts first.`,
+        `Native target '${this.target.name}' takes no updates: add native.updates: { url, publicKey } to akan.config.ts first.`,
       );
     const packed = await api.packUpdate({
       ...this.#task(platform, config),

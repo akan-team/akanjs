@@ -4,9 +4,9 @@
 "@akanjs/cli": minor
 ---
 
-A desktop app can carry the app's own server: for a mobile target with `native: { desktop: { server: true } }`,
-`akan build-desktop`, `akan start-desktop --release` and `akan publish-update` put the backend `akan build` made into
-the app, so it works on one computer with no backend elsewhere.
+A desktop app can carry the app's own server: with `native: { desktop: { server: true } }` in `akan.config.ts`, or
+`desktop.server` on one target, `akan build-desktop`, `akan start-desktop --release` and `akan publish-update` put the
+backend `akan build` made into the app, so it works on one computer with no backend elsewhere.
 
 - The build stages what the backend build wrote into `apps/<app>/.akan/desktop/server` — `main.js`, `server.js`, the
   chunks, `akan.build.json`, `private/`, and any `.node`, `.wasm` or file asset a bundled package brought — without the

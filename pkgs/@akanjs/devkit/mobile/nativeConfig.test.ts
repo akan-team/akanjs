@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AkanMobileTargetConfig } from "../akanConfig";
+import type { AkanNativeTarget } from "../akanConfig";
 import { tempDirs } from "../testHelpers";
 import { NativeApi } from "./nativeApi";
 import { NativeConfig } from "./nativeConfig";
@@ -9,7 +9,7 @@ import { NativeConfig } from "./nativeConfig";
 const makeTempRoot = tempDirs("akan-native-config-");
 const repoApp = path.resolve(import.meta.dir, "../../../../apps/minimal");
 
-const minimalTarget: AkanMobileTargetConfig = {
+const minimalTarget: AkanNativeTarget = {
   name: "default",
   indexPath: "/explore",
   appName: "minimal",
@@ -17,16 +17,12 @@ const minimalTarget: AkanMobileTargetConfig = {
   version: "0.0.1",
   buildNum: 1,
   permissions: ["push"],
-  native: { android: { googleServices: "secrets/google-services.json" } },
-  deepLinks: {
-    schemes: ["minimal"],
-    domains: ["example.com"],
-    ios: { teamId: "TEAMID" },
-    android: { sha256CertFingerprints: ["00:11"] },
-  },
+  deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
+  ios: { teamId: "TEAMID" },
+  android: { googleServices: "secrets/google-services.json", sha256CertFingerprints: ["00:11"] },
 };
 
-const adminTarget: AkanMobileTargetConfig = {
+const adminTarget: AkanNativeTarget = {
   name: "admin",
   basePath: "admin",
   appName: "Portal Admin",
@@ -34,14 +30,15 @@ const adminTarget: AkanMobileTargetConfig = {
   fileName: "portal-admin",
   version: "2.1.0",
   buildNum: 42,
-  assets: { icon: "assets/icon.png", splash: "assets/splash.png" },
+  icon: "assets/icon.png",
+  splash: "assets/splash.png",
   permissions: ["camera", "location", "contacts", "speech"],
   deepLinks: { domains: ["portal.example"] },
-  files: { "android/res/raw/chime.mp3": "assets/chime.mp3" },
-  native: {
-    plugins: ["iap"],
-    ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
-    android: { manifest: ['<queries><package android:name="com.kakao.talk" /></queries>'] },
+  plugins: ["iap"],
+  ios: { infoPlist: { ITSAppUsesNonExemptEncryption: false } },
+  android: {
+    manifest: ['<queries><package android:name="com.kakao.talk" /></queries>'],
+    files: { "res/raw/chime.mp3": "assets/chime.mp3" },
   },
 };
 
@@ -52,7 +49,7 @@ describe("NativeConfig.build", () => {
     const { config, warnings } = NativeConfig.build({
       appPath: "/repo/apps/minimal",
       target: minimalTarget,
-      webDir: "/repo/apps/minimal/.akan/mobile/default/web",
+      webDir: "/repo/apps/minimal/.akan/native/default/web",
       contributions: [{ permission: "push", plugins: ["push"] }],
       locales: ["en", "ko"],
       platform: "android",
@@ -61,7 +58,7 @@ describe("NativeConfig.build", () => {
     expect(warnings).toEqual([]);
     expect(config).toEqual({
       app: { id: "com.minimal.dev.app", name: "minimal", fileName: "minimal", version: "0.0.1", build: 1 },
-      web: { dir: "/repo/apps/minimal/.akan/mobile/default/web" },
+      web: { dir: "/repo/apps/minimal/.akan/native/default/web" },
       plugins: [...NativeConfig.basePlugins, "single-instance", "push"],
       capabilities: [
         {
@@ -83,7 +80,7 @@ describe("NativeConfig.build", () => {
     const { config, warnings } = NativeConfig.build({
       appPath: "/repo/apps/portal",
       target: adminTarget,
-      webDir: "/repo/apps/portal/.akan/mobile/admin/web",
+      webDir: "/repo/apps/portal/.akan/native/admin/web",
       contributions: [],
       locales: ["en", "ko"],
       platform: "android",
@@ -92,7 +89,7 @@ describe("NativeConfig.build", () => {
     expect(warnings).toEqual(["Permission 'speech' has no native plugin yet; the app ships without it."]);
     expect(config).toEqual({
       app: { id: "com.portal.admin", name: "Portal Admin", fileName: "portal-admin", version: "2.1.0", build: 42 },
-      web: { dir: "/repo/apps/portal/.akan/mobile/admin/web" },
+      web: { dir: "/repo/apps/portal/.akan/native/admin/web" },
       plugins: [...NativeConfig.basePlugins, "camera", "geolocation", "contacts", "iap"],
       capabilities: [
         {
@@ -129,7 +126,15 @@ describe("NativeConfig.build", () => {
   test("a plugin that claims a permission replaces the builtin one and adds its Android entries", () => {
     const { config } = NativeConfig.build({
       appPath: "/repo/apps/portal",
-      target: { ...adminTarget, permissions: ["camera"], native: undefined, files: undefined, assets: undefined },
+      target: {
+        ...adminTarget,
+        permissions: ["camera"],
+        plugins: undefined,
+        ios: undefined,
+        android: undefined,
+        icon: undefined,
+        splash: undefined,
+      },
       webDir: "/web",
       contributions: [
         {
@@ -158,7 +163,7 @@ describe("NativeConfig.build", () => {
   });
 
   test("updates bring their plugin and follow the binary's backend unless a channel is named", () => {
-    const build = (updates: AkanMobileTargetConfig["updates"], env?: "main" | "develop") =>
+    const build = (updates: AkanNativeTarget["updates"], env?: "main" | "develop") =>
       NativeConfig.build({
         appPath: "/repo/apps/portal",
         target: { ...adminTarget, updates },
@@ -190,14 +195,10 @@ describe("NativeConfig.build", () => {
       appPath: "/repo/apps/portal",
       target: {
         ...adminTarget,
-        assets: {
-          icon: { image: "assets/icon.png", backgroundColor: "#ffffff" },
-          splash: { backgroundColor: { light: "#ffffff", dark: "#000000" }, autoHide: false },
-        },
-        native: {
-          push: { android: { smallIcon: "assets/noti.png", color: "#ff5a5f", channel: { id: "chat", name: "Chat" } } },
-          privacy: { tracking: false, accessedApis: { DiskSpace: ["E174.1"] } },
-        },
+        icon: { image: "assets/icon.png", backgroundColor: "#ffffff" },
+        splash: { backgroundColor: { light: "#ffffff", dark: "#000000" }, autoHide: false },
+        android: { push: { smallIcon: "assets/noti.png", color: "#ff5a5f", channel: { id: "chat", name: "Chat" } } },
+        ios: { privacy: { tracking: false, accessedApis: { DiskSpace: ["E174.1"] } } },
       },
       webDir: "/web",
       contributions: [],
@@ -238,14 +239,11 @@ describe("NativeConfig.build", () => {
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
     const api = await NativeApi.load(repoApp);
 
-    const adminWithEverything: AkanMobileTargetConfig = {
+    const adminWithEverything: AkanNativeTarget = {
       ...adminTarget,
       updates: { url: "https://updates.example.com/portal", publicKey: updatesKey },
-      native: {
-        ...adminTarget.native,
-        push: { android: { smallIcon: "assets/icon.png", color: "#ff5a5f" } },
-        privacy: { tracking: false },
-      },
+      ios: { ...adminTarget.ios, privacy: { tracking: false } },
+      android: { ...adminTarget.android, push: { smallIcon: "assets/icon.png", color: "#ff5a5f" } },
     };
     for (const target of [minimalTarget, adminWithEverything]) {
       const { config } = NativeConfig.build({
@@ -267,7 +265,13 @@ describe("NativeConfig.build", () => {
     await writeManifest(path.join(root, "vendor", "led-panel"), "led-panel");
     const { config } = NativeConfig.build({
       appPath: root,
-      target: { ...minimalTarget, permissions: [], native: { plugins: ["./vendor/led-panel"] }, deepLinks: undefined },
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        plugins: ["./vendor/led-panel"],
+        deepLinks: undefined,
+        android: undefined,
+      },
       webDir: path.join(root, "web"),
       contributions: [],
       locales: ["en"],
@@ -293,8 +297,9 @@ describe("NativeConfig.build", () => {
       target: {
         ...minimalTarget,
         permissions: [],
-        native: { plugins: ["./native/kiosk/", "kiosk", "haptics"] },
+        plugins: ["./native/kiosk/", "kiosk", "haptics"],
         deepLinks: undefined,
+        android: undefined,
       },
       webDir: path.join(root, "web"),
       contributions: [],
@@ -314,10 +319,8 @@ describe("NativeConfig.build", () => {
         ...minimalTarget,
         permissions: [],
         deepLinks: undefined,
-        native: {
-          android: { autoplay: true },
-          desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
-        },
+        android: { autoplay: true },
+        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
       },
       webDir: path.join(root, "web"),
       contributions: [],
@@ -342,7 +345,7 @@ describe("NativeConfig.build", () => {
     const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=`, channel: "pilot" };
     const { config } = NativeConfig.build({
       appPath: "/repo/apps/board",
-      target: { ...minimalTarget, permissions: [], deepLinks: undefined, native: undefined, updates },
+      target: { ...minimalTarget, permissions: [], deepLinks: undefined, android: undefined, updates },
       webDir: "/web",
       contributions: [],
       locales: ["en"],
@@ -362,7 +365,7 @@ describe("NativeConfig.build", () => {
           ...minimalTarget,
           permissions: [],
           deepLinks: undefined,
-          native: undefined,
+          android: undefined,
           updates: { ...updates, ...(channel ? { channel } : {}) },
         },
         webDir: "/web",

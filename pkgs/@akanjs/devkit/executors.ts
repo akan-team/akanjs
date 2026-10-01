@@ -1120,7 +1120,7 @@ export class AppExecutor extends SysExecutor {
     return new AppExecutor({ workspace: executor instanceof WorkspaceExecutor ? executor : executor.workspace, name });
   }
   //* Not dev output: native builds and the update releases waiting to be uploaded, and the downloaded `bin` sources.
-  static readonly #keptOnStart = [path.join(".akan", "mobile"), path.join(".akan", "cache", "bin")];
+  static readonly #keptOnStart = [path.join(".akan", "native"), path.join(".akan", "cache", "bin")];
   async #removeDevOutput(dir = ".akan") {
     const entries = await readDirEntries(this.getPath(dir)).catch(() => [] as string[]);
     await Promise.all(

@@ -225,8 +225,8 @@ akan context --module user`,
         type: "Boolean",
         defaultValue: "false",
         desc: l.trans({
-          en: "Checks only the mobile config instead, for a placeholder bundle id Apple has likely claimed.",
-          ko: "컨벤션 대신 모바일 설정만 점검합니다. Apple이 이미 가져갔을 법한 자리 표시자 bundle id를 찾습니다.",
+          en: "Checks only the native config instead, for a placeholder bundle id Apple has likely claimed.",
+          ko: "컨벤션 대신 native 설정만 점검합니다. Apple이 이미 가져갔을 법한 자리 표시자 bundle id를 찾습니다.",
         }),
       },
     ],
@@ -538,8 +538,8 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
       code: "mobile-appid-placeholder",
       level: l.trans({ en: "warning (`--ios` only)", ko: "경고 (`--ios`에서만)" }),
       meaning: l.trans({
-        en: "A mobile target still uses a placeholder bundle id.",
-        ko: "모바일 타깃이 아직 자리 표시자 bundle id를 씁니다.",
+        en: "A native target still uses a placeholder bundle id.",
+        ko: "네이티브 타깃이 아직 자리 표시자 bundle id를 씁니다.",
       }),
     },
   ];

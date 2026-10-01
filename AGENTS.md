@@ -46,7 +46,7 @@ you fetch on demand — `get_guideline` with the name, or `akan guideline show <
 | name | covers |
 |---|---|
 | `ssrRule` | server-share targets, the `akan.ssr.*` warnings, the client-boundary playbook |
-| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, a desktop app's server, shipped assets, database modes |
+| `runtimeRule` | `web` / `csr` surfaces, gateway vs solo processes, logging, the generated image, native apps and a desktop app's server, shipped assets, database modes |
 | `queryRule` | slices and hydration, the generated filter methods, full-text search, cascade removal |
 | `transportRule` | guards across HTTP and websocket, socket identity and cleanup, binary pubsub, mutation verbs |
 | `mcpRule` | MCP configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions |
@@ -327,11 +327,11 @@ What an app serves, how many processes it runs, where its logs go, and what ship
 declared in `akan.config.ts` and narrowed — never widened — by an env at boot. Domain code reaches none of it.
 Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runtimeRule`.
 
-- **Web surfaces are `web: true | false | { csr: boolean }`.** `{ csr: false }` drops the mobile/CSR bundle,
-  `false` is an API-only build that serves nothing under `page/`. There is no CSR-without-SSR option, by type —
-  the CSR bundle inlines the stylesheet the SSR base artifact compiles. `AKAN_SSR` / `AKAN_CSR` narrow further at
-  runtime and can never switch a surface the build left out back on. `akan start` ignores `web` and keeps the
-  whole dev surface.
+- **Web surfaces are `web: true | false | { csr: boolean }`.** `{ csr: false }` drops the CSR bundle the native
+  apps ship, `false` is an API-only build that serves nothing under `page/`. There is no CSR-without-SSR option, by
+  type — the CSR bundle inlines the stylesheet the SSR base artifact compiles. `AKAN_SSR` / `AKAN_CSR` narrow
+  further at runtime and can never switch a surface the build left out back on. `akan start` ignores `web` and
+  keeps the whole dev surface.
 - **One traffic replica runs in the container's only process.** `AKAN_REPLICA=0,0,1` — the default everywhere —
   has nothing to balance, so there is no gateway and no unix-socket proxy hop. Two or more replicas, a batch-only
   replica, `AKAN_SOLO=false`, passing `replica` to `new AkanApp(...)`, or `akan start` all bring the gateway back.
@@ -368,15 +368,28 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   assembles one from; the string form takes no contributions. The generated image installs `ca-certificates` and
   `tzdata` and nothing else, so an app needing `ffmpeg` or Chromium declares it in `preRuns` / `postRuns`. A lib
   declares the steps its own runtime needs and every mounting app inherits them.
-- **A desktop app's server (`native.desktop.server: true` on its target) gets nothing from `docker`.** An executable the app spawns
+- **Native apps are the `native` section** — iOS, Android and a desktop app (macOS, Windows, Linux), each shipping
+  the CSR bundle on the native runtime. Shared fields (`appName`, `appId`, `version`, `indexPath`, `permissions`,
+  `plugins`, `deepLinks`, `updates`, …) sit beside one section per platform: `ios`, `android`, `desktop`. Without
+  `targets` the app has one target, `default`, and an app with no basePaths leaves `basePath` out; a target takes
+  the same shape and overrides the section field by field — objects merge key by key, a list or any other value
+  replaces the section's. `akan start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages
+  from `akan start`; `build-ios` / `build-android` / `build-desktop` write
+  `apps/<app>/.akan/native/<target>/build/<platform>`, a desktop app only for the computer that builds it
+  (`--installer true` adds a Windows setup). With `updates: { url, publicKey }` an installed app takes the signed
+  releases `akan publish-update` makes; `akan update-keygen` makes the key and prints its `publicKey`.
+- **A desktop app that carries its server (`desktop: { server: true }` in `native`, or in one target) gets nothing
+  from `docker`.** That server is API-only, runs in database mode `single`, and listens on a loopback port any
+  program on the computer can call, so guard its endpoints as a network server's. An executable the app spawns
   goes in `bin` — per platform, a download checked against its `sha256` or a file beside the config, put first on
   the app's PATH so the server's `spawn("ffmpeg")` finds it, and in `ctx.binDir` for a native plugin — and a package
-  that builds itself at install goes in `trustedDependencies`, which the image honours too. Carry a static LGPL ffmpeg: a `--enable-nonfree` build may
-  not be redistributed. A file the user picks with `filePicker.pickFiles({ forServer: true })` reaches it as a
-  grant, never a copy or a path: `NativeFile.resolve(grant, "read")` in `akanjs/server` asks the shell for it.
-  What it carries is readable on the user's computer — `private/` (each lib's too, under `private/libs/<lib>`), the
-  one `env.server.<env>.ts` of its `--env` and its libs' server env defaults (`env.server.testing.ts`) — and it has
-  no `public/`: read runtime files from `AKAN_APP_DIR`, never `process.cwd()`.
+  that builds itself at install goes in `trustedDependencies`, which the image honours too. Carry a static LGPL
+  ffmpeg: a `--enable-nonfree` build may not be redistributed. A file the user picks with
+  `filePicker.pickFiles({ forServer: true })` reaches it as a grant, never a copy or a path:
+  `NativeFile.resolve(grant, "read")` in `akanjs/server` asks the shell for it. What it carries is readable on the
+  user's computer — `private/` (each lib's too, under `private/libs/<lib>`), the one `env.server.<env>.ts` of its
+  `--env` and its libs' server env defaults (`env.server.testing.ts`) — and it has no `public/`: read runtime files
+  from `AKAN_APP_DIR`, never `process.cwd()`.
 - **`assets: { pruneFonts, keepFonts }`** trims from the `dist` copy of `public/` the fonts nothing reads; source
   trees are never touched. A font with `optimize` on is a build input, not a runtime asset. `keepFonts` belongs to
   the `akan.config.ts` that owns the font, written against that scope's own `public/`.
@@ -952,7 +965,7 @@ export default page()
 - `apps/<appName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`.
 - `apps/<appName>` root may only contain these folders: `.akan`, `common`, `env`, `lib`, `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`.
 - `libs/<libName>` root may only contain these files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.config.ts`, `akan.lib.json`, `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`.
-- `libs/<libName>` root may only contain these folders: `common`, `env`, `lib`, `native`, `page`, `plugin`, `private`, `public`, `srvkit`, `ui`, `webkit`. A library is never booted or packaged as an app, so the run and mobile entries an app carries (`main.ts`, `.akan`, `script`, `secrets`) are rejected there. A Capacitor-era `ios` / `android` / `mobile` folder or `capacitor.config.*` is refused in an app root too, named as a leftover: the native runtime generates its projects under `.akan/mobile/<target>`.
+- `libs/<libName>` root may only contain these folders: `common`, `env`, `lib`, `native`, `page`, `plugin`, `private`, `public`, `srvkit`, `ui`, `webkit`. A library is never booted or packaged as an app, so the run and mobile entries an app carries (`main.ts`, `.akan`, `script`, `secrets`) are rejected there. A Capacitor-era `ios` / `android` / `mobile` folder or `capacitor.config.*` is refused in an app root too, named as a leftover: the native runtime generates its projects under `.akan/native/<target>`.
 - Both allowlists have one source — `pkgs/@akanjs/devkit/workspaceLayout.ts`. `akan sync` (error), `akan doctor`
   (diagnostic), and `akan quality scan` (warning) all read it, so add a new root entry there and mirror it into this
   list, never into one of the three call sites.

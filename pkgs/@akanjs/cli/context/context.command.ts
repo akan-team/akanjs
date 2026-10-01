@@ -14,7 +14,7 @@ export class ContextCommand extends command("context", [ContextScript], ({ publi
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .option("strict", Boolean, { desc: "treat recommended conventions as errors", default: false })
     .option("ios", Boolean, {
-      desc: "report iOS/mobile config diagnostics (placeholder bundle ids, etc.)",
+      desc: "report iOS/native config diagnostics (placeholder bundle ids, etc.)",
       default: false,
     })
     .with(Workspace)

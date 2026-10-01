@@ -134,7 +134,7 @@ describe("ApplicationCommand", () => {
     }
   });
 
-  test("uses the same mobile target selector metadata across mobile commands", async () => {
+  test("uses the same native target selector metadata across native commands", async () => {
     const mobileCommandKeys = [
       "buildIos",
       "buildAndroid",
@@ -148,7 +148,7 @@ describe("ApplicationCommand", () => {
     const app = {
       getConfig: async () => ({
         basePaths: new Set(["store", "admin"]),
-        mobile: {
+        native: {
           targets: {
             store: { name: "store", basePath: "store" },
           },
@@ -160,7 +160,7 @@ describe("ApplicationCommand", () => {
       const [, optionMetas] = getArgMetas(ApplicationCommand, key);
       const targetOption = optionMetas.find((meta) => meta.name === "target")?.argsOption;
 
-      expect(targetOption?.ask).toBe("Select mobile target");
+      expect(targetOption?.ask).toBe("Select native target");
       expect(typeof targetOption?.enum).toBe("function");
       if (typeof targetOption?.enum === "function") {
         await expect(targetOption.enum({ values: {}, app: app as never })).resolves.toEqual(["store"]);
@@ -435,7 +435,7 @@ describe("ApplicationScript desktop", () => {
     };
     ApplicationRunner.startTarget = async () => ({
       name: "default",
-      config: { native: { desktop: { server: carries } } } as never,
+      config: { desktop: { server: carries } } as never,
     });
     ApplicationRunner.answers = async (url: string, _appName: string, workspaceRoot: string) => {
       recorder.record("answers", url, workspaceRoot);
@@ -592,7 +592,7 @@ describe("ApplicationScript desktop", () => {
   test("a desktop app carrying its server asks for one target before it starts a dev server", async () => {
     const { script, recorder, app, restore } = desktopDevHarness({ answers: false });
     ApplicationRunner.startTarget = async () => {
-      throw new Error("start-desktop runs one mobile target at a time; pass --target <name>.");
+      throw new Error("start-desktop runs one native target at a time; pass --target <name>.");
     };
     script.startOne = async () => {
       recorder.record("startOne");
@@ -600,7 +600,7 @@ describe("ApplicationScript desktop", () => {
     };
     try {
       await expect(script.startDesktop(app as never, { write: false })).rejects.toThrow(
-        "start-desktop runs one mobile target at a time",
+        "start-desktop runs one native target at a time",
       );
     } finally {
       restore();
@@ -682,7 +682,7 @@ describe("ApplicationRunner mobile", () => {
       getConfig: async () => ({
         basePaths: new Set<string>(),
         i18n: { defaultLocale: "en", locales: ["en"] },
-        mobile: { targets },
+        native: { targets },
       }),
     }) as unknown as AppExecutor;
   const target = (name: string) => ({ name, appName: "Demo", appId: "com.demo.app", version: "1.0.0", buildNum: 1 });
@@ -777,7 +777,7 @@ describe("ApplicationRunner mobile", () => {
         getConfig: async () => ({
           basePaths: new Set<string>(),
           i18n: { defaultLocale: "en", locales: ["en"] },
-          mobile: { targets: { store: { ...target("store"), updates }, admin: { ...target("admin"), ...admin } } },
+          native: { targets: { store: { ...target("store"), updates }, admin: { ...target("admin"), ...admin } } },
         }),
         prepareCommand: async () => {
           recorder.record("build");
@@ -793,14 +793,14 @@ describe("ApplicationRunner mobile", () => {
     delete process.env.AKAN_NATIVE_UPDATE_KEY;
     try {
       await expect(new ApplicationRunner().publishUpdate(publishing({}), "android", { target: "all" })).rejects.toThrow(
-        "Mobile target 'admin' has no updates: { url, publicKey } in akan.config.ts",
+        "Native target 'admin' has no updates: add native.updates: { url, publicKey } to akan.config.ts",
       );
       const otherKey = Buffer.alloc(32, 7).toString("base64");
       await expect(
         new ApplicationRunner().publishUpdate(publishing({ updates: { ...updates, publicKey: otherKey } }), "android", {
           target: "all",
         }),
-      ).rejects.toThrow("Mobile target 'admin': the key at");
+      ).rejects.toThrow("Native target 'admin': the key at");
     } finally {
       for (const [key, value] of Object.entries(saved))
         if (value === undefined) delete process.env[key];
@@ -810,7 +810,7 @@ describe("ApplicationRunner mobile", () => {
   });
 
   test("only a desktop build of a target that declares desktop.server carries the server", () => {
-    const carrying = { name: "kiosk", config: { ...target("kiosk"), native: { desktop: { server: true } } } };
+    const carrying = { name: "kiosk", config: { ...target("kiosk"), desktop: { server: true } } };
     expect(ApplicationRunner.carriesServer(carrying, "windows")).toBe(true);
     expect(ApplicationRunner.carriesServer(carrying, "macos")).toBe(true);
     expect(ApplicationRunner.carriesServer(carrying, "android")).toBe(false);
@@ -821,14 +821,14 @@ describe("ApplicationRunner mobile", () => {
   test("a dev build runs one target at a time", async () => {
     const app = mobileApp({ store: target("store"), admin: target("admin") });
     await expect(new ApplicationRunner().startMobile(app, "android", { target: "all" })).rejects.toThrow(
-      "start-android runs one mobile target at a time",
+      "start-android runs one native target at a time",
     );
   });
 
   test("a desktop dev build names its own command when it is handed several targets", async () => {
     const app = mobileApp({ store: target("store"), admin: target("admin") });
     await expect(new ApplicationRunner().startDesktop(app, { target: "all" })).rejects.toThrow(
-      "start-desktop runs one mobile target at a time",
+      "start-desktop runs one native target at a time",
     );
   });
 
@@ -840,7 +840,7 @@ describe("ApplicationRunner mobile", () => {
         app: { name: "demo" },
         basePaths: new Set<string>(),
         database: { modes: ["cluster"] },
-        mobile: { targets: { default: { ...target("default"), native: { desktop: { server: true } } } } },
+        native: { targets: { default: { ...target("default"), desktop: { server: true } } } },
       }),
     } as unknown as AppExecutor;
     await expect(new ApplicationRunner().buildDesktop(app)).rejects.toThrow(

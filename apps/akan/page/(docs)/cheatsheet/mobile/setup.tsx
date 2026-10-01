@@ -28,8 +28,8 @@ export default page().render(() => {
     {
       name: "target",
       desc: l.trans({
-        en: "One native app built from your Akan app. Its key in `mobile.targets` is the `--target` value.",
-        ko: "Akan 앱 하나에서 만드는 네이티브 앱 하나입니다. `mobile.targets`의 키가 곧 `--target`에 넘기는 값입니다.",
+        en: "One native app built from your Akan app. Its key in `native.targets` is the `--target` value.",
+        ko: "Akan 앱 하나에서 만드는 네이티브 앱 하나입니다. `native.targets`의 키가 곧 `--target`에 넘기는 값입니다.",
       }),
     },
     {
@@ -40,10 +40,10 @@ export default page().render(() => {
       }),
     },
     {
-      name: ".akan/mobile/<target>",
+      name: ".akan/native/<target>",
       desc: l.trans({
-        en: "Where each run writes the target's web root and native builds. It is generated and ignored by git: there is no Xcode or Android Studio project to edit.",
-        ko: "실행할 때마다 target의 웹 루트와 네이티브 빌드를 쓰는 곳입니다. 생성되는 폴더이고 git에서 제외되며, 고칠 Xcode나 Android Studio 프로젝트는 없습니다.",
+        en: "Each run's web root and builds for the target; generated and git-ignored, with no Xcode project to edit.",
+        ko: "실행할 때마다 target의 웹 루트와 빌드를 쓰는 곳입니다. 생성되고 git에서 제외되며, 고칠 Xcode 프로젝트는 없습니다.",
       }),
     },
     {
@@ -57,7 +57,7 @@ export default page().render(() => {
 
   const flowCards = [
     {
-      title: l.trans({ en: "1. Mobile config", ko: "1. mobile 설정" }),
+      title: l.trans({ en: "1. Native config", ko: "1. native 설정" }),
       desc: l.trans({
         en: (
           <span>
@@ -102,7 +102,7 @@ export default page().render(() => {
     },
   ];
 
-  const mobileFields = [
+  const nativeFields = [
     {
       key: "appName",
       type: "string",
@@ -140,24 +140,23 @@ export default page().render(() => {
       }),
     },
     {
-      key: "targets",
-      type: "Record<string, Target>",
-      default: "{ default: {} }",
-      desc: l.trans({
-        en: "One entry per native app. The key is the name `--target` takes.",
-        ko: "네이티브 앱마다 항목 하나입니다. 키가 곧 `--target`에 넘기는 이름입니다.",
-      }),
-    },
-    {
-      key: "targets.*.permissions",
-      type: "MobilePermission[]",
+      key: "permissions",
+      type: "NativePermission[]",
       desc: l.trans({
         en: "Device features to prepare. Only `camera`, `contacts`, `location`, `push` and `speech` exist.",
         ko: "준비할 기기 기능입니다. `camera`, `contacts`, `location`, `push`, `speech` 다섯 가지뿐입니다.",
       }),
     },
     {
-      key: "targets.*.indexPath",
+      key: "plugins",
+      type: "string[]",
+      desc: l.trans({
+        en: "More runtime plugins, by builtin id such as `iap` or by absolute folder.",
+        ko: "더 싣는 런타임 플러그인이며, `iap` 같은 내장 id나 절대 경로 폴더로 적습니다.",
+      }),
+    },
+    {
+      key: "indexPath",
       type: "string",
       default: "/",
       desc: l.trans({
@@ -166,35 +165,44 @@ export default page().render(() => {
       }),
     },
     {
-      key: "targets.*.basePath",
+      key: "basePath",
       type: "string",
       desc: l.trans({
-        en: "The client to open in a multi-client app. It must be a `basePath` declared in `routes`.",
-        ko: "다중 클라이언트 앱에서 열 클라이언트입니다. `routes`에 선언한 `basePath`여야 합니다.",
+        en: "The client to open in a multi-client app, a `basePath` in `routes`. Leave it out without one.",
+        ko: "다중 클라이언트 앱에서 열 클라이언트이며, `routes`에 선언한 `basePath`입니다. basePath가 없으면 적지 않습니다.",
       }),
     },
     {
-      key: "targets.*.native",
-      type: "{ plugins?, ios?, android?, desktop? }",
+      key: "ios",
+      type: "{ teamId?, infoPlist?, entitlements?, privacy?, files? }",
       desc: l.trans({
-        en: "Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.",
-        ko: "네이티브 설정입니다. 추가 `plugins`, `ios.infoPlist`·`ios.entitlements` 키, `android.manifest`·`application`·`activity` XML, FCM용 `android.googleServices`, `android.autoplay`, 앱의 서버를 싣는 데스크톱 앱용 `desktop.server`, 그리고 지키는 사람이 없는 데스크톱 앱용 `desktop.recovery`·`desktop.window`·`desktop.screenCapture`를 적습니다.",
+        en: "iOS only: the universal-link team, Info.plist and entitlement keys, privacy manifest, bundle files.",
+        ko: "iOS 전용입니다. universal link용 팀, Info.plist·entitlements 키, 개인정보 매니페스트, 번들 파일을 적습니다.",
       }),
     },
     {
-      key: "targets.*.files",
-      type: "Record<string, string>",
+      key: "android",
+      type: "{ googleServices?, push?, autoplay?, files?, manifest?, … }",
       desc: l.trans({
-        en: "Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.",
-        ko: "앱 파일을 앱 안으로 복사합니다. 키는 들어갈 자리로 `ios/<path>`, `android/res/<type>/<file>`, `android/assets/<path>` 중 하나이고, 값은 앱 폴더 기준 원본 경로입니다.",
+        en: "Android only: `googleServices` for FCM, how pushes show, app-link fingerprints, files, manifest XML.",
+        ko: "Android 전용입니다. FCM용 `googleServices`, 푸시 표시, 앱 링크 fingerprint, 파일, manifest XML을 적습니다.",
       }),
     },
     {
-      key: "targets.*.appId",
-      type: "string",
+      key: "desktop",
+      type: "{ server?, recovery?, window?, screenCapture? }",
       desc: l.trans({
-        en: "Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app. `files` and `native` at the `mobile` root merge into every target.",
-        ko: "`appName`, `version`, `buildNum`처럼 target별로 루트 값을 덮어씁니다. `appId`가 다르면 별개의 앱입니다. `mobile` 루트의 `files`와 `native`는 모든 target에 합쳐집니다.",
+        en: "Desktop only: `server` carries the app's server, and the rest keeps an app nobody attends running.",
+        ko: "데스크톱 전용입니다. `server`는 앱의 서버를 싣고, 나머지는 지키는 사람이 없는 앱을 계속 돌게 합니다.",
+      }),
+    },
+    {
+      key: "targets",
+      type: "Record<string, AkanNativeSettings>",
+      default: "{ default: {} }",
+      desc: l.trans({
+        en: "One entry per native app, keyed by the name `--target` takes. Each takes the fields above.",
+        ko: "네이티브 앱마다 항목 하나이며, 키가 곧 `--target`에 넘기는 이름입니다. 각각 위 필드를 받습니다.",
       }),
     },
   ];
@@ -265,28 +273,13 @@ export default page().render(() => {
       en: (
         <>
           <strong>Keep the CSR bundle on.</strong> The native app ships it, so <code>{"web: { csr: false }"}</code>{" "}
-          cannot sit next to a <code>mobile</code> block.
+          cannot sit next to a <code>native</code> block.
         </>
       ),
       ko: (
         <>
           <strong>CSR 번들을 켜 두세요.</strong> 네이티브 앱에 이 번들이 들어가므로 <code>{"web: { csr: false }"}</code>
-          와 <code>mobile</code> 블록은 함께 쓸 수 없습니다.
-        </>
-      ),
-    }),
-    l.trans({
-      en: (
-        <>
-          <strong>Capacitor keys are refused.</strong> <code>plugins</code>, <code>ios</code> and <code>android</code>{" "}
-          directly under <code>mobile</code> or a target stop the build; they live under <code>native</code> now.
-        </>
-      ),
-      ko: (
-        <>
-          <strong>Capacitor 시절 키는 거부됩니다.</strong> <code>mobile</code>이나 target 바로 아래의{" "}
-          <code>plugins</code>, <code>ios</code>, <code>android</code>는 빌드를 멈춥니다. 이제는 <code>native</code>{" "}
-          아래에 둡니다.
+          와 <code>native</code> 블록은 함께 쓸 수 없습니다.
         </>
       ),
     }),
@@ -534,8 +527,8 @@ export default page().render(() => {
       key: "--target",
       type: "string",
       desc: l.trans({
-        en: "A key of `mobile.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.",
-        ko: "`mobile.targets`의 키나 `all`입니다. target이 하나뿐이면 자동으로 고르며, `start-*`는 한 번에 하나만 실행합니다.",
+        en: "A key of `native.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.",
+        ko: "`native.targets`의 키나 `all`입니다. target이 하나뿐이면 자동으로 고르며, `start-*`는 한 번에 하나만 실행합니다.",
       }),
     },
     {
@@ -649,13 +642,13 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Where the file lands.</strong> <code>apps/myapp/.akan/mobile/default/native/android</code>.{" "}
+          <strong>Where the file lands.</strong> <code>apps/myapp/.akan/native/default/build/android</code>.{" "}
           <code>release-android</code> prints the path.
         </>
       ),
       ko: (
         <>
-          <strong>결과물 위치.</strong> <code>apps/myapp/.akan/mobile/default/native/android</code>에 생기며,{" "}
+          <strong>결과물 위치.</strong> <code>apps/myapp/.akan/native/default/build/android</code>에 생기며,{" "}
           <code>release-android</code>가 경로를 출력합니다.
         </>
       ),
@@ -681,13 +674,13 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          The profile's App ID is <code>mobile.appId</code>. A wildcard ID is used only when the app asks for neither
+          The profile's App ID is <code>native.appId</code>. A wildcard ID is used only when the app asks for neither
           push nor associated domains.
         </>
       ),
       ko: (
         <>
-          프로필의 App ID가 <code>mobile.appId</code>와 같아야 합니다. 와일드카드 ID는 앱이 푸시도 associated domains도
+          프로필의 App ID가 <code>native.appId</code>와 같아야 합니다. 와일드카드 ID는 앱이 푸시도 associated domains도
           요청하지 않을 때만 씁니다.
         </>
       ),
@@ -815,8 +808,8 @@ export default page().render(() => {
     {
       symptom: l.trans({ en: "A native file is missing", ko: "네이티브 파일이 없음" }),
       check: l.trans({
-        en: "A `files` key is where the file lands (`ios/…`, `android/res/…`, `android/assets/…`); the value is the path in the app folder.",
-        ko: "`files`의 키는 파일이 들어갈 자리(`ios/…`, `android/res/…`, `android/assets/…`)이고, 값이 앱 폴더 안의 경로입니다.",
+        en: "`ios.files` keys are bundle paths, `android.files` keys `res/…` or `assets/…`; values are app-relative.",
+        ko: "`ios.files`의 키는 앱 번들 안 경로, `android.files`의 키는 `res/…`나 `assets/…`이고, 값은 앱 폴더 기준 경로입니다.",
       }),
     },
     {
@@ -902,11 +895,11 @@ export default page().render(() => {
       }),
     },
     {
-      href: "/docs/core/config#mobile",
-      title: l.trans({ en: "Every Mobile Field", ko: "mobile 필드 전체" }),
+      href: "/docs/core/config#native",
+      title: l.trans({ en: "Every Native Field", ko: "native 필드 전체" }),
       desc: l.trans({
-        en: "Icons, splash images, native files and the native block.",
-        ko: "아이콘, 스플래시 이미지, 네이티브 파일, native 블록까지 모두 봅니다.",
+        en: "Icons, splash images, files and the ios, android and desktop sections.",
+        ko: "아이콘, 스플래시 이미지, 파일, ios·android·desktop 섹션까지 모두 봅니다.",
       }),
     },
     {
@@ -951,23 +944,23 @@ export default page().render(() => {
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="mobile-config" title={l.trans({ en: "Mobile Config", ko: "mobile 설정" })}>
-        <Docs.Title>{l.trans({ en: "Mobile Config", ko: "mobile 설정" })}</Docs.Title>
+      <Scroll.Slide id="native-config" title={l.trans({ en: "Native Config", ko: "native 설정" })}>
+        <Docs.Title>{l.trans({ en: "Native Config", ko: "native 설정" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
               en: (
                 <span>
-                  The <code>mobile</code> block in <code>akan.config.ts</code> describes the native app: its name, ID,
-                  version and targets. Values at the <code>mobile</code> root apply to every target, and a target
-                  overrides the ones it sets.
+                  The <code>native</code> block in <code>akan.config.ts</code> describes the native app: its name, ID,
+                  version and permissions, with what only one platform reads under <code>ios</code>,{" "}
+                  <code>android</code> or <code>desktop</code>. An app that ships one native app needs nothing more:
                 </span>
               ),
               ko: (
                 <span>
-                  <code>akan.config.ts</code>의 <code>mobile</code> 블록이 네이티브 앱의 이름, ID, 버전, target을
-                  정합니다. <code>mobile</code> 루트의 값은 모든 target의 기본값이고, target이 직접 적은 값이 그 위를
-                  덮습니다.
+                  <code>akan.config.ts</code>의 <code>native</code> 블록이 네이티브 앱의 이름, ID, 버전, 권한을 정하고,
+                  한 플랫폼만 읽는 값은 <code>ios</code>, <code>android</code>, <code>desktop</code> 아래에 둡니다.
+                  네이티브 앱을 하나만 내는 앱은 이것으로 충분합니다:
                 </span>
               ),
             })}
@@ -978,32 +971,26 @@ export default page().render(() => {
             code={`import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
+  native: {
     appName: "Acme Shop",
     appId: "com.acme.shop",
     version: "1.0.0",
     buildNum: 1,
-    targets: {
-      default: {
-        indexPath: "/home",
-        permissions: ["camera", "push"],
-        native: {
-          android: { googleServices: "secrets/google-services.json" },
-        },
-      },
-    },
+    indexPath: "/home",
+    permissions: ["camera", "push"],
+    android: { googleServices: "secrets/google-services.json" },
   },
 };
 
 export default config;`}
           />
-          <Docs.OptionTable items={mobileFields} />
+          <Docs.OptionTable items={nativeFields} />
           <div>
             {l.trans({
               en: (
                 <span>
-                  Icons, splash images and deep links are also target fields; see{" "}
-                  <Link href="/docs/core/config#mobile" className={inlineLink}>
+                  Icons, splash images and deep links are also <code>native</code> fields; see{" "}
+                  <Link href="/docs/core/config#native" className={inlineLink}>
                     Config
                   </Link>{" "}
                   and{" "}
@@ -1015,8 +1002,8 @@ export default config;`}
               ),
               ko: (
                 <span>
-                  아이콘, 스플래시 이미지, 딥링크도 target 필드입니다.{" "}
-                  <Link href="/docs/core/config#mobile" className={inlineLink}>
+                  아이콘, 스플래시 이미지, 딥링크도 <code>native</code> 필드입니다.{" "}
+                  <Link href="/docs/core/config#native" className={inlineLink}>
                     설정
                   </Link>
                   과{" "}
@@ -1056,14 +1043,23 @@ export default config;`}
               en: (
                 <span>
                   When one repo ships separate customer, admin or partner apps, split the clients with{" "}
-                  <code>basePath</code> and give each its own target. A target that sets its own <code>appId</code> is a
-                  separate store app:
+                  <code>basePath</code> and give each a key under <code>targets</code>. A target takes the same fields
+                  as <code>native</code>, and what it sets wins: objects such as <code>ios</code>, <code>android</code>,{" "}
+                  <code>desktop</code>, <code>deepLinks</code> and <code>updates</code> merge key by key, while lists
+                  and every other value are replaced, so a target's <code>permissions</code> replace the list in{" "}
+                  <code>native</code> rather than add to it. Without <code>targets</code> the app has one target, named{" "}
+                  <code>default</code>. A target that sets its own <code>appId</code> is a separate store app:
                 </span>
               ),
               ko: (
                 <span>
-                  한 저장소에서 고객용, 관리자용, 파트너용 앱을 따로 낸다면 <code>basePath</code>로 클라이언트를 나누고
-                  target도 하나씩 둡니다. <code>appId</code>를 따로 정한 target은 별개의 스토어 앱이 됩니다:
+                  한 저장소에서 고객용, 관리자용, 파트너용 앱을 따로 낸다면 <code>basePath</code>로 클라이언트를 나누고{" "}
+                  <code>targets</code>에 앱마다 키를 하나씩 둡니다. target은 <code>native</code>와 같은 필드를 받고,
+                  target이 적은 값이 이깁니다. <code>ios</code>, <code>android</code>, <code>desktop</code>,{" "}
+                  <code>deepLinks</code>, <code>updates</code> 같은 객체는 키마다 합치고, 목록과 나머지 값은 통째로
+                  바꿉니다. 그래서 target의 <code>permissions</code>는 <code>native</code>의 목록에 더해지지 않고 그
+                  목록을 대신합니다. <code>targets</code>가 없으면 앱에는 <code>default</code>라는 target 하나가
+                  있습니다. <code>appId</code>를 따로 정한 target은 별개의 스토어 앱이 됩니다:
                 </span>
               ),
             })}
@@ -1076,17 +1072,19 @@ export default config;`}
     { basePath: "shop", domains: { main: ["shop.acme.com"] } },
     { basePath: "partner", domains: { main: ["partner.acme.com"] } },
   ],
-  mobile: {
+  native: {
     appName: "Acme Shop",
     appId: "com.acme.shop",
     version: "1.0.0",
     buildNum: 1,
+    permissions: ["push"],
     targets: {
       shop: { basePath: "shop" },
       partner: {
         basePath: "partner",
         appName: "Acme Partner",
         appId: "com.acme.partner",
+        permissions: ["camera", "push"],
       },
     },
   },
@@ -1183,13 +1181,9 @@ export default config;`}
           <Code.Snippet
             className="w-full"
             title="apps/myapp/akan.config.ts"
-            code={`mobile: {
-  targets: {
-    default: {
-      permissions: ["push"],
-      native: { plugins: ["iap"] },
-    },
-  },
+            code={`native: {
+  permissions: ["push"],
+  plugins: ["iap"],
 },`}
           />
           <ul className={bulletList}>
@@ -1260,13 +1254,13 @@ android/KioskPlugin.kt`}
               en: (
                 <span>
                   This gets the Android app running on an emulator or a phone. Keep one value consistent:{" "}
-                  <code>mobile.appId</code> becomes the Android <code>applicationId</code>.
+                  <code>native.appId</code> becomes the Android <code>applicationId</code>.
                 </span>
               ),
               ko: (
                 <span>
                   Android 앱을 에뮬레이터나 폰에서 띄우는 과정입니다. 꼭 맞춰야 할 값은 하나입니다.{" "}
-                  <code>mobile.appId</code>가 Android의 <code>applicationId</code>가 됩니다.
+                  <code>native.appId</code>가 Android의 <code>applicationId</code>가 됩니다.
                 </span>
               ),
             })}
@@ -1293,12 +1287,12 @@ android/KioskPlugin.kt`}
               {l.trans({
                 en: (
                   <>
-                    A stable <code>mobile.appId</code> such as <code>com.acme.shop</code>.
+                    A stable <code>native.appId</code> such as <code>com.acme.shop</code>.
                   </>
                 ),
                 ko: (
                   <>
-                    <code>com.acme.shop</code>처럼 바뀌지 않을 <code>mobile.appId</code>.
+                    <code>com.acme.shop</code>처럼 바뀌지 않을 <code>native.appId</code>.
                   </>
                 ),
               })}
@@ -1328,13 +1322,13 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"`}
               {l.trans({
                 en: (
                   <>
-                    Check that <code>mobile.appId</code> is final (see Mobile Config above), then start the dev server.
+                    Check that <code>native.appId</code> is final (see Native Config above), then start the dev server.
                     Without <code>--release</code>, the app loads its screens from it:
                   </>
                 ),
                 ko: (
                   <>
-                    <code>mobile.appId</code>가 확정됐는지 확인하고(위 mobile 설정 참고) 개발 서버를 켭니다.{" "}
+                    <code>native.appId</code>가 확정됐는지 확인하고(위 native 설정 참고) 개발 서버를 켭니다.{" "}
                     <code>--release</code> 없이 실행하면 앱이 이 서버에서 화면을 불러옵니다:
                   </>
                 ),
@@ -1456,12 +1450,12 @@ export MYAPP_RELEASE_KEY_PASSWORD=<key password>`}
               {l.trans({
                 en: (
                   <>
-                    A stable <code>mobile.appId</code>, used as the bundle ID.
+                    A stable <code>native.appId</code>, used as the bundle ID.
                   </>
                 ),
                 ko: (
                   <>
-                    bundle ID로 쓸, 바뀌지 않을 <code>mobile.appId</code>.
+                    bundle ID로 쓸, 바뀌지 않을 <code>native.appId</code>.
                   </>
                 ),
               })}
@@ -1590,47 +1584,72 @@ akan start-desktop myapp --release true --env debug`}
               en: (
                 <span>
                   A desktop app can also carry the app's own server, so it works on one computer with no backend
-                  elsewhere. Turn it on for a target with <code>{"native: { desktop: { server: true } }"}</code>. Then{" "}
-                  <code>akan start-desktop</code> starts <code>akan start</code> in the same command when none is
-                  running, and <code>akan build-desktop</code> and <code>akan publish-update</code> build the app with
-                  the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its
-                  SQLite data in the app data folder's <code>server/</code> (on Windows under{" "}
-                  <code>%LOCALAPPDATA%</code>; a <code>--debug</code> build keeps its own <code>server-debug/</code>).
-                  It trusts the certificates the operating system trusts and follows the proxy variables of the user's
-                  session, as the page does. Any program on the computer can call that port too, so guard its endpoints
-                  as you would a network server's. The port is usually the one it had last time but is not guaranteed,
-                  so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not
-                  through the carried server. An installed app refuses an update that adds or drops the server, so
-                  switching it for an app already out there takes a reinstall, and the reinstall moves no data: with the
-                  server added the app starts on an empty local database, and with it dropped the pages call the backend
-                  the build names.
+                  elsewhere. Turn it on with <code>{"desktop: { server: true }"}</code> in <code>native</code>, or in
+                  one target to carry it in that app only. Then <code>akan start-desktop</code> starts{" "}
+                  <code>akan start</code> in the same command when none is running, and <code>akan build-desktop</code>{" "}
+                  and <code>akan publish-update</code> build the app with the server inside: it starts beside the window
+                  on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's{" "}
+                  <code>server/</code> (on Windows under <code>%LOCALAPPDATA%</code>; a <code>--debug</code> build keeps
+                  its own <code>server-debug/</code>). It trusts the certificates the operating system trusts and
+                  follows the proxy variables of the user's session, as the page does. Any program on the computer can
+                  call that port too, so guard its endpoints as you would a network server's. The port is usually the
+                  one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI
+                  goes through your cloud server's adapter, not through the carried server. An installed app refuses an
+                  update that adds or drops the server, so switching it for an app already out there takes a reinstall,
+                  and the reinstall moves no data: with the server added the app starts on an empty local database, and
+                  with it dropped the pages call the backend the build names.
                 </span>
               ),
               ko: (
                 <span>
-                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.
-                  타깃에 <code>{"native: { desktop: { server: true } }"}</code>를 주면 <code>akan start-desktop</code>은
-                  떠 있는 개발 서버가 없을 때 같은 명령에서 <code>akan start</code>를 띄우고,{" "}
-                  <code>akan build-desktop</code>과 <code>akan publish-update</code>는 서버를 넣은 앱을 빌드합니다. 이
-                  서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를 앱 데이터 폴더의{" "}
-                  <code>server/</code>에 둡니다(Windows는 <code>%LOCALAPPDATA%</code> 아래, <code>--debug</code> 빌드는
-                  따로 <code>server-debug/</code>). 운영체제가 믿는 인증서를 믿고, 페이지처럼 사용자 세션의 프록시
-                  변수를 따릅니다. 이 컴퓨터의 다른 프로그램도 그 포트를 부를 수 있으므로, 엔드포인트는 네트워크
-                  서버처럼 가드합니다. 포트는 대개 지난번과 같지만 보장되지 않습니다. 그래서 redirect URI가 정확히
-                  같아야 하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의 adapter로 받습니다. 설치된 앱은
-                  서버를 더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서 바꾸려면 다시 설치해야 합니다. 다시
-                  설치해도 데이터는 옮겨지지 않습니다. 서버를 더하면 앱이 빈 로컬 데이터베이스로 시작하고, 빼면 페이지가
-                  빌드에 적힌 백엔드를 부릅니다.
+                  데스크톱 앱에 앱의 서버를 넣을 수도 있습니다. 다른 곳에 백엔드 없이 컴퓨터 한 대에서 동작합니다.{" "}
+                  <code>native</code>에 <code>{"desktop: { server: true }"}</code>를 주면(한 타깃에만 주면 그 앱만
+                  서버를 싣습니다) <code>akan start-desktop</code>은 떠 있는 개발 서버가 없을 때 같은 명령에서{" "}
+                  <code>akan start</code>를 띄우고, <code>akan build-desktop</code>과 <code>akan publish-update</code>는
+                  서버를 넣은 앱을 빌드합니다. 이 서버는 창과 함께 loopback 포트로 떠서 API만 서빙하고, SQLite 데이터를
+                  앱 데이터 폴더의 <code>server/</code>에 둡니다(Windows는 <code>%LOCALAPPDATA%</code> 아래,{" "}
+                  <code>--debug</code> 빌드는 따로 <code>server-debug/</code>). 운영체제가 믿는 인증서를 믿고,
+                  페이지처럼 사용자 세션의 프록시 변수를 따릅니다. 이 컴퓨터의 다른 프로그램도 그 포트를 부를 수
+                  있으므로, 엔드포인트는 네트워크 서버처럼 가드합니다. 포트는 대개 지난번과 같지만 보장되지 않습니다.
+                  그래서 redirect URI가 정확히 같아야 하는 로그인 공급자는 앱에 넣은 서버가 아니라 클라우드 서버의
+                  adapter로 받습니다. 설치된 앱은 서버를 더하거나 빼는 업데이트를 받지 않으므로, 이미 배포한 앱에서
+                  바꾸려면 다시 설치해야 합니다. 다시 설치해도 데이터는 옮겨지지 않습니다. 서버를 더하면 앱이 빈 로컬
+                  데이터베이스로 시작하고, 빼면 페이지가 빌드에 적힌 백엔드를 부릅니다.
+                </span>
+              ),
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  An app with no basePaths leaves <code>basePath</code> out, and one that ships a single app needs no{" "}
+                  <code>targets</code>, so the shortest config that carries the server is this one; when the first page
+                  is not <code>/</code>, add <code>indexPath</code> beside <code>desktop</code>:
+                </span>
+              ),
+              ko: (
+                <span>
+                  basePath가 없는 앱은 <code>basePath</code>를 적지 않고, 앱을 하나만 내면 <code>targets</code>도 필요
+                  없으므로 서버를 싣는 가장 짧은 설정은 이렇습니다. 첫 페이지가 <code>/</code>가 아니면{" "}
+                  <code>desktop</code> 옆에 <code>indexPath</code>를 더합니다:
                 </span>
               ),
             })}
           </div>
           <Code.Snippet
             className="w-full"
+            title="apps/myapp/akan.config.ts"
+            code={`const config: AppConfig = {
+  native: { desktop: { server: true } },
+};`}
+          />
+          <Code.Snippet
+            className="w-full"
             title="Terminal"
             language="bash"
-            code={`akan start-desktop myapp --target kiosk
-akan build-desktop myapp --target kiosk --env main`}
+            code={`akan start-desktop myapp
+akan build-desktop myapp --env main`}
           />
           <Docs.Alert type="warning">
             {l.trans({
@@ -1697,18 +1716,17 @@ akan build-desktop myapp --target kiosk --env main`}
               en: (
                 <span>
                   A file the user picks reaches that server as a grant, never as a copy or a path, so a video of several
-                  gigabytes is not copied or uploaded. Add <code>file-picker</code> to the target's{" "}
-                  <code>native.plugins</code>, pick with <code>forServer: true</code>, hand the grant to an endpoint,
-                  and let the server exchange it with <code>NativeFile</code>: it gets the files the user picked and
-                  nothing else.
+                  gigabytes is not copied or uploaded. Add <code>file-picker</code> to <code>native.plugins</code>, pick
+                  with <code>forServer: true</code>, hand the grant to an endpoint, and let the server exchange it with{" "}
+                  <code>NativeFile</code>: it gets the files the user picked and nothing else.
                 </span>
               ),
               ko: (
                 <span>
                   사용자가 고른 파일은 복사본이나 경로가 아니라 허가(grant)로 서버에 전달됩니다. 그래서 수 GB 영상도
-                  복사하거나 업로드하지 않습니다. 타깃의 <code>native.plugins</code>에 <code>file-picker</code>를
-                  추가하고 <code>forServer: true</code>로 고른 뒤, grant를 엔드포인트에 넘기면 서버가{" "}
-                  <code>NativeFile</code>로 경로를 받습니다. 서버는 사용자가 고른 파일만 얻습니다.
+                  복사하거나 업로드하지 않습니다. <code>native.plugins</code>에 <code>file-picker</code>를 추가하고{" "}
+                  <code>forServer: true</code>로 고른 뒤, grant를 엔드포인트에 넘기면 서버가 <code>NativeFile</code>로
+                  경로를 받습니다. 서버는 사용자가 고른 파일만 얻습니다.
                 </span>
               ),
             })}
@@ -1727,8 +1745,8 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
           />
           <Docs.Alert type="info">
             {l.trans({
-              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.",
-              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume, Android는 미디어 볼륨), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 타깃의 native.plugins에 추가합니다. 빌트인 플러그인의 API는 모두 akanjs/client/native/<id>(akanjs/client/native/window, …/screen)에서, volume과 filePicker는 akanjs/client/native에서도 가져옵니다.",
+              en: "Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.",
+              ko: "장치는 서버가 아니라 네이티브 플러그인이 다룹니다. 디스플레이와 그 변경(screen), 디스플레이에 놓는 창(window), 시스템 볼륨과 음소거(volume, Android는 미디어 볼륨), 전역 단축키, 절전 막기, 로그인 시 실행이 있습니다. 각각 native.plugins에 추가합니다. 빌트인 플러그인의 API는 모두 akanjs/client/native/<id>(akanjs/client/native/window, …/screen)에서, volume과 filePicker는 akanjs/client/native에서도 가져옵니다.",
             })}
           </Docs.Alert>
           <Docs.SubSubTitle>{l.trans({ en: "An App Nobody Attends", ko: "지키는 사람이 없는 앱" })}</Docs.SubSubTitle>
@@ -1762,15 +1780,9 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
           <Code.Snippet
             className="w-full"
             title="apps/board/akan.config.ts"
-            code={`mobile: {
-  targets: {
-    default: {
-      native: {
-        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
-        android: { autoplay: true },
-      },
-    },
-  },
+            code={`native: {
+  desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+  android: { autoplay: true },
 },`}
           />
           <Docs.SubSubTitle>{l.trans({ en: "Installing On Windows", ko: "Windows에 설치하기" })}</Docs.SubSubTitle>
@@ -1825,9 +1837,9 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
               en: (
                 <span>
                   An installed app updates itself from releases you sign. <code>akan update-keygen</code> makes the key
-                  once and prints its public half for <code>mobile.updates</code>; <code>akan publish-update</code>{" "}
+                  once and prints its public half for <code>native.updates</code>; <code>akan publish-update</code>{" "}
                   builds a release (the whole app on the desktop, the web bundle on a phone) into{" "}
-                  <code>.akan/mobile/&lt;target&gt;/updates</code>, which holds only what you upload to{" "}
+                  <code>.akan/native/&lt;target&gt;/updates</code>, which holds only what you upload to{" "}
                   <code>updates.url</code>, the manifests last. A new release runs on trial until its first page mounts.
                   A phone looks for a newer web bundle by itself, at start and on each return to the front, and runs it
                   from the next cold start; on the desktop a release is the whole app and a relaunch, so when to check,
@@ -1838,8 +1850,8 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
               ko: (
                 <span>
                   설치된 앱은 직접 서명한 릴리스로 스스로 업데이트합니다. <code>akan update-keygen</code>이 키를 한 번
-                  만들고 <code>mobile.updates</code>에 넣을 공개 키를 출력합니다. <code>akan publish-update</code>는
-                  릴리스(데스크톱은 앱 전체, 폰은 웹 번들)를 <code>.akan/mobile/&lt;target&gt;/updates</code>에
+                  만들고 <code>native.updates</code>에 넣을 공개 키를 출력합니다. <code>akan publish-update</code>는
+                  릴리스(데스크톱은 앱 전체, 폰은 웹 번들)를 <code>.akan/native/&lt;target&gt;/updates</code>에
                   빌드합니다. 그 폴더에는 <code>updates.url</code>에 올릴 것만 있으며, manifest를 마지막에 올립니다. 새
                   릴리스는 첫 페이지가 마운트될 때까지 시험 실행입니다. 폰은 시작할 때와 앞으로 돌아올 때마다 새 웹
                   번들을 스스로 찾아 받고 다음 콜드 스타트부터 씁니다. 데스크톱은 릴리스가 앱 전체이고 재실행이 따르므로

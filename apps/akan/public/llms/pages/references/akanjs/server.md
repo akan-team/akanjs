@@ -206,7 +206,7 @@ CSR — /__csr
 
   - web: true: The default: pages, the mobile bundle and the API.
 
-  - web: { csr: false }: No mobile bundle, so `/__csr` and `?csr=true` are gone. Not allowed with a `mobile` section.
+  - web: { csr: false }: No mobile bundle, so `/__csr` and `?csr=true` are gone. Not allowed with a `native` section.
 
   - web: false: An API-only build. Nothing under `page/` is served.
 

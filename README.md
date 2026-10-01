@@ -56,7 +56,7 @@ const config: AppConfig = {};
 export default config;
 ```
 
-Production apps can grow into routes, base paths, domains, mobile metadata, and deployment options through
+Production apps can grow into routes, base paths, domains, native app settings, and deployment options through
 `akan.config.ts`.
 
 ## Readable By Design
@@ -64,7 +64,7 @@ Production apps can grow into routes, base paths, domains, mobile metadata, and 
 Akan keeps long-lived applications understandable by making the important decisions explicit and repeatable.
 
 - **One configuration surface**: `akan.config.ts` is the app-level control plane. It can stay empty until the
-  app actually needs routes, domains, base paths, mobile settings, or deployment options.
+  app actually needs routes, domains, base paths, native app settings, or deployment options.
 - **Monorepo-native reuse**: shared libraries and domain modules are first-class, so validated business code can
   be reused without rebuilding the same wheel in each app.
 - **Strict structure, familiar code**: file locations, names, declarations, and module boundaries follow the same
@@ -227,7 +227,7 @@ Common areas:
 ## Application Configuration
 
 `akan.config.ts` is the single place for app-level configuration. It can be empty for simple apps, then
-grow only when the app needs routes, domains, base paths, or mobile settings.
+grow only when the app needs routes, domains, base paths, or native app settings.
 
 ```ts
 import type { AppConfig } from "akanjs";
@@ -237,7 +237,8 @@ const config: AppConfig = {
     { domains: { main: ["example.com", "www.example.com"] }, basePath: "web" },
     { domains: {}, basePath: "app" },
   ],
-  mobile: {
+  native: {
+    basePath: "app",
     appName: "Example",
     appId: "com.example.app",
     version: "1.0.0",

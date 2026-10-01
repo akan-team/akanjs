@@ -1,13 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
-import type {
-  AkanMobileTargetConfig,
-  AkanNativeValue,
-  AkanPluginNativeConfig,
-  MobileEnv,
-  MobilePermission,
-} from "akanjs";
+import type { AkanNativeTarget, AkanNativeValue, AkanPluginNativeConfig, NativeEnv, NativePermission } from "akanjs";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import type { NativePluginFolder } from "./nativePluginFolders";
@@ -16,16 +10,16 @@ import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 export interface NativeConfigInput {
   /** The app folder; every relative path in the target resolves against it. */
   appPath: string;
-  target: AkanMobileTargetConfig;
+  target: AkanNativeTarget;
   /** The assembled web root the app loads. */
   webDir: string;
   /** What the app's and its libs' plugins declare. */
   contributions: AkanPluginNativeConfig[];
   locales: readonly string[];
   /** The backend the binary talks to; an updates channel left unnamed follows it. */
-  env?: MobileEnv;
+  env?: NativeEnv;
   platform: NativePlatform;
-  /** A desktop build that carries its server (the target's `native.desktop.server`). */
+  /** A desktop build that carries its server (the target's `desktop.server`). */
   desktopServer?: DesktopServerBundle;
   /** The plugins in the app's and its libs' `native/` folders. */
   nativePlugins?: NativePluginFolder[];
@@ -57,7 +51,7 @@ export class NativeConfig {
     "haptics",
   ] as const;
   //* Used when no plugin of the app or its libs claims the permission; speech has no native plugin yet.
-  static readonly builtinContributions: { [permission in MobilePermission]: AkanPluginNativeConfig } = {
+  static readonly builtinContributions: { [permission in NativePermission]: AkanPluginNativeConfig } = {
     camera: {
       permission: "camera",
       plugins: ["camera"],
@@ -112,7 +106,7 @@ export class NativeConfig {
     const folders = new Set(nativePlugins.map((plugin) => path.resolve(plugin.dir)));
     const folderIds = new Set(nativePlugins.map((plugin) => plugin.id));
     //? A `native/<id>` folder ships by itself; listed again, by path or by id, it would reach the runtime twice.
-    const listed = (target.native?.plugins ?? []).filter((spec) =>
+    const listed = (target.plugins ?? []).filter((spec) =>
       NativeConfig.#isId(spec) ? !folderIds.has(spec) : !folders.has(path.resolve(appPath, spec)),
     );
     const plugins = [
@@ -142,11 +136,11 @@ export class NativeConfig {
     const ios = NativeConfig.#compact<NativeIos>({
       infoPlist: NativeConfig.#merged(
         applied.map((c) => c.infoPlist),
-        target.native?.ios?.infoPlist,
+        target.ios?.infoPlist,
       ),
       entitlements: NativeConfig.#merged(
         applied.map((c) => c.entitlements),
-        target.native?.ios?.entitlements,
+        target.ios?.entitlements,
       ),
     });
     const manifest = [
@@ -156,21 +150,24 @@ export class NativeConfig {
       ...[...new Set(applied.flatMap((c) => c.androidFeatures ?? []))].map(
         (name) => `<uses-feature android:name="${name}" android:required="false" />`,
       ),
-      ...(target.native?.android?.manifest ?? []),
+      ...(target.android?.manifest ?? []),
     ];
     const android = NativeConfig.#compact({
       manifest,
-      application: target.native?.android?.application ?? [],
-      activity: target.native?.android?.activity ?? [],
+      application: target.android?.application ?? [],
+      activity: target.android?.activity ?? [],
     });
-    const resources = Object.entries(target.files ?? {}).map(([to, from]) => ({ from: abs(from), to }));
+    const resources = [
+      ...Object.entries(target.ios?.files ?? {}).map(([to, from]) => ({ from: abs(from), to: `ios/${to}` })),
+      ...Object.entries(target.android?.files ?? {}).map(([to, from]) => ({ from: abs(from), to: `android/${to}` })),
+    ];
     const native = NativeConfig.#compact({ ios, android, resources });
-    const googleServices = target.native?.android?.googleServices;
-    const pushAndroid = target.native?.push?.android;
+    const googleServices = target.android?.googleServices;
+    const pushAndroid = target.android?.push;
     const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
-      recovery: target.native?.desktop?.recovery,
-      screenCapture: target.native?.desktop?.screenCapture,
-      window: NativeConfig.#compact({ ...target.native?.desktop?.window }),
+      recovery: target.desktop?.recovery,
+      screenCapture: target.desktop?.screenCapture,
+      window: NativeConfig.#compact({ ...target.desktop?.window }),
       server: desktopServer,
       bin: desktopBin,
     });
@@ -206,30 +203,30 @@ export class NativeConfig {
             },
           }
         : {}),
-      ...(target.native?.privacy ? { privacy: target.native.privacy } : {}),
+      ...(target.ios?.privacy ? { privacy: target.ios.privacy } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
       android: {
         debugAppIdSuffix: ".debug",
         ...(googleServices ? { googleServices: abs(googleServices) } : {}),
-        ...(target.native?.android?.autoplay ? { autoplay: true } : {}),
+        ...(target.android?.autoplay ? { autoplay: true } : {}),
       },
       keyboard: { resize: "none" },
       ...(desktop ? { desktop } : {}),
-      ...(target.assets?.icon ? { icon: NativeConfig.#icon(target.assets.icon, abs) } : {}),
-      ...(target.assets?.splash ? { splash: NativeConfig.#splash(target.assets.splash, abs) } : {}),
+      ...(target.icon ? { icon: NativeConfig.#icon(target.icon, abs) } : {}),
+      ...(target.splash ? { splash: NativeConfig.#splash(target.splash, abs) } : {}),
     };
     return { config, warnings };
   }
 
   static #icon(
-    icon: NonNullable<NonNullable<AkanMobileTargetConfig["assets"]>["icon"]>,
+    icon: NonNullable<AkanNativeTarget["icon"]>,
     abs: (relative: string) => string,
   ): NonNullable<AkanNativeConfig["icon"]> {
     return typeof icon === "string" ? abs(icon) : { ...icon, image: abs(icon.image) };
   }
 
   static #splash(
-    splash: NonNullable<NonNullable<AkanMobileTargetConfig["assets"]>["splash"]>,
+    splash: NonNullable<AkanNativeTarget["splash"]>,
     abs: (relative: string) => string,
   ): NonNullable<AkanNativeConfig["splash"]> {
     if (typeof splash === "string") return { image: abs(splash) };
@@ -237,10 +234,7 @@ export class NativeConfig {
   }
 
   //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
-  static #updates(
-    target: AkanMobileTargetConfig,
-    env?: MobileEnv,
-  ): NonNullable<AkanNativeConfig["updates"]> | undefined {
+  static #updates(target: AkanNativeTarget, env?: NativeEnv): NonNullable<AkanNativeConfig["updates"]> | undefined {
     const { url, publicKey, channel = env, ...rest } = target.updates ?? {};
     return url && publicKey ? { ...rest, url, publicKey, ...(channel ? { channel } : {}) } : undefined;
   }
@@ -286,7 +280,7 @@ export class NativeConfig {
   }
 
   //* Every route sits under /:lang, so an app link limited to a basePath lists it once per locale.
-  static #deepLinks(target: AkanMobileTargetConfig, locales: readonly string[]) {
+  static #deepLinks(target: AkanNativeTarget, locales: readonly string[]) {
     const basePath = target.basePath?.replace(/^\/+|\/+$/g, "");
     const pathPrefixes = basePath ? locales.map((locale) => `/${locale}/${basePath}`) : undefined;
     return {

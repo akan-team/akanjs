@@ -223,7 +223,7 @@ Option
 
 A button that takes a photo and previews it:
 
-**Declare the permission.** `"camera"` in the mobile target's `permissions` adds the camera plugin and its usage texts. There is no package to install.
+**Declare the permission.** `"camera"` in `native.permissions` adds the camera plugin and its usage texts. There is no package to install.
 
 **The browser picks from files.** Outside the native app every source becomes the library, so the same call works on the web without a check of your own.
 
@@ -231,7 +231,7 @@ A button that takes a photo and previews it:
 
 Native Plugins
 
-The mobile target, its permissions, and the plugins they add.
+Native permissions, and the plugins they add.
 
 useGeoLocation
 
@@ -249,7 +249,7 @@ An app hook that finds where to center a map:
 
 **`precise` says whether the fix is exact.** `false` means the user granted approximate location only; the web answers `null`.
 
-**Declare the permission.** `"location"` in the mobile target's `permissions` adds the geolocation plugin and its usage texts.
+**Declare the permission.** `"location"` in `native.permissions` adds the geolocation plugin and its usage texts.
 
 usePushNotification
 
@@ -309,7 +309,7 @@ Options
 
 A buy button that credits coins once the server has accepted the purchase:
 
-**Add the plugin to the target.** The iap plugin is not a permission: name it with `native: { plugins: ["iap"] }` on the mobile target.
+**Add the plugin to the native app.** The iap plugin is not a permission: name it with `native: { plugins: ["iap"] }` in `akan.config.ts`.
 
 **The server gets one body: `{ data }`.** `data` is `{ platform, packageName, productId, receipt, transactionId }`. On iOS `receipt` is the transaction's signed JWS (no app receipt, no account id), on Android the purchase token with its package name. Any 2xx accepts it, and its JSON reaches `onPay` or `onSubscribe` as `verified`.
 

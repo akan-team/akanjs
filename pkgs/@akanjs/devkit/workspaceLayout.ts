@@ -84,7 +84,7 @@ const libFacetRootTestPattern = /^[A-Za-z][A-Za-z0-9_-]*\.signal\.(test|spec)\.(
 export const isAllowedLibFacetRootFile = (filename: string) =>
   libFacetRootAllowedFiles.has(filename) || libFacetRootTestPattern.test(filename);
 
-//* What a Capacitor app kept in its root. The native runtime generates its projects under `.akan/mobile/<target>`, so
+//* What a Capacitor app kept in its root. The native runtime generates its projects under `.akan/native/<target>`, so
 //* these are named as leftovers instead of as unknown entries.
 const retiredAppRootEntries = new Set([
   "android",
@@ -97,7 +97,7 @@ const retiredAppRootEntries = new Set([
 
 export const rootEntryHintOf = (type: SysType, name: string) =>
   type === "app" && retiredAppRootEntries.has(name)
-    ? "a Capacitor-era entry; the native runtime generates its projects under .akan/mobile/<target>, so delete it"
+    ? "a Capacitor-era entry; the native runtime generates its projects under .akan/native/<target>, so delete it"
     : null;
 
 // scanSync reads roots through `Bun.Glob("*")`, which skips dotfiles, so doctor skips them the same way.

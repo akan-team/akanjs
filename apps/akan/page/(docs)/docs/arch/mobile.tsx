@@ -24,8 +24,8 @@ export default page().render(() => {
     {
       name: "native shell",
       desc: l.trans({
-        en: "The small native app around your web client. The build generates it under .akan/mobile/<target>/native; it holds the app icon, ID and signing.",
-        ko: "웹 클라이언트를 감싸는 작은 네이티브 앱입니다. 빌드가 .akan/mobile/<target>/native 아래에 만들어 내며, 앱 아이콘, ID, 서명을 가집니다.",
+        en: "The small native app around your web client, built under .akan/native/<target>/build: icon, ID, signing.",
+        ko: "웹 클라이언트를 감싸는 작은 네이티브 앱이며, .akan/native/<target>/build 아래에 생성되어 앱 아이콘, ID, 서명을 가집니다.",
       }),
     },
     {
@@ -102,8 +102,8 @@ export default page().render(() => {
     {
       title: "Permissions",
       desc: l.trans({
-        en: "Permissions describe which native capabilities a mobile target intends to use.",
-        ko: "Permissions는 모바일 target이 사용하려는 네이티브 기능을 설명합니다.",
+        en: "Permissions describe which native capabilities a native target intends to use.",
+        ko: "Permissions는 네이티브 target이 사용하려는 네이티브 기능을 설명합니다.",
       }),
     },
     {
@@ -148,8 +148,8 @@ export default page().render(() => {
           </div>
           <div>
             {l.trans({
-              en: "The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, when the target sets native.desktop.server, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.",
-              ko: "같은 target으로 macOS, Windows, Linux 앱도 빌드합니다. 데스크톱 앱은 폰처럼 공유 백엔드를 부르거나, target에 native.desktop.server를 주면 앱의 서버를 함께 싣습니다. 이 서버는 창과 함께 loopback 포트로 떠서 데이터를 그 컴퓨터에 두고, 페이지가 부르는 유일한 백엔드가 되므로 다른 곳에 서버 없이 앱이 동작합니다.",
+              en: "The same target also builds a macOS, Windows or Linux app. A desktop app calls the shared backend like a phone does, or, with native.desktop.server on, carries the app's own server: it starts beside the window on a loopback port, keeps its data on that computer, and is the only backend the pages call, so the app works with no server elsewhere.",
+              ko: "같은 target으로 macOS, Windows, Linux 앱도 빌드합니다. 데스크톱 앱은 폰처럼 공유 백엔드를 부르거나, native.desktop.server를 켜면 앱의 서버를 함께 싣습니다. 이 서버는 창과 함께 loopback 포트로 떠서 데이터를 그 컴퓨터에 두고, 페이지가 부르는 유일한 백엔드가 되므로 다른 곳에 서버 없이 앱이 동작합니다.",
             })}
           </div>
           <Docs.Figure
@@ -190,19 +190,19 @@ export default page().render(() => {
       </Scroll.Slide>
       <Divider />
 
-      <Scroll.Slide id="mobile-targets" title={l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}>
-        <Docs.Title>{l.trans({ en: "Mobile Targets", ko: "모바일 Target" })}</Docs.Title>
+      <Scroll.Slide id="native-targets" title={l.trans({ en: "Native Targets", ko: "네이티브 Target" })}>
+        <Docs.Title>{l.trans({ en: "Native Targets", ko: "네이티브 Target" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Sometimes one product is really two apps in the store, such as a customer app and a staff app. Each needs its own name and app ID, yet both should run on the same backend. Mobile targets are for exactly that.",
-              ko: "하나의 제품이 스토어에서는 두 개의 앱일 때가 있습니다. 예를 들어 고객용 앱과 직원용 앱이죠. 각자 이름과 app ID는 달라야 하지만 백엔드는 같이 써야 합니다. 모바일 target은 바로 이럴 때 씁니다.",
+              en: "Sometimes one product is really two apps in the store, such as a customer app and a staff app. Each needs its own name and app ID, yet both should run on the same backend. Native targets are for exactly that.",
+              ko: "하나의 제품이 스토어에서는 두 개의 앱일 때가 있습니다. 예를 들어 고객용 앱과 직원용 앱이죠. 각자 이름과 app ID는 달라야 하지만 백엔드는 같이 써야 합니다. 네이티브 target은 바로 이럴 때 씁니다.",
             })}
           </div>
           <div>
             {l.trans({
-              en: "A mobile target is one native package built from an Akan app. A single Akan app can publish multiple mobile packages by pointing each target at a different basePath while reusing the same backend modules.",
-              ko: "모바일 target은 Akan 앱에서 만들어지는 하나의 네이티브 패키지입니다. 하나의 Akan 앱은 각 target이 서로 다른 basePath를 열도록 설정해 여러 모바일 패키지를 배포할 수 있고, 백엔드 모듈은 그대로 공유할 수 있습니다.",
+              en: "A native target is one native package built from an Akan app. A single Akan app can publish several packages by pointing each target at a different basePath while reusing the same backend modules. A target takes from native every value it does not set itself.",
+              ko: "네이티브 target은 Akan 앱에서 만들어지는 하나의 네이티브 패키지입니다. 하나의 Akan 앱은 각 target이 서로 다른 basePath를 열도록 설정해 여러 패키지를 배포할 수 있고, 백엔드 모듈은 그대로 공유할 수 있습니다. target은 자기가 적지 않은 값을 native에서 받습니다.",
             })}
           </div>
           <Docs.Figure
@@ -230,9 +230,7 @@ const config: AppConfig = {
     { domains: { main: ["store.example.com"] }, basePath: "store" },
     { domains: { main: ["admin.example.com"] }, basePath: "admin" },
   ],
-  mobile: {
-    appName: "Example App",
-    appId: "com.example.app",
+  native: {
     version: "1.0.0",
     buildNum: 1,
     targets: {
@@ -253,14 +251,14 @@ export default config;`}
               })}
             </li>
             <li>
-              <code>mobile</code>{" "}
+              <code>native</code>{" "}
               {l.trans({
-                en: "— the app's name, app ID, version and build number.",
-                ko: "— 앱의 이름, app ID, 버전, 빌드 번호입니다.",
+                en: "— what every target shares, here the version and build number.",
+                ko: "— 모든 target이 함께 쓰는 값이며, 여기서는 버전과 빌드 번호입니다.",
               })}
             </li>
             <li>
-              <code>mobile.targets</code>{" "}
+              <code>native.targets</code>{" "}
               {l.trans({
                 en: "— one entry per package, each with its own basePath, display name and app ID.",
                 ko: "— 패키지마다 항목 하나이며, 각자 basePath, 표시 이름, app ID를 가집니다.",
@@ -374,8 +372,8 @@ export default page()
           <ol className="my-4 list-decimal space-y-2 pl-5">
             <li>
               {l.trans({
-                en: "Declare the native capability the app needs: a permission in mobile.targets, or a plugin in native.plugins.",
-                ko: "필요한 네이티브 기능을 선언합니다. mobile.targets의 permission이나 native.plugins의 plugin입니다.",
+                en: "Declare the native capability the app needs: a permission in native.permissions, or a plugin in native.plugins.",
+                ko: "필요한 네이티브 기능을 선언합니다. native.permissions의 permission이나 native.plugins의 plugin입니다.",
               })}
             </li>
             <li>
@@ -413,8 +411,8 @@ export default page()
                 href: "/cheatsheet/mobile/setup",
                 title: l.trans({ en: "Setup", ko: "설정" }),
                 desc: l.trans({
-                  en: "Mobile config, native plugins, and building and running the iOS, Android and desktop apps.",
-                  ko: "Mobile config, 네이티브 plugin, iOS·Android·데스크톱 앱의 빌드와 실행을 다룹니다.",
+                  en: "Native config, native plugins, and building and running the iOS, Android and desktop apps.",
+                  ko: "native 설정, 네이티브 plugin, iOS·Android·데스크톱 앱의 빌드와 실행을 다룹니다.",
                 }),
               },
               {

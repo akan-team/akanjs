@@ -11,7 +11,7 @@
 - akan.config.ts Overview (#akan-config-overview)
 - Config File Shape (#config-shape)
 - routes (#routes)
-- mobile (#mobile)
+- native (#native)
 - database (#default-database-mode)
 - web (#web)
 - images (#images)
@@ -31,7 +31,7 @@ akan.config.ts
 
 akan.config.ts Overview
 
-Every app and library keeps one `akan.config.ts` at its root. It declares how that app is served, built and packaged: domains, web surfaces, the mobile app, the database modes and the Docker image.
+Every app and library keeps one `akan.config.ts` at its root. It declares how that app is served, built and packaged: domains, web surfaces, the native app, the database modes and the Docker image.
 
 Start from an empty object. Every key you leave out takes a framework default, so add a key only when the default stops fitting:
 
@@ -59,9 +59,9 @@ Library
 
   - syncPageLibs: Which libraries' page folders this app serves as its own routes.
 
-- Mobile, data and env
+- Native apps, data and env
 
-  - mobile: The native app's identity and one target per native package.
+  - native: The iOS, Android and desktop app: its identity, platform settings and targets.
 
   - database: The database modes the build can run in; a deployment picks one with `AKAN_DATABASE_MODE`.
 
@@ -89,7 +89,7 @@ Not accepted
 
 Config reference
 
-Types and defaults for every key, including every mobile field.
+Types and defaults for every key, including every native field.
 
 Multi Client
 
@@ -121,13 +121,13 @@ routes
 
 **No basePath, one client.** Without any basePath the app answers on `<app>-<branch>.<AKAN_PUBLIC_SERVE_DOMAIN>` and serves every page under `page/`.
 
-**Declare a basePath here before a mobile target uses it.** A target's `basePath` must be one of the basePaths in `routes`.
+**Declare a basePath here before the native app uses it.** A `basePath` in `native` or one of its targets must be one of the basePaths in `routes`.
 
-mobile
+native
 
-`mobile` defines the native app the `@akanjs/native` runtime builds from this app's web surface: its name, bundle id, version, and one target per package.
+`native` defines the iOS, Android and desktop app the `@akanjs/native` runtime builds from this app's web surface: its name, bundle id, version and permissions, with what only one platform reads under `ios`, `android` or `desktop`.
 
-Values at the mobile root are defaults for every target, and a target overrides only what it sets:
+One native app is written straight into native. To ship several, add targets: each takes the same fields and overrides native's field by field, merging objects key by key and replacing lists and every other value. Without targets the app has one target, named default:
 
 - appName (string, default the app name): Display name of the native app.
 
@@ -137,17 +137,17 @@ Values at the mobile root are defaults for every target, and a target overrides 
 
 - buildNum (number, default 1): Store build number: Android versionCode and the iOS build number.
 
-- targets (Record<string, Target>, default one target): One entry per native package. The key is the target's name.
+- basePath (string): The client the app opens, a basePath declared in `routes`. Leave it out when the app has none.
 
-- targets.*.basePath (string): The client this package opens. It must be a basePath declared in `routes`.
+- permissions (("camera" | "contacts" | "location" | "push" | "speech")[], default []): Native permissions. Each one turns on the matching plugin's native setup.
 
-- targets.*.permissions (("camera" | "contacts" | "location" | "push" | "speech")[], default []): Native permissions. Each one turns on the matching plugin's native setup.
+- targets (Record<string, AkanNativeSettings>, default { default: {} }): One entry per native app, keyed by its name. Each takes the fields of `native` but `targets`.
 
-**More target fields.** `indexPath`, `assets`, `deepLinks`, `files` and `native` (extra runtime plugins, Info.plist and entitlements, Android manifest XML, google-services.json) are listed in the config reference.
+**More fields.** `indexPath`, `icon`, `splash`, `plugins`, `deepLinks`, `updates` and the platform sections `ios` (Info.plist, entitlements, the privacy manifest, bundle files), `android` (google-services.json, manifest XML, files) and `desktop` (a carried server, kiosk settings) are listed in the config reference.
 
 **Pin a real appId before you ship.** Placeholder ids such as `com.example.*` are usually taken on Apple's portal, and `akan doctor --ios` warns about them.
 
-**Keep the CSR shell on.** The native app ships it, so a `mobile` section cannot sit beside `web: { csr: false }`.
+**Keep the CSR shell on.** The native app ships it, so a `native` section cannot sit beside `web: { csr: false }`.
 
 **Platform setup.** Firebase files, signing and store builds are covered in Mobile Setup.
 
@@ -213,7 +213,7 @@ A web-only app with no native build drops the mobile shell like this:
 
 **Dev keeps everything.** `akan start` ignores `web` and serves every surface.
 
-**A mobile app needs the CSR shell.** Do not combine a `mobile` section with `web: { csr: false }` or `web: false`; drop one of the two.
+**A native app needs the CSR shell.** Do not combine a `native` section with `web: { csr: false }` or `web: false`; drop one of the two.
 
 images
 
@@ -441,7 +441,7 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = (app) => ({
-  mobile: {
+  native: {
     appName: app.name,
     appId: `com.koyo.${app.name}`,
   },
@@ -471,18 +471,14 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  routes: [{ domains: {}, basePath: "shop" }],
-  mobile: {
+  routes: [{ domains: {}, basePath: "store" }],
+  native: {
+    basePath: "store",
     appName: "Shop",
     appId: "com.koyo.shop",
     version: "1.0.0",
     buildNum: 12,
-    targets: {
-      shop: {
-        basePath: "shop",
-        permissions: ["camera", "push"],
-      },
-    },
+    permissions: ["camera", "push"],
   },
 };
 

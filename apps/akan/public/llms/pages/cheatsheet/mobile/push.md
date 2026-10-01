@@ -74,9 +74,9 @@ iOS
 
   - env.client.*: The public Firebase web config and `vapidKey`, under `firebase`.
 
-  - google-services.json: The Android Firebase config, named by `native.android.googleServices` in the mobile target.
+  - google-services.json: The Android Firebase config, named by `native.android.googleServices` in `akan.config.ts`.
 
-  - permissions: ["push"]: Adds the native push plugin to the mobile target in `akan.config.ts`.
+  - permissions: ["push"]: Adds the native push plugin; it goes in `native` in `akan.config.ts`.
 
 - On the server
 
@@ -90,7 +90,7 @@ Not needed
 
 One Native Plugin
 
-A native app gets push from the runtime's `push` plugin, and `permissions: ["push"]` on the mobile target is all that adds it. There is no package to install. The plugin speaks each platform's own service:
+A native app gets push from the runtime's `push` plugin, and `permissions: ["push"]` in `native` is all that adds it. There is no package to install. The plugin speaks each platform's own service:
 
 - iOS · APNs — push.register() → { provider: "apns" } — Registers with APNs directly, with no Firebase SDK. A tap, and a message that arrives in front, come through the shell's notification router.
 
@@ -126,7 +126,7 @@ The client env file then looks like this:
 
 Android Push
 
-Android push is a Firebase Android app whose package name matches `mobile.appId` exactly, plus one config file the mobile target names.
+Android push is a Firebase Android app whose package name matches `native.appId` exactly, plus one config file `native.android.googleServices` names.
 
 Open Firebase Console and select the project.
 
@@ -134,7 +134,7 @@ Add an Android app.
 
 Open Firebase Android setup docs
 
-Enter the same package name as `mobile.appId`.
+Enter the same package name as `native.appId`.
 
 Download `google-services.json`.
 
@@ -142,13 +142,13 @@ Open google-services.json docs
 
 Place it at `apps/myapp/secrets/google-services.json`.
 
-Then name it in the target's native config in `akan.config.ts`:
+Then name it in `native.android` in `akan.config.ts`:
 
 **The build converts the file itself.** It picks the client whose package name is the target's `appId` (a debug build falls back to it too), and a file without that app fails the build with the names it has.
 
 **`secrets/`, not `public/`.** Everything in `public/` is served to every visitor. `secrets` keeps the file out of git and carries it with `akan upload-env` and `akan download-env`.
 
-**`permissions: ["push"]`** adds the push plugin and `POST_NOTIFICATIONS` to this target.
+**`permissions: ["push"]`** adds the push plugin and `POST_NOTIFICATIONS` to the app.
 
 **`google-services.json` is not the server credential.** It is the Android app's Firebase config, not the Firebase Admin service account JSON. The server credential goes in `env.server.*`, as the last section shows.
 
@@ -162,13 +162,13 @@ Open Android notification channel docs
 
 **Background.** FCM draws the notification itself while the app is not in front. A tap opens the app and routes the push's `url`.
 
-**Channel, icon and color.** Firebase posts into its default channel with the launcher icon; `akan.config.ts` does not name a channel, icon or color of its own yet.
+**Channel, icon and color.** Firebase posts into its default channel with the launcher icon, which the status bar draws as a gray square. `native.android.push` names a `channel` (`{ id, name, importance? }`), a `smallIcon` (a white-on-transparent PNG in the app folder) and an accent `color` instead.
 
 iOS Push
 
 iOS push needs no Firebase at all: the app registers with APNs, and the server sends to APNs itself. What you own is the capability on the App ID and the key the server signs with.
 
-In Apple Developer, open Identifiers, pick the App ID that matches `mobile.appId`, and turn on Push Notifications.
+In Apple Developer, open Identifiers, pick the App ID that matches `native.appId`, and turn on Push Notifications.
 
 Open Apple push notification registration docs
 
@@ -178,9 +178,9 @@ Open APNs token-based connection docs
 
 Put the three into `pushNoti.apns` on the server, as the last section shows.
 
-Add `permissions: ["push"]` to the mobile target.
+Add `permissions: ["push"]` to `native`.
 
-The target needs nothing else:
+Nothing else goes in the config:
 
 **No `GoogleService-Info.plist`, no firebase-ios-sdk.** The push plugin adds `UIBackgroundModes` and `aps-environment` to the app itself.
 
@@ -308,7 +308,7 @@ Open Firebase Admin setup docs
 
 **`firebase` is the service account** from Firebase Console, under Project settings, then Service accounts. Copy the five fields above from the downloaded JSON. Android and the web need it.
 
-**`apns` is the `.p8` key.** `privateKey` is the file's text (`\n` escapes are fine), `keyId` and `teamId` come from Apple Developer, and `bundleId` is the app's `mobile.appId`. iOS needs it.
+**`apns` is the `.p8` key.** `privateKey` is the file's text (`\n` escapes are fine), `keyId` and `teamId` come from Apple Developer, and `bundleId` is the app's `native.appId`. iOS needs it.
 
 **Neither is `google-services.json`.** That file is the Android app's config; these sign every send.
 
@@ -373,16 +373,10 @@ import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
   secrets: ["secrets/**"],
-  mobile: {
+  native: {
     appId: "com.myapp.app",
-    targets: {
-      default: {
-        permissions: ["push"],
-        native: {
-          android: { googleServices: "secrets/google-services.json" },
-        },
-      },
-    },
+    permissions: ["push"],
+    android: { googleServices: "secrets/google-services.json" },
   },
 };
 
@@ -395,13 +389,9 @@ export default config;
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
+  native: {
     appId: "com.myapp.app",
-    targets: {
-      default: {
-        permissions: ["push"],
-      },
-    },
+    permissions: ["push"],
   },
 };
 

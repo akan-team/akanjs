@@ -27,7 +27,7 @@ const app = {
     app: { name: "demo" },
     basePaths: new Set<string>(),
     database: { modes: ["single"] },
-    mobile: { targets: { default: target } },
+    native: { targets: { default: target } },
   }),
 } as unknown as AppExecutor;
 

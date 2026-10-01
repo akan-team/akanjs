@@ -34,7 +34,7 @@ describe("app root layout allowlist", () => {
   test("names what a Capacitor app kept in its root as a leftover, not an unknown entry", () => {
     for (const name of ["android", "ios", "mobile", "capacitor.config.ts", "capacitor.config.json"]) {
       expect(appRootAllowedFiles.has(name) || appRootAllowedDirs.has(name)).toBe(false);
-      expect(rootEntryHintOf("app", name)).toContain(".akan/mobile/<target>");
+      expect(rootEntryHintOf("app", name)).toContain(".akan/native/<target>");
     }
     expect(rootEntryHintOf("app", "base")).toBeNull();
     expect(rootEntryHintOf("lib", "ios")).toBeNull();

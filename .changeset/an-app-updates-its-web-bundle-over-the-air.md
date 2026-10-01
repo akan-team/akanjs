@@ -6,7 +6,7 @@
 
 An installed app updates itself: a phone its web bundle over the air, a desktop app the whole app.
 
-- `mobile.updates: { url, publicKey, channel?, readyTimeout? }` in `akan.config.ts`, per target too, the target's
+- `native.updates: { url, publicKey, channel?, readyTimeout? }` in `akan.config.ts`, per target too, the target's
   fields winning. It brings the runtime's `updates` plugin. A channel left unnamed is the backend env the binary is
   built for (`main`, `develop`, `debug`, …), so a `build-desktop` app (`debug` unless `--env` names another) takes
   only the releases published for that env.
@@ -17,8 +17,8 @@ An installed app updates itself: a phone its web bundle over the air, a desktop 
   build's pages are left alone. `akanjs/client/native` exports `updates`, `markReady` and `useUpdateState`.
 - `akan update-keygen <app> [--platform]` makes the signing key of the app's id once and prints its public half.
   `akan publish-update <app>` builds a release on this machine and signs it: the whole app for this computer's desktop
-  OS and CPU (with the app's server when the target's `native.desktop.server` says so, as for `build-desktop`), or the
-  web bundle for `--platform android|ios`. It writes the manifest and its files under `.akan/mobile/<target>/updates`,
+  OS and CPU (with the app's server when `desktop.server` says so for the target, as for `build-desktop`), or the
+  web bundle for `--platform android|ios`. It writes the manifest and its files under `.akan/native/<target>/updates`,
   to upload to `updates.url`, on the channel of its `--env` (`main` unless named). `--channel` names only the manifest
   written, not the channel the release follows, so a pilot group gets a target whose `updates.channel` is the pilot's.
 - The updates folder holds only what is uploaded, and whoever can reach `updates.url` reads it: the updater sends no
@@ -60,5 +60,5 @@ An installed app updates itself: a phone its web bundle over the air, a desktop 
   signing key on this computer, and whether its channel's previous release carries a server as it would — so a CI
   without the key stops at once and a publish never releases only the first targets. It writes `<channel>.json`
   together with its signature.
-  The channels `bundle`, `manifest.template` and `compat` are refused. `akan start` keeps `.akan/mobile`, where
-  releases wait to be uploaded, and the `bin` downloads.
+  The channels `bundle`, `manifest.template` and `compat` are refused. `akan start` keeps `.akan/native`, where
+  releases wait to be uploaded, and the `bin` downloads in `.akan/cache/bin`.

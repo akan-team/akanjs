@@ -31,7 +31,7 @@ Situation
 
 - A consumer client, a partner portal, and an internal tool — One backend, three audiences. Each gets its own home screen and navigation without a second app.
 
-- Android and iOS packages released per brand, region, or user type — A mobile target points at a basePath, so each package opens its own client from the same backend.
+- Android and iOS packages released per brand, region, or user type — A native target points at a basePath, so each package opens its own client from the same backend.
 
 - White-label or regional sites on shared business rules — Different domains, names, and first screens over the same domain models — the case basePath exists for.
 
@@ -101,7 +101,7 @@ Locally the site root has no page of its own, so Akan answers it with a list of 
 
 CSR And Mobile Builds
 
-When the app is built, Akan can prepare CSR web output per basePath. Mobile targets can also point to a basePath, so Android and iOS apps can open the right client from the same backend.
+When the app is built, Akan can prepare CSR web output per basePath. Native targets can also point to a basePath, so Android and iOS apps can open the right client from the same backend.
 
 Build outputs
 
@@ -160,7 +160,7 @@ https://admin.example.com  -> admin
 https://partner-main.example.com -> partner
 ```
 
-### Mobile targets
+### Native targets
 
 ```ts
 const config = {
@@ -168,9 +168,7 @@ const config = {
     { domains: { main: ["store.example.com"] }, basePath: "store" },
     { domains: { main: ["admin.example.com"] }, basePath: "admin" },
   ],
-  mobile: {
-    appName: "Example App",
-    appId: "com.example.app",
+  native: {
     version: "1.0.0",
     buildNum: 1,
     targets: {

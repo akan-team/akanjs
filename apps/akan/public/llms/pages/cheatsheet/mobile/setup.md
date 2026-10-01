@@ -9,7 +9,7 @@
 ## Headings
 
 - Mobile Setup Flow (#overview)
-- Mobile Config (#mobile-config)
+- Native Config (#native-config)
 - Native Plugins (#native-plugins)
 - Android Setup (#android-setup)
 - iOS Setup (#ios-setup)
@@ -32,17 +32,17 @@ Term
 
 - CSR bundle: The single-page build of your app. The native app ships it, so keep `web.csr` on.
 
-- target: One native app built from your Akan app. Its key in `mobile.targets` is the `--target` value.
+- target: One native app built from your Akan app. Its key in `native.targets` is the `--target` value.
 
 - appId: The app's permanent ID: the package name on Android and the bundle ID on iOS.
 
-- .akan/mobile/<target>: Where each run writes the target's web root and native builds. It is generated and ignored by git: there is no Xcode or Android Studio project to edit.
+- .akan/native/<target>: Each run's web root and builds for the target; generated and git-ignored, with no Xcode project to edit.
 
 - plugin: A native runtime module such as camera or push. The app ships it when a permission or `native.plugins` names it.
 
 Four steps
 
-- 1. Mobile config — Name the app, fix its `appId`, and choose targets and permissions in `akan.config.ts`.
+- 1. Native config — Name the app, fix its `appId`, and choose targets and permissions in `akan.config.ts`.
 
 - 2. Native plugins — Permissions bring their plugin; name any other one in `native.plugins`.
 
@@ -52,9 +52,9 @@ Four steps
 
 Push notifications and deep links are optional. Set them up after this page, and only if the app needs them.
 
-Mobile Config
+Native Config
 
-The `mobile` block in `akan.config.ts` describes the native app: its name, ID, version and targets. Values at the `mobile` root apply to every target, and a target overrides the ones it sets.
+The `native` block in `akan.config.ts` describes the native app: its name, ID, version and permissions, with what only one platform reads under `ios`, `android` or `desktop`. An app that ships one native app needs nothing more:
 
 - appName (string, default app name): Name under the home-screen icon. A store listing may show a different name.
 
@@ -64,21 +64,23 @@ The `mobile` block in `akan.config.ts` describes the native app: its name, ID, v
 
 - buildNum (number, default 1): Store build number: Android `versionCode`, iOS `CFBundleVersion`. Raise it for every store upload.
 
-- targets (Record<string, Target>, default { default: {} }): One entry per native app. The key is the name `--target` takes.
+- permissions (NativePermission[]): Device features to prepare. Only `camera`, `contacts`, `location`, `push` and `speech` exist.
 
-- targets.*.permissions (MobilePermission[]): Device features to prepare. Only `camera`, `contacts`, `location`, `push` and `speech` exist.
+- plugins (string[]): More runtime plugins, by builtin id such as `iap` or by absolute folder.
 
-- targets.*.indexPath (string, default /): Home route. A deep link opens on top of it, and Android back returns to it before exiting.
+- indexPath (string, default /): Home route. A deep link opens on top of it, and Android back returns to it before exiting.
 
-- targets.*.basePath (string): The client to open in a multi-client app. It must be a `basePath` declared in `routes`.
+- basePath (string): The client to open in a multi-client app, a `basePath` in `routes`. Leave it out without one.
 
-- targets.*.native ({ plugins?, ios?, android?, desktop? }): Native settings: more `plugins`, `ios.infoPlist` and `ios.entitlements` keys, `android.manifest` / `application` / `activity` XML, `android.googleServices` for FCM, `android.autoplay`, `desktop.server` for a desktop app that carries the app's server, and for an unattended desktop app `desktop.recovery`, `desktop.window` and `desktop.screenCapture`.
+- ios ({ teamId?, infoPlist?, entitlements?, privacy?, files? }): iOS only: the universal-link team, Info.plist and entitlement keys, privacy manifest, bundle files.
 
-- targets.*.files (Record<string, string>): Copies app files into the app. Key: where it lands, `ios/<path>`, `android/res/<type>/<file>` or `android/assets/<path>`. Value: the source, relative to the app folder.
+- android ({ googleServices?, push?, autoplay?, files?, manifest?, … }): Android only: `googleServices` for FCM, how pushes show, app-link fingerprints, files, manifest XML.
 
-- targets.*.appId (string): Per-target override, like `appName`, `version`, `buildNum`. A different `appId` is a separate app. `files` and `native` at the `mobile` root merge into every target.
+- desktop ({ server?, recovery?, window?, screenCapture? }): Desktop only: `server` carries the app's server, and the rest keeps an app nobody attends running.
 
-Icons, splash images and deep links are also target fields; see Config and Deep Links.
+- targets (Record<string, AkanNativeSettings>, default { default: {} }): One entry per native app, keyed by the name `--target` takes. Each takes the fields above.
+
+Icons, splash images and deep links are also `native` fields; see Config and Deep Links.
 
 What each permission adds
 
@@ -100,15 +102,13 @@ Plugin
 
 Several native apps from one app
 
-When one repo ships separate customer, admin or partner apps, split the clients with `basePath` and give each its own target. A target that sets its own `appId` is a separate store app:
+When one repo ships separate customer, admin or partner apps, split the clients with `basePath` and give each a key under `targets`. A target takes the same fields as `native`, and what it sets wins: objects such as `ios`, `android`, `desktop`, `deepLinks` and `updates` merge key by key, while lists and every other value are replaced, so a target's `permissions` replace the list in `native` rather than add to it. Without `targets` the app has one target, named `default`. A target that sets its own `appId` is a separate store app:
 
 **`basePath` must exist in `routes`.** Declare the client first; the Multi Client page shows how.
 
 **Pick a real appId.** IDs with a segment like `example`, `myapp` or `test` are usually taken on Apple's portal, so phone signing fails. `akan doctor --ios` flags them.
 
-**Keep the CSR bundle on.** The native app ships it, so `web: { csr: false }` cannot sit next to a `mobile` block.
-
-**Capacitor keys are refused.** `plugins`, `ios` and `android` directly under `mobile` or a target stop the build; they live under `native` now.
+**Keep the CSR bundle on.** The native app ships it, so `web: { csr: false }` cannot sit next to a `native` block.
 
 **Never change appId after release.** Android and iOS treat a different `appId` as a different app.
 
@@ -176,7 +176,7 @@ A device feature no builtin covers — a kiosk's boot receiver, a Windows regist
 
 Android Setup
 
-This gets the Android app running on an emulator or a phone. Keep one value consistent: `mobile.appId` becomes the Android `applicationId`.
+This gets the Android app running on an emulator or a phone. Keep one value consistent: `native.appId` becomes the Android `applicationId`.
 
 Prerequisites
 
@@ -186,7 +186,7 @@ Open the Android Studio download
 
 A JDK 17 or newer. Android Studio bundles one; `JAVA_HOME` picks another. The Kotlin compiler is fetched on the first build.
 
-A stable `mobile.appId` such as `com.acme.shop`.
+A stable `native.appId` such as `com.acme.shop`.
 
 Open the Android application ID docs
 
@@ -194,7 +194,7 @@ Run on a device
 
 When the SDK is not at ~/Library/Android/sdk, point your shell at it:
 
-Check that `mobile.appId` is final (see Mobile Config above), then start the dev server. Without `--release`, the app loads its screens from it:
+Check that `native.appId` is final (see Native Config above), then start the dev server. Without `--release`, the app loads its screens from it:
 
 In a second terminal, run the app on an emulator or a connected phone:
 
@@ -224,11 +224,11 @@ Open the Android app signing docs
 
 **Keep passwords out of git.** A CI sets the same names as secrets. The passwords reach the signer through the environment, never the command line or the log.
 
-**Where the file lands.** `apps/myapp/.akan/mobile/default/native/android`. `release-android` prints the path.
+**Where the file lands.** `apps/myapp/.akan/native/default/build/android`. `release-android` prints the path.
 
 Mobile command flags
 
-- --target (string): A key of `mobile.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.
+- --target (string): A key of `native.targets`, or `all`. With a single target it is picked for you; `start-*` runs one at a time.
 
 - --env (local | debug | develop | main): The backend the app talks to. The default differs per command, as in the table above.
 
@@ -254,7 +254,7 @@ Xcode 26 or newer, with an iOS 26 simulator runtime (Xcode › Settings › Comp
 
 Open the Xcode download
 
-A stable `mobile.appId`, used as the bundle ID.
+A stable `native.appId`, used as the bundle ID.
 
 Open the Apple bundle ID docs
 
@@ -274,7 +274,7 @@ Signing checks
 
 Sign in to your team in Xcode (Settings › Accounts) and download its profiles, so the Mac holds an Apple Development certificate and a profile for the app ID. The runtime reads Xcode's profile folders; there is no project to open.
 
-The profile's App ID is `mobile.appId`. A wildcard ID is used only when the app asks for neither push nor associated domains.
+The profile's App ID is `native.appId`. A wildcard ID is used only when the app asks for neither push nor associated domains.
 
 For a phone run, the development profile lists that phone: register it once (build to it from Xcode, or add it on the developer site) and download the profile again. A release needs an Apple Distribution certificate and an App Store (or ad-hoc) profile.
 
@@ -302,7 +302,9 @@ Open rustup
 
 - Linux: A C compiler, pkg-config, and the WebKitGTK 4.1, GTK 3 and libsoup 3 development packages.
 
-A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. Turn it on for a target with `native: { desktop: { server: true } }`. Then `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` and `akan publish-update` build the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. Any program on the computer can call that port too, so guard its endpoints as you would a network server's. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server. An installed app refuses an update that adds or drops the server, so switching it for an app already out there takes a reinstall, and the reinstall moves no data: with the server added the app starts on an empty local database, and with it dropped the pages call the backend the build names.
+A desktop app can also carry the app's own server, so it works on one computer with no backend elsewhere. Turn it on with `desktop: { server: true }` in `native`, or in one target to carry it in that app only. Then `akan start-desktop` starts `akan start` in the same command when none is running, and `akan build-desktop` and `akan publish-update` build the app with the server inside: it starts beside the window on a loopback port, serves the API only, and keeps its SQLite data in the app data folder's `server/` (on Windows under `%LOCALAPPDATA%`; a `--debug` build keeps its own `server-debug/`). It trusts the certificates the operating system trusts and follows the proxy variables of the user's session, as the page does. Any program on the computer can call that port too, so guard its endpoints as you would a network server's. The port is usually the one it had last time but is not guaranteed, so a sign-in whose provider wants an exact redirect URI goes through your cloud server's adapter, not through the carried server. An installed app refuses an update that adds or drops the server, so switching it for an app already out there takes a reinstall, and the reinstall moves no data: with the server added the app starts on an empty local database, and with it dropped the pages call the backend the build names.
+
+An app with no basePaths leaves `basePath` out, and one that ships a single app needs no `targets`, so the shortest config that carries the server is this one; when the first page is not `/`, add `indexPath` beside `desktop`:
 
 The server needs `single` in `database.modes`. The app carries the server's `private/` folder (each lib's too, under `private/libs/<lib>`), `env.server.<env>.ts` of the `--env` it is built with and no other environment's file, and the defaults each lib it uses exports as its server env (the lib's `env.server.testing.ts`), all in plain text: anyone who has the app can read every file and value in them. Keep deployment secrets such as cloud keys, and license files, out of them. The carried server has no `public/`, and its working folder is its data folder: read a file it needs at runtime from the app folder, `AKAN_APP_DIR` or else the folder of `Bun.main`, never from `process.cwd()`.
 
@@ -312,9 +314,9 @@ The carried server gets none of the image's `docker` steps. An executable the se
 
 Carry a static LGPL build. A build that loads its own shared libraries runs only where it was built, and one configured with --enable-nonfree (the macOS binary npm's ffmpeg-static downloads) may not be redistributed.
 
-A file the user picks reaches that server as a grant, never as a copy or a path, so a video of several gigabytes is not copied or uploaded. Add `file-picker` to the target's `native.plugins`, pick with `forServer: true`, hand the grant to an endpoint, and let the server exchange it with `NativeFile`: it gets the files the user picked and nothing else.
+A file the user picks reaches that server as a grant, never as a copy or a path, so a video of several gigabytes is not copied or uploaded. Add `file-picker` to `native.plugins`, pick with `forServer: true`, hand the grant to an endpoint, and let the server exchange it with `NativeFile`: it gets the files the user picked and nothing else.
 
-Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to the target's native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.
+Devices belong to native plugins, not to the server: displays and their changes (screen), windows placed on them (window), the system volume and mute (volume, on Android the media volume too), global shortcuts, keep-awake and launch at login. Add each to native.plugins; every builtin plugin's API is akanjs/client/native/<id> (akanjs/client/native/window, …/screen), and volume and filePicker also come from akanjs/client/native.
 
 An App Nobody Attends
 
@@ -328,7 +330,7 @@ The build follows the CPU of the Bun that runs it, so an ARM64 Windows machine b
 
 Updates
 
-An installed app updates itself from releases you sign. `akan update-keygen` makes the key once and prints its public half for `mobile.updates`; `akan publish-update` builds a release (the whole app on the desktop, the web bundle on a phone) into `.akan/mobile/<target>/updates`, which holds only what you upload to `updates.url`, the manifests last. A new release runs on trial until its first page mounts. A phone looks for a newer web bundle by itself, at start and on each return to the front, and runs it from the next cold start; on the desktop a release is the whole app and a relaunch, so when to check, download and apply is the app's call. `akan pack-update` writes a phone update unsigned instead, for a signer that keeps the key elsewhere.
+An installed app updates itself from releases you sign. `akan update-keygen` makes the key once and prints its public half for `native.updates`; `akan publish-update` builds a release (the whole app on the desktop, the web bundle on a phone) into `.akan/native/<target>/updates`, which holds only what you upload to `updates.url`, the manifests last. A new release runs on trial until its first page mounts. A phone looks for a newer web bundle by itself, at start and on each return to the front, and runs it from the next cold start; on the desktop a release is the whole app and a relaunch, so when to check, download and apply is the app's call. `akan pack-update` writes a phone update unsigned instead, for a signer that keeps the key elsewhere.
 
 Anyone who can reach `updates.url` can read everything under it, and the updater sends no credentials. A desktop release is the whole app, so it holds the carried server's `private/` (the app's and its libs') and its env file: keep out of them what the installed app may not hold either.
 
@@ -354,7 +356,7 @@ What to check
 
 - No permission prompt, or an iOS crash on first use — Add the feature to `permissions` and rerun, so the usage text and native entries are written.
 
-- A native file is missing — A `files` key is where the file lands (`ios/…`, `android/res/…`, `android/assets/…`); the value is the path in the app folder.
+- A native file is missing — `ios.files` keys are bundle paths, `android.files` keys `res/…` or `assets/…`; values are app-relative.
 
 - A notification tap opens the wrong screen — Send `url: "/some/path"` in the data and check that the tap opens that CSR route.
 
@@ -384,7 +386,7 @@ Next
 
 - Deep Links — Custom URL schemes and verified HTTPS app links.
 
-- Every Mobile Field — Icons, splash images, native files and the native block.
+- Every Native Field — Icons, splash images, files and the ios, android and desktop sections.
 
 - CLI Reference — Every flag of the mobile commands.
 
@@ -396,20 +398,14 @@ Next
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
-  mobile: {
+  native: {
     appName: "Acme Shop",
     appId: "com.acme.shop",
     version: "1.0.0",
     buildNum: 1,
-    targets: {
-      default: {
-        indexPath: "/home",
-        permissions: ["camera", "push"],
-        native: {
-          android: { googleServices: "secrets/google-services.json" },
-        },
-      },
-    },
+    indexPath: "/home",
+    permissions: ["camera", "push"],
+    android: { googleServices: "secrets/google-services.json" },
   },
 };
 
@@ -424,17 +420,19 @@ const config: AppConfig = {
     { basePath: "shop", domains: { main: ["shop.acme.com"] } },
     { basePath: "partner", domains: { main: ["partner.acme.com"] } },
   ],
-  mobile: {
+  native: {
     appName: "Acme Shop",
     appId: "com.acme.shop",
     version: "1.0.0",
     buildNum: 1,
+    permissions: ["push"],
     targets: {
       shop: { basePath: "shop" },
       partner: {
         basePath: "partner",
         appName: "Acme Partner",
         appId: "com.acme.partner",
+        permissions: ["camera", "push"],
       },
     },
   },
@@ -444,13 +442,9 @@ const config: AppConfig = {
 ### apps/myapp/akan.config.ts
 
 ```ts
-mobile: {
-  targets: {
-    default: {
-      permissions: ["push"],
-      native: { plugins: ["iap"] },
-    },
-  },
+native: {
+  permissions: ["push"],
+  plugins: ["iap"],
 },
 ```
 
@@ -521,11 +515,19 @@ akan start-desktop myapp
 akan start-desktop myapp --release true --env debug
 ```
 
+### apps/myapp/akan.config.ts
+
+```ts
+const config: AppConfig = {
+  native: { desktop: { server: true } },
+};
+```
+
 ### Terminal
 
 ```bash
-akan start-desktop myapp --target kiosk
-akan build-desktop myapp --target kiosk --env main
+akan start-desktop myapp
+akan build-desktop myapp --env main
 ```
 
 ### akan.config.ts
@@ -558,15 +560,9 @@ const output = await NativeFile.resolve(saveGrant, "write"); // from filePicker.
 ### apps/board/akan.config.ts
 
 ```ts
-mobile: {
-  targets: {
-    default: {
-      native: {
-        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
-        android: { autoplay: true },
-      },
-    },
-  },
+native: {
+  desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+  android: { autoplay: true },
 },
 ```
 
