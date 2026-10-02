@@ -1,5 +1,5 @@
 import { cn } from "akanjs/client";
-import { Image } from "akanjs/ui";
+import { JellyStar } from "./Jelly";
 
 interface AkanLogoProps {
   className?: string;
@@ -8,13 +8,11 @@ interface AkanLogoProps {
 
 export const AkanLogo = ({ className, logoClassName }: AkanLogoProps) => {
   return (
-    <div className={cn("relative isolate flex items-center", className)}>
-      <div className="relative">
-        <div className="pointer-events-none absolute top-[38%] left-[44%] h-7 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-md" />
-        <div className="pointer-events-none absolute right-1 bottom-0 h-5 w-8 rounded-full bg-primary/12 blur-md" />
-        <Image src="/akanlogo.png" width={64} height={64} className={cn("relative z-10", logoClassName)} />
-      </div>
-      <span className="relative z-10 -ml-1 font-bold">Akan.js</span>
+    <div className={cn("group/logo relative isolate flex items-center gap-1.5", className)}>
+      <span className={cn("group-hover/logo:jelly-wobble block size-[1.45em]", logoClassName)}>
+        <JellyStar />
+      </span>
+      <span className="font-black tracking-[-0.045em]">Akan.js</span>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import { usePage } from "@apps/akan/client";
 import { cn } from "akanjs/client";
 import { LuBot, LuUserRound } from "react-icons/lu";
+import { JellyStarPath } from "../Jelly";
 
 export type Audience = "human" | "both" | "agent";
 
@@ -18,16 +19,15 @@ interface AkanMarkProps {
 const AkanMark = ({ className }: AkanMarkProps) => {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="-12 -12 224 224"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
+      strokeWidth={17}
       strokeLinejoin="round"
       className={className}
       aria-hidden
     >
-      <path d="M3.1 21 11.2 2.3 20.4 21.3 2.3 12.3 21.9 3.3" />
+      <path d={JellyStarPath.of()} />
     </svg>
   );
 };
@@ -81,7 +81,9 @@ interface AudienceLegendProps {
 export const AudienceLegend = ({ className }: AudienceLegendProps) => {
   const text = useAudienceText();
   return (
-    <details className={cn("group rounded-xl border border-foreground/10 px-3 py-2 text-xs", className)}>
+    <details
+      className={cn("group rounded-2xl border border-foreground/8 bg-background/50 px-3 py-2 text-xs", className)}
+    >
       <summary className="flex cursor-pointer list-none items-center gap-3 text-foreground/60 [&::-webkit-details-marker]:hidden">
         {audiences.map((audience) => (
           <span key={audience} className="flex items-center gap-1">

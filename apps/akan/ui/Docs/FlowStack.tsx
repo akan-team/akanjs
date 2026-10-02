@@ -74,7 +74,7 @@ export const FlowStack = <K extends string>({ className, nodes, edges, emphasis 
             {members.map((id) => (
               <div
                 className={cn(
-                  "flex min-w-26 max-w-60 flex-col items-center gap-0.5 rounded-lg border px-3 py-2 text-center font-medium text-xs leading-[17px]",
+                  "flex min-w-26 max-w-60 flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-center font-semibold text-xs leading-[17px]",
                   flowToneClass[nodes[id].tone ?? "default"],
                   marked.has(id) && "ring-2 ring-primary",
                 )}

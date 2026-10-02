@@ -10,7 +10,7 @@ export const InstallCommand = ({ className }: InstallCommandProps) => {
   return (
     <div
       className={cn(
-        "inline-flex max-w-full items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/5 py-2 pr-2 pl-4 font-mono text-sm",
+        "jelly-glass inline-flex max-w-full items-center gap-3 rounded-full py-1.5 pr-1.5 pl-5 font-mono text-sm",
         className,
       )}
     >

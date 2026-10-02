@@ -25,9 +25,17 @@ export const Flow = <K extends string>({
   const marked = new Set<string>(emphasis);
 
   return (
-    <div className={cn("@container my-4 overflow-hidden rounded-xl border border-border bg-muted/40", className)}>
+    <div
+      className={cn(
+        "@container studio-lift my-5 overflow-hidden rounded-2xl border border-foreground/8 bg-card/80",
+        className,
+      )}
+    >
       {title ? (
-        <div className="border-border border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</div>
+        <div className="flex items-center gap-2 border-foreground/6 border-b bg-foreground/3 px-4 py-2.5 font-bold text-foreground/75 text-sm">
+          <span aria-hidden className="jelly tint-primary size-2.5 shrink-0 rounded-full" />
+          {title}
+        </div>
       ) : null}
       <div className="@max-[520px]:hidden p-5">
         <DiagramFrame height={layout.height} label={title} width={layout.width}>
@@ -40,7 +48,7 @@ export const Flow = <K extends string>({
                   {edge.label ? (
                     <>
                       <rect
-                        className="fill-background"
+                        className="fill-card"
                         height={18}
                         rx={6}
                         width={edge.labelWidth}
@@ -65,7 +73,7 @@ export const Flow = <K extends string>({
             {layout.nodes.map((node) => (
               <div
                 className={cn(
-                  "absolute flex flex-col items-center justify-center gap-0.5 rounded-lg border px-3 text-center font-medium text-xs leading-[17px]",
+                  "absolute flex flex-col items-center justify-center gap-0.5 rounded-xl border px-3 text-center font-semibold text-xs leading-[17px]",
                   flowToneClass[node.tone],
                   marked.has(node.id) && "ring-2 ring-primary",
                 )}

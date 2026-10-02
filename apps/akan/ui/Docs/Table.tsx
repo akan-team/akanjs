@@ -20,15 +20,20 @@ export const Table = ({ className, columns, rows, stacked }: TableProps) => {
   const heads = stacked ? columns.slice(0, -1) : columns;
   const below = stacked ? columns.at(-1) : undefined;
   return (
-    <div className={cn("my-4 overflow-x-auto border-border border-y", className)}>
+    <div
+      className={cn(
+        "studio-lift my-5 overflow-x-auto rounded-2xl border border-foreground/8 bg-card/80 px-1 md:px-2",
+        className,
+      )}
+    >
       <table className="w-full border-collapse text-left text-sm">
         <thead>
-          <tr className="border-border border-b">
+          <tr className="border-foreground/8 border-b">
             {heads.map((column, colIdx) => (
               <th
                 key={column.key}
                 className={cn(
-                  "whitespace-nowrap px-3 py-1.5 font-semibold text-foreground/50 text-xs",
+                  "whitespace-nowrap px-3 py-2.5 font-bold text-foreground/45 text-xs uppercase tracking-[0.12em]",
                   colIdx === heads.length - 1 && "w-full",
                 )}
               >
@@ -37,8 +42,8 @@ export const Table = ({ className, columns, rows, stacked }: TableProps) => {
             ))}
           </tr>
           {below ? (
-            <tr className="border-border border-b">
-              <th colSpan={heads.length} className="px-3 pb-1.5 font-semibold text-foreground/40 text-xs">
+            <tr className="border-foreground/8 border-b">
+              <th colSpan={heads.length} className="px-3 pb-2 font-bold text-foreground/40 text-xs">
                 ↳ {below.label}
               </th>
             </tr>
@@ -47,13 +52,13 @@ export const Table = ({ className, columns, rows, stacked }: TableProps) => {
         <tbody>
           {rows.map((row, idx) => (
             <Fragment key={idx}>
-              <tr className={cn("align-top", !below && "border-border/60 border-b last:border-b-0")}>
+              <tr className={cn("align-top", !below && "border-foreground/6 border-b last:border-b-0")}>
                 {heads.map((column, colIdx) => (
                   <td
                     key={column.key}
                     className={cn(
                       "px-3 leading-relaxed",
-                      below ? "pt-2 pb-0.5" : "py-2",
+                      below ? "pt-2.5 pb-0.5" : "py-2.5",
                       column.code
                         ? "wrap-break-word font-mono text-foreground sm:whitespace-nowrap"
                         : "min-w-28 text-foreground/80 sm:min-w-48",
@@ -65,11 +70,11 @@ export const Table = ({ className, columns, rows, stacked }: TableProps) => {
                 ))}
               </tr>
               {below ? (
-                <tr className="border-border/60 border-b last:border-b-0">
+                <tr className="border-foreground/6 border-b last:border-b-0">
                   <td
                     colSpan={heads.length}
                     className={cn(
-                      "px-3 pb-2 leading-relaxed",
+                      "px-3 pb-2.5 leading-relaxed",
                       below.code ? "font-mono text-foreground" : "text-foreground/80",
                     )}
                   >

@@ -1,4 +1,5 @@
 import { usePage } from "@apps/akan/client";
+import { Friend, JellyKicker } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 
 const comparisonData = [
@@ -155,13 +156,12 @@ export default page().render(() => {
   const { l } = usePage();
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen text-foreground">
       <article className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
         <header>
-          <div className="mb-12 flex items-center justify-between gap-4">
-            <p className="font-semibold text-foreground/50 text-sm uppercase tracking-[0.2em]">
-              {l.trans({ en: "Production Stability", ko: "Production Stability" })}
-            </p>
+          <div className="mb-10 flex items-end justify-between gap-4">
+            <JellyKicker>{l.trans({ en: "Production Stability", ko: "Production Stability" })}</JellyKicker>
+            <Friend name="moon" className="jelly-float size-16 md:size-20" priority />
           </div>
 
           <p className="mb-4 text-foreground/50 text-sm">
@@ -170,7 +170,7 @@ export default page().render(() => {
               ko: "Cold-start · soak · cross‑framework 비교",
             })}
           </p>
-          <h1 className="font-black text-4xl leading-tight tracking-tight md:text-5xl">
+          <h1 className="font-black text-4xl leading-[1.08] md:text-[3.25rem]">
             {l.trans({
               en: "Akan.js is production‑grade, not just fast",
               ko: "Akan.js는 빠르기만 한 게 아니라 프로덕션급입니다",
@@ -185,10 +185,10 @@ export default page().render(() => {
         </header>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl leading-tight tracking-tight">
+          <h2 className="font-black text-2xl leading-tight md:text-3xl">
             {l.trans({ en: "How we measured", ko: "측정 방법" })}
           </h2>
-          <div className="mt-6 rounded-3xl bg-muted p-6 md:p-8">
+          <div className="jelly-glass mt-6 rounded-4xl p-6 md:p-8">
             <div className="space-y-6 text-foreground/75 leading-7">
               <div>
                 <h3 className="font-semibold text-primary text-sm uppercase tracking-[0.2em]">
@@ -239,7 +239,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl leading-tight tracking-tight">
+          <h2 className="font-black text-2xl leading-tight md:text-3xl">
             {l.trans({ en: "Throughput at the lightweight‑router ceiling", ko: "경량 라우터 상한선에서의 처리량" })}
           </h2>
           <div className="mt-4 space-y-4 text-foreground/75 leading-7">
@@ -286,7 +286,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl leading-tight tracking-tight">
+          <h2 className="font-black text-2xl leading-tight md:text-3xl">
             {l.trans({ en: "Cold start and idle footprint", ko: "콜드 스타트와 idle 메모리" })}
           </h2>
           <div className="mt-4 space-y-4 text-foreground/75 leading-7">
@@ -298,7 +298,7 @@ export default page().render(() => {
             </p>
           </div>
 
-          <div className="mt-8 overflow-x-auto">
+          <div className="jelly-glass mt-8 overflow-x-auto rounded-3xl px-5 py-2">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-border border-b">
@@ -352,7 +352,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl leading-tight tracking-tight">
+          <h2 className="font-black text-2xl leading-tight md:text-3xl">
             {l.trans({
               en: "Soak stability: the metric that matters in production",
               ko: "Soak 안정성: 프로덕션에서 중요한 지표",
@@ -367,7 +367,7 @@ export default page().render(() => {
             </p>
           </div>
 
-          <div className="mt-8 overflow-x-auto">
+          <div className="jelly-glass mt-8 overflow-x-auto rounded-3xl px-5 py-2">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-border border-b">
@@ -396,7 +396,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl leading-tight tracking-tight">
+          <h2 className="font-black text-2xl leading-tight md:text-3xl">
             {l.trans({
               en: "Why the numbers differ — and why that is fine",
               ko: "숫자가 다른 이유 — 그리고 괜찮은 이유",
@@ -412,8 +412,8 @@ export default page().render(() => {
           </div>
         </section>
 
-        <section className="mt-12 border-primary border-l-4 pl-5">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Bottom line", ko: "결론" })}</h2>
+        <section className="jelly-callout tint-primary mt-12 rounded-3xl p-6 md:p-8">
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "Bottom line", ko: "결론" })}</h2>
           <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "Akan.js is not the fastest HTTP framework on a synthetic ping benchmark — and it should not be. It runs a gateway‑and‑worker architecture, loads an entire full‑stack runtime, and still delivers throughput indistinguishable from the Bun‑native ceiling. After 30 minutes of sustained load: zero errors, zero restarts, flat memory. That is what production‑grade looks like.",

@@ -283,27 +283,20 @@ export const ClientBridge = ({ env, lang, theme, prefix, wsConnect = true }: Cli
 Client.Bridge = ClientBridge;
 
 function restoreDocumentTheme(layoutTheme: AkanTheme | undefined): void {
-  const cookieTheme = getCookie("theme");
   // RSC cache replay and bfcache can restore a stale data-theme; the cookie is the live preference.
-  if (cookieTheme) {
-    document.documentElement.setAttribute("data-theme", cookieTheme);
-    st.do.setTheme(cookieTheme);
-    return;
-  }
-  applyThemePolicy(layoutTheme ?? "system");
-}
-
-function applyThemePolicy(theme: AkanTheme): void {
-  if (theme === "css") {
+  const theme = getCookie("theme") ?? resolveThemePolicy(layoutTheme ?? "system");
+  if (theme === null) {
     document.documentElement.removeAttribute("data-theme");
     return;
   }
-  if (theme === "system") {
-    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    return;
-  }
   document.documentElement.setAttribute("data-theme", theme);
+  st.do.setTheme(theme);
+}
+
+function resolveThemePolicy(theme: AkanTheme): string | null {
+  if (theme === "css") return null;
+  if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return theme;
 }
 
 function buildSearchParams(entries: Iterable<[string, string]>): Record<string, string | string[]> {

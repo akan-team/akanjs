@@ -32,27 +32,29 @@ interface MatrixProps {
 }
 
 const markSlot =
-  "inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs";
+  "jelly tint-primary inline-flex size-5 shrink-0 items-center justify-center rounded-full font-black text-[0.6875rem] text-primary-foreground";
 const emptySlot = "inline-block size-5 shrink-0 rounded-full border border-foreground/25 border-dashed";
 
 export const Matrix = ({ className, type, columns, groups, markLabel, emptyLabel, countTemplate }: MatrixProps) => {
   const rows = groups.flatMap((group) => group.rows);
   return (
-    <div className={cn("my-4", className)}>
-      <div className="overflow-x-auto border-border border-y">
+    <div className={cn("my-5", className)}>
+      <div className="studio-lift overflow-x-auto rounded-2xl border border-foreground/8 bg-card/80 sm:px-1">
         <div
           className="grid text-sm"
           style={{
             gridTemplateColumns: `minmax(min-content, 1fr) repeat(${columns.length}, minmax(min-content, auto))`,
           }}
         >
-          <div className="col-span-full grid grid-cols-subgrid border-border border-b py-2">
-            <div className="self-end px-2 font-semibold text-foreground/50 text-xs sm:px-3">{type}</div>
+          <div className="col-span-full grid grid-cols-subgrid border-foreground/8 border-b py-2.5">
+            <div className="self-end px-2 font-bold text-foreground/45 text-xs uppercase tracking-[0.12em] sm:px-3">
+              {type}
+            </div>
             {columns.map((column) => (
               <div key={column.key} className="min-w-11 self-end px-0.5 text-center sm:px-2">
                 <div
                   className={cn(
-                    "whitespace-nowrap font-semibold text-foreground text-xs sm:text-sm",
+                    "whitespace-nowrap font-bold text-foreground text-xs sm:text-sm",
                     column.code && "font-mono",
                   )}
                 >
@@ -71,13 +73,13 @@ export const Matrix = ({ className, type, columns, groups, markLabel, emptyLabel
           </div>
           {groups.map((group, groupIdx) => (
             <div key={groupIdx} className="col-span-full grid grid-cols-subgrid">
-              <div className="col-span-full bg-muted/50 px-2 py-1 font-semibold text-foreground/60 text-xs sm:px-3">
+              <div className="col-span-full bg-foreground/4 px-2 py-1.5 font-bold text-foreground/55 text-xs sm:rounded-lg sm:px-3">
                 <CodeText>{group.label}</CodeText>
               </div>
               {group.rows.map((row, idx) => (
                 <div
                   key={idx}
-                  className="col-span-full grid grid-cols-subgrid border-border/60 border-t py-1.5 transition-colors hover:bg-muted/40"
+                  className="col-span-full grid grid-cols-subgrid border-foreground/6 border-t py-1.5 transition-colors hover:bg-foreground/3"
                 >
                   <div className="px-2 font-mono font-semibold text-foreground text-xs leading-5 sm:whitespace-nowrap sm:px-3 sm:text-sm">
                     {row.name}

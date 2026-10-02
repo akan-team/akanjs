@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { DocsList } from "@apps/akan/ui";
+import { DocsList, Friend, JellyKicker } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 
 const latestRun = "2026-05-30T17-11-35-780Z";
@@ -113,17 +113,18 @@ export default page().render(() => {
   const { l } = usePage();
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen text-foreground">
       <article className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
         <header>
-          <div className="mb-12 flex items-center justify-between gap-4">
-            <p className="font-semibold text-foreground/50 text-sm uppercase tracking-[0.2em]">Akan.js Benchmark</p>
+          <div className="mb-10 flex items-end justify-between gap-4">
+            <JellyKicker>Akan.js Benchmark</JellyKicker>
+            <Friend name="rocket" className="jelly-float size-16 md:size-20" priority />
           </div>
 
           <p className="mb-4 text-foreground/50 text-sm">
             {l.trans({ en: `Run: ${latestRun}`, ko: `Run: ${latestRun}` })}
           </p>
-          <h1 className="font-black text-4xl leading-tight tracking-tight md:text-5xl">
+          <h1 className="font-black text-4xl leading-[1.08] md:text-[3.25rem]">
             {l.trans({ en: "Akan.js benchmark results", ko: "Akan.js 벤치마크 결과" })}
           </h1>
           <p className="mt-6 text-foreground/70 text-lg leading-8">
@@ -135,7 +136,7 @@ export default page().render(() => {
         </header>
 
         <section className="mt-12">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Summary", ko: "요약" })}</h2>
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "Summary", ko: "요약" })}</h2>
           <DocsList className="mt-4 text-foreground/75 leading-7">
             <li>
               {l.trans({
@@ -170,8 +171,10 @@ export default page().render(() => {
           </DocsList>
         </section>
 
-        <section className="mt-12 border-foreground/10 border-y py-8">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Performance at a glance", ko: "성능 한눈에 보기" })}</h2>
+        <section className="jelly-glass mt-12 rounded-4xl p-6 md:p-8">
+          <h2 className="font-black text-2xl md:text-3xl">
+            {l.trans({ en: "Performance at a glance", ko: "성능 한눈에 보기" })}
+          </h2>
           <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "The bars below summarize two questions readers usually ask first: how much room each Akan path has against its SLO, and how the raw HTTP path compares with familiar framework baselines.",
@@ -216,7 +219,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-12">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Test setup", ko: "테스트 환경" })}</h2>
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "Test setup", ko: "테스트 환경" })}</h2>
           <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "The benchmark was run locally on a MacBook M4 Pro with Akan.js 2.0.7. Local benchmark numbers naturally depend on machine state, but this setup is useful for checking whether the framework has enough practical headroom.",
@@ -251,7 +254,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-12">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Measured surfaces", ko: "측정 항목" })}</h2>
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "Measured surfaces", ko: "측정 항목" })}</h2>
           <div className="mt-5 space-y-8">
             {akanResults.map((item) => (
               <section key={item.scenario}>
@@ -284,7 +287,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-12">
-          <h2 className="font-bold text-2xl">
+          <h2 className="font-black text-2xl md:text-3xl">
             {l.trans({ en: "Compared with familiar baselines", ko: "익숙한 기준과의 비교" })}
           </h2>
           <p className="mt-4 text-foreground/75 leading-7">
@@ -348,7 +351,7 @@ export default page().render(() => {
         </section>
 
         <section className="mt-12">
-          <h2 className="font-bold text-2xl">
+          <h2 className="font-black text-2xl md:text-3xl">
             {l.trans({ en: "Is this fast enough?", ko: "이 정도면 충분히 빠른가?" })}
           </h2>
           <p className="mt-4 text-foreground/75 leading-7">

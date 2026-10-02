@@ -641,7 +641,10 @@ export class WebRouter {
             bootstrapModules: [this.#artifact.rscClientUrl],
             extraBootstrapInline: extraBootstrapInline || undefined,
             importmap: this.#artifact.vendorMap,
-            theme: cookieTheme ?? rscResult.theme ?? "system",
+            //? Read once the shell has rendered: the root layout's theme arrives after the stream starts.
+            get theme() {
+              return cookieTheme ?? rscResult.theme ?? "system";
+            },
             lateControl: rscResult.lateControl,
             waitForAllReady: rscResult.trace?.ssrBlocking ?? false,
             onCancel: (reason: unknown) => {

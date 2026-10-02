@@ -1,7 +1,7 @@
 import { recipe, tv } from "akanjs/ui";
 
 /**
- * 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+ * 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만), jelly 는 젤리 별 테마의 투명 젤리 판.
  * radius/padding 의 `none` 은 모서리·여백을 끄고 호출부에서 인라인으로 지정할 때(메뉴에 없는 조합).
  */
 export const panelRecipe = recipe(
@@ -11,8 +11,16 @@ export const panelRecipe = recipe(
       tone: {
         solid: "border-border bg-background",
         glass: "border-foreground/10 bg-foreground/4 backdrop-blur",
+        jelly: "jelly-glass border-transparent",
       },
-      radius: { none: "", lg: "rounded-lg", xl: "rounded-xl", "2xl": "rounded-2xl" },
+      radius: {
+        none: "",
+        lg: "rounded-lg",
+        xl: "rounded-xl",
+        "2xl": "rounded-2xl",
+        "3xl": "rounded-3xl",
+        "4xl": "rounded-4xl",
+      },
       padding: { none: "", sm: "p-3", md: "p-4", lg: "p-5", xl: "p-8", row: "px-4 py-0" },
       shadow: { true: "shadow-md" },
     },

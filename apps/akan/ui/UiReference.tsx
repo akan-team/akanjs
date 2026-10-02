@@ -52,7 +52,7 @@ export const UiComponentSlide = ({ component }: { component: UiComponentReferenc
       <PropsTable rows={component.props} />
       {component.notes?.length ? (
         <Docs.Description>
-          <ul className="my-2 list-disc space-y-1.5 pl-5 text-foreground/80">
+          <ul className="my-2 list-disc space-y-1.5 pl-5 text-foreground/80 marker:text-primary">
             {component.notes.map((note, idx) => (
               <li key={idx}>
                 <Docs.CodeText>{note}</Docs.CodeText>

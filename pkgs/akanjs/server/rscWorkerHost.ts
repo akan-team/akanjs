@@ -20,6 +20,7 @@ export interface RscPending {
   onEnd: () => void;
   onError: (message: string) => void;
   onMeta?: (meta: { theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }) => void;
+  onTheme?: (theme: AkanTheme | undefined) => void;
   onCacheState?: (state: RouteCacheRenderState) => void;
   onRedirect?: (location: string, method: RscRedirectMethod, status: RscRedirectStatus) => void;
   onLateRedirect?: (location: string, method: RscRedirectMethod, status: RscRedirectStatus) => void;
@@ -212,7 +213,18 @@ export function createRscHostRenderStream(input: {
         const settleStream = () => {
           if (settled) return;
           settled = true;
-          resolve({ type: "stream", stream, theme, status, trace, lateControl, cacheState, cancel: cancelRender });
+          resolve({
+            type: "stream",
+            stream,
+            get theme() {
+              return theme;
+            },
+            status,
+            trace,
+            lateControl,
+            cacheState,
+            cancel: cancelRender,
+          });
         };
         input.setPending({
           onMeta: (meta) => {
@@ -220,6 +232,9 @@ export function createRscHostRenderStream(input: {
             status = meta.status;
             trace = meta.trace;
             settleStream();
+          },
+          onTheme: (next) => {
+            theme = next;
           },
           onChunk: (data) => {
             settleStream();
@@ -302,6 +317,7 @@ type RscInMsg =
   | { type: "ready" }
   | { type: "reloaded"; buildId: number; reloadId?: number; pagesBundlePath?: string }
   | { type: "meta"; requestId: string; theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }
+  | { type: "theme"; requestId: string; theme?: AkanTheme }
   | { type: "cache-state"; requestId: string; state: RouteCacheRenderState }
   | { type: "chunk"; requestId: string; data: Uint8Array }
   | { type: "end"; requestId: string }
@@ -788,6 +804,9 @@ export class RscWorker {
         this.#pending
           .get(message.requestId)
           ?.onMeta?.({ theme: message.theme, status: message.status, trace: message.trace });
+        return;
+      case "theme":
+        this.#pending.get(message.requestId)?.onTheme?.(message.theme);
         return;
       case "end":
         this.#resolvePending(message.requestId, (p) => p.onEnd());

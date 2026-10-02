@@ -7,6 +7,7 @@ export default layout().render(({ children }) => {
   const menuMap: DocsMenu[] = [
     {
       name: l.trans({ en: "CLI Reference", ko: "CLI 레퍼런스" }),
+      friend: "cloud",
       subMenus: [
         { name: l.trans({ en: "Commands", ko: "명령어" }), href: "/references/cli/overview", audience: "both" },
         { name: l.trans({ en: "Workspace", ko: "Workspace" }), href: "/references/cli/workspace", audience: "agent" },
@@ -33,6 +34,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "AkanJS Reference", ko: "AkanJS 레퍼런스" }),
+      friend: "moon",
       subMenus: [
         { name: l.trans({ en: "akanjs/base", ko: "akanjs/base" }), href: "/references/akanjs/base", audience: "agent" },
         {
@@ -74,6 +76,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "UI Reference", ko: "UI 레퍼런스" }),
+      friend: "planet",
       subMenus: [
         { name: l.trans({ en: "Overview", ko: "Overview" }), href: "/references/ui/overview", audience: "agent" },
         { name: l.trans({ en: "Core", ko: "Core" }), href: "/references/ui/core", audience: "agent" },

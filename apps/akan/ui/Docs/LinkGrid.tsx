@@ -18,18 +18,23 @@ interface LinkGridProps {
 
 export const LinkGrid = ({ className, items }: LinkGridProps) => {
   return (
-    <div className={cn("my-4 grid gap-2 md:grid-cols-2", className)}>
+    <div className={cn("my-5 grid gap-3 md:grid-cols-2", className)}>
       {items.map((item) => (
         <Link
           key={item.href}
           href={item.href}
-          className={panelRecipe({ radius: "lg", padding: "sm" }, "group transition-colors hover:border-primary")}
+          className={panelRecipe(
+            { tone: "jelly", radius: "2xl", padding: "none" },
+            "group squish hover:tint-primary px-4 py-3.5 transition-shadow",
+          )}
         >
-          <div className="font-semibold text-primary text-sm">
+          <div className="flex items-center justify-between gap-2 font-extrabold text-foreground text-sm tracking-tight group-hover:text-primary">
             {item.title}
-            <span className="ml-1 inline-block transition-transform group-hover:translate-x-0.5">→</span>
+            <span className="jelly tint-primary inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] text-primary-foreground transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
           </div>
-          <div className="mt-0.5 text-foreground/70 text-sm leading-snug">
+          <div className="mt-1 text-foreground/65 text-sm leading-snug">
             <CodeText>{item.desc}</CodeText>
           </div>
         </Link>

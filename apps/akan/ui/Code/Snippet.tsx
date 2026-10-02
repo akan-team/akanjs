@@ -36,7 +36,7 @@ export const Snippet = ({
       wrapperClassName={wrapperClassName}
       copyText={copy ? copyText : undefined}
     >
-      <Raw className="p-2" language={language} code={trimmedCode} showLineNumbers={showLineNumbers} />
+      <Raw className="px-2 py-3" language={language} code={trimmedCode} showLineNumbers={showLineNumbers} />
     </CodeView>
   );
 };

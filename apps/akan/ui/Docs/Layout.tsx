@@ -1,8 +1,10 @@
+import type { FriendProps } from "../Jelly";
 import type { Audience } from "./Audience";
 import { Shell } from "./Shell";
 
 export interface DocsMenu {
   name: string;
+  friend?: FriendProps["name"];
   subMenus: {
     name: string;
     href: string;
@@ -17,7 +19,7 @@ interface LayoutProps {
 
 export const Layout = ({ children, menuMap }: LayoutProps) => {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <main className="min-h-screen overflow-x-clip text-foreground">
       <Shell menuMap={menuMap}>{children}</Shell>
     </main>
   );

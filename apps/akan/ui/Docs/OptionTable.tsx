@@ -22,13 +22,18 @@ interface OptionTableProps {
 export const OptionTable = ({ className, items }: OptionTableProps) => {
   const { l } = usePage();
   return (
-    <div className={cn("my-4 border-border border-y text-sm", className)}>
+    <div
+      className={cn(
+        "studio-lift my-5 rounded-2xl border border-foreground/8 bg-card/80 px-4 text-sm md:px-5",
+        className,
+      )}
+    >
       {items.map((item, idx) => (
-        <div key={idx} className="space-y-1 border-border/60 border-b py-2.5 last:border-b-0">
+        <div key={idx} className="space-y-1 border-foreground/6 border-b py-3 last:border-b-0">
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
             <span className="wrap-anywhere font-mono font-semibold text-foreground">{item.key}</span>
             {item.type ? (
-              <span className="wrap-anywhere rounded bg-muted px-1.5 py-0.5 font-mono text-foreground/70 text-xs">
+              <span className="wrap-anywhere rounded-full bg-accent/10 px-2 py-0.5 font-mono text-accent text-xs">
                 {item.type}
               </span>
             ) : null}
@@ -48,7 +53,7 @@ export const OptionTable = ({ className, items }: OptionTableProps) => {
             <CodeText>{item.desc}</CodeText>
           </div>
           {item.example ? (
-            <div className="overflow-x-auto rounded-md bg-muted/60 px-2.5 py-1.5 text-xs">
+            <div className="overflow-x-auto rounded-xl bg-foreground/4 px-3 py-1.5 text-xs">
               <Code.Raw showLineNumbers={false} code={item.example} />
             </div>
           ) : null}

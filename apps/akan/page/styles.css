@@ -2,71 +2,122 @@
 @import "akanjs/ui/styles.css";
 
 /* akanjs 기본 팔레트는 브랜드-중립(pkgs/akanjs/ui/styles.css). dark 변형·런타임 전환도 프레임워크 소유.
-   akan 은 자신의 브랜드 레드 팔레트로 토큰만 override 한다. base-200/300 은 제거됐고
-   그 값은 muted(#2a2a2a/#f5f5f5)·border(#3a3a3a/#e5e5e5)가 그대로 이어받는다. */
+   akan 은 젤리 별 스튜디오 팔레트로 토큰만 override 한다 — 라이트가 기본(rootLayout .theme("light")),
+   다크는 같은 친구들이 사는 한밤의 남색 하늘이다. 별 빨강(--jelly)은 채움용이라 흰 글씨 대비가 4.5:1 에 못 미쳐,
+   글씨가 올라가는 --primary 는 한 단계 진한 빨강을 쓴다. */
 :root,
-[data-theme="dark"] {
-  --background: #1a1a1a;
-  --foreground: #ffffff;
-  --primary: #ff493b;
+[data-theme="light"] {
+  --background: #f1f1ee;
+  --foreground: #0d0d0e;
+  --primary: #e02d27;
   --primary-foreground: #ffffff;
-  --secondary: #2b2e33;
-  --secondary-foreground: #ffffff;
-  --accent: #d1a23b;
-  --accent-foreground: #1a1a1a;
-  --neutral: #3ed13b;
-  --neutral-foreground: #ffffff;
-  --info: #3b82f6;
+  --secondary: #0d0d0e;
+  --secondary-foreground: #f6f6f3;
+  --accent: #7650d8;
+  --accent-foreground: #ffffff;
+  --neutral: #26262a;
+  --neutral-foreground: #f6f6f3;
+  --info: #1f6fe0;
   --info-foreground: #ffffff;
-  --success: #255fc3;
+  --success: #3f8f1f;
   --success-foreground: #ffffff;
-  --warning: #ffcc00;
-  --warning-foreground: #1a1a1a;
-  --destructive: #f02020;
+  --warning: #f2b51c;
+  --warning-foreground: #0d0d0e;
+  --destructive: #c4161c;
   --destructive-foreground: #ffffff;
-  --open: #10fc00;
-  --open-foreground: #1a1a1a;
-  --muted: #2a2a2a;
-  --muted-foreground: #a0a0a0;
-  --card: #212121;
-  --card-foreground: #ffffff;
-  --popover: #262626;
-  --popover-foreground: #ffffff;
-  --border: #3a3a3a;
-  --input: #3a3a3a;
-  --ring: #ff493b;
+  --open: #5aa82a;
+  --open-foreground: #0d0d0e;
+  --muted: #e6e6e1;
+  --muted-foreground: #66666b;
+  --card: #fbfbf9;
+  --card-foreground: #0d0d0e;
+  --popover: #ffffff;
+  --popover-foreground: #0d0d0e;
+  --border: #dcdcd6;
+  --input: #d4d4ce;
+  --ring: #e02d27;
+  --jelly: #ef3a2d;
+  --studio-shadow: color-mix(in oklab, #3a2a20 16%, transparent);
+  --sky-top: #dfe5f7;
+  --sky-bottom: #f6eadf;
+  --starlight: color-mix(in oklab, #23285a 34%, transparent);
+  --stardust: color-mix(in oklab, #7650d8 9%, transparent);
 }
 
-[data-theme="light"] {
-  --background: #fafafa;
-  --foreground: #2c3e50;
-  --primary: #c33c32;
+[data-theme="dark"] {
+  --background: #0f1129;
+  --foreground: #f3f1fb;
+  --primary: #f0392e;
   --primary-foreground: #ffffff;
-  --secondary: #2b2e33;
-  --secondary-foreground: #ffffff;
-  --accent: #e67e22;
-  --accent-foreground: #1a1a1a;
-  --neutral: #292c32;
-  --neutral-foreground: #fafafa;
-  --info: #2563eb;
-  --info-foreground: #ffffff;
-  --success: #2ecc71;
-  --success-foreground: #1a1a1a;
-  --warning: #f39c12;
-  --warning-foreground: #2c3e50;
-  --destructive: #e74c3c;
-  --destructive-foreground: #fafafa;
-  --open: #27ae60;
-  --open-foreground: #1a1a1a;
-  --muted: #f5f5f5;
-  --muted-foreground: #6b7280;
-  --card: #ffffff;
-  --card-foreground: #2c3e50;
-  --popover: #ffffff;
-  --popover-foreground: #2c3e50;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #c33c32;
+  --secondary: #f3f1fb;
+  --secondary-foreground: #0f1129;
+  --accent: #a585e0;
+  --accent-foreground: #0f1129;
+  --neutral: #262a4d;
+  --neutral-foreground: #f3f1fb;
+  --info: #4b8ef0;
+  --info-foreground: #0f1129;
+  --success: #7cc23a;
+  --success-foreground: #0f1129;
+  --warning: #f6c437;
+  --warning-foreground: #0f1129;
+  --destructive: #e5383b;
+  --destructive-foreground: #ffffff;
+  --open: #7cc23a;
+  --open-foreground: #0f1129;
+  --muted: #1a1d3b;
+  --muted-foreground: #a6a8c9;
+  --card: #161935;
+  --card-foreground: #f3f1fb;
+  --popover: #1b1e40;
+  --popover-foreground: #f3f1fb;
+  --border: #2b2f57;
+  --input: #33376a;
+  --ring: #f0392e;
+  --jelly: #f2402f;
+  --studio-shadow: color-mix(in oklab, #02030f 65%, transparent);
+  --sky-top: #25215f;
+  --sky-bottom: #2d1749;
+  --starlight: #fff1cf;
+  --stardust: color-mix(in oklab, #b6a2ff 15%, transparent);
+}
+
+/* 젤리 별의 하늘 식구 다섯의 고유색. 테마와 무관한 캐릭터 색이라 :root 하나에만 둔다. */
+:root {
+  --planet: #1f6fe0;
+  --rocket: #82c43c;
+  --moon: #f6e27a;
+  --cloud: #a585e0;
+  --comet: #e3228e;
+}
+
+@theme inline {
+  --color-jelly: var(--jelly);
+  --color-planet: var(--planet);
+  --color-rocket: var(--rocket);
+  --color-moon: var(--moon);
+  --color-cloud: var(--cloud);
+  --color-comet: var(--comet);
+  --color-starlight: var(--starlight);
+  --color-stardust: var(--stardust);
+  --radius-box: 1.5rem;
+  --radius-field: 0.875rem;
+}
+
+/* 감쇠 스프링을 샘플링한 곡선 — 목표를 18% 넘었다가 두 번 출렁이고 멈춘다. */
+@theme {
+  --ease-jelly: linear(0, 0.42 6%, 0.86 13%, 1.12 21%, 1.18 26%, 1.13 32%, 1 41%, 0.95 48%, 0.97 56%, 1.01 66%, 1.005 78%, 1);
+}
+
+@layer base {
+  h1,
+  h2 {
+    letter-spacing: -0.035em;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--jelly) 24%, transparent);
+  }
 }
 
 /* 헤더는 fixed 라 문서 흐름에 자기 높이를 남기지 않고, notice 바와 lg 미만 메뉴 줄 때문에 높이가 달라진다.
@@ -103,9 +154,9 @@ html:has([data-akanjs-notice]) {
    shiki 코드 블록(pre > code)과 자체 클래스를 가진 code 는 각자의 레이아웃을 쓰므로
    클래스 없는 인라인 code 만 칩처럼 그린다. */
 :not(pre) > code:not([class]) {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--foreground) 9%, transparent);
   border-radius: calc(var(--radius-field, 0.25rem) / 2);
-  background-color: var(--muted);
+  background-color: color-mix(in oklab, var(--foreground) 5.5%, transparent);
   padding: 0.1em 0.35em;
   color: var(--foreground);
   font-size: 0.875em;
@@ -409,4 +460,2350 @@ html:has([data-tesseract-flight][data-live]) [data-tesseract-static] {
 
 html:has([data-ascent-view][data-live]) [data-ascent-static] {
   opacity: 0;
+}
+
+/* 3안(/testhome2)의 두 사용자 연출. 목업의 상태는 Duet 스크립트가 등록하는 숫자 커스텀 속성이 전부이고, 대문은
+   시간에, 1·2막은 스크롤에 그 값을 묶는다. 모션 축소 설정이나 scroll-driven animation 미지원 브라우저에서는 정지
+   장면과 단계 목록이 남는다. */
+@custom-variant duet-agent (&:where(html:has(#duet-agent:checked) *));
+
+@utility duet-reveal {
+  opacity: calc(clamp(0, (var(--duet-scan, 0) * 37 - var(--y, 0)) * 1.5, 1) * var(--duet-xray, 0));
+}
+
+@utility duet-hide {
+  opacity: calc(1 - clamp(0, (var(--duet-scan, 0) * 37 - var(--y, 0)) * 1.5, 1) * var(--duet-xray, 0));
+}
+
+@utility duet-dim {
+  opacity: calc(1 - 0.6 * clamp(0, (var(--duet-scan, 0) * 37 - var(--y, 0)) * 1.5, 1) * var(--duet-xray, 0));
+}
+
+@utility duet-run-loop {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: duet-loop 13s cubic-bezier(0.45, 0, 0.2, 1) infinite both;
+  }
+}
+
+@utility duet-track-screen {
+  view-timeline: --duet-screen block;
+  view-timeline-inset: var(--akanjs-header-offset) 0;
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      height: 460svh;
+    }
+  }
+}
+
+@utility duet-track-server {
+  view-timeline: --duet-server block;
+  view-timeline-inset: var(--akanjs-header-offset) 0;
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      height: 460svh;
+    }
+  }
+}
+
+@utility duet-run-screen {
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      animation: duet-screen linear both;
+      animation-timeline: --duet-screen;
+      animation-range: contain 0% contain 100%;
+    }
+  }
+}
+
+@utility duet-run-server {
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      animation: duet-server linear both;
+      animation-timeline: --duet-server;
+      animation-range: contain 0% contain 100%;
+    }
+  }
+}
+
+@utility duet-frame {
+  padding-block: 4rem;
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      position: sticky;
+      top: var(--akanjs-header-offset);
+      height: calc(100svh - var(--akanjs-header-offset));
+      padding-block: 1.25rem;
+    }
+  }
+}
+
+@utility duet-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      display: grid;
+      & > * {
+        grid-area: 1 / 1;
+      }
+    }
+  }
+}
+
+@utility duet-caption {
+  @media (prefers-reduced-motion: no-preference) and (min-height: 700px) {
+    @supports (animation-timeline: view()) {
+      pointer-events: none;
+      opacity: clamp(0, (0.5 - max(var(--duet-step) - var(--n), var(--n) - var(--duet-step))) * 8, 1);
+      translate: 0 calc((var(--n) - var(--duet-step)) * 1.25rem);
+    }
+  }
+}
+
+@custom-variant short (@media (max-height: 820px));
+
+/* 4안(/testhome3)의 보기 전환 독. 대문의 라벨이 이 라디오를 켜므로, 대문이 지나가기 전에는 지우지 않고 visibility 로만 감춘다. */
+@keyframes akan-dock {
+  from {
+    opacity: 0;
+    translate: 0 0.75rem;
+    visibility: hidden;
+  }
+}
+
+@utility dock-reveal {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: scroll()) {
+      animation: akan-dock linear both;
+      animation-timeline: scroll(root);
+      animation-range: 70vh 100vh;
+    }
+  }
+}
+
+/* 젤리 별 디자인 시스템. 질감은 CSS 그라데이션과 SVG 노이즈로만 만들고, 모션 축소 설정에서는 장식 모션이 모두
+   멈춘다 — 로딩 표시인 jelly-hop 만 남는다. */
+@keyframes jelly-breathe {
+  0%,
+  100% {
+    scale: 1 1;
+  }
+  50% {
+    scale: 1.035 0.965;
+  }
+}
+
+@keyframes jelly-wobble {
+  0% {
+    scale: 1 1;
+  }
+  16% {
+    scale: 1.16 0.86;
+  }
+  32% {
+    scale: 0.9 1.1;
+  }
+  48% {
+    scale: 1.06 0.95;
+  }
+  64% {
+    scale: 0.97 1.03;
+  }
+  82% {
+    scale: 1.01 0.99;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+
+@keyframes jelly-float {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: calc(var(--float-tilt, 4deg) * -1);
+  }
+  50% {
+    translate: 0 calc(var(--float-rise, 0.9rem) * -1);
+    rotate: var(--float-tilt, 4deg);
+  }
+}
+
+@keyframes jelly-twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+    scale: 0.6;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* 72° 회전은 오각별에게 제자리라서, 한 번 뛰어 72° 돌고 착지하면 그대로 다음 바퀴의 시작이 된다. */
+@keyframes jelly-hop-body {
+  0% {
+    transform: translateY(0) scale(1, 1);
+    animation-timing-function: ease-out;
+  }
+  14% {
+    transform: translateY(0) scale(1.14, 0.84);
+    animation-timing-function: ease-out;
+  }
+  30% {
+    transform: translateY(-30px) scale(0.92, 1.1);
+    animation-timing-function: ease-out;
+  }
+  48% {
+    transform: translateY(-44px) scale(1, 1);
+    animation-timing-function: ease-in;
+  }
+  70% {
+    transform: translateY(0) scale(0.96, 1.05);
+    animation-timing-function: ease-out;
+  }
+  78% {
+    transform: translateY(0) scale(1.15, 0.85);
+    animation-timing-function: ease-out;
+  }
+  90% {
+    transform: translateY(0) scale(0.97, 1.04);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes jelly-hop-spin {
+  0%,
+  16% {
+    transform: rotate(0deg);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
+  }
+  72%,
+  100% {
+    transform: rotate(72deg);
+  }
+}
+
+@keyframes jelly-hop-shadow {
+  0%,
+  100% {
+    transform: scale(1, 1);
+    opacity: 1;
+  }
+  14% {
+    transform: scale(1.12, 1);
+  }
+  48% {
+    transform: scale(0.55, 0.7);
+    opacity: 0.35;
+  }
+  78% {
+    transform: scale(1.15, 1);
+    opacity: 1;
+  }
+}
+
+@utility jelly-breathe {
+  transform-origin: 50% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-breathe 3.2s ease-in-out infinite;
+  }
+}
+
+@utility jelly-wobble {
+  transform-origin: 50% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-wobble 0.9s ease-out both;
+  }
+}
+
+@utility jelly-float {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-float var(--float-duration, 6s) ease-in-out var(--float-delay, 0s) infinite;
+  }
+}
+
+@utility jelly-twinkle {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-twinkle var(--twinkle-duration, 2.8s) ease-in-out var(--twinkle-delay, 0s) infinite;
+  }
+}
+
+/* SVG 좌표(viewBox 200)로 원점을 잡는다 — 바닥(y 179)에서 찌그러지고 중심(100, 106)에서 돈다. */
+@utility jelly-hop-body {
+  transform-box: view-box;
+  transform-origin: 100px 179px;
+  animation: jelly-hop-body 1.2s infinite;
+}
+
+@utility jelly-hop-spin {
+  transform-box: view-box;
+  transform-origin: 100px 106px;
+  animation: jelly-hop-spin 1.2s infinite;
+}
+
+@utility jelly-hop-shadow {
+  transform-box: view-box;
+  transform-origin: 100px 186px;
+  animation: jelly-hop-shadow 1.2s infinite;
+}
+
+@utility squish {
+  transition:
+    scale 700ms var(--ease-jelly),
+    translate 700ms var(--ease-jelly);
+  &:hover {
+    scale: 1.04 0.97;
+  }
+  &:active {
+    scale: 1.08 0.9;
+    transition-duration: 90ms;
+  }
+}
+
+@utility tint-* {
+  --tint: --value(--color-*);
+}
+
+/* 구미 젤리 표면: 로고 별(public/jelly/star.webp)의 설탕 코팅을 하이패스로 떠낸 회색 결(public/jelly/sugar.webp,
+   128 = 그대로)을 hard-light 로 얹어, 어떤 색 젤리에도 같은 설탕 알갱이가 반짝인다. */
+@utility jelly {
+  --jelly-tint: var(--tint, var(--primary));
+  --jelly-deep: color-mix(in oklab, var(--jelly-tint) 70%, black);
+  --jelly-haze: color-mix(in oklab, var(--jelly-tint) 55%, white);
+  background-color: var(--jelly-tint);
+  background-image:
+    url("/jelly/sugar.webp"),
+    radial-gradient(120% 95% at 26% -8%, color-mix(in oklab, white 26%, transparent), transparent 58%),
+    radial-gradient(110% 90% at 60% 125%, color-mix(in oklab, var(--jelly-deep) 30%, transparent), transparent 60%);
+  background-size:
+    100px 100px,
+    100% 100%,
+    100% 100%;
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-blend-mode: hard-light, normal, normal;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--jelly-haze) 40%, transparent),
+    inset 0 0 8px 1px color-mix(in oklab, white 20%, transparent),
+    inset 0 -3px 6px color-mix(in oklab, var(--jelly-deep) 28%, transparent),
+    0 6px 10px -6px color-mix(in oklab, var(--jelly-deep) 65%, transparent),
+    0 1px 2px color-mix(in oklab, black 12%, transparent);
+}
+
+@utility jelly-glass {
+  --jelly-tint: var(--tint, var(--card));
+  background-color: color-mix(in oklab, var(--card) 95%, var(--jelly-tint));
+  background-image:
+    radial-gradient(120% 70% at 20% -20%, color-mix(in oklab, white 55%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 100% 120%, color-mix(in oklab, var(--jelly-tint) 9%, transparent), transparent 70%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 70%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, var(--jelly-tint) 14%, transparent),
+    0 22px 44px -28px var(--studio-shadow),
+    0 2px 6px -3px var(--studio-shadow);
+  @variant dark {
+    background-color: color-mix(in oklab, var(--card) 92%, var(--jelly-tint));
+    background-image:
+      radial-gradient(120% 70% at 20% -20%, color-mix(in oklab, white 7%, transparent), transparent 60%),
+      radial-gradient(90% 60% at 100% 120%, color-mix(in oklab, var(--jelly-tint) 14%, transparent), transparent 70%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 11%, transparent),
+      inset 0 -1px 0 color-mix(in oklab, var(--jelly-tint) 18%, transparent),
+      0 22px 44px -28px var(--studio-shadow),
+      0 2px 6px -3px var(--studio-shadow);
+  }
+}
+
+/* 밤하늘 배경(ui/Jelly/Cosmos). 옅은 별밭과 종이 결만 깔고, 별밭은 스크롤에 조금 늦게 떠올라 깊이를 낸다.
+   모션 축소 설정에서는 멈춘 그림으로 남는다. */
+@keyframes cosmos-drift {
+  to {
+    translate: 0 var(--drift);
+  }
+}
+
+@utility cosmos {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(120% 60% at 50% -14%, var(--sky-top), transparent 64%),
+    radial-gradient(110% 55% at 50% 114%, var(--sky-bottom), transparent 68%);
+}
+
+@utility cosmos-far {
+  --drift: -6vh;
+  @supports (animation-timeline: scroll()) {
+    @media (prefers-reduced-motion: no-preference) {
+      animation: cosmos-drift linear both;
+      animation-timeline: scroll(root block);
+    }
+  }
+}
+
+@utility cosmos-thread {
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 0 7;
+  vector-effect: non-scaling-stroke;
+}
+
+@utility cosmos-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-twinkle var(--twinkle-duration, 3.6s) ease-in-out var(--twinkle-delay, 0s) infinite;
+  }
+}
+
+@utility cosmos-grain {
+  opacity: 0.06;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  @variant dark {
+    opacity: 0.1;
+    mix-blend-mode: overlay;
+  }
+}
+
+/* 대문의 "한 줄이 쌓이는" 장(ui/Jelly/SkyBuild). 장마다 view-timeline 에 이름을 붙여 섹션의 timeline-scope 로
+   올리고, 무대의 조각은 자기 장의 타임라인으로 나타나 그대로 남는다. 지원하지 않는 브라우저와 모션 축소
+   설정에서는 다 쌓인 그림이 처음부터 보인다. 스크롤 타임라인은 animation-delay 를 쓰지 않아서, 층마다
+   순서대로 떨어지는 시차는 --i 로 구간 시작점을 민다. */
+@keyframes build-appear {
+  from {
+    opacity: 0;
+    translate: 0 1.25rem;
+    scale: 0.88;
+  }
+}
+
+@keyframes build-drop {
+  from {
+    opacity: 0;
+    translate: 0 -2.75rem;
+    scale: 1.12 0.72;
+  }
+  55% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1.08 0.9;
+  }
+  80% {
+    scale: 0.97 1.04;
+  }
+}
+
+@keyframes build-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes build-grow {
+  from {
+    scale: 1 0;
+  }
+}
+
+@utility build-scope {
+  timeline-scope: --build-1, --build-2, --build-3, --build-4;
+}
+
+@utility build-chapter-1 {
+  view-timeline: --build-1 block;
+}
+
+@utility build-chapter-2 {
+  view-timeline: --build-2 block;
+}
+
+@utility build-chapter-3 {
+  view-timeline: --build-3 block;
+}
+
+@utility build-chapter-4 {
+  view-timeline: --build-4 block;
+}
+
+@utility build-on-1 {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: var(--build-motion, build-appear) linear both;
+      animation-timeline: --build-1;
+      animation-range: cover calc(24% + var(--i, 0) * 2.5%) cover calc(40% + var(--i, 0) * 2.5%);
+    }
+  }
+}
+
+@utility build-on-2 {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: var(--build-motion, build-appear) linear both;
+      animation-timeline: --build-2;
+      animation-range: cover calc(24% + var(--i, 0) * 2.5%) cover calc(40% + var(--i, 0) * 2.5%);
+    }
+  }
+}
+
+@utility build-on-3 {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: var(--build-motion, build-appear) linear both;
+      animation-timeline: --build-3;
+      animation-range: cover calc(24% + var(--i, 0) * 2.5%) cover calc(40% + var(--i, 0) * 2.5%);
+    }
+  }
+}
+
+@utility build-on-4 {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: var(--build-motion, build-appear) linear both;
+      animation-timeline: --build-4;
+      animation-range: cover calc(24% + var(--i, 0) * 2.5%) cover calc(40% + var(--i, 0) * 2.5%);
+    }
+  }
+}
+
+@utility jelly-text {
+  --jelly-tint: var(--tint, var(--jelly));
+  background-image:
+    url("/jelly/sugar.webp"),
+    linear-gradient(170deg, color-mix(in oklab, white 55%, var(--jelly-tint)) 4%, transparent 38%),
+    linear-gradient(to bottom, var(--jelly-tint) 40%, color-mix(in oklab, black 26%, var(--jelly-tint)));
+  background-size:
+    120px 120px,
+    100% 100%,
+    100% 100%;
+  background-blend-mode: hard-light, normal, normal;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 5px 6px color-mix(in oklab, var(--jelly-tint) 30%, transparent));
+}
+
+/* text-primary 글자에도 jelly 와 같은 설탕 결을 글자 모양으로 오려 입힌다. 배경을 오려 내는 방식이라 제 배경을 가진
+   요소(bg-*, jelly·glass 표면)와 currentColor 로 그리는 요소는 빼고, 그 안의 아이콘·점·밑줄에는 색을 돌려준다. */
+.text-primary:not(svg, [class*="bg-"], [class*="jelly"], [class*="glass"], [class*="-current"]) {
+  background-color: var(--primary);
+  background-image:
+    url("/jelly/sugar.webp"),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, black 8%, var(--primary)),
+      color-mix(in oklab, white 14%, var(--primary)) 22%,
+      var(--primary) 60%,
+      color-mix(in oklab, black 8%, var(--primary))
+    );
+  background-size:
+    100px 100px,
+    100% 1lh;
+  background-origin: content-box;
+  background-blend-mode: hard-light, normal;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-decoration-color: var(--primary);
+  & :is(svg, [class*="-current"]) {
+    color: var(--primary);
+  }
+  /* 제목의 좁은 행간에서는 꼬리 글자가 상자 밖으로 나가 칠해지지 않는다. 칠할 영역만 넓히고 자리는 되돌린다. */
+  :is(h1, h2, h3, h4, h5, h6) & {
+    padding-block: 0.15em;
+    margin-block: -0.15em;
+  }
+}
+
+/* 공전 무대(ui/Jelly/Orrery). 평면을 scaleY 로 눌러 원을 타원으로 만들고, 친구는 공전 각도만큼 거꾸로 돌고 눌린
+   만큼 다시 늘려 늘 똑바로 선다. 같은 궤도를 두 장 그려 위 반쪽은 별 뒤로, 아래 반쪽은 별 앞으로 자른다. */
+@keyframes orrery-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes orrery-upright {
+  from {
+    rotate: calc(var(--slot) * -1);
+  }
+  to {
+    rotate: calc(var(--slot) * -1 - 360deg);
+  }
+}
+
+@keyframes orrery-depth {
+  0%,
+  100% {
+    scale: 0.74;
+    opacity: 0.7;
+  }
+  50% {
+    scale: 1.14;
+    opacity: 1;
+  }
+}
+
+@utility orrery-plane {
+  scale: 1 0.36;
+}
+
+@utility orrery-back {
+  clip-path: inset(-300% -60% 50% -60%);
+}
+
+@utility orrery-front {
+  clip-path: inset(50% -60% -300% -60%);
+}
+
+@utility orrery-spin {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: orrery-spin var(--orrery-period, 48s) linear infinite;
+  }
+}
+
+@utility orrery-upright {
+  rotate: calc(var(--slot) * -1);
+  @media (prefers-reduced-motion: no-preference) {
+    animation: orrery-upright var(--orrery-period, 48s) linear infinite;
+  }
+}
+
+@utility orrery-depth {
+  scale: 1 2.78;
+}
+
+@utility orrery-near {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: orrery-depth var(--orrery-period, 48s) linear var(--orrery-phase, 0s) infinite;
+  }
+}
+
+@utility orbit-line {
+  border: 1.5px dashed color-mix(in oklab, var(--foreground) 14%, transparent);
+  border-radius: 9999px;
+}
+
+/* 문서·블로그 표면 — 문서 셸, 코드 패널, 콜아웃. 배경과 토큰은 위 블록들이 소유하므로 여기서는 표면만 만든다. */
+@utility studio-lift {
+  box-shadow:
+    0 18px 36px -26px var(--studio-shadow),
+    0 2px 5px -3px var(--studio-shadow);
+}
+
+@utility jelly-callout {
+  --jelly-tint: var(--tint, var(--primary));
+  background-color: color-mix(in oklab, var(--card) 90%, var(--jelly-tint));
+  background-image: radial-gradient(110% 90% at 0% 0%, color-mix(in oklab, white 40%, transparent), transparent 55%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--jelly-tint) 24%, transparent),
+    inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
+    0 14px 30px -24px var(--studio-shadow);
+  @variant dark {
+    background-color: color-mix(in oklab, var(--card) 86%, var(--jelly-tint));
+    background-image: none;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklab, var(--jelly-tint) 30%, transparent),
+      0 14px 30px -24px var(--studio-shadow);
+  }
+}
+
+/* 하늘 친구들 리그 — 구글리 눈·소품·반응. 시선·근접·클릭은 FriendDirector 가 쓰는 --look/--lean 과 data-* 이고, 모션 축소 설정에서는 눈과 표정만 남는다. */
+@property --friend-lid {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --friend-lid-low {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --friend-pupil {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --friend-eye {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --friend-smile {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --friend-grin {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --friend-gasp {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --friend-blush {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@keyframes friend-blink {
+  0%,
+  94%,
+  100% {
+    scale: 1 0;
+  }
+  96% {
+    scale: 1 1;
+  }
+}
+@keyframes friend-blink-twice {
+  0%,
+  86%,
+  100% {
+    scale: 1 0;
+  }
+  88% {
+    scale: 1 1;
+  }
+  90.5% {
+    scale: 1 0.1;
+  }
+  93% {
+    scale: 1 1;
+  }
+  96% {
+    scale: 1 0;
+  }
+}
+@keyframes friend-dizzy {
+  0%,
+  100% {
+    translate: 34% 0;
+  }
+  12.5% {
+    translate: 24% 24%;
+  }
+  25% {
+    translate: 0 34%;
+  }
+  37.5% {
+    translate: -24% 24%;
+  }
+  50% {
+    translate: -34% 0;
+  }
+  62.5% {
+    translate: -24% -24%;
+  }
+  75% {
+    translate: 0 -34%;
+  }
+  87.5% {
+    translate: 24% -24%;
+  }
+}
+
+@keyframes planet-sway {
+  0%,
+  100% {
+    rotate: -2.5deg;
+  }
+  50% {
+    rotate: 2.5deg;
+  }
+}
+@keyframes planet-orbit {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@keyframes planet-nudge {
+  0%,
+  86%,
+  100% {
+    translate: 0 0;
+  }
+  89% {
+    translate: 0 -2.4cqw;
+  }
+  92% {
+    translate: 0 0.5cqw;
+  }
+  95% {
+    translate: 0 0;
+  }
+}
+@keyframes planet-glint {
+  from {
+    background-position: 82% 0;
+  }
+  to {
+    background-position: 12% 0;
+  }
+}
+@keyframes planet-refresh {
+  0% {
+    rotate: 0deg;
+    scale: 1;
+  }
+  16% {
+    rotate: -28deg;
+    scale: 1.05 0.95;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1);
+  }
+  62% {
+    rotate: 372deg;
+    scale: 0.96 1.04;
+  }
+  74% {
+    rotate: 354deg;
+    scale: 1.06 0.94;
+  }
+  86% {
+    rotate: 362deg;
+    scale: 0.99 1.01;
+  }
+  100% {
+    rotate: 360deg;
+    scale: 1;
+  }
+}
+@keyframes planet-askew {
+  0%,
+  58% {
+    rotate: 0deg;
+    translate: 0 0;
+  }
+  64%,
+  76% {
+    rotate: 16deg;
+    translate: 2cqw 2.5cqw;
+  }
+  84% {
+    rotate: -7deg;
+    translate: -0.5cqw 0;
+  }
+  92% {
+    rotate: 3deg;
+    translate: 0 0;
+  }
+  100% {
+    rotate: 0deg;
+    translate: 0 0;
+  }
+}
+@keyframes planet-reload {
+  0%,
+  10% {
+    opacity: 0;
+  }
+  18%,
+  56% {
+    opacity: 0.85;
+  }
+  76%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes planet-reload-draw {
+  0%,
+  14% {
+    stroke-dashoffset: 100;
+  }
+  58%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes planet-reload-tip {
+  0%,
+  52% {
+    opacity: 0;
+  }
+  58%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes planet-refresh-face {
+  0%,
+  64% {
+    --friend-gasp: 1;
+    --friend-smile: 0;
+    --friend-pupil: 0.8;
+  }
+  72% {
+    --friend-gasp: 0;
+    --friend-smile: 1;
+    --friend-lid-low: 0.45;
+    --friend-pupil: 1;
+  }
+  100% {
+    --friend-gasp: 0;
+    --friend-smile: 1;
+    --friend-lid-low: 0;
+  }
+}
+
+@keyframes rocket-hover {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  40% {
+    translate: 0 -1.6cqw;
+    rotate: 0deg;
+  }
+  44% {
+    rotate: 1.4deg;
+  }
+  47% {
+    rotate: -1.4deg;
+  }
+  50% {
+    rotate: 1deg;
+  }
+  53% {
+    translate: 0 -1.4cqw;
+    rotate: 0deg;
+  }
+}
+@keyframes rocket-flicker {
+  from {
+    opacity: 0.8;
+    scale: 1;
+  }
+  to {
+    opacity: 1;
+    scale: 1.06 1.14;
+  }
+}
+@keyframes rocket-rev {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  25% {
+    translate: -0.6cqw 0.3cqw;
+    rotate: -1.2deg;
+  }
+  50% {
+    translate: 0.5cqw -0.2cqw;
+    rotate: 1deg;
+  }
+  75% {
+    translate: -0.3cqw 0.4cqw;
+    rotate: -0.6deg;
+  }
+}
+@keyframes rocket-puff {
+  0% {
+    opacity: 0;
+    scale: 0.3;
+    translate: -50% -50%;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.15;
+    translate: calc(-50% + var(--puff-x, 0cqw)) calc(-50% + 20cqw);
+  }
+}
+@keyframes rocket-launch {
+  0% {
+    translate: 0 0;
+    scale: 1;
+  }
+  14% {
+    translate: 0 3cqw;
+    scale: 1.12 0.86;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.75, 0.2);
+  }
+  24% {
+    translate: 0 -12cqw;
+    scale: 0.86 1.18;
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.35, 1);
+  }
+  48% {
+    translate: 0 -62cqw;
+    scale: 0.94 1.08;
+    animation-timing-function: ease-in-out;
+  }
+  56% {
+    translate: 0 -64cqw;
+    scale: 1;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.5);
+  }
+  76% {
+    translate: 0 0;
+    scale: 0.9 1.12;
+  }
+  82% {
+    translate: 0 0.8cqw;
+    scale: 1.18 0.82;
+  }
+  90% {
+    translate: 0 0;
+    scale: 0.96 1.05;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@keyframes rocket-goggles {
+  0% {
+    translate: 0 0;
+    scale: 1;
+  }
+  10%,
+  80% {
+    translate: 0 36.5cqw;
+    scale: 1.18;
+  }
+  92% {
+    translate: 0 -1.5cqw;
+    scale: 0.98;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@keyframes rocket-line {
+  0%,
+  18% {
+    opacity: 0;
+    scale: 1 0.2;
+  }
+  26% {
+    opacity: 0.9;
+    scale: 1 1.2;
+  }
+  48% {
+    opacity: 0.7;
+    scale: 1 1;
+  }
+  58%,
+  100% {
+    opacity: 0;
+    scale: 1 0.3;
+  }
+}
+@keyframes rocket-pad {
+  0%,
+  14% {
+    opacity: 0;
+    scale: 0.2;
+    translate: -50% -50%;
+  }
+  24% {
+    opacity: 1;
+    scale: 1;
+  }
+  72%,
+  100% {
+    opacity: 0;
+    scale: 1.6;
+    translate: calc(-50% + var(--puff-x, 0cqw)) calc(-50% - 3cqw);
+  }
+}
+@keyframes rocket-launch-face {
+  0%,
+  22% {
+    --friend-gasp: 0.8;
+    --friend-smile: 0;
+    --friend-eye: 1.15;
+  }
+  30%,
+  88% {
+    --friend-gasp: 0;
+    --friend-grin: 1;
+    --friend-smile: 0;
+    --friend-eye: 1;
+  }
+  100% {
+    --friend-grin: 0;
+    --friend-smile: 1;
+  }
+}
+
+@keyframes moon-doze {
+  0%,
+  100% {
+    rotate: 0deg;
+    scale: 1;
+  }
+  45% {
+    rotate: 3deg;
+    scale: 1.02 0.98;
+  }
+  78% {
+    rotate: 6deg;
+    scale: 1.025 0.975;
+  }
+  82% {
+    rotate: -1.5deg;
+    scale: 1;
+  }
+  88% {
+    rotate: 0.5deg;
+  }
+}
+@keyframes moon-sway {
+  0%,
+  100% {
+    rotate: -1.5deg;
+  }
+  50% {
+    rotate: 1.5deg;
+  }
+}
+@keyframes moon-snore {
+  0%,
+  100% {
+    scale: 0.8;
+  }
+  50% {
+    scale: 1.2;
+  }
+}
+@keyframes moon-z {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+    scale: 0.5;
+  }
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    translate: 6cqw -14cqw;
+    scale: 1.1;
+  }
+}
+@keyframes moon-led {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  6%,
+  18% {
+    opacity: 1;
+  }
+  12% {
+    opacity: 0.45;
+  }
+  30% {
+    opacity: 0.35;
+  }
+}
+@keyframes moon-startle {
+  0% {
+    translate: 0 0;
+    scale: 1;
+  }
+  14% {
+    translate: 0 -9cqw;
+    scale: 0.9 1.14;
+  }
+  34% {
+    translate: 0 0;
+    scale: 1.14 0.88;
+  }
+  50% {
+    scale: 0.96 1.04;
+  }
+  64%,
+  100% {
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@keyframes moon-startle-face {
+  0%,
+  55% {
+    --friend-eye: 1.28;
+    --friend-pupil: 0.5;
+    --friend-gasp: 1;
+    --friend-smile: 0;
+    --friend-lid: 0;
+    --friend-lid-low: 0;
+  }
+  100% {
+    --friend-eye: 1;
+    --friend-pupil: 1;
+    --friend-gasp: 0;
+    --friend-smile: 1;
+  }
+}
+@keyframes moon-bang {
+  0% {
+    opacity: 0;
+    scale: 0;
+    translate: -50% 2cqw;
+  }
+  14% {
+    opacity: 1;
+    scale: 1.25;
+    translate: -50% -2cqw;
+  }
+  26%,
+  70% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: -50% -5cqw;
+  }
+}
+@keyframes moon-groove {
+  0%,
+  100% {
+    rotate: 0deg;
+    translate: 0 0;
+  }
+  6%,
+  56% {
+    rotate: -7deg;
+    translate: 0 1.6cqw;
+  }
+  12.5%,
+  62.5% {
+    rotate: -5deg;
+    translate: 0 0;
+  }
+  31%,
+  81% {
+    rotate: 7deg;
+    translate: 0 1.6cqw;
+  }
+  37.5%,
+  87.5% {
+    rotate: 5deg;
+    translate: 0 0;
+  }
+}
+@keyframes moon-cups {
+  0%,
+  100% {
+    scale: 1;
+  }
+  20% {
+    scale: 1.05;
+  }
+}
+@keyframes moon-note {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+    scale: 0.4;
+    rotate: 0deg;
+  }
+  18% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: var(--note-x, 6cqw) -20cqw;
+    scale: 0.9;
+    rotate: var(--note-r, 14deg);
+  }
+}
+@keyframes moon-groove-face {
+  0%,
+  90% {
+    --friend-grin: 1;
+    --friend-smile: 0;
+    --friend-lid-low: 0.5;
+    --friend-blush: 1;
+  }
+  100% {
+    --friend-grin: 0;
+    --friend-smile: 1;
+    --friend-lid-low: 0;
+  }
+}
+
+@keyframes cloud-drift {
+  0%,
+  100% {
+    translate: -1.2cqw 0;
+    scale: 1;
+  }
+  50% {
+    translate: 1.2cqw -0.8cqw;
+    scale: 1.015 0.985;
+  }
+}
+@keyframes cloud-hat-slip {
+  0%,
+  76%,
+  100% {
+    rotate: 0deg;
+    translate: 0 0;
+  }
+  80%,
+  88% {
+    rotate: -11deg;
+    translate: -1.6cqw 1cqw;
+  }
+  92% {
+    rotate: 4deg;
+    translate: 0.3cqw 0;
+  }
+  96% {
+    rotate: -1deg;
+    translate: 0 0;
+  }
+}
+@keyframes cloud-hat-hop {
+  0% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  10% {
+    translate: 0 1.5cqw;
+    rotate: 0deg;
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  36% {
+    translate: 0 -30cqw;
+    rotate: -200deg;
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4);
+  }
+  62% {
+    translate: 0 0;
+    rotate: -372deg;
+  }
+  70% {
+    translate: 0 -2cqw;
+    rotate: -350deg;
+  }
+  78% {
+    translate: 0 0;
+    rotate: -364deg;
+  }
+  88% {
+    rotate: -358deg;
+  }
+  100% {
+    translate: 0 0;
+    rotate: -360deg;
+  }
+}
+@keyframes cloud-bonk {
+  0%,
+  100% {
+    scale: 1;
+  }
+  9% {
+    scale: 1.08 0.9;
+  }
+  18% {
+    scale: 0.97 1.03;
+  }
+  26%,
+  60% {
+    scale: 1;
+  }
+  64% {
+    scale: 1.1 0.86;
+  }
+  72% {
+    scale: 0.95 1.06;
+  }
+  82% {
+    scale: 1.02 0.98;
+  }
+}
+@keyframes cloud-bob {
+  from {
+    translate: 0 0.8cqw;
+  }
+  to {
+    translate: 0 -0.8cqw;
+  }
+}
+@keyframes cloud-drop {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 24cqw;
+  }
+}
+@keyframes cloud-bonk-face {
+  0%,
+  16% {
+    --friend-gasp: 0.7;
+    --friend-smile: 0;
+  }
+  22%,
+  60% {
+    --friend-gasp: 0;
+    --friend-smile: 1;
+    --friend-lid: 0;
+  }
+  63%,
+  74% {
+    --friend-lid: 0.75;
+    --friend-lid-low: 0.3;
+    --friend-smile: 0;
+    --friend-gasp: 0.8;
+  }
+  100% {
+    --friend-lid: 0.18;
+    --friend-lid-low: 0.14;
+    --friend-gasp: 0;
+    --friend-smile: 1;
+  }
+}
+
+@keyframes comet-swish {
+  from {
+    rotate: -4deg;
+  }
+  to {
+    rotate: 4.5deg;
+  }
+}
+@keyframes comet-wag {
+  from {
+    rotate: -6deg;
+  }
+  to {
+    rotate: 6deg;
+  }
+}
+@keyframes comet-hover {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0.8cqw -1.6cqw;
+  }
+}
+@keyframes comet-talk {
+  from {
+    scale: 0.45 0.25;
+  }
+  to {
+    scale: 1;
+  }
+}
+@keyframes comet-typing {
+  0%,
+  60%,
+  100% {
+    translate: 0 0;
+  }
+  30% {
+    translate: 0 -1.6cqw;
+  }
+}
+@keyframes comet-dash {
+  0% {
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+  14% {
+    translate: -5cqw 4cqw;
+    rotate: -6deg;
+    scale: 1.06 0.94;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.2, 1);
+  }
+  34% {
+    translate: 46cqw -34cqw;
+    rotate: 8deg;
+    scale: 0.92 1.06;
+  }
+  50% {
+    translate: 36cqw -60cqw;
+    rotate: -110deg;
+    scale: 1;
+  }
+  66% {
+    translate: -8cqw -40cqw;
+    rotate: -250deg;
+  }
+  82% {
+    translate: 0 0;
+    rotate: -360deg;
+    scale: 1.08 0.92;
+  }
+  90% {
+    scale: 0.97 1.03;
+  }
+  100% {
+    translate: 0 0;
+    rotate: -360deg;
+    scale: 1;
+  }
+}
+@keyframes comet-spark {
+  0% {
+    opacity: 0;
+    scale: 0;
+    rotate: 0deg;
+  }
+  30% {
+    opacity: 1;
+    scale: 1.1;
+    rotate: 40deg;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.4;
+    rotate: 110deg;
+  }
+}
+@keyframes comet-dash-face {
+  0%,
+  84% {
+    --friend-grin: 1;
+    --friend-smile: 0;
+    --friend-lid-low: 0.35;
+  }
+  100% {
+    --friend-grin: 0;
+    --friend-smile: 1;
+    --friend-lid-low: 0;
+  }
+}
+
+@layer components {
+  .friend {
+    container-type: inline-size;
+    pointer-events: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      --friend-lid 240ms ease,
+      --friend-lid-low 260ms ease,
+      --friend-pupil 300ms ease,
+      --friend-eye 460ms var(--ease-jelly),
+      --friend-smile 180ms ease,
+      --friend-grin 300ms var(--ease-jelly),
+      --friend-gasp 300ms var(--ease-jelly),
+      --friend-blush 420ms ease;
+  }
+  .friend-hit {
+    position: absolute;
+    inset: 14%;
+    z-index: 3;
+    border-radius: 42%;
+    pointer-events: auto;
+  }
+  .friend-act,
+  .friend-idle,
+  .friend-fx,
+  .friend-face {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+  .friend svg {
+    position: absolute;
+    overflow: visible;
+  }
+
+  [data-friend="planet"] {
+    --skin: #0a64f6;
+    --skin-hi: #2c86fc;
+    --skin-deep: #0249dc;
+    --ink: #06102e;
+    --lean-tilt: 4deg;
+    --lean-shift: 2cqw;
+  }
+  [data-friend="rocket"] {
+    --skin: #82aa0e;
+    --skin-hi: #97bf20;
+    --skin-deep: #6a9208;
+    --ink: #1b2606;
+    --lean-tilt: 3deg;
+    --lean-shift: 1.5cqw;
+    --friend-pupil: 1.06;
+  }
+  [data-friend="moon"] {
+    --skin: #f8bd2c;
+    --skin-hi: #fbcd55;
+    --skin-deep: #eba814;
+    --ink: #3a2306;
+    --lean-tilt: 0deg;
+    --lean-shift: 0cqw;
+    --friend-lid: 0.86;
+    --friend-lid-low: 0.14;
+    --friend-pupil: 0.9;
+    --friend-smile: 0;
+    --friend-gasp: 0.5;
+    transition-duration: 2600ms, 2600ms, 300ms, 460ms, 500ms, 300ms, 900ms, 420ms;
+  }
+  [data-friend="moon"][data-awake] {
+    --lean-tilt: 2deg;
+    --lean-shift: 1.2cqw;
+    --friend-lid: 0;
+    --friend-lid-low: 0;
+    --friend-pupil: 1;
+    --friend-smile: 1;
+    --friend-gasp: 0;
+    transition-duration: 90ms, 90ms, 300ms, 460ms, 180ms, 300ms, 200ms, 420ms;
+  }
+  [data-friend="cloud"] {
+    --skin: #ab65db;
+    --skin-hi: #bb7fe6;
+    --skin-deep: #9653c9;
+    --ink: #2a0f46;
+    --lean-tilt: 2deg;
+    --lean-shift: 1.5cqw;
+    --friend-lid: 0.18;
+    --friend-lid-low: 0.14;
+    --friend-pupil: 1.1;
+  }
+  [data-friend="comet"] {
+    --skin: #f5063f;
+    --skin-hi: #ff2c5f;
+    --skin-deep: #d6002d;
+    --ink: #4a0016;
+    --lean-tilt: 0deg;
+    --lean-shift: 7cqw;
+    --friend-pupil: 1.08;
+  }
+  [data-friend="planet"] .friend-hit {
+    inset: 16% 6%;
+    border-radius: 46%;
+  }
+  [data-friend="rocket"] .friend-hit {
+    inset: 4% 22% 6%;
+    border-radius: 40%;
+  }
+  [data-friend="moon"] .friend-hit {
+    inset: 6% 10% 6% 12%;
+  }
+  [data-friend="cloud"] .friend-hit {
+    inset: 16% 6% 18%;
+  }
+  [data-friend="comet"] .friend-hit {
+    inset: 14% 4% 12% 6%;
+  }
+
+  .friend-eye {
+    position: absolute;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 46% 36%, #ffffff 0 44%, #f4f3f7 58%, #e0dee8 76%, #c3c0ce 100%);
+    box-shadow:
+      0 0.5cqw 0.7cqw -0.15cqw rgb(18 8 28 / 0.4),
+      0 0 0 0.16cqw rgb(255 255 255 / 0.35);
+    scale: var(--friend-eye);
+  }
+  .friend-pupil {
+    position: absolute;
+    inset: 21%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 34%, #4b3a31 0, #22180f 38%, #0d0907 78%);
+    translate: calc(var(--look-x, 0) * 36%) calc(var(--look-y, 0) * 36%);
+    scale: var(--friend-pupil);
+    transition: translate 160ms cubic-bezier(0.3, 1.55, 0.5, 1);
+  }
+  .friend-gloss {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      radial-gradient(15% 12% at 67% 28%, rgb(255 255 255 / 0.95) 40%, rgb(255 255 255 / 0)),
+      radial-gradient(8% 6% at 31% 74%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0)),
+      radial-gradient(circle, transparent 62%, rgb(255 255 255 / 0.2) 74%, transparent 82%);
+  }
+  .friend-lid,
+  .friend-lid-low,
+  .friend-eye::after {
+    position: absolute;
+    left: -6%;
+    right: -6%;
+    height: 106%;
+    background-color: var(--skin);
+  }
+  .friend-lid,
+  .friend-eye::after {
+    top: -6%;
+    transform-origin: 50% 0;
+    border-radius: 0 0 50% 50% / 0 0 40% 40%;
+    background-image: linear-gradient(to bottom, var(--skin-hi), var(--skin) 60%, var(--skin-deep));
+    box-shadow: inset 0 -0.4cqw 0.2cqw -0.1cqw rgb(0 0 0 / 0.32);
+  }
+  .friend-lid {
+    scale: 1 var(--friend-lid);
+  }
+  .friend-eye::after {
+    content: "";
+    scale: 1 0;
+    animation: var(--blink-name, friend-blink) var(--blink-period, 5s) linear var(--blink-delay, 0s) infinite;
+  }
+  .friend-lid-low {
+    bottom: -6%;
+    transform-origin: 50% 100%;
+    scale: 1 var(--friend-lid-low);
+    border-radius: 50% 50% 0 0 / 40% 40% 0 0;
+    background-image: linear-gradient(to top, var(--skin-deep), var(--skin) 70%);
+    box-shadow: inset 0 0.35cqw 0.2cqw -0.1cqw rgb(0 0 0 / 0.2);
+  }
+  .friend-mouth {
+    position: absolute;
+    aspect-ratio: 3 / 2;
+    translate: -50% -50%;
+  }
+  .friend-mouth svg {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .friend-smile,
+  .friend-grin,
+  .friend-gasp {
+    transform-box: fill-box;
+    transform-origin: 50% 40%;
+  }
+  .friend-smile {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 3.4;
+    stroke-linecap: round;
+    opacity: var(--friend-smile);
+  }
+  .friend-grin {
+    fill: var(--ink);
+    opacity: clamp(0, var(--friend-grin) * 4, 1);
+    scale: var(--friend-grin);
+  }
+  .friend-gasp {
+    fill: var(--ink);
+    opacity: clamp(0, var(--friend-gasp) * 4, 1);
+    scale: var(--friend-gasp);
+  }
+  .friend-blush {
+    position: absolute;
+    width: 10%;
+    aspect-ratio: 2;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(255 92 122 / 0.6), rgb(255 92 122 / 0));
+    opacity: var(--friend-blush);
+  }
+  .friend[data-dizzy] {
+    --friend-gasp: 0.7;
+    --friend-smile: 0;
+  }
+
+  .planet-orbit {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    mask-image:
+      linear-gradient(167deg, transparent 50%, black 50.6%),
+      radial-gradient(31.8cqw 33.4cqw at 50.8% 50.5%, transparent 99%, black 100%);
+  }
+  .planet-streak {
+    fill: none;
+    stroke: white;
+    stroke-width: 2.6;
+    filter: blur(0.25px);
+    stroke-linecap: round;
+    stroke-dasharray: 10 90;
+    opacity: 0.55;
+  }
+  .planet-streak-fast {
+    stroke-dasharray: 6 44;
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  .planet-glasses {
+    position: absolute;
+    inset: 0;
+    transform-origin: 49.5% 40%;
+  }
+  .planet-glint {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 42%, rgb(255 255 255 / 0.75) 48%, transparent 54%) no-repeat;
+    background-size: 300% 100%;
+    background-position: 82% 0;
+    mask-image:
+      radial-gradient(7.2cqw 7.4cqw at 34.5% 40.5%, black 98%, transparent),
+      radial-gradient(7.2cqw 7.4cqw at 64.5% 39.5%, black 98%, transparent);
+  }
+  .planet-reload {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+  .planet-reload path {
+    fill: none;
+    stroke: var(--planet);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .planet-reload path:first-child {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+  }
+  .planet-reload-tip {
+    opacity: 0;
+  }
+  @media (hover: hover) {
+    [data-friend="planet"][data-near] {
+      --friend-lid: 0.34;
+      --friend-pupil: 0.82;
+    }
+  }
+
+  .rocket-glow {
+    position: absolute;
+    top: 87%;
+    left: 51%;
+    width: 30%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklab, var(--moon) 70%, white),
+      color-mix(in oklab, var(--moon) 70%, transparent) 40%,
+      transparent
+    );
+    transition: scale 400ms var(--ease-jelly);
+  }
+  .rocket-goggles {
+    position: absolute;
+    inset: 0;
+    transform-origin: 49.5% 15%;
+  }
+  .rocket-puff {
+    position: absolute;
+    top: 90%;
+    width: 9%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fffaf0, #f2e2c0 62%, #dcc79c);
+    opacity: 0;
+  }
+  .rocket-line {
+    position: absolute;
+    top: 96%;
+    width: 1.6%;
+    height: 30%;
+    translate: -50% 0;
+    transform-origin: 50% 0;
+    border-radius: 9999px;
+    background: linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 35%, transparent), transparent);
+    opacity: 0;
+  }
+  .rocket-pad {
+    position: absolute;
+    top: 92%;
+    width: 22%;
+    aspect-ratio: 1.3;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fffaf0, #efe0c2 60%, rgb(220 199 156 / 0));
+    opacity: 0;
+  }
+  [data-friend="rocket"][data-near] {
+    --friend-eye: 1.06;
+    --friend-pupil: 1.14;
+  }
+
+  .moon-phones {
+    position: absolute;
+    inset: 0;
+    transform-origin: 45% 48%;
+  }
+  .moon-led {
+    position: absolute;
+    top: 50.6%;
+    left: 12.3%;
+    width: 4.2%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, #f1fff7 22%, #58f5a8 46%, rgb(88 245 168 / 0));
+    opacity: 0.8;
+  }
+  .moon-zzz {
+    position: absolute;
+    inset: 0;
+    transform-origin: 88% 16%;
+    transition:
+      opacity 600ms ease 1400ms,
+      scale 600ms ease 1400ms;
+  }
+  .moon-z {
+    aspect-ratio: 1;
+    fill: none;
+    color: color-mix(in oklab, var(--foreground) 58%, var(--planet));
+    stroke: currentColor;
+    stroke-width: 3.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.8;
+  }
+  [data-friend="moon"][data-awake] .moon-zzz {
+    opacity: 0;
+    scale: 1.5;
+    transition:
+      opacity 160ms ease,
+      scale 300ms ease;
+  }
+  .moon-bang {
+    top: -16%;
+    left: 47%;
+    width: 7%;
+    aspect-ratio: 1 / 2;
+    translate: -50% 0;
+    color: var(--jelly);
+    opacity: 0;
+  }
+  .moon-bang path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 7;
+    stroke-linecap: round;
+  }
+  .moon-bang circle {
+    fill: currentColor;
+  }
+  .moon-note {
+    width: 10%;
+    aspect-ratio: 1;
+    color: color-mix(in oklab, var(--foreground) 50%, var(--planet));
+    fill: currentColor;
+    opacity: 0;
+  }
+  .moon-note-stem {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .cloud-hat {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 22%;
+  }
+  .cloud-replica {
+    position: absolute;
+    top: 46%;
+    width: 40%;
+    aspect-ratio: 1;
+    scale: 0.2;
+    opacity: 0;
+  }
+  .cloud-replica-l {
+    left: 14%;
+  }
+  .cloud-replica-r {
+    right: 14%;
+  }
+  .cloud-replica-bob,
+  .cloud-replica-eyes {
+    position: absolute;
+    inset: 0;
+  }
+  .cloud-replica-eyes {
+    background:
+      radial-gradient(circle at 40% 58%, #1d1411 0 4%, transparent 4.6%),
+      radial-gradient(circle at 60% 58%, #1d1411 0 4%, transparent 4.6%);
+  }
+  .cloud-drop {
+    top: 74%;
+    aspect-ratio: 2 / 3;
+    fill: color-mix(in oklab, var(--planet) 55%, white);
+    opacity: 0;
+  }
+
+  .comet-tail,
+  .comet-wag,
+  .comet-headset {
+    position: absolute;
+    inset: 0;
+  }
+  .comet-tail,
+  .comet-wag {
+    transform-origin: 47% 52%;
+  }
+  .comet-tail-cut {
+    mask-image: radial-gradient(circle 28.5cqw at 74% 41.5%, transparent 98%, black 100%);
+  }
+  .comet-head-cut {
+    mask-image: radial-gradient(circle 27.5cqw at 71% 42.5%, black 96%, transparent 100%);
+  }
+  .comet-bubble {
+    position: absolute;
+    top: -6%;
+    left: 82%;
+    display: flex;
+    width: 30%;
+    height: 16%;
+    align-items: center;
+    justify-content: center;
+    gap: 2.4cqw;
+    border-radius: 9999px;
+    background: var(--card);
+    box-shadow:
+      0 1.2cqw 2.4cqw -1cqw rgb(0 0 0 / 0.3),
+      0 0 0 0.3cqw color-mix(in oklab, var(--comet) 18%, transparent);
+    scale: 0;
+    transform-origin: 0% 100%;
+  }
+  .comet-bubble > span {
+    width: 3.6cqw;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--comet);
+  }
+  .comet-trail,
+  .comet-burst {
+    aspect-ratio: 1;
+    fill: currentColor;
+    opacity: 0;
+  }
+  .comet-trail path,
+  .comet-burst path {
+    fill: currentColor;
+  }
+  [data-friend="comet"][data-near] {
+    --friend-eye: 1.08;
+    --friend-pupil: 1.16;
+  }
+
+  @media (hover: hover) {
+    .friend:hover {
+      --friend-blush: 1;
+    }
+    [data-friend="planet"]:hover {
+      --friend-lid: 0;
+      --friend-pupil: 1.12;
+      --friend-eye: 1.06;
+    }
+    [data-friend="rocket"]:hover {
+      --friend-grin: 1;
+      --friend-smile: 0;
+      --friend-pupil: 1.18;
+    }
+    [data-friend="cloud"]:hover {
+      --friend-lid: 0;
+      --friend-lid-low: 0;
+      --friend-grin: 1;
+      --friend-smile: 0;
+      --friend-eye: 1.05;
+    }
+    [data-friend="comet"]:hover {
+      --friend-grin: 1;
+      --friend-smile: 0;
+    }
+  }
+  [data-friend="planet"][data-boop] {
+    animation: planet-refresh-face 1150ms both;
+  }
+  [data-friend="rocket"][data-boop] {
+    animation: rocket-launch-face 1750ms both;
+  }
+  [data-friend="moon"][data-startle] {
+    animation: moon-startle-face 1000ms both;
+  }
+  [data-friend="moon"][data-boop] {
+    animation: moon-groove-face 2050ms both;
+  }
+  [data-friend="cloud"][data-boop] {
+    animation: cloud-bonk-face 1450ms both;
+  }
+  [data-friend="comet"][data-boop] {
+    animation: comet-dash-face 1350ms both;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .friend-act {
+      translate: calc(var(--lean-x, 0) * var(--lean-shift, 1.5cqw)) calc(var(--lean-y, 0) * var(--lean-shift, 1.5cqw) * 0.5);
+      rotate: calc(var(--lean-x, 0) * var(--lean-tilt, 3deg) + var(--aim, 0) * 1deg);
+      transition:
+        translate 520ms cubic-bezier(0.2, 0.8, 0.3, 1),
+        rotate 520ms cubic-bezier(0.2, 0.8, 0.3, 1),
+        scale 600ms var(--ease-jelly);
+    }
+    .friend[data-dizzy] .friend-pupil {
+      animation: friend-dizzy 0.55s linear infinite;
+    }
+    .friend[data-dizzy] .friend-eye + .friend-eye .friend-pupil {
+      animation-direction: reverse;
+    }
+
+    [data-friend="planet"] .friend-act {
+      transform-origin: 51% 51%;
+    }
+    [data-friend="planet"] .friend-idle {
+      transform-origin: 51% 62%;
+      animation: planet-sway 6.4s ease-in-out infinite;
+    }
+    .planet-streak {
+      animation: planet-orbit 5.5s linear infinite;
+    }
+    .planet-streak-fast {
+      animation-duration: 0.85s;
+    }
+    .planet-glasses {
+      animation: planet-nudge 9s ease-in-out -3s infinite;
+    }
+
+    [data-friend="rocket"] .friend-act,
+    [data-friend="rocket"] .friend-idle {
+      transform-origin: 51% 92%;
+    }
+    [data-friend="rocket"] .friend-idle {
+      animation: rocket-hover 2.8s ease-in-out infinite;
+    }
+    .rocket-glow {
+      animation: rocket-flicker 0.32s ease-in-out infinite alternate;
+    }
+    [data-friend="rocket"][data-near] .rocket-glow {
+      scale: 1.15;
+    }
+
+    [data-friend="moon"] .friend-act,
+    [data-friend="moon"] .friend-idle {
+      transform-origin: 46% 82%;
+    }
+    [data-friend="moon"] .friend-idle {
+      animation: moon-doze 6s ease-in-out infinite;
+    }
+    [data-friend="moon"][data-awake] .friend-idle {
+      animation: moon-sway 7s ease-in-out infinite;
+    }
+    [data-friend="moon"]:not([data-awake]) .friend-mouth {
+      animation: moon-snore 3s ease-in-out infinite;
+    }
+    .moon-z {
+      animation: moon-z 3.6s ease-out var(--delay, 0s) infinite;
+    }
+    .moon-led {
+      animation: moon-led 2.8s linear infinite;
+    }
+    [data-friend="moon"][data-awake] .moon-led {
+      animation-duration: 1.1s;
+    }
+
+    [data-friend="cloud"] .friend-act,
+    [data-friend="cloud"] .friend-idle {
+      transform-origin: 50% 80%;
+    }
+    [data-friend="cloud"] .friend-idle {
+      animation: cloud-drift 8s ease-in-out infinite;
+    }
+    .cloud-hat {
+      animation: cloud-hat-slip 12s ease-in-out -5s infinite;
+    }
+    .cloud-replica {
+      transition:
+        scale 520ms var(--ease-jelly),
+        translate 520ms var(--ease-jelly),
+        opacity 220ms ease;
+    }
+    .cloud-replica-bob {
+      animation: cloud-bob 2.2s ease-in-out infinite alternate;
+    }
+    .cloud-replica-r .cloud-replica-bob {
+      animation-delay: -1.1s;
+    }
+
+    [data-friend="comet"] .friend-act,
+    [data-friend="comet"] .friend-idle {
+      transform-origin: 70% 45%;
+    }
+    [data-friend="comet"] .friend-idle {
+      animation: comet-hover 3.4s ease-in-out infinite;
+    }
+    .comet-tail {
+      animation: comet-swish 2.8s ease-in-out infinite alternate;
+    }
+    .comet-bubble {
+      transition: scale 420ms var(--ease-jelly);
+    }
+    .comet-bubble > span {
+      animation: comet-typing 0.9s ease-in-out infinite;
+    }
+    .comet-bubble > span:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+    .comet-bubble > span:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @media (hover: hover) {
+      [data-friend="planet"]:hover .planet-streak-fast {
+        opacity: 0.8;
+      }
+      [data-friend="planet"]:hover .planet-glint {
+        animation: planet-glint 900ms ease-out both;
+      }
+      [data-friend="rocket"]:hover .friend-act {
+        animation: rocket-rev 0.11s linear infinite;
+      }
+      [data-friend="rocket"]:hover .rocket-glow {
+        scale: 1.45;
+      }
+      [data-friend="rocket"]:hover .rocket-puff {
+        animation: rocket-puff 0.6s ease-out var(--delay, 0s) infinite;
+      }
+      [data-friend="moon"][data-awake]:hover .moon-phones {
+        animation: moon-cups 0.6s ease-in-out infinite;
+      }
+      [data-friend="moon"][data-awake]:hover .moon-note-hum {
+        animation: moon-note 2.4s ease-out infinite;
+      }
+      [data-friend="cloud"]:hover .friend-act {
+        scale: 1.07;
+      }
+      [data-friend="cloud"]:hover .cloud-replica {
+        opacity: 1;
+        scale: 1;
+      }
+      [data-friend="cloud"]:hover .cloud-replica-l {
+        translate: -34cqw -5cqw;
+      }
+      [data-friend="cloud"]:hover .cloud-replica-r {
+        translate: 34cqw -3cqw;
+      }
+      [data-friend="comet"]:hover .comet-wag {
+        animation: comet-wag 0.26s ease-in-out infinite alternate;
+      }
+      [data-friend="comet"]:hover .comet-bubble {
+        scale: 1;
+      }
+      [data-friend="comet"]:hover .friend-grin {
+        animation: comet-talk 0.3s ease-in-out infinite alternate;
+      }
+    }
+
+    [data-friend="planet"][data-boop] .friend-act {
+      animation: planet-refresh 1150ms both;
+    }
+    [data-friend="planet"][data-boop] .planet-glasses {
+      animation: planet-askew 1150ms both;
+    }
+    [data-friend="planet"][data-boop] .planet-reload {
+      animation: planet-reload 1150ms both;
+    }
+    [data-friend="planet"][data-boop] .planet-reload path:first-child {
+      animation: planet-reload-draw 1150ms both;
+    }
+    [data-friend="planet"][data-boop] .planet-reload-tip {
+      animation: planet-reload-tip 1150ms both;
+    }
+    [data-friend="rocket"][data-boop] .friend-act {
+      animation: rocket-launch 1750ms both;
+    }
+    [data-friend="rocket"][data-boop] .rocket-goggles {
+      animation: rocket-goggles 1750ms both;
+    }
+    [data-friend="rocket"][data-boop] .rocket-line {
+      animation: rocket-line 1750ms var(--delay, 0s) both;
+    }
+    [data-friend="rocket"][data-boop] .rocket-pad {
+      animation: rocket-pad 1750ms var(--delay, 0s) both;
+    }
+    [data-friend="rocket"][data-boop] .rocket-glow {
+      scale: 1.7;
+    }
+    [data-friend="moon"][data-startle] .friend-act {
+      animation: moon-startle 900ms both;
+    }
+    [data-friend="moon"][data-startle] .moon-bang {
+      animation: moon-bang 1000ms both;
+    }
+    [data-friend="moon"][data-boop] .friend-act {
+      animation: moon-groove 2050ms ease-in-out both;
+    }
+    [data-friend="moon"][data-boop] .moon-phones {
+      animation: moon-cups 0.5s ease-in-out 4;
+    }
+    [data-friend="moon"][data-boop] .moon-note {
+      animation: moon-note 1.5s ease-out var(--delay, 0s) both;
+    }
+    [data-friend="moon"][data-boop] .moon-led {
+      animation-duration: 0.18s;
+    }
+    [data-friend="cloud"][data-boop] .friend-act {
+      animation: cloud-bonk 1450ms both;
+    }
+    [data-friend="cloud"][data-boop] .cloud-hat {
+      animation: cloud-hat-hop 1450ms both;
+    }
+    [data-friend="cloud"][data-boop] .cloud-drop {
+      animation: cloud-drop 0.9s ease-in calc(380ms + var(--delay, 0ms)) both;
+    }
+    [data-friend="comet"][data-boop] .friend-act {
+      animation: comet-dash 1350ms both;
+    }
+    [data-friend="comet"][data-boop] .comet-bubble {
+      scale: 0;
+      transition-duration: 120ms;
+    }
+    [data-friend="comet"][data-boop] .comet-trail {
+      animation: comet-spark 700ms ease-out var(--delay, 0ms) both;
+    }
+    [data-friend="comet"][data-boop] .comet-burst {
+      animation: comet-spark 650ms ease-out calc(1080ms + var(--delay, 0ms)) both;
+    }
+
+    .friend[data-still] .friend-idle,
+    .friend[data-still] .comet-tail,
+    .friend[data-still] .planet-streak,
+    .friend[data-still] .planet-glasses,
+    .friend[data-still] .cloud-hat {
+      animation: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .friend-pupil {
+      transition: translate 80ms ease-out;
+    }
+  }
+  @container (width < 56px) {
+    .friend-detail {
+      display: none;
+    }
+  }
+  @container (width < 40px) {
+    .friend-mouth,
+    .friend-blush,
+    .moon-zzz {
+      display: none;
+    }
+  }
 }

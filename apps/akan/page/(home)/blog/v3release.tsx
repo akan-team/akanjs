@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Code, panelRecipe } from "@apps/akan/ui";
+import { Code, Friend, JellyKicker, panelRecipe } from "@apps/akan/ui";
 import { page } from "akanjs/client";
 import { badgeRecipe, Link } from "akanjs/ui";
 import { BsArrowRight } from "react-icons/bs";
@@ -399,14 +399,17 @@ export default page().render(() => {
   const { l } = usePage();
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen text-foreground">
       <article className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
         <header>
-          <p className="mb-12 font-semibold text-foreground/50 text-sm uppercase tracking-[0.2em]">Akan.js v3</p>
+          <div className="mb-10 flex items-end justify-between gap-4">
+            <JellyKicker>Akan.js v3</JellyKicker>
+            <Friend name="comet" className="jelly-float size-16 md:size-20" priority />
+          </div>
           <p className="mb-4 text-foreground/50 text-sm">
             {l.trans({ en: "Release note · Sep 25, 2026", ko: "릴리즈 노트 · 2026년 9월 25일" })}
           </p>
-          <h1 className="font-black text-4xl leading-tight tracking-tight md:text-5xl">
+          <h1 className="font-black text-4xl leading-[1.08] md:text-[3.25rem]">
             {l.trans({
               en: "Akan.js v3: agents join the full stack",
               ko: "Akan.js v3: 풀스택에 에이전트까지",
@@ -444,7 +447,7 @@ export default page().render(() => {
           {headlines.map((item) => (
             <div key={item.no} id={`v3-${item.no}`} className="scroll-mt-28">
               <p className="font-black font-mono text-primary text-sm">{item.no}</p>
-              <h2 className="mt-2 font-bold text-3xl tracking-tight">{l.trans(item.title)}</h2>
+              <h2 className="mt-2 font-black text-3xl">{l.trans(item.title)}</h2>
               <div className="mt-4 space-y-4 text-foreground/75 leading-7">
                 {item.paragraphs.map((paragraph) => (
                   <p key={paragraph.en}>{l.trans(paragraph)}</p>
@@ -470,7 +473,7 @@ export default page().render(() => {
           <p className="font-bold text-primary text-sm uppercase tracking-[0.2em]">
             {l.trans({ en: "Faster and smaller", ko: "더 빠르고 더 작게" })}
           </p>
-          <h2 className="mt-3 font-bold text-3xl tracking-tight">
+          <h2 className="mt-3 font-black text-3xl">
             {l.trans({
               en: "Faster than v2 on every number we measured",
               ko: "측정한 모든 지표에서 v2보다 빠릅니다",
@@ -482,7 +485,7 @@ export default page().render(() => {
               ko: "에이전트, MCP, 새로운 UI 시스템을 더하면서 속도를 잃지 않았는지 확인하려고 v2 때와 같은 벤치마크를 다시 돌렸습니다. v3는 더 빠르고, 메모리를 덜 쓰고, 두 배 빨리 시작합니다.",
             })}
           </p>
-          <div className="mt-6 overflow-x-auto rounded-2xl border border-foreground/10 px-4">
+          <div className="jelly-glass mt-6 overflow-x-auto rounded-3xl px-5 py-2">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-border border-b">
@@ -510,7 +513,7 @@ export default page().render(() => {
           </div>
           <div className="mt-6 grid gap-3 md:grid-cols-3">
             {improvements.map((item) => (
-              <div key={item.title.en} className="rounded-2xl bg-muted p-5">
+              <div key={item.title.en} className="jelly-glass rounded-3xl p-5">
                 <h3 className="font-semibold">{l.trans(item.title)}</h3>
                 <p className="mt-2 text-foreground/70 text-sm leading-6">{l.trans(item.body)}</p>
               </div>
@@ -549,7 +552,7 @@ export default page().render(() => {
               </div>
             ))}
           </div>
-          <div className="mt-8 overflow-x-auto">
+          <div className="jelly-glass mt-8 overflow-x-auto rounded-3xl px-5 py-2">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-border border-b">
@@ -596,7 +599,7 @@ export default page().render(() => {
             })}
           </p>
 
-          <div className="mt-12 rounded-3xl bg-muted p-6 md:p-8">
+          <div className="jelly-glass mt-12 rounded-4xl p-6 md:p-8">
             <h3 className="font-bold text-xl">
               {l.trans({ en: "Smaller builds and payloads", ko: "더 작아진 빌드와 전송량" })}
             </h3>
@@ -609,7 +612,7 @@ export default page().render(() => {
               ))}
             </div>
           </div>
-          <p className="mt-8 border-primary border-l-4 pl-5 text-foreground/75 leading-7">
+          <p className="jelly-callout tint-primary mt-8 rounded-3xl p-6 text-foreground/75 leading-7 md:p-8">
             {l.trans({
               en: "v3 adds more than any release before it and is still faster than v2 on every number we measured. Upgrade and your app gets quicker, lighter and faster to start — the speed comes with the framework, not with your code.",
               ko: "v3는 어떤 릴리즈보다 많은 기능을 더했지만, 측정한 모든 지표에서 v2보다 빠릅니다. 업그레이드하면 앱이 더 빠르고, 가볍고, 빨리 시작합니다. 그 속도는 여러분의 코드가 아니라 프레임워크에서 옵니다.",
@@ -618,15 +621,15 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Also new in v3", ko: "v3의 다른 변화" })}</h2>
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "Also new in v3", ko: "v3의 다른 변화" })}</h2>
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             {moreChanges.map((item) => (
               <Link
                 key={item.no}
                 href={item.href}
                 className={panelRecipe(
-                  { radius: "none", padding: "none" },
-                  "group rounded-3xl p-5 transition hover:border-primary/30",
+                  { tone: "jelly", radius: "3xl", padding: "none" },
+                  "group squish hover:tint-primary p-5 transition-shadow",
                 )}
               >
                 <p className="font-mono text-foreground/40 text-xs">{item.no}</p>
@@ -638,7 +641,9 @@ export default page().render(() => {
         </section>
 
         <section className="mt-16">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "Upgrading from v2", ko: "v2에서 올라올 때" })}</h2>
+          <h2 className="font-black text-2xl md:text-3xl">
+            {l.trans({ en: "Upgrading from v2", ko: "v2에서 올라올 때" })}
+          </h2>
           <p className="mt-3 text-foreground/65 leading-7">
             {l.trans({
               en: "These are the changes that need a hand. akan lint and akan typecheck point at most of them.",
@@ -647,7 +652,7 @@ export default page().render(() => {
           </p>
           <ol className="mt-6 grid gap-3">
             {breakingChanges.map((item, idx) => (
-              <li key={item.text.en} className="flex gap-4 rounded-2xl border border-foreground/10 p-4">
+              <li key={item.text.en} className="jelly-glass flex gap-4 rounded-3xl p-4">
                 <span className="font-black font-mono text-foreground/30">{String(idx + 1).padStart(2, "0")}</span>
                 <div className="text-sm leading-6">
                   <p className="text-foreground/80">{l.trans(item.text)}</p>
@@ -660,8 +665,8 @@ export default page().render(() => {
           </ol>
         </section>
 
-        <section className="mt-16 border-primary border-l-4 pl-5">
-          <h2 className="font-bold text-2xl">{l.trans({ en: "What comes next", ko: "다음은" })}</h2>
+        <section className="jelly-callout tint-primary mt-16 rounded-3xl p-6 md:p-8">
+          <h2 className="font-black text-2xl md:text-3xl">{l.trans({ en: "What comes next", ko: "다음은" })}</h2>
           <p className="mt-4 text-foreground/75 leading-7">
             {l.trans({
               en: "v3 is the stage where agents joined the full stack. What comes next is the agent network across sessions, people and apps, Akan Cloud for deployment, context-side rendering as the agentic rendering step after SSR and CSR, and a repository engine that changes and extends the app itself.",

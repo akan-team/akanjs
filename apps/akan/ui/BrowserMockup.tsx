@@ -23,8 +23,8 @@ export const BrowserMockup = ({
   className,
   screenClassName,
 }: BrowserMockupProps) => (
-  <div className={cn("w-full overflow-hidden rounded-box border-2 border-foreground/30 bg-background", className)}>
-    <div className="flex items-center border-0 border-foreground/10 border-b-2 border-b-foreground/30 px-2">
+  <div className={cn("studio-lift w-full overflow-hidden rounded-3xl border border-foreground/10 bg-card", className)}>
+    <div className="flex items-center border-foreground/8 border-b bg-foreground/3 px-3">
       <div className="flex items-center gap-2">
         {/* biome-ignore lint/plugin: macOS traffic-light dots are fixed OS-chrome colors, not theme tokens */}
         <div className="size-3 rounded-full bg-[#f02020]" />
@@ -34,7 +34,7 @@ export const BrowserMockup = ({
         <div className="size-3 rounded-full bg-[#3ed13b]" />
       </div>
       <div className="flex w-full items-center gap-2 border-foreground/10 p-3">
-        <div className="w-full rounded-field border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
+        <div className="w-full rounded-full border border-foreground/8 bg-background/80 px-4 py-0.5 text-foreground/60 text-sm">
           {url}
         </div>
       </div>

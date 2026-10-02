@@ -27,7 +27,7 @@ export default page().render(() => {
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-background shadow-lg shadow-primary/20">
               <img
-                src="/logo.png"
+                src="/icon-192x192.png"
                 alt={l.trans({ en: "Akan.js logo", ko: "Akan.js 로고" })}
                 className="h-full w-full object-cover"
               />

@@ -1,7 +1,7 @@
 export type FlowTone = "default" | "primary" | "info" | "success" | "muted" | "danger";
 
 export const flowToneClass: { [key in FlowTone]: string } = {
-  default: "border-border bg-muted text-foreground",
+  default: "border-foreground/10 bg-background text-foreground",
   primary: "border-primary/40 bg-primary/10 text-foreground",
   info: "border-info/30 bg-info/10 text-foreground",
   success: "border-success/30 bg-success/10 text-foreground",

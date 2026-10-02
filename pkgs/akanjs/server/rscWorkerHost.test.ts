@@ -219,6 +219,19 @@ describe("RscWorker host render stream", () => {
     await expect(result.lateControl).resolves.toBeNull();
   });
 
+  test("reports a theme the worker names after the stream has started", async () => {
+    const harness = createHostRenderHarness();
+
+    harness.pending().onMeta?.({});
+    const result = await streamResultOf(harness);
+    expect(result.theme).toBeUndefined();
+
+    harness.pending().onTheme?.("light");
+    harness.pending().onEnd();
+
+    expect(result.theme).toBe("light");
+  });
+
   test("resolves on the first chunk even when meta has not arrived", async () => {
     const harness = createHostRenderHarness();
 
@@ -1185,6 +1198,41 @@ process.send?.({ type: "hello" });
       if (saved.spawns === undefined) delete process.env.AKAN_TEST_RSC_SPAWNS;
       else process.env.AKAN_TEST_RSC_SPAWNS = saved.spawns;
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
+describe("RscWorker late theme", () => {
+  test("names a theme the root layout sets mid-stream before the chunk that carries it", async () => {
+    const saved = process.env.AKAN_RSC_WORKER_PATH;
+    process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
+    const segmentOutlet = "pkgs/akanjs/server/rscSegmentOutlet.tsx";
+    const rsc = new RscWorker({
+      pagesBundlePath: path.join(import.meta.dir, "rscWorkerTheme.fixture.tsx"),
+      pagesBundleBuildId: 1,
+      rscRuntimeClientManifest: {
+        [`${segmentOutlet}#AkanSegmentOutlet`]: { id: segmentOutlet, chunks: [], name: "AkanSegmentOutlet" },
+      },
+    } as unknown as BaseBuildArtifact);
+    try {
+      await rsc.ready;
+      const result = await rsc.renderWithMeta(new Request("http://localhost/en/themed"));
+      if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
+      expect(result.theme).toBeUndefined();
+      const reader = result.stream.getReader();
+      let body = "";
+      let themeWithBody: string | undefined;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        body += decoder.decode(value, { stream: true });
+        if (themeWithBody === undefined && body.includes("themed body")) themeWithBody = result.theme ?? "(none)";
+      }
+      expect(themeWithBody).toBe("light");
+    } finally {
+      rsc.kill();
+      if (saved === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = saved;
     }
   }, 20_000);
 });

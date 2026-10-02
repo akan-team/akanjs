@@ -1,10 +1,24 @@
 import { usePage } from "@apps/akan/client";
-import { page } from "akanjs/client";
-import { Link } from "akanjs/ui";
+import { Friend, type FriendProps, JellyKicker, panelRecipe, StudioStar } from "@apps/akan/ui";
+import { cn, page } from "akanjs/client";
+import { badgeRecipe, Link } from "akanjs/ui";
 
-const posts = [
+interface BlogPost {
+  href: string;
+  friend: FriendProps["name"];
+  eyebrow: { en: string; ko: string };
+  title: { en: string; ko: string };
+  desc: { en: string; ko: string };
+  meta: { en: string; ko: string };
+  date: { en: string; ko: string };
+  image: string;
+  imageClassName: string;
+}
+
+const posts: BlogPost[] = [
   {
     href: "/blog/v3release",
+    friend: "comet",
     eyebrow: { en: "Release Note", ko: "Release Note" },
     title: {
       en: "Akan.js v3: agents join the full stack",
@@ -21,6 +35,7 @@ const posts = [
   },
   {
     href: "/blog/production-stability",
+    friend: "moon",
     eyebrow: { en: "Production Stability", ko: "Production Stability" },
     title: {
       en: "Akan.js is production‑grade stable",
@@ -37,6 +52,7 @@ const posts = [
   },
   {
     href: "/blog/benchmark",
+    friend: "rocket",
     eyebrow: { en: "Benchmark", ko: "Benchmark" },
     title: {
       en: "Akan.js benchmark results",
@@ -53,6 +69,7 @@ const posts = [
   },
   {
     href: "/blog/v2release",
+    friend: "cloud",
     eyebrow: { en: "Release Note", ko: "Release Note" },
     title: {
       en: "Akan.js v2 is here",
@@ -69,6 +86,7 @@ const posts = [
   },
   {
     href: "/blog/manifesto",
+    friend: "planet",
     eyebrow: { en: "Manifesto", ko: "Manifesto" },
     title: {
       en: "Developers should spend their lives on work that matters",
@@ -90,45 +108,58 @@ export default page().render(() => {
   const [...listPosts] = posts;
 
   return (
-    <main className="min-h-screen bg-background font-mono text-foreground">
-      <section className="border-border border-b">
-        <div className="mx-auto max-w-5xl px-6 pt-16 pb-8 lg:px-8">
-          <h1 className="font-bold text-2xl text-primary leading-none tracking-tight md:text-4xl">
-            {l.trans({ en: "Akan.js Blog", ko: "Akan.js Blog" })}
-          </h1>
-          <p className="mt-6 text-foreground/65 text-sm leading-8">
-            {l.trans({
-              en: "Field notes on full-stack conventions, Bun-first runtime design, performance, and the small decisions that keep product work focused.",
-              ko: "풀스택 컨벤션, Bun-first 런타임 설계, 성능, 그리고 제품 개발을 집중하게 만드는 작은 결정들에 관한 기록입니다.",
-            })}
-          </p>
-        </div>
+    <main className="min-h-screen text-foreground">
+      <section className="relative mx-auto max-w-5xl px-6 pt-16 pb-6 lg:px-8">
+        <StudioStar className="pointer-events-none absolute top-8 right-8 hidden size-36 md:block" priority />
+        <JellyKicker>{l.trans({ en: "Blog", ko: "블로그" })}</JellyKicker>
+        <h1 className="mt-5 font-black text-4xl leading-none md:text-6xl">
+          {l.trans({ en: "Akan.js Blog", ko: "Akan.js Blog" })}
+        </h1>
+        <p className="mt-6 max-w-2xl text-foreground/60 text-lg leading-8">
+          {l.trans({
+            en: "Field notes on full-stack conventions, Bun-first runtime design, performance, and the small decisions that keep product work focused.",
+            ko: "풀스택 컨벤션, Bun-first 런타임 설계, 성능, 그리고 제품 개발을 집중하게 만드는 작은 결정들에 관한 기록입니다.",
+          })}
+        </p>
       </section>
 
-      <section className="mx-auto max-w-5xl px-6 py-12 lg:px-8">
+      <section className="mx-auto flex max-w-5xl flex-col gap-5 px-6 pt-6 pb-16 lg:px-8">
         {listPosts.map((post) => (
           <Link
             key={post.href}
             href={post.href}
-            className="group my-4 block rounded-2xl border border-border p-5 transition hover:border-primary/30 hover:shadow-[0_18px_45px_rgba(var(--color-primary),0.18)]"
+            className={panelRecipe(
+              { tone: "jelly", radius: "4xl", padding: "none" },
+              "group squish hover:tint-primary relative block p-5 transition-shadow md:p-6",
+            )}
           >
-            <article className="grid gap-6 md:grid-cols-[1fr_180px] md:items-center">
+            <span className="absolute -top-5 right-6 block md:hidden">
+              <Friend name={post.friend} className="size-12" />
+            </span>
+            <article className="grid gap-6 md:grid-cols-[1fr_220px] md:items-center">
               <div>
-                <p className="font-semibold text-foreground/45 text-sm">{l.trans(post.eyebrow)}</p>
-                <h2 className="mt-2 text-2xl leading-tight tracking-tight group-hover:text-primary">
+                <span className={badgeRecipe({ size: "sm" }, "border-transparent bg-foreground/6 text-foreground/60")}>
+                  {l.trans(post.eyebrow)}
+                </span>
+                <h2 className="mt-3 font-black text-2xl leading-tight group-hover:text-primary md:text-[1.75rem]">
                   {l.trans(post.title)}
                 </h2>
-                <p className="mt-3 text-foreground/65 text-sm leading-7">{l.trans(post.desc)}</p>
-                <p className="mt-4 text-foreground/40 text-xs">
+                <p className="mt-3 text-foreground/60 text-sm leading-7">{l.trans(post.desc)}</p>
+                <p className="mt-4 font-semibold text-foreground/40 text-xs">
                   {l.trans(post.meta)} · {l.trans(post.date)}
                 </p>
               </div>
-              <div className="hidden h-28 overflow-hidden rounded-sm bg-muted md:block">
-                <img
-                  src={post.image}
-                  alt={l.trans(post.title)}
-                  className={`size-full transition group-hover:scale-105 ${post.imageClassName}`}
-                />
+              <div className="relative hidden h-36 md:block">
+                <div className="size-full overflow-hidden rounded-3xl bg-background/70">
+                  <img
+                    src={post.image}
+                    alt={l.trans(post.title)}
+                    className={cn("size-full transition duration-500 group-hover:scale-105", post.imageClassName)}
+                  />
+                </div>
+                <span className="group-hover:jelly-wobble absolute -top-7 -right-4 block">
+                  <Friend name={post.friend} className="size-16" />
+                </span>
               </div>
             </article>
           </Link>

@@ -16,7 +16,9 @@ and verified by `akan lint akan`.
 
 Import from `@apps/akan/ui`:
 - `cardGridRecipe`(cols: two*|three|mdTwo) — 카드/셀 그리드 — `grid gap-3` 위에 cols 브레이크포인트를 얹는다.
-- `panelRecipe`(tone: solid*|glass · radius: none|lg|xl*|2xl · padding: none|sm|md*|lg|xl|row · shadow?) — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만).
+- `jellyButtonRecipe`(tone: primary*|ink|moon|planet · size: md*|lg) — 구미 젤리 버튼 — `jelly` 표면 위에 스프링 squish, tone 은 젤리 색(`tint-*`)을 고른다.
+- `jellyUiButtonRecipe`(variant: default|primary*|secondary|accent|neutral|outline|ghost|destructive|success|warning|info|link · size: xs|sm|md*|lg|icon · shape: default*|square|circle · outline: true|false) — `akanjs/ui` 버튼의 젤리 look — `_overrides.tsx` 의 recipes.button 슬롯용. 색 variant 는 설탕 젤리, ghost/outline/link 는 표면 없이.
+- `panelRecipe`(tone: solid*|glass|jelly · radius: none|lg|xl*|2xl|3xl|4xl · padding: none|sm|md*|lg|xl|row · shadow?) — 콘텐츠 표면 패널 — `rounded-* border bg-background p-*` 계열 통합. row 는 리스트/행 표면(px만), jelly 는 젤리 별 테마의 투명 젤리 판.
 - `plateRecipe`(tone: plain*|primary · padding: md*|lg) — 모서리 재단 표식 판 — 테두리 없이 `crop-marks` 네 모서리와 옅은 바탕만 남긴 표면. primary 는 표식·바탕을 강조색으로.
 
 Import from `@libs/util/ui`:

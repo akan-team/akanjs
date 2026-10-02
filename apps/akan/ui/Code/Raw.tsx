@@ -45,7 +45,7 @@ const transformerBashLine = (promptLines: Set<number>): ShikiTransformer => ({
     node.children.unshift({
       type: "element",
       tagName: "span",
-      properties: { class: "line-number" },
+      properties: { class: "line-number line-prompt" },
       children: [{ type: "text", value: promptLines.has(line) ? "$" : "" }],
     });
   },

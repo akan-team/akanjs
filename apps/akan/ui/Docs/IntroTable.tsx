@@ -29,7 +29,10 @@ const hrefAt = (href: IntroItem["href"], idx: number): string | undefined => {
 const NameText = ({ href, children }: { href?: string; children: ReactNode }) => {
   if (!href) return <span>{children}</span>;
   return (
-    <Link href={href} className="hover:text-primary hover:underline">
+    <Link
+      href={href}
+      className="underline decoration-primary/30 underline-offset-4 hover:text-primary hover:decoration-primary"
+    >
       {children}
     </Link>
   );
@@ -40,18 +43,18 @@ export const IntroTable = ({ className, type, descLabel, items }: IntroTableProp
   return (
     <div
       className={cn(
-        "my-4 grid border-border border-y text-sm md:grid-cols-[fit-content(16rem)_minmax(0,1fr)] md:gap-x-6",
+        "studio-lift my-5 grid rounded-2xl border border-foreground/8 bg-card/80 px-4 text-sm md:grid-cols-[fit-content(16rem)_minmax(0,1fr)] md:gap-x-6 md:px-5",
         className,
       )}
     >
-      <div className="hidden border-border border-b py-1.5 font-semibold text-foreground/50 text-xs md:col-span-2 md:grid md:grid-cols-subgrid">
+      <div className="hidden border-foreground/8 border-b py-2.5 font-bold text-foreground/45 text-xs uppercase tracking-[0.12em] md:col-span-2 md:grid md:grid-cols-subgrid">
         <span>{type}</span>
         <span>{descLabel ?? l.trans({ en: "Description", ko: "설명" })}</span>
       </div>
       {items.map((item, idx) => (
         <div
           key={idx}
-          className="grid gap-y-1 border-border/60 border-b py-2.5 last:border-b-0 md:col-span-2 md:grid-cols-subgrid"
+          className="grid gap-y-1 border-foreground/6 border-b py-3 last:border-b-0 md:col-span-2 md:grid-cols-subgrid"
         >
           {Array.isArray(item.name) ? (
             <div className="flex flex-wrap content-start gap-x-3 font-mono font-semibold text-foreground">
@@ -71,7 +74,7 @@ export const IntroTable = ({ className, type, descLabel, items }: IntroTableProp
               <CodeText>{item.desc}</CodeText>
             </div>
             {item.example ? (
-              <div className="overflow-x-auto rounded-md bg-muted/60 px-2.5 py-1.5 text-xs">
+              <div className="overflow-x-auto rounded-xl bg-foreground/4 px-3 py-1.5 text-xs">
                 <Code.Raw showLineNumbers={false} code={item.example} />
               </div>
             ) : null}

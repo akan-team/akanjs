@@ -3,7 +3,7 @@ import { type Attitude, Extrusion } from "./extrusion.util";
 export const labelSets = ["line", "layers", "platforms", "audiences", "surfaces"] as const;
 export type LabelSet = (typeof labelSets)[number];
 export type LabelWeights = { [key in LabelSet]: number };
-type Kind = "seed" | "stage" | "frame";
+type Kind = "seed" | "stage" | "frame" | "rest";
 
 interface Keyframe {
   el: HTMLElement;
@@ -57,7 +57,13 @@ export class AscentScript {
     let flights = 0;
     this.#frames = [...document.querySelectorAll<HTMLElement>("[data-ascent]")].map((el) => {
       const seed = el.querySelector<HTMLElement>("[data-ascent-seed]");
-      const kind: Kind = seed ? "seed" : el.hasAttribute("data-ascent-frame") ? "frame" : "stage";
+      const kind: Kind = seed
+        ? "seed"
+        : el.hasAttribute("data-ascent-frame")
+          ? "frame"
+          : el.hasAttribute("data-ascent-rest")
+            ? "rest"
+            : "stage";
       if (kind === "frame") {
         attitude = AscentScript.#turnBy(attitude, flightMoves[flights % flightMoves.length]);
         flights += 1;
@@ -99,13 +105,22 @@ export class AscentScript {
       spin: frame.spin,
       show: AscentScript.#weights((set) => (frame.show === set ? 1 : 0)),
       stage: frame.kind === "stage" ? 1 : 0,
-      alpha: 1,
+      alpha: frame.kind === "rest" ? 0 : 1,
     };
+  }
+
+  //* A rest hands the screen to its section, so the figure never flies across it: it fades where it stood and reappears where it lands.
+  #fade(idx: number, t: number, spans: Span[], vh: number): Scene {
+    const isLeaving = this.#frames[idx + 1].kind === "rest";
+    const scene = this.#hold(isLeaving ? idx : idx + 1, spans, vh);
+    const fade = isLeaving ? 1 - AscentScript.#smooth(0, 0.6, t) : AscentScript.#smooth(0.4, 1, t);
+    return { ...scene, alpha: scene.alpha * fade };
   }
 
   //* A flight that touches a frame takes the side margin so it never crosses the copy; one that doesn't fades through instead.
   #fly(idx: number, t: number, spans: Span[], vw: number, vh: number): Scene {
     const [from, to] = [this.#frames[idx], this.#frames[idx + 1]];
+    if (from.kind === "rest" || to.kind === "rest") return this.#fade(idx, t, spans, vh);
     const ease = AscentScript.#smooth(0, 1, t);
     const mix = (a: number, b: number) => a + (b - a) * ease;
     const isAerial = from.kind === "frame" || to.kind === "frame";

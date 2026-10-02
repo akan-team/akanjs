@@ -67,8 +67,8 @@ const stars = Array.from({ length: 90 }, (_, idx) => ({
 const dotClassName = {
   flown: "fill-primary",
   current: "fill-primary",
-  committed: "fill-background stroke-2 stroke-primary",
-  proposed: "fill-background stroke-2 stroke-foreground/35",
+  committed: "fill-card stroke-2 stroke-primary",
+  proposed: "fill-card stroke-2 stroke-foreground/35",
 } as const;
 
 const labelClassName = {
@@ -115,7 +115,13 @@ export const RoadmapTrajectory = ({ className, waypoints }: RoadmapTrajectoryPro
         </filter>
       </defs>
       {stars.map((star, idx) => (
-        <circle key={idx} cx={star.x} cy={star.y} r={star.r} className="fill-foreground/25">
+        <circle
+          key={idx}
+          cx={star.x}
+          cy={star.y}
+          r={star.r}
+          className={star.twinkle ? "fill-moon" : "fill-foreground/25"}
+        >
           {star.twinkle ? (
             <animate attributeName="opacity" values="0.2;1;0.2" dur={`${3 + (idx % 4)}s`} repeatCount="indefinite" />
           ) : null}
@@ -165,12 +171,10 @@ export const RoadmapTrajectory = ({ className, waypoints }: RoadmapTrajectoryPro
         </g>
       ))}
       <g transform={`translate(${current.point.x} ${current.point.y}) rotate(${current.angle + 90})`}>
-        <path d="M-4 9 L0 24 L4 9 Z" className="fill-primary">
-          <animate attributeName="opacity" values="1;0.4;1" dur="0.35s" repeatCount="indefinite" />
-        </path>
-        <path d="M-6 2 L-12 13 L-6 10 Z M6 2 L12 13 L6 10 Z" className="fill-primary" />
-        <path d="M0 -20 C7 -13 8 -2 6 10 L-6 10 C-8 -2 -7 -13 0 -20 Z" className="fill-foreground" />
-        <circle cx="0" cy="-6" r="2.6" className="fill-primary" />
+        <ellipse cx="0" cy="38" rx="11" ry="17" className="fill-moon/60" filter="url(#akan-roadmap-glow)">
+          <animate attributeName="opacity" values="1;0.45;1" dur="0.5s" repeatCount="indefinite" />
+        </ellipse>
+        <image href="/jelly/rocket.webp" x="-38" y="-38" width="76" height="76" />
       </g>
     </svg>
   );

@@ -14,8 +14,13 @@ interface FigureProps {
 
 export const Figure = ({ className, title, image, alt, width = 1536, height = 1024 }: FigureProps) => {
   return (
-    <figure className={cn("my-4 overflow-hidden rounded-xl border border-border bg-muted/40", className)}>
-      <figcaption className="border-border border-b px-4 py-2 font-bold text-foreground/70 text-sm">{title}</figcaption>
+    <figure
+      className={cn("studio-lift my-5 overflow-hidden rounded-2xl border border-foreground/8 bg-card/80", className)}
+    >
+      <figcaption className="flex items-center gap-2 border-foreground/6 border-b bg-foreground/3 px-4 py-2.5 font-bold text-foreground/75 text-sm">
+        <span aria-hidden className="jelly tint-primary size-2.5 shrink-0 rounded-full" />
+        {title}
+      </figcaption>
       <div className="p-4">
         <Image
           src={`/akanjsImage/diagrams/${image}.png`}

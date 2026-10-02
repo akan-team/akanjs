@@ -52,6 +52,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "Interface", ko: "인터페이스" }),
+      friend: "planet",
       subMenus: [
         { name: l.trans({ en: "CRUD", ko: "CRUD" }), href: "/cheatsheet/interface/crud", audience: "agent" },
         { name: l.trans({ en: "Endpoint", ko: "Endpoint" }), href: "/cheatsheet/interface/endpoint", audience: "both" },
@@ -66,6 +67,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "Observability", ko: "관측성" }),
+      friend: "cloud",
       subMenus: [
         { name: l.trans({ en: "Logging", ko: "로깅" }), href: "/cheatsheet/observability/logging", audience: "agent" },
         {
@@ -87,6 +89,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "Performance", ko: "성능" }),
+      friend: "moon",
       subMenus: [
         { name: l.trans({ en: "Caching", ko: "캐싱" }), href: "/cheatsheet/performance/caching", audience: "agent" },
         {
@@ -107,6 +110,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "Mobile", ko: "모바일" }),
+      friend: "rocket",
       subMenus: [
         { name: l.trans({ en: "Setup", ko: "설정" }), href: "/cheatsheet/mobile/setup", audience: "agent" },
         {
@@ -129,6 +133,7 @@ export default layout().render(({ children }) => {
     },
     {
       name: l.trans({ en: "Development", ko: "개발" }),
+      friend: "cloud",
       subMenus: [
         { name: l.trans({ en: "Documentation", ko: "문서화" }), href: "/cheatsheet/dev/docs", audience: "agent" },
         {

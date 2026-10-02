@@ -9,6 +9,7 @@ import type {
 } from "akanjs/client";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N, getBasePathFromPathname, Logger } from "akanjs/common";
 import {
+  type AkanTheme,
   getRequestDynamicUsage,
   getRequestFrameState,
   getRequestPolicy,
@@ -862,6 +863,7 @@ export class RscRenderer {
     let sentChunk = false;
     let lateControlSent = false;
     const chunks: Uint8Array[] = [];
+    let reportedTheme: AkanTheme | undefined;
     const sendMeta = () => {
       if (!options.requestId || sentMeta) return;
       sentMeta = true;
@@ -869,13 +871,22 @@ export class RscRenderer {
         const trace = getCurrentTrace();
         if (trace) trace.status = options.status;
       }
+      reportedTheme = getRequestTheme();
       this.#send({
         type: "meta",
         requestId: options.requestId,
-        theme: getRequestTheme(),
+        theme: reportedTheme,
         status: options.status,
         trace: options.trace,
       });
+    };
+    //? The provider names the theme when the root layout renders, usually after the first chunk has left; sent ahead of
+    //? the chunk carrying it, the host has it before the HTML shell (and its `<html data-theme>`) can be written.
+    const sendLateTheme = () => {
+      const theme = getRequestTheme();
+      if (!options.requestId || !sentMeta || theme === reportedTheme) return;
+      reportedTheme = theme;
+      this.#send({ type: "theme", requestId: options.requestId, theme });
     };
     const sendLateRedirect = () => {
       if (!options.requestId || lateControlSent || controlRef.current?.type !== "redirect") return;
@@ -908,6 +919,7 @@ export class RscRenderer {
         if (options.collectChunks) chunks.push(chunk);
         if (options.requestId) {
           sendMeta();
+          sendLateTheme();
           this.#send({ type: "chunk", requestId: options.requestId, data: chunk });
           sentChunk = true;
         }

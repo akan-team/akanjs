@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { BsArrowUpRight } from "react-icons/bs";
 import { FaBars, FaDiscord, FaGithub } from "react-icons/fa";
 import { AkanLogo } from "./AkanLogo";
+import { JellyThemeToggle } from "./Jelly";
 
 type HeaderLabel = {
   en: string;
@@ -53,10 +54,13 @@ export const akanjsV1DocsHeaderLinks: AkanjsHeaderLink[] = [
 ];
 
 const navLinkClassName =
-  "relative cursor-pointer whitespace-nowrap rounded-full border border-transparent px-3 py-1.5 font-semibold text-sm duration-200 after:absolute after:right-3 after:bottom-0 after:left-3 after:h-0.5 after:scale-x-0 after:bg-primary after:transition-transform after:duration-300 hover:border-foreground/10 hover:bg-foreground/5 hover:text-primary";
+  "squish relative cursor-pointer whitespace-nowrap rounded-full px-3.5 py-1.5 font-bold text-foreground/75 text-sm transition-colors duration-200 hover:bg-foreground/6 hover:text-foreground";
+
+const navActiveClassName =
+  "jelly tint-primary text-primary-foreground hover:bg-(--jelly-tint) hover:text-primary-foreground";
 
 const socialLinkClassName =
-  "relative cursor-pointer rounded-full border border-foreground/10 bg-foreground/5 p-2 text-2xl duration-300 hover:border-primary/20 hover:bg-primary/10 hover:text-primary";
+  "jelly-glass squish relative flex cursor-pointer items-center justify-center rounded-full p-2 text-xl transition-colors hover:text-primary";
 
 export const AkanjsHeader = ({
   className,
@@ -100,8 +104,7 @@ export const AkanjsHeader = ({
   return (
     <>
       <div className={cn("fixed top-0 z-50 w-full", className)}>
-        <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/60 to-transparent" />
-        <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/10 border-b bg-background/85 px-6 text-foreground shadow-foreground/5 shadow-lg backdrop-blur-xl md:h-20 lg:grid-cols-[1fr_auto_1fr]">
+        <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/6 border-b bg-background/70 px-6 text-foreground backdrop-blur-xl backdrop-saturate-150 md:h-20 lg:grid-cols-[1fr_auto_1fr]">
           <div className="block lg:hidden">
             <label
               htmlFor="mobile-menu-toggle"
@@ -113,18 +116,22 @@ export const AkanjsHeader = ({
           <div className="hidden items-center gap-4 lg:flex">
             <Link href="/" className="flex items-center gap-2 font-bold">
               <AkanLogo className="text-2xl" />
-              {logoLabel && <span className="mt-2 text-foreground/50 text-sm">{logoLabel}</span>}
+              {logoLabel ? (
+                <span className="mt-1 rounded-full bg-primary/10 px-2.5 py-0.5 font-bold text-primary text-xs">
+                  {logoLabel}
+                </span>
+              ) : null}
             </Link>
           </div>
 
-          <div className="hidden items-center justify-center gap-3 font-bold lg:flex">
+          <div className="hidden items-center justify-center gap-1.5 rounded-full border border-foreground/6 bg-background/50 p-1 lg:flex">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 target={link.target}
                 className={navLinkClassName}
-                activeClassName="text-primary after:scale-x-100"
+                activeClassName={navActiveClassName}
               >
                 {l.trans(link.label)}
                 {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
@@ -134,9 +141,9 @@ export const AkanjsHeader = ({
 
           <div className="hidden justify-end font-bold lg:flex">
             <div className="flex items-center justify-end gap-3 text-center text-foreground text-sm lg:text-xl">
-              <div className="flex shrink-0 items-center rounded-full border border-foreground/10 bg-foreground/5 px-2 py-1">
+              <div className="jelly-glass flex shrink-0 items-center rounded-full px-2 py-1">
                 <System.SelectLanguage languages={["en", "ko"]} />
-                <System.ThemeToggle themes={["light", "dark"]} />
+                <JellyThemeToggle className="ml-1" />
               </div>
               <Link target="_blank" href="https://github.com/akan-team/akanjs" className={socialLinkClassName}>
                 <FaGithub />
@@ -163,20 +170,20 @@ export const AkanjsHeader = ({
             </div>
           </div>
         </div>
-        {notice && (
+        {notice ? (
           <div
             data-akanjs-notice
-            className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 border-foreground/10 border-b bg-foreground/6 px-4 py-2 text-center font-medium text-foreground text-xs shadow-sm backdrop-blur-xl md:text-sm"
+            className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 border-foreground/6 border-b bg-primary/8 px-4 py-2 text-center font-medium text-foreground text-xs backdrop-blur-xl md:text-sm"
           >
             <span>{l.trans(notice.text)}</span>
             <Link href={notice.link.href} className="font-bold text-primary underline-offset-4 hover:underline">
               {l.trans(notice.link.label)}
             </Link>
           </div>
-        )}
+        ) : null}
         <div
           className={cn(
-            "overflow-hidden border-foreground/10 border-b bg-background/85 px-3 shadow-sm backdrop-blur-xl transition-all duration-300 ease-out lg:hidden",
+            "overflow-hidden border-foreground/6 border-b bg-background/70 px-3 backdrop-blur-xl backdrop-saturate-150 transition-all duration-300 ease-out lg:hidden",
             collapseMobileSubMenuOnScroll
               ? isMobileSubMenuVisible
                 ? "max-h-14 translate-y-0 py-2 opacity-100"
@@ -184,14 +191,14 @@ export const AkanjsHeader = ({
               : "py-2",
           )}
         >
-          <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap text-foreground">
+          <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-foreground">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 target={link.target}
                 className={navLinkClassName}
-                activeClassName="text-primary after:scale-x-100"
+                activeClassName={navActiveClassName}
               >
                 {l.trans(link.label)}
                 {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
@@ -200,19 +207,19 @@ export const AkanjsHeader = ({
           </div>
         </div>
       </div>
-      {mobileDrawerLinks && (
+      {mobileDrawerLinks ? (
         <>
           <input type="checkbox" id="mobile-menu-toggle" className="peer hidden" />
           <div className="fixed inset-y-0 left-0 z-40 w-full -translate-x-full transform transition-transform duration-50 ease-in-out peer-checked:translate-x-0 lg:hidden">
-            <div className="h-full overflow-y-auto bg-muted shadow-lg">
-              <div className="mt-[var(--akanjs-header-offset)] p-5">
+            <div className="h-full overflow-y-auto bg-background/95 shadow-2xl backdrop-blur-xl">
+              <div className="mt-[var(--akanjs-header-offset)] flex flex-col gap-1 p-5">
                 {mobileDrawerLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
                     target={link.target}
-                    className="block rounded py-2 text-base transition-all hover:text-primary"
-                    activeClassName="font-bold text-primary"
+                    className="block rounded-full px-4 py-2.5 font-bold text-base text-foreground/75 transition-colors hover:bg-foreground/6 hover:text-foreground"
+                    activeClassName={navActiveClassName}
                   >
                     {l.trans(link.label)}
                     {link.target === "_blank" ? <BsArrowUpRight className="-mt-0.5 ml-1 inline size-3" /> : null}
@@ -222,7 +229,7 @@ export const AkanjsHeader = ({
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </>
   );
 };

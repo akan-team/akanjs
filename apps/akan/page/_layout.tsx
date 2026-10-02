@@ -23,7 +23,7 @@ export default rootLayout()
       paths: [{ src: "/libs/shared/fonts/Lemon Milk Pro Medium.otf", weight: 500 }],
     },
   ])
-  .theme("dark")
+  .theme("light")
   .head(
     <>
       <title>Akan.js</title>
@@ -40,16 +40,18 @@ export default rootLayout()
         content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
       />
       <meta property="og:url" content="https://akanjs.com" />
-      <meta property="og:image" content="https://akanjs.com/akanjsImage/akan_benchmark.webp" />
-      <meta property="og:image:type" content="image/webp" />
-      <meta property="og:image:alt" content="Akan.js benchmark preview" />
+      <meta property="og:image" content="https://akanjs.com/jelly/og.jpg" />
+      <meta property="og:image:type" content="image/jpeg" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content="The Akan.js jelly star with its five friends" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Akan.js" />
       <meta
         name="twitter:description"
         content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
       />
-      <meta name="twitter:image" content="https://akanjs.com/akanjsImage/akan_benchmark.webp" />
+      <meta name="twitter:image" content="https://akanjs.com/jelly/og.jpg" />
       <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png" />
       <link rel="icon" type="image/png" sizes="384x384" href="/icon-384x384.png" />
       <link rel="icon" type="image/png" sizes="256x256" href="/icon-256x256.png" />
@@ -68,9 +70,9 @@ export default rootLayout()
       <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon-180x180.png" />
       <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
       <link rel="manifest" href="/manifest.json" />
-      <meta name="msapplication-TileColor" content="#ffffff" />
+      <meta name="msapplication-TileColor" content="#f1f1ee" />
       <meta name="msapplication-TileImage" content="/ms-icon-144x144.png" />
-      <meta name="theme-color" content="#ffffff" />
+      <meta name="theme-color" content="#f1f1ee" />
     </>,
   )
   .render(({ children }) => children);

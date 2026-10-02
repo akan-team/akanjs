@@ -1,6 +1,7 @@
 import { usePage } from "@apps/akan/client";
+import { Friend, JellyCast, JellyKicker, jellyButtonRecipe, panelRecipe, ShowcaseThumbnail } from "@apps/akan/ui";
 import { cn, page } from "akanjs/client";
-import { Link } from "akanjs/ui";
+import { badgeRecipe, Link } from "akanjs/ui";
 
 const discussionsUrl = "https://github.com/akan-team/akanjs/discussions";
 const discordUrl = "https://discord.gg/pc228BhWmM";
@@ -42,6 +43,8 @@ const featuredProject = {
 const sampleProjects = [
   {
     name: "Frontline Rooms",
+    motif: "arena",
+    tone: "primary",
     categories: ["game", "realtime"],
     desc: {
       en: "An authoritative match server that streams 20 Hz state frames to each room over binary pubsub, with lobbies and matchmaking declared as ordinary signals.",
@@ -51,6 +54,8 @@ const sampleProjects = [
   },
   {
     name: "Guildboard",
+    motif: "board",
+    tone: "warning",
     categories: ["game", "mobile"],
     desc: {
       en: "A companion app for a mobile RPG: season leaderboards, guild pages and match history as SEO pages on the web, and the same screens on iOS and Android.",
@@ -60,6 +65,8 @@ const sampleProjects = [
   },
   {
     name: "Hanok Market",
+    motif: "market",
+    tone: "success",
     categories: ["commerce", "web"],
     desc: {
       en: "A marketplace for handmade goods. Product pages render on the server for search engines, and full-text search covers titles, tags and seller notes.",
@@ -69,6 +76,8 @@ const sampleProjects = [
   },
   {
     name: "Studio Slot",
+    motif: "booking",
+    tone: "accent",
     categories: ["mobile", "commerce"],
     desc: {
       en: "Class booking for yoga and pilates studios, with waitlists, reminder pushes and deep links that open straight into the class a push was about.",
@@ -78,6 +87,8 @@ const sampleProjects = [
   },
   {
     name: "Ledgerline",
+    motif: "agent",
+    tone: "success",
     categories: ["internal", "agent"],
     desc: {
       en: "A finance ops console where an in-page agent reads the open receipt and fills the expense form. Every change still waits for a person to approve it.",
@@ -87,6 +98,8 @@ const sampleProjects = [
   },
   {
     name: "FleetPulse",
+    motif: "telemetry",
+    tone: "info",
     categories: ["realtime", "internal"],
     desc: {
       en: "Live telemetry for a fleet of delivery robots. Battery, position and fault gauges move the moment a device reports, with no polling.",
@@ -96,6 +109,8 @@ const sampleProjects = [
   },
   {
     name: "Margin",
+    motif: "docs",
+    tone: "accent",
     categories: ["agent", "web"],
     desc: {
       en: "A notes SaaS whose endpoints double as an MCP server. Users connect Claude or Cursor over OAuth and let it search and file their notes.",
@@ -105,6 +120,8 @@ const sampleProjects = [
   },
   {
     name: "Nextup",
+    motif: "queue",
+    tone: "info",
     categories: ["internal", "realtime"],
     desc: {
       en: "A clinic reception kiosk and a waiting-room display sharing one live queue. The screen changes the moment a nurse calls the next number.",
@@ -114,6 +131,8 @@ const sampleProjects = [
   },
   {
     name: "TutorLoop",
+    motif: "docs",
+    tone: "warning",
     categories: ["agent", "web"],
     desc: {
       en: "An AI tutoring platform whose lesson pages double as MCP prompts, so a student's own assistant opens a lesson with the exercises and progress the page shows.",
@@ -123,6 +142,8 @@ const sampleProjects = [
   },
   {
     name: "Gatepass",
+    motif: "queue",
+    tone: "primary",
     categories: ["mobile", "commerce"],
     desc: {
       en: "Event ticketing with QR check-in at the door. Staff scan with a phone, and the attendee count on the organizer dashboard climbs live.",
@@ -132,6 +153,8 @@ const sampleProjects = [
   },
   {
     name: "Relay API",
+    motif: "telemetry",
+    tone: "secondary",
     categories: ["web"],
     desc: {
       en: "A metered public API with OpenAPI docs, per-key usage limits and usage dashboards, all derived from the same signal declarations the product runs on.",
@@ -160,40 +183,36 @@ export default page()
     ];
 
     return (
-      <main className="min-h-screen bg-background font-mono text-foreground">
-        <section className="border-border border-b">
-          <div className="mx-auto max-w-5xl px-6 pt-40 pb-8 lg:px-8 lg:pt-32">
-            <p className="font-semibold text-foreground/45 text-sm">{l.trans({ en: "Showcase", ko: "쇼케이스" })}</p>
-            <h1 className="mt-4 font-bold text-2xl text-primary leading-none tracking-tight md:text-4xl">
-              {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 것들" })}
-            </h1>
-            <p className="mt-6 text-foreground/65 text-sm leading-8">
-              {l.trans({
-                en: "One codebase ships the web, the app, the server, the database and the agent surface together. Here is what that looks like as a product.",
-                ko: "하나의 코드베이스가 웹, 앱, 서버, DB, 에이전트 표현까지 함께 배포합니다. 그게 제품이 되면 어떤 모습인지 모았습니다.",
-              })}
-            </p>
-            <p className="mt-4 text-foreground/50 text-sm leading-7">
-              {l.trans({
-                en: "We are just getting started. Apart from akanjs.com, every entry below is a sample that shows the kind of product Akan.js fits, and real projects will replace them as they come in.",
-                ko: "이제 막 모으기 시작했습니다. akanjs.com을 제외한 아래 항목은 Akan.js가 어울리는 제품을 보여주는 샘플이며, 실제 프로젝트가 들어오는 대로 교체됩니다.",
-              })}{" "}
-              <Link
-                href={discussionsUrl}
-                target="_blank"
-                className="font-semibold text-primary underline-offset-4 hover:underline"
-              >
-                {l.trans({ en: "Submit your project", ko: "프로젝트 제출하기" })}
-              </Link>
-            </p>
-          </div>
+      <main className="min-h-screen text-foreground">
+        <section className="mx-auto max-w-5xl px-6 pt-40 pb-6 lg:px-8 lg:pt-32">
+          <JellyKicker friend="planet">{l.trans({ en: "Showcase", ko: "쇼케이스" })}</JellyKicker>
+          <h1 className="mt-5 font-black text-4xl leading-none md:text-6xl">
+            {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 것들" })}
+          </h1>
+          <p className="mt-6 max-w-3xl text-foreground/60 text-lg leading-8">
+            {l.trans({
+              en: "One codebase ships the web, the app, the server, the database and the agent surface together. Here is what that looks like as a product.",
+              ko: "하나의 코드베이스가 웹, 앱, 서버, DB, 에이전트 표현까지 함께 배포합니다. 그게 제품이 되면 어떤 모습인지 모았습니다.",
+            })}
+          </p>
+          <JellyCast className="mt-8" friendClassName="size-12 md:size-16" />
+          <p className="mt-8 max-w-3xl text-foreground/50 text-sm leading-7">
+            {l.trans({
+              en: "We are just getting started. Apart from akanjs.com, every entry below is a sample that shows the kind of product Akan.js fits, and real projects will replace them as they come in.",
+              ko: "이제 막 모으기 시작했습니다. akanjs.com을 제외한 아래 항목은 Akan.js가 어울리는 제품을 보여주는 샘플이며, 실제 프로젝트가 들어오는 대로 교체됩니다.",
+            })}{" "}
+            <Link
+              href={discussionsUrl}
+              target="_blank"
+              className="font-bold text-primary underline-offset-4 hover:underline"
+            >
+              {l.trans({ en: "Submit your project", ko: "프로젝트 제출하기" })}
+            </Link>
+          </p>
         </section>
 
-        <section className="mx-auto max-w-5xl px-6 py-12 lg:px-8">
-          <nav
-            aria-label={l.trans({ en: "Categories", ko: "카테고리" })}
-            className="flex flex-wrap gap-x-5 gap-y-2 text-sm"
-          >
+        <section className="mx-auto max-w-5xl px-6 py-10 lg:px-8">
+          <nav aria-label={l.trans({ en: "Categories", ko: "카테고리" })} className="flex flex-wrap gap-2 text-sm">
             {chips.map((chip) => {
               const isActive = chip.key === activeKey;
               return (
@@ -202,20 +221,28 @@ export default page()
                   href={chip.href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "transition",
-                    isActive ? "font-semibold text-primary" : "text-foreground/50 hover:text-foreground",
+                    "squish inline-flex items-center gap-2 rounded-full py-1.5 pr-1.5 pl-4 font-bold",
+                    isActive
+                      ? "jelly tint-primary text-primary-foreground"
+                      : "jelly-glass text-foreground/70 hover:text-foreground",
                   )}
                 >
-                  {chip.label} <span className="text-foreground/35">{chip.count}</span>
+                  {chip.label}
+                  <span
+                    className={cn(
+                      "inline-flex min-w-6 justify-center rounded-full px-1.5 py-0.5 text-xs",
+                      isActive ? "bg-primary-foreground/20" : "bg-foreground/6 text-foreground/50",
+                    )}
+                  >
+                    {chip.count}
+                  </span>
                 </Link>
               );
             })}
           </nav>
 
-          <div className="mt-10 flex flex-wrap items-end justify-between gap-2">
-            <h2 className="font-bold text-2xl tracking-tight">
-              {l.trans({ en: "Sample projects", ko: "샘플 프로젝트" })}
-            </h2>
+          <div className="mt-12 flex flex-wrap items-end justify-between gap-2">
+            <h2 className="font-black text-3xl">{l.trans({ en: "Sample projects", ko: "샘플 프로젝트" })}</h2>
             <p className="text-foreground/45 text-xs">
               {l.trans({
                 en: "Illustrative entries, not real customers.",
@@ -227,43 +254,51 @@ export default page()
             {visibleSamples.map((project) => (
               <article
                 key={project.name}
-                className="flex flex-col rounded-2xl border border-border p-5 transition hover:border-primary/30"
+                className={panelRecipe({ tone: "jelly", radius: "4xl", padding: "md" }, "group flex flex-col")}
               >
-                <p className="text-foreground/45 text-xs uppercase tracking-[0.16em]">
-                  {project.categories.map((key) => l.trans(categoryLabel[key])).join(" · ")}
-                </p>
-                <h3 className="mt-2 font-semibold text-lg">{project.name}</h3>
-                <p className="mt-3 flex-1 text-foreground/65 text-sm leading-7">{l.trans(project.desc)}</p>
-                <p className="mt-4 text-foreground/40 text-xs">{project.tags.join(" · ")}</p>
+                <ShowcaseThumbnail className="aspect-2/1" motif={project.motif} tone={project.tone} />
+                <div className="mt-4 flex flex-wrap gap-1.5 px-1">
+                  {project.categories.map((key) => (
+                    <span
+                      key={key}
+                      className={badgeRecipe({ size: "sm" }, "border-transparent bg-foreground/6 text-foreground/60")}
+                    >
+                      {l.trans(categoryLabel[key])}
+                    </span>
+                  ))}
+                </div>
+                <h3 className="mt-3 px-1 font-black text-xl tracking-tight">{project.name}</h3>
+                <p className="mt-2 flex-1 px-1 text-foreground/60 text-sm leading-7">{l.trans(project.desc)}</p>
+                <p className="mt-4 px-1 pb-1 font-semibold text-foreground/40 text-xs">{project.tags.join(" · ")}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="border-border border-t">
-          <div className="mx-auto max-w-5xl px-6 py-16 lg:px-8">
-            <h2 className="font-bold text-2xl tracking-tight md:text-3xl">
+        <section className="mx-auto max-w-5xl px-6 pt-6 pb-16 lg:px-8">
+          <div
+            className={panelRecipe(
+              { tone: "jelly", radius: "4xl", padding: "lg" },
+              "tint-cloud relative overflow-visible md:p-10",
+            )}
+          >
+            <span className="jelly-float pointer-events-none absolute -top-10 right-6 hidden md:block">
+              <Friend name="rocket" className="size-24" />
+            </span>
+            <h2 className="font-black text-3xl md:text-4xl">
               {l.trans({ en: "Built something with Akan.js?", ko: "Akan.js로 무언가 만드셨나요?" })}
             </h2>
-            <p className="mt-4 max-w-2xl text-foreground/65 text-sm leading-8">
+            <p className="mt-4 max-w-2xl text-foreground/60 leading-8">
               {l.trans({
                 en: "Share it in GitHub Discussions and it can take a sample's place on this page. Or come say hello on Discord first.",
                 ko: "GitHub Discussions에 공유해 주시면 이 페이지의 샘플 자리를 채울 수 있습니다. 먼저 Discord에서 인사 나눠도 좋습니다.",
               })}
             </p>
-            <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <Link
-                href={discussionsUrl}
-                target="_blank"
-                className="font-semibold text-primary underline-offset-4 hover:underline"
-              >
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href={discussionsUrl} target="_blank" className={jellyButtonRecipe()}>
                 {l.trans({ en: "Share on GitHub Discussions", ko: "GitHub Discussions에 공유하기" })}
               </Link>
-              <Link
-                href={discordUrl}
-                target="_blank"
-                className="font-semibold text-primary underline-offset-4 hover:underline"
-              >
+              <Link href={discordUrl} target="_blank" className={jellyButtonRecipe({ tone: "ink" })}>
                 {l.trans({ en: "Join the Discord", ko: "Discord 참여하기" })}
               </Link>
             </div>

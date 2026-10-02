@@ -26,7 +26,7 @@ export const SequenceStack = <K extends string>({
         {idList.map((id) => (
           <div
             className={cn(
-              "flex flex-col items-center rounded-lg border px-2.5 py-1 text-center font-medium text-xs leading-[17px]",
+              "flex flex-col items-center rounded-xl border px-2.5 py-1 text-center font-semibold text-xs leading-[17px]",
               flowToneClass[actors[id].tone ?? "default"],
               marked.has(id) && "ring-2 ring-primary",
             )}
@@ -46,7 +46,7 @@ export const SequenceStack = <K extends string>({
           <div className="flex flex-col gap-1" key={`${message.from}>${message.to}#${index}`}>
             <div
               className={cn(
-                "flex flex-col gap-0.5 rounded-lg border px-3 py-2",
+                "flex flex-col gap-0.5 rounded-xl border px-3 py-2",
                 message.dashed ? "border-border border-dashed bg-transparent" : flowToneClass.default,
               )}
             >
@@ -61,7 +61,7 @@ export const SequenceStack = <K extends string>({
               ))}
             </div>
             {message.note ? (
-              <div className="rounded-lg border border-border border-dashed bg-muted/60 px-3 py-2 text-foreground/70 text-xs">
+              <div className="rounded-xl border border-foreground/15 border-dashed bg-foreground/4 px-3 py-2 text-foreground/70 text-xs">
                 {message.note}
               </div>
             ) : null}

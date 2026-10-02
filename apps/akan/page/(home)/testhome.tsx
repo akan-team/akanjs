@@ -37,48 +37,48 @@ export default page().render(() => {
       dim: 1,
       show: "line",
       copies: 0,
-      numeral: "1D",
+      numeral: "01",
       tag: l.trans({ en: "1 line", ko: "1줄" }),
       title: l.trans({ en: "The line you write.", ko: "당신이 쓰는 한 줄." }),
       body: l.trans({
-        en: "Adding a field is one declaration — a name and a type. Everything that follows is a projection of this line.",
-        ko: "필드를 더하는 일은 선언 한 줄, 이름과 타입이면 됩니다. 뒤따르는 모든 것은 이 한 줄의 투영입니다.",
+        en: "Adding a field is one declaration — a name and a type. The database, API, screens and agent tools all come from that line, so there is nothing else to write by hand.",
+        ko: "필드를 더하는 일은 선언 한 줄, 이름과 타입이면 됩니다. DB, API, 화면, 에이전트 도구까지 모두 이 한 줄에서 나오니 손으로 더 쓸 것이 없습니다.",
       }),
     },
     {
       dim: 2,
       show: "layers",
       copies: 8,
-      numeral: "2D",
+      numeral: "02",
       tag: l.trans({ en: "× 8 layers", ko: "× 8 레이어" }),
       title: l.trans({ en: "Through every layer.", ko: "모든 레이어를 관통하고," }),
       body: l.trans({
-        en: "Sweep the line through the stack and it becomes a plane: schema, query, service, API, fetch, client type, state and UI prop. Eight places you used to wire by hand now move as one.",
-        ko: "선을 스택 방향으로 쓸면 면이 됩니다. 스키마, 쿼리, 서비스, API, fetch, 클라이언트 타입, 상태, UI prop. 손으로 배선하던 8곳이 이제 한 몸으로 움직입니다.",
+        en: "That one line reaches the schema, query, service, API, fetch, client type, state and UI prop. The eight places you used to wire by hand now change together — nothing to chase, nothing to miss.",
+        ko: "그 한 줄이 스키마, 쿼리, 서비스, API, fetch, 클라이언트 타입, 상태, UI prop까지 닿습니다. 손으로 배선하던 8곳이 함께 바뀌니, 따라 고칠 곳도 빠뜨릴 곳도 없습니다.",
       }),
     },
     {
       dim: 3,
       show: "platforms",
       copies: 6,
-      numeral: "3D",
+      numeral: "03",
       tag: l.trans({ en: "× 6 platforms", ko: "× 6 플랫폼" }),
       title: l.trans({ en: "Onto every platform.", ko: "모든 플랫폼에 닿고," }),
       body: l.trans({
-        en: "Sweep the plane across platforms and it becomes a cube. The same stack ships as SEO-ready web, iOS and Android apps, and macOS, Windows and Linux desktop apps — from one app implementation.",
-        ko: "면을 플랫폼 방향으로 쓸면 입방체가 됩니다. 같은 스택이 SEO 웹, iOS·Android 앱, macOS·Windows·Linux 데스크톱 앱으로 배포됩니다. 앱 구현은 하나뿐입니다.",
+        en: "The same code ships as SEO-ready web, iOS and Android apps, and macOS, Windows and Linux desktop apps. One implementation to maintain, not six codebases to keep in step.",
+        ko: "같은 코드가 SEO 웹, iOS·Android 앱, macOS·Windows·Linux 데스크톱 앱으로 배포됩니다. 보조를 맞춰야 할 코드베이스 여섯 개가 아니라, 관리할 구현 하나뿐입니다.",
       }),
     },
     {
       dim: 4,
       show: "audiences",
       copies: 0,
-      numeral: "4D",
+      numeral: "04",
       tag: l.trans({ en: "× people & agents", ko: "× 사람과 에이전트" }),
-      title: l.trans({ en: "Into the dimension you can't see.", ko: "보이지 않는 차원까지." }),
+      title: l.trans({ en: "For people and agents alike.", ko: "사람과 에이전트 모두에게." }),
       body: l.trans({
-        en: "The fourth axis is agents. Every guarded endpoint becomes an MCP tool and every action on screen an in-page agent tool, behind the same guards people pass. Every corner people use gets a twin agents use.",
-        ko: "네 번째 축은 에이전트입니다. 가드를 통과한 엔드포인트는 MCP 도구가, 화면의 액션은 인페이지 에이전트 도구가 됩니다. 사람과 같은 가드를 거쳐서요. 사람이 쓰는 모든 꼭짓점에 에이전트가 쓰는 쌍둥이가 생깁니다.",
+        en: "Every guarded endpoint becomes an MCP tool and every action on screen an in-page agent tool, behind the same guards people pass. Whatever a person can do in your app, an agent can do on their behalf — with their rights, and nothing more.",
+        ko: "가드를 통과한 엔드포인트는 MCP 도구가, 화면의 액션은 인페이지 에이전트 도구가 됩니다. 사람과 같은 가드를 거쳐서요. 사람이 앱에서 할 수 있는 일을 에이전트가 대신할 수 있고, 그 권한은 정확히 그 사람만큼입니다.",
       }),
     },
   ];
@@ -117,8 +117,8 @@ export default page().render(() => {
         ko: "혼자, 혹은 둘이 다 해야 하나요?",
       }),
       description: l.trans({
-        en: "One full-stack developer owns every face of the product. One person, a quarter of the time.",
-        ko: "풀스택 1명이 제품의 모든 면을 책임집니다. 사람 한 명, 시간 1/5.",
+        en: "One full-stack developer owns the whole product. One person, a fifth of the time.",
+        ko: "풀스택 1명이 제품 전체를 책임집니다. 사람 한 명, 시간 1/5.",
       }),
     },
   ];
@@ -431,15 +431,20 @@ export default page().render(() => {
           </p>
         </div>
         <p className="intro-rise mt-14 font-mono text-[11px] text-primary uppercase tracking-[0.16em] [--intro-delay:1.1s] sm:text-xs sm:tracking-[0.3em]">
-          {l.trans({ en: "The tesseract TypeScript framework.", ko: "테서랙트 TypeScript 프레임워크." })}
+          {l.trans({
+            en: "The agentic full-stack TypeScript framework.",
+            ko: "에이전틱 풀스택 TypeScript 프레임워크.",
+          })}
         </p>
-        <h1 className="intro-rise mt-4 max-w-4xl font-black text-4xl tracking-tight [--intro-delay:1.2s] sm:text-6xl lg:text-7xl">
-          {l.trans({ en: "It starts with one line.", ko: "모든 것은 한 줄에서 시작합니다." })}
+        <h1 className="intro-rise mt-4 max-w-5xl font-black text-[34px]/[1.1] tracking-tight [--intro-delay:1.2s] sm:text-6xl lg:text-7xl">
+          <span className="inline-block">{l.trans({ en: "Write one line.", ko: "한 줄 쓰고," })}</span>{" "}
+          <span className="inline-block">{l.trans({ en: "Deploy everywhere.", ko: "어디에나 배포." })}</span>{" "}
+          <span className="inline-block text-primary">{l.trans({ en: "Literally.", ko: "말 그대로." })}</span>
         </h1>
         <p className="intro-rise mt-6 max-w-2xl text-foreground/65 text-lg leading-8 [--intro-delay:1.35s] sm:text-xl sm:leading-9">
           {l.trans({
-            en: "One line of business code ships web, iOS, Android, Linux, macOS, Windows, server, database — and agents.",
-            ko: "비즈니스 코드 한 줄이 웹, iOS, Android, Linux, macOS, Windows, 서버, DB — 그리고 에이전트까지 배포됩니다.",
+            en: "Web, iOS, Android, macOS, Windows and Linux. Your server and database. And the AI agents your users already talk to.",
+            ko: "웹, iOS, Android, macOS, Windows, Linux. 서버와 데이터베이스. 그리고 사용자가 이미 쓰고 있는 AI 에이전트까지.",
           })}
         </p>
         <div className="intro-rise mt-10 flex w-full flex-col gap-3 [--intro-delay:1.5s] sm:w-auto sm:flex-row">
@@ -458,7 +463,7 @@ export default page().render(() => {
           </Link>
         </div>
         <p className="intro-rise absolute inset-x-0 bottom-8 font-mono text-[11px] text-foreground/40 uppercase tracking-[0.3em] [--intro-delay:2s]">
-          {l.trans({ en: "Scroll to add a dimension", ko: "스크롤해서 차원을 더하세요" })} ↓
+          {l.trans({ en: "Scroll to follow the line", ko: "스크롤해서 한 줄을 따라가 보세요" })} ↓
         </p>
       </section>
 
@@ -515,15 +520,18 @@ export default page().render(() => {
             </div>
           </div>
           <p className="mt-6 font-mono text-primary text-xs uppercase tracking-[0.16em] sm:tracking-[0.3em]">
-            {l.trans({ en: "The tesseract TypeScript framework.", ko: "테서랙트 TypeScript 프레임워크." })}
+            {l.trans({
+              en: "The agentic full-stack TypeScript framework.",
+              ko: "에이전틱 풀스택 TypeScript 프레임워크.",
+            })}
           </p>
           <h2 className="mt-4 font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
-            {l.trans({ en: "One line. Every surface.", ko: "한 줄, 모든 면." })}
+            {l.trans({ en: "Literally everywhere.", ko: "말 그대로, 어디에나." })}
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-foreground/65 leading-7 sm:text-lg sm:leading-8">
             {l.trans({
-              en: "Eight layers × six platforms × people and agents, type-safe from the database to the screen — and you wrote one line.",
-              ko: "8개 레이어 × 6개 플랫폼 × 사람과 에이전트. DB부터 화면까지 타입 안전하게 — 그리고 당신이 쓴 건 한 줄입니다.",
+              en: "Eight layers, six platforms, people and agents — type-safe from the database to the screen. You wrote one line.",
+              ko: "8개 레이어, 6개 플랫폼, 사람과 에이전트까지. DB부터 화면까지 타입 안전하게. 당신이 쓴 건 한 줄입니다.",
             })}
           </p>
         </div>
@@ -549,12 +557,12 @@ export default page().render(() => {
 
         <div className="reveal-rise mt-28 max-w-4xl">
           <h2 className="font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({ en: "Start from the face that hurts.", ko: "아픈 면에서 시작하세요." })}
+            {l.trans({ en: "Start from where it hurts.", ko: "가장 아픈 곳에서 시작하세요." })}
           </h2>
           <p className="mt-4 text-foreground/60 leading-7">
             {l.trans({
-              en: "Web, app, desktop, server, database, and team size all hurt in different ways. Start from the face you already know — the rest of the tesseract comes with it.",
-              ko: "웹, 앱, 데스크탑, 서버, DB, 팀 규모는 저마다 다른 방식으로 발목을 잡습니다. 익숙한 면에서 시작하세요. 테서랙트의 나머지 면은 함께 따라옵니다.",
+              en: "Web, app, desktop, server, database, and team size all hurt in different ways. Start from the part you already know — the rest of the stack comes with it.",
+              ko: "웹, 앱, 데스크탑, 서버, DB, 팀 규모는 저마다 다른 방식으로 발목을 잡습니다. 익숙한 곳에서 시작하세요. 나머지 스택은 함께 따라옵니다.",
             })}
           </p>
         </div>
@@ -576,7 +584,7 @@ export default page().render(() => {
         <header className="reveal-rise max-w-4xl">
           <p className="flex items-center gap-3 font-mono text-primary text-xs uppercase tracking-[0.3em]">
             <AscentFigure dim={4} className="size-5" />
-            {l.trans({ en: "4D · Agents", ko: "4D · 에이전트" })}
+            {l.trans({ en: "Agents", ko: "에이전트" })}
           </p>
           <h2 className="mt-5 font-black text-3xl tracking-tight md:text-5xl">
             {l.trans({
@@ -671,15 +679,18 @@ export default page().render(() => {
         <header className="reveal-rise max-w-4xl">
           <p className="flex items-center gap-3 font-mono text-primary text-xs uppercase tracking-[0.3em]">
             <AscentFigure dim={3} className="size-5" />
-            {l.trans({ en: "3D · Platforms", ko: "3D · 플랫폼" })}
+            {l.trans({ en: "Platforms", ko: "플랫폼" })}
           </p>
           <h2 className="mt-5 font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({ en: "Every face of a business app, one shape", ko: "비즈니스 앱의 모든 면, 하나의 형태" })}
+            {l.trans({
+              en: "Everything a business app needs, in one stack",
+              ko: "비즈니스 앱에 필요한 모든 것, 하나의 스택으로",
+            })}
           </h2>
           <p className="mt-4 text-foreground/60 leading-7">
             {l.trans({
-              en: "Web, iOS, Android, desktop, server, database, validation, internationalization and agents are not parts you bolt together — they are faces of one coherent stack.",
-              ko: "웹, iOS, Android, 데스크톱, 서버, 데이터베이스, 검증, 다국어, 에이전트는 따로 조립하는 부품이 아니라 하나의 일관된 스택이 가진 면입니다.",
+              en: "Web, iOS, Android, desktop, server, database, validation, internationalization and agents are not parts you bolt together — they come built into one coherent stack.",
+              ko: "웹, iOS, Android, 데스크톱, 서버, 데이터베이스, 검증, 다국어, 에이전트는 따로 조립하는 부품이 아니라 하나의 일관된 스택에 처음부터 들어 있습니다.",
             })}
           </p>
         </header>
@@ -744,15 +755,18 @@ export default page().render(() => {
         <header className="reveal-rise max-w-4xl">
           <p className="flex items-center gap-3 font-mono text-primary text-xs uppercase tracking-[0.3em]">
             <AscentFigure dim={2} className="size-5" />
-            {l.trans({ en: "2D · Layers", ko: "2D · 레이어" })}
+            {l.trans({ en: "Layers", ko: "레이어" })}
           </p>
           <h2 className="mt-5 font-black text-3xl tracking-tight md:text-5xl">
-            {l.trans({ en: "One field unfolds into eight layers.", ko: "필드 하나가 8개 레이어로 펼쳐집니다." })}
+            {l.trans({
+              en: "Declare a field once. Every layer follows.",
+              ko: "필드는 한 번만 선언하세요. 모든 레이어가 따라옵니다.",
+            })}
           </h2>
           <p className="mt-4 text-foreground/60 leading-7">
             {l.trans({
-              en: "A tesseract unfolds into eight cubes; an Akan field unfolds into eight layers. That is why one developer can own web, app, server, and database at once: the scattered wiring folds into a single business declaration.",
-              ko: "테서랙트를 펼치면 8개의 입방체가 되듯, Akan의 필드 하나는 8개 레이어로 펼쳐집니다. 1명이 웹, 앱, 서버, DB를 함께 책임질 수 있는 이유입니다. 흩어진 배선이 하나의 비즈니스 선언으로 접힙니다.",
+              en: "In Akan, one field declaration carries through all eight layers. That is why one developer can own web, app, server, and database at once: wiring that used to be scattered across the codebase becomes a single business declaration.",
+              ko: "Akan에서는 필드 선언 하나가 8개 레이어 전체에 반영됩니다. 1명이 웹, 앱, 서버, DB를 함께 책임질 수 있는 이유입니다. 코드 곳곳에 흩어져 있던 배선이 하나의 비즈니스 선언으로 모입니다.",
             })}
           </p>
         </header>
@@ -791,8 +805,8 @@ export default page().render(() => {
             <p className="font-mono text-primary text-xs uppercase tracking-[0.25em]">After — Akan.js</p>
             <h3 className="mt-3 font-bold text-2xl">
               {l.trans({
-                en: "One declaration, folded into every layer",
-                ko: "선언 하나에 모든 레이어가 접혀 있습니다",
+                en: "One declaration, every layer generated",
+                ko: "선언 하나로 모든 레이어가 생성됩니다",
               })}
             </h3>
             <Code.Snippet
@@ -842,7 +856,7 @@ export default page().render(() => {
 
         <div className="reveal-rise mt-28 max-w-4xl">
           <h3 className="font-black text-2xl tracking-tight md:text-4xl">
-            {l.trans({ en: "How One Business Definition Unfolds", ko: "하나의 비즈니스 정의가 펼쳐지는 방식" })}
+            {l.trans({ en: "One Business Definition, End to End", ko: "하나의 비즈니스 정의, 처음부터 끝까지" })}
           </h3>
           <p className="mt-4 text-foreground/60 leading-7">
             {l.trans({
@@ -880,7 +894,7 @@ export default page().render(() => {
           <div>
             <p className="flex items-center gap-3 font-mono text-primary text-xs uppercase tracking-[0.3em]">
               <AscentFigure dim={1} className="size-5" />
-              {l.trans({ en: "1D · Shipped", ko: "1D · 출시" })}
+              {l.trans({ en: "Shipped", ko: "출시" })}
             </p>
             <h2 className="mt-5 font-black text-3xl tracking-tight md:text-5xl">
               {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 것들" })}
@@ -956,15 +970,18 @@ export default page().render(() => {
         className="relative flex min-h-[100svh] flex-col items-center justify-center px-6 py-28 text-center"
       >
         <p className="reveal-rise font-mono text-primary text-xs uppercase tracking-[0.16em] sm:tracking-[0.3em]">
-          {l.trans({ en: "The tesseract TypeScript framework.", ko: "테서랙트 TypeScript 프레임워크." })}
+          {l.trans({
+            en: "The agentic full-stack TypeScript framework.",
+            ko: "에이전틱 풀스택 TypeScript 프레임워크.",
+          })}
         </p>
         <h2 className="reveal-rise mt-6 font-black text-5xl tracking-tight sm:text-7xl">
           {l.trans({ en: "Start with one line.", ko: "한 줄로 시작하세요." })}
         </h2>
         <p className="reveal-rise mt-6 max-w-2xl text-foreground/65 text-lg leading-8">
           {l.trans({
-            en: "One command sets up the workspace. The next line you write is your product.",
-            ko: "명령어 한 줄이면 워크스페이스가 준비됩니다. 그다음 당신이 쓰는 한 줄이 곧 제품입니다.",
+            en: "One command sets up the workspace. The next line you write ships everywhere.",
+            ko: "명령어 한 줄이면 워크스페이스가 준비됩니다. 그다음 당신이 쓰는 한 줄이 어디에나 배포됩니다.",
           })}
         </p>
         <div className="mt-16 flex max-w-full items-center gap-3 font-mono text-sm sm:text-xl lg:text-2xl">

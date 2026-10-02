@@ -1,6 +1,7 @@
 "use client";
 import { useSpeech } from "@libs/util/webkit";
 import { Agent } from "akanjs/ui";
+import { JellyChatIntro } from "./Jelly";
 
 /**
  * The docs chat with speech wired in. It exists as a client component because `voice` carries functions, and a
@@ -8,5 +9,5 @@ import { Agent } from "akanjs/ui";
  */
 export const DocsAgentChat = () => {
   const voice = useSpeech();
-  return <Agent.Chat persist voice={voice} />;
+  return <Agent.Chat intro={<JellyChatIntro />} persist voice={voice} />;
 };

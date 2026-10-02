@@ -3,8 +3,12 @@
   width: 2.5em;
   margin-right: 1em;
   text-align: right;
-  color: #6e7681;
+  color: color-mix(in oklab, var(--foreground) 32%, transparent);
   user-select: none;
+}
+
+.line-prompt {
+  color: color-mix(in oklab, var(--primary) 75%, transparent);
 }
 
 /* Dual-theme syntax colors. shiki (defaultColor: false) emits per-token --shiki-light/--shiki-dark
@@ -31,32 +35,33 @@
 }
 
 .shiki .code-diff.code-add {
-  background-color: rgba(46, 160, 67, 0.2);
+  background-color: color-mix(in oklab, var(--success) 16%, transparent);
 }
 
 .shiki .code-diff.code-add::before {
   content: "+";
   position: absolute;
   left: 0.5rem;
-  color: #3fb950;
+  color: var(--success);
 }
 
 .shiki .code-diff.code-remove {
-  background-color: rgba(248, 81, 73, 0.2);
+  background-color: color-mix(in oklab, var(--destructive) 14%, transparent);
 }
 
 .shiki .code-diff.code-remove::before {
   content: "-";
   position: absolute;
   left: 0.5rem;
-  color: #f85149;
+  color: var(--destructive);
 }
 
 /* Highlight styles */
 .shiki .highlighted {
   display: inline-block;
   width: 100%;
-  background-color: rgba(136, 136, 136, 0.2);
+  background-color: color-mix(in oklab, var(--jelly) 11%, transparent);
+  box-shadow: inset 2px 0 0 var(--jelly);
 }
 
 /* Container needs relative position for diff markers */
@@ -85,7 +90,7 @@
   flex-direction: column;
 }
 
-/* Collapsed state - blue (click to expand) */
+/* Collapsed state - planet blue (click to expand) */
 .expand-btn {
   display: flex;
   align-items: center;
@@ -93,17 +98,18 @@
   padding: 0;
   height: 0.75em;
   font-size: inherit;
-  background: rgba(88, 166, 255, 0.1);
+  background: color-mix(in oklab, var(--planet) 10%, transparent);
   border: none;
-  border-left: 2px solid #7c7c7c;
-  color: #7c7c7c;
+  border-left: 2px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+  border-radius: 0 0.375rem 0.375rem 0;
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
   cursor: pointer;
   position: relative;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .expand-btn:hover {
-  background: rgba(88, 166, 255, 0.15);
+  background: color-mix(in oklab, var(--planet) 16%, transparent);
 }
 
 .expand-btn .expand-icon {
@@ -112,28 +118,28 @@
   justify-content: center;
   width: 2.5em;
   margin-right: 1em;
-  color: #7c7c7c;
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
 }
 
 .expand-btn:hover .expand-icon {
-  color: #a1a1a1;
+  color: color-mix(in oklab, var(--foreground) 70%, transparent);
 }
 
-/* Expanded state - red (click to collapse) */
+/* Expanded state - jelly red (click to collapse) */
 .collapsed-section.expanded .expand-btn {
-  background: rgba(248, 81, 73, 0.1);
-  border-left-color: #f85149;
-  color: #f85149;
+  background: color-mix(in oklab, var(--jelly) 10%, transparent);
+  border-left-color: var(--jelly);
+  color: var(--jelly);
 }
 
 .collapsed-section.expanded .expand-btn:hover {
-  background: rgba(248, 81, 73, 0.15);
+  background: color-mix(in oklab, var(--jelly) 16%, transparent);
 }
 
 .collapsed-section.expanded .expand-btn .expand-icon {
-  color: #f85149;
+  color: var(--jelly);
 }
 
 .collapsed-section.expanded .expand-btn:hover .expand-icon {
-  color: #ff7b72;
+  color: var(--primary);
 }
