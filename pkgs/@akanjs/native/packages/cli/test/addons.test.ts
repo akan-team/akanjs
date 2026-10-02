@@ -106,10 +106,11 @@ describe("native addons", () => {
   });
 
   test("an addon belongs to the deepest package above it, a scoped one included", () => {
-    expect(packageRoot("/s", "/s/node_modules/a/node_modules/@img/sharp/build/Release/x.node")).toBe(
-      "/s/node_modules/a/node_modules/@img/sharp",
+    const base = join(tmpdir(), "s");
+    expect(packageRoot(base, join(base, "node_modules/a/node_modules/@img/sharp/build/Release/x.node"))).toBe(
+      join(base, "node_modules/a/node_modules/@img/sharp"),
     );
-    expect(packageRoot("/s", "/s/addon.node")).toBe("/s");
+    expect(packageRoot(base, join(base, "addon.node"))).toBe(base);
   });
 
   test("refuses a package with no binary for the target and a link outside the system, and warns of one compiled here", () => {

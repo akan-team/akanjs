@@ -42,11 +42,11 @@ export function addonReport(serverDir: string, os: AddonOs, arch: AddonArch): Ad
     const root = dirname(gyp);
     if (packageRoot(serverDir, gyp) !== root || byPackage.has(root)) continue;
     problems.push(
-      `${relative(serverDir, root).split(sep).join("/")}: a native addon (binding.gyp) with no compiled binary; its install script did not run (add it to trustedDependencies) or it cannot build here`,
+      `${shown(serverDir, root)}: a native addon (binding.gyp) with no compiled binary; its install script did not run (add it to trustedDependencies) or it cannot build here`,
     );
   }
   for (const [root, files] of [...byPackage].sort(([a], [b]) => a.localeCompare(b))) {
-    const name = relative(serverDir, root).split(sep).join("/") || ".";
+    const name = shown(serverDir, root);
     const loadable = files.flatMap((file) => {
       const info = binaryInfo(readFileSync(file));
       return info && info.format === FORMAT[os] && info.archs.includes(arch) ? [{ file, info }] : [];
@@ -59,7 +59,7 @@ export function addonReport(serverDir: string, os: AddonOs, arch: AddonArch): Ad
     for (const { file, info } of loadable)
       for (const link of info.absoluteLinks.filter((l) => !systemPath(os, l)))
         problems.push(
-          `${relative(serverDir, file)} links ${link}, which a user's computer does not have: bundle the library or drop the addon`,
+          `${shown(serverDir, file)} links ${link}, which a user's computer does not have: bundle the library or drop the addon`,
         );
     const compiled = existsSync(join(root, "binding.gyp")) && loadable.every(({ file }) => isBuildOutput(root, file));
     if (compiled)
@@ -69,6 +69,9 @@ export function addonReport(serverDir: string, os: AddonOs, arch: AddonArch): Ad
   }
   return { problems: problems.sort(), warnings: warnings.sort() };
 }
+
+/** A path inside the server as the report names it: relative, `/`-separated on every OS. */
+const shown = (base: string, path: string) => relative(base, path).split(sep).join("/") || ".";
 
 function listFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
