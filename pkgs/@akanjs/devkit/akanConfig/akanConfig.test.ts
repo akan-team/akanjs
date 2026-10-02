@@ -477,6 +477,18 @@ describe("AkanAppConfig", () => {
     ).toThrow("unknown basePath");
   });
 
+  test("a desktop server is true or { omit }, its names trimmed, deduplicated and sorted", () => {
+    const resolve = (server: unknown) =>
+      new AkanAppConfig(app, [], packageJson, { native: { desktop: { server } } } as never, baseDevEnv).native.targets
+        .default.desktop?.server;
+
+    expect(resolve(true)).toBe(true);
+    expect(resolve({ omit: [" rclnodejs", "protobufjs", "rclnodejs"] })).toEqual({ omit: ["protobufjs", "rclnodejs"] });
+    expect(resolve({})).toEqual({ omit: [] });
+    expect(() => resolve({ omit: "rclnodejs" })).toThrow("native.desktop.server.omit in apps/");
+    expect(() => resolve({ exclude: ["rclnodejs"] })).toThrow("native.desktop.server.exclude in apps/");
+  });
+
   test("an app without basePaths has one target, default, with no basePath and the section's settings", () => {
     const config = new AkanAppConfig(
       app,

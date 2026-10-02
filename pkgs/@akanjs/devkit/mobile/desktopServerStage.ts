@@ -85,7 +85,8 @@ export class DesktopServerStage {
         };
   }
 
-  static packageJson(config: AkanAppConfig, built: PackageJson): PackageJson {
+  //? `omit` (the target's `desktop.server.omit`) wins over externalLibs: the image keeps those packages, the app does not.
+  static packageJson(config: AkanAppConfig, built: PackageJson, omit: string[] = []): PackageJson {
     const otherDrivers = new Set(
       config.database.modes
         .filter((mode) => mode !== "single")
@@ -93,26 +94,44 @@ export class DesktopServerStage {
     );
     const dependencies = Object.entries(built.dependencies ?? {}).filter(
       ([name]) =>
-        config.externalLibs.includes(name) || (name !== DesktopServerStage.rscRenderer && !otherDrivers.has(name)),
+        !omit.includes(name) &&
+        (config.externalLibs.includes(name) || (name !== DesktopServerStage.rscRenderer && !otherDrivers.has(name))),
     );
     return { ...built, dependencies: Object.fromEntries(dependencies) };
   }
 
-  //* The packages come from the config alone, so they install before `akan build` runs: a machine that cannot install
-  //* them stops at once instead of after the whole build.
+  /** The packages in `nodeModules` that depend on `name`: what still pulls an omitted package in. */
+  static async dependentsOf(nodeModules: string, name: string): Promise<string[]> {
+    const dependents = new Set<string>();
+    for await (const manifest of new Bun.Glob("**/package.json").scan({ cwd: nodeModules, onlyFiles: true })) {
+      const json = (await Bun.file(path.join(nodeModules, manifest))
+        .json()
+        .catch(() => null)) as PackageJson | null;
+      if (!json?.name || json.name === name) continue;
+      const declared = { ...json.dependencies, ...json.optionalDependencies, ...json.peerDependencies };
+      if (name in declared) dependents.add(json.name);
+    }
+    return [...dependents].sort();
+  }
+
   //? `--cpu` installs another CPU's optional packages: an addon's prebuilt binary for the app's CPU, not this computer's.
   static installArgs(arch?: "arm64" | "x64"): string[] {
     return ["install", "--production", "--prefer-offline", ...(arch && arch !== process.arch ? [`--cpu=${arch}`] : [])];
   }
 
-  async install(arch?: "arm64" | "x64") {
+  //* The packages come from the config alone, so they install before `akan build` runs: a machine that cannot install
+  //* them stops at once instead of after the whole build.
+  async install(arch?: "arm64" | "x64", omit: string[] = []) {
     const config = await this.app.getConfig();
     DesktopServerStage.assertCarriable(config);
     await rm(this.dir, { recursive: true, force: true });
     await mkdir(this.dir, { recursive: true });
+    const built = config.getProductionPackageJson();
+    for (const name of omit.filter((name) => !(name in (built.dependencies ?? {}))))
+      this.app.logger.warn(`desktop.server.omit names ${name}, which the server does not depend on directly.`);
     await writeFile(
       path.join(this.dir, "package.json"),
-      JSON.stringify(DesktopServerStage.packageJson(config, config.getProductionPackageJson()), null, 2),
+      JSON.stringify(DesktopServerStage.packageJson(config, built, omit), null, 2),
     );
     try {
       await this.app.spawn(process.execPath, DesktopServerStage.installArgs(arch), { cwd: this.dir });
@@ -124,6 +143,22 @@ export class DesktopServerStage {
     }
     //? Launcher links only: a link out of the app bundle breaks its signature, and the server runs none of them.
     await rm(path.join(this.dir, "node_modules", ".bin"), { recursive: true, force: true });
+    await this.#assertOmitted(omit);
+  }
+
+  //? Leaving a package out of package.json keeps out only what nothing else needs; another dependency still installs it.
+  async #assertOmitted(omit: string[]) {
+    const nodeModules = path.join(this.dir, "node_modules");
+    const kept: string[] = [];
+    for (const name of omit) {
+      if (!(await Bun.file(path.join(nodeModules, name, "package.json")).exists())) continue;
+      const dependents = await DesktopServerStage.dependentsOf(nodeModules, name);
+      kept.push(`${name} (needed by ${dependents.join(", ") || "a package that names it"})`);
+    }
+    if (kept.length)
+      throw new Error(
+        `desktop.server.omit leaves out packages another dependency still installs: ${kept.join("; ")}. Omit those too, or keep the package.`,
+      );
   }
 
   //? Copies the build beside what `install` put in the stage, so it runs after both.

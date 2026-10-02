@@ -23,7 +23,7 @@ const rootPackageJson: PackageJson = {
   name: "repo",
   version: "1.0.0",
   description: "repo",
-  dependencies: { "@external/runtime": "2.0.0", pg: "8.0.0" },
+  dependencies: { "@external/runtime": "2.0.0", pg: "8.0.0", rclnodejs: "1.0.0" },
 };
 const appConfig = (config: object = {}) =>
   new AkanAppConfig({ name: "portal" } as never, [], rootPackageJson, config, baseDevEnv);
@@ -57,6 +57,17 @@ describe("DesktopServerStage", () => {
 
     expect(Object.keys(dependencies ?? {}).sort()).toEqual(["@external/runtime", "react", "react-dom"]);
     for (const driver of drivers) expect(Object.keys(built.dependencies ?? {})).toContain(driver);
+  });
+
+  test("leaves out what desktop.server.omit names, an external lib included, while the image keeps it", () => {
+    const config = appConfig({ externalLibs: ["rclnodejs", "@external/runtime"] });
+    const built = config.getProductionPackageJson();
+
+    const { dependencies } = DesktopServerStage.packageJson(config, built, ["rclnodejs"]);
+
+    expect(Object.keys(dependencies ?? {})).toContain("@external/runtime");
+    expect(Object.keys(dependencies ?? {})).not.toContain("rclnodejs");
+    expect(Object.keys(config.getProductionPackageJson().dependencies ?? {})).toContain("rclnodejs");
   });
 
   test("keeps the image's trusted packages, so their install scripts run in the app's server too", () => {
@@ -146,6 +157,27 @@ describe("DesktopServerStage", () => {
     expect(spawned).toEqual([[process.execPath, ["install", "--production", "--prefer-offline"], { cwd: stage.dir }]]);
     const installed = (await Bun.file(path.join(stage.dir, "package.json")).json()) as PackageJson;
     expect(Object.keys(installed.dependencies ?? {}).sort()).toEqual(["react", "react-dom"]);
+  });
+
+  test("an omitted package another dependency still installs stops the stage, naming who needs it", async () => {
+    const installing =
+      (pulled: boolean) =>
+      async (...args: unknown[]) => {
+        const nodeModules = path.join((args[2] as { cwd: string }).cwd, "node_modules");
+        await write(path.join(nodeModules, "react/package.json"), JSON.stringify({ name: "react" }));
+        if (pulled) {
+          await write(path.join(nodeModules, "rclnodejs/package.json"), JSON.stringify({ name: "rclnodejs" }));
+          await write(
+            path.join(nodeModules, "@robot/bridge/package.json"),
+            JSON.stringify({ name: "@robot/bridge", dependencies: { rclnodejs: "^1" } }),
+          );
+        }
+        return "";
+      };
+    await (await stageApp(installing(false))).stage.install(undefined, ["rclnodejs"]);
+    await expect((await stageApp(installing(true))).stage.install(undefined, ["rclnodejs"])).rejects.toThrow(
+      "another dependency still installs: rclnodejs (needed by @robot/bridge)",
+    );
   });
 
   test("installs another CPU's optional packages for that CPU", () => {

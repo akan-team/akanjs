@@ -286,8 +286,11 @@ packages first with `bun install --production --prefer-offline`, before `akan bu
 `--release` starts `akan start` beside the app when no dev server of this checkout answers. The setting is the
 app's backend, so it does not change under an installed app: an update whose release carries a server when the app
 has none, or none when it has one, is refused, and switching means a reinstall.
-A desktop app builds only for the computer it is built on, so every native addon's prebuild matches the one it runs
-on. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
+`desktop: { server: { omit: ["rclnodejs"] } }` carries the server without packages only the image needs — an addon
+tied to the image's system, code only a process the app never starts loads — and whatever only they pull in; the
+image keeps them, and the server's own bundle must not import them. A package another dependency still installs
+stops the build, naming who needs it. So does a native addon that would not load on a user's computer: no binary
+for the app's OS and CPU, a link outside the system, or a `binding.gyp` its install never compiled. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
 server's adapter. It refuses a `Host` other than its own, but any program on the computer can still call that port:
 guard its endpoints as a network server's. It runs in one process, so a `main.ts` or an env asking for replicas (`replica`,

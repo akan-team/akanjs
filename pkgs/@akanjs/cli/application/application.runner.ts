@@ -502,7 +502,21 @@ try {
   }
 
   static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
-    return platform !== "ios" && platform !== "android" && config.desktop?.server === true;
+    return platform !== "ios" && platform !== "android" && !!config.desktop?.server;
+  }
+  //? One build stages one server, so the targets that carry it must leave the same packages out of it.
+  static serverOmit(targets: ResolvedMobileTarget[], platform: NativePlatform): string[] {
+    const carrying = targets.filter((target) => ApplicationRunner.carriesServer(target, platform));
+    const omits = carrying.map(({ config }) => {
+      const server = config.desktop?.server;
+      return typeof server === "object" ? (server.omit ?? []) : [];
+    });
+    const [first = [], ...rest] = omits;
+    if (rest.some((omit) => omit.join("\0") !== first.join("\0")))
+      throw new Error(
+        `The targets that carry the server omit different packages (${carrying.map(({ name }, idx) => `${name}: ${omits[idx]?.join(", ") || "none"}`).join("; ")}); build them one --target at a time.`,
+      );
+    return first;
   }
   //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
   async #stageMobile(
@@ -515,7 +529,7 @@ try {
     const stage = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform))
       ? new DesktopServerStage(app)
       : null;
-    await stage?.install(arch);
+    await stage?.install(arch, ApplicationRunner.serverOmit(targets, platform));
     await this.#buildMobileCsr(app, env);
     return await stage?.prepare(env);
   }

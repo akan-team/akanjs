@@ -816,6 +816,25 @@ describe("ApplicationRunner mobile", () => {
     expect(ApplicationRunner.carriesServer(carrying, "android")).toBe(false);
     expect(ApplicationRunner.carriesServer(carrying, "ios")).toBe(false);
     expect(ApplicationRunner.carriesServer({ name: "store", config: target("store") }, "linux")).toBe(false);
+    const omitting = { name: "kiosk", config: { ...target("kiosk"), desktop: { server: { omit: ["rclnodejs"] } } } };
+    expect(ApplicationRunner.carriesServer(omitting, "macos")).toBe(true);
+    expect(
+      ApplicationRunner.carriesServer({ ...omitting, config: { ...target("k"), desktop: { server: false } } }),
+    ).toBe(false);
+  });
+
+  test("the targets that carry one build's server leave the same packages out of it", () => {
+    const carrying = (name: string, server: boolean | { omit: string[] }) => ({
+      name,
+      config: { ...target(name), desktop: { server } },
+    });
+    expect(ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] })], "macos")).toEqual(["rclnodejs"]);
+    expect(ApplicationRunner.serverOmit([carrying("a", true), { name: "b", config: target("b") }], "macos")).toEqual(
+      [],
+    );
+    expect(() =>
+      ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] }), carrying("b", true)], "macos"),
+    ).toThrow("omit different packages (a: rclnodejs; b: none)");
   });
 
   test("a dev build runs one target at a time", async () => {

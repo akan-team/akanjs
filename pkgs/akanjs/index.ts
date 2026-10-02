@@ -175,15 +175,25 @@ export interface AkanNativeAndroidConfig {
   files?: Record<string, string>;
 }
 
+export interface AkanNativeDesktopServerConfig {
+  /**
+   * Packages the image installs and the desktop app's server goes without, along with what only they pull in: an
+   * addon that needs the image's system (a ROS install), code only a process the desktop app never starts loads.
+   * The server's own bundle must not import them. The image is unchanged.
+   */
+  omit?: string[];
+}
+
 export interface AkanNativeDesktopConfig {
   /** Where the desktop app starts, over the section's `indexPath`. */
   indexPath?: string;
   /**
    * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
-   * nothing else. `build-desktop`, `start-desktop` and `publish-update` all read it, and an installed app refuses
-   * a release that carries a server when it has none, or none when it has one.
+   * nothing else: `true`, or `{ omit }` to carry it without some of the image's packages. `build-desktop`,
+   * `start-desktop` and `publish-update` all read it, and an installed app refuses a release that carries a server
+   * when it has none, or none when it has one.
    */
-  server?: boolean;
+  server?: boolean | AkanNativeDesktopServerConfig;
   /**
    * `"reload"`: a window whose page's process ends (a crash, a hang) loads it again every time, waiting
    * longer after each end in a row, and the app relaunches when the webview's browser process ends — for an

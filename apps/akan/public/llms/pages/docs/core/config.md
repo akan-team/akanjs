@@ -222,7 +222,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - android.files (Record<string, string>): Files copied into the app, keyed res/<type>/<file> or assets/<path>; the value is app-relative.
 
-- desktop.server (boolean, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall.
+- desktop.server (boolean | { omit?: string[] }, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.
 
 - desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.
 

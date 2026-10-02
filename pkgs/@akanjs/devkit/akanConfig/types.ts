@@ -14,6 +14,7 @@ export type {
   AkanNativeAppResult,
   AkanNativeDeepLinks,
   AkanNativeDesktopConfig,
+  AkanNativeDesktopServerConfig,
   AkanNativeIosConfig,
   AkanNativeSettings,
   AkanNativeTarget,

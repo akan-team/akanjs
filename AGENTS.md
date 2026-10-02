@@ -382,7 +382,7 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   `AKAN_NATIVE_WINDOWS_*` signs with Authenticode. With `updates: { url, publicKey }` an installed app takes the signed
   releases `akan publish-update` makes; `akan update-keygen` makes the key and prints its `publicKey`.
 - **A desktop app that carries its server (`desktop: { server: true }` in `native`, or in one target) gets nothing
-  from `docker`.** That server is API-only, runs in database mode `single`, and listens on a loopback port any
+  from `docker`** — and `server: { omit: [...] }` leaves out packages only the image needs. That server is API-only, runs in database mode `single`, and listens on a loopback port any
   program on the computer can call, so guard its endpoints as a network server's. An executable the app spawns
   goes in `bin` — per platform, a download checked against its `sha256` or a file beside the config, put first on
   the app's PATH so the server's `spawn("ffmpeg")` finds it, and in `ctx.binDir` for a native plugin — and a package

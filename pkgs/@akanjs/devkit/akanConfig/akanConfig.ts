@@ -17,6 +17,7 @@ import {
   type AkanNativeAppConfig,
   type AkanNativeAppResult,
   type AkanNativeDeepLinks,
+  type AkanNativeDesktopConfig,
   type AkanNativeSettings,
   type AkanNativeTarget,
   type AkanNativeUpdatesConfig,
@@ -309,7 +310,15 @@ export class AkanAppConfig implements AppConfigResult {
           ...(merged.android
             ? { android: { ...androidRest, ...(fingerprints ? { sha256CertFingerprints: fingerprints } : {}) } }
             : {}),
-          ...(merged.desktop ? { desktop: AkanAppConfig.#platformIndexPath(merged.desktop) } : {}),
+          ...(merged.desktop
+            ? {
+                desktop: AkanAppConfig.#desktopServer(
+                  AkanAppConfig.#platformIndexPath(merged.desktop),
+                  `${where}.desktop.server`,
+                  configPath,
+                ),
+              }
+            : {}),
           appName: merged.appName ?? this.app.name,
           appId: merged.appId ?? appId,
           version: merged.version ?? version,
@@ -320,6 +329,22 @@ export class AkanAppConfig implements AppConfigResult {
       }),
     );
     return { appName, appId, ...(root.fileName ? { fileName: root.fileName } : {}), version, buildNum, targets };
+  }
+  //? `true` or `{ omit }`: each omitted name trimmed once, so two targets that omit the same packages stage one server.
+  static #desktopServer<T extends { server?: AkanNativeDesktopConfig["server"] }>(
+    desktop: T,
+    where: string,
+    configPath: string,
+  ): T {
+    const { server } = desktop;
+    if (server === undefined || typeof server === "boolean") return desktop;
+    if (!AkanAppConfig.#isPlainObject(server))
+      throw new Error(`${where} in ${configPath} must be true or { omit: string[] }.`);
+    const omit = server.omit;
+    if (omit !== undefined && (!Array.isArray(omit) || omit.some((name) => typeof name !== "string" || !name.trim())))
+      throw new Error(`${where}.omit in ${configPath} must be a list of package names.`);
+    const names = [...new Set((omit ?? []).map((name) => name.trim()))].sort();
+    return { ...desktop, server: { omit: names } };
   }
   static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
     const { indexPath: rawIndexPath, ...rest } = section;
@@ -377,6 +402,7 @@ export class AkanAppConfig implements AppConfigResult {
       "files",
     ],
     desktop: ["indexPath", "server", "recovery", "window", "screenCapture", "entitlements"],
+    desktopServer: ["omit"],
     deepLinks: ["schemes", "domains"],
   } as const;
   //* Settings that moved when `mobile` became `native` are named with where they went, instead of "unknown".
@@ -408,6 +434,12 @@ export class AkanAppConfig implements AppConfigResult {
     check(settings.ios, AkanAppConfig.#nativeKeys.ios, `${where}.ios`, "ios");
     check(settings.android, AkanAppConfig.#nativeKeys.android, `${where}.android`, "android");
     check(settings.desktop, AkanAppConfig.#nativeKeys.desktop, `${where}.desktop`, "desktop");
+    check(
+      settings.desktop?.server,
+      AkanAppConfig.#nativeKeys.desktopServer,
+      `${where}.desktop.server`,
+      "desktopServer",
+    );
     check(settings.deepLinks, AkanAppConfig.#nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
   }
   static readonly #androidFilePattern = /^(?:res\/[^/]+\/[^/]+|assets\/.+)$/;

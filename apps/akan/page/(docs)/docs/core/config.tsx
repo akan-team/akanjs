@@ -331,10 +331,10 @@ const nativeFields = [
   },
   {
     key: "desktop.server",
-    type: "boolean",
+    type: "boolean | { omit?: string[] }",
     default: "false",
-    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall.",
-    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다.",
+    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.",
+    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다. omit은 이미지에만 필요한 패키지와, 그것만 끌어오는 패키지를 뺍니다.",
   },
   {
     key: "desktop.recovery",
