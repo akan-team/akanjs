@@ -59,8 +59,8 @@ export async function buildFromArgs(
   if (project.plugins.length) log.info(dim(`plugins: ${project.plugins.map((p) => p.manifest.id).join(", ")}`));
 
   if (args.flags.aab === true && platform !== "android") throw new CliError("--aab is for android", 2);
-  if (args.flags.installer === true && platform !== "windows" && platform !== "macos")
-    throw new CliError("--installer is for windows (a setup program) and macos (a dmg)", 2);
+  if (args.flags.installer === true && platform !== "windows" && platform !== "macos" && platform !== "linux")
+    throw new CliError("--installer is for windows (a setup program), macos (a dmg) and linux (an AppImage)", 2);
   // O1-2: an iPhone build for `build --device`, or for `run`/`dev --device <a paired iPhone>`.
   const device = args.flags.device;
   const iphone = platform === "ios" && typeof device === "string" ? await physicalIosDevice(device) : null;
@@ -91,6 +91,7 @@ export async function buildFromArgs(
           },
         }
       : {}),
+    ...(platform === "linux" && args.flags.installer === true ? { linux: { appImage: true } } : {}),
     // The identity and profile are found (lib/iossigning.ts chooseSigning), narrowed by AKAN_NATIVE_IOS_TEAM,
     // AKAN_NATIVE_IOS_IDENTITY, AKAN_NATIVE_IOS_PROFILE and AKAN_NATIVE_IOS_DISTRIBUTION=ad-hoc.
     ...(iosDevice

@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean; signing?: WindowsSigning }; macos?: MacosBuild }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean; signing?: WindowsSigning }; macos?: MacosBuild; linux?: { appImage?: boolean } }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -99,7 +99,7 @@ interface IosSigningResult {
 }
 
 interface Artifact {
-  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer), macOS dmg(macos.dmg) */
+  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer), macOS dmg(macos.dmg), Linux AppImage(linux.appImage) */
   kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기, macOS Apple Development), 배포(macOS Developer ID) */
@@ -132,6 +132,12 @@ interface MacosBuild {
 - release 빌드가 Developer ID로 서명되지 않았거나 공증되지 않았으면 경고한다. 내려받은 사본은 Gatekeeper가 막기 때문이다.
 - `publishUpdate`도 `macos: { signing, notarize }`를 받는다. 업데이터가 설치된 앱의 서명을 확인하므로(`codesign --verify --deep --strict`), 업데이트 릴리스는 내려받은 앱과 같은 인증서로 서명해야 한다. dmg는 만들지 않는다.
 - API는 환경 변수를 읽지 않는다. `macosDistributionFromEnv(env)`가 `AKAN_NATIVE_MACOS_IDENTITY`, `AKAN_NATIVE_MACOS_CERTIFICATE`·`_CERTIFICATE_PASSWORD`, `AKAN_NATIVE_MACOS_NOTARY_KEY`·`_KEY_ID`·`_ISSUER` 또는 `AKAN_NATIVE_MACOS_NOTARY_PROFILE`을 `MacosBuild`로 바꿔 준다. CLI `akan-native build macos`와 akanjs `akan build-desktop`·`publish-update`가 이것을 쓴다. CLI `--installer`는 macOS에서 dmg다.
+
+#### Linux AppImage (CLI-9)
+
+- `linux: { appImage: true }`(CLI `--installer`)면 앱 폴더 옆에 `<fileName>-<version>-<arch>.AppImage`를 만든다(`platforms/linux-appimage.ts`). 앱 폴더에 `AppRun`(옆의 실행 파일을 인자 그대로 실행), `<fileName>.desktop`(이름, 아이콘, `deepLinks.schemes`의 `x-scheme-handler/<scheme>`), 256px 아이콘과 `.DirIcon`을 더해 `mksquashfs -comp zstd -root-owned`로 묶고, 고정한 AppImage type 2 runtime(`lib/toolchains.ts`의 `appimageRuntime`, 날짜 릴리스와 SHA-256, `~/.akan/native/toolchains`에 받는다) 뒤에 붙인다. appimagetool은 쓰지 않는다. 그 자체가 FUSE가 필요한 AppImage이고 고정하지 않은 runtime을 내려받기 때문이다.
+- `mksquashfs`가 필요하다(`apt install squashfs-tools`). 사용자 쪽은 폴더와 같이 시스템의 WebKitGTK 4.1·GTK 3을 쓰고, FUSE가 없으면 `--appimage-extract-and-run`으로 돈다.
+- AppImage는 읽기 전용 이미지에서 돌므로 updates 플러그인이 자신을 바꿀 수 없다. `updates`가 있는 앱이면 경고한다. 릴리스마다 새 AppImage를 낸다.
 
 #### Windows 배포 서명 (CLI-9)
 

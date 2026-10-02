@@ -154,7 +154,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("installer", Boolean, {
-      desc: "also what a person downloads: a Windows setup program (NSIS, /S for silent) or a macOS dmg",
+      desc: "also what a person downloads: a Windows setup program (NSIS, /S for silent), a macOS dmg, a Linux AppImage",
       default: false,
     })
     .option("write", Boolean, { desc: "write code generation", default: true })

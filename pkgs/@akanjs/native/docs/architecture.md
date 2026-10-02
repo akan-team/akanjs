@@ -239,7 +239,7 @@ Akan Native Sample.app/Contents/
   ```
   - Windows exe는 `bun build --compile --windows-hide-console`로 만들고, 아이콘(.ico)과 버전 정보를 넣는다.
   - DLL은 C 런타임을 정적으로 링크한다(`+crt-static`). 그래서 VC++ 재배포 패키지가 필요 없다.
-  - Windows 설치 프로그램은 `--installer`의 NSIS다(2026-09-30, `platforms/windows-installer.ts`). 사용자 단위로 설치해 업데이터가 관리자 권한 없이 폴더를 바꿀 수 있고, 제거 항목은 app id 키, 시작 메뉴 바로가기는 앱 이름이다. deb·AppImage와 서명은 CLI-9다.
+  - Windows 설치 프로그램은 `--installer`의 NSIS다(2026-09-30, `platforms/windows-installer.ts`). 사용자 단위로 설치해 업데이터가 관리자 권한 없이 폴더를 바꿀 수 있고, 제거 항목은 app id 키, 시작 메뉴 바로가기는 앱 이름이다. Linux는 `--installer`의 AppImage(2026-10-02, `platforms/linux-appimage.ts`), 서명은 CLI-9다(macOS `lib/macossigning.ts`, Windows `lib/windowssigning.ts`). deb는 아직 없다.
     - 설치 폴더는 앱의 것이다. 업데이트가 폴더를 통째로 바꾸므로 제거 프로그램은 폴더 밖, 옆에 둔다(`<폴더>.uninstall.exe`). 제거 프로그램은 제거 항목의 `InstallLocation`으로 폴더를 찾는다(비었거나 드라이브 루트면 제거하지 않는다). 다시 설치할 때와 제거할 때 앱 실행 파일이 있는 폴더는 통째로 지우고, 없으면 이 빌드가 만든 항목만 지운다. 그래서 `/D=`로 고른 폴더는 비어 있거나 이미 앱이 설치된 곳이어야 한다(아니면 거부). 기본 폴더(`%LOCALAPPDATA%\Programs\<name>`)만은 예외로 받는다. 같은 이름의 이전 앱(예: Electron으로 만든 전광판)이 그 폴더에 있으면, 처음 설치할 때는 이 빌드의 항목만 바꾸므로 이전 앱의 나머지 파일이 남는다. 앱 실행 파일이 생긴 뒤의 재설치·제거가 폴더를 통째로 지운다. 제거 프로그램을 쓸 수 없는 곳(드라이브 바로 아래의 `/D=` 등)이면 설치를 실패로 끝낸다.
     - 설치 위치: `/D=`가 없으면 제거 항목의 `InstallLocation`, 곧 이미 설치된 곳에 다시 설치한다(`InstallDirRegKey`). 항목이 없을 때만 기본 폴더다. 원격 업데이트는 `/S /RUN`만 넘기므로, 전에는 `/D=D:\Board`로 설치한 PC에 기본 폴더 사본이 하나 더 생기고 옛 앱이 계속 돌았다. `app.name`이 버전 사이에 바뀌어도 같은 폴더에 설치된다(2026-09-30 10 리뷰).
     - 한 번에 하나: 설치와 제거는 app id로 이름 지은 세션 뮤텍스(`Local\akan-native-setup-<id>`)를 잡고, 이미 잡혀 있으면 아무것도 건드리지 않고 2로 끝난다. 전에는 겹쳐 돈 두 설치가 서로 푼 파일을 지워, 실행 파일이 빠진 폴더를 0으로 설치할 수 있었다(2026-09-30 10 리뷰). 다른 사용자의 설치는 그 사용자의 폴더에 설치하므로 `Global\`을 쓰지 않는다.

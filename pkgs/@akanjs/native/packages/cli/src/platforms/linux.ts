@@ -1,5 +1,5 @@
 // akan-native build linux: a folder with the Bun runtime, the TAO/WRY shared library and the web app
-// (docs/architecture.md §3.3, §8). Packages (.deb, AppImage) come with distribution (CLI-9).
+// (docs/architecture.md §3.3, §8), and with --installer an AppImage of it (linux-appimage.ts).
 //
 //   <name>/
 //     <exe>                      bun build --compile (main + plugin host Worker)
@@ -24,6 +24,7 @@ import {
   runExecutable,
   writeDesktopResources,
 } from "./desktop.ts";
+import { buildAppImage } from "./linux-appimage.ts";
 
 const exePath = (ctx: BuildContext, dir: string) => join(dir, ctx.project.config.app.fileName);
 
@@ -44,6 +45,7 @@ export async function buildLinux(ctx: BuildContext): Promise<string> {
   writeDesktopResources(ctx, resources, "linux");
   const art = iconArt(config);
   if (art) writeFileSync(join(resources, "icon.rgba"), windowIcon(art.master));
+  if (ctx.linux?.appImage) ctx.artifacts.push({ kind: "installer", path: await buildAppImage(ctx, dir) });
   const size = await folderSize(dir);
   if (size) log.info(dim(`size ${size}`));
   return dir;

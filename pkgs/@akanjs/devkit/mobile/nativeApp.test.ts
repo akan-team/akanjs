@@ -89,7 +89,7 @@ describe("NativeApp", () => {
   test("an installer is what a person downloads, on the desktops that have one", () => {
     expect(() => NativeApp.assertInstaller("windows", true)).not.toThrow();
     expect(() => NativeApp.assertInstaller("macos", true)).not.toThrow();
-    expect(() => NativeApp.assertInstaller("linux", false)).not.toThrow();
+    expect(() => NativeApp.assertInstaller("linux", true)).not.toThrow();
     expect(() => NativeApp.assertInstaller("ios", true)).toThrow(/not for ios/);
   });
 

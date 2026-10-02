@@ -26,6 +26,7 @@ import {
   type IosBuild,
   type IosSigning,
   type IosSigningResult,
+  type LinuxBuild,
   prepare,
   SigningError,
   WebBuildError,
@@ -56,6 +57,7 @@ export type {
   IosBuild,
   IosSigning,
   IosSigningResult,
+  LinuxBuild,
   LogEvent,
   MacosBuild,
   MacosNotarization,
@@ -175,7 +177,13 @@ export function validateConfig(config: AkanNativeConfig, options: { appDir: stri
 
 /** Builds the app. Default profile release (like `akan-native build`). `ios.device`: an iPhone build (signed; release adds an .ipa). */
 export function build(
-  options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild; windows?: WindowsBuild; macos?: MacosBuild },
+  options: TaskOptions & {
+    profile?: BuildProfile;
+    ios?: IosBuild;
+    windows?: WindowsBuild;
+    macos?: MacosBuild;
+    linux?: LinuxBuild;
+  },
 ): Promise<BuildResult> {
   return task(
     options,
@@ -185,6 +193,7 @@ export function build(
           ...(options.ios ? { ios: options.ios } : {}),
           ...(options.windows ? { windows: options.windows } : {}),
           ...(options.macos ? { macos: options.macos } : {}),
+          ...(options.linux ? { linux: options.linux } : {}),
         })
       ).result,
   );
@@ -666,7 +675,7 @@ async function buildIn(
   profile: BuildProfile,
   mode: string,
   warnings: string[],
-  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "macos" | "devServer" | "startPath"> = {},
+  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "macos" | "linux" | "devServer" | "startPath"> = {},
 ): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
   const started = performance.now();
   const appDir = resolve(options.appDir);

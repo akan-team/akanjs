@@ -38,7 +38,7 @@ export interface NativeBuildOptions {
   profile?: "debug" | "release";
   /** The server a desktop app carries (the target's `desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
-  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg. */
+  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage. */
   installer?: boolean;
 }
 
@@ -199,6 +199,7 @@ export class NativeApp {
             },
           }
         : {}),
+      ...(platform === "linux" && installer ? { linux: { appImage: true } } : {}),
     });
   }
 
@@ -415,10 +416,10 @@ export class NativeApp {
     return signing ? { signing } : {};
   }
 
-  //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS.
+  //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.
   static assertInstaller(platform: NativePlatform, installer: boolean) {
-    if (installer && platform !== "windows" && platform !== "macos")
-      throw new Error(`An installer is built for Windows (a setup program) and macOS (a dmg), not for ${platform}.`);
+    if (installer && (platform === "ios" || platform === "android"))
+      throw new Error(`An installer is built for a desktop app (Windows, macOS, Linux), not for ${platform}.`);
   }
 
   //? A phone runs no Bun, so only a desktop app can carry the server.

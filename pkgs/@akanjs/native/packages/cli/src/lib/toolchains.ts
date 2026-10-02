@@ -97,6 +97,30 @@ export const TOOLCHAIN = {
       root: "bundletool.jar",
     } satisfies Download,
   },
+  /**
+   * The AppImage type 2 runtime (CLI-9), the ELF a Linux AppImage starts with: it mounts the squashfs appended to it
+   * and runs its AppRun. A dated release, since `continuous` moves; the digests are the ones GitHub publishes.
+   */
+  appimageRuntime: {
+    version: "20251108",
+    license: "MIT",
+    downloads: {
+      x64: {
+        url: "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64",
+        sha256: "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d",
+        size: 944_632,
+        format: "file",
+        root: "runtime",
+      },
+      arm64: {
+        url: "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-aarch64",
+        sha256: "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444",
+        size: 936_456,
+        format: "file",
+        root: "runtime",
+      },
+    } as Record<string, Download>,
+  },
   android: {
     buildTools: "37.0.0",
     /** Older build-tools still work (with a warning); below this they do not. */

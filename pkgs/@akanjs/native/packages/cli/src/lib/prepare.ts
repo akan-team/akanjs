@@ -69,6 +69,12 @@ export interface BuildOptions {
   windows?: WindowsBuild;
   /** macOS: Developer ID signing, notarization and a dmg (lib/macossigning.ts). */
   macos?: MacosBuild;
+  /** Linux: an AppImage beside the app folder (platforms/linux-appimage.ts). */
+  linux?: LinuxBuild;
+}
+
+export interface LinuxBuild {
+  appImage?: boolean;
 }
 
 /** Which identity and profile an iOS device build signs with; unset: found in the keychain and Xcode's profiles. */
@@ -152,6 +158,7 @@ export interface BuildContext {
   ios?: IosBuild;
   windows?: WindowsBuild;
   macos?: MacosBuild;
+  linux?: LinuxBuild;
   /** Artifacts besides the one the builder returns (an .aab next to the .apk, a Windows setup program). */
   artifacts: { kind: "aab" | "ipa" | "installer"; path: string }[];
   /** What the builder signed with, when it signs (Android: the app's release key or the debug key). */
@@ -290,6 +297,7 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     ...(options.ios ? { ios: options.ios } : {}),
     ...(options.windows ? { windows: options.windows } : {}),
     ...(options.macos ? { macos: options.macos } : {}),
+    ...(options.linux ? { linux: options.linux } : {}),
     artifacts: [],
   };
 }
