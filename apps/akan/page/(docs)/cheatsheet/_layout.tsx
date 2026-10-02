@@ -120,6 +120,11 @@ export default layout().render(({ children }) => {
           href: "/cheatsheet/mobile/ui",
           audience: "agent",
         },
+        {
+          name: l.trans({ en: "Desktop Release", ko: "데스크톱 배포" }),
+          href: "/cheatsheet/mobile/desktop-release",
+          audience: "agent",
+        },
       ],
     },
     {

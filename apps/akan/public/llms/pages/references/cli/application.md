@@ -364,9 +364,9 @@ Build an APK of the Android app on the native runtime. Like `build-ios`, it make
 
 - output: Written under `apps/<app>/.akan/native/<target>/build/android`; the command prints each file's path.
 
-`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--write <boolean>]`
+`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--write <boolean>]`
 
-Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.
+Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build signs from the environment — a Developer ID with notarization on macOS (`AKAN_NATIVE_MACOS_*`), Authenticode on Windows (`AKAN_NATIVE_WINDOWS_*`) — and warns when it cannot, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
@@ -374,7 +374,9 @@ Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or wit
 
 - --debug (Boolean, default false): Make a debug build instead of a release one.
 
-- --installer (Boolean, default false): Windows: also build `<file>-<version>-<arch>-setup.exe`, a setup program, with NSIS (`winget install NSIS.NSIS`).
+- --installer (Boolean, default false): Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`).
+
+- --arch (String, default this computer's): The CPU a Windows or Linux app runs on: `arm64` or `x64`. The server's addons and `bin` follow it. A macOS app is Apple silicon (arm64) only.
 
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 

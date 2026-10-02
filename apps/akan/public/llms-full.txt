@@ -5847,6 +5847,43 @@ What you wrote
 
 tool
 
+## Desktop Release
+
+Source: /cheatsheet/mobile/desktop-release
+Mirror: /llms/pages/cheatsheet/mobile/desktop-release.md
+Priority: P2
+
+Headings:
+- Desktop Release
+- Signing
+- Installers And CPU
+- Native Addons
+- CI Recipe
+
+Desktop Release
+
+- AKAN_NATIVE_MACOS_IDENTITY: A keychain identity by name (“Developer ID Application: Name (TEAMID)”) or SHA-1. A Mac that already holds the certificate needs only this.
+
+- AKAN_NATIVE_MACOS_CERTIFICATE + _PASSWORD: A .p12 file and its password. The build imports it into a keychain of its own and deletes it afterwards: the CI way.
+
+- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id). Turns on notarization and stapling.
+
+- AKAN_NATIVE_MACOS_NOTARY_PROFILE: Instead of the key: a profile `xcrun notarytool store-credentials` saved in the keychain.
+
+- AKAN_NATIVE_WINDOWS_CERTIFICATE + _PASSWORD: A .pfx file and its password.
+
+- AKAN_NATIVE_WINDOWS_THUMBPRINT: A certificate in the Windows store by its SHA-1 thumbprint: a USB token's or an HSM's.
+
+- AKAN_NATIVE_WINDOWS_SIGN_COMMAND: Any other signer as a JSON array, run once per file with {file} replaced, e.g. signtool with Azure Trusted Signing: ["signtool","sign","/fd","SHA256","/tr","http://timestamp.acs.microsoft.com","/td","SHA256","/dlib","Azure.CodeSigning.Dlib.dll","/dmdf","metadata.json","{file}"].
+
+- AKAN_NATIVE_WINDOWS_TIMESTAMP_URL: The RFC 3161 timestamp server. Default http://timestamp.digicert.com.
+
+A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs from the environment, packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
+
+A desktop app is built on its own OS: a Mac builds the macOS app, a Windows PC the Windows one. The CI recipe below runs one job per OS instead of cross-compiling.
+
+Signing
+
 ## Deep Links
 
 Source: /cheatsheet/mobile/links
@@ -6444,6 +6481,7 @@ Use `message` for small actions the browser sends to the server: a read receipt,
 - Endpoint: /llms/pages/cheatsheet/interface/endpoint.md
 - Form: /llms/pages/cheatsheet/interface/form.md
 - MCP Server: /llms/pages/cheatsheet/interface/mcp.md
+- Desktop Release: /llms/pages/cheatsheet/mobile/desktop-release.md
 - Deep Links: /llms/pages/cheatsheet/mobile/links.md
 - Push Notifications: /llms/pages/cheatsheet/mobile/push.md
 - Setup: /llms/pages/cheatsheet/mobile/setup.md

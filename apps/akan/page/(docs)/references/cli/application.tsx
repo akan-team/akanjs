@@ -1072,10 +1072,10 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
     {
       name: "build-desktop",
       signature:
-        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--write <boolean>]",
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--write <boolean>]",
       desc: l.trans({
-        en: "Build the desktop app for this computer: a `.app` on macOS, signed ad hoc or with the development identity, and an unsigned app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. On Windows, `--installer` adds a setup program; distribution signing and notarization are not part of it yet.",
-        ko: "이 컴퓨터용 데스크톱 앱을 빌드합니다. macOS는 ad hoc 또는 개발용 인증서로 서명한 `.app`, Windows와 Linux는 서명하지 않은 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. Windows에서는 `--installer`가 설치 프로그램을 더하며, 배포 서명과 공증은 아직 포함하지 않습니다.",
+        en: "Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build signs from the environment — a Developer ID with notarization on macOS (`AKAN_NATIVE_MACOS_*`), Authenticode on Windows (`AKAN_NATIVE_WINDOWS_*`) — and warns when it cannot, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.",
+        ko: "이 컴퓨터의 OS용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. release 빌드는 환경 변수로 서명합니다. macOS는 Developer ID 서명과 공증(`AKAN_NATIVE_MACOS_*`), Windows는 Authenticode(`AKAN_NATIVE_WINDOWS_*`)이고, 서명하지 못하면 경고합니다. 내려받은 사본이 막히거나 경고를 받기 때문입니다. 데스크톱 배포 치트시트를 보세요.",
       }),
       options: [
         targetOption,
@@ -1086,8 +1086,17 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
           type: "Boolean",
           defaultValue: "false",
           desc: l.trans({
-            en: "Windows: also build `<file>-<version>-<arch>-setup.exe`, a setup program, with NSIS (`winget install NSIS.NSIS`).",
-            ko: "Windows: NSIS로 설치 프로그램 `<file>-<version>-<arch>-setup.exe`도 만듭니다(`winget install NSIS.NSIS`).",
+            en: "Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`).",
+            ko: "내려받을 파일도 만듭니다. Windows는 NSIS로 `<file>-<version>-<arch>-setup.exe`(`winget install NSIS.NSIS`), macOS는 `.dmg`, Linux는 `.AppImage`(`mksquashfs` 필요)입니다.",
+          }),
+        },
+        {
+          name: "--arch",
+          type: "String",
+          defaultValue: l.trans({ en: "this computer's", ko: "이 컴퓨터의 CPU" }),
+          desc: l.trans({
+            en: "The CPU a Windows or Linux app runs on: `arm64` or `x64`. The server's addons and `bin` follow it. A macOS app is Apple silicon (arm64) only.",
+            ko: "Windows·Linux 앱이 도는 CPU입니다. `arm64` 또는 `x64`이고, 서버의 애드온과 `bin`도 따릅니다. macOS 앱은 Apple silicon(arm64)만 만듭니다.",
           }),
         },
         writeOption,
