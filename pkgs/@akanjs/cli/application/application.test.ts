@@ -668,7 +668,7 @@ describe("ApplicationScript desktop", () => {
       args: [app, NativeApp.desktopPlatform(), { target: "default", env: "main", profile: "release", installer: true }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "installer", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "installer", "arch", "write"]);
   });
 });
 
