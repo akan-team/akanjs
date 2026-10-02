@@ -11,6 +11,7 @@ import { findExternalScripts, injectEarlyErrors, injectInitScript } from "./html
 import { CliError, dim, log } from "./log.ts";
 import type { MacosBuild } from "./macossigning.ts";
 import { buildNumberProblem, ConfigError, dependencyProblems, type Project } from "./project.ts";
+import type { WindowsSigning } from "./windowssigning.ts";
 
 /**
  * debug: inspectable webview, dev signing, runtime env overrides, the dev server (akan-native run, dev,
@@ -29,6 +30,8 @@ const DEV_SERVER_PAGE = `<!doctype html>
 
 export interface WindowsBuild {
   installer?: boolean;
+  /** Authenticode for every PE file, the setup program and its uninstaller (lib/windowssigning.ts). */
+  signing?: WindowsSigning;
 }
 
 export interface BuildOptions {

@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean }; macos?: MacosBuild }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean; signing?: WindowsSigning }; macos?: MacosBuild }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -111,7 +111,7 @@ interface Artifact {
 
 - 기본 profile은 release다(CLI `akan-native build`와 같다). run과 dev는 debug로 빌드한다.
 - iOS: 기본은 시뮬레이터 .app이다. `ios: { device: true, signing? }`(아래 release와 같은 `IosSigning`)를 주면 실기기 .app(O1-2)을 만든다.
-- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치, `/S /RUN`이면 설치 뒤 실행, `/D=`가 없으면 이미 설치된 곳(제거 항목의 `InstallLocation`)에 다시 설치, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. 설치와 제거는 한 번에 하나만 돈다. 여유 공간과 WebView2 확인, 새 파일 풀기(폴더 옆 `<name>.setup-new`), 새 제거 프로그램 쓰기는 앱을 멈추기 전에 하고, 폴더는 이름 바꾸기 두 번으로 바꾼다. 종료 코드는 새 빌드가 폴더를 차지했는지를 말한다. 0이면 차지했다. 그 뒤에 제거 프로그램·바로가기·제거 항목을 쓰지 못해도 0이고, 설치 로그와 대화형 창으로 알린다. 2면 차지하지 못했다(다른 설치·제거가 도는 중, 공간 부족, 풀거나 쓰지 못함, 폴더를 바꾸지 못함 등). 2로 끝난 설치는 `<name>.setup-new`와 새 제거 프로그램을 지우고, 이미 옮긴 옛 폴더는 제자리로 되살린다. 되살리기까지 실패하면 옛 앱은 `<name>.setup-old`에 남고 다음 설치가 되살린다. 앱을 멈춘 뒤의 실패이고 `/RUN`이면 자리에 있는 앱을 다시 띄운다. 제거는 자동 시작 등록(`Run` 값), 셸의 업데이트 상태(`%LOCALAPPDATA%\<id>\akan-native-updates`, debug 빌드는 `akan-native-updates-debug`)와 업데이트의 `RunOnce` 복구 명령, 알림 AUMID 키, 이 실행 파일을 여는 딥 링크 스킴 키도 지우고, 서버 데이터는 남긴다. 재설치와 제거는 폴더 안의 정션을 따라가지 않는다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
+- Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치, `/S /RUN`이면 설치 뒤 실행, `/D=`가 없으면 이미 설치된 곳(제거 항목의 `InstallLocation`)에 다시 설치, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. 설치와 제거는 한 번에 하나만 돈다. 여유 공간과 WebView2 확인, 새 파일 풀기(폴더 옆 `<name>.setup-new`), 새 제거 프로그램 쓰기는 앱을 멈추기 전에 하고, 폴더는 이름 바꾸기 두 번으로 바꾼다. 종료 코드는 새 빌드가 폴더를 차지했는지를 말한다. 0이면 차지했다. 그 뒤에 제거 프로그램·바로가기·제거 항목을 쓰지 못해도 0이고, 설치 로그와 대화형 창으로 알린다. 2면 차지하지 못했다(다른 설치·제거가 도는 중, 공간 부족, 풀거나 쓰지 못함, 폴더를 바꾸지 못함 등). 2로 끝난 설치는 `<name>.setup-new`와 새 제거 프로그램을 지우고, 이미 옮긴 옛 폴더는 제자리로 되살린다. 되살리기까지 실패하면 옛 앱은 `<name>.setup-old`에 남고 다음 설치가 되살린다. 앱을 멈춘 뒤의 실패이고 `/RUN`이면 자리에 있는 앱을 다시 띄운다. 제거는 자동 시작 등록(`Run` 값), 셸의 업데이트 상태(`%LOCALAPPDATA%\<id>\akan-native-updates`, debug 빌드는 `akan-native-updates-debug`)와 업데이트의 `RunOnce` 복구 명령, 알림 AUMID 키, 이 실행 파일을 여는 딥 링크 스킴 키도 지우고, 서버 데이터는 남긴다. 재설치와 제거는 폴더 안의 정션을 따라가지 않는다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 서명은 아래 "Windows 배포 서명"이다.
 
 #### macOS 배포 서명 (CLI-9)
 
@@ -132,6 +132,22 @@ interface MacosBuild {
 - release 빌드가 Developer ID로 서명되지 않았거나 공증되지 않았으면 경고한다. 내려받은 사본은 Gatekeeper가 막기 때문이다.
 - `publishUpdate`도 `macos: { signing, notarize }`를 받는다. 업데이터가 설치된 앱의 서명을 확인하므로(`codesign --verify --deep --strict`), 업데이트 릴리스는 내려받은 앱과 같은 인증서로 서명해야 한다. dmg는 만들지 않는다.
 - API는 환경 변수를 읽지 않는다. `macosDistributionFromEnv(env)`가 `AKAN_NATIVE_MACOS_IDENTITY`, `AKAN_NATIVE_MACOS_CERTIFICATE`·`_CERTIFICATE_PASSWORD`, `AKAN_NATIVE_MACOS_NOTARY_KEY`·`_KEY_ID`·`_ISSUER` 또는 `AKAN_NATIVE_MACOS_NOTARY_PROFILE`을 `MacosBuild`로 바꿔 준다. CLI `akan-native build macos`와 akanjs `akan build-desktop`·`publish-update`가 이것을 쓴다. CLI `--installer`는 macOS에서 dmg다.
+
+#### Windows 배포 서명 (CLI-9)
+
+```ts
+interface WindowsSigning {
+  certificate?: { path: string; password: string };   // .pfx
+  thumbprint?: string;                                // 인증서 저장소의 인증서(토큰·HSM)
+  command?: string[];                                 // 다른 서명 도구, 파일마다 한 번, {file}을 바꾼다
+  timestampUrl?: string;                              // 기본 http://timestamp.digicert.com
+}
+```
+
+- `windows.signing`이 있으면 앱 폴더의 모든 PE 파일(실행 파일, `akan_native_desktop.dll`, `resources/server`·`resources/bin`의 `.exe`·`.dll`·`.node`, 이름과 상관없이)을 Authenticode(SHA-256, RFC 3161 타임스탬프)로 서명하고 `signtool verify /pa`로 확인한다. `installer`면 setup.exe도 서명하고, NSIS가 설치 때 쓰는 제거 프로그램은 makensis의 `!uninstfinalize`가 같은 설정으로 서명한다. 설정은 환경 변수로만 넘겨 .pfx 비밀번호가 .nsi나 makensis 인자에 남지 않는다(signtool은 비밀번호를 인자로만 받으므로 그 명령의 인자에는 있다. 실패 메시지에는 넣지 않는다).
+- signtool은 `AKAN_NATIVE_SIGNTOOL`, PATH, 가장 새 Windows 10/11 SDK의 이 CPU용 순서로 찾는다. `command`면 signtool이 없어도 된다. Azure Trusted Signing은 `["signtool", "sign", "/fd", "SHA256", "/tr", "http://timestamp.acs.microsoft.com", "/td", "SHA256", "/dlib", "<Azure.CodeSigning.Dlib.dll>", "/dmdf", "<metadata.json>", "{file}"]`처럼 쓴다.
+- release 빌드를 서명하지 않으면 경고한다(SmartScreen이 내려받은 사본에 경고한다). `publishUpdate`도 `windows: { signing }`을 받는다.
+- `windowsSigningFromEnv(env)`가 `AKAN_NATIVE_WINDOWS_CERTIFICATE`·`_CERTIFICATE_PASSWORD`, `AKAN_NATIVE_WINDOWS_THUMBPRINT`, `AKAN_NATIVE_WINDOWS_SIGN_COMMAND`(JSON 배열), `AKAN_NATIVE_WINDOWS_TIMESTAMP_URL`을 `WindowsSigning`으로 바꾼다. CLI와 akanjs가 쓴다.
 
 ### run — 빌드하고 띄우기
 
@@ -204,7 +220,7 @@ interface DevSession {
 function release(o: TaskOptions & (
   | { platform: "ios"; signing?: IosSigning }                                      // iPhone .app + .ipa
   | { platform: "android"; signing: AndroidSigning; formats?: ("aab" | "apk")[] }  // 기본 ["aab"]
-  // macOS는 build의 macos.signing·notarize(§3 "macOS 배포 서명"). Windows·Linux는 나중에 붙인다.
+  // macOS는 build의 macos.signing·notarize, Windows는 windows.signing(§3 "macOS 배포 서명", "Windows 배포 서명").
 )): Promise<BuildResult>;
 
 /** 모두 선택이다. 주지 않은 것은 찾는다(아래 "서명 찾기"). 1단계(D7): Xcode가 이 Mac에 만든 인증서와 프로파일. */

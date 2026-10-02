@@ -13,6 +13,7 @@ import { ico, iconArt, windowIcon } from "../lib/icons.ts";
 import type { Launched, LaunchOptions } from "../lib/launch.ts";
 import { log } from "../lib/log.ts";
 import type { BuildContext } from "../lib/prepare.ts";
+import { peFiles, signWindowsFiles } from "../lib/windowssigning.ts";
 import {
   buildNativeLibrary,
   compileExecutable,
@@ -78,6 +79,15 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   const resources = resourcesOf("windows", dir);
   writeDesktopResources(ctx, resources, "windows");
   if (art) writeFileSync(join(resources, "icon.rgba"), windowIcon(art.master));
+  const signing = ctx.windows?.signing;
+  if (signing) {
+    log.step("sign: Authenticode");
+    await signWindowsFiles(signing, peFiles(dir), config.app.name);
+    ctx.signedAs = "distribution";
+  } else if (!ctx.dev)
+    log.warn(
+      "not signed: SmartScreen warns on a downloaded copy (set AKAN_NATIVE_WINDOWS_CERTIFICATE, _THUMBPRINT or _SIGN_COMMAND)",
+    );
   if (ctx.windows?.installer) ctx.artifacts.push({ kind: "installer", path: await buildWindowsInstaller(ctx, dir) });
   return dir;
 }

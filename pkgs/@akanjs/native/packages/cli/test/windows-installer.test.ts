@@ -155,6 +155,12 @@ describe("the Windows installer script", () => {
     expect(plain).toContain('"akan-native-update ${APP_ID}"\n  DeleteRegKey HKCU "${AUMID_KEY}"');
   });
 
+  test("signs the uninstaller it writes only when the build signs, before makensis checks the result", () => {
+    expect(script).not.toContain("!uninstfinalize");
+    const signed = installerScript({ ...input, signUninstaller: '"bun" "sign.ts" "%1"' });
+    expect(signed).toContain(`!uninstfinalize '"bun" "sign.ts" "%1"' = 0`);
+  });
+
   test("starts the app and the shortcut outside the folder an update renames", () => {
     const outside = install.indexOf('  SetOutPath "$LOCALAPPDATA"\n  !insertmacro CheckStaged');
     expect(outside).toBeGreaterThan(install.indexOf('File /r "'));

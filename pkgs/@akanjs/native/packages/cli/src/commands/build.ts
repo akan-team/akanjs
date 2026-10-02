@@ -6,6 +6,7 @@ import { bold, CliError, dim, log } from "../lib/log.ts";
 import { macosDistributionFromEnv } from "../lib/macossigning.ts";
 import { type BuildContext, type BuildProfile, prepare } from "../lib/prepare.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
+import { windowsSigningFromEnv } from "../lib/windowssigning.ts";
 import { PLATFORM_TARGETS, TARGETS, type TargetPlatform } from "../platforms/index.ts";
 import { physicalIosDevice } from "../platforms/ios.ts";
 
@@ -72,7 +73,15 @@ export async function buildFromArgs(
     startPath: extra.startPath,
     // O1-5: the release key comes from AKAN_NATIVE_ANDROID_KEYSTORE… (android.ts signingKey).
     ...(args.flags.aab === true ? { android: { bundle: true } } : {}),
-    ...(args.flags.installer === true && platform === "windows" ? { windows: { installer: true } } : {}),
+    ...(platform === "windows"
+      ? {
+          windows: {
+            ...(args.flags.installer === true ? { installer: true } : {}),
+            // CLI-9: Authenticode from AKAN_NATIVE_WINDOWS_* (lib/windowssigning.ts); release builds only.
+            ...(profile === "release" ? { signing: windowsSigningFromEnv() } : {}),
+          },
+        }
+      : {}),
     // CLI-9: Developer ID signing and notarization from AKAN_NATIVE_MACOS_* (lib/macossigning.ts); release builds only.
     ...(platform === "macos"
       ? {

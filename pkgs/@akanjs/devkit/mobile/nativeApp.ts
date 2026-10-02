@@ -183,7 +183,14 @@ export class NativeApp {
     return await api.build({
       ...this.#task(platform, config),
       profile,
-      ...(installer && platform === "windows" ? { windows: { installer } } : {}),
+      ...(platform === "windows"
+        ? {
+            windows: {
+              ...(installer ? { installer } : {}),
+              ...(profile === "release" ? NativeApp.#windowsSigning(api) : {}),
+            },
+          }
+        : {}),
       ...(platform === "macos"
         ? {
             macos: {
@@ -290,6 +297,7 @@ export class NativeApp {
       ...(channel ? { channel } : {}),
       //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
       ...(platform === "macos" ? { macos: api.macosDistributionFromEnv(process.env) } : {}),
+      ...(platform === "windows" ? { windows: NativeApp.#windowsSigning(api) } : {}),
     });
   }
 
@@ -400,6 +408,11 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
+  }
+
+  static #windowsSigning(api: NativeBuildApiModule) {
+    const signing = api.windowsSigningFromEnv(process.env);
+    return signing ? { signing } : {};
   }
 
   //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS.

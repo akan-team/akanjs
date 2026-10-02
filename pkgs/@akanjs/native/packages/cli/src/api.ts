@@ -42,6 +42,7 @@ import {
   webManifest,
   writeWebBundle,
 } from "./lib/updates.ts";
+import { type WindowsSigning, windowsSigningFromEnv } from "./lib/windowssigning.ts";
 import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
@@ -61,13 +62,14 @@ export type {
   MacosSigning,
   TargetPlatform,
   WindowsBuild,
+  WindowsSigning,
 };
-
 /**
  * The macOS signing and notarization the AKAN_NATIVE_MACOS_* variables name, for a caller that keeps them in its
  * environment (the API itself reads no variable): pass the result as `macos`.
  */
-export { macosDistributionFromEnv };
+/** The Authenticode settings the AKAN_NATIVE_WINDOWS_* variables name: pass the result as `windows.signing`. */
+export { macosDistributionFromEnv, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
 export const API_VERSION = "0.10.0";
@@ -313,17 +315,16 @@ export function publishUpdate(
     out?: string;
     /** The signature a macOS release carries: the installed app's own, or the updater refuses it. No dmg is made. */
     macos?: Pick<MacosBuild, "signing" | "notarize">;
+    /** Authenticode for a Windows release's files. No setup program is made. */
+    windows?: Pick<WindowsBuild, "signing">;
   },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
     const { channel, out } = checkPublishUpdate(options);
-    const { ctx, artifact, result } = await buildIn(
-      options,
-      "release",
-      options.mode ?? "production",
-      warnings,
-      options.macos ? { macos: { ...options.macos, dmg: false } } : {},
-    );
+    const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings, {
+      ...(options.macos ? { macos: { ...options.macos, dmg: false } } : {}),
+      ...(options.windows?.signing ? { windows: { signing: options.windows.signing } } : {}),
+    });
     const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
       throw toAkanNativeError(error, "CONFIG_INVALID");
     });
@@ -728,7 +729,7 @@ function describe(platform: TargetPlatform, path: string, ctx: BuildContext): Ar
       return { kind: "app", path, signing: ctx.signedAs ?? "adhoc" };
     case "windows":
     case "linux":
-      return { kind: "folder", path, signing: "none" };
+      return { kind: "folder", path, signing: ctx.signedAs ?? "none" };
     case "ios":
       return ctx.ios?.device
         ? { kind: "app", path, signing: ctx.signedAs ?? "development", device: "device" }

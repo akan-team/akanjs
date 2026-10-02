@@ -255,6 +255,11 @@ const config: AppConfig = {
   camera's or microphone's when a usage text asks for them, and `desktop.entitlements` adds the app's own.
   `publish-update` signs with the same identity, since the updater checks the installed app's signature. Without a
   Developer ID the build warns, because Gatekeeper blocks a downloaded copy.
+- **A Windows release is signed with Authenticode, from the environment.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
+  `_CERTIFICATE_PASSWORD` (a `.pfx`), `AKAN_NATIVE_WINDOWS_THUMBPRINT` (a certificate in the store, a token's or an
+  HSM's), or `AKAN_NATIVE_WINDOWS_SIGN_COMMAND` (a JSON array run per file with `{file}`, e.g. signtool with Azure
+  Trusted Signing's dlib) signs every PE file of the app — the server's `.node` and `bin` included — the setup program
+  and the uninstaller it writes, SHA-256 with a timestamp (`AKAN_NATIVE_WINDOWS_TIMESTAMP_URL`).
 - **`updates: { url, publicKey }` lets an installed app update itself** — the whole app on a desktop, the web
   bundle on a phone. `akan update-keygen <app>` makes the signing key once
   (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints the
