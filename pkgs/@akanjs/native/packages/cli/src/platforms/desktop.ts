@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { addonReport } from "../lib/addons.ts";
 import type { ParsedArgs } from "../lib/args.ts";
 import { makeNativeBoot } from "../lib/boot.ts";
 import { exec, execOrThrow } from "../lib/exec.ts";
@@ -27,7 +28,7 @@ import { desktopModuleProblems, pluginFile } from "../lib/native-plugins.ts";
 import type { BuildContext } from "../lib/prepare.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
 import { akanNativeHome } from "../lib/toolchains.ts";
-import { updatesResource } from "../lib/updates.ts";
+import { hostArch, updatesResource } from "../lib/updates.ts";
 
 export const NATIVE_DIR = join(PACKAGE_ROOT, "native", "desktop");
 const DESKTOP_PKG = join(PACKAGE_ROOT, "packages", "desktop", "src");
@@ -231,6 +232,12 @@ export function writeDesktopResources(
     if (!ctx.project.plugins.some((p) => p.manifest.id === "single-instance"))
       log.warn(
         "desktop.server without the single-instance plugin: every launch starts another server on the same data",
+      );
+    const addons = addonReport(server.dir, os, hostArch());
+    for (const warning of addons.warnings) log.warn(warning);
+    if (addons.problems.length)
+      throw new CliError(
+        `the server's native addons would not load on a user's computer:\n  - ${addons.problems.join("\n  - ")}`,
       );
     cpSync(server.dir, join(resources, "server"), { recursive: true, verbatimSymlinks: true });
     writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: server.entry, env: server.env }));
