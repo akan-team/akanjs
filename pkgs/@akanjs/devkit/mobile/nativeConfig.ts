@@ -161,7 +161,8 @@ export class NativeConfig {
       ...Object.entries(target.ios?.files ?? {}).map(([to, from]) => ({ from: abs(from), to: `ios/${to}` })),
       ...Object.entries(target.android?.files ?? {}).map(([to, from]) => ({ from: abs(from), to: `android/${to}` })),
     ];
-    const native = NativeConfig.#compact({ ios, android, resources });
+    const macos = NativeConfig.#compact({ entitlements: target.desktop?.entitlements });
+    const native = NativeConfig.#compact({ ios, macos, android, resources });
     const googleServices = target.android?.googleServices;
     const pushAndroid = target.android?.push;
     const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({

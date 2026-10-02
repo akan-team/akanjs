@@ -86,6 +86,13 @@ describe("NativeApp", () => {
     ).toMatch(/^portal\/admin ios ready · iPhone 16 · http:\/\/localhost:8283 · 12\.\ds$/);
   });
 
+  test("an installer is what a person downloads, on the desktops that have one", () => {
+    expect(() => NativeApp.assertInstaller("windows", true)).not.toThrow();
+    expect(() => NativeApp.assertInstaller("macos", true)).not.toThrow();
+    expect(() => NativeApp.assertInstaller("linux", false)).not.toThrow();
+    expect(() => NativeApp.assertInstaller("ios", true)).toThrow(/not for ios/);
+  });
+
   test("opens a dev build on its target's home, the CSR shell under the locale", () => {
     expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en", "ios")).toBe(
       "/en/explore?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",

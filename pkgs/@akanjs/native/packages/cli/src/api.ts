@@ -13,6 +13,12 @@ import { type HmrContext, lanAddress, resolveDevEntry, startHmrServer } from "./
 import type { Device, DeviceSelector, Launched } from "./lib/launch.ts";
 import { CliError, type LogEvent, type LogSink, log, ToolchainError, ToolError, withLogSink } from "./lib/log.ts";
 import {
+  type MacosBuild,
+  type MacosNotarization,
+  type MacosSigning,
+  macosDistributionFromEnv,
+} from "./lib/macossigning.ts";
+import {
   type AndroidSigning,
   type BuildContext,
   type BuildOptions,
@@ -50,12 +56,21 @@ export type {
   IosSigning,
   IosSigningResult,
   LogEvent,
+  MacosBuild,
+  MacosNotarization,
+  MacosSigning,
   TargetPlatform,
   WindowsBuild,
 };
 
+/**
+ * The macOS signing and notarization the AKAN_NATIVE_MACOS_* variables name, for a caller that keeps them in its
+ * environment (the API itself reads no variable): pass the result as `macos`.
+ */
+export { macosDistributionFromEnv };
+
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.9.0";
+export const API_VERSION = "0.10.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -158,7 +173,7 @@ export function validateConfig(config: AkanNativeConfig, options: { appDir: stri
 
 /** Builds the app. Default profile release (like `akan-native build`). `ios.device`: an iPhone build (signed; release adds an .ipa). */
 export function build(
-  options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild; windows?: WindowsBuild },
+  options: TaskOptions & { profile?: BuildProfile; ios?: IosBuild; windows?: WindowsBuild; macos?: MacosBuild },
 ): Promise<BuildResult> {
   return task(
     options,
@@ -167,6 +182,7 @@ export function build(
         await buildIn(options, options.profile ?? "release", options.mode ?? "production", warnings, {
           ...(options.ios ? { ios: options.ios } : {}),
           ...(options.windows ? { windows: options.windows } : {}),
+          ...(options.macos ? { macos: options.macos } : {}),
         })
       ).result,
   );
@@ -291,11 +307,23 @@ export function checkPublishUpdate(options: PublishCheckOptions): { channel: str
  * its files under `out` (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
  */
 export function publishUpdate(
-  options: TaskOptions & { platform: Exclude<TargetPlatform, "web">; channel?: string; out?: string },
+  options: TaskOptions & {
+    platform: Exclude<TargetPlatform, "web">;
+    channel?: string;
+    out?: string;
+    /** The signature a macOS release carries: the installed app's own, or the updater refuses it. No dmg is made. */
+    macos?: Pick<MacosBuild, "signing" | "notarize">;
+  },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
     const { channel, out } = checkPublishUpdate(options);
-    const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings);
+    const { ctx, artifact, result } = await buildIn(
+      options,
+      "release",
+      options.mode ?? "production",
+      warnings,
+      options.macos ? { macos: { ...options.macos, dmg: false } } : {},
+    );
     const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
       throw toAkanNativeError(error, "CONFIG_INVALID");
     });
@@ -637,7 +665,7 @@ async function buildIn(
   profile: BuildProfile,
   mode: string,
   warnings: string[],
-  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "devServer" | "startPath"> = {},
+  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "macos" | "devServer" | "startPath"> = {},
 ): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
   const started = performance.now();
   const appDir = resolve(options.appDir);
@@ -697,7 +725,7 @@ function describe(platform: TargetPlatform, path: string, ctx: BuildContext): Ar
     case "web":
       return { kind: "web", path, signing: "none" };
     case "macos":
-      return { kind: "app", path, signing: "adhoc" };
+      return { kind: "app", path, signing: ctx.signedAs ?? "adhoc" };
     case "windows":
     case "linux":
       return { kind: "folder", path, signing: "none" };

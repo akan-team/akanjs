@@ -38,7 +38,7 @@ export interface NativeBuildOptions {
   profile?: "debug" | "release";
   /** The server a desktop app carries (the target's `desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
-  /** Windows: an NSIS setup program beside the app folder. */
+  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg. */
   installer?: boolean;
 }
 
@@ -177,13 +177,21 @@ export class NativeApp {
 
   async build(platform: NativePlatform, { profile = "release", server, installer = false }: NativeBuildOptions = {}) {
     NativeApp.#assertServerPlatform(platform, server);
-    if (installer && platform !== "windows") throw new Error(`An installer is built for Windows, not for ${platform}.`);
+    NativeApp.assertInstaller(platform, installer);
     await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server);
     return await api.build({
       ...this.#task(platform, config),
       profile,
-      ...(installer ? { windows: { installer } } : {}),
+      ...(installer && platform === "windows" ? { windows: { installer } } : {}),
+      ...(platform === "macos"
+        ? {
+            macos: {
+              ...(profile === "release" ? api.macosDistributionFromEnv(process.env) : {}),
+              ...(installer ? { dmg: true } : {}),
+            },
+          }
+        : {}),
     });
   }
 
@@ -280,6 +288,8 @@ export class NativeApp {
       platform,
       out: this.updatesDir,
       ...(channel ? { channel } : {}),
+      //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
+      ...(platform === "macos" ? { macos: api.macosDistributionFromEnv(process.env) } : {}),
     });
   }
 
@@ -390,6 +400,12 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
+  }
+
+  //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS.
+  static assertInstaller(platform: NativePlatform, installer: boolean) {
+    if (installer && platform !== "windows" && platform !== "macos")
+      throw new Error(`An installer is built for Windows (a setup program) and macOS (a dmg), not for ${platform}.`);
   }
 
   //? A phone runs no Bun, so only a desktop app can carry the server.

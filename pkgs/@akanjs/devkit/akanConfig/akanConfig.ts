@@ -376,7 +376,7 @@ export class AkanAppConfig implements AppConfigResult {
       "activity",
       "files",
     ],
-    desktop: ["indexPath", "server", "recovery", "window", "screenCapture"],
+    desktop: ["indexPath", "server", "recovery", "window", "screenCapture", "entitlements"],
     deepLinks: ["schemes", "domains"],
   } as const;
   //* Settings that moved when `mobile` became `native` are named with where they went, instead of "unknown".

@@ -30,9 +30,10 @@ const LOGIN_KEYCHAIN = join(userInfo().homedir, "Library", "Keychains", "login.k
 export const identityName = () => `akan-native dev: ${userInfo().username}`;
 const recordPath = (env = process.env) => join(akanNativeHome(env), "signing.json");
 
-/** Valid (trusted) code-signing identities in the keychains. */
-export async function validIdentities(): Promise<SigningIdentity[]> {
-  const out = (await exec(["/usr/bin/security", "find-identity", "-v", "-p", "codesigning"], { echo: false })).stdout;
+/** Valid (trusted) code-signing identities in the keychains, or in `keychain` only. */
+export async function validIdentities(keychain?: string): Promise<SigningIdentity[]> {
+  const args = ["/usr/bin/security", "find-identity", "-v", "-p", "codesigning", ...(keychain ? [keychain] : [])];
+  const out = (await exec(args, { echo: false })).stdout;
   return [...out.matchAll(/\d+\) ([0-9A-F]{40}) "([^"]+)"/g)].map((m) => ({ hash: m[1]!, name: m[2]! }));
 }
 

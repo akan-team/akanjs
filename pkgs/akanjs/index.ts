@@ -197,6 +197,12 @@ export interface AkanNativeDesktopConfig {
    * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
    */
   screenCapture?: "picker" | "auto";
+  /**
+   * macOS: entitlements of the app's executable beyond what it gets by itself — the JIT's under the hardened runtime and
+   * the camera's or microphone's when a usage text asks for it — e.g. `com.apple.security.cs.disable-library-validation`
+   * for a native addon signed by another team. Read when the app is signed with a team (a Developer ID).
+   */
+  entitlements?: Record<string, AkanNativeValue>;
 }
 
 /**

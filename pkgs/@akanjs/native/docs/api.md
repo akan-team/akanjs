@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean } }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean }; macos?: MacosBuild }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -99,10 +99,10 @@ interface IosSigningResult {
 }
 
 interface Artifact {
-  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer) */
+  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer), macOS dmg(macos.dmg) */
   kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
-  /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기), 배포 */
+  /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기, macOS Apple Development), 배포(macOS Developer ID) */
   signing: "none" | "adhoc" | "debug" | "development" | "distribution";
   /** 시뮬레이터용인지 실기기용인지(iOS), ABI(Android) */
   device?: "simulator" | "device";
@@ -112,6 +112,26 @@ interface Artifact {
 - 기본 profile은 release다(CLI `akan-native build`와 같다). run과 dev는 debug로 빌드한다.
 - iOS: 기본은 시뮬레이터 .app이다. `ios: { device: true, signing? }`(아래 release와 같은 `IosSigning`)를 주면 실기기 .app(O1-2)을 만든다.
 - Windows: `windows: { installer: true }`(CLI `--installer`)면 앱 폴더 옆에 NSIS 설치 프로그램 `<fileName>-<version>-<arch>-setup.exe`도 만든다(`platforms/windows-installer.ts`). 사용자 단위(`%LOCALAPPDATA%\Programs\<name>`, 관리자 불필요, 제거 프로그램은 폴더 옆 `<name>.uninstall.exe`), `/S` 무인 설치, `/S /RUN`이면 설치 뒤 실행, `/D=`가 없으면 이미 설치된 곳(제거 항목의 `InstallLocation`)에 다시 설치, WebView2가 없으면 내장한 Evergreen Bootstrapper로 설치, 설치 폴더에서 도는 앱은 경로로 찾아 멈춘다. 설치와 제거는 한 번에 하나만 돈다. 여유 공간과 WebView2 확인, 새 파일 풀기(폴더 옆 `<name>.setup-new`), 새 제거 프로그램 쓰기는 앱을 멈추기 전에 하고, 폴더는 이름 바꾸기 두 번으로 바꾼다. 종료 코드는 새 빌드가 폴더를 차지했는지를 말한다. 0이면 차지했다. 그 뒤에 제거 프로그램·바로가기·제거 항목을 쓰지 못해도 0이고, 설치 로그와 대화형 창으로 알린다. 2면 차지하지 못했다(다른 설치·제거가 도는 중, 공간 부족, 풀거나 쓰지 못함, 폴더를 바꾸지 못함 등). 2로 끝난 설치는 `<name>.setup-new`와 새 제거 프로그램을 지우고, 이미 옮긴 옛 폴더는 제자리로 되살린다. 되살리기까지 실패하면 옛 앱은 `<name>.setup-old`에 남고 다음 설치가 되살린다. 앱을 멈춘 뒤의 실패이고 `/RUN`이면 자리에 있는 앱을 다시 띄운다. 제거는 자동 시작 등록(`Run` 값), 셸의 업데이트 상태(`%LOCALAPPDATA%\<id>\akan-native-updates`, debug 빌드는 `akan-native-updates-debug`)와 업데이트의 `RunOnce` 복구 명령, 알림 AUMID 키, 이 실행 파일을 여는 딥 링크 스킴 키도 지우고, 서버 데이터는 남긴다. 재설치와 제거는 폴더 안의 정션을 따라가지 않는다. 가장 긴 경로가 260자에 가까우면 경고한다. makensis가 필요하다(`winget install NSIS.NSIS`, `AKAN_NATIVE_MAKENSIS`). 코드 서명은 아직 없다(CLI-9).
+
+#### macOS 배포 서명 (CLI-9)
+
+```ts
+interface MacosBuild {
+  signing?: { identity?: string; certificate?: { path: string; password: string } };
+  /** release 빌드, Developer ID 서명에만. App Store Connect API 키 또는 notarytool keychain 프로필 */
+  notarize?: { key?: string; keyId?: string; issuer?: string; profile?: string };
+  /** 앱 옆에 dmg(Applications 바로가기). 서명·공증·staple을 앱과 똑같이 한다 */
+  dmg?: boolean;
+}
+```
+
+- `signing.identity`는 키체인에 이미 있는 인증서 이름(`Developer ID Application: …`) 또는 SHA-1이다. `signing.certificate`는 .p12 파일이다. 빌드 동안만 쓰는 키체인을 만들어 넣고(사용자 검색 목록에 잠시 올려 codesign이 체인을 찾게 한다), 끝나면 지운다. `security import`가 .p12 비밀번호를 인자로만 받으므로 그 값은 그 명령의 인자에만 있고, 실패 메시지에는 넣지 않는다.
+- Apple이 발급한 인증서(Developer ID, Apple Development)로 서명하면 모든 Mach-O 파일(`resources/server`·`resources/bin`, Frameworks dylib, 실행 파일)에 hardened runtime과 보안 타임스탬프를 붙이고 안쪽부터 서명한다. 실행 파일의 entitlements는 Bun JIT용 `com.apple.security.cs.allow-jit`·`allow-unsigned-executable-memory`, Info.plist의 사용 설명이 요구하는 것(`NSCameraUsageDescription` → `com.apple.security.device.camera`, 마이크 → `device.audio-input`, 위치·연락처·캘린더·사진), 그 위에 앱의 `native.macos.entitlements`(akanjs `native.desktop.entitlements`) 순서로 합친다. 다른 팀이 서명한 애드온을 싣는 앱은 `com.apple.security.cs.disable-library-validation`을 직접 더한다. 자체 서명(`akan-native signing setup`)과 ad-hoc은 예전 그대로 runtime 없이 서명한다.
+- shell.json `signing`은 팀 서명이면 `"team"`(secure-storage가 in-process Keychain 항목을 쓴다), 자체 서명이면 `"identity"`, 아니면 `"adhoc"`이다.
+- `notarize`가 있으면 앱을 zip(`ditto --keepParent`)으로 `xcrun notarytool submit --wait`에 내고, Accepted가 아니면 `notarytool log`의 문제 목록과 함께 `SIGNING_FAILED`로 끝난다. 받아들여지면 `stapler staple`과 `spctl --assess --type execute`로 확인한다. dmg도 같은 순서로 서명(타임스탬프만, runtime 없음)·공증·staple·확인(`--type open`)한다. Developer ID가 아닌 서명이나 debug 빌드의 공증은 거부한다.
+- release 빌드가 Developer ID로 서명되지 않았거나 공증되지 않았으면 경고한다. 내려받은 사본은 Gatekeeper가 막기 때문이다.
+- `publishUpdate`도 `macos: { signing, notarize }`를 받는다. 업데이터가 설치된 앱의 서명을 확인하므로(`codesign --verify --deep --strict`), 업데이트 릴리스는 내려받은 앱과 같은 인증서로 서명해야 한다. dmg는 만들지 않는다.
+- API는 환경 변수를 읽지 않는다. `macosDistributionFromEnv(env)`가 `AKAN_NATIVE_MACOS_IDENTITY`, `AKAN_NATIVE_MACOS_CERTIFICATE`·`_CERTIFICATE_PASSWORD`, `AKAN_NATIVE_MACOS_NOTARY_KEY`·`_KEY_ID`·`_ISSUER` 또는 `AKAN_NATIVE_MACOS_NOTARY_PROFILE`을 `MacosBuild`로 바꿔 준다. CLI `akan-native build macos`와 akanjs `akan build-desktop`·`publish-update`가 이것을 쓴다. CLI `--installer`는 macOS에서 dmg다.
 
 ### run — 빌드하고 띄우기
 
@@ -184,7 +204,7 @@ interface DevSession {
 function release(o: TaskOptions & (
   | { platform: "ios"; signing?: IosSigning }                                      // iPhone .app + .ipa
   | { platform: "android"; signing: AndroidSigning; formats?: ("aab" | "apk")[] }  // 기본 ["aab"]
-  // macOS·Windows·Linux(DesktopSigning)는 나중에 붙인다.
+  // macOS는 build의 macos.signing·notarize(§3 "macOS 배포 서명"). Windows·Linux는 나중에 붙인다.
 )): Promise<BuildResult>;
 
 /** 모두 선택이다. 주지 않은 것은 찾는다(아래 "서명 찾기"). 1단계(D7): Xcode가 이 Mac에 만든 인증서와 프로파일. */
@@ -343,6 +363,7 @@ API는 설정을 그대로 받으므로, 새 기능은 설정 필드로 들어�
 
 | 필드 | 작업 | 내용 |
 |---|---|---|
+| `native.macos.entitlements` | CLI-9 | 팀 서명한 macOS 실행 파일의 entitlements. hardened runtime의 것과 사용 설명이 요구하는 것 위에 합친다(§3 "macOS 배포 서명") |
 | `native.ios.infoPlist`, `native.ios.entitlements` | O5-1 | 앱 수준 병합. 배열은 합치고 dict는 깊게 병합하며, 플러그인이 넣은 스칼라와 다르면 빌드 오류. 셸이 가진 키(번들 id, 실행 파일, 버전, 최소 OS)는 바꿀 수 없다 |
 | `native.android.manifest`, `native.android.application`, `native.android.activity` | O5-1 | XML 조각 목록. 차례로 `<manifest>`, `<application>`, 앱 activity 안에 들어간다. `${applicationId}`는 바뀐다 |
 | `native.resources: [{ from, to }]` | O5-3 | 논리 위치(`ios/…`, `android/res/<type>/<file>`, `android/assets/…`)로 파일 복사 |

@@ -243,10 +243,18 @@ const config: AppConfig = {
 - **`start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages from `akan start`.** It has
   to be running — except for a desktop app that carries its server, which starts it when none of this checkout
   answers. `--release true` runs a release build of the app's own bundle instead.
-- **A desktop app builds only for the computer that builds it** — a `.app` on macOS, signed ad hoc or with the
-  development identity, and an unsigned folder on Windows and Linux. `build-desktop --installer true` adds a
-  per-user NSIS setup on Windows (`/S` installs silently). Distribution signing and notarization are not akan
-  commands yet.
+- **A desktop app builds only for the computer that builds it** — a `.app` on macOS, and an unsigned folder on
+  Windows and Linux. `build-desktop --installer true` adds what a person downloads: a per-user NSIS setup on Windows
+  (`/S` installs silently), a dmg on macOS.
+- **A macOS release for download is signed with a Developer ID and notarized, from the environment.**
+  `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
+  `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);
+  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` turn on
+  notarization and stapling of the app and the dmg. Every Mach-O file — the server's addons and `bin` included — is
+  signed inside out with the hardened runtime and a timestamp; the executable gets Bun's JIT entitlements and the
+  camera's or microphone's when a usage text asks for them, and `desktop.entitlements` adds the app's own.
+  `publish-update` signs with the same identity, since the updater checks the installed app's signature. Without a
+  Developer ID the build warns, because Gatekeeper blocks a downloaded copy.
 - **`updates: { url, publicKey }` lets an installed app update itself** — the whole app on a desktop, the web
   bundle on a phone. `akan update-keygen <app>` makes the signing key once
   (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints the

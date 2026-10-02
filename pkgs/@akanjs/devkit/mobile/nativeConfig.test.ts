@@ -341,6 +341,30 @@ describe("NativeConfig.build", () => {
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
   });
 
+  test("a desktop app's own entitlements reach the macOS build, and the runtime accepts them", async () => {
+    const root = await makeTempRoot();
+    const entitlements = { "com.apple.security.cs.disable-library-validation": true };
+    const { config } = NativeConfig.build({
+      appPath: root,
+      target: {
+        ...minimalTarget,
+        permissions: [],
+        deepLinks: undefined,
+        android: undefined,
+        desktop: { entitlements },
+      },
+      webDir: path.join(root, "web"),
+      contributions: [],
+      locales: ["en"],
+      platform: "macos",
+    });
+
+    expect(config.native?.macos).toEqual({ entitlements });
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
   test("an app with updates ships the updates plugin and its settings", () => {
     const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=`, channel: "pilot" };
     const { config } = NativeConfig.build({

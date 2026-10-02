@@ -27,6 +27,7 @@ const KNOWN: Shape = {
   deepLinks: { schemes: true, domains: { "[]": { host: true, pathPrefixes: true } } },
   native: {
     ios: { infoPlist: true, entitlements: true },
+    macos: { entitlements: true },
     android: { manifest: true, application: true, activity: true },
     resources: { "[]": { from: true, to: true } },
   },

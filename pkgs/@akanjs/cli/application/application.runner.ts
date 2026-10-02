@@ -288,8 +288,7 @@ try {
     { target, env = "debug", profile = "release", installer = false }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
-    if (installer && platform !== "windows")
-      throw new Error(`--installer builds a Windows setup program; this computer builds for ${platform}.`);
+    NativeApp.assertInstaller(platform, installer);
     const carried = await this.#stageMobile(app, platform, targets, env);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       this.#reportBuild(

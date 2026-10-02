@@ -9,6 +9,7 @@ import { ENV_TYPES_FILE, loadEnv, writeEnvTypes } from "./env.ts";
 import { exec } from "./exec.ts";
 import { findExternalScripts, injectEarlyErrors, injectInitScript } from "./html.ts";
 import { CliError, dim, log } from "./log.ts";
+import type { MacosBuild } from "./macossigning.ts";
 import { buildNumberProblem, ConfigError, dependencyProblems, type Project } from "./project.ts";
 
 /**
@@ -63,6 +64,8 @@ export interface BuildOptions {
   ios?: IosBuild;
   /** Windows: an NSIS setup program next to the app folder (platforms/windows-installer.ts). */
   windows?: WindowsBuild;
+  /** macOS: Developer ID signing, notarization and a dmg (lib/macossigning.ts). */
+  macos?: MacosBuild;
 }
 
 /** Which identity and profile an iOS device build signs with; unset: found in the keychain and Xcode's profiles. */
@@ -145,10 +148,11 @@ export interface BuildContext {
   android?: AndroidRelease;
   ios?: IosBuild;
   windows?: WindowsBuild;
+  macos?: MacosBuild;
   /** Artifacts besides the one the builder returns (an .aab next to the .apk, a Windows setup program). */
   artifacts: { kind: "aab" | "ipa" | "installer"; path: string }[];
   /** What the builder signed with, when it signs (Android: the app's release key or the debug key). */
-  signedAs?: "debug" | "development" | "distribution";
+  signedAs?: "adhoc" | "debug" | "development" | "distribution";
   /** Called through the API (BuildOptions.api). */
   api: boolean;
   /** Android builds with pinned libraries: the license notices file written next to the app (BuildResult.licenses). */
@@ -282,6 +286,7 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     ...(options.android ? { android: options.android } : {}),
     ...(options.ios ? { ios: options.ios } : {}),
     ...(options.windows ? { windows: options.windows } : {}),
+    ...(options.macos ? { macos: options.macos } : {}),
     artifacts: [],
   };
 }

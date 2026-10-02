@@ -118,7 +118,7 @@ MVP 이후의 플러그인·셸 기능 목록과 단계(P0~P3), 결정 필요 �
 | CLI-6 | 생성물은 `.akan/native/build/<platform>/`에 두고 git에서 제외한다 | MVP |
 | CLI-7 | MVP 서명: macOS ad-hoc, iOS 시뮬레이터 ad-hoc, Android debug 키(`~/.akan/native/debug.keystore`를 자동 생성) | MVP |
 | CLI-8 | 앱 아이콘을 원본 이미지 한 장에서 생성한다 | 이후 · 구현됨(설정 `icon`, macOS·iOS·Android. PNG 처리는 CLI 자체 코드) |
-| CLI-9 | 배포용 서명: iOS provisioning, macOS 공증, Android release 키, Windows 서명 | 이후 |
+| CLI-9 | 배포용 서명: iOS provisioning, macOS 공증, Android release 키, Windows 서명 | 진행 중 · macOS 구현(`packages/cli/src/lib/macossigning.ts`: Developer ID, hardened runtime, 공증·staple, dmg) |
 | CLI-10 | 툴체인 버전 고정과 자동 설치 (kotlinc 등) | 이후 · 구현됨(`packages/cli/src/lib/toolchains.ts`에 고정 버전·URL·SHA-256. kotlinc 2.4.20은 `~/.akan/native/toolchains`에 자동 설치(`AKAN_NATIVE_NO_AUTO_INSTALL=1`로 끔), JDK는 요청 시만(`akan-native toolchain install jdk`), Android SDK는 사용자의 sdkmanager로만(라이선스는 사용자가 직접 수락), Rust는 `native/desktop/rust-toolchain.toml`, Bun은 패키지의 `engines.bun`. `akan-native doctor --fix`, `akan-native toolchain list/install`) |
 
 ### 2.7 보안 (SEC)

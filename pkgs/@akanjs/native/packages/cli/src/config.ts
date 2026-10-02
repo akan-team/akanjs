@@ -140,6 +140,13 @@ export interface AkanNativeConfig {
       /** Entitlements (e.g. keychain-access-groups). associated-domains comes from deepLinks.domains. */
       entitlements?: Record<string, NativeValue>;
     };
+    macos?: {
+      /**
+       * Entitlements of the main executable, over the hardened runtime's (allow-jit, allow-unsigned-executable-memory)
+       * and those the usage texts ask for (the camera's, the microphone's). Read when the app is signed with a team.
+       */
+      entitlements?: Record<string, NativeValue>;
+    };
     android?: {
       /** XML at the <manifest> level (uses-permission, queries, …). ${applicationId} is replaced. */
       manifest?: string[];

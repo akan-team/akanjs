@@ -687,6 +687,7 @@ function checkNative(raw: AkanNativeConfig, appDir: string, problems: string[]):
   };
   dict("native.ios.infoPlist", native.ios?.infoPlist);
   dict("native.ios.entitlements", native.ios?.entitlements);
+  dict("native.macos.entitlements", native.macos?.entitlements);
   for (const key of ["manifest", "application", "activity"] as const) {
     const xml = native.android?.[key];
     if (
