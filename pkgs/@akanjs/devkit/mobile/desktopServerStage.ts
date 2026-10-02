@@ -100,7 +100,12 @@ export class DesktopServerStage {
 
   //* The packages come from the config alone, so they install before `akan build` runs: a machine that cannot install
   //* them stops at once instead of after the whole build.
-  async install() {
+  //? `--cpu` installs another CPU's optional packages: an addon's prebuilt binary for the app's CPU, not this computer's.
+  static installArgs(arch?: "arm64" | "x64"): string[] {
+    return ["install", "--production", "--prefer-offline", ...(arch && arch !== process.arch ? [`--cpu=${arch}`] : [])];
+  }
+
+  async install(arch?: "arm64" | "x64") {
     const config = await this.app.getConfig();
     DesktopServerStage.assertCarriable(config);
     await rm(this.dir, { recursive: true, force: true });
@@ -110,7 +115,7 @@ export class DesktopServerStage {
       JSON.stringify(DesktopServerStage.packageJson(config, config.getProductionPackageJson()), null, 2),
     );
     try {
-      await this.app.spawn(process.execPath, ["install", "--production", "--prefer-offline"], { cwd: this.dir });
+      await this.app.spawn(process.execPath, DesktopServerStage.installArgs(arch), { cwd: this.dir });
     } catch (error) {
       throw new Error(
         `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${error instanceof Error ? error.message : String(error)}`,

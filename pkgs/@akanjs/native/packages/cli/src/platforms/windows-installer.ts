@@ -606,7 +606,7 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
   const stopScript = join(gen, "stop-app.ps1");
   writeFileSync(stopScript, STOP_SCRIPT);
   const icon = join(gen, "app.ico");
-  const outFile = join(ctx.outDir, `${config.app.fileName}-${config.app.version}-${hostArch()}-setup.exe`);
+  const outFile = join(ctx.outDir, `${config.app.fileName}-${config.app.version}-${ctx.arch ?? hostArch()}-setup.exe`);
   const script = join(gen, "installer.nsi");
   const deepest = deepestPath(folder);
   const longest = installedPathLength(config.app.name, config.app.version, deepest);

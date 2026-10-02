@@ -37,6 +37,7 @@ import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
 import { assertServerOfChannel, assertSigningKey, publishRelease } from "./lib/publish.ts";
 import {
   assertChannel,
+  type DesktopArch,
   generateUpdateKey,
   type UpdateManifest,
   updateKeyPath,
@@ -51,6 +52,7 @@ import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
 export type {
   AkanNativeConfig,
   AndroidSigning,
+  DesktopArch,
   Device,
   DeviceSelector,
   DoctorCheck,
@@ -183,6 +185,8 @@ export function build(
     windows?: WindowsBuild;
     macos?: MacosBuild;
     linux?: LinuxBuild;
+    /** Desktop: the CPU the app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
+    arch?: DesktopArch;
   },
 ): Promise<BuildResult> {
   return task(
@@ -194,6 +198,7 @@ export function build(
           ...(options.windows ? { windows: options.windows } : {}),
           ...(options.macos ? { macos: options.macos } : {}),
           ...(options.linux ? { linux: options.linux } : {}),
+          ...(options.arch ? { arch: options.arch } : {}),
         })
       ).result,
   );
@@ -675,7 +680,10 @@ async function buildIn(
   profile: BuildProfile,
   mode: string,
   warnings: string[],
-  extra: Pick<BuildOptions, "android" | "ios" | "windows" | "macos" | "linux" | "devServer" | "startPath"> = {},
+  extra: Pick<
+    BuildOptions,
+    "android" | "ios" | "windows" | "macos" | "linux" | "arch" | "devServer" | "startPath"
+  > = {},
 ): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
   const started = performance.now();
   const appDir = resolve(options.appDir);

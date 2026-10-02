@@ -48,6 +48,11 @@ afterAll(() => files.stop(true));
 const hash = (bytes: Uint8Array | string) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 
 describe("DesktopBin", () => {
+  test("a build carries the file of the CPU it is for", () => {
+    expect(DesktopBin.platform("x64")).toBe(`${process.platform}-x64` as BinPlatform);
+    expect(DesktopBin.platform("ia32")).toBeNull();
+  });
+
   test("carries the app's own entries and those of the libs it depends on, the app's first", () => {
     const own = { ffmpeg: { [here]: { path: "/a/ffmpeg" } } };
     const lib = { ffmpeg: { [here]: { path: "/lib/ffmpeg" } }, ffprobe: { [here]: { path: "/lib/ffprobe" } } };

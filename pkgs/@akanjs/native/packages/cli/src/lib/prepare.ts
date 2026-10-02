@@ -11,6 +11,7 @@ import { findExternalScripts, injectEarlyErrors, injectInitScript } from "./html
 import { CliError, dim, log } from "./log.ts";
 import type { MacosBuild } from "./macossigning.ts";
 import { buildNumberProblem, ConfigError, dependencyProblems, type Project } from "./project.ts";
+import { type DesktopArch, hostArch } from "./updates.ts";
 import type { WindowsSigning } from "./windowssigning.ts";
 
 /**
@@ -71,6 +72,8 @@ export interface BuildOptions {
   macos?: MacosBuild;
   /** Linux: an AppImage beside the app folder (platforms/linux-appimage.ts). */
   linux?: LinuxBuild;
+  /** Desktop builds: the CPU the app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
+  arch?: DesktopArch;
 }
 
 export interface LinuxBuild {
@@ -159,6 +162,8 @@ export interface BuildContext {
   windows?: WindowsBuild;
   macos?: MacosBuild;
   linux?: LinuxBuild;
+  /** Desktop builds: see BuildOptions.arch, resolved. */
+  arch?: DesktopArch;
   /** Artifacts besides the one the builder returns (an .aab next to the .apk, a Windows setup program). */
   artifacts: { kind: "aab" | "ipa" | "installer"; path: string }[];
   /** What the builder signed with, when it signs (Android: the app's release key or the debug key). */
@@ -193,6 +198,7 @@ export async function prepare(project: Project, platform: Platform, options: Bui
   if (buildProblem) throw new ConfigError("the build number", [buildProblem]);
   const needs = dependencyProblems(project.plugins, platform);
   if (needs.length) throw new CliError(`plugin dependencies on ${platform}:\n  - ${needs.join("\n  - ")}`);
+  const arch = desktopArch(platform, options.arch);
 
   if (config.web.build && !options.skipWebBuild) {
     log.step(`web build: ${config.web.build}`);
@@ -298,8 +304,19 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     ...(options.windows ? { windows: options.windows } : {}),
     ...(options.macos ? { macos: options.macos } : {}),
     ...(options.linux ? { linux: options.linux } : {}),
+    ...(arch ? { arch } : {}),
     artifacts: [],
   };
+}
+
+/** The arch a build makes: the one asked for, checked against the platform, else this computer's for a desktop. */
+export function desktopArch(platform: Platform, arch: DesktopArch | undefined): DesktopArch | undefined {
+  const desktop = platform === "macos" || platform === "windows" || platform === "linux";
+  if (arch !== undefined && !desktop) throw new CliError(`a CPU is chosen for a desktop build, not for ${platform}`);
+  if (arch !== undefined && arch !== "arm64" && arch !== "x64")
+    throw new CliError(`the arch is arm64 or x64 (got ${JSON.stringify(arch)})`);
+  if (platform === "macos" && arch === "x64") throw new CliError("a macOS app is built for Apple silicon (arm64) only");
+  return arch ?? (desktop ? hostArch() : undefined);
 }
 
 /** https, or http to this machine (a local test server, `akan-native update serve`). */

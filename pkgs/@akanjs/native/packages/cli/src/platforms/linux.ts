@@ -22,6 +22,7 @@ import {
   requireHost,
   resourcesOf,
   runExecutable,
+  targetArch,
   writeDesktopResources,
 } from "./desktop.ts";
 import { buildAppImage } from "./linux-appimage.ts";
@@ -32,7 +33,7 @@ export async function buildLinux(ctx: BuildContext): Promise<string> {
   requireHost("linux");
   const { outDir } = ctx;
   const { config } = ctx.project;
-  const lib = await buildNativeLibrary("linux", !ctx.dev);
+  const lib = await buildNativeLibrary("linux", !ctx.dev, targetArch(ctx));
 
   const dir = join(outDir, config.app.fileName);
   rmSync(outDir, { recursive: true, force: true });

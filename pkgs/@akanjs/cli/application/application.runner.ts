@@ -50,8 +50,10 @@ export interface MobilePublishOptions extends MobileTargetOptions {
 }
 export interface MobileBuildOptions extends MobileTargetOptions {
   profile?: "debug" | "release";
-  /** A Windows build's setup program too. */
+  /** What a person downloads too: a Windows setup program, a macOS dmg, a Linux AppImage. */
   installer?: boolean;
+  /** Desktop: the CPU the app runs on, of the same OS; a macOS app is arm64 only. */
+  arch?: "arm64" | "x64";
 }
 export interface MobileStartOptions extends MobileTargetOptions {
   operation?: "local" | "release";
@@ -285,11 +287,14 @@ try {
   async buildMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "debug", profile = "release", installer = false }: MobileBuildOptions = {},
+    { target, env = "debug", profile = "release", installer = false, arch }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     NativeApp.assertInstaller(platform, installer);
-    const carried = await this.#stageMobile(app, platform, targets, env);
+    if (arch && platform !== "macos" && platform !== "windows" && platform !== "linux")
+      throw new Error(`--arch picks a desktop app's CPU; ${platform} builds for its own.`);
+    if (arch === "x64" && platform === "macos") throw new Error("A macOS app is built for Apple silicon (arm64) only.");
+    const carried = await this.#stageMobile(app, platform, targets, env, arch);
     await this.#runMobileTargets(targets, async (mobileTarget) => {
       this.#reportBuild(
         app,
@@ -298,6 +303,7 @@ try {
           profile,
           ...(carried && ApplicationRunner.carriesServer(mobileTarget, platform) ? { server: carried } : {}),
           ...(installer ? { installer } : {}),
+          ...(arch ? { arch } : {}),
         }),
       );
     });
@@ -499,11 +505,17 @@ try {
     return platform !== "ios" && platform !== "android" && config.desktop?.server === true;
   }
   //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
-  async #stageMobile(app: App, platform: NativePlatform, targets: ResolvedMobileTarget[], env: NativeEnv) {
+  async #stageMobile(
+    app: App,
+    platform: NativePlatform,
+    targets: ResolvedMobileTarget[],
+    env: NativeEnv,
+    arch?: "arm64" | "x64",
+  ) {
     const stage = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform))
       ? new DesktopServerStage(app)
       : null;
-    await stage?.install();
+    await stage?.install(arch);
     await this.#buildMobileCsr(app, env);
     return await stage?.prepare(env);
   }

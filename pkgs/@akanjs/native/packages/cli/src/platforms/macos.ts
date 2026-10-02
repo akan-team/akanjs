@@ -55,6 +55,7 @@ import {
   NATIVE_LIB,
   requireHost,
   runExecutable,
+  targetArch,
   writeDesktopResources,
 } from "./desktop.ts";
 
@@ -64,7 +65,7 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
   requireHost("macos");
   const { project, outDir } = ctx;
   const { config } = project;
-  const lib = await buildNativeLibrary("macos", !ctx.dev);
+  const lib = await buildNativeLibrary("macos", !ctx.dev, targetArch(ctx));
 
   const appPath = join(outDir, `${config.app.name}.app`);
   const contents = join(appPath, "Contents");
@@ -152,7 +153,7 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
         );
 
       if (ctx.macos?.dmg) {
-        const dmg = join(outDir, `${config.app.fileName}-${config.app.version}-${hostArch()}.dmg`);
+        const dmg = join(outDir, `${config.app.fileName}-${config.app.version}-${ctx.arch ?? hostArch()}.dmg`);
         log.step(`dmg: ${basename(dmg)}`);
         await buildDmg(appPath, dmg, config.app.name, join(outDir, "gen"));
         //? A disk image is signed with a timestamp but takes no runtime: it is not code that runs.

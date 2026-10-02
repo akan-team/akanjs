@@ -6,6 +6,7 @@ import { bold, CliError, dim, log } from "../lib/log.ts";
 import { macosDistributionFromEnv } from "../lib/macossigning.ts";
 import { type BuildContext, type BuildProfile, prepare } from "../lib/prepare.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
+import type { DesktopArch } from "../lib/updates.ts";
 import { windowsSigningFromEnv } from "../lib/windowssigning.ts";
 import { PLATFORM_TARGETS, TARGETS, type TargetPlatform } from "../platforms/index.ts";
 import { physicalIosDevice } from "../platforms/ios.ts";
@@ -13,11 +14,22 @@ import { physicalIosDevice } from "../platforms/ios.ts";
 export const BOOLEAN_FLAGS = ["skip-web-build", "open", "release", "debug", "headless", "aab", "installer"];
 
 /** Flags of every build: the app, the env mode (.env.<mode>), the profile, the web build. */
-export const BUILD_FLAGS = ["app", "mode", "release", "debug", "skip-web-build", "aab", "installer", "device", "build"];
+export const BUILD_FLAGS = [
+  "app",
+  "mode",
+  "release",
+  "debug",
+  "skip-web-build",
+  "aab",
+  "installer",
+  "device",
+  "build",
+  "arch",
+];
 /** Flags of launching a build (web server, simulators, emulators). */
 export const LAUNCH_FLAGS = ["port", "host", "open", "headless", "device", "avd"];
 
-export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--installer] [--device] [--build <n>]`;
+export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--installer] [--device] [--build <n>] [--arch <arm64|x64>]`;
 export const RUN_USAGE = `akan-native run <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--release] [--skip-web-build] [--port <n>] [--open] [--headless] [--device <name>] [--avd <name>] [--start <path>]`;
 
 export interface BuildDefaults {
@@ -92,6 +104,7 @@ export async function buildFromArgs(
         }
       : {}),
     ...(platform === "linux" && args.flags.installer === true ? { linux: { appImage: true } } : {}),
+    ...(stringFlag(args, "arch") ? { arch: stringFlag(args, "arch") as DesktopArch } : {}),
     // The identity and profile are found (lib/iossigning.ts chooseSigning), narrowed by AKAN_NATIVE_IOS_TEAM,
     // AKAN_NATIVE_IOS_IDENTITY, AKAN_NATIVE_IOS_PROFILE and AKAN_NATIVE_IOS_DISTRIBUTION=ad-hoc.
     ...(iosDevice

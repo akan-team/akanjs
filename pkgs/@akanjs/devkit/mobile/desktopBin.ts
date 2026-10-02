@@ -11,18 +11,19 @@ import {
 import type { App } from "../commandDecorators";
 
 type BinPlatforms = AkanBinConfig[string];
+export type DesktopArch = "arm64" | "x64";
 
-//* A desktop app is built on the computer it runs on, so only that platform's file is fetched. It is copied byte for
-//* byte into the folder the app carries as `desktop.bin`: no extended attribute, so no quarantine flag, travels
-//* into the bundle.
+//* A desktop app is built on its own OS, for this computer's CPU or the one `--arch` names, so only that platform's file
+//* is fetched. It is copied byte for byte into the folder the app carries as `desktop.bin`: no extended attribute, so
+//* no quarantine flag, travels into the bundle.
 export class DesktopBin {
   constructor(
     readonly app: App,
     readonly config: AkanAppConfig,
   ) {}
 
-  static platform(): BinPlatform | null {
-    const platform = `${process.platform}-${process.arch}`;
+  static platform(arch: string = process.arch): BinPlatform | null {
+    const platform = `${process.platform}-${arch}`;
     return (binPlatforms as readonly string[]).includes(platform) ? (platform as BinPlatform) : null;
   }
 
@@ -76,14 +77,14 @@ export class DesktopBin {
   }
 
   /** Copies each chosen executable into `dir`, emptied first, and answers the names it carries. */
-  async stage(dir: string): Promise<string[]> {
+  async stage(dir: string, arch: DesktopArch = process.arch as DesktopArch): Promise<string[]> {
     const scanInfo = this.app.getScanInfo({ allowEmpty: true }) ?? (await this.app.scan({ write: false }));
     const chosen = DesktopBin.select(this.config, scanInfo.getLibs());
     if (!chosen.size) return [];
-    const platform = DesktopBin.platform();
+    const platform = DesktopBin.platform(arch);
     if (!platform)
       throw new Error(
-        `bin: this computer is ${process.platform}-${process.arch}, and a bin names only ${binPlatforms.join(", ")}.`,
+        `bin: this desktop app is for ${process.platform}-${arch}, and a bin names only ${binPlatforms.join(", ")}.`,
       );
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });

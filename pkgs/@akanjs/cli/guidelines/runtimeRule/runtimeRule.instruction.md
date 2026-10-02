@@ -246,7 +246,10 @@ const config: AppConfig = {
 - **A desktop app builds only for the computer that builds it** — a `.app` on macOS, and an unsigned folder on
   Windows and Linux. `build-desktop --installer true` adds what a person downloads: a per-user NSIS setup on Windows
   (`/S` installs silently), a dmg on macOS, an AppImage on Linux (it needs `mksquashfs`; an AppImage cannot update
-  itself, so a release with `updates` ships a new one).
+  itself, so a release with `updates` ships a new one). `--arch arm64|x64` builds a Windows or Linux app for the
+  other CPU of that OS: the Rust library, Bun's executable, the server's `bun install --cpu` and each `bin` file
+  follow it, and a server addon with no binary for that CPU stops the build. A macOS app is Apple silicon only —
+  Intel Macs are not a target, so `--arch x64` on macOS is refused.
 - **A macOS release for download is signed with a Developer ID and notarized, from the environment.**
   `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);

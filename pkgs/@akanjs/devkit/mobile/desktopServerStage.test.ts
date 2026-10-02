@@ -148,6 +148,22 @@ describe("DesktopServerStage", () => {
     expect(Object.keys(installed.dependencies ?? {}).sort()).toEqual(["react", "react-dom"]);
   });
 
+  test("installs another CPU's optional packages for that CPU", () => {
+    const other = process.arch === "arm64" ? "x64" : "arm64";
+    expect(DesktopServerStage.installArgs()).toEqual(["install", "--production", "--prefer-offline"]);
+    expect(DesktopServerStage.installArgs(process.arch as "arm64" | "x64")).toEqual([
+      "install",
+      "--production",
+      "--prefer-offline",
+    ]);
+    expect(DesktopServerStage.installArgs(other)).toEqual([
+      "install",
+      "--production",
+      "--prefer-offline",
+      `--cpu=${other}`,
+    ]);
+  });
+
   test("an install that fails says it needs the registry or a Bun cache that holds the packages", async () => {
     const { stage } = await stageApp(async () => {
       throw new Error("error: GET https://registry.npmjs.org/scheduler - ConnectionRefused");

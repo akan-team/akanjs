@@ -18,7 +18,7 @@ import { log, ToolchainError } from "../lib/log.ts";
 import { encodePng } from "../lib/png.ts";
 import type { BuildContext } from "../lib/prepare.ts";
 import { ensureInstalled, TOOLCHAIN } from "../lib/toolchains.ts";
-import { hostArch } from "../lib/updates.ts";
+import { targetArch } from "./desktop.ts";
 
 /** The launcher entry (freedesktop Desktop Entry): what a menu shows and which link schemes open the app. */
 export function desktopEntry(input: { name: string; fileName: string; schemes: string[] }): string {
@@ -50,7 +50,7 @@ export async function buildAppImage(ctx: BuildContext, folder: string): Promise<
   if (!mksquashfs)
     throw new ToolchainError("mksquashfs packs the AppImage: apt install squashfs-tools (dnf install squashfs-tools)");
   const { config } = ctx.project;
-  const arch = hostArch();
+  const arch = targetArch(ctx);
   const spec = TOOLCHAIN.appimageRuntime.downloads[arch];
   if (!spec) throw new ToolchainError(`no pinned AppImage runtime for ${arch}`);
   const runtime = join(

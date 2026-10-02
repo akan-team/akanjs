@@ -3,7 +3,7 @@ import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
-import { DesktopBin } from "./desktopBin";
+import { type DesktopArch, DesktopBin } from "./desktopBin";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import {
   type DesktopPlatform,
@@ -40,6 +40,8 @@ export interface NativeBuildOptions {
   server?: DesktopServerBundle;
   /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage. */
   installer?: boolean;
+  /** The CPU the desktop app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
+  arch?: DesktopArch;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -104,10 +106,12 @@ export class NativeApp {
     server,
     platform,
     stageBin = true,
+    arch,
   }: {
     server?: DesktopServerBundle;
     platform: NativePlatform;
     stageBin?: boolean;
+    arch?: DesktopArch;
   }) {
     const [appConfig, plugins, nativePlugins] = await Promise.all([
       this.app.getConfig(),
@@ -115,7 +119,7 @@ export class NativeApp {
       NativePluginFolders.of(this.app),
     ]);
     const desktop = platform === "macos" || platform === "windows" || platform === "linux";
-    const carried = desktop && stageBin ? await new DesktopBin(this.app, appConfig).stage(this.binDir) : [];
+    const carried = desktop && stageBin ? await new DesktopBin(this.app, appConfig).stage(this.binDir, arch) : [];
     return NativeConfig.build({
       appPath: this.app.cwdPath,
       target: this.target.config,
@@ -131,10 +135,10 @@ export class NativeApp {
   }
 
   /** The API and the config it is about to build, refused here when the runtime would refuse it later. */
-  async prepare(platform: NativePlatform, server?: DesktopServerBundle) {
+  async prepare(platform: NativePlatform, server?: DesktopServerBundle, arch?: DesktopArch) {
     const [api, { config, warnings }] = await Promise.all([
       NativeApi.load(this.app.cwdPath),
-      this.config({ platform, ...(server ? { server } : {}) }),
+      this.config({ platform, ...(server ? { server } : {}), ...(arch ? { arch } : {}) }),
     ]);
     for (const warning of warnings) this.app.logger.warn(warning);
     this.#assertValid(api, config);
@@ -175,14 +179,18 @@ export class NativeApp {
     };
   }
 
-  async build(platform: NativePlatform, { profile = "release", server, installer = false }: NativeBuildOptions = {}) {
+  async build(
+    platform: NativePlatform,
+    { profile = "release", server, installer = false, arch }: NativeBuildOptions = {},
+  ) {
     NativeApp.#assertServerPlatform(platform, server);
     NativeApp.assertInstaller(platform, installer);
     await this.assembleWeb(platform);
-    const { api, config } = await this.prepare(platform, server);
+    const { api, config } = await this.prepare(platform, server, arch);
     return await api.build({
       ...this.#task(platform, config),
       profile,
+      ...(arch ? { arch } : {}),
       ...(platform === "windows"
         ? {
             windows: {

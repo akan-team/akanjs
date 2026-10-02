@@ -14,7 +14,7 @@ export type AddonArch = "arm64" | "x64";
 
 export interface BinaryInfo {
   format: "mach-o" | "elf" | "pe";
-  /** Every architecture the file holds (a universal Mach-O holds two). */
+  /** Every architecture the file holds (a fat Mach-O holds several). */
   archs: (AddonArch | "other")[];
   /** Libraries it loads by an absolute path, and the absolute search paths it names (rpath, runpath). */
   absoluteLinks: string[];

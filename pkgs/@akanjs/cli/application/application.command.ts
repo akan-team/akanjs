@@ -157,14 +157,20 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "also what a person downloads: a Windows setup program (NSIS, /S for silent), a macOS dmg, a Linux AppImage",
       default: false,
     })
+    .option("arch", String, {
+      desc: "the CPU the app runs on, arm64 or x64 of this OS (default this computer's); a macOS app is arm64 only",
+      enum: ["arm64", "x64"] as const,
+      nullable: true,
+    })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, installer, write) {
+    .exec(async function (app, target, env, debug, installer, arch, write) {
       await this.applicationScript.buildDesktop(app, {
         target,
         env,
         profile: debug ? "debug" : "release",
         installer,
         write,
+        ...(arch ? { arch } : {}),
       });
     }),
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })

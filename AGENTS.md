@@ -376,9 +376,10 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   the same shape and overrides the section field by field — objects merge key by key, a list or any other value
   replaces the section's. `akan start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages
   from `akan start`; `build-ios` / `build-android` / `build-desktop` write
-  `apps/<app>/.akan/native/<target>/build/<platform>`, a desktop app only for the computer that builds it
-  (`--installer true` adds a Windows setup, a macOS dmg or a Linux AppImage; `AKAN_NATIVE_MACOS_*` signs with a Developer ID and
-  notarizes, `AKAN_NATIVE_WINDOWS_*` signs with Authenticode). With `updates: { url, publicKey }` an installed app takes the signed
+  `apps/<app>/.akan/native/<target>/build/<platform>`, a desktop app only for the OS that builds it — `--arch` picks
+  a Windows or Linux app's CPU, and a macOS app is Apple silicon only. `--installer true` adds a Windows setup, a
+  macOS dmg or a Linux AppImage; `AKAN_NATIVE_MACOS_*` signs with a Developer ID and notarizes,
+  `AKAN_NATIVE_WINDOWS_*` signs with Authenticode. With `updates: { url, publicKey }` an installed app takes the signed
   releases `akan publish-update` makes; `akan update-keygen` makes the key and prints its `publicKey`.
 - **A desktop app that carries its server (`desktop: { server: true }` in `native`, or in one target) gets nothing
   from `docker`.** That server is API-only, runs in database mode `single`, and listens on a loopback port any

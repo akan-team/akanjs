@@ -28,7 +28,7 @@ import { desktopModuleProblems, pluginFile } from "../lib/native-plugins.ts";
 import type { BuildContext } from "../lib/prepare.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
 import { akanNativeHome } from "../lib/toolchains.ts";
-import { hostArch, updatesResource } from "../lib/updates.ts";
+import { type DesktopArch, hostArch, updatesResource } from "../lib/updates.ts";
 
 export const NATIVE_DIR = join(PACKAGE_ROOT, "native", "desktop");
 const DESKTOP_PKG = join(PACKAGE_ROOT, "packages", "desktop", "src");
@@ -86,12 +86,12 @@ const TRIPLE_OS: Record<DesktopOs, string> = {
 };
 
 /**
- * The target the library must be built for: the architecture of the Bun that compiles (and so
- * runs) the app, which can differ from rustc's host (x64 Bun on an ARM64 PC, under emulation).
- * Null when it is rustc's host, so the usual target/<profile> folder is used.
+ * The target the library must be built for: the app's CPU, which can differ from rustc's host (an x64 app built on
+ * an ARM64 Mac, or x64 Bun on an ARM64 PC under emulation). Null when it is rustc's host, so the usual
+ * target/<profile> folder is used.
  */
-async function libraryTarget(os: DesktopOs): Promise<string | null> {
-  const wanted = `${ARCH[process.arch] ?? process.arch}-${TRIPLE_OS[os]}`;
+async function libraryTarget(os: DesktopOs, arch: DesktopArch): Promise<string | null> {
+  const wanted = `${ARCH[arch] ?? arch}-${TRIPLE_OS[os]}`;
   const verbose = await exec(["rustc", "-vV"], { cwd: NATIVE_DIR, env: cargoEnv(), echo: false });
   const host = /^host: (\S+)/m.exec(verbose.stdout)?.[1];
   return host && host !== wanted ? wanted : null;
@@ -109,16 +109,14 @@ export function cargoTargetDir(): string {
 }
 
 /** Builds (incrementally) the Rust cdylib and returns its path. */
-export async function buildNativeLibrary(os: DesktopOs, release: boolean): Promise<string> {
-  log.step("native: cargo build (TAO + WRY)");
-  const target = await libraryTarget(os);
+export async function buildNativeLibrary(os: DesktopOs, release: boolean, arch = hostArch()): Promise<string> {
+  log.step(`native: cargo build (TAO + WRY)${arch === hostArch() ? "" : ` for ${arch}`}`);
+  const target = await libraryTarget(os, arch);
   // --locked: the crates are the ones Cargo.lock pins (checked in); a build never resolves new versions.
   const args = ["cargo", "build", "--locked", "--manifest-path", join(NATIVE_DIR, "Cargo.toml"), "--quiet"];
   if (release) args.push("--release");
   if (target) {
-    log.info(
-      dim(`for ${target} (Bun is ${process.arch}); if the standard library is missing: rustup target add ${target}`),
-    );
+    log.info(dim(`for ${target}; if its standard library is missing: rustup target add ${target}`));
     args.push("--target", target);
   }
   await execOrThrow(args, {
@@ -171,8 +169,19 @@ startMain(new URL("./host-entry.ts", import.meta.url).href);
  */
 export const COMPILE_FLAGS = ["--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig"];
 
-/** bun build --compile of the main thread entry and the plugin host Worker into `outfile`. */
+/** The CPU a desktop build makes code for. */
+export function targetArch(ctx: Pick<BuildContext, "arch">): DesktopArch {
+  return ctx.arch ?? hostArch();
+}
+
+const BUN_OS: Record<DesktopOs, string> = { macos: "darwin", windows: "windows", linux: "linux" };
+
+/**
+ * bun build --compile of the main thread entry and the plugin host Worker into `outfile`, for the build's CPU: another
+ * CPU's Bun is a cross-compilation target Bun downloads once.
+ */
 export async function compileExecutable(ctx: BuildContext, outfile: string, extra: string[] = []): Promise<void> {
+  const arch = targetArch(ctx);
   const problems = (await Promise.all(ctx.project.plugins.map(desktopModuleProblems))).flat();
   if (problems.length)
     throw new CliError(`desktop plugin modules do not match their manifests:\n  - ${problems.join("\n  - ")}`);
@@ -189,6 +198,7 @@ export async function compileExecutable(ctx: BuildContext, outfile: string, extr
       "--outfile",
       outfile,
       ...(ctx.dev ? [] : ["--minify"]),
+      ...(arch === hostArch() ? [] : [`--target=bun-${BUN_OS[ctx.platform as DesktopOs]}-${arch}`]),
       ...extra,
     ],
     {
@@ -233,7 +243,7 @@ export function writeDesktopResources(
       log.warn(
         "desktop.server without the single-instance plugin: every launch starts another server on the same data",
       );
-    const addons = addonReport(server.dir, os, hostArch());
+    const addons = addonReport(server.dir, os, targetArch(ctx));
     for (const warning of addons.warnings) log.warn(warning);
     if (addons.problems.length)
       throw new CliError(

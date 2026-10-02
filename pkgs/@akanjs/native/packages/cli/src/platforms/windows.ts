@@ -22,6 +22,7 @@ import {
   requireHost,
   resourcesOf,
   runExecutable,
+  targetArch,
   writeDesktopResources,
 } from "./desktop.ts";
 import { buildWindowsInstaller } from "./windows-installer.ts";
@@ -46,7 +47,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   requireHost("windows");
   const { outDir } = ctx;
   const { config } = ctx.project;
-  const lib = await buildNativeLibrary("windows", !ctx.dev);
+  const lib = await buildNativeLibrary("windows", !ctx.dev, targetArch(ctx));
   // WebView2 keeps its profile in %LOCALAPPDATA%\<app id>\WebView2, and Chromium's own paths below
   // it run to about 160 characters (service worker caches): a long id can pass MAX_PATH (260).
   if (config.app.id.length > WEBVIEW2_ID_BUDGET) {

@@ -70,7 +70,7 @@ interface TaskOptions {
 ### build — 개발·배포용 빌드
 
 ```ts
-function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean; signing?: WindowsSigning }; macos?: MacosBuild; linux?: { appImage?: boolean } }): Promise<BuildResult>;
+function build(o: TaskOptions & { profile?: "debug" | "release"; ios?: IosBuild; windows?: { installer?: boolean; signing?: WindowsSigning }; macos?: MacosBuild; linux?: { appImage?: boolean }; arch?: "arm64" | "x64" }): Promise<BuildResult>;
 
 interface BuildResult {
   platform: TaskOptions["platform"];
@@ -132,6 +132,13 @@ interface MacosBuild {
 - release 빌드가 Developer ID로 서명되지 않았거나 공증되지 않았으면 경고한다. 내려받은 사본은 Gatekeeper가 막기 때문이다.
 - `publishUpdate`도 `macos: { signing, notarize }`를 받는다. 업데이터가 설치된 앱의 서명을 확인하므로(`codesign --verify --deep --strict`), 업데이트 릴리스는 내려받은 앱과 같은 인증서로 서명해야 한다. dmg는 만들지 않는다.
 - API는 환경 변수를 읽지 않는다. `macosDistributionFromEnv(env)`가 `AKAN_NATIVE_MACOS_IDENTITY`, `AKAN_NATIVE_MACOS_CERTIFICATE`·`_CERTIFICATE_PASSWORD`, `AKAN_NATIVE_MACOS_NOTARY_KEY`·`_KEY_ID`·`_ISSUER` 또는 `AKAN_NATIVE_MACOS_NOTARY_PROFILE`을 `MacosBuild`로 바꿔 준다. CLI `akan-native build macos`와 akanjs `akan build-desktop`·`publish-update`가 이것을 쓴다. CLI `--installer`는 macOS에서 dmg다.
+
+#### 데스크톱 CPU (CLI-9)
+
+- `arch`(CLI `--arch`, `"arm64"` 또는 `"x64"`)는 데스크톱 앱이 도는 CPU다. 기본은 이 컴퓨터의 것이다. 같은 OS의 다른 CPU용으로 만들 수 있다(Windows·Linux의 arm64와 x64). OS 교차 빌드는 없다: WRY가 WebView2·webkit2gtk에 묶여 있다. macOS 앱은 Apple silicon(arm64)만 내므로 macOS에 `x64`를 주면 거부하고(Intel Mac은 지원하지 않는다), 폰 빌드에 주어도 거부한다.
+- Rust 라이브러리는 그 CPU의 타깃으로 빌드한다(`rustup target add <triple>`이 필요할 수 있다). 실행 파일은 `bun build --compile --target=bun-<os>-<arch>`로 만든다(Bun이 그 런타임을 한 번 내려받는다).
+- 서버의 네이티브 애드온 검사(위 표)는 그 CPU를 본다. akanjs는 서버 패키지를 `bun install --cpu=<arch>`로 설치해 그 CPU의 prebuild를 받고, `bin`은 그 CPU의 항목을 받는다.
+- 산출물 이름의 CPU도 따른다: `<fileName>-<version>-<arch>.dmg`, `…-<arch>-setup.exe`, `…-<arch>.AppImage`. updates 플러그인은 실행 중인 CPU의 릴리스를 읽으므로 그대로 쓰지만, `publishUpdate`는 아직 이 컴퓨터의 CPU용 릴리스만 낸다.
 
 #### Linux AppImage (CLI-9)
 
