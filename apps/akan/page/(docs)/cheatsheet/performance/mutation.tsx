@@ -545,14 +545,13 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Simplified, in the SQLite/libsql dialect.</strong> Postgres uses the matching <code>jsonb</code>{" "}
-          functions.
+          <strong>Simplified, in the SQLite dialect.</strong> Postgres uses the matching <code>jsonb</code> functions.
         </>
       ),
       ko: (
         <>
-          <strong>개념만 보이도록 줄인 SQLite/libsql 기준 SQL입니다.</strong> Postgres는 같은 일을 하는{" "}
-          <code>jsonb</code> 함수를 씁니다.
+          <strong>개념만 보이도록 줄인 SQLite 기준 SQL입니다.</strong> Postgres는 같은 일을 하는 <code>jsonb</code>{" "}
+          함수를 씁니다.
         </>
       ),
     }),

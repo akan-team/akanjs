@@ -7,7 +7,7 @@ there is nothing to mirror a rule change into. The section between the `akan:age
 by `akan agent install`; edit anything outside the markers freely.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.0.1 -->
+<!-- akan:agent:version 3.0.2 -->
 
 ## Workspace
 
@@ -923,7 +923,7 @@ Full contract — the trigger-maintained mirror, tokenizer changes, `AKAN_SEARCH
   backstop, including for a `text` field *underneath* one of those. Do not work around either.
 - The role works on a relation (`image: field(File, { text: "thumb" })`) and on an array; an array of objects
   indexes by leaf key. A field inside a `Map` indexes nothing — there is no fixed path to extract it from.
-- Search runs in every database mode — fts5 on SQLite/libSQL, a weighted `tsvector` (`pg_trgm` for `trigram`) on
+- Search runs in every database mode — fts5 on SQLite, a weighted `tsvector` (`pg_trgm` for `trigram`) on
   Postgres. The same text matches the same documents; only the order may differ on Postgres.
 
 ### Image & File Fields

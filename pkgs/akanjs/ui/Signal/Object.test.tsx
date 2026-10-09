@@ -3,7 +3,7 @@ import type { ConstantCls } from "akanjs/constant";
 import type { ReactElement } from "react";
 import { makeRef, setTestEnv } from "../testHelpers.fixture";
 
-let UiObject: typeof import("./Object").default;
+let ObjectDetail: typeof import("./Object").ObjectDetail;
 let render: (element: ReactElement) => Promise<string>;
 let MapObjectFull: ConstantCls;
 
@@ -13,7 +13,7 @@ beforeAll(async () => {
   const { ConstantRegistry, field } = await import("akanjs/constant");
   const { registerClientRuntime } = await import("akanjs/client");
   const { renderToReadableStream } = await import("react-dom/server");
-  UiObject = (await import("./Object")).default;
+  ({ ObjectDetail } = await import("./Object"));
   render = async (element) => await new Response(await renderToReadableStream(element)).text();
   registerClientRuntime({
     usePage: () => ({ path: "/", lang: "en", l: Object.assign((key: string) => key, { _: (key: string) => key }) }),
@@ -35,7 +35,7 @@ beforeAll(async () => {
 
 describe("Signal.Object.Detail", () => {
   test("names a Map field instead of asking the registry to name the Map constructor", async () => {
-    const html = await render(<UiObject.Detail objRef={MapObjectFull} />);
+    const html = await render(<ObjectDetail objRef={MapObjectFull} />);
     expect(html).toContain("prompts");
     expect(html).toContain("Map!");
     expect(html).toContain("String");

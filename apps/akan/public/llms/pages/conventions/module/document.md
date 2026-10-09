@@ -213,7 +213,7 @@ Rules
 
 **No search in a query-level write.** `update<Filter>`, `remove<Filter>` and their `One` forms throw on a search query.
 
-**Works in every database mode.** For the same text, SQLite, libSQL and Postgres match the same documents; only the order can differ on Postgres.
+**Works in every database mode.** For the same text, SQLite and Postgres match the same documents; only the order can differ on Postgres.
 
 **A filter is enough for a service.** A slice publishes the search to clients, so add one only for models that are safe to enumerate.
 

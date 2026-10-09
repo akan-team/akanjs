@@ -170,6 +170,10 @@ export class FetchClient {
           createGuards: signal.createGuards ?? current.createGuards,
           updateGuards: signal.updateGuards ?? current.updateGuards,
           removeGuards: signal.removeGuards ?? current.removeGuards,
+          origin:
+            current.origin || signal.origin
+              ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
+              : undefined,
         }
       : signal;
   }

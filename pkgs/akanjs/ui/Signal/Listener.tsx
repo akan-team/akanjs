@@ -1,13 +1,10 @@
 "use client";
-import { cn } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { useEffect, useRef } from "react";
 import { Code } from "../Reference";
+import { signalText } from "./signalText";
 import { getStatusBadgeClassName, getStatusTone } from "./style";
-
-export default function Listener() {
-  return <div></div>;
-}
 
 const dotClass: { [key: string]: string } = {
   error: "bg-destructive",
@@ -32,7 +29,8 @@ const replaceBytes = (_key: string, value: unknown) => {
   return previewBytes(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
 };
 
-const ListenerResult = ({ status, data }: ListenerResultProps) => {
+export const ListenerResult = ({ status, data }: ListenerResultProps) => {
+  const { l } = usePage();
   const dataStr = typeof data === "object" ? JSON.stringify(data, replaceBytes, 2) : String(data);
   const ref = useRef<HTMLPreElement>(null);
   useEffect(() => {
@@ -43,16 +41,15 @@ const ListenerResult = ({ status, data }: ListenerResultProps) => {
     <Code
       bodyRef={ref}
       code={dataStr}
-      label="Stream"
+      label={l.trans(signalText.stream)}
       meta={
         <>
           <span className={getStatusBadgeClassName(status)}>{capitalize(status)}</span>
           <span className={cn("size-2 rounded-full", dotClass[status] ?? "bg-border")} />
         </>
       }
-      placeholder="Nothing received yet."
+      placeholder={l.trans(signalText.nothingReceived)}
       tone={getStatusTone(status)}
     />
   );
 };
-Listener.Result = ListenerResult;

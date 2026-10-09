@@ -138,7 +138,10 @@ export default page().render(() => {
     },
     {
       name: "notFound()",
-      desc: l.trans({ en: "Shows the 404 page.", ko: "404 페이지를 보여 줍니다." }),
+      desc: l.trans({
+        en: 'Shows the nearest layout\'s .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.',
+        ko: '가장 가까운 layout의 .notFound() 화면을 404와 함께 보여 줍니다. 페이지가 스트리밍을 시작한 뒤에 부르면 화면은 그대로 나오지만 브라우저는 200 상태를 받고, 크롤러와 ssr: "block" route는 404를 받습니다.',
+      }),
     },
     {
       name: "setLang(lang)",

@@ -692,6 +692,32 @@ describe("signal serialization and registry", () => {
     );
   });
 
+  test("carries the registrant on the serialized signal and chains it when a later scope extends it", async () => {
+    const { FetchClient } = await import("akanjs/fetch");
+    const LibEndpoint = endpoint(ServiceModel.from(SignalTestAuxService), (builder) => ({
+      ping: builder.query(String).exec(() => "pong"),
+    }));
+    const AppEndpoint = endpoint(ServiceModel.from(SignalTestAuxService), (builder) => ({
+      pong: builder.query(String).exec(() => "ping"),
+    }));
+    const LibInternal = internal(ServiceModel.from(SignalTestAuxService), () => ({}));
+    const register = (Endpoint: typeof LibEndpoint, origin: string) =>
+      SignalRegistry.registerService(
+        "signalTestAux" as const,
+        LibInternal,
+        Endpoint,
+        serverSignal(Endpoint, LibInternal),
+        origin,
+      );
+    const lib = register(LibEndpoint, "shared");
+    const app = register(AppEndpoint as unknown as typeof LibEndpoint, "sceny");
+
+    expect(lib.serializedSignal.origin).toEqual(["shared"]);
+    const merged = FetchClient.from(lib, app).serializedSignal.signalTestAux;
+    expect(merged?.origin).toEqual(["shared", "sceny"]);
+    expect(Object.keys(merged?.endpoint ?? {}).sort()).toEqual(["ping", "pong"]);
+  });
+
   test("serverSignal exposes only pubsub endpoints and process internals", () => {
     class ServerEndpoint extends endpoint(signalTestServiceModel, (builder) => ({
       queryItem: builder.query(String).exec(() => "query"),

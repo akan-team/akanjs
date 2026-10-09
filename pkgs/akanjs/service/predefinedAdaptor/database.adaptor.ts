@@ -2,7 +2,6 @@ import { Database } from "bun:sqlite";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { Client as LibsqlClient } from "@libsql/client";
 import type { PromiseOrObject } from "akanjs/base";
 import type { ConstantModel } from "akanjs/constant";
 import type { DatabaseModel, DocumentSchema, SchemaOf } from "akanjs/document";
@@ -21,7 +20,6 @@ import {
 } from "./searchIndex";
 import { PostgresDialect } from "./sql/dialect/postgres";
 import { BunSqliteClient } from "./sql/driver/bunSqlite";
-import { LibsqlAkanClient } from "./sql/driver/libsql";
 import { PostgresAkanClient } from "./sql/driver/postgres";
 import { PendingStoreEnsures } from "./sql/PendingStoreEnsures";
 import { PostgresInsightSession } from "./sql/PostgresInsightSession";
@@ -32,7 +30,6 @@ import {
   type ConcurrentIndexBuild,
   type DatabaseAdaptor,
   type InsightSession,
-  type LibsqlDatabaseConfig,
   type PostgresDatabaseConfig,
   type SearchConfig,
   type SqliteDatabaseConfig,
@@ -53,7 +50,6 @@ export type {
   DocumentDatabaseOwner,
   DocumentStore,
   InsightSession,
-  LibsqlDatabaseConfig,
   PostgresDatabaseConfig,
   SearchConfig,
   SqlDialect,
@@ -227,151 +223,6 @@ export class SqliteDatabase
 
   vacuum() {
     this.#db.run("VACUUM");
-  }
-}
-
-export class LibsqlDatabase
-  extends adapt("libsqlDatabase", ({ env, plug }) => ({
-    scheduler: plug(ScheduleAdaptorRole),
-    config: env((env: SqliteEnv) => {
-      return {
-        url:
-          process.env.LIBSQL_URL ??
-          process.env.LIBSQL_URI ??
-          env.database?.libsql?.url ??
-          `file:${process.env.SQLITE_DATABASE_PATH ?? env.database?.sqlite?.filePath ?? defaultSqliteFile("", env.workspaceRoot)}`,
-        authToken: process.env.LIBSQL_AUTH_TOKEN ?? env.database?.libsql?.authToken,
-        search: searchConfigOf(env),
-      } satisfies LibsqlDatabaseConfig & { search: Required<SearchConfig> };
-    }),
-  }))
-  implements DatabaseAdaptor
-{
-  #libsql!: LibsqlClient;
-  #client!: LibsqlAkanClient;
-  #stores = new Map<string, SqlDocumentStore>();
-  #transaction = new AsyncLocalStorage<TransactionContext & { client: LibsqlAkanClient }>();
-  #ensures = new PendingStoreEnsures();
-  #searchIndex!: SearchIndex;
-  // On a `file:` URL the client's second connection waits for the transaction's lock synchronously, parking the event
-  // loop it needs to commit, so other writes queue behind `#open` as on `SqliteDatabase`.
-  #open: { context: TransactionContext; done: Promise<void> } | null = null;
-  #queue: Promise<void> = Promise.resolve();
-
-  override async onInit() {
-    const url = this.config.url ?? "file:local.db";
-    if (url.startsWith("file:")) await mkdir(path.dirname(path.resolve(url.slice(5))), { recursive: true });
-    const { createClient } = await import("@libsql/client");
-    this.#libsql = createClient({ url, authToken: this.config.authToken });
-    this.#client = new LibsqlAkanClient(this.#libsql, () => this.#writeTurn());
-    await this.#client.execute(
-      `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
-    );
-    this.#searchIndex = new SearchIndex(this, this.config.search);
-    await this.#searchIndex.ensureSchema();
-    this.scheduler.registerCron(OPTIMIZE_CRON_KEY, OPTIMIZE_CRON, async () => {
-      await this.#searchIndex.optimize();
-    });
-    this.scheduler.registerInterval(RETRY_INTERVAL_KEY, RETRY_INTERVAL_MS, async () => {
-      await this.#searchIndex.retryPending();
-    });
-  }
-
-  override async onDestroy() {
-    this.scheduler.unregisterCron(OPTIMIZE_CRON_KEY);
-    this.scheduler.unregisterInterval(RETRY_INTERVAL_KEY);
-    await this.#ensures.settle();
-    await this.#client?.close();
-  }
-
-  getConnection() {
-    return this.#transaction.getStore()?.client ?? this.#client;
-  }
-
-  getSearchIndex() {
-    return this.#searchIndex;
-  }
-
-  // bun:sqlite on libsql's file would put two SQLite libraries on it; closing either drops the other's POSIX locks.
-  async openInsight(): Promise<InsightSession> {
-    throw new Error(
-      "An insight query needs the sqlite or postgres database: libsql has no connection that can leave `_doc` out.",
-    );
-  }
-
-  stores() {
-    return [...this.#stores.values()];
-  }
-
-  getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf) {
-    const existing = this.#stores.get(database.refName);
-    if (existing) return existing;
-    const store = new SqlDocumentStore(this, constant, database, schema as DocumentSchema);
-    this.#stores.set(database.refName, store);
-    this.#ensures.track(store.ensure());
-    return store;
-  }
-
-  // Inside a transaction the pool's own connection waits on the lock the transaction holds, so these go through it too.
-  async getMeta(key: string) {
-    return (
-      await this.getConnection().prepare(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`).get<{ value: string }>(key)
-    )?.value;
-  }
-
-  async setMeta(key: string, value: string) {
-    await this.getConnection()
-      .prepare(
-        `INSERT INTO "_akan_meta" ("key", "value", "updatedAt") VALUES (?, ?, ?) ON CONFLICT("key") DO UPDATE SET "value" = excluded."value", "updatedAt" = excluded."updatedAt"`,
-      )
-      .run(key, value, Date.now());
-  }
-
-  async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
-    const active = this.#transaction.getStore();
-    if (active) return await fn();
-    const previous = this.#queue;
-    let release!: () => void;
-    const done = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.#queue = done;
-    await previous;
-    const context: TransactionContext = { afterCommit: [] };
-    this.#open = { context, done };
-    let result: T;
-    try {
-      const transaction = await this.#libsql.transaction("write");
-      try {
-        result = await this.#transaction.run(
-          { ...context, client: new LibsqlAkanClient(transaction) },
-          async () => await fn(),
-        );
-        await transaction.commit();
-      } catch (err) {
-        if (!transaction.closed) await transaction.rollback();
-        throw err;
-      } finally {
-        transaction.close();
-      }
-    } finally {
-      this.#open = null;
-      release();
-    }
-    for (const hook of context.afterCommit) await hook();
-    return result;
-  }
-
-  #writeTurn() {
-    const open = this.#open;
-    if (!open || this.#transaction.getStore()?.afterCommit === open.context.afterCommit) return null;
-    return open.done;
-  }
-
-  async afterCommit(fn: () => PromiseOrObject<void>) {
-    const active = this.#transaction.getStore();
-    if (!active) return await fn();
-    active.afterCommit.push(fn);
   }
 }
 

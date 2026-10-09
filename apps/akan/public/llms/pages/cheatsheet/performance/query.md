@@ -108,7 +108,7 @@ Reach for `q.raw` only when no helper can express the condition. Keep it one sma
 
 **One fragment, one condition.** It is wrapped in parentheses and joined like any other condition, and a fragment containing `;` is refused.
 
-**Write it for your database.** The snippet is SQLite / libsql. Postgres keeps `_doc` as `jsonb` and reads a field as text, so the same condition is `("_doc" #>> '{score}')::numeric > ?`.
+**Write it for your database.** The snippet is SQLite. Postgres keeps `_doc` as `jsonb` and reads a field as text, so the same condition is `("_doc" #>> '{score}')::numeric > ?`.
 
 **A raw fragment is not translated between databases.** An app that runs on both SQLite and Postgres avoids `q.raw`, or writes the fragment per database.
 
@@ -126,7 +126,7 @@ Column
 
 **Removed documents never match.** Every read and query-level write adds `"removedAt" IS NULL`, and a condition only a removed row can meet throws `can never match`. To read removed rows, pass `{ withRemoved: true }`.
 
-**The SQL below is simplified SQLite / libsql.** Postgres compiles the same filter to `jsonb` operators such as `_doc #> '{status}'`.
+**The SQL below is simplified SQLite.** Postgres compiles the same filter to `jsonb` operators such as `_doc #> '{status}'`.
 
 **Values stay parameters.** Every `?` is bound separately, so user input is never pasted into the SQL text.
 

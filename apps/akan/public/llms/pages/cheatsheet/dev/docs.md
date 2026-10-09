@@ -64,27 +64,17 @@ Render A Zone
 
 Put the explorer on an admin or developer-only page. Start with the `base` signal: every app has it, and its ping endpoints are simple.
 
-Write a small client component in `ui/` that renders `Signal.Doc.Zone`.
-
-Render that component from a route.
-
-First, the client component:
-
 - refName (string): The signal to document: `base`, or a module name such as `product`.
 
   - required
 
-- fetch (FetchProxy): The app's own `fetch`. A signal the app does not mount shows as unregistered.
-
-- openAll (boolean): Opens every endpoint row. Leave it off for a signal with many endpoints.
+- fetch (FetchProxy): Defaults to the app's own `fetch`. A signal it does not mount shows as unregistered.
 
   - optional
 
-**Why `"use client"`.** A server page cannot pass `fetch` as a prop, and `Signal.Doc.Zone` exists only on the client.
+- openAll (boolean): Opens every endpoint row. Leave it off for a signal with many endpoints.
 
-Then render it from a route:
-
-**The route stays a server page.** The client boundary is `ApiDocs`, so only that component ships as JavaScript.
+**The route stays a server page.** Each `Signal.Doc` member is its own client boundary, so no wrapper is needed and only the explorer ships as JavaScript.
 
 **`devOnly: true` keeps it out of production.** The route serves under `akan start`, and `akan build` leaves it out. For an admin tool in production, remove it and limit the route to admins instead.
 
@@ -95,6 +85,8 @@ Other parts
 Component
 
 - Signal.Doc.Zone: One signal's whole document: summary, toolbar, REST and WebSocket lists.
+
+- Signal.Doc.Explorer: Every mounted signal in a sidebar, each mounted on first open. Scope with `include`, `exclude`, `libs`, `groupBy`.
 
 - Signal.Doc.Setting: The toolbar alone. Pass `search` and `onSearch` to add the search box.
 
@@ -186,27 +178,15 @@ Read next
 
 ## Code Examples
 
-### apps/myapp/ui/ApiDocs.tsx
-
-```ts
-"use client";
-import { fetch } from "@apps/myapp/client";
-import { Signal } from "akanjs/ui";
-
-export const ApiDocs = () => {
-  return <Signal.Doc.Zone refName="base" fetch={fetch} openAll />;
-};
-```
-
 ### apps/myapp/page/(admin)/api/_index.tsx
 
 ```ts
-import { ApiDocs } from "@apps/myapp/ui";
 import { page } from "akanjs/client";
+import { Signal } from "akanjs/ui";
 
 export default page()
   .config({ devOnly: true })
-  .render(() => <ApiDocs />);
+  .render(() => <Signal.Doc.Zone refName="base" openAll />);
 ```
 
 ## Agent Notes

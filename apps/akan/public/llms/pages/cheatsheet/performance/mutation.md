@@ -175,7 +175,7 @@ What it does · SQL
 
 - combined: Several operators nest into one expression.
 
-**Simplified, in the SQLite/libsql dialect.** Postgres uses the matching `jsonb` functions.
+**Simplified, in the SQLite dialect.** Postgres uses the matching `jsonb` functions.
 
 **Every operator reads the document as it was before the update,** so all changes in one call see the same original values.
 

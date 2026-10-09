@@ -1,5 +1,31 @@
+import { fetch as clientFetch } from "akanjs/client";
+import { lowerlize } from "akanjs/common";
 import { FetchClient, type FetchProxy } from "akanjs/fetch";
 import type { SerializedEndpoint } from "akanjs/signal";
+import { ownerOf, ownerOrderOf } from "../Reference/origin";
+
+// A FetchProxy cannot cross the RSC boundary as a prop, so the docs default to the registered runtime's.
+export const runtimeFetch = clientFetch as unknown as FetchProxy;
+
+export interface SignalScope {
+  include?: string[];
+  exclude?: string[];
+  libs?: string[];
+}
+
+export const signalRefNamesOf = (fetch: FetchProxy, { include, exclude, libs }: SignalScope = {}) => {
+  const registered = Object.keys(fetch.serializedSignal);
+  const picked = include
+    ? include.filter((refName) => registered.includes(refName))
+    : registered.sort((a, b) => (lowerlize(a) > lowerlize(b) ? 1 : -1));
+  return picked.filter(
+    (refName) =>
+      !exclude?.includes(refName) && (!libs || libs.includes(ownerOf(fetch.serializedSignal[refName]?.origin) ?? "")),
+  );
+};
+
+export const signalOwnerOrderOf = (fetch: FetchProxy) =>
+  ownerOrderOf(Object.values(fetch.serializedSignal).map((signal) => signal.origin));
 
 export interface EndpointEntry {
   key: string;

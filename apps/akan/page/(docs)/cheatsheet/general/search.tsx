@@ -266,8 +266,8 @@ export default page().render(() => {
           </div>
           <div>
             {l.trans({
-              en: "Search works in every database mode. For the same text, SQLite, libSQL and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.",
-              ko: "검색은 모든 데이터베이스 모드에서 동작합니다. 같은 텍스트라면 SQLite, libSQL, Postgres 모두 같은 document를 찾지만, Postgres는 단어가 얼마나 드문지를 순위에 반영하지 않아서 순서가 다를 수 있습니다. Postgres 설정은 아래 '운영하기'에서 다룹니다.",
+              en: "Search works in every database mode. For the same text, SQLite and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.",
+              ko: "검색은 모든 데이터베이스 모드에서 동작합니다. 같은 텍스트라면 SQLite와 Postgres 모두 같은 document를 찾지만, Postgres는 단어가 얼마나 드문지를 순위에 반영하지 않아서 순서가 다를 수 있습니다. Postgres 설정은 아래 '운영하기'에서 다룹니다.",
             })}
           </div>
           <Docs.SubSubTitle>{l.trans({ en: "Words used on this page", ko: "이 페이지에서 쓰는 말" })}</Docs.SubSubTitle>

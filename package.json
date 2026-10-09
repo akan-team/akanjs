@@ -92,7 +92,6 @@
     "@lexical/selection": "^0.51.0",
     "@lexical/table": "^0.51.0",
     "@lexical/utils": "^0.51.0",
-    "@libsql/client": "^0.17.3",
     "@marsidev/react-turnstile": "^1.5.2",
     "@noble/ciphers": "^2.4.0",
     "@octokit/webhooks-types": "^7.6.1",

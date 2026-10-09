@@ -17,13 +17,7 @@ const DEFAULT_INCLUDE = ["akanjs/", "@apps/", "@libs/"];
 // Runtime hosts and singleton framework packages stay external; ordinary npm dependencies are bundled.
 const DEFAULT_EXCLUDE_EXACT = new Set<string>(["akanjs/webkit", "@akanjs/cli", "@akanjs/devkit"]);
 const DEFAULT_EXCLUDE_PREFIX = ["@akanjs/cli/", "@akanjs/devkit/"];
-const OPTIONAL_BACKEND_EXTERNAL_EXACT = new Set<string>([
-  "@libsql/client",
-  "bullmq",
-  "ioredis",
-  "postgres",
-  "protobufjs",
-]);
+const OPTIONAL_BACKEND_EXTERNAL_EXACT = new Set<string>(["bullmq", "ioredis", "postgres", "protobufjs"]);
 const RUNTIME_EXTERNAL_EXACT = new Set<string>([
   "react",
   "react-dom",

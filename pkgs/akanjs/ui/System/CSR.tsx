@@ -14,11 +14,11 @@ import {
   type WebAppManifest,
 } from "akanjs/client";
 import { st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
+import { animated } from "../animated";
 
 import { FontFace } from "../FontFace";
 import { Load } from "../Load";

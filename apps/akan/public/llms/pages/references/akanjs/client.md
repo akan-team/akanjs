@@ -78,7 +78,7 @@ Method
 
 - redirect(href, { method, status }): On the server, answers with a redirect (307 by default). In the browser, navigates.
 
-- notFound(): Shows the 404 page.
+- notFound(): Shows the nearest layout's .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
 
 - setLang(lang): Switches the locale and stays on the same route. Browser only.
 

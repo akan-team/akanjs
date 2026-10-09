@@ -1040,17 +1040,14 @@ export default config;`}
                     <strong>Drivers follow the declared modes.</strong> <code>akan build</code> puts every declared
                     mode's drivers in the production <code>package.json</code>: <code>multiple</code> adds{" "}
                     <code>bullmq</code> and <code>ioredis</code>, and <code>cluster</code> adds <code>postgres</code>{" "}
-                    too. An app that applies <code>LibsqlDatabase</code> itself lists <code>@libsql/client</code> in{" "}
-                    <code>externalLibs</code>.
+                    too.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>드라이버는 선언한 모드를 따라갑니다.</strong> <code>akan build</code>는 선언한 모든 모드의
                     드라이버를 프로덕션 <code>package.json</code>에 넣으며, <code>multiple</code>은 <code>bullmq</code>
-                    와 <code>ioredis</code>를, <code>cluster</code>는 <code>postgres</code>까지 더합니다.{" "}
-                    <code>LibsqlDatabase</code>를 직접 적용하는 앱은 <code>@libsql/client</code>를{" "}
-                    <code>externalLibs</code>에 적습니다.
+                    와 <code>ioredis</code>를, <code>cluster</code>는 <code>postgres</code>까지 더합니다.
                   </span>
                 ),
               })}

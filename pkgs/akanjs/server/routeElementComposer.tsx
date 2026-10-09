@@ -19,6 +19,14 @@ import {
 } from "./routeState";
 import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
 
+/** How a render reached after the layouts streamed answers `router.notFound()` — in place, since its parents are out. */
+export interface RouteNotFoundInPlace {
+  pathname: string;
+  /** Rendered when no layout above the thrower declares `.notFound()`. */
+  systemFallback: () => ReactNode;
+  onNotFound: () => void;
+}
+
 export class RouteElementComposer {
   static async resolveSsrFramePathRoute({
     pathRoute,
@@ -63,11 +71,13 @@ export class RouteElementComposer {
     params,
     searchParams,
     navKey,
+    notFound,
   }: {
     pathRoute: PathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
+    notFound?: RouteNotFoundInPlace;
   }): ReactNode {
     return RouteElementComposer.composeRenders({
       renders: RouteElementComposer.#getRenderStack(pathRoute),
@@ -75,7 +85,24 @@ export class RouteElementComposer {
       params,
       searchParams,
       navKey,
+      notFound,
     });
+  }
+
+  static async checkArgs({
+    pathRoute,
+    params,
+    searchParams,
+  }: {
+    pathRoute: PathRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string | string[]>;
+  }): Promise<void> {
+    await Promise.all(
+      RouteElementComposer.#getRenderStack(pathRoute).map((routeRender) =>
+        routeRender?.checkArgs?.({ params, searchParams }),
+      ),
+    );
   }
 
   static composeSuffix({
@@ -84,20 +111,24 @@ export class RouteElementComposer {
     searchParams,
     patchStartIndex,
     navKey,
+    notFound,
   }: {
     pathRoute: PathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     patchStartIndex: number;
     navKey?: string;
+    notFound?: RouteNotFoundInPlace;
   }): ReactNode | null {
     const renders = RouteElementComposer.#getRenderStack(pathRoute);
     if (!Number.isInteger(patchStartIndex) || patchStartIndex < 0 || patchStartIndex >= renders.length) return null;
     return RouteElementComposer.composeRenders({
       renders: renders.slice(patchStartIndex),
+      owners: renders.slice(0, patchStartIndex),
       params,
       searchParams,
       navKey,
+      notFound,
     });
   }
 
@@ -176,16 +207,21 @@ export class RouteElementComposer {
 
   static composeRenders({
     renders,
+    owners = [],
     segments,
     params,
     searchParams,
     navKey,
+    notFound,
   }: {
     renders: RouteRender[];
+    /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
+    owners?: RouteRender[];
     segments?: AkanRouteSegmentState[];
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
+    notFound?: RouteNotFoundInPlace;
   }): ReactNode {
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
@@ -196,7 +232,12 @@ export class RouteElementComposer {
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       element = (
         <Suspense key={suspenseKey} fallback={loadingFallback}>
-          <RouteElementComposer.AsyncRender routeRender={routeRender} params={params} searchParams={searchParams}>
+          <RouteElementComposer.AsyncRender
+            routeRender={routeRender}
+            params={params}
+            searchParams={searchParams}
+            notFound={notFound ? { ...notFound, owners: [...owners, ...renders.slice(0, i)] } : undefined}
+          >
             {element}
           </RouteElementComposer.AsyncRender>
         </Suspense>
@@ -219,12 +260,47 @@ export class RouteElementComposer {
     children,
     params,
     searchParams,
+    notFound,
   }: {
     routeRender: RouteRender;
     children: ReactNode;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
-  }) => RouteElementComposer.#normalizeReactNode(await routeRender.render({ children, params, searchParams } as never));
+    notFound?: RouteNotFoundInPlace & { owners: RouteRender[] };
+  }) => {
+    try {
+      return RouteElementComposer.#normalizeReactNode(
+        await routeRender.render({ children, params, searchParams } as never),
+      );
+    } catch (error) {
+      if (!notFound || (error as { digest?: unknown } | null)?.digest !== "AKAN_NOT_FOUND") throw error;
+      notFound.onNotFound();
+      return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+    }
+  };
+
+  static async #renderNotFoundInPlace(
+    { owners, pathname, systemFallback }: RouteNotFoundInPlace & { owners: RouteRender[] },
+    params: Record<string, string>,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<ReactNode> {
+    for (let index = owners.length - 1; index >= 0; index--) {
+      const fallback = await owners[index]?.resolveNotFound?.();
+      if (!fallback) continue;
+      return (
+        <>
+          <meta name="robots" content="noindex" />
+          {RouteElementComposer.#normalizeReactNode(await fallback({ params, searchParams, pathname }))}
+        </>
+      );
+    }
+    return (
+      <>
+        <meta name="robots" content="noindex" />
+        {systemFallback()}
+      </>
+    );
+  }
 
   static #makeFallbackRouteRender({
     kind,

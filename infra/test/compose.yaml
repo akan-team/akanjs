@@ -50,6 +50,3 @@ services:
       interval: 1s
       timeout: 3s
       retries: 60
-  libsql:
-    image: ghcr.io/tursodatabase/libsql-server:latest
-    ports: ["8080"]

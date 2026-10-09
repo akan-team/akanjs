@@ -21,9 +21,9 @@ ${databaseModules.map((module) => `export * from "./${module}/${module}.constant
 ${databaseModules
   .map((module) => {
     const names = { Module: capitalize(module) };
-    return `export const ${module} = ConstantRegistry.buildModel("${module}" as const, ${module}Cnst.${names.Module}Input, ${module}Cnst.${names.Module}Object, ${module}Cnst.${names.Module}, ${module}Cnst.Light${names.Module}, ${module}Cnst.${names.Module}Insight, ${module}Cnst);`;
+    return `export const ${module} = ConstantRegistry.buildModel("${module}" as const, ${module}Cnst.${names.Module}Input, ${module}Cnst.${names.Module}Object, ${module}Cnst.${names.Module}, ${module}Cnst.Light${names.Module}, ${module}Cnst.${names.Module}Insight, ${module}Cnst, "${scanInfo.name}");`;
   })
   .join("\n")}
-${scalarModules.map((module) => `export const ${module} = ConstantRegistry.buildScalar("${module}" as const, ${module}Cnst.${capitalize(module)}, ${module}Cnst);`).join("\n")}
+${scalarModules.map((module) => `export const ${module} = ConstantRegistry.buildScalar("${module}" as const, ${module}Cnst.${capitalize(module)}, ${module}Cnst, "${scanInfo.name}");`).join("\n")}
 `;
 }

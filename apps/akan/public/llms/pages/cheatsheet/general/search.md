@@ -32,7 +32,7 @@ It takes three steps:
 
 Letting clients search as well is a separate decision, covered in Publishing To Clients.
 
-Search works in every database mode. For the same text, SQLite, libSQL and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.
+Search works in every database mode. For the same text, SQLite and Postgres match the same documents, but Postgres can order them differently because its ranking does not weigh how rare a word is. Postgres setup is covered in Operating It.
 
 Words used on this page
 

@@ -1,5 +1,5 @@
 import { AkanOption } from "akanjs/server";
-import type { LlmOption } from "akanjs/service";
+import { AnthropicLlm, LlmAdaptorRole, type LlmOption } from "akanjs/service";
 import { Public } from "akanjs/signal";
 import type { LibOptions } from "./srv";
 
@@ -8,7 +8,8 @@ export type ModulesOptions = LibOptions & {
 };
 
 export const option = new AkanOption<ModulesOptions>()
-  .setLlm((options) => options.llm ?? {})
+  .applyAdaptor(LlmAdaptorRole, AnthropicLlm)
+  .setLlm((options) => ({ apiKey: options.llm?.apiKey, model: "claude-haiku-5-5" }))
   // The docs app has no accounts, and the chat is part of the documentation: anonymous is the decision.
   .setAgentAccess(Public)
   .setMcp({

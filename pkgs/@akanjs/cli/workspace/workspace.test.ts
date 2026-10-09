@@ -306,7 +306,6 @@ describe("WorkspaceRunner", () => {
     });
     expect(workspacePackageJson.dependencies).not.toHaveProperty("@capacitor/core");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("@capacitor/cli");
-    expect(workspacePackageJson.dependencies).not.toHaveProperty("@libsql/client");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("postgres");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("ioredis");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("bullmq");

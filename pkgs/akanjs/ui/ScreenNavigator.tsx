@@ -3,10 +3,10 @@ import { useDrag } from "@use-gesture/react";
 import { cn } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import { st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { SpringValue, useSpringValue } from "react-spring";
 import { sharedContext } from "../client/sharedContext";
+import { animated } from "./animated";
 
 interface ScreenNavigatorContextType {
   bind: (...args: any[]) => any;

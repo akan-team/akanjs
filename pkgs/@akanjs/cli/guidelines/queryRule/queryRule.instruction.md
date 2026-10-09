@@ -119,7 +119,7 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - Declaring roles is all the wiring there is. Mirror rows are maintained by SQL triggers — not document hooks —
   because `updateOneByQuery` and friends fire no hooks, and most searchable-field mutations go through exactly that
   path.
-- Search runs in every database mode: fts5 on SQLite/libSQL, a weighted `tsvector` under a GIN index on Postgres.
+- Search runs in every database mode: fts5 on SQLite, a weighted `tsvector` under a GIN index on Postgres.
   For the same text the same documents match — punctuation splits words the way unicode61 does, and a phrase never
   runs from one column into the next — but the order may differ, since Postgres ranks without document frequency.
   Assert on the match set, never on a Postgres order the weights alone do not decide.

@@ -122,7 +122,7 @@ Related pages
 
 - Signal: The API explorer, split into parts. It reads the serialized signal the server ships with the app — every endpoint, its arguments, guards and return model — and renders a document you can also call endpoints from.
 
-  - Signal.Doc (.Zone · .Setting · .AuthModal · .DocSignals · .DocSignal): The explorer; `Doc.Zone({ refName, fetch, openAll? })` renders one signal's whole document.
+  - Signal.Doc (.Zone · .Explorer · .Setting · .AuthModal · .DocSignals · .DocSignal): `Zone({ refName })` documents one signal; `Explorer({ include?, exclude? })` puts them all behind a sidebar.
 
   - Signal.RestApi (.Endpoints · .Endpoint · .Interface · .Try): The HTTP side: `Endpoints` lists queries and mutations, or only the ones named in `endpoints`.
 
@@ -138,11 +138,11 @@ Related pages
 
   - Signal.Arg (component · .Table · .Param · .Query · .FormData · .ID · .Int · .Float · .String · .Boolean · .Date · .Json · .Upload): The one real component: `Arg({ argType, value, onChange })` renders one scalar's input.
 
-  - **Reach for a member, never a root.** `Signal.Doc` and its siblings render an empty `div` on their own, so write `Signal.Doc.Zone` or `Signal.RestApi.Endpoints`. Only `Signal.Arg` is a component itself.
+  - **Reach for a member, never a root.** `Signal.Doc` and its siblings are namespaces, so write `Signal.Doc.Zone` or `Signal.RestApi.Endpoints`. Only `Signal.Arg` is a component itself.
 
-  - **Render it from a `"use client"` file.** It takes the app's `fetch`, which a server component cannot hand over as a prop, and its members exist only on the client.
+  - **Render it straight from a page.** Every member crosses the client boundary on its own, and `fetch` defaults to the app's own, so no `"use client"` wrapper is needed. Pass `fetch` only to document another app's proxy.
 
-  - **`fetch` is the app's own fetch proxy.** The explorer reads `fetch.serializedSignal` from it, so a signal the app did not mount is reported as unregistered instead of rendering empty.
+  - **Only mounted signals appear.** The explorer reads `fetch.serializedSignal`, so a signal the app did not mount is reported as unregistered instead of rendering empty.
 
   - **One setting for the whole screen.** The guard filter and the JWT chosen in `Doc.Setting` live in the store, so every endpoint list and every REST Try on the page follows them.
 
@@ -213,24 +213,15 @@ export const StoreLocation = () => {
 ### Signal
 
 ```ts
-"use client";
-import { fetch } from "@apps/shop/client";
+import { page } from "akanjs/client";
 import { Signal } from "akanjs/ui";
 
-export const ProductApi = () => {
-  return <Signal.Doc.Zone refName="product" fetch={fetch} />;
-};
+export default page().render(() => (
+  <Signal.Doc.Explorer exclude={["banner"]} defaultRefName="product" />
+));
 
-export const PingTester = () => {
-  return (
-    <Signal.RestApi.Endpoints
-      refName="base"
-      fetch={fetch}
-      endpoints={["ping"]}
-      openAll
-    />
-  );
-};
+// one endpoint, inline in a guide
+<Signal.RestApi.Endpoints refName="base" endpoints={["ping"]} openAll />
 ```
 
 ### Tab

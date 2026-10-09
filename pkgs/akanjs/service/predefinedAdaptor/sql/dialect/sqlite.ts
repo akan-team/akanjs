@@ -132,7 +132,6 @@ export class SqliteDialect implements SqlDialect {
     return { sql, params: set.map(([, json]) => json) };
   }
   affectedRows(result: unknown): number {
-    const row = result as { changes?: number | bigint; rowsAffected?: number } | null;
-    return Number(row?.changes ?? row?.rowsAffected ?? 0);
+    return Number((result as { changes?: number | bigint } | null)?.changes ?? 0);
   }
 }

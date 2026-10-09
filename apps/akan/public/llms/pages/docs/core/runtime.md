@@ -104,8 +104,6 @@ Which database mode a deployment runs and where its data lives are the deploymen
 
 - POSTGRES_INSIGHT_URL (string): Logs the SQL console in on `cluster`, as a role that may read base columns only.
 
-- LIBSQL_URL (string): Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.
-
 - REDIS_URI (string): The one Redis every instance of `multiple` or `cluster` shares; `rediss://` turns on TLS.
 
   - required outside local

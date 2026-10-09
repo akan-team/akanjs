@@ -26,6 +26,8 @@ export interface SsrLateRedirect {
   status: 303 | 307 | 308;
 }
 
+export type SsrLateControl = SsrLateRedirect | { type: "not-found" };
+
 export interface RscTraceMetadata {
   navId?: string;
   pathname: string;
@@ -58,7 +60,7 @@ export interface SsrFromRscInput {
   importmap?: Record<string, string>;
   theme?: AkanTheme;
   injectThemeInitScript?: boolean;
-  lateControl?: Promise<SsrLateRedirect | null>;
+  lateControl?: Promise<SsrLateControl | null>;
   onCancel?: (reason?: unknown) => void;
   /** Buffers until `stream.allReady` (`pageConfig.ssr: "block"`); `AKAN_SSR_WAIT_FOR_ALL_READY=1` forces it globally. */
   waitForAllReady?: boolean;

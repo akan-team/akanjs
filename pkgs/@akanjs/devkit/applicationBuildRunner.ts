@@ -67,13 +67,7 @@ const SSR_RENDER_EXTERNALS = [
 // is a no-op as of Bun 1.4.2.
 export const AKAN_BACKEND_MINIFY = { whitespace: true, syntax: true, identifiers: false } as const;
 
-export const AKAN_OPTIONAL_BACKEND_EXTERNALS = [
-  "@libsql/client",
-  "bullmq",
-  "ioredis",
-  "postgres",
-  "protobufjs",
-] as const;
+export const AKAN_OPTIONAL_BACKEND_EXTERNALS = ["bullmq", "ioredis", "postgres", "protobufjs"] as const;
 
 export class ApplicationBuildRunner {
   #app: App;

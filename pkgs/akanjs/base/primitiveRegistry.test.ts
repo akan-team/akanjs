@@ -127,6 +127,10 @@ describe("primitive scalars", () => {
     expect(() => Date._parse("invalid-date" as never)).toThrow("Invalid Date value: Invalid Date");
   });
 
+  test("pins the Date example to a fixed instant so a server render and a hydration agree", () => {
+    expect(Date[EXAMPLE_VALUE].toISOString()).toBe("2026-01-01T00:00:00.000Z");
+  });
+
   test("parses boolean wire spellings sent as text", () => {
     expect(Boolean._parse("true")).toBe(true);
     expect(Boolean._parse("false")).toBe(false);

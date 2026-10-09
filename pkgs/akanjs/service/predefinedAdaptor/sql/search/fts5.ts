@@ -18,7 +18,7 @@ const MIRROR_META_KEY = "search:mirror";
 // timer, where `optimize` rewrites the whole index.
 const MERGE_PAGES = 64;
 
-/** The SQLite/libsql index: an fts5 table with `search_doc` as its external content. */
+/** The SQLite index: an fts5 table with `search_doc` as its external content. */
 export class Fts5SearchEngine implements SearchEngine {
   readonly backfillLock = "";
   readonly merges = true;

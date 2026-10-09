@@ -2,7 +2,7 @@
 
 import { usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { AiOutlineInfoCircle, AiOutlineSearch } from "react-icons/ai";
 import { BiNetworkChart, BiTable } from "react-icons/bi";
 
@@ -24,22 +24,22 @@ import {
   SummaryGrid,
   Toolbar,
 } from "../Reference";
+import { originText, ownerOf } from "../Reference/origin";
 import { Graph } from "./Graph";
 import {
+  type ConstantSchemaOptions,
   type DatabaseModelVariant,
   type DatabaseSchema,
   databaseModelVariants,
+  type EnumSchema,
   type FieldSchema,
+  getConstantOwnerOrder,
   getConstantSchemaDoc,
   getDefaultVariant,
   getVariantTitle,
   type ScalarSchema,
 } from "./schemaDoc";
 import type { SchemaGraphEdge, SchemaGraphNode, SchemaNodeKind } from "./schemaGraph";
-
-export default function Doc() {
-  return <div />;
-}
 
 const docText = {
   pageTitle: { en: "Constant Schema Docs", ko: "Constant 스키마 문서" },
@@ -77,6 +77,7 @@ const docText = {
   selectedModel: { en: "Selected Model", ko: "선택한 모델" },
   external: { en: "External", ko: "외부" },
   selectNode: { en: "Select a node in the diagram.", ko: "다이어그램에서 노드를 선택하세요." },
+  unknownOrigin: { en: "Unknown library", ko: "출처 미상" },
 } as const;
 
 const fieldCountText = (count: number) => ({ en: `${count} fields`, ko: `필드 ${count}개` });
@@ -97,16 +98,17 @@ const headsOf = (l: ReturnType<typeof usePage>["l"], keys: (keyof typeof docText
 
 const printTable = "print:overflow-visible print:rounded-none print:border-0";
 
-interface ZoneProps {
-  models?: string[];
-  scalars?: string[];
-  enums?: string[];
+interface ZoneProps extends ConstantSchemaOptions {
   openAll?: boolean;
+  groupBy?: "lib";
 }
 
-const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
+export const Zone = ({ models, scalars, enums, include, exclude, libs, openAll, groupBy }: ZoneProps) => {
   const { l } = usePage();
-  const schemaDoc = useMemo(() => getConstantSchemaDoc({ models, scalars, enums }), [models, scalars, enums]);
+  const schemaDoc = useMemo(
+    () => getConstantSchemaDoc({ models, scalars, enums, include, exclude, libs }),
+    [models, scalars, enums, include, exclude, libs],
+  );
   const viewItems = [
     { key: "table", label: l.trans(docText.table), icon: <BiTable /> },
     { key: "diagram", label: l.trans(docText.diagram), icon: <BiNetworkChart /> },
@@ -128,6 +130,19 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
       ),
     [schemaDoc.enums, query],
   );
+  const groups = useMemo(() => {
+    const owners = groupBy === "lib" ? [...getConstantOwnerOrder(), ""] : [null];
+    const inGroup = (owner: string | null) => (entry: { origin: string[] }) =>
+      owner === null || (ownerOf(entry.origin) ?? "") === owner;
+    return owners
+      .map((owner) => ({
+        owner,
+        databases: filteredDatabases.filter(inGroup(owner)),
+        scalars: filteredScalars.filter(inGroup(owner)),
+        enums: filteredEnums.filter(inGroup(owner)),
+      }))
+      .filter((group) => group.owner === null || group.databases.length + group.scalars.length + group.enums.length);
+  }, [groupBy, filteredDatabases, filteredScalars, filteredEnums]);
   return (
     <div className="flex break-after-page flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -152,45 +167,81 @@ const Zone = ({ models, scalars, enums, openAll }: ZoneProps) => {
         />
         <Segmented className="ml-auto" items={viewItems} onChange={setViewMode} value={viewMode} />
       </Toolbar>
-      {viewMode === "diagram" ? (
-        <Diagram databases={filteredDatabases} scalars={filteredScalars} />
-      ) : (
-        <div className="flex flex-col gap-6">
-          <Section title={l.trans(docText.databaseModels)}>
-            {filteredDatabases.length ? (
-              <div className="flex flex-col gap-2">
-                {filteredDatabases.map((database) => (
-                  <Model key={database.refName} database={database} openAll={openAll} />
-                ))}
-              </div>
-            ) : (
-              <div className={docUi.emptyPanel}>{l.trans(docText.noDatabaseMatch)}</div>
-            )}
-          </Section>
-          {filteredScalars.length ? (
-            <Section title={l.trans(docText.scalarModels)}>
-              <div className="flex flex-col gap-2">
-                {filteredScalars.map((scalar) => (
-                  <Scalar key={scalar.refName} scalar={scalar} openAll={openAll} />
-                ))}
-              </div>
-            </Section>
-          ) : null}
-          {filteredEnums.length ? (
-            <Section title={l.trans(docText.enums)}>
-              <EnumList enums={filteredEnums} />
-            </Section>
-          ) : null}
-        </div>
-      )}
+      {groups.map(({ owner, databases, scalars: groupScalars, enums: groupEnums }) => {
+        const body =
+          viewMode === "diagram" ? (
+            <Diagram databases={databases} scalars={groupScalars} />
+          ) : (
+            <SchemaTables
+              databases={databases}
+              scalars={groupScalars}
+              enums={groupEnums}
+              openAll={openAll}
+              showEmpty={owner === null}
+            />
+          );
+        if (owner === null) return <Fragment key="all">{body}</Fragment>;
+        return (
+          <section className="flex flex-col gap-4" key={owner}>
+            <h2 className="border-border border-b pb-2 font-bold font-mono text-2xl">
+              {owner || l.trans(docText.unknownOrigin)}
+            </h2>
+            {body}
+          </section>
+        );
+      })}
     </div>
   );
 };
-Doc.Zone = Zone;
 
-const Print = ({ models, scalars, enums }: ZoneProps) => {
+interface SchemaTablesProps {
+  databases: DatabaseSchema[];
+  scalars: ScalarSchema[];
+  enums: EnumSchema[];
+  openAll?: boolean;
+  showEmpty: boolean;
+}
+const SchemaTables = ({ databases, scalars, enums, openAll, showEmpty }: SchemaTablesProps) => {
   const { l } = usePage();
-  const schemaDoc = useMemo(() => getConstantSchemaDoc({ models, scalars, enums }), [models, scalars, enums]);
+  return (
+    <div className="flex flex-col gap-6">
+      {databases.length || showEmpty ? (
+        <Section title={l.trans(docText.databaseModels)}>
+          {databases.length ? (
+            <div className="flex flex-col gap-2">
+              {databases.map((database) => (
+                <Model key={database.refName} database={database} openAll={openAll} />
+              ))}
+            </div>
+          ) : (
+            <div className={docUi.emptyPanel}>{l.trans(docText.noDatabaseMatch)}</div>
+          )}
+        </Section>
+      ) : null}
+      {scalars.length ? (
+        <Section title={l.trans(docText.scalarModels)}>
+          <div className="flex flex-col gap-2">
+            {scalars.map((scalar) => (
+              <Scalar key={scalar.refName} scalar={scalar} openAll={openAll} />
+            ))}
+          </div>
+        </Section>
+      ) : null}
+      {enums.length ? (
+        <Section title={l.trans(docText.enums)}>
+          <EnumList enums={enums} />
+        </Section>
+      ) : null}
+    </div>
+  );
+};
+
+export const Print = ({ models, scalars, enums, include, exclude, libs }: ZoneProps) => {
+  const { l } = usePage();
+  const schemaDoc = useMemo(
+    () => getConstantSchemaDoc({ models, scalars, enums, include, exclude, libs }),
+    [models, scalars, enums, include, exclude, libs],
+  );
   return (
     <div className="flex flex-col gap-10 bg-background text-foreground print:bg-white print:text-black">
       <div className="break-after-page">
@@ -223,17 +274,17 @@ const Print = ({ models, scalars, enums }: ZoneProps) => {
     </div>
   );
 };
-Doc.Print = Print;
-
 interface ModelProps {
   refName?: string;
   database?: DatabaseSchema;
   openAll?: boolean;
 }
 
-const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
+export const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
   const database = useMemo(
-    () => databaseProp ?? getConstantSchemaDoc({ models: refName ? [refName] : [] }).databases.at(0),
+    () =>
+      databaseProp ??
+      getConstantSchemaDoc({ models: refName ? [refName] : [], scalars: [], enums: [] }).databases.at(0),
     [databaseProp, refName],
   );
   const [variant, setVariant] = useState<DatabaseModelVariant>("full");
@@ -248,6 +299,9 @@ const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-lg">{database.modelName}</span>
             <span className={docPill("info", "font-mono")}>{database.refName}</span>
+            {database.origin.length ? (
+              <span className={docPill("muted", "font-mono")}>{l.trans(originText(database.origin))}</span>
+            ) : null}
           </div>
           <div className="text-foreground/55 text-sm">{l._(`${database.refName}.modelDesc`)}</div>
         </div>
@@ -258,17 +312,16 @@ const Model = ({ refName, database: databaseProp, openAll }: ModelProps) => {
     </Collapse>
   );
 };
-Doc.Model = Model;
-
 interface ScalarProps {
   refName?: string;
   scalar?: ScalarSchema;
   openAll?: boolean;
 }
 
-const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
+export const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
   const scalar = useMemo(
-    () => scalarProp ?? getConstantSchemaDoc({ scalars: refName ? [refName] : [] }).scalars.at(0),
+    () =>
+      scalarProp ?? getConstantSchemaDoc({ models: [], scalars: refName ? [refName] : [], enums: [] }).scalars.at(0),
     [scalarProp, refName],
   );
   const { l } = usePage();
@@ -281,6 +334,9 @@ const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-lg">{scalar.modelName}</span>
             <span className={docPill("muted", "font-mono")}>{scalar.refName}</span>
+            {scalar.origin.length ? (
+              <span className={docPill("muted", "font-mono")}>{l.trans(originText(scalar.origin))}</span>
+            ) : null}
           </div>
           <div className="text-foreground/55 text-sm">{l._(`${scalar.refName}.modelDesc`)}</div>
         </div>
@@ -290,13 +346,11 @@ const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) => {
     </Collapse>
   );
 };
-Doc.Scalar = Scalar;
-
 interface EnumProps {
   enums?: ReturnType<typeof getConstantSchemaDoc>["enums"];
 }
 
-const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
+export const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
   const { l } = usePage();
   return (
     <DocTable head={headsOf(l, ["enum", "type", "values", "usedBy"])}>
@@ -343,7 +397,6 @@ const EnumList = ({ enums = getConstantSchemaDoc().enums }: EnumProps) => {
     </DocTable>
   );
 };
-Doc.Enum = EnumList;
 
 const ModelVariantTable = ({ variant }: { variant: ReturnType<typeof getDefaultVariant> }) => {
   const { l } = usePage();

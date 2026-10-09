@@ -833,30 +833,3 @@ const describeDriver = (kind: SqlDriverKind) => {
 };
 
 for (const kind of ConformanceEnv.sqlDrivers("sql conformance")) describeDriver(kind);
-
-describe.skipIf(!ConformanceEnv.has("sql conformance", "libsql"))("sql conformance (libsql server)", () => {
-  let driver: SqlDriver;
-  beforeAll(async () => {
-    driver = await ConformanceEnv.openSqlDriver("libsqlRemote");
-  });
-  afterAll(async () => {
-    await driver?.close();
-  });
-
-  test("[B3] transaction() rolls back on a remote libsql", async () => {
-    const table = ConformanceEnv.uniqueName("tx");
-    const connection = driver.database.getConnection();
-    await connection.execute(`CREATE TABLE "${table}" ("id" TEXT)`);
-    try {
-      const transaction = driver.database.transaction(async () => {
-        await driver.database.getConnection().execute(`INSERT INTO "${table}" VALUES ('a')`);
-        throw new Error("rollback-probe");
-      });
-      await expect(transaction).rejects.toThrow("rollback-probe");
-      const row = await connection.prepare(`SELECT count(*) AS "c" FROM "${table}"`).get<{ c: number }>();
-      expect(Number(row?.c)).toBe(0);
-    } finally {
-      await connection.execute(`DROP TABLE IF EXISTS "${table}"`);
-    }
-  });
-});

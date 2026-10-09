@@ -1,6 +1,6 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
-import { decodeJwtPayload, lowerlize, mcpRefusalOf } from "akanjs/common";
+import { decodeJwtPayload, mcpRefusalOf } from "akanjs/common";
 import { type Account, type FetchProxy, getDefaultAccount } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useState } from "react";
@@ -23,13 +23,20 @@ import {
   Toolbar,
   ToolbarField,
 } from "../Reference";
-import { endpointEntriesOf, guardNamesOf, isWsEndpoint } from "./endpointEntries";
-import RestApi from "./RestApi";
-import WebSocket from "./WebSocket";
-
-export default function Doc() {
-  return <div></div>;
-}
+import { originText, ownerOf } from "../Reference/origin";
+import { Tab } from "../Tab";
+import {
+  endpointEntriesOf,
+  guardNamesOf,
+  isWsEndpoint,
+  runtimeFetch,
+  type SignalScope,
+  signalOwnerOrderOf,
+  signalRefNamesOf,
+} from "./endpointEntries";
+import { RestApiEndpoints } from "./RestApi";
+import { guardCountText, signalText } from "./signalText";
+import { WebSocketEndpoints } from "./WebSocket";
 
 interface GuardItemProps {
   active: boolean;
@@ -48,19 +55,24 @@ const GuardItem = ({ active, label, onClick }: GuardItemProps) => (
 );
 
 interface DocSettingProps {
-  fetch: FetchProxy;
+  fetch?: FetchProxy;
   search?: string;
   onSearch?: (search: string) => void;
 }
-const DocSetting = ({ fetch, search, onSearch }: DocSettingProps) => {
+export const DocSetting = ({ fetch = runtimeFetch, search, onSearch }: DocSettingProps) => {
+  const { l } = usePage();
   const tryGuards = st.use.tryGuards({ agent: false });
   const tryJwt = st.use.tryJwt({ agent: false });
   const guardNames = guardNamesOf(fetch);
   const selectionLabel =
-    tryGuards.length === 0 ? "All guards" : tryGuards.length === 1 ? tryGuards[0] : `${tryGuards.length} guards`;
+    tryGuards.length === 0
+      ? l.trans(signalText.allGuards)
+      : tryGuards.length === 1
+        ? tryGuards[0]
+        : l.trans(guardCountText(tryGuards.length));
   return (
     <Toolbar>
-      <ToolbarField label="Base URL">
+      <ToolbarField label={l.trans(signalText.baseUrl)}>
         <Copy text={fetch.origin}>
           <button className={buttonRecipe({ variant: "ghost", size: "sm" }, "font-mono text-foreground/80")}>
             {fetch.origin}
@@ -69,7 +81,7 @@ const DocSetting = ({ fetch, search, onSearch }: DocSettingProps) => {
         </Copy>
       </ToolbarField>
       {guardNames.length ? (
-        <ToolbarField label="Guards">
+        <ToolbarField label={l.trans(signalText.guards)}>
           <Dropdown
             buttonClassName={buttonRecipe({ variant: "outline", size: "sm" }, "font-normal")}
             align="start"
@@ -85,7 +97,7 @@ const DocSetting = ({ fetch, search, onSearch }: DocSettingProps) => {
                 <li data-dropdown-keep-open="">
                   <GuardItem
                     active={!tryGuards.length}
-                    label="All guards"
+                    label={l.trans(signalText.allGuards)}
                     onClick={() => {
                       st.do.setTryGuards([]);
                     }}
@@ -110,10 +122,10 @@ const DocSetting = ({ fetch, search, onSearch }: DocSettingProps) => {
           />
         </ToolbarField>
       ) : null}
-      <ToolbarField label="Auth">
+      <ToolbarField label={l.trans(signalText.auth)}>
         <DocAuthModal>
           <button className={buttonRecipe({ variant: tryJwt ? "primary" : "outline", size: "sm" })} type="button">
-            <BiLock /> {tryJwt ? "Authorized" : "Anonymous"}
+            <BiLock /> {l.trans(tryJwt ? signalText.authorized : signalText.anonymous)}
           </button>
         </DocAuthModal>
       </ToolbarField>
@@ -125,19 +137,18 @@ const DocSetting = ({ fetch, search, onSearch }: DocSettingProps) => {
           inputClassName="w-56 pl-9"
           nullable
           onChange={onSearch}
-          placeholder="Search endpoints"
+          placeholder={l.trans(signalText.searchEndpoints)}
           value={search ?? ""}
         />
       ) : null}
     </Toolbar>
   );
 };
-Doc.Setting = DocSetting;
-
 interface DocAuthModalProps {
   children: ReactNode;
 }
-const DocAuthModal = ({ children }: DocAuthModalProps) => {
+export const DocAuthModal = ({ children }: DocAuthModalProps) => {
+  const { l } = usePage();
   const tryJwt = st.use.tryJwt({ agent: false });
   const [jwt, setJwt] = useState(tryJwt);
   const [modalOpen, setModalOpen] = useState(false);
@@ -159,7 +170,7 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
         onCancel={() => {
           setModalOpen(false);
         }}
-        title="Set JWT for Authorization"
+        title={l.trans(signalText.setJwtTitle)}
         action={
           <button
             className={buttonRecipe({ variant: "primary" }, "w-full")}
@@ -172,12 +183,12 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
               setModalOpen(false);
             }}
           >
-            <BiLock /> Set Authorization
+            <BiLock /> {l.trans(signalText.setAuthorization)}
           </button>
         }
       >
         <div className="flex w-full flex-col gap-2">
-          <div className={docUi.sectionLabel}>Bearer token</div>
+          <div className={docUi.sectionLabel}>{l.trans(signalText.bearerToken)}</div>
           <Input
             inputClassName="w-full font-mono text-xs"
             placeholder="eyJhbGciOi…"
@@ -186,36 +197,27 @@ const DocAuthModal = ({ children }: DocAuthModalProps) => {
             validate={() => true}
           />
         </div>
-        <Code code={accountStr} label="Account decoded" />
+        <Code code={accountStr} label={l.trans(signalText.accountDecoded)} />
       </Modal>
     </>
   );
 };
-Doc.AuthModal = DocAuthModal;
-
-interface DocSignalsProps {
-  fetch: FetchProxy;
+interface DocSignalsProps extends SignalScope {
+  fetch?: FetchProxy;
 }
-const DocSignals = ({ fetch }: DocSignalsProps) => {
-  const signalEntries = Object.entries(fetch.serializedSignal).sort(([keyA], [keyB]) =>
-    lowerlize(keyA) > lowerlize(keyB) ? 1 : -1,
-  );
-  return (
-    <div className="flex flex-col gap-2">
-      {signalEntries.map(([refName], idx) => (
-        <DocSignal key={idx} refName={refName} fetch={fetch} />
-      ))}
-    </div>
-  );
-};
-
-Doc.DocSignals = DocSignals;
+export const DocSignals = ({ fetch = runtimeFetch, include, exclude, libs }: DocSignalsProps) => (
+  <div className="flex flex-col gap-2">
+    {signalRefNamesOf(fetch, { include, exclude, libs }).map((refName) => (
+      <DocSignal key={refName} refName={refName} fetch={fetch} />
+    ))}
+  </div>
+);
 
 interface DocSignalProps {
   refName: string;
-  fetch: FetchProxy;
+  fetch?: FetchProxy;
 }
-const DocSignal = ({ refName, fetch }: DocSignalProps) => {
+export const DocSignal = ({ refName, fetch = runtimeFetch }: DocSignalProps) => {
   const { l } = usePage();
   const desc = dictText(l, `${refName}.modelDesc`);
   return (
@@ -224,53 +226,113 @@ const DocSignal = ({ refName, fetch }: DocSignalProps) => {
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-lg">{refName}</span>
-            <span className={docPill("muted")}>Signal</span>
+            <span className={docPill("muted")}>{l.trans(signalText.signal)}</span>
           </div>
           {desc ? <div className="text-foreground/55 text-sm">{desc}</div> : null}
         </div>
       }
     >
-      <RestApi.Endpoints refName={refName} fetch={fetch} />
+      <RestApiEndpoints refName={refName} fetch={fetch} />
     </Collapse>
   );
 };
-Doc.DocSignal = DocSignal;
 
 interface ZoneProps {
   refName: string;
-  fetch: FetchProxy;
+  fetch?: FetchProxy;
   openAll?: boolean;
 }
-const Zone = ({ refName, fetch, openAll }: ZoneProps) => {
+export const Zone = ({ refName, fetch = runtimeFetch, openAll }: ZoneProps) => {
   const { l } = usePage();
   const [search, setSearch] = useState("");
   const desc = dictText(l, `${refName}.modelDesc`);
   const entries = endpointEntriesOf(refName, fetch);
   const wsEntries = entries.filter(({ endpoint }) => isWsEndpoint(endpoint));
   const mcpEntries = entries.filter(({ key, endpoint }) => !mcpRefusalOf(endpoint, { refName, key }));
+  const origin = fetch.serializedSignal[refName]?.origin;
   return (
     <div className="flex break-after-page flex-col gap-6">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className={docUi.pageTitle}>{refName}</h1>
-          <span className={docPill("muted")}>Signal</span>
+          <span className={docPill("muted")}>{l.trans(signalText.signal)}</span>
+          {origin?.length ? <span className={docPill("muted", "font-mono")}>{l.trans(originText(origin))}</span> : null}
         </div>
         {desc ? <p className={docUi.sectionDescription}>{desc}</p> : null}
       </div>
       <SummaryGrid>
-        <SummaryCard label="Endpoints" value={entries.length} />
-        <SummaryCard label="REST API" value={entries.length - wsEntries.length} />
-        <SummaryCard label="Web Socket" value={wsEntries.length} />
-        <SummaryCard label="MCP Tools" value={mcpEntries.length} />
+        <SummaryCard label={l.trans(signalText.endpoints)} value={entries.length} />
+        <SummaryCard label={l.trans(signalText.restApi)} value={entries.length - wsEntries.length} />
+        <SummaryCard label={l.trans(signalText.webSocket)} value={wsEntries.length} />
+        <SummaryCard label={l.trans(signalText.mcpTools)} value={mcpEntries.length} />
       </SummaryGrid>
       <DocSetting fetch={fetch} onSearch={setSearch} search={search} />
-      <Section title="REST API">
-        <RestApi.Endpoints refName={refName} fetch={fetch} openAll={openAll} search={search} />
+      <Section title={l.trans(signalText.restApi)}>
+        <RestApiEndpoints refName={refName} fetch={fetch} openAll={openAll} search={search} />
       </Section>
-      <Section title="Web Socket">
-        <WebSocket.Endpoints refName={refName} fetch={fetch} openAll={openAll} search={search} />
+      <Section title={l.trans(signalText.webSocket)}>
+        <WebSocketEndpoints refName={refName} fetch={fetch} openAll={openAll} search={search} />
       </Section>
     </div>
   );
 };
-Doc.Zone = Zone;
+
+interface ExplorerProps extends SignalScope {
+  className?: string;
+  fetch?: FetchProxy;
+  defaultRefName?: string;
+  openAll?: boolean;
+  groupBy?: "lib";
+}
+export const Explorer = ({
+  className,
+  fetch = runtimeFetch,
+  include,
+  exclude,
+  libs,
+  defaultRefName,
+  openAll,
+  groupBy,
+}: ExplorerProps) => {
+  const { l } = usePage();
+  const refNames = signalRefNamesOf(fetch, { include, exclude, libs });
+  if (!refNames.length) return <div className={docUi.emptyPanel}>{l.trans(signalText.noSignal)}</div>;
+  const groups =
+    groupBy === "lib"
+      ? [...signalOwnerOrderOf(fetch), ""]
+          .map((owner) => ({
+            owner,
+            refNames: refNames.filter((refName) => (ownerOf(fetch.serializedSignal[refName]?.origin) ?? "") === owner),
+          }))
+          .filter((group) => group.refNames.length)
+      : [{ owner: null, refNames }];
+  const ordered = groups.flatMap((group) => group.refNames);
+  const firstRefName = defaultRefName && ordered.includes(defaultRefName) ? defaultRefName : ordered[0];
+  return (
+    <Tab className={cn("flex w-full items-start gap-8", className)} defaultMenu={firstRefName}>
+      <aside className="sticky top-0 flex max-h-screen w-56 shrink-0 flex-col gap-4 overflow-y-auto py-2">
+        {groups.map((group) => (
+          <div className="flex flex-col gap-1" key={group.owner ?? ""}>
+            {group.owner === null ? null : (
+              <div className={cn(docUi.sectionLabel, "px-3")}>{group.owner || l.trans(signalText.unknownOrigin)}</div>
+            )}
+            <Tab.Menus className="flex flex-col items-stretch gap-0.5">
+              {group.refNames.map((refName) => (
+                <Tab.Menu key={refName} className="truncate text-left font-mono" menu={refName} scrollToTop>
+                  {refName}
+                </Tab.Menu>
+              ))}
+            </Tab.Menus>
+          </div>
+        ))}
+      </aside>
+      <div className="min-w-0 flex-1">
+        {ordered.map((refName) => (
+          <Tab.Panel key={refName} loading="lazy" menu={refName}>
+            <Zone refName={refName} fetch={fetch} openAll={openAll} />
+          </Tab.Panel>
+        ))}
+      </div>
+    </Tab>
+  );
+};

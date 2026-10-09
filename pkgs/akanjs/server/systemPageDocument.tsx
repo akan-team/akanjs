@@ -57,9 +57,45 @@ a { color: inherit; }
 .akan-system-details { margin-top: 28px; max-height: 260px; overflow: auto; border-radius: 18px; background: rgba(26, 26, 26, 0.82); border: 1px solid rgba(240, 32, 32, 0.22); padding: 16px; color: rgba(255, 255, 255, 0.78); font-size: 0.82rem; line-height: 1.55; white-space: pre-wrap; }
 `;
 
-export function createSystemPageDocument(options: SystemPageOptions): ReactNode {
+/** The card alone, styled by the app's own tokens: what a not-found raised after the layouts streamed renders in place. */
+export const SystemPageMain = (options: Omit<SystemPageOptions, "lang" | "stylesheetHref" | "script">) => {
   const copy = SYSTEM_PAGE_STATUS_COPY[options.kind];
   const details = options.showDetails ? getSystemPageErrorDetails(options.error) : null;
+  return (
+    <main className="akan-system-page min-h-screen bg-background text-foreground">
+      <section
+        className="akan-system-card rounded-3xl border border-foreground/10 bg-foreground/4 p-8 shadow-2xl backdrop-blur-xl"
+        aria-labelledby="akan-system-title"
+      >
+        <p className="akan-system-status text-primary">{copy.status}</p>
+        <p className="akan-system-eyebrow text-primary">{copy.eyebrow}</p>
+        <h1 id="akan-system-title" className="akan-system-title font-black">
+          {copy.title}
+        </h1>
+        <p className="akan-system-description text-foreground/70">{copy.description}</p>
+        <p className="akan-system-path border border-foreground/10 bg-muted/50" aria-label="Requested path">
+          {options.pathname}
+        </p>
+        <div className="akan-system-actions">
+          <a className="akan-system-action" href={options.homeHref}>
+            {copy.actionLabel}
+          </a>
+          <a className="akan-system-action akan-system-secondary" href={options.pathname}>
+            Try again
+          </a>
+        </div>
+        {details ? (
+          <pre className="akan-system-details" aria-label="Development error details">
+            {details}
+          </pre>
+        ) : null}
+      </section>
+    </main>
+  );
+};
+
+export function createSystemPageDocument(options: SystemPageOptions): ReactNode {
+  const copy = SYSTEM_PAGE_STATUS_COPY[options.kind];
   const title = `${copy.status} - ${copy.eyebrow}`;
 
   return (
@@ -75,35 +111,7 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
         <style data-akan-system-page>{SYSTEM_PAGE_STYLE}</style>
       </head>
       <body>
-        <main className="akan-system-page min-h-screen bg-background text-foreground">
-          <section
-            className="akan-system-card rounded-3xl border border-foreground/10 bg-foreground/4 p-8 shadow-2xl backdrop-blur-xl"
-            aria-labelledby="akan-system-title"
-          >
-            <p className="akan-system-status text-primary">{copy.status}</p>
-            <p className="akan-system-eyebrow text-primary">{copy.eyebrow}</p>
-            <h1 id="akan-system-title" className="akan-system-title font-black">
-              {copy.title}
-            </h1>
-            <p className="akan-system-description text-foreground/70">{copy.description}</p>
-            <p className="akan-system-path border border-foreground/10 bg-muted/50" aria-label="Requested path">
-              {options.pathname}
-            </p>
-            <div className="akan-system-actions">
-              <a className="akan-system-action" href={options.homeHref}>
-                {copy.actionLabel}
-              </a>
-              <a className="akan-system-action akan-system-secondary" href={options.pathname}>
-                Try again
-              </a>
-            </div>
-            {details ? (
-              <pre className="akan-system-details" aria-label="Development error details">
-                {details}
-              </pre>
-            ) : null}
-          </section>
-        </main>
+        <SystemPageMain {...options} />
         {options.script ? (
           // biome-ignore lint/security/noDangerouslySetInnerHtml: the dev HMR client, a constant the server owns
           <script dangerouslySetInnerHTML={{ __html: options.script }} />

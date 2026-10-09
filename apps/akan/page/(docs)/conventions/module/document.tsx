@@ -1317,14 +1317,14 @@ const count = await this.countBySearch(text, statuses);`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>Works in every database mode.</strong> For the same text, SQLite, libSQL and Postgres match
-                    the same documents; only the order can differ on Postgres.
+                    <strong>Works in every database mode.</strong> For the same text, SQLite and Postgres match the same
+                    documents; only the order can differ on Postgres.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>모든 데이터베이스 모드에서 동작합니다.</strong> 같은 텍스트라면 SQLite, libSQL, Postgres가
-                    같은 document를 찾고, Postgres에서는 순서만 다를 수 있습니다.
+                    <strong>모든 데이터베이스 모드에서 동작합니다.</strong> 같은 텍스트라면 SQLite와 Postgres가 같은
+                    document를 찾고, Postgres에서는 순서만 다를 수 있습니다.
                   </span>
                 ),
               })}

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { type EnumInstance, enumOf, FIELD_META, Int } from "akanjs/base";
 import { ConstantRegistry, field } from "akanjs/constant";
 import { makeRef } from "../testHelpers.fixture";
-import { databaseModelVariants, getConstantSchemaDoc } from "./schemaDoc";
+import { databaseModelVariants, getConstantOwnerOrder, getConstantSchemaDoc } from "./schemaDoc";
 
 class ConstantDocRole extends enumOf("constantDocRole", ["admin", "user"] as const) {}
 ConstantRegistry.enum.set("constantDocRole", ConstantDocRole as unknown as EnumInstance);
@@ -12,6 +12,58 @@ const ConstantDocAddress = makeRef({
   zip: field(Int, { default: 10000, min: 10000 }),
 });
 ConstantRegistry.buildScalar("constantDocAddress", ConstantDocAddress, { ConstantDocAddress });
+
+class ConstantDocTier extends enumOf("constantDocTier", ["free", "paid"] as const) {}
+ConstantRegistry.enum.set("constantDocTier", ConstantDocTier as unknown as EnumInstance);
+
+const ConstantDocGeo = makeRef({ lat: field(Int, { default: 0 }) });
+ConstantRegistry.buildScalar("constantDocGeo", ConstantDocGeo, { ConstantDocGeo });
+
+const ConstantDocPlace = makeRef({
+  geo: field(ConstantDocGeo),
+  tier: field(String, { enum: ConstantDocTier } as never),
+});
+ConstantRegistry.buildScalar("constantDocPlace", ConstantDocPlace, { ConstantDocPlace });
+
+const ConstantDocUnused = makeRef({ note: field(String) });
+ConstantRegistry.buildScalar("constantDocUnused", ConstantDocUnused, { ConstantDocUnused });
+
+const ConstantDocBadge = makeRef({ label: field(String) });
+ConstantRegistry.buildScalar("constantDocBadge", ConstantDocBadge, { ConstantDocBadge }, "docLib");
+
+const ConstantDocMemberInput = makeRef({ badge: field(ConstantDocBadge) });
+ConstantRegistry.buildModel(
+  "constantDocMember",
+  ConstantDocMemberInput,
+  ConstantDocMemberInput,
+  ConstantDocMemberInput,
+  ConstantDocMemberInput,
+  makeRef({ count: field(Int, { default: 0 }) }),
+  {},
+  "docLib",
+);
+const ConstantDocMemberApp = makeRef({ badge: field(ConstantDocBadge), nick: field(String) });
+ConstantRegistry.buildModel(
+  "constantDocMember",
+  ConstantDocMemberApp,
+  ConstantDocMemberApp,
+  ConstantDocMemberApp,
+  ConstantDocMemberApp,
+  makeRef({ count: field(Int, { default: 0 }) }),
+  {},
+  "docApp",
+);
+
+const ConstantDocShopInput = makeRef({ place: field(ConstantDocPlace) });
+ConstantRegistry.buildModel(
+  "constantDocShop",
+  ConstantDocShopInput,
+  ConstantDocShopInput,
+  ConstantDocShopInput,
+  ConstantDocShopInput,
+  makeRef({ count: field(Int, { default: 0 }) }),
+  { ConstantDocShopInput },
+);
 
 const ConstantDocUserInput = makeRef({
   name: field(String, { minlength: 2 }),
@@ -95,5 +147,51 @@ describe("constant schema docs", () => {
       true,
     );
     expect(zipField?.constraints).toContain("min 10000");
+  });
+
+  test("narrows scalars and enums to what the selected models reach", () => {
+    const doc = getConstantSchemaDoc({ models: ["constantDocShop"] });
+
+    expect(doc.databases.map((database) => database.refName)).toEqual(["constantDocShop"]);
+    expect(doc.scalars.map((scalar) => scalar.refName)).toEqual(["constantDocGeo", "constantDocPlace"]);
+    expect(doc.enums.map((enumSchema) => enumSchema.key)).toEqual(["constantDocTier"]);
+  });
+
+  test("reads an empty list as none and an omitted one as every registered entry", () => {
+    const empty = getConstantSchemaDoc({ models: [] });
+    expect(empty.databases).toEqual([]);
+    expect(empty.scalars).toEqual([]);
+    expect(empty.enums).toEqual([]);
+
+    const all = getConstantSchemaDoc();
+    expect(all.scalars.map((scalar) => scalar.refName)).toContain("constantDocUnused");
+    expect(all.databases.map((database) => database.refName)).toContain("constantDocUser");
+  });
+
+  test("starts from include and stops at exclude", () => {
+    const included = getConstantSchemaDoc({ include: ["constantDocShop", "constantDocUnused"] });
+    expect(included.databases.map((database) => database.refName)).toEqual(["constantDocShop"]);
+    expect(included.scalars.map((scalar) => scalar.refName)).toEqual([
+      "constantDocGeo",
+      "constantDocPlace",
+      "constantDocUnused",
+    ]);
+
+    const excluded = getConstantSchemaDoc({ models: ["constantDocShop"], exclude: ["constantDocPlace"] });
+    expect(excluded.scalars).toEqual([]);
+    expect(excluded.enums).toEqual([]);
+    expect(excluded.relations.find((relation) => relation.fieldKey === "place")?.external).toBe(true);
+  });
+
+  test("narrows by the owning library and stops at another library's scalars", () => {
+    const doc = getConstantSchemaDoc({ libs: ["docApp"] });
+    expect(doc.databases.map((database) => database.refName)).toEqual(["constantDocMember"]);
+    expect(doc.databases[0].origin).toEqual(["docLib", "docApp"]);
+    expect(doc.scalars).toEqual([]);
+    expect(doc.relations.find((relation) => relation.fieldKey === "badge")?.external).toBe(true);
+
+    const both = getConstantSchemaDoc({ libs: ["docApp", "docLib"] });
+    expect(both.scalars.map((scalar) => scalar.refName)).toEqual(["constantDocBadge"]);
+    expect(getConstantOwnerOrder().slice(0, 2)).toEqual(["docApp", "docLib"]);
   });
 });

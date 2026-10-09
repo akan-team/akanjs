@@ -342,7 +342,7 @@ describe("AkanAppConfig", () => {
     const clusterConfig = configOf({ modes: ["cluster"] });
     const edgeAndCloud = configOf({ modes: ["single", "cluster"] });
 
-    for (const driver of ["ioredis", "bullmq", "postgres", "@libsql/client", "protobufjs"])
+    for (const driver of ["ioredis", "bullmq", "postgres", "protobufjs"])
       expect(dependenciesOf(singleConfig)).not.toHaveProperty(driver);
     expect(dependenciesOf(multipleConfig)).toMatchObject({
       bullmq: runtimeDependencies.bullmq,
@@ -353,9 +353,9 @@ describe("AkanAppConfig", () => {
       ioredis: runtimeDependencies.ioredis,
       postgres: runtimeDependencies.postgres,
     });
-    // multiple opens the same SQLite as single and Redis replaced protobuf on the wire, so neither ships by default.
+    // Redis replaced protobuf on the wire, so it ships with no mode.
     for (const config of [multipleConfig, clusterConfig])
-      for (const driver of ["@libsql/client", "protobufjs"]) expect(dependenciesOf(config)).not.toHaveProperty(driver);
+      expect(dependenciesOf(config)).not.toHaveProperty("protobufjs");
     expect(dependenciesOf(multipleConfig)).not.toHaveProperty("postgres");
     // One image for an edge site and a cloud cluster carries both modes' drivers, and says which it carries.
     expect(dependenciesOf(edgeAndCloud)).toMatchObject({ postgres: runtimeDependencies.postgres });

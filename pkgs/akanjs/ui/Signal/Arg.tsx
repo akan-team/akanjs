@@ -12,7 +12,7 @@ import { Input } from "../Input";
 import { dictText, docDash, docUi } from "../Reference";
 import { Select } from "../Select";
 import { Tooltip } from "../Tooltip";
-import UiObject from "./Object";
+import { ObjectType } from "./Object";
 import { signalUi } from "./style";
 
 interface ArgProps {
@@ -80,7 +80,7 @@ const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
                 {label ? <div className="text-foreground/45 text-xs">{label}</div> : null}
               </td>
               <td>
-                <UiObject.Type objRef={argRef as ConstantCls} arrDepth={arg.arrDepth ?? 0} nullable={arg.nullable} />
+                <ObjectType objRef={argRef as ConstantCls} arrDepth={arg.arrDepth ?? 0} nullable={arg.nullable} />
               </td>
               <td>
                 {argEnum ? (

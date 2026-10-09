@@ -382,14 +382,15 @@ export default page().render(() => {
     l.trans({
       en: (
         <>
-          <strong>Defaults follow the database mode.</strong> The database becomes libsql in <code>multiple</code> mode
-          and Postgres in <code>cluster</code> mode. Both modes move cache and websocket to Redis, and queue to BullMQ.
+          <strong>Defaults follow the database mode.</strong> The database stays SQLite in <code>multiple</code> mode
+          and becomes Postgres in <code>cluster</code> mode. Both modes move cache and websocket to Redis, and queue to
+          BullMQ.
         </>
       ),
       ko: (
         <>
-          <strong>기본 구현은 database mode를 따릅니다.</strong> database는 <code>multiple</code> 모드에서 libsql,{" "}
-          <code>cluster</code> 모드에서 Postgres로 바뀝니다. 두 모드 모두 cache와 websocket은 Redis, queue는 BullMQ를
+          <strong>기본 구현은 database mode를 따릅니다.</strong> database는 <code>multiple</code> 모드에서도 SQLite이고,{" "}
+          <code>cluster</code> 모드에서는 Postgres로 바뀝니다. 두 모드 모두 cache와 websocket은 Redis, queue는 BullMQ를
           씁니다.
         </>
       ),

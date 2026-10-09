@@ -286,8 +286,6 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 
 **One image, several deployments.** With `["single", "cluster"]` the same image runs an edge site and a cloud cluster, and each deployment names its mode with `AKAN_DATABASE_MODE`.
 
-**libSQL is opt-in.** No mode ships `@libsql/client`, so an app that applies `LibsqlDatabase` itself lists it in `externalLibs`.
-
 **A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
 
 A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.

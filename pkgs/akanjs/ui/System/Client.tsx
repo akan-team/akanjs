@@ -28,7 +28,6 @@ import { Logger } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import { DraftStore, getBaseSearchParam, st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import {
   Children,
   type HTMLAttributes,
@@ -42,6 +41,7 @@ import {
   useState,
 } from "react";
 import { AgentActivity } from "use-agentic";
+import { animated } from "../animated";
 import { getFrameCssVars } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";

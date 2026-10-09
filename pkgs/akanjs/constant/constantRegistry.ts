@@ -24,6 +24,16 @@ export class ConstantRegistry {
   static enum = new Map<string, EnumInstance>();
   static value = new Map<string, unknown>();
   static modelRefNameMap = new Map<Cls, string>();
+  //? The app or lib that registered each entry, first registrant first: an app extending a lib model reads `["shared", "sceny"]`.
+  static origin = new Map<`${ConstantOriginKind}:${string}`, string[]>();
+  static getOrigin(kind: ConstantOriginKind, key: string): string[] {
+    return ConstantRegistry.origin.get(`${kind}:${key}`) ?? [];
+  }
+  static #addOrigin(kind: ConstantOriginKind, key: string, origin?: string) {
+    if (!origin) return;
+    const chain = ConstantRegistry.getOrigin(kind, key);
+    if (chain.at(-1) !== origin) ConstantRegistry.origin.set(`${kind}:${key}`, [...chain, origin]);
+  }
   static has(modelRef: Cls): boolean {
     return ConstantRegistry.modelRefNameMap.has(modelRef);
   }
@@ -123,6 +133,7 @@ export class ConstantRegistry {
     lightRef: LightRef,
     insightRef: InsightRef,
     constExports: Record<string, unknown>,
+    origin?: string,
   ) {
     const modelRefSet = new Set([inputRef, objectRef, fullRef, lightRef, insightRef]);
     for (const modelRef of modelRefSet) ConstantRegistry.modelRefNameMap.set(modelRef, refName);
@@ -177,13 +188,15 @@ export class ConstantRegistry {
       _StateInsight: null as unknown as GetStateObject<Insight>,
     };
     ConstantRegistry.setDatabase(refName, cnst as unknown as ConstantModel);
-    ConstantRegistry.#registerExports(constExports, modelRefSet);
+    ConstantRegistry.#addOrigin("database", refName, origin);
+    ConstantRegistry.#registerExports(constExports, modelRefSet, origin);
     return cnst;
   }
   static buildScalar<T extends string, Model>(
     refName: T,
     Model: Cls<Model>,
     constExports: Record<string, unknown>,
+    origin?: string,
   ): ScalarConstantModel<T, Model, DefaultOf<Model>, DocumentModel<Model>, PurifiedModel<Model>> {
     ConstantRegistry.modelRefNameMap.set(Model, refName);
     const cnst = {
@@ -193,16 +206,21 @@ export class ConstantRegistry {
       _Doc: null as unknown as DocumentModel<Model>,
       _PurifiedInput: null as unknown as PurifiedModel<Model>,
     };
+    //? A second scalar under a taken refName is ignored, so only the registrant that won is recorded.
+    if (!ConstantRegistry.scalar.has(refName)) ConstantRegistry.#addOrigin("scalar", refName, origin);
     ConstantRegistry.setScalar(refName, cnst as unknown as ScalarConstantModel);
-    ConstantRegistry.#registerExports(constExports, new Set([Model]));
+    ConstantRegistry.#registerExports(constExports, new Set([Model]), origin);
     return cnst;
   }
-  static #registerExports(constExports: Record<string, unknown>, modelRefs: Set<unknown>) {
+  static #registerExports(constExports: Record<string, unknown>, modelRefs: Set<unknown>, origin?: string) {
     for (const [key, value] of Object.entries(constExports)) {
       if (modelRefs.has(value)) continue;
-      if (typeof value === "function" && isEnum(value as Cls))
-        ConstantRegistry.enum.set(lowerlize(key), value as EnumInstance);
-      else ConstantRegistry.value.set(key, value);
+      if (typeof value === "function" && isEnum(value as Cls)) {
+        const enumKey = lowerlize(key);
+        //? A module re-exporting another's enum hands over the same class, which is not a new registrant.
+        if (ConstantRegistry.enum.get(enumKey) !== value) ConstantRegistry.#addOrigin("enum", enumKey, origin);
+        ConstantRegistry.enum.set(enumKey, value as EnumInstance);
+      } else ConstantRegistry.value.set(key, value);
     }
   }
   static serialize<Value>(modelRef: Cls | Cls[], value: Value, nullable: boolean = false, of?: Cls | Cls[]): Value {
@@ -237,6 +255,8 @@ export class ConstantRegistry {
     } else throw new Error(`No deserialize function for modelRef: ${modelRef}`);
   }
 }
+
+export type ConstantOriginKind = "database" | "scalar" | "enum";
 
 export interface ConstantModel<
   T extends string = string,

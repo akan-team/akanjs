@@ -80,7 +80,6 @@ export default page().render(() => {
                     <div className="mb-2 font-bold">{l.trans({ en: "Data", ko: "Data" })}</div>
                     <div className="flex flex-wrap gap-2">
                       <span className={badgeRecipe({ variant: "outline" })}>SQLite</span>
-                      <span className={badgeRecipe({ variant: "outline" })}>libSQL</span>
                       <span className={badgeRecipe({ variant: "outline" })}>Postgres</span>
                       <span className={badgeRecipe({ variant: "outline" })}>Redis</span>
                     </div>
@@ -153,12 +152,7 @@ export default page().render(() => {
                       <BiLinkExternal /> SQLite
                     </button>
                   </Link>
-                  {/* <Link href="https://turso.tech/libsql" target="_blank">
-                    <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
-                      <BiLinkExternal /> libSQL
-                    </button>
-                  </Link>
-                  <Link href="https://www.postgresql.org/" target="_blank">
+                  {/* <Link href="https://www.postgresql.org/" target="_blank">
                     <button className={buttonRecipe({ variant: "outline", size: "xs" })}>
                       <BiLinkExternal /> PostgreSQL
                     </button>

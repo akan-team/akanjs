@@ -9,7 +9,13 @@ import { renderToReadableStream } from "react-dom/server.browser";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
 import { concatBytes } from "./rscHttp";
-import type { SsrChunkRegistryStats, SsrDocumentOptions, SsrFromRscInput, SsrLateRedirect } from "./ssrTypes";
+import type {
+  SsrChunkRegistryStats,
+  SsrDocumentOptions,
+  SsrFromRscInput,
+  SsrLateControl,
+  SsrLateRedirect,
+} from "./ssrTypes";
 
 const DEFAULT_SSR_CHUNK_REGISTRY_MAX_ENTRIES = 1024;
 const DEFAULT_MAX_PENDING_INLINE_RSC_SCRIPTS = 32;
@@ -198,7 +204,7 @@ export class ExpectedLateRedirectStderrSuppressor {
   #lateRedirect = false;
   #lateControlSettled = false;
 
-  private constructor(lateControl: Promise<SsrLateRedirect | null>) {
+  private constructor(lateControl: Promise<SsrLateControl | null>) {
     lateControl
       .then((control) => {
         this.#lateRedirect = control?.type === "redirect";
@@ -212,7 +218,7 @@ export class ExpectedLateRedirectStderrSuppressor {
       });
   }
 
-  static start(lateControl?: Promise<SsrLateRedirect | null>): ExpectedLateRedirectStderrSuppressor | null {
+  static start(lateControl?: Promise<SsrLateControl | null>): ExpectedLateRedirectStderrSuppressor | null {
     if (!lateControl) return null;
     // A process-wide stderr hook, so production only gets it when asked for diagnosis.
     if (process.env.NODE_ENV === "production" && process.env.AKAN_SUPPRESS_LATE_REDIRECT_STDERR !== "1") return null;
@@ -339,7 +345,7 @@ export function interleaveRscScriptsWithHtml(
   rscClientStream: ReadableStream<Uint8Array>,
   options: {
     bootstrapModuleScripts?: string;
-    lateControl?: Promise<SsrLateRedirect | null>;
+    lateControl?: Promise<SsrLateControl | null>;
     maxPendingRscScripts?: number;
     onPendingRscScriptsSize?: (size: number) => void;
     onComplete?: () => void;
@@ -435,7 +441,7 @@ export function interleaveRscScriptsWithHtml(
         const rscPump = pumpRscScripts();
         const lateControlPump = options.lateControl?.then((control) => {
           try {
-            if (!control || errored) return;
+            if (control?.type !== "redirect" || errored) return;
             pendingControlScripts.push(encoder.encode(createSoftRedirectScript(control)));
             notifyScriptAvailable();
           } finally {
@@ -706,7 +712,7 @@ export class SsrFromRscRenderer {
 
   static #suppressExpectedLateRedirectError(
     thenable: PromiseLike<ReactNode>,
-    lateControl?: Promise<SsrLateRedirect | null>,
+    lateControl?: Promise<SsrLateControl | null>,
   ): Promise<ReactNode> {
     const promise = Promise.resolve(thenable);
     if (!lateControl) return promise;

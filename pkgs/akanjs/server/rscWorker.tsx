@@ -40,7 +40,7 @@ import {
 import { createAkanLocaleAlternateHeadSnapshot, mergeAkanHeadSnapshots, renderAkanHeadSnapshot } from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
-import { RouteElementComposer } from "./routeElementComposer";
+import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import {
   type AkanRscPatchDecision,
   createAkanRouterState,
@@ -69,7 +69,12 @@ import {
   shouldUseRscWorkerFullResultCache,
 } from "./rscWorkerCache";
 import type { RscTraceMetadata } from "./ssrTypes";
-import { createSystemPageDocument, getPathnameLocale, getSystemPageHomeHref } from "./systemPageDocument";
+import {
+  createSystemPageDocument,
+  getPathnameLocale,
+  getSystemPageHomeHref,
+  SystemPageMain,
+} from "./systemPageDocument";
 
 interface InitMsg {
   type: "init";
@@ -570,12 +575,15 @@ export class RscRenderer {
         }
         let element: ReactNode;
         let effectivePatchDecision = safePatchDecision;
+        const notFoundProbe = { hit: false };
+        const notFound = this.#notFoundInPlace(urlObj, notFoundProbe);
         if (match && safePatchDecision.status === "patch" && safePatchDecision.patch) {
           const suffixElement = await this.#renderMatchedSuffix(
             urlObj,
             match,
             safePatchDecision.patch.patchStartIndex,
             searchParams,
+            notFound,
           );
           if (suffixElement === null) {
             effectivePatchDecision = {
@@ -583,9 +591,9 @@ export class RscRenderer {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            element = await this.#renderMatched(urlObj, match, searchParams);
+            element = await this.#renderMatched(urlObj, match, searchParams, notFound);
           } else element = suffixElement;
-        } else if (match) element = await this.#renderMatched(urlObj, match, searchParams);
+        } else if (match) element = await this.#renderMatched(urlObj, match, searchParams, notFound);
         else element = await this.#renderNotFound(urlObj);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
@@ -605,6 +613,7 @@ export class RscRenderer {
           }),
           status: match ? undefined : 404,
           trace,
+          notFoundProbe,
           onComplete: ({ chunks, bytes, chunksCount, control, lateControlSent }) => {
             const cacheState = shouldStoreRouteCache({
               policy: getRequestPolicy(),
@@ -829,6 +838,8 @@ export class RscRenderer {
       collectChunks?: boolean;
       status?: number;
       trace?: RscTraceMetadata;
+      /** Raised by a render that answered `router.notFound()` in place, which React never reports as an error. */
+      notFoundProbe?: { hit: boolean };
       onComplete?: (
         result: Omit<FlightRenderResult, "cancelled">,
       ) => Promise<RouteCacheRenderState> | RouteCacheRenderState;
@@ -884,17 +895,30 @@ export class RscRenderer {
       reportedTheme = theme;
       this.#send({ type: "theme", requestId: options.requestId, theme });
     };
-    const sendLateRedirect = () => {
-      if (!options.requestId || lateControlSent || controlRef.current?.type !== "redirect") return;
-      // Once bytes have left, only a redirect can still become a navigation; notFound/error stay in React's error path.
+    const readProbe = () => {
+      if (!controlRef.current && options.notFoundProbe?.hit) controlRef.current = { type: "not-found" };
+    };
+    // Once bytes have left the status is the host's to decide: a redirect becomes a navigation, a not-found a 404 only
+    // where the host still holds the response (a blocking or crawler render). An error stays in React's error path.
+    const sendLateControl = () => {
+      const control = controlRef.current;
+      if (!options.requestId || lateControlSent || !control || control.type === "error") return;
       lateControlSent = true;
-      this.#send({
-        type: "late-redirect",
-        requestId: options.requestId,
-        location: controlRef.current.location,
-        method: controlRef.current.method,
-        status: controlRef.current.status,
-      });
+      if (control.type === "redirect") {
+        this.#send({
+          type: "late-redirect",
+          requestId: options.requestId,
+          location: control.location,
+          method: control.method,
+          status: control.status,
+        });
+        return;
+      }
+      if (!options.notFoundProbe?.hit)
+        this.#logger.warn(
+          `render[${options.requestId}] not-found raised below a route render after the stream started; that subtree renders nothing — call router.notFound() from the page or layout body`,
+        );
+      this.#send({ type: "late-not-found", requestId: options.requestId });
     };
     try {
       for (;;) {
@@ -903,11 +927,12 @@ export class RscRenderer {
           return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
         }
         const { value, done } = await reader.read();
+        readProbe();
         if (controlRef.current && !sentChunk) {
           await reader.cancel();
           return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
         }
-        if (controlRef.current && sentChunk) sendLateRedirect();
+        if (controlRef.current && sentChunk) sendLateControl();
         if (done) break;
         const chunk = value instanceof Uint8Array ? value : new Uint8Array(value as ArrayBufferLike);
         bytes += chunk.byteLength;
@@ -929,7 +954,8 @@ export class RscRenderer {
       if (options.requestId) this.#activeRenderReaders.delete(options.requestId);
       reader.releaseLock();
     }
-    if (controlRef.current && sentChunk) sendLateRedirect();
+    readProbe();
+    if (controlRef.current && sentChunk) sendLateControl();
     if (controlRef.current && !sentChunk)
       return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
     if (options.requestId) {
@@ -1246,7 +1272,8 @@ export class RscRenderer {
   async #renderMatched(
     url: URL,
     match: { pathRoute: PathRoute; params: Record<string, string> },
-    searchParams = RouteTreeBuilder.parseSearchParams(url.search),
+    searchParams: Record<string, string | string[]>,
+    notFound: RouteNotFoundInPlace,
   ): Promise<ReactNode> {
     this.#logger.verbose(
       `composing route element pathname=${url.pathname} search=${url.search || "(none)"} params=${JSON.stringify(match.params)}`,
@@ -1256,6 +1283,7 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
+    await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
     //? The provider names the theme only as it renders, which can be after the HTML shell and its data-theme are out.
     const rootThemes = await Promise.all(pathRoute.renderRootLayouts.map((render) => render.getLayoutTheme?.()));
     const rootTheme = rootThemes.find((theme) => theme !== undefined);
@@ -1271,6 +1299,7 @@ export class RscRenderer {
       params: match.params,
       searchParams,
       navKey: url.pathname + url.search,
+      notFound,
     });
     // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
     return (
@@ -1293,7 +1322,8 @@ export class RscRenderer {
     url: URL,
     match: { pathRoute: PathRoute; params: Record<string, string> },
     patchStartIndex: number,
-    searchParams = RouteTreeBuilder.parseSearchParams(url.search),
+    searchParams: Record<string, string | string[]>,
+    notFound: RouteNotFoundInPlace,
   ): Promise<ReactNode | null> {
     this.#logger.verbose(
       `composing route suffix pathname=${url.pathname} start=${patchStartIndex} params=${JSON.stringify(match.params)}`,
@@ -1303,6 +1333,7 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
+    await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
     await RouteElementComposer.resolveSuffixLoadings(pathRoute, patchStartIndex);
     return RouteElementComposer.composeSuffix({
       pathRoute,
@@ -1310,6 +1341,7 @@ export class RscRenderer {
       searchParams,
       patchStartIndex,
       navKey: url.pathname + url.search,
+      notFound,
     });
   }
 
@@ -1335,17 +1367,33 @@ export class RscRenderer {
     return this.#renderSystemNotFound(url);
   }
 
+  #notFoundInPlace(url: URL, probe: { hit: boolean }): RouteNotFoundInPlace {
+    return {
+      pathname: url.pathname,
+      onNotFound: () => {
+        probe.hit = true;
+      },
+      systemFallback: () => (
+        <SystemPageMain kind="not-found" pathname={url.pathname} homeHref={this.#systemHomeHref(url)} />
+      ),
+    };
+  }
+
+  #systemHomeHref(url: URL): string {
+    return getSystemPageHomeHref({
+      pathname: url.pathname,
+      i18n: this.#i18n,
+      basePaths: this.#basePaths,
+      headerBasePath: untrackedRequest()?.headers.get("x-base-path"),
+    });
+  }
+
   #renderSystemNotFound(url: URL): ReactNode {
     return createSystemPageDocument({
       kind: "not-found",
       pathname: url.pathname,
       lang: getPathnameLocale(url.pathname, this.#i18n),
-      homeHref: getSystemPageHomeHref({
-        pathname: url.pathname,
-        i18n: this.#i18n,
-        basePaths: this.#basePaths,
-        headerBasePath: untrackedRequest()?.headers.get("x-base-path"),
-      }),
+      homeHref: this.#systemHomeHref(url),
       stylesheetHref: this.#getStylesheetHref(url.pathname),
     });
   }

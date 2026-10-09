@@ -4,7 +4,6 @@ import path from "node:path";
 import {
   DEFAULT_TOKENIZER,
   getSolidConfig,
-  LibsqlDatabase,
   PostgresDatabase,
   PostgresDialect,
   RedisCache,
@@ -16,12 +15,11 @@ import {
   SqliteDialect,
 } from "akanjs/service";
 
-type ConformanceBackend = "redis" | "postgres" | "libsql";
+type ConformanceBackend = "redis" | "postgres";
 
 export type ConformanceCacheKind = "solid" | "redis";
 
-/** `libsqlRemote` is a sqld server shared by every run, so it only hosts cases that bring their own table. */
-export type SqlDriverKind = "sqlite" | "libsql" | "postgres" | "libsqlRemote";
+export type SqlDriverKind = "sqlite" | "postgres";
 
 export interface SqlDriverOptions {
   insight?: boolean;
@@ -31,7 +29,7 @@ export interface SqlDriverOptions {
 
 export interface SqlDriver {
   kind: SqlDriverKind;
-  database: SqliteDatabase | LibsqlDatabase | PostgresDatabase;
+  database: SqliteDatabase | PostgresDatabase;
   dialect: SqlDialect;
   /** A new adaptor on the same storage — what a process restart sees, so only what was committed. */
   restart: () => Promise<SqlDriver>;
@@ -45,10 +43,9 @@ export interface SqlDriver {
 const backendEnvNames = {
   redis: "AKAN_TEST_REDIS_URL",
   postgres: "AKAN_TEST_POSTGRES_URL",
-  libsql: "AKAN_TEST_LIBSQL_URL",
 } as const;
 
-/** `bun run testConformance` (`infra/test/compose.yaml`) sets all three backends; plain `bun test` runs SQLite. */
+/** `bun run testConformance` (`infra/test/compose.yaml`) sets both backends; plain `bun test` runs SQLite. */
 export class ConformanceEnv {
   static readonly #announced = new Set<string>();
   /** Where a deployment points an app at its data. A test that hands its storage in has these cleared first. */
@@ -56,9 +53,6 @@ export class ConformanceEnv {
     "AKAN_DATABASE_MODES",
     "AKAN_SOLID_DB_PATH",
     "SQLITE_DATABASE_PATH",
-    "LIBSQL_URL",
-    "LIBSQL_URI",
-    "LIBSQL_AUTH_TOKEN",
     "POSTGRES_URL",
     "POSTGRES_URI",
     "POSTGRES_HOST",
@@ -199,22 +193,10 @@ export class ConformanceEnv {
   }
 
   /** The local drivers always, and each remote one whose backend the suite can reach. */
-  static sqlDrivers(suite: string, { remote = false }: { remote?: boolean } = {}): SqlDriverKind[] {
+  static sqlDrivers(suite: string): SqlDriverKind[] {
     const kinds: SqlDriverKind[] = ["sqlite"];
-    if (ConformanceEnv.#hasLibsqlBinding(suite)) kinds.push("libsql");
     if (ConformanceEnv.has(suite, "postgres")) kinds.push("postgres");
-    if (remote && ConformanceEnv.has(suite, "libsql")) kinds.push("libsqlRemote");
     return kinds;
-  }
-
-  static #hasLibsqlBinding(suite: string) {
-    if (process.platform !== "win32" || process.arch !== "arm64") return true;
-    const key = `${suite}:libsql-binding`;
-    if (!ConformanceEnv.#announced.has(key)) {
-      ConformanceEnv.#announced.add(key);
-      console.info(`[conformance] ${suite}: local libsql cases skipped — libsql publishes no win32-arm64 binding`);
-    }
-    return false;
   }
 
   /**
@@ -229,14 +211,12 @@ export class ConformanceEnv {
     kind: SqlDriverKind,
     { insight = false, memory = false, search: searchConfig }: SqlDriverOptions,
   ): Promise<{ config: object; remove: () => Promise<void> }> {
-    const search = { enabled: kind !== "libsqlRemote", tokenizer: DEFAULT_TOKENIZER, ...searchConfig };
+    const search = { enabled: true, tokenizer: DEFAULT_TOKENIZER, ...searchConfig };
     if (kind === "postgres") {
       const { url, insightUrl, drop } = await ConformanceEnv.postgresSchema("akan_sql", { insight });
       return { config: { url, insightUrl, search }, remove: drop };
     }
-    if (kind === "libsqlRemote")
-      return { config: { url: ConformanceEnv.url("libsql"), search }, remove: async () => undefined };
-    if (kind === "sqlite" && memory)
+    if (memory)
       return {
         config: { filePath: ":memory:", journalMode: "MEMORY", synchronous: "OFF", foreignKeys: true, search },
         remove: async () => undefined,
@@ -244,10 +224,7 @@ export class ConformanceEnv {
     const { dir, remove } = await ConformanceEnv.tempDir(`akan-${kind}`);
     const filePath = path.join(dir, "conformance.db");
     return {
-      config:
-        kind === "sqlite"
-          ? { filePath, journalMode: "WAL", busyTimeoutMs: 5000, synchronous: "NORMAL", foreignKeys: true, search }
-          : { url: `file:${filePath}`, search },
+      config: { filePath, journalMode: "WAL", busyTimeoutMs: 5000, synchronous: "NORMAL", foreignKeys: true, search },
       remove,
     };
   }
@@ -262,8 +239,7 @@ export class ConformanceEnv {
     storage: { config: object; remove: () => Promise<void> },
   ): Promise<SqlDriver> {
     const scheduler = new Scheduler();
-    const database =
-      kind === "postgres" ? new PostgresDatabase() : kind === "sqlite" ? new SqliteDatabase() : new LibsqlDatabase();
+    const database = kind === "postgres" ? new PostgresDatabase() : new SqliteDatabase();
     Object.assign(database, { scheduler, config: storage.config });
     await database.onInit();
     const shutdown = async () => {

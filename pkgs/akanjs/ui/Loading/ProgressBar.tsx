@@ -1,7 +1,7 @@
 "use client";
 import { cn } from "akanjs/client";
-import { animated } from "akanjs/ui";
 import { useSpring } from "react-spring";
+import { animated } from "../animated";
 
 export interface ProgressBarProps {
   className?: string;

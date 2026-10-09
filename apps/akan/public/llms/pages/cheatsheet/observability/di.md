@@ -146,7 +146,7 @@ To replace one for the whole app, call `applyAdaptor` in `lib/option.ts`:
 
 **The app has the last word.** The app's `option.ts` is read after every lib's, so its choice wins.
 
-**Defaults follow the database mode.** The database becomes libsql in `multiple` mode and Postgres in `cluster` mode. Both modes move cache and websocket to Redis, and queue to BullMQ.
+**Defaults follow the database mode.** The database stays SQLite in `multiple` mode and becomes Postgres in `cluster` mode. Both modes move cache and websocket to Redis, and queue to BullMQ.
 
 Read Environment
 

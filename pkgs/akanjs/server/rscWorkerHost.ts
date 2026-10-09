@@ -9,7 +9,7 @@ import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
 import { ChildOutputReader } from "./logging/childOutputReader";
 import { MemoryLimit } from "./memoryLimit";
-import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
+import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
 import type { BaseBuildArtifact, CssAsset } from "./types";
 
 // A bounded queue guard, not backpressure: a host that cannot drain IPC chunks fails the render instead of buffering.
@@ -24,6 +24,7 @@ export interface RscPending {
   onCacheState?: (state: RouteCacheRenderState) => void;
   onRedirect?: (location: string, method: RscRedirectMethod, status: RscRedirectStatus) => void;
   onLateRedirect?: (location: string, method: RscRedirectMethod, status: RscRedirectStatus) => void;
+  onLateNotFound?: () => void;
   onNotFound?: () => void;
 }
 
@@ -49,7 +50,7 @@ export type RscRenderResult =
       theme?: AkanTheme;
       status?: number;
       trace?: RscTraceMetadata;
-      lateControl: Promise<SsrLateRedirect | null>;
+      lateControl: Promise<SsrLateControl | null>;
       cacheState: Promise<RouteCacheRenderState>;
       cancel: (reason?: unknown) => void;
     }
@@ -162,9 +163,9 @@ export function createRscHostRenderStream(input: {
   let theme: AkanTheme | undefined;
   let status: number | undefined;
   let trace: RscTraceMetadata | undefined;
-  let resolveLateControl!: (control: SsrLateRedirect | null) => void;
+  let resolveLateControl!: (control: SsrLateControl | null) => void;
   let resolveCacheState!: (state: RouteCacheRenderState) => void;
-  const lateControl = new Promise<SsrLateRedirect | null>((resolve) => {
+  const lateControl = new Promise<SsrLateControl | null>((resolve) => {
     resolveLateControl = resolve;
   });
   const cacheState = new Promise<RouteCacheRenderState>((resolve) => {
@@ -172,7 +173,7 @@ export function createRscHostRenderStream(input: {
   });
   let lateControlSettled = false;
   let cacheStateSettled = false;
-  const settleLateControl = (control: SsrLateRedirect | null) => {
+  const settleLateControl = (control: SsrLateControl | null) => {
     if (lateControlSettled) return;
     lateControlSettled = true;
     resolveLateControl(control);
@@ -280,6 +281,7 @@ export function createRscHostRenderStream(input: {
           },
           onLateRedirect: (location, method, status) =>
             settleLateControl({ type: "redirect", location, method, status }),
+          onLateNotFound: () => settleLateControl({ type: "not-found" }),
           onCacheState: settleCacheState,
           onNotFound: () => {
             settleLateControl(null);
@@ -329,6 +331,7 @@ type RscInMsg =
       method?: RscRedirectMethod;
       status?: RscRedirectStatus;
     }
+  | { type: "late-not-found"; requestId: string }
   | { type: "not-found"; requestId: string }
   | { type: "metrics"; metrics: AkanMetricsReport }
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
@@ -820,6 +823,9 @@ export class RscWorker {
         this.#pending
           .get(message.requestId)
           ?.onLateRedirect?.(message.location, message.method ?? "replace", message.status ?? 307);
+        return;
+      case "late-not-found":
+        this.#pending.get(message.requestId)?.onLateNotFound?.();
         return;
       case "not-found":
         this.#resolvePending(message.requestId, (p) => p.onNotFound?.());

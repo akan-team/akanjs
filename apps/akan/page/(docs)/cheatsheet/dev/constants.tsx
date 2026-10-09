@@ -100,6 +100,42 @@ export default page().render(() => {
       }),
     },
     {
+      key: "include",
+      type: "string[]",
+      default: l.trans({ en: "all", ko: "전체" }),
+      desc: l.trans({
+        en: "Models and scalars to start from, by `refName`; the scalars and enums they reach come along.",
+        ko: "시작점이 될 모델과 scalar의 `refName` 목록입니다. 여기서 닿는 scalar와 enum이 함께 나옵니다.",
+      }),
+    },
+    {
+      key: "exclude",
+      type: "string[]",
+      default: "[]",
+      desc: l.trans({
+        en: "Names to leave out of every list. What only they reach is left out too.",
+        ko: "모든 목록에서 뺄 이름입니다. 이것을 거쳐야만 닿는 scalar와 enum도 함께 빠집니다.",
+      }),
+    },
+    {
+      key: "libs",
+      type: "string[]",
+      default: l.trans({ en: "all", ko: "전체" }),
+      desc: l.trans({
+        en: "Libraries to show, by the app or lib that owns each entry. An app's extension belongs to the app.",
+        ko: "보여 줄 라이브러리입니다. 항목마다 그것을 가진 앱이나 lib로 판단하며, 앱이 확장한 모델은 앱 것입니다.",
+      }),
+    },
+    {
+      key: "groupBy",
+      type: '"lib"',
+      tags: ["Doc.Zone"],
+      desc: l.trans({
+        en: "One section and one diagram per library, the app first; links to another library show as external.",
+        ko: "라이브러리마다 섹션과 다이어그램을 따로 그리며 앱이 먼저 옵니다. 다른 라이브러리로 가는 관계는 외부 노드입니다.",
+      }),
+    },
+    {
       key: "openAll",
       type: "boolean",
       default: "false",
@@ -298,101 +334,60 @@ export default page().render(() => {
           <Docs.SubSubTitle>{l.trans({ en: "The parts", ko: "구성 요소" })}</Docs.SubSubTitle>
           <Docs.IntroTable type={l.trans({ en: "Component", ko: "컴포넌트" })} items={partRows} />
           <Docs.SubSubTitle>{l.trans({ en: "Put it on a page", ko: "페이지에 띄우기" })}</Docs.SubSubTitle>
-          <ol className={stepList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    Write a client component in <code>ui/</code> that renders <code>Constant.Doc.Zone</code> or{" "}
-                    <code>Constant.Doc.Print</code>.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <code>ui/</code>에 <code>Constant.Doc.Zone</code>이나 <code>Constant.Doc.Print</code>를 그리는
-                    클라이언트 컴포넌트를 만듭니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: "Give each one a route of its own.",
-                ko: "각각에 route를 하나씩 줍니다.",
-              })}
-            </li>
-          </ol>
-          <div>{l.trans({ en: "First, the client component:", ko: "먼저 클라이언트 컴포넌트입니다:" })}</div>
+          <div>
+            {l.trans({
+              en: "A route renders it directly and stays a server page:",
+              ko: "route에서 바로 그리며, route는 서버 페이지로 둡니다:",
+            })}
+          </div>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/ui/SchemaDocs.tsx"
-          code={`"use client";
-
-import "@apps/myapp/lib/cnst";
-
+          title="apps/myapp/page/(admin)/schema/_index.tsx"
+          code={`import { page } from "akanjs/client";
 import { Constant } from "akanjs/ui";
 
-export const SchemaDocs = () => {
-  return <Constant.Doc.Zone models={["user", "bizContract"]} openAll />;
-};
-
-export const PrintableSchemaDocs = () => {
-  return <Constant.Doc.Print models={["user", "bizContract"]} />;
-};`}
+export default page().render(() => <Constant.Doc.Zone models={["user", "bizContract"]} openAll />);`}
         />
         <Docs.Description>
-          <ul className={bulletList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>
-                      The <code>cnst</code> import registers your models.
-                    </strong>{" "}
-                    Nothing is taken from it: loading the file is what lets the explorer find your app's models.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>
-                      <code>cnst</code> import는 모델 등록용입니다.
-                    </strong>{" "}
-                    가져다 쓰는 값은 없습니다. 이 파일을 불러와야 앱의 모델이 등록되고, 탐색기가 그 모델을 찾습니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>Pick what to show with props.</strong> Both components take the same lists, described below.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>보여 줄 대상은 props로 고릅니다.</strong> 두 컴포넌트가 같은 목록을 받으며, 아래 표에
-                    정리했습니다.
-                  </span>
-                ),
-              })}
-            </li>
-          </ul>
+          <div>
+            {l.trans({
+              en: "Both components take the same lists:",
+              ko: "두 컴포넌트가 같은 목록을 받습니다:",
+            })}
+          </div>
           <Docs.OptionTable items={propRows} />
           <ul className={bulletList}>
             <li>
               {l.trans({
                 en: (
                   <span>
-                    <strong>An empty list means all.</strong> <code>{"models={[]}"}</code> shows every model, the same
-                    as leaving the prop out.
+                    <strong>An empty list means none.</strong> <code>{"models={[]}"}</code> shows no model; only a prop
+                    left out means every registered one.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>빈 목록은 전체를 뜻합니다.</strong> <code>{"models={[]}"}</code>는 prop을 빼 둔 것과 같이
-                    모든 모델을 보여 줍니다.
+                    <strong>빈 목록은 "없음"입니다.</strong> <code>{"models={[]}"}</code>는 모델을 하나도 보여 주지
+                    않고, prop을 빼야 등록된 전체가 나옵니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Narrowing one list narrows the rest.</strong> With <code>models</code>, <code>include</code>{" "}
+                    or <code>exclude</code> set, a left-out <code>scalars</code> becomes the scalars the shown models
+                    embed and a left-out <code>enums</code> the enums their fields use.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>한 목록을 좁히면 나머지도 따라 좁혀집니다.</strong> <code>models</code>,{" "}
+                    <code>include</code>, <code>exclude</code> 중 하나라도 주면, 뺀 <code>scalars</code>는 보이는 모델이
+                    품은 scalar로, 뺀 <code>enums</code>는 그 필드가 쓰는 enum으로 정해집니다.
                   </span>
                 ),
               })}
@@ -428,34 +423,18 @@ export const PrintableSchemaDocs = () => {
               })}
             </li>
           </ul>
-          <div>
-            {l.trans({
-              en: "Then a route renders the component, and the route stays a server page:",
-              ko: "그다음 route에서 이 컴포넌트를 그립니다. route는 서버 페이지로 둡니다:",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/page/(admin)/schema/_index.tsx"
-          code={`import { SchemaDocs } from "@apps/myapp/ui";
-import { page } from "akanjs/client";
-
-export default page().render(() => <SchemaDocs />);`}
-        />
-        <Docs.Description>
           <ul className={bulletList}>
             <li>
               {l.trans({
                 en: (
                   <span>
-                    <strong>The URL.</strong> <code>(admin)</code> is a route group and adds nothing to the path, so
-                    this page serves <code>/schema</code>.
+                    <strong>The URL.</strong> <code>(admin)</code> is a route group and adds nothing to the path, so the
+                    page above serves <code>/schema</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>URL.</strong> <code>(admin)</code>은 route 그룹이라 경로에 들어가지 않습니다. 이 페이지는{" "}
+                    <strong>URL.</strong> <code>(admin)</code>은 route 그룹이라 경로에 들어가지 않습니다. 위 페이지는{" "}
                     <code>/schema</code>에서 열립니다.
                   </span>
                 ),
@@ -466,40 +445,18 @@ export default page().render(() => <SchemaDocs />);`}
                 en: (
                   <span>
                     <strong>The print version.</strong> Write <code>schema/print.tsx</code> the same way with{" "}
-                    <code>{"<PrintableSchemaDocs />"}</code>, and it serves <code>/schema/print</code>.
+                    <code>{"<Constant.Doc.Print />"}</code>, and it serves <code>/schema/print</code>.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>출력용 버전.</strong> <code>schema/print.tsx</code>를 같은 모양으로 만들고{" "}
-                    <code>{"<PrintableSchemaDocs />"}</code>를 그리면 <code>/schema/print</code>에서 열립니다.
+                    <code>{"<Constant.Doc.Print />"}</code>를 그리면 <code>/schema/print</code>에서 열립니다.
                   </span>
                 ),
               })}
             </li>
           </ul>
-          <Docs.Alert type="warning">
-            {l.trans({
-              en: (
-                <span>
-                  <strong>
-                    Render <code>Constant.Doc</code> from a <code>{'"use client"'}</code> file.
-                  </strong>{" "}
-                  Its parts exist only on the client, so a page that renders <code>{"<Constant.Doc.Zone>"}</code>{" "}
-                  directly fails. Keep the route a server page that renders your wrapper.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>
-                    <code>Constant.Doc</code>은 <code>{'"use client"'}</code> 파일 안에서 그립니다.
-                  </strong>{" "}
-                  구성 요소가 클라이언트에만 있어서, page에서 <code>{"<Constant.Doc.Zone>"}</code>을 바로 그리면
-                  렌더링이 실패합니다. route는 서버 페이지로 두고, 감싼 컴포넌트를 그립니다.
-                </span>
-              ),
-            })}
-          </Docs.Alert>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

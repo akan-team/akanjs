@@ -1,8 +1,25 @@
 import Arg from "./Arg";
-import Doc from "./Doc";
-import Listener from "./Listener";
-import Object from "./Object";
-import RestApi from "./RestApi";
-import WebSocket, { Message, PubSub } from "./WebSocket";
+import { DocAuthModal, DocSetting, DocSignal, DocSignals, Explorer, Zone } from "./Doc";
+import { ListenerResult } from "./Listener";
+import { ObjectDetail, ObjectSchema, ObjectType } from "./Object";
+import { RestApiEndpoint, RestApiEndpoints, RestApiInterface, RestApiTry } from "./RestApi";
+import {
+  MessageEndpoint,
+  MessageInterface,
+  MessageTry,
+  PubSubEndpoint,
+  PubSubInterface,
+  PubSubTry,
+  WebSocketEndpoints,
+} from "./WebSocket";
 
-export const Signal = { Doc, Object, RestApi, Arg, Listener, WebSocket, PubSub, Message };
+export const Signal = {
+  Doc: { Zone, Explorer, Setting: DocSetting, AuthModal: DocAuthModal, DocSignals, DocSignal },
+  Object: { Type: ObjectType, Detail: ObjectDetail, Schema: ObjectSchema },
+  RestApi: { Endpoints: RestApiEndpoints, Endpoint: RestApiEndpoint, Interface: RestApiInterface, Try: RestApiTry },
+  Arg,
+  Listener: { Result: ListenerResult },
+  WebSocket: { Endpoints: WebSocketEndpoints },
+  PubSub: { Endpoint: PubSubEndpoint, Interface: PubSubInterface, Try: PubSubTry },
+  Message: { Endpoint: MessageEndpoint, Interface: MessageInterface, Try: MessageTry },
+};

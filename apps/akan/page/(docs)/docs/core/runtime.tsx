@@ -372,14 +372,6 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                 }),
               },
               {
-                key: "LIBSQL_URL",
-                type: "string",
-                desc: l.trans({
-                  en: "Only for an app that applies `LibsqlDatabase` itself; `LIBSQL_AUTH_TOKEN` carries its token.",
-                  ko: "앱이 `LibsqlDatabase`를 직접 적용할 때만 쓰며, 토큰은 `LIBSQL_AUTH_TOKEN`에 둡니다.",
-                }),
-              },
-              {
                 key: "REDIS_URI",
                 type: "string",
                 tags: [l.trans({ en: "required outside local", ko: "local 밖에서 필수" })],

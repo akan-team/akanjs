@@ -9,8 +9,9 @@ import { BiSolidNetworkChart } from "react-icons/bi";
 import { Collapse, dictText, docUi, Panel, Segmented } from "../Reference";
 import Arg from "./Arg";
 import { guardsOf } from "./endpointEntries";
-import UiObject from "./Object";
-import Response from "./Response";
+import { ObjectDetail, ObjectType } from "./Object";
+import { ResponseExample } from "./Response";
+import { signalText } from "./signalText";
 import { getGuardBadgeClassName, getWsBadgeClassName } from "./style";
 
 interface ArgSectionProps {
@@ -105,22 +106,17 @@ export const EndpointInterface = ({
       <div className="grid gap-3 md:grid-cols-2 md:items-start">
         <Panel bodyClassName="max-h-none" label={returnsLabel}>
           <div className="flex flex-col items-start gap-3">
-            <UiObject.Type objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
+            <ObjectType objRef={returnRef} arrDepth={endpoint.returns.arrDepth ?? 0} />
             {PrimitiveRegistry.has(returnRef) ? null : (
-              <UiObject.Detail className="w-full border-0 bg-transparent" objRef={returnRef as ConstantCls} />
+              <ObjectDetail className="w-full border-0 bg-transparent" objRef={returnRef as ConstantCls} />
             )}
           </div>
         </Panel>
-        <Response.Example endpoint={endpoint} />
+        <ResponseExample endpoint={endpoint} />
       </div>
     </div>
   );
 };
-
-const wsViewItems = [
-  { key: "doc", label: "Reference", icon: <AiOutlineFileWord /> },
-  { key: "test", label: "Try it", icon: <BiSolidNetworkChart /> },
-] as const;
 
 export interface WsEndpointProps {
   refName: string;
@@ -129,7 +125,12 @@ export interface WsEndpointProps {
   open?: boolean;
 }
 export const WsEndpoint = ({ doc, test, ...props }: WsEndpointProps & { doc: ReactNode; test: ReactNode }) => {
+  const { l } = usePage();
   const [viewStatus, setViewStatus] = useState<"doc" | "test">("doc");
+  const wsViewItems = [
+    { key: "doc", label: l.trans(signalText.reference), icon: <AiOutlineFileWord /> },
+    { key: "test", label: l.trans(signalText.tryIt), icon: <BiSolidNetworkChart /> },
+  ] as const;
   return (
     <EndpointCollapse
       {...props}

@@ -123,7 +123,6 @@ class ConformanceRun {
     return {
       AKAN_TEST_REDIS_URL: `redis://localhost:${await this.#port(row.redis, 6379)}`,
       AKAN_TEST_POSTGRES_URL: `postgres://akan:akan@localhost:${await this.#port(row.postgres, 5432)}/akan`,
-      AKAN_TEST_LIBSQL_URL: `http://localhost:${await this.#port("libsql", 8080)}`,
     };
   }
 

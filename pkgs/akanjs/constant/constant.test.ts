@@ -390,6 +390,30 @@ describe("ConstantRegistry", () => {
     expect(ConstantRegistry.value.get("statusLabel")).toBe("active");
   });
 
+  test("records which app or lib registered each entry, first registrant first", () => {
+    class OriginLibStatus extends enumOf("originLibStatus", ["on", "off"] as const) {}
+    const OriginLibModel = via((field) => ({ name: field(String) }));
+    const OriginAppModel = via(OriginLibModel, (field) => ({ note: field(String) }));
+    const OriginScalar = via((field) => ({ lat: field(Int) }));
+    const build = (Model: typeof OriginLibModel, origin: string, exports: Record<string, unknown>) =>
+      ConstantRegistry.buildModel("constantOriginItem", Model, Model, Model, Model, Model, exports, origin);
+
+    build(OriginLibModel, "shared", { OriginLibStatus });
+    build(OriginAppModel as unknown as typeof OriginLibModel, "sceny", { OriginLibStatus });
+    ConstantRegistry.buildScalar("constantOriginGeo", OriginScalar, {}, "shared");
+    ConstantRegistry.buildScalar(
+      "constantOriginGeo",
+      via((field) => ({ lng: field(Int) })),
+      {},
+      "sceny",
+    );
+
+    expect(ConstantRegistry.getOrigin("database", "constantOriginItem")).toEqual(["shared", "sceny"]);
+    expect(ConstantRegistry.getOrigin("enum", "originLibStatus")).toEqual(["shared"]);
+    expect(ConstantRegistry.getOrigin("scalar", "constantOriginGeo")).toEqual(["shared"]);
+    expect(ConstantRegistry.getOrigin("database", "constantTestUser")).toEqual([]);
+  });
+
   test("serializes and deserializes primitive and model values", () => {
     expect(ConstantRegistry.serialize(Int, 7 as never)).toBe(7 as never);
     expect(ConstantRegistry.deserialize(Int, "7")).toBe(7 as never);

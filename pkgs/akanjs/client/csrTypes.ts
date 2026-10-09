@@ -114,6 +114,8 @@ export interface RouteRender {
   resolveNotFound?: () => PromiseOrObject<LayoutNotFoundRender | undefined>;
   resolveError?: () => PromiseOrObject<LayoutErrorRender | undefined>;
   resolveHead?: ResolveHead;
+  /** Parses the declared args without rendering, so a path value the type refuses answers not-found before any byte. */
+  checkArgs?: (props: PageProps) => Promise<void>;
   getPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
   getLayoutPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
   /** A root layout's `theme`, readable before it renders. */

@@ -293,6 +293,9 @@ export class RouteTreeBuilder {
         const mod = await loadSynced();
         return mod.generateHead ? await mod.generateHead(props) : mod.head;
       },
+      checkArgs: async ({ params, searchParams }: PageProps) => {
+        (await loadModule()).definition?.resolveArgs({ params, searchParams });
+      },
     };
     if (kind === "page") {
       routeRender.getPageConfig = pageConfigOf;

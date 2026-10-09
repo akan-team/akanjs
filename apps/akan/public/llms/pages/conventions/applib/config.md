@@ -175,7 +175,7 @@ Declare every mode a deployment of the app may use. The first one is the default
 
 **Connection values come from the deployment.** `SQLITE_DATABASE_PATH`, `POSTGRES_URL` and the other connection variables win over the same values in `env.server.ts`, and `REDIS_URI` is read from the environment only.
 
-**Drivers follow the declared modes.** `akan build` puts every declared mode's drivers in the production `package.json`: `multiple` adds `bullmq` and `ioredis`, and `cluster` adds `postgres` too. An app that applies `LibsqlDatabase` itself lists `@libsql/client` in `externalLibs`.
+**Drivers follow the declared modes.** `akan build` puts every declared mode's drivers in the production `package.json`: `multiple` adds `bullmq` and `ioredis`, and `cluster` adds `postgres` too.
 
 **Move up only for a real need.** Locally, `multiple` needs Redis and `cluster` needs Redis and Postgres; `akan start` starts them, and `akan dbup` starts what your apps declare. When to switch is explained in Database Mode.
 

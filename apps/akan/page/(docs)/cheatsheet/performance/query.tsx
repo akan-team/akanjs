@@ -839,15 +839,15 @@ export class TaskService extends serve(db.task, () => ({})) {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Write it for your database.</strong> The snippet is SQLite / libsql. Postgres keeps{" "}
-                    <code>_doc</code> as <code>jsonb</code> and reads a field as text, so the same condition is{" "}
+                    <strong>Write it for your database.</strong> The snippet is SQLite. Postgres keeps <code>_doc</code>{" "}
+                    as <code>jsonb</code> and reads a field as text, so the same condition is{" "}
                     <code>{`("_doc" #>> '{score}')::numeric > ?`}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>쓰는 데이터베이스에 맞춰 작성합니다.</strong> 위 코드는 SQLite / libsql 문법입니다.
-                    Postgres는 <code>_doc</code>을 <code>jsonb</code>로 두고 field를 텍스트로 읽으므로, 같은 조건은{" "}
+                    <strong>쓰는 데이터베이스에 맞춰 작성합니다.</strong> 위 코드는 SQLite 문법입니다. Postgres는{" "}
+                    <code>_doc</code>을 <code>jsonb</code>로 두고 field를 텍스트로 읽으므로, 같은 조건은{" "}
                     <code>{`("_doc" #>> '{score}')::numeric > ?`}</code>입니다.
                   </span>
                 ),
@@ -919,13 +919,13 @@ export class TaskService extends serve(db.task, () => ({})) {
               {l.trans({
                 en: (
                   <span>
-                    <strong>The SQL below is simplified SQLite / libsql.</strong> Postgres compiles the same filter to{" "}
+                    <strong>The SQL below is simplified SQLite.</strong> Postgres compiles the same filter to{" "}
                     <code>jsonb</code> operators such as <code>{"_doc #> '{status}'"}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>아래 SQL은 단순화한 SQLite / libsql 형태입니다.</strong> Postgres에서는 같은 필터가{" "}
+                    <strong>아래 SQL은 단순화한 SQLite 형태입니다.</strong> Postgres에서는 같은 필터가{" "}
                     <code>{"_doc #> '{status}'"}</code> 같은 <code>jsonb</code> 연산자로 바뀝니다.
                   </span>
                 ),

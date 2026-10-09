@@ -46,15 +46,9 @@ Component
 
 Put it on a page
 
-Write a client component in `ui/` that renders `Constant.Doc.Zone` or `Constant.Doc.Print`.
+A route renders it directly and stays a server page:
 
-Give each one a route of its own.
-
-First, the client component:
-
-**The `cnst` import registers your models.** Nothing is taken from it: loading the file is what lets the explorer find your app's models.
-
-**Pick what to show with props.** Both components take the same lists, described below.
+Both components take the same lists:
 
 - models (string[], default all): Database models to show, by `refName`, in the order you list them.
 
@@ -62,21 +56,27 @@ First, the client component:
 
 - enums (string[], default all): Enums to show: the class name, first letter lowercased (`BizContractStatus` → `bizContractStatus`).
 
+- include (string[], default all): Models and scalars to start from, by `refName`; the scalars and enums they reach come along.
+
+- exclude (string[], default []): Names to leave out of every list. What only they reach is left out too.
+
+- libs (string[], default all): Libraries to show, by the app or lib that owns each entry. An app's extension belongs to the app.
+
+- groupBy ("lib", Doc.Zone): One section and one diagram per library, the app first; links to another library show as external.
+
 - openAll (boolean, default false, Doc.Zone): Opens every model and scalar panel. `Doc.Print` is always fully open and ignores it.
 
-**An empty list means all.** `models={[]}` shows every model, the same as leaving the prop out.
+**An empty list means none.** `models={[]}` shows no model; only a prop left out means every registered one.
+
+**Narrowing one list narrows the rest.** With `models`, `include` or `exclude` set, a left-out `scalars` becomes the scalars the shown models embed and a left-out `enums` the enums their fields use.
 
 **A misspelled name is skipped quietly.** If a model is missing, check its `refName` against the summary counts.
 
 **Order follows your list.** A list you leave out is sorted by name.
 
-Then a route renders the component, and the route stays a server page:
+**The URL.** `(admin)` is a route group and adds nothing to the path, so the page above serves `/schema`.
 
-**The URL.** `(admin)` is a route group and adds nothing to the path, so this page serves `/schema`.
-
-**The print version.** Write `schema/print.tsx` the same way with `<PrintableSchemaDocs />`, and it serves `/schema/print`.
-
-**Render `Constant.Doc` from a `"use client"` file.** Its parts exist only on the client, so a page that renders `<Constant.Doc.Zone>` directly fails. Keep the route a server page that renders your wrapper.
+**The print version.** Write `schema/print.tsx` the same way with `<Constant.Doc.Print />`, and it serves `/schema/print`.
 
 Generated Schema
 
@@ -168,31 +168,13 @@ Press `⌘P` or `Ctrl+P` and choose Save as PDF in the browser's print dialog.
 
 ## Code Examples
 
-### apps/myapp/ui/SchemaDocs.tsx
-
-```ts
-"use client";
-
-import "@apps/myapp/lib/cnst";
-
-import { Constant } from "akanjs/ui";
-
-export const SchemaDocs = () => {
-  return <Constant.Doc.Zone models={["user", "bizContract"]} openAll />;
-};
-
-export const PrintableSchemaDocs = () => {
-  return <Constant.Doc.Print models={["user", "bizContract"]} />;
-};
-```
-
 ### apps/myapp/page/(admin)/schema/_index.tsx
 
 ```ts
-import { SchemaDocs } from "@apps/myapp/ui";
 import { page } from "akanjs/client";
+import { Constant } from "akanjs/ui";
 
-export default page().render(() => <SchemaDocs />);
+export default page().render(() => <Constant.Doc.Zone models={["user", "bizContract"]} openAll />);
 ```
 
 ## Agent Notes

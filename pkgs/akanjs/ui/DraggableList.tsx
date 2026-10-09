@@ -4,12 +4,12 @@ import { useGesture } from "@use-gesture/react";
 import { cn } from "akanjs/client";
 import { clamp } from "akanjs/common";
 import { useFieldTool } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { type ReactElement, type ReactNode, useContext, useRef } from "react";
 import { BiTrash } from "react-icons/bi";
 import { MdDragIndicator } from "react-icons/md";
 import { sharedContext } from "../client/sharedContext";
 import { agentAttrs } from "./agentAttrs";
+import { animated } from "./animated";
 import { buttonRecipe } from "./Button";
 import { useUiRecipe } from "./UiOverride";
 

@@ -30,8 +30,12 @@ export class DatabaseSignal<
     public endpoint: EndpCls,
     public slice: SlceCls,
     public server: SrvrCls,
+    origin?: string,
   ) {
-    this.serializedSignal = FetchSerializer.serializeDatabaseSignal(slice, endpoint);
+    this.serializedSignal = {
+      ...FetchSerializer.serializeDatabaseSignal(slice, endpoint),
+      ...(origin ? { origin: [origin] } : {}),
+    };
   }
 }
 
@@ -46,8 +50,12 @@ export class ServiceSignal<
     public internal: IntlCls,
     public endpoint: EndpCls,
     public server: SrvrCls,
+    origin?: string,
   ) {
-    this.serializedSignal = FetchSerializer.serializeServiceSignal(endpoint);
+    this.serializedSignal = {
+      ...FetchSerializer.serializeServiceSignal(endpoint),
+      ...(origin ? { origin: [origin] } : {}),
+    };
   }
 }
 
@@ -68,11 +76,12 @@ export class SignalRegistry {
     endpoint: SignalWithBase<RefName, EndpCls>,
     slice: SignalWithBase<RefName, SlceCls>,
     server: SrvrCls,
+    origin?: string,
   ): DatabaseSignal<IntlCls, EndpCls, SlceCls, SrvrCls> {
     assertSignalBase(refName, "internal", internal);
     assertSignalBase(refName, "endpoint", endpoint);
     assertSignalBase(refName, "slice", slice);
-    const databaseSignal = new DatabaseSignal(internal, endpoint, slice, server);
+    const databaseSignal = new DatabaseSignal(internal, endpoint, slice, server, origin);
     SignalRegistry.#database.set(refName, databaseSignal);
     return databaseSignal;
   }
@@ -89,10 +98,11 @@ export class SignalRegistry {
     internal: SignalWithBase<RefName, IntlCls>,
     endpoint: SignalWithBase<RefName, EndpCls>,
     server: SrvrCls,
+    origin?: string,
   ): ServiceSignal<IntlCls, EndpCls, SrvrCls> {
     assertSignalBase(refName, "internal", internal);
     assertSignalBase(refName, "endpoint", endpoint);
-    const serviceSignal = new ServiceSignal(internal, endpoint, server);
+    const serviceSignal = new ServiceSignal(internal, endpoint, server, origin);
     SignalRegistry.#service.set(refName, serviceSignal);
     return serviceSignal;
   }

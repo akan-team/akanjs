@@ -329,6 +329,19 @@ describe("RscWorker host render stream", () => {
     });
   });
 
+  test("resolves a late not-found after the stream has started", async () => {
+    const harness = createHostRenderHarness();
+
+    harness.pending().onChunk(new TextEncoder().encode("shell"));
+    const result = await streamResultOf(harness);
+
+    harness.pending().onLateNotFound?.();
+    harness.pending().onEnd();
+
+    expect(decoder.decode(await new Response(result.stream).arrayBuffer())).toBe("shell");
+    await expect(result.lateControl).resolves.toEqual({ type: "not-found" });
+  });
+
   test("preserves worker cache state that arrives before stream end", async () => {
     const harness = createHostRenderHarness();
 

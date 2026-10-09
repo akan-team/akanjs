@@ -11,17 +11,26 @@ import {
   type ConstantCls,
   type ConstantField,
   type ConstantModel,
+  type ConstantOriginKind,
   ConstantRegistry,
   type TextFieldRole,
 } from "akanjs/constant";
+import { ownerOf, ownerOrderOf } from "../Reference/origin";
 
 export const databaseModelVariants = ["input", "object", "full", "light", "insight"] as const;
 export type DatabaseModelVariant = (typeof databaseModelVariants)[number];
 
+/**
+ * `undefined` is "every registered one" and `[]` is "none". Once any option narrows the scope, scalars default to
+ * the ones the shown models embed and enums to the ones the shown models and scalars use.
+ */
 export interface ConstantSchemaOptions {
   models?: string[];
   scalars?: string[];
   enums?: string[];
+  include?: string[];
+  exclude?: string[];
+  libs?: string[];
 }
 
 export interface ConstantSchemaDoc {
@@ -34,6 +43,7 @@ export interface ConstantSchemaDoc {
 export interface DatabaseSchema {
   kind: "database";
   refName: string;
+  origin: string[];
   modelName: string;
   variants: Record<DatabaseModelVariant, ModelVariantSchema>;
 }
@@ -41,6 +51,7 @@ export interface DatabaseSchema {
 export interface ScalarSchema {
   kind: "scalar";
   refName: string;
+  origin: string[];
   modelName: string;
   modelRef: ConstantCls;
   fields: FieldSchema[];
@@ -57,6 +68,7 @@ export interface ModelVariantSchema {
 export interface EnumSchema {
   key: string;
   refName: string;
+  origin: string[];
   typeName: string;
   values: (string | number)[];
   enumRef: EnumInstance;
@@ -105,32 +117,79 @@ export interface FieldSchema {
 }
 
 export const getConstantSchemaDoc = (options: ConstantSchemaOptions = {}): ConstantSchemaDoc => {
-  const databases = getSelectedEntries(ConstantRegistry.database, options.models).map(([refName, model]) =>
-    buildDatabaseSchema(refName, model),
-  );
-  const scalars = getSelectedEntries(ConstantRegistry.scalar, options.scalars).map(([refName, scalar]) => {
-    const modelRef = scalar.model;
-    return {
-      kind: "scalar" as const,
-      refName,
-      modelName: getModelName(modelRef, refName),
-      modelRef,
-      fields: getFields(modelRef, "scalar"),
-    };
-  });
-  const selectedEnums = getSelectedEntries(ConstantRegistry.enum, options.enums);
+  const { models, scalars: scalarKeys, enums: enumKeys, include, exclude, libs } = options;
+  const isScoped = [models, scalarKeys, enumKeys, include, exclude, libs].some((option) => option !== undefined);
+  const keeps = (kind: ConstantOriginKind) => (key: string) =>
+    !exclude?.includes(key) && (!libs || libs.includes(ownerOf(ConstantRegistry.getOrigin(kind, key)) ?? ""));
+  const isRoot = (key: string) => keeps("database")(key) && (!include || include.includes(key));
+  const databases = selectKeys(ConstantRegistry.database, models)
+    .filter(isRoot)
+    .map((refName) => buildDatabaseSchema(refName, ConstantRegistry.getDatabase(refName)));
+  const scalars = (
+    scalarKeys !== undefined
+      ? selectKeys(ConstantRegistry.scalar, scalarKeys).filter(keeps("scalar"))
+      : isScoped
+        ? collectEmbeddedScalars(
+            databases,
+            include ? selectKeys(ConstantRegistry.scalar, include).filter(keeps("scalar")) : [],
+            keeps("scalar"),
+          )
+        : selectKeys(ConstantRegistry.scalar)
+  ).map(buildScalarSchema);
   const enumUsages = collectEnumUsages(databases, scalars);
-  const enums = selectedEnums.map(([key, enumRef]) => ({
+  const enums = selectKeys(ConstantRegistry.enum, enumKeys)
+    .filter(keeps("enum"))
+    .map((key) => buildEnumSchema(key, enumUsages))
+    .filter((enumSchema) => enumKeys !== undefined || !isScoped || enumSchema.usedBy.length);
+  const relations = collectRelations(databases, scalars);
+  return { databases, scalars, enums, relations };
+};
+
+const buildScalarSchema = (refName: string): ScalarSchema => {
+  const modelRef = ConstantRegistry.getScalar(refName).model;
+  return {
+    kind: "scalar",
+    refName,
+    origin: ConstantRegistry.getOrigin("scalar", refName),
+    modelName: getModelName(modelRef, refName),
+    modelRef,
+    fields: getFields(modelRef, "scalar"),
+  };
+};
+
+const buildEnumSchema = (key: string, enumUsages: Map<EnumInstance, EnumUsage[]>): EnumSchema => {
+  const enumRef = ConstantRegistry.enum.get(key) as EnumInstance;
+  return {
     key,
     refName: enumRef.refName,
+    origin: ConstantRegistry.getOrigin("enum", key),
     typeName: PrimitiveRegistry.getName(enumRef.type as typeof PrimitiveScalar),
     values: [...enumRef.values] as (string | number)[],
     enumRef,
     usedBy: enumUsages.get(enumRef) ?? [],
-  }));
-  const relations = collectRelations(databases, scalars);
-  return { databases, scalars, enums, relations };
+  };
 };
+
+const collectEmbeddedScalars = (
+  databases: DatabaseSchema[],
+  rootScalars: string[],
+  isKept: (key: string) => boolean,
+) => {
+  const found = new Set(rootScalars);
+  const visit = (fields: FieldSchema[]) => {
+    for (const field of fields) {
+      const refName = field.typeRefName;
+      if (!refName || found.has(refName) || !isKept(refName) || !ConstantRegistry.scalar.has(refName)) continue;
+      found.add(refName);
+      visit(getFields(ConstantRegistry.getScalar(refName).model, "scalar"));
+    }
+  };
+  for (const database of databases) for (const variant of Object.values(database.variants)) visit(variant.fields);
+  for (const refName of rootScalars) visit(getFields(ConstantRegistry.getScalar(refName).model, "scalar"));
+  return [...found].sort((a, b) => a.localeCompare(b));
+};
+
+export const getConstantOwnerOrder = () => ownerOrderOf([...ConstantRegistry.origin.values()]);
 
 export const getDefaultVariant = (database: DatabaseSchema): ModelVariantSchema => database.variants.full;
 
@@ -155,7 +214,13 @@ const buildDatabaseSchema = (refName: string, model: ConstantModel): DatabaseSch
       ];
     }),
   ) as Record<DatabaseModelVariant, ModelVariantSchema>;
-  return { kind: "database", refName, modelName: ConstantRegistry.getModelName(model.full), variants };
+  return {
+    kind: "database",
+    refName,
+    origin: ConstantRegistry.getOrigin("database", refName),
+    modelName: ConstantRegistry.getModelName(model.full),
+    variants,
+  };
 };
 
 const getFields = (modelRef: ConstantCls, variant: DatabaseModelVariant | "scalar"): FieldSchema[] =>
@@ -265,13 +330,8 @@ const getConstraints = (props: ReturnType<ConstantField["getProps"]>) =>
     props.accumulate ? "accumulate" : null,
   ].filter((constraint): constraint is string => !!constraint);
 
-const getSelectedEntries = <Value>(map: Map<string, Value>, selected?: string[]): [string, Value][] => {
-  if (!selected?.length) return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return selected.flatMap((key) => {
-    const value = map.get(key);
-    return value ? ([[key, value]] as [string, Value][]) : [];
-  });
-};
+const selectKeys = (map: Map<string, unknown>, selected?: string[]) =>
+  selected ? selected.filter((key) => map.has(key)) : [...map.keys()].sort((a, b) => a.localeCompare(b));
 
 const collectEnumUsages = (databases: DatabaseSchema[], scalars: ScalarSchema[]) => {
   const usages = new Map<EnumInstance, EnumUsage[]>();

@@ -1,9 +1,9 @@
 "use client";
 import { useCsr } from "akanjs/client";
 import { st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useSpring } from "react-spring";
+import { animated } from "./animated";
 
 interface KeyboardAvoidingProps {
   children: ReactNode;

@@ -30,10 +30,6 @@ export type BackendEnv = {
       cacheSize?: number;
       tempStore?: string;
     };
-    libsql?: {
-      url?: string;
-      authToken?: string;
-    };
     postgres?: {
       url?: string;
       host?: string;

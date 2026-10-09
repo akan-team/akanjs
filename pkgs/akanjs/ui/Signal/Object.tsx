@@ -9,10 +9,6 @@ import { Modal } from "../Modal";
 import { DocTable, dictText, docPill, docUi } from "../Reference";
 import { Tooltip } from "../Tooltip";
 
-export default function Object() {
-  return <div></div>;
-}
-
 const typeLabel = (modelName: string, arrDepth: number, nullable?: boolean) =>
   `${"[".repeat(arrDepth)}${modelName}${"]".repeat(arrDepth)}${nullable ? "" : "!"}`;
 
@@ -21,7 +17,7 @@ interface ObjectTypeProps {
   arrDepth: number;
   nullable?: boolean;
 }
-const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
+export const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
   const isModelType = !PrimitiveRegistry.has(objRef);
   const modelName = ConstantRegistry.getModelName(objRef);
   const [openDetail, setOpenDetail] = useState(false);
@@ -54,13 +50,12 @@ const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
     </>
   );
 };
-Object.Type = ObjectType;
 
 interface ObjectDetailProps {
   className?: string;
   objRef: ConstantCls;
 }
-const ObjectDetail = ({ className, objRef }: ObjectDetailProps) => {
+export const ObjectDetail = ({ className, objRef }: ObjectDetailProps) => {
   const modelRefName = ConstantRegistry.getRefName(objRef);
   const { l } = usePage();
   return (
@@ -75,7 +70,7 @@ const ObjectDetail = ({ className, objRef }: ObjectDetailProps) => {
         </>
       }
     >
-      {globalThis.Object.entries(objRef[FIELD_META]).map(
+      {Object.entries(objRef[FIELD_META]).map(
         ([key, { arrDepth, nullable, modelRef, isClass, enum: enumOpt, isMap, of }], idx) => (
           <tr key={idx}>
             <td>
@@ -132,12 +127,11 @@ const ObjectDetail = ({ className, objRef }: ObjectDetailProps) => {
     </DocTable>
   );
 };
-Object.Detail = ObjectDetail;
 
 interface ObjectSchemaProps {
   objRef: Cls;
 }
-const ObjectSchema = ({ objRef }: ObjectSchemaProps) => {
+export const ObjectSchema = ({ objRef }: ObjectSchemaProps) => {
   const { l } = usePage();
   const refName = capitalize(ConstantRegistry.getRefName(objRef));
   const gqlName = `${ConstantRegistry.isLight(objRef) ? "Light" : ""}${refName}${ConstantRegistry.isInsight(objRef) ? "Insight" : ""}`;
@@ -152,4 +146,3 @@ const ObjectSchema = ({ objRef }: ObjectSchemaProps) => {
     </div>
   );
 };
-Object.Schema = ObjectSchema;

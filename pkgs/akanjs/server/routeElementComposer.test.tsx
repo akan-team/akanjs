@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { PathRoute, RouteRender } from "akanjs/client";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
-import { RouteElementComposer } from "./routeElementComposer";
+import { AkanNotFoundError } from "../client/router";
+import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 
 function createDeferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -166,5 +167,51 @@ describe("RouteElementComposer.resolveSuffixLoadings", () => {
     expect(el.key).toBe("akan-loading:/loadingtest/bbb");
     const fallback = (el.props as { fallback?: ReactNode }).fallback;
     expect(isValidElement(fallback)).toBe(true);
+  });
+});
+
+describe("RouteElementComposer not-found in place", () => {
+  const layoutRender = (NotFound?: (props: { pathname: string }) => ReactNode): RouteRender => ({
+    render: (({ children }: { children: ReactNode }) => <section>layout:{children}</section>) as RouteRender["render"],
+    resolveNotFound: async () => NotFound as never,
+  });
+  const goneRender: RouteRender = {
+    render: (async () => {
+      await sleep(1);
+      throw new AkanNotFoundError();
+    }) as RouteRender["render"],
+  };
+  const notFoundOption = (hits: { count: number }): RouteNotFoundInPlace => ({
+    pathname: "/en/gone",
+    onNotFound: () => {
+      hits.count += 1;
+    },
+    systemFallback: () => <p>system card</p>,
+  });
+
+  test("renders the nearest layout's NotFound where the page threw, and reports it", async () => {
+    const hits = { count: 0 };
+    const element = RouteElementComposer.composeRenders({
+      renders: [layoutRender(({ pathname }) => <p>{`missing ${pathname}`}</p>), layoutRender(), goneRender],
+      params: {},
+      searchParams: {},
+      notFound: notFoundOption(hits),
+    });
+    const html = await drain(await renderDocument(element));
+    expect(html).toContain("missing /en/gone");
+    expect(html).not.toContain("system card");
+    expect(hits.count).toBe(1);
+  });
+
+  test("falls back to the system card when no layout above the thrower declares a NotFound", async () => {
+    const hits = { count: 0 };
+    const element = RouteElementComposer.composeRenders({
+      renders: [layoutRender(), goneRender],
+      params: {},
+      searchParams: {},
+      notFound: notFoundOption(hits),
+    });
+    expect(await drain(await renderDocument(element))).toContain("system card");
+    expect(hits.count).toBe(1);
   });
 });

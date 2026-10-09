@@ -1126,22 +1126,6 @@ const config: AppConfig = {
             {l.trans({
               en: (
                 <span>
-                  <strong>libSQL is opt-in.</strong> No mode ships <code>@libsql/client</code>, so an app that applies{" "}
-                  <code>LibsqlDatabase</code> itself lists it in <code>externalLibs</code>.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>libSQL은 직접 켭니다.</strong> 어느 모드도 <code>@libsql/client</code>를 싣지 않으므로,{" "}
-                  <code>LibsqlDatabase</code>를 직접 적용하는 앱은 이를 <code>externalLibs</code>에 적습니다.
-                </span>
-              ),
-            })}
-          </li>
-          <li>
-            {l.trans({
-              en: (
-                <span>
                   <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
                   <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
                   plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and

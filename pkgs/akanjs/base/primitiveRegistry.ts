@@ -283,7 +283,7 @@ declare global {
     [CLIENT_VALUE]: Dayjs;
     [DEFAULT_VALUE]: Dayjs;
     [PURIFIED_VALUE]: Dayjs;
-    [EXAMPLE_VALUE]: string;
+    [EXAMPLE_VALUE]: Dayjs;
     validate(value: Date): boolean;
     parseValue(input: Date): Dayjs;
     serializeValue(value: Dayjs | Date): Date;
@@ -374,7 +374,7 @@ Object.assign(Date, {
   ...scalarPrimitiveStatics,
   refName: "Date",
   [DEFAULT_VALUE]: dayjs(new Date(-1)),
-  [EXAMPLE_VALUE]: dayjs(new Date().toISOString()),
+  [EXAMPLE_VALUE]: dayjs("2026-01-01T00:00:00.000Z"),
   validate(value: Date | string | number) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return false;

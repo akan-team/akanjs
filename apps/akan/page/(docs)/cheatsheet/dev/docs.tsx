@@ -97,10 +97,10 @@ export default page().render(() => {
     {
       key: "fetch",
       type: "FetchProxy",
-      tags: [required],
+      tags: [l.trans({ en: "optional", ko: "선택" })],
       desc: l.trans({
-        en: "The app's own `fetch`. A signal the app does not mount shows as unregistered.",
-        ko: "앱 자신의 `fetch`입니다. 앱이 마운트하지 않은 signal은 등록되지 않았다고 나옵니다.",
+        en: "Defaults to the app's own `fetch`. A signal it does not mount shows as unregistered.",
+        ko: "기본값은 앱 자신의 `fetch`입니다. 마운트되지 않은 signal은 등록되지 않았다고 나옵니다.",
       }),
     },
     {
@@ -120,6 +120,13 @@ export default page().render(() => {
       desc: l.trans({
         en: "One signal's whole document: summary, toolbar, REST and WebSocket lists.",
         ko: "signal 하나의 문서 전체입니다. 요약, 도구 모음, REST와 WebSocket 목록이 들어 있습니다.",
+      }),
+    },
+    {
+      name: "Signal.Doc.Explorer",
+      desc: l.trans({
+        en: "Every mounted signal in a sidebar, each mounted on first open. Scope with `include`, `exclude`, `libs`, `groupBy`.",
+        ko: "마운트된 signal 전체를 사이드바에 두고 처음 열 때 마운트합니다. `include`, `exclude`, `libs`, `groupBy`로 범위를 정합니다.",
       }),
     },
     {
@@ -364,40 +371,16 @@ export default page().render(() => {
               ),
             })}
           </div>
-          <ol className={stepList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    Write a small client component in <code>ui/</code> that renders <code>Signal.Doc.Zone</code>.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <code>ui/</code>에 <code>Signal.Doc.Zone</code>을 그리는 작은 클라이언트 컴포넌트를 만듭니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>{l.trans({ en: "Render that component from a route.", ko: "route에서 그 컴포넌트를 그립니다." })}</li>
-          </ol>
-          <div>
-            {l.trans({
-              en: "First, the client component:",
-              ko: "먼저 클라이언트 컴포넌트입니다:",
-            })}
-          </div>
         </Docs.Description>
         <Code.Snippet
           className="w-full"
-          title="apps/myapp/ui/ApiDocs.tsx"
-          code={`"use client";
-import { fetch } from "@apps/myapp/client";
+          title="apps/myapp/page/(admin)/api/_index.tsx"
+          code={`import { page } from "akanjs/client";
 import { Signal } from "akanjs/ui";
 
-export const ApiDocs = () => {
-  return <Signal.Doc.Zone refName="base" fetch={fetch} openAll />;
-};`}
+export default page()
+  .config({ devOnly: true })
+  .render(() => <Signal.Doc.Zone refName="base" openAll />);`}
         />
         <Docs.Description>
           <Docs.OptionTable items={zonePropRows} />
@@ -406,56 +389,14 @@ export const ApiDocs = () => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>
-                      Why <code>{'"use client"'}</code>.
-                    </strong>{" "}
-                    A server page cannot pass <code>fetch</code> as a prop, and <code>Signal.Doc.Zone</code> exists only
-                    on the client.
+                    <strong>The route stays a server page.</strong> Each <code>Signal.Doc</code> member is its own
+                    client boundary, so no wrapper is needed and only the explorer ships as JavaScript.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>
-                      <code>{'"use client"'}</code>가 필요한 이유.
-                    </strong>{" "}
-                    서버 페이지는 <code>fetch</code>를 prop으로 넘길 수 없고, <code>Signal.Doc.Zone</code>은
-                    클라이언트에만 있습니다.
-                  </span>
-                ),
-              })}
-            </li>
-          </ul>
-          <div>
-            {l.trans({
-              en: "Then render it from a route:",
-              ko: "그다음 route에서 그립니다:",
-            })}
-          </div>
-        </Docs.Description>
-        <Code.Snippet
-          className="w-full"
-          title="apps/myapp/page/(admin)/api/_index.tsx"
-          code={`import { ApiDocs } from "@apps/myapp/ui";
-import { page } from "akanjs/client";
-
-export default page()
-  .config({ devOnly: true })
-  .render(() => <ApiDocs />);`}
-        />
-        <Docs.Description>
-          <ul className={bulletList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>The route stays a server page.</strong> The client boundary is <code>ApiDocs</code>, so only
-                    that component ships as JavaScript.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>route는 서버 페이지로 남습니다.</strong> 클라이언트 경계는 <code>ApiDocs</code>가 맡으므로
-                    JavaScript로 가는 것은 그 컴포넌트뿐입니다.
+                    <strong>route는 서버 페이지로 남습니다.</strong> <code>Signal.Doc</code>의 멤버마다 클라이언트
+                    경계가 따로 있어 래퍼가 필요 없고, JavaScript로 가는 것은 탐색기뿐입니다.
                   </span>
                 ),
               })}

@@ -39,4 +39,4 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
 })) {}
 
 export class Agent extends serverSignal(AgentEndpoint, AgentInternal) {}
-export const agent = SignalRegistry.registerService("agent" as const, AgentInternal, AgentEndpoint, Agent);
+export const agent = SignalRegistry.registerService("agent" as const, AgentInternal, AgentEndpoint, Agent, "akanjs");

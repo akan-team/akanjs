@@ -29,7 +29,7 @@ export class BaseEndpoint extends endpoint(srv.base, ({ query, mutation, message
 })) {}
 
 export class Base extends serverSignal(BaseEndpoint, BaseInternal) {}
-export const base = SignalRegistry.registerService("base" as const, BaseInternal, BaseEndpoint, Base);
+export const base = SignalRegistry.registerService("base" as const, BaseInternal, BaseEndpoint, Base, "akanjs");
 
 const createBaseFetch = () => FetchClient.from(base, agent);
 type BaseFetch = ReturnType<typeof createBaseFetch>;

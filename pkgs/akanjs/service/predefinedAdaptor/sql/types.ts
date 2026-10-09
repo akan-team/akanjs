@@ -24,11 +24,6 @@ export interface SqliteDatabaseConfig {
   tempStore?: "DEFAULT" | "FILE" | "MEMORY";
 }
 
-export interface LibsqlDatabaseConfig {
-  url?: string;
-  authToken?: string;
-}
-
 export interface PostgresDatabaseConfig {
   url?: string;
   host?: string;
@@ -47,7 +42,6 @@ export interface SearchConfig {
 
 export interface DatabaseConfig {
   sqlite?: SqliteDatabaseConfig;
-  libsql?: LibsqlDatabaseConfig;
   postgres?: PostgresDatabaseConfig;
   search?: SearchConfig;
 }

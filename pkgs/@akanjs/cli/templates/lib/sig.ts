@@ -31,8 +31,8 @@ ${serviceModules.map((module) => `export * from "./_${module}/${module}.signal";
 ${databaseModules.map(serverSignalClass).join("\n")}
 ${serviceModules.map(serverSignalClass).join("\n")}
 
-${databaseModules.map((module) => `export const ${module} = SignalRegistry.registerDatabase("${module}" as const, ${module}Sig.${capitalize(module)}Internal, ${module}Sig.${capitalize(module)}Endpoint, ${module}Sig.${capitalize(module)}Slice, ${capitalize(module)});`).join("\n")}
-${serviceModules.map((module) => `export const ${module} = SignalRegistry.registerService("${module}" as const, ${module}Sig.${capitalize(module)}Internal, ${module}Sig.${capitalize(module)}Endpoint, ${capitalize(module)});`).join("\n")}
+${databaseModules.map((module) => `export const ${module} = SignalRegistry.registerDatabase("${module}" as const, ${module}Sig.${capitalize(module)}Internal, ${module}Sig.${capitalize(module)}Endpoint, ${module}Sig.${capitalize(module)}Slice, ${capitalize(module)}, "${scanInfo.name}");`).join("\n")}
+${serviceModules.map((module) => `export const ${module} = SignalRegistry.registerService("${module}" as const, ${module}Sig.${capitalize(module)}Internal, ${module}Sig.${capitalize(module)}Endpoint, ${capitalize(module)}, "${scanInfo.name}");`).join("\n")}
 
 export const fetchSignals = [${signalNames.join(", ")}] as const;
 export type Fetch = FetchClientType<typeof fetchSignals>;

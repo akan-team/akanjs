@@ -256,7 +256,7 @@ The shared `Banner` model uses all five. Its other fields are left out here:
 
 **The weights are defaults.** A query can pass its own `weights` or narrow the `columns` in `q.search()`.
 
-**Search works in every database mode.** For the same text, SQLite, libSQL and Postgres match the same documents; only the order can differ on Postgres.
+**Search works in every database mode.** For the same text, SQLite and Postgres match the same documents; only the order can differ on Postgres.
 
 **A `secret`, `hidden` or resolved field takes no `text` role,** and neither does a field nested underneath one. The search mirror stores plaintext, so an indexed secret would leak through search.
 

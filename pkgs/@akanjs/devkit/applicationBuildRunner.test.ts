@@ -10,7 +10,7 @@ import { Executor } from "./executors";
 describe("ApplicationBuildRunner", () => {
   test("externalizes Akan optional backend dependencies", () => {
     expect(AKAN_OPTIONAL_BACKEND_EXTERNALS).toEqual(
-      expect.arrayContaining(["@libsql/client", "bullmq", "ioredis", "postgres", "protobufjs"]),
+      expect.arrayContaining(["bullmq", "ioredis", "postgres", "protobufjs"]),
     );
   });
 

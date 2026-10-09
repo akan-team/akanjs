@@ -494,10 +494,10 @@ export const StoreLocation = () => {
       props: [
         {
           name: "Signal.Doc",
-          type: ".Zone · .Setting · .AuthModal · .DocSignals · .DocSignal",
+          type: ".Zone · .Explorer · .Setting · .AuthModal · .DocSignals · .DocSignal",
           desc: l.trans({
-            en: "The explorer; `Doc.Zone({ refName, fetch, openAll? })` renders one signal's whole document.",
-            ko: "탐색기 본체로, `Doc.Zone({ refName, fetch, openAll? })`이 signal 하나의 문서 전체를 그립니다.",
+            en: "`Zone({ refName })` documents one signal; `Explorer({ include?, exclude? })` puts them all behind a sidebar.",
+            ko: "`Zone({ refName })`은 signal 하나를 문서로 그리고, `Explorer({ include?, exclude? })`는 전체를 사이드바 뒤에 둡니다.",
           }),
         },
         {
@@ -561,56 +561,46 @@ export const StoreLocation = () => {
         l.trans({
           en: (
             <span>
-              <strong>Reach for a member, never a root.</strong> <code>Signal.Doc</code> and its siblings render an
-              empty <code>div</code> on their own, so write <code>Signal.Doc.Zone</code> or{" "}
-              <code>Signal.RestApi.Endpoints</code>. Only <code>Signal.Arg</code> is a component itself.
+              <strong>Reach for a member, never a root.</strong> <code>Signal.Doc</code> and its siblings are
+              namespaces, so write <code>Signal.Doc.Zone</code> or <code>Signal.RestApi.Endpoints</code>. Only{" "}
+              <code>Signal.Arg</code> is a component itself.
             </span>
           ),
           ko: (
             <span>
-              <strong>루트가 아니라 멤버를 씁니다.</strong> <code>Signal.Doc</code>과 형제들은 그 자체로는 빈{" "}
-              <code>div</code>만 그리므로 <code>Signal.Doc.Zone</code>이나 <code>Signal.RestApi.Endpoints</code>를
-              씁니다. 그 자체로 컴포넌트인 것은 <code>Signal.Arg</code>뿐입니다.
+              <strong>루트가 아니라 멤버를 씁니다.</strong> <code>Signal.Doc</code>과 형제들은 네임스페이스이므로{" "}
+              <code>Signal.Doc.Zone</code>이나 <code>Signal.RestApi.Endpoints</code>를 씁니다. 그 자체로 컴포넌트인 것은{" "}
+              <code>Signal.Arg</code>뿐입니다.
             </span>
           ),
         }),
         l.trans({
           en: (
             <span>
-              <strong>
-                Render it from a <code>{'"use client"'}</code> file.
-              </strong>{" "}
-              It takes the app's <code>fetch</code>, which a server component cannot hand over as a prop, and its
-              members exist only on the client.
+              <strong>Render it straight from a page.</strong> Every member crosses the client boundary on its own, and{" "}
+              <code>fetch</code> defaults to the app's own, so no <code>{'"use client"'}</code> wrapper is needed. Pass{" "}
+              <code>fetch</code> only to document another app's proxy.
             </span>
           ),
           ko: (
             <span>
-              <strong>
-                <code>{'"use client"'}</code> 파일에서 렌더합니다.
-              </strong>{" "}
-              앱의 <code>fetch</code>를 prop으로 받는데 서버 컴포넌트는 이것을 넘길 수 없고, 멤버도 클라이언트에만
-              있습니다.
+              <strong>페이지에서 바로 렌더합니다.</strong> 멤버마다 따로 클라이언트 경계를 넘고 <code>fetch</code>는 앱
+              자신의 것이 기본값이므로 <code>{'"use client"'}</code> 래퍼가 필요 없습니다. 다른 앱의 proxy를 문서로 보여
+              줄 때만 <code>fetch</code>를 넘깁니다.
             </span>
           ),
         }),
         l.trans({
           en: (
             <span>
-              <strong>
-                <code>fetch</code> is the app's own fetch proxy.
-              </strong>{" "}
-              The explorer reads <code>fetch.serializedSignal</code> from it, so a signal the app did not mount is
-              reported as unregistered instead of rendering empty.
+              <strong>Only mounted signals appear.</strong> The explorer reads <code>fetch.serializedSignal</code>, so a
+              signal the app did not mount is reported as unregistered instead of rendering empty.
             </span>
           ),
           ko: (
             <span>
-              <strong>
-                <code>fetch</code>는 앱 자신의 fetch proxy입니다.
-              </strong>{" "}
-              탐색기는 여기서 <code>fetch.serializedSignal</code>을 읽으므로, 앱이 마운트하지 않은 signal은 빈 화면이
-              아니라 등록되지 않았다고 표시됩니다.
+              <strong>마운트된 signal만 나옵니다.</strong> 탐색기는 <code>fetch.serializedSignal</code>을 읽으므로, 앱이
+              마운트하지 않은 signal은 빈 화면이 아니라 등록되지 않았다고 표시됩니다.
             </span>
           ),
         }),
@@ -644,24 +634,15 @@ export const StoreLocation = () => {
           ),
         }),
       ],
-      code: `"use client";
-import { fetch } from "@apps/shop/client";
+      code: `import { page } from "akanjs/client";
 import { Signal } from "akanjs/ui";
 
-export const ProductApi = () => {
-  return <Signal.Doc.Zone refName="product" fetch={fetch} />;
-};
+export default page().render(() => (
+  <Signal.Doc.Explorer exclude={["banner"]} defaultRefName="product" />
+));
 
-export const PingTester = () => {
-  return (
-    <Signal.RestApi.Endpoints
-      refName="base"
-      fetch={fetch}
-      endpoints={["ping"]}
-      openAll
-    />
-  );
-};`,
+// one endpoint, inline in a guide
+<Signal.RestApi.Endpoints refName="base" endpoints={["ping"]} openAll />`,
     },
     {
       name: "Tab",

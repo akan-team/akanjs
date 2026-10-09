@@ -2,11 +2,11 @@
 import { useDrag } from "@use-gesture/react";
 import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { useEscapeKey } from "akanjs/webkit";
 import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
+import { animated } from "./animated";
 import { buttonRecipe } from "./Button";
 
 interface BottomSheetProps {

@@ -417,7 +417,7 @@ lacks is added there: an app's own plugin runs as Bun code in the plugin host an
   `single` and a cloud cluster in `cluster`: declare both.
 - **Where the data lives is the deployment's env, ahead of `env.server.ts`**: `SQLITE_DATABASE_PATH`,
   `AKAN_SOLID_DB_PATH`, `POSTGRES_URL` (or `POSTGRES_HOST`/`PORT`/`DATABASE`/`USER`/`PASSWORD`),
-  `POSTGRES_INSIGHT_URL`, `LIBSQL_URL`. `REDIS_URI` is required outside local development. Pool size, SSL and
+  `POSTGRES_INSIGHT_URL`. `REDIS_URI` is required outside local development. Pool size, SSL and
   prepared statements ride the Postgres URL (`?max=20&ssl=require`, `prepare=false` behind PgBouncer).
 - **Uploads**: a deployed `multiple`/`cluster` app uses object storage, or a volume every instance mounts with
   `AKAN_STORAGE_SHARED=true`.

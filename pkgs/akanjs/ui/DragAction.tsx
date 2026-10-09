@@ -2,10 +2,10 @@
 import { useGesture } from "@use-gesture/react";
 import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/src/types";
 import { cn } from "akanjs/client";
-import { animated } from "akanjs/ui";
 import { type ReactNode, useContext, useRef } from "react";
 import { SpringValue, useSpring } from "react-spring";
 import { sharedContext } from "../client/sharedContext";
+import { animated } from "./animated";
 
 interface DragActionContextType {
   bind: () => ReactDOMAttributes;

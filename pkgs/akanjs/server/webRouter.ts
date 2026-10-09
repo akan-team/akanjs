@@ -187,9 +187,9 @@ export function resolveHtmlRouteCacheStoreTtl(input: {
   baseTtl: number;
   workerCacheState: RouteCacheRenderState;
   hostRequestStore: AkanRequestStore;
-  lateControl?: { type: "redirect" } | null;
+  lateControl?: { type: "redirect" | "not-found" } | null;
 }): number | null {
-  if (input.lateControl?.type === "redirect") return null;
+  if (input.lateControl) return null;
   const workerTtl = resolveRouteCacheStoreTtl(input.baseTtl, input.workerCacheState);
   if (workerTtl === null) return null;
   const hostCacheState = shouldStoreRouteCache({
@@ -657,7 +657,9 @@ export class WebRouter {
               rscResult.cancel(reason);
             },
           });
-          const responseStatus = rscResult.status ?? 200;
+          //? A not-found the page raised after the stream started is known here only if the host still held the response.
+          const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
+          const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
           const responseHeaders = this.#htmlResponseHeaders(responseStatus);
           if (req.method === "HEAD") {
             const headers = new Headers(responseHeaders);

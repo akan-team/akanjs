@@ -1,12 +1,12 @@
 "use client";
 import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
-import { animated } from "akanjs/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineClose, AiOutlineMenu } from "react-icons/ai";
 import { BiX } from "react-icons/bi";
 import { useSpring } from "react-spring";
 import { agentAttrs } from "../agentAttrs";
+import { animated } from "../animated";
 import { buttonRecipe } from "../Button";
 
 export interface SiderProps {

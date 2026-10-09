@@ -191,6 +191,8 @@ export interface SerializedSignal {
   crud?: SerializedSignalMcp;
   /** Which generated CRUD verbs a person-only guard protects, by the same verb map; only the `false` keys travel. */
   agents?: SerializedSignalMcp;
+  /** The app or lib that registered the signal, first registrant first: an app extending a lib module reads `["shared", "sceny"]`. */
+  origin?: string[];
 }
 
 /** Keyed by generated verb, mirroring the `guards` map `slice()` takes. The root slice's own flag rides on `slice[""]`. */

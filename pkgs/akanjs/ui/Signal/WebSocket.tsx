@@ -1,5 +1,5 @@
 "use client";
-import { fetch } from "akanjs/client";
+import { fetch, usePage } from "akanjs/client";
 import { capitalize, type DynamicRecord } from "akanjs/common";
 import type { FetchProxy } from "akanjs/fetch";
 import type { SerializedEndpoint } from "akanjs/signal";
@@ -17,33 +17,28 @@ import {
   WsEndpoint,
   type WsEndpointProps,
 } from "./Endpoint";
-import { endpointEntriesOf, isWsEndpoint, matchesGuards, matchesSearch } from "./endpointEntries";
-import Listener from "./Listener";
+import { endpointEntriesOf, isWsEndpoint, matchesGuards, matchesSearch, runtimeFetch } from "./endpointEntries";
+import { ListenerResult } from "./Listener";
 import { makeRequestExample } from "./makeExample";
-
-export default function WebSocket() {
-  return <div></div>;
-}
-
-export function Message() {
-  return <div></div>;
-}
-
-export function PubSub() {
-  return <div></div>;
-}
+import { noSearchMatchText, noSignalText, signalText } from "./signalText";
 
 interface WebSocketEndpointsProps {
   refName: string;
-  fetch: FetchProxy;
+  fetch?: FetchProxy;
   openAll?: boolean;
   search?: string;
 }
-const WebSocketEndpoints = ({ refName, fetch, openAll, search }: WebSocketEndpointsProps) => {
+export const WebSocketEndpoints = ({
+  refName,
+  fetch: docFetch = runtimeFetch,
+  openAll,
+  search,
+}: WebSocketEndpointsProps) => {
+  const { l } = usePage();
   const tryGuards = st.use.tryGuards({ agent: false });
-  if (!fetch.serializedSignal[refName])
-    return <div className={docUi.emptyPanel}>No signal is registered as “{refName}”.</div>;
-  const wsEntries = endpointEntriesOf(refName, fetch).filter(({ endpoint }) => isWsEndpoint(endpoint));
+  if (!docFetch.serializedSignal[refName])
+    return <div className={docUi.emptyPanel}>{l.trans(noSignalText(refName))}</div>;
+  const wsEntries = endpointEntriesOf(refName, docFetch).filter(({ endpoint }) => isWsEndpoint(endpoint));
   // A pubsub room authorizes once, at subscribe, so the guards the toggle filters on are the endpoint's own.
   const endpointEntries = wsEntries
     .filter(({ endpoint }) => matchesGuards(endpoint, tryGuards))
@@ -52,27 +47,25 @@ const WebSocketEndpoints = ({ refName, fetch, openAll, search }: WebSocketEndpoi
     return (
       <div className={docUi.emptyPanel}>
         {!wsEntries.length
-          ? "This signal declares no websocket endpoint."
+          ? l.trans(signalText.noWsEndpoint)
           : search?.trim()
-            ? `No endpoint matches “${search.trim()}”.`
-            : "No websocket endpoint is gated by the selected guards."}
+            ? l.trans(noSearchMatchText(search.trim()))
+            : l.trans(signalText.noWsGuardMatch)}
       </div>
     );
   return (
     <div className="flex flex-col gap-2">
       {endpointEntries.map(({ key, endpoint }) =>
         endpoint.type === "pubsub" ? (
-          <PubSub.Endpoint key={key} refName={refName} endpointKey={key} endpoint={endpoint} open={openAll} />
+          <PubSubEndpoint key={key} refName={refName} endpointKey={key} endpoint={endpoint} open={openAll} />
         ) : (
-          <Message.Endpoint key={key} refName={refName} endpointKey={key} endpoint={endpoint} open={openAll} />
+          <MessageEndpoint key={key} refName={refName} endpointKey={key} endpoint={endpoint} open={openAll} />
         ),
       )}
     </div>
   );
 };
-WebSocket.Endpoints = WebSocketEndpoints;
-
-const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointProps) => (
+export const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointProps) => (
   <WsEndpoint
     refName={refName}
     endpointKey={endpointKey}
@@ -82,32 +75,33 @@ const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointPro
     test={<MessageTry endpointKey={endpointKey} endpoint={endpoint} />}
   />
 );
-Message.Endpoint = MessageEndpoint;
-
 interface WsInterfaceProps {
   refName: string;
   endpointKey: string;
   endpoint: SerializedEndpoint;
 }
-const MessageInterface = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => (
-  <EndpointInterface
-    refName={refName}
-    endpointKey={endpointKey}
-    endpoint={endpoint}
-    argSections={[
-      { label: "Form data", args: endpoint.args.filter((arg) => arg.refName === "Upload") },
-      { label: "Variables", args: endpoint.args.filter((arg) => arg.refName !== "Upload") },
-    ]}
-    returnsLabel="Returns"
-  />
-);
-Message.Interface = MessageInterface;
+export const MessageInterface = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
+  const { l } = usePage();
+  return (
+    <EndpointInterface
+      refName={refName}
+      endpointKey={endpointKey}
+      endpoint={endpoint}
+      argSections={[
+        { label: l.trans(signalText.formData), args: endpoint.args.filter((arg) => arg.refName === "Upload") },
+        { label: l.trans(signalText.variables), args: endpoint.args.filter((arg) => arg.refName !== "Upload") },
+      ]}
+      returnsLabel={l.trans(signalText.returns)}
+    />
+  );
+};
 
 interface MessageTryProps {
   endpointKey: string;
   endpoint: SerializedEndpoint;
 }
-const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
+export const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
+  const { l } = usePage();
   const requestExample = useMemo(() => JSON.stringify(makeRequestExample(endpoint), null, 2), []);
   const [gqlRequest, setGqlRequest] = useState<string>(requestExample);
   const [stopListen, setStopListen] = useState<(() => void) | null>(null);
@@ -154,7 +148,7 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <ArgSection label="Variables">
+      <ArgSection label={l.trans(signalText.variables)}>
         <Arg.Json
           value={gqlRequest}
           onChange={(value: string) => {
@@ -171,7 +165,7 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           }}
           type="button"
         >
-          <AiOutlineSwap /> Listen
+          <AiOutlineSwap /> {l.trans(signalText.listen)}
         </button>
         <button
           disabled={!stopListen}
@@ -179,7 +173,7 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           onClick={() => void onSend()}
           type="button"
         >
-          <AiOutlineSend /> Send
+          <AiOutlineSend /> {l.trans(signalText.send)}
         </button>
         <button
           disabled={!stopListen}
@@ -189,16 +183,15 @@ const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
           }}
           type="button"
         >
-          <AiOutlineDisconnect /> Stop
+          <AiOutlineDisconnect /> {l.trans(signalText.stop)}
         </button>
       </div>
-      <Listener.Result status={response.status} data={messages} />
+      <ListenerResult status={response.status} data={messages} />
     </div>
   );
 };
-Message.Try = MessageTry;
 
-const PubSubEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointProps) => (
+export const PubSubEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointProps) => (
   <WsEndpoint
     refName={refName}
     endpointKey={endpointKey}
@@ -208,20 +201,21 @@ const PubSubEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndpointProp
     test={<PubSubTry refName={refName} endpointKey={endpointKey} endpoint={endpoint} />}
   />
 );
-PubSub.Endpoint = PubSubEndpoint;
+export const PubSubInterface = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
+  const { l } = usePage();
+  return (
+    <EndpointInterface
+      refName={refName}
+      endpointKey={endpointKey}
+      endpoint={endpoint}
+      argSections={[{ label: l.trans(signalText.variables), args: endpoint.args }]}
+      returnsLabel={l.trans(signalText.publishes)}
+    />
+  );
+};
 
-const PubSubInterface = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => (
-  <EndpointInterface
-    refName={refName}
-    endpointKey={endpointKey}
-    endpoint={endpoint}
-    argSections={[{ label: "Variables", args: endpoint.args }]}
-    returnsLabel="Publishes"
-  />
-);
-PubSub.Interface = PubSubInterface;
-
-const PubSubTry = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
+export const PubSubTry = ({ endpointKey, endpoint }: WsInterfaceProps) => {
+  const { l } = usePage();
   const requestExample = useMemo(() => JSON.stringify(makeRequestExample(endpoint), null, 2), []);
   const [gqlRequest, setGqlRequest] = useState<string>(requestExample);
   const [unsubscribe, setUnsubscribe] = useState<(() => void) | null>(null);
@@ -264,7 +258,7 @@ const PubSubTry = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <ArgSection label="Variables">
+      <ArgSection label={l.trans(signalText.variables)}>
         <Arg.Json
           value={gqlRequest}
           onChange={(value: string) => {
@@ -281,7 +275,7 @@ const PubSubTry = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
           }}
           type="button"
         >
-          <AiOutlineSwap /> Subscribe
+          <AiOutlineSwap /> {l.trans(signalText.subscribe)}
         </button>
         <button
           disabled={!unsubscribe}
@@ -291,11 +285,10 @@ const PubSubTry = ({ refName, endpointKey, endpoint }: WsInterfaceProps) => {
           }}
           type="button"
         >
-          <AiOutlineDisconnect /> Unsubscribe
+          <AiOutlineDisconnect /> {l.trans(signalText.unsubscribe)}
         </button>
       </div>
-      <Listener.Result status={response.status} data={messages} />
+      <ListenerResult status={response.status} data={messages} />
     </div>
   );
 };
-PubSub.Try = PubSubTry;

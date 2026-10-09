@@ -1,12 +1,12 @@
 "use client";
 import { useDrag } from "@use-gesture/react";
 import { cn, usePage } from "akanjs/client";
-import { animated } from "akanjs/ui";
 import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
+import { animated } from "../animated";
 import { buttonRecipe } from "../Button";
 import { useOverlayLayerProps } from "../overlayLayer";
 

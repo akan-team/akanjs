@@ -1,32 +1,9 @@
-import type { InArgs, InValue } from "@libsql/client";
 import { dayjs } from "akanjs/base";
 import { encodeDocumentValue, sanitizeJson } from "akanjs/document";
 import type { QueryLeafOps } from "./types";
 
 export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Buffer);
-export const toLibsqlValue = (value: unknown): InValue => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "bigint" ||
-    typeof value === "boolean" ||
-    value instanceof Date ||
-    value instanceof Uint8Array ||
-    value instanceof ArrayBuffer
-  ) {
-    return value;
-  }
-  if (value instanceof Buffer) return new Uint8Array(value);
-  return JSON.stringify(value);
-};
-export const toLibsqlArgs = (params: unknown[]): InArgs => {
-  if (params.length === 1 && isPlainObject(params[0])) {
-    return Object.fromEntries(Object.entries(params[0]).map(([key, value]) => [key, toLibsqlValue(value)]));
-  }
-  return params.map(toLibsqlValue);
-};
 export const toPostgresSql = (sql: string, params: unknown[]) => {
   if (params.length === 1 && isPlainObject(params[0])) {
     const named = params[0];

@@ -66,7 +66,16 @@ export { BottomSheet, type BottomSheetRef } from "./BottomSheet";
 export { Button } from "./Button";
 export { ClientSide } from "./ClientSide";
 export { Clipboard } from "./Clipboard";
-export { Constant } from "./Constant";
+export {
+  Constant,
+  type ConstantSchemaDoc,
+  type ConstantSchemaOptions,
+  type DatabaseSchema,
+  type EnumSchema,
+  getConstantSchemaDoc,
+  type RelationSchema,
+  type ScalarSchema,
+} from "./Constant";
 export { Copy } from "./Copy";
 export { CsrImage } from "./CsrImage";
 export { Data } from "./Data";

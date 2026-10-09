@@ -77,7 +77,7 @@ export const collectPredefinedDependencies = (adaptors: PredefinedAdaptor): Adap
   return [...collectAdaptors(Object.values(adaptors))].filter((adaptor) => !roles.has(adaptor));
 };
 
-// multiple: one SQLite WAL file on a shared host volume, the rest on Redis; LibsqlDatabase is for a remote sqld.
+// multiple: one SQLite WAL file on a shared host volume, the rest on Redis.
 export const getPredefinedAdaptor = (mode: DatabaseMode = "single"): PredefinedAdaptor => {
   if (DatabaseModes.parse(mode, "The database mode") === "single") return predefinedAdaptor;
   return {
