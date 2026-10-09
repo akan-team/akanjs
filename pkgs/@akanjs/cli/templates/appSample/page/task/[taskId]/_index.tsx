@@ -11,9 +11,9 @@ import { Link } from "akanjs/ui";
 
 export default page()
   .param("taskId", ID)
-  .render(async ({ taskId }) => {
+  .render(({ taskId }) => {
     const { l } = usePage();
-    const { taskView } = await fetch.viewTask(taskId);
+    const { taskView } = fetch.viewTask(taskId);
     return (
       <main className="mx-auto max-w-4xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">

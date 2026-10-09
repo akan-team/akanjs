@@ -8,9 +8,9 @@ import { jellyButtonRecipe } from "@apps/${dict.appName}/ui";
 import { page } from "akanjs/client";
 import { Link } from "akanjs/ui";
 
-export default page().render(async () => {
+export default page().render(() => {
   const { l } = usePage();
-  const { taskInitInPublic } = await fetch.initTaskInPublic();
+  const { taskInitInPublic } = fetch.initTaskInPublic();
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">

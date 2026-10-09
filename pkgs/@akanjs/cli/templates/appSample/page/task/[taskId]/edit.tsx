@@ -11,8 +11,8 @@ import { Link, Load } from "akanjs/ui";
 
 export default page()
   .param("taskId", ID)
-  .render(async ({ taskId }) => {
-    const { taskEdit } = await fetch.editTask(taskId);
+  .render(({ taskId }) => {
+    const { taskEdit } = fetch.editTask(taskId);
 
     return (
       <main className="mx-auto max-w-2xl px-6 py-8">
