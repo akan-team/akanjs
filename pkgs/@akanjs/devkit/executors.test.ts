@@ -14,6 +14,7 @@ import {
 import { DevGeneratedIndexSync } from "./frontendBuild/devGeneratedIndexSync";
 import { AppInfo } from "./scanInfo";
 import {
+  createTempApp,
   createTempLib,
   formatWithBiome,
   hasBiome,
@@ -160,6 +161,26 @@ describe("Executor filesystem helpers", () => {
 
     await exec.applyTemplate({
       basePath: "apps/demo/page/task",
+      template: "crudSinglePage",
+      dict: { model: "task", appName: "demo" },
+    });
+
+    expect(formatted).toEqual([path.join(root, "apps/demo/page/task/_index.tsx")]);
+  });
+
+  test("an app hands its scaffolded files to the formatter too", async () => {
+    const { root, app } = trackRoot(await createTempApp("demo"));
+    const formatted: string[] = [];
+    app.getLinter = () =>
+      ({
+        fixFiles: async (filePaths: string[]) => {
+          formatted.push(...filePaths);
+          return { fixed: [] };
+        },
+      }) as unknown as ReturnType<Executor["getLinter"]>;
+
+    await app.applyTemplate({
+      basePath: "page/task",
       template: "crudSinglePage",
       dict: { model: "task", appName: "demo" },
     });

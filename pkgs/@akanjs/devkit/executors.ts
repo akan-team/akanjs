@@ -533,6 +533,7 @@ export class Executor {
   async applyTemplate(options: {
     basePath: string;
     template: string;
+    scanInfo?: AppInfo | LibInfo | null;
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
@@ -1091,7 +1092,7 @@ export class SysExecutor extends Executor {
     overwrite?: boolean;
   }): Promise<FileContent[]> {
     const scanInfo = await this.scan();
-    const fileContents = await this._applyTemplate({ ...options, scanInfo, dict: withCapitalizedDict(options.dict) });
+    const fileContents = await super.applyTemplate({ ...options, scanInfo });
     await this.scan();
     return fileContents;
   }
