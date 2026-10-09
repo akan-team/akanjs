@@ -18,9 +18,9 @@ import { Load } from "akanjs/ui";
 export default page()
   .param("${dict.model}Id", ID)
   .config({ transition: "none" })
-  .render(async ({ ${dict.model}Id }) => {
+  .render(({ ${dict.model}Id }) => {
     const { l } = usePage();
-    const [{ ${dict.model}Edit }] = await Promise.all([fetch.edit${dict.Model}(${dict.model}Id)]);
+    const { ${dict.model}Edit } = fetch.edit${dict.Model}(${dict.model}Id);
     return (
       <div className="container">
         <div className="m-4 mt-8 flex justify-between">

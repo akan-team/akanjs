@@ -1080,8 +1080,8 @@ import { Load } from "akanjs/ui";
 
 export default page()
   .param("ticketId", ID)
-  .render(async ({ ticketId }) => {
-    const [{ ticketEdit }] = await Promise.all([fetch.editTicket(ticketId)]);
+  .render(({ ticketId }) => {
+    const { ticketEdit } = fetch.editTicket(ticketId);
     return (
       <Load.Edit
         slice={fetch.slice.ticket}
@@ -1144,19 +1144,19 @@ export default page()
                 en: (
                   <span>
                     <strong>
-                      <code>edit</code> may be an unawaited promise.
+                      <code>ticketEdit</code> goes in unawaited.
                     </strong>{" "}
-                    <code>{"const { ticketEdit } = fetch.editTicket(ticketId)"}</code> streams it in; a skeleton, or
-                    your <code>loading</code>, shows until it lands.
+                    The page is sent at once, and a skeleton, or your <code>loading</code>, holds the form's place until
+                    the record lands.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>
-                      <code>edit</code>에는 await하지 않은 promise를 넘겨도 됩니다.
+                      <code>ticketEdit</code>은 await하지 않고 넘깁니다.
                     </strong>{" "}
-                    <code>{"const { ticketEdit } = fetch.editTicket(ticketId)"}</code>로 넘기면 스트리밍되고, 도착할
-                    때까지 skeleton(또는 넘긴 <code>loading</code>)이 보입니다.
+                    page는 바로 전송되고, 레코드가 도착할 때까지 skeleton(또는 넘긴 <code>loading</code>)이 폼 자리를
+                    지킵니다.
                   </span>
                 ),
               })}

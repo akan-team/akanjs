@@ -788,10 +788,8 @@ import { page } from "akanjs/client";
 
 export default page()
   .param("chatId", ID)
-  .render(async ({ chatId }) => {
-    const [{ chatMessageInitInChat }] = await Promise.all([
-      fetch.initChatMessageInChat(chatId),
-    ]);
+  .render(({ chatId }) => {
+    const { chatMessageInitInChat } = fetch.initChatMessageInChat(chatId);
     return <ChatMessage.Zone.List init={chatMessageInitInChat} />;
   });`}
         />

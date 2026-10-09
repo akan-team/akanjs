@@ -988,10 +988,10 @@ shape, so `cascade` never means "related" — it means one of exactly these:
 export default page()
   .param("orgId", ID)
   .config({ transition: "stack" })
-  .render(async ({ orgId }) => {
+  .render(({ orgId }) => {
     const { l } = usePage();
     getSelf({ unauthorize: "/signin" });
-    const [{ org }, { taskInitInOrg }] = await Promise.all([fetch.viewOrg(orgId), fetch.initTaskInOrg(orgId)]);
+    const { taskInitInOrg } = fetch.initTaskInOrg(orgId);
     return <Task.Zone.Card init={taskInitInOrg} prefix={`/org/${orgId}`} />;
   });
 ```
@@ -999,7 +999,8 @@ export default page()
 - There is no `loader=` / `render=` page prop and no `PageProps` interface: the chain declares the arguments and
   `.render()` receives them flat, typed, with `lang` on every route and `children` added for a layout.
 - Body order inside `.render()`: `usePage()`, auth, fetch, return.
-- Run independent fetches through `Promise.all`, even when there is only one.
+- Hand each `fetch.init*` / `view*` / `edit*` field to its section unawaited. Await only what the shell itself
+  reads — a title, a redirect, an id for a link — and run those awaits through one `Promise.all`.
 - Gate auth at `_layout.tsx`; repeating `getSelf({ unauthorize: "/signin" })` in the page is fine and common.
 - `async` on the render callback only when the body awaits; the callback is not a React component, so it takes no
   name and no return type.

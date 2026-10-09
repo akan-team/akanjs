@@ -16,9 +16,9 @@ import { buttonRecipe, Link } from "akanjs/ui";
 
 export default page()
   .config({ transition: "none" })
-  .render(async () => {
+  .render(() => {
     const { l } = usePage();
-    const [{ ${dict.model}InitInPublic }] = await Promise.all([fetch.init${dict.Model}InPublic()]);
+    const { ${dict.model}InitInPublic } = fetch.init${dict.Model}InPublic();
     return (
       <div className="container flex flex-col gap-4">
         <div className="mt-5 h-full w-full px-5">

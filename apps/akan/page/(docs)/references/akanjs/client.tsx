@@ -1690,8 +1690,8 @@ export default page()
   .param("projectId", ID, { desc: "The project to brief." })
   .search("status", cnst.TicketStatus, { desc: "Only this status." })
   .prompt("briefProjectTickets", "Brief the ticket board of one project.")
-  .render(async ({ projectId, status }) => {
-    const { ticketInitInProject } = await fetch.initTicketInProject(
+  .render(({ projectId, status }) => {
+    const { ticketInitInProject } = fetch.initTicketInProject(
       projectId,
       status,
     );

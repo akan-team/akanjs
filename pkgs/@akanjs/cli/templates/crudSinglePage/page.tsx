@@ -16,15 +16,15 @@ import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page()
   .config({ transition: "none" })
-  .render(async () => {
+  .render(() => {
     const { l } = usePage();
-    const [{ ${dict.model}InitInPublic }] = await Promise.all([fetch.init${dict.Model}InPublic()]);
+    const { ${dict.model}InitInPublic } = fetch.init${dict.Model}InPublic();
     return (
       <>
         <div className="flex animate-fadeIn items-center gap-4 px-4 pt-4">
           <div className="font-bold text-lg md:text-4xl">{l("${dict.model}.modelName")}</div>
           <Model.New
-            className={buttonRecipe({ size: "sm", variant: "ghost" })}
+            trigger={<button className={buttonRecipe({ size: "sm", variant: "ghost" })}>{l("base.new")}</button>}
             slice={fetch.slice.${dict.model}InPublic}
             renderTitle="id"
           >

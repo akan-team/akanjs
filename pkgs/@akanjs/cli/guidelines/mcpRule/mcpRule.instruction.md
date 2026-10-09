@@ -100,8 +100,8 @@ export class TaskEndpoint extends endpoint(srv.task, ({ mutation }) => ({
 export default page()
   .param("taskId", ID, { desc: "The task to review." })
   .prompt("reviewTask", "Review this task and suggest next steps.")
-  .render(async ({ taskId }) => {
-    const { taskView } = await fetch.viewTask(taskId);
+  .render(({ taskId }) => {
+    const { taskView } = fetch.viewTask(taskId);
     return <Task.Zone.View view={taskView} />;
   });
 ```

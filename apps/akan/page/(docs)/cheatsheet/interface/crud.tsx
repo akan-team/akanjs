@@ -615,8 +615,8 @@ import { Load } from "akanjs/ui";
 
 export default page()
   .param("postId", ID)
-  .render(async ({ postId }) => {
-    const [{ postEdit }] = await Promise.all([fetch.editPost(postId)]);
+  .render(({ postId }) => {
+    const { postEdit } = fetch.editPost(postId);
     return (
       <Load.Edit
         slice={fetch.slice.postInAdmin}

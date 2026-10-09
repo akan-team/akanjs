@@ -184,7 +184,7 @@ To edit an existing record, fetch its edit object with `fetch.edit<Model>` and p
 
 **`onSubmit` and `onCancel` take `"back"`, `"reset"` or a path.** In a path, `[ticketId]` becomes the id of the saved record.
 
-**`edit` may be an unawaited promise.** `const { ticketEdit } = fetch.editTicket(ticketId)` streams it in; a skeleton, or your `loading`, shows until it lands.
+**`ticketEdit` goes in unawaited.** The page is sent at once, and a skeleton, or your `loading`, holds the form's place until the record lands.
 
 Before the Template renders, Load.Edit writes these keys into the store:
 
@@ -418,8 +418,8 @@ import { Load } from "akanjs/ui";
 
 export default page()
   .param("ticketId", ID)
-  .render(async ({ ticketId }) => {
-    const [{ ticketEdit }] = await Promise.all([fetch.editTicket(ticketId)]);
+  .render(({ ticketId }) => {
+    const { ticketEdit } = fetch.editTicket(ticketId);
     return (
       <Load.Edit
         slice={fetch.slice.ticket}

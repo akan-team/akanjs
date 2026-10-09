@@ -187,8 +187,8 @@ export class TaskFilter extends from(cnst.Task, (filter) => ({
 }))
 
 // 4. In page — init the slice inside the page chain's render and hand the init to a Zone.
-export default page().render(async () => {
-  const [{ taskInitInTodo }] = await Promise.all([fetch.initTaskInTodo()]);
+export default page().render(() => {
+  const { taskInitInTodo } = fetch.initTaskInTodo();
   return <Task.Zone.Card init={taskInitInTodo} sliceName="taskInTodo" />;
 });
 ```
@@ -349,8 +349,8 @@ export function generateHead({ params }: PageProps) {
 }
 export default async function Page({ params: { projectId }, searchParams }: PageProps) {
   const { l } = usePage();
-  const { project } = await fetch.viewProject(projectId);
-  return <Project.Zone.View view={project} tab={searchParams.tab} />;
+  const { projectView } = await fetch.viewProject(projectId);
+  return <Project.Zone.View view={projectView} tab={searchParams.tab} />;
 }
 export const pageConfig = { transition: "stack" } satisfies PageConfig;
 
@@ -367,8 +367,8 @@ export default page()
   .prompt("briefProject", "Brief one project: its status and what is due.")
   .render(async ({ projectId, tab }) => {
     const { l } = usePage();
-    const { project } = await fetch.viewProject(projectId);
-    return <Project.Zone.View view={project} tab={tab} />;
+    const { projectView } = await fetch.viewProject(projectId);
+    return <Project.Zone.View view={projectView} tab={tab} />;
   });
 ```
 

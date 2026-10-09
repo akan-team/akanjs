@@ -26,14 +26,14 @@ export default page()
       <meta property="og:description" content={${dict.model}Id} />
     </>
   ))
-  .render(async ({ ${dict.model}Id }) => {
+  .render(({ ${dict.model}Id }) => {
     const { l } = usePage();
-    const [{ ${dict.model}, ${dict.model}View }] = await Promise.all([fetch.view${dict.Model}(${dict.model}Id)]);
+    const { ${dict.model}View } = fetch.view${dict.Model}(${dict.model}Id);
     return (
       <div className="container flex flex-col gap-4">
         <div className="flex items-center gap-4 font-bold text-lg">
           <${dict.Model}.Zone.View view={${dict.model}View} />
-          <Link className={buttonRecipe()} href={\`/${dict.model}/\${${dict.model}.id}/edit\`}>
+          <Link className={buttonRecipe()} href={\`/${dict.model}/\${${dict.model}Id}/edit\`}>
             {l("base.updateModel", { model: l("${dict.model}.modelName") })}
           </Link>
         </div>

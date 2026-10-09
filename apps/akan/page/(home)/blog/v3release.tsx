@@ -143,8 +143,8 @@ export default override({ Modal: BrandModal });`,
     code: `export default page()
   .param("orgId", ID)
   .head(<title>Tasks</title>)
-  .render(async ({ orgId }) => {
-    const [{ taskInitInOrg }] = await Promise.all([fetch.initTaskInOrg(orgId)]);
+  .render(({ orgId }) => {
+    const { taskInitInOrg } = fetch.initTaskInOrg(orgId);
     return <Task.Zone.Card init={taskInitInOrg} />;
   });`,
     links: [{ href: "/docs/core/routing", label: { en: "Routing", ko: "라우팅" } }],
