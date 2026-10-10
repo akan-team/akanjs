@@ -22,7 +22,7 @@ import { ListenerResult } from "./Listener";
 import { makeRequestExample } from "./makeExample";
 import { noSearchMatchText, noSignalText, signalText } from "./signalText";
 
-interface WebSocketEndpointsProps {
+export interface WebSocketEndpointsProps {
   refName: string;
   fetch?: FetchProxy;
   openAll?: boolean;
@@ -75,7 +75,7 @@ export const MessageEndpoint = ({ refName, endpointKey, endpoint, open }: WsEndp
     test={<MessageTry endpointKey={endpointKey} endpoint={endpoint} />}
   />
 );
-interface WsInterfaceProps {
+export interface WsInterfaceProps {
   refName: string;
   endpointKey: string;
   endpoint: SerializedEndpoint;
@@ -96,7 +96,7 @@ export const MessageInterface = ({ refName, endpointKey, endpoint }: WsInterface
   );
 };
 
-interface MessageTryProps {
+export interface MessageTryProps {
   endpointKey: string;
   endpoint: SerializedEndpoint;
 }

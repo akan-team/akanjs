@@ -13,7 +13,7 @@ const dotClass: { [key: string]: string } = {
   ready: "bg-border",
 };
 
-interface ListenerResultProps {
+export interface ListenerResultProps {
   status: "ready" | "loading" | "error" | "listening";
   data: unknown;
 }

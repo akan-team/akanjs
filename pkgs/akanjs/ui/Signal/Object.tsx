@@ -12,7 +12,7 @@ import { Tooltip } from "../Tooltip";
 const typeLabel = (modelName: string, arrDepth: number, nullable?: boolean) =>
   `${"[".repeat(arrDepth)}${modelName}${"]".repeat(arrDepth)}${nullable ? "" : "!"}`;
 
-interface ObjectTypeProps {
+export interface ObjectTypeProps {
   objRef: Cls;
   arrDepth: number;
   nullable?: boolean;
@@ -51,7 +51,7 @@ export const ObjectType = ({ objRef, arrDepth, nullable }: ObjectTypeProps) => {
   );
 };
 
-interface ObjectDetailProps {
+export interface ObjectDetailProps {
   className?: string;
   objRef: ConstantCls;
 }
@@ -128,7 +128,7 @@ export const ObjectDetail = ({ className, objRef }: ObjectDetailProps) => {
   );
 };
 
-interface ObjectSchemaProps {
+export interface ObjectSchemaProps {
   objRef: Cls;
 }
 export const ObjectSchema = ({ objRef }: ObjectSchemaProps) => {

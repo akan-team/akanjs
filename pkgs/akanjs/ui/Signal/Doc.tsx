@@ -54,7 +54,7 @@ const GuardItem = ({ active, label, onClick }: GuardItemProps) => (
   </button>
 );
 
-interface DocSettingProps {
+export interface DocSettingProps {
   fetch?: FetchProxy;
   search?: string;
   onSearch?: (search: string) => void;
@@ -144,7 +144,7 @@ export const DocSetting = ({ fetch = runtimeFetch, search, onSearch }: DocSettin
     </Toolbar>
   );
 };
-interface DocAuthModalProps {
+export interface DocAuthModalProps {
   children: ReactNode;
 }
 export const DocAuthModal = ({ children }: DocAuthModalProps) => {
@@ -202,7 +202,7 @@ export const DocAuthModal = ({ children }: DocAuthModalProps) => {
     </>
   );
 };
-interface DocSignalsProps extends SignalScope {
+export interface DocSignalsProps extends SignalScope {
   fetch?: FetchProxy;
 }
 export const DocSignals = ({ fetch = runtimeFetch, include, exclude, libs }: DocSignalsProps) => (
@@ -213,7 +213,7 @@ export const DocSignals = ({ fetch = runtimeFetch, include, exclude, libs }: Doc
   </div>
 );
 
-interface DocSignalProps {
+export interface DocSignalProps {
   refName: string;
   fetch?: FetchProxy;
 }
@@ -237,7 +237,7 @@ export const DocSignal = ({ refName, fetch = runtimeFetch }: DocSignalProps) => 
   );
 };
 
-interface ZoneProps {
+export interface ZoneProps {
   refName: string;
   fetch?: FetchProxy;
   openAll?: boolean;
@@ -277,7 +277,7 @@ export const Zone = ({ refName, fetch = runtimeFetch, openAll }: ZoneProps) => {
   );
 };
 
-interface ExplorerProps extends SignalScope {
+export interface ExplorerProps extends SignalScope {
   className?: string;
   fetch?: FetchProxy;
   defaultRefName?: string;

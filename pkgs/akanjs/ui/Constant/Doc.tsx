@@ -98,7 +98,7 @@ const headsOf = (l: ReturnType<typeof usePage>["l"], keys: (keyof typeof docText
 
 const printTable = "print:overflow-visible print:rounded-none print:border-0";
 
-interface ZoneProps extends ConstantSchemaOptions {
+export interface ZoneProps extends ConstantSchemaOptions {
   openAll?: boolean;
   groupBy?: "lib";
 }
@@ -274,7 +274,7 @@ export const Print = ({ models, scalars, enums, include, exclude, libs }: ZonePr
     </div>
   );
 };
-interface ModelProps {
+export interface ModelProps {
   refName?: string;
   database?: DatabaseSchema;
   openAll?: boolean;
@@ -312,7 +312,7 @@ export const Model = ({ refName, database: databaseProp, openAll }: ModelProps) 
     </Collapse>
   );
 };
-interface ScalarProps {
+export interface ScalarProps {
   refName?: string;
   scalar?: ScalarSchema;
   openAll?: boolean;
@@ -346,7 +346,7 @@ export const Scalar = ({ refName, scalar: scalarProp, openAll }: ScalarProps) =>
     </Collapse>
   );
 };
-interface EnumProps {
+export interface EnumProps {
   enums?: ReturnType<typeof getConstantSchemaDoc>["enums"];
 }
 

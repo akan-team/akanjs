@@ -21,7 +21,7 @@ type RestApiFetchFn = (
   ...args: [...args: unknown[], option: { token?: string; crystalize?: boolean }]
 ) => Promise<unknown>;
 
-interface RestApiEndpointsProps {
+export interface RestApiEndpointsProps {
   refName: string;
   fetch?: FetchProxy;
   prefix?: string;
@@ -73,7 +73,7 @@ export const RestApiEndpoints = ({
     </div>
   );
 };
-interface RestApiEndpointProps {
+export interface RestApiEndpointProps {
   refName: string;
   fetch?: FetchProxy;
   signalPrefix?: string;
@@ -142,7 +142,7 @@ export const RestApiEndpoint = ({
     </EndpointCollapse>
   );
 };
-interface RestApiInterfaceProps {
+export interface RestApiInterfaceProps {
   refName: string;
   endpointKey: string;
   endpoint: SerializedEndpoint;
@@ -166,7 +166,7 @@ export const RestApiInterface = ({ refName, endpointKey, endpoint }: RestApiInte
   );
 };
 
-interface RestApiTryProps {
+export interface RestApiTryProps {
   signalPrefix?: string;
   refName: string;
   endpointKey: string;
