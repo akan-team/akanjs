@@ -23,6 +23,7 @@ export default layout().render(({ children }) => {
         { name: l.trans({ en: "Primitive", ko: "Primitive" }), href: "/references/cli/primitive", audience: "agent" },
         { name: l.trans({ en: "Workflow", ko: "Workflow" }), href: "/references/cli/workflow", audience: "agent" },
         { name: l.trans({ en: "Quality", ko: "Quality" }), href: "/references/cli/quality", audience: "agent" },
+        { name: l.trans({ en: "Pipeline", ko: "Pipeline" }), href: "/references/cli/pipeline", audience: "agent" },
         // { name: l.trans({ en: "Cloud", ko: "Cloud" }), href: "/references/cli/cloud", audience: "agent" },
         // { name: l.trans({ en: "Tunnel", ko: "Tunnel" }), href: "/references/cli/tunnel", audience: "agent" },
         { name: l.trans({ en: "Context", ko: "Context" }), href: "/references/cli/context", audience: "agent" },

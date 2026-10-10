@@ -140,6 +140,11 @@ export default layout().render(({ children }) => {
         { name: l.trans({ en: "Console", ko: "콘솔" }), href: "/cheatsheet/dev/console", audience: "agent" },
         { name: l.trans({ en: "Docker", ko: "도커" }), href: "/cheatsheet/dev/docker", audience: "agent" },
         { name: l.trans({ en: "Kubernetes", ko: "쿠버네티스" }), href: "/cheatsheet/dev/k8s", audience: "agent" },
+        {
+          name: l.trans({ en: "Build Pipeline", ko: "빌드 파이프라인" }),
+          href: "/cheatsheet/dev/pipeline",
+          audience: "both",
+        },
         { name: l.trans({ en: "PWA", ko: "PWA" }), href: "/cheatsheet/dev/pwa", audience: "agent" },
         { name: l.trans({ en: "Testing", ko: "테스트" }), href: "/cheatsheet/dev/test", audience: "both" },
       ],
