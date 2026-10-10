@@ -1,14 +1,15 @@
 "use client";
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react";
 import { sharedContext } from "../client/sharedContext";
 
 // A portalled overlay leaves its opener's DOM subtree, so `contains` reads a click in it as outside. Context still
 // reaches through the portal, so every overlay root is stamped with the scope that rendered it.
 export const OVERLAY_LAYER_ATTR = "data-akan-overlay";
 
-// A Popconfirm (and its scrim) outranks a dropdown because `Model.Remove` opens one from a menu item, and the
-// answering click must not also select in the menu. A Select's options, being a field's, stay under both.
-export const overlayZ = { select: 90, dropdown: 100, popconfirmScrim: 105, popconfirm: 110 } as const;
+// A Popconfirm (and its scrim) outranks a dropdown because `Model.RemoveWrapper` opens one from a menu item, and the
+// answering click must not also select in the menu. A Select's options, being a field's, stay under both. A modal
+// outranks all of them on `<body>`; an overlay opened inside one portals into its root, so it lands above the panel.
+export const overlayZ = { select: 90, dropdown: 100, popconfirmScrim: 105, popconfirm: 110, modal: 120 } as const;
 
 const OverlayOwnerContext = sharedContext("overlayOwner", "");
 
@@ -29,4 +30,20 @@ export const isOwnOverlayClick = (target: EventTarget | null, scope: string) => 
   if (!(target instanceof Element)) return false;
   const owner = target.closest(`[${OVERLAY_LAYER_ATTR}]`)?.getAttribute(OVERLAY_LAYER_ATTR);
   return !!owner && (owner === scope || owner.startsWith(`${scope}/`));
+};
+
+const OverlayPortalContext = sharedContext<HTMLElement | null>("overlayPortal", null);
+
+/** Takes the root a modal draws its panel in; overlays rendered under it portal there instead of `<body>`. */
+export const OverlayPortalProvider = OverlayPortalContext.Provider;
+
+/** The element an overlay portals into: the enclosing modal's root, else `<body>`. `null` until mounted. */
+export const useOverlayPortal = () => {
+  const host = useContext(OverlayPortalContext);
+  // Set in an effect: the first client pass has to match the server's, which portalled nothing.
+  const [body, setBody] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setBody(document.body);
+  }, []);
+  return host ?? body;
 };

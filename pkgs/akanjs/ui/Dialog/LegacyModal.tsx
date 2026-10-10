@@ -8,7 +8,7 @@ import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
 import { animated } from "../animated";
 import { buttonRecipe } from "../Button";
-import { useOverlayLayerProps } from "../overlayLayer";
+import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
 
 import { DialogContext } from "./Provider";
 
@@ -38,7 +38,8 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
   const contentId = useId();
   const overlayLayerProps = useOverlayLayerProps();
   const [{ translate }, api] = useSpring(() => ({ translate: 1 }));
-  const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
+  const portalElement = useOverlayPortal();
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [isMounted, setIsMounted] = useState(open);
   const [showBackground, setShowBackground] = useState(false);
 
@@ -112,11 +113,6 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
   });
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    setPortalElement(document.body);
-  }, []);
-
-  useEffect(() => {
     if (open) {
       void openModal();
     }
@@ -171,65 +167,70 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     <>
       <div
         {...overlayLayerProps}
-        className={cn("fixed inset-0 z-10", showBackground && "animate-fadeIn bg-black/50 backdrop-blur-sm")}
+        className={cn("fixed inset-0", showBackground && "animate-fadeIn bg-black/50 backdrop-blur-sm")}
+        style={{ zIndex: overlayZ.modal }}
       />
       <div
         {...overlayLayerProps}
-        className="fixed inset-0 z-10 flex items-center justify-center p-4"
+        ref={setRoot}
+        className="fixed inset-0 flex items-center justify-center p-4"
+        style={{ zIndex: overlayZ.modal }}
         onClick={(event) => {
           if (event.target !== event.currentTarget) return;
           requestClose();
         }}
       >
-        <animated.div
-          ref={ref}
-          style={{ translateY, opacity }}
-          // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
-          className={cn(
-            "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-box border border-border bg-card text-card-foreground shadow-2xl shadow-black/25 outline-none",
-            className,
-          )}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={title ? titleId : undefined}
-          aria-describedby={contentId}
-          tabIndex={-1}
-        >
+        <OverlayPortalProvider value={root}>
           <animated.div
-            {...bind()}
+            ref={ref}
+            style={{ translateY, opacity }}
+            // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
             className={cn(
-              "flex shrink-0 touch-pan-y flex-col",
-              title && "border-border/70 border-b bg-card/80 backdrop-blur-sm",
+              "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-box border border-border bg-card text-card-foreground shadow-2xl shadow-black/25 outline-none",
+              className,
             )}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? titleId : undefined}
+            aria-describedby={contentId}
+            tabIndex={-1}
           >
-            <div className="flex justify-center pt-2 md:hidden">
-              <div className="h-1 w-10 rounded-full bg-foreground/15" />
-            </div>
-            <div className="flex items-start gap-3 px-5 pt-4 pb-3">
-              <div className="min-w-0 flex-1 font-semibold text-lg leading-snug" id={titleId}>
-                {title}
+            <animated.div
+              {...bind()}
+              className={cn(
+                "flex shrink-0 touch-pan-y flex-col",
+                title && "border-border/70 border-b bg-card/80 backdrop-blur-sm",
+              )}
+            >
+              <div className="flex justify-center pt-2 md:hidden">
+                <div className="h-1 w-10 rounded-full bg-foreground/15" />
               </div>
-              <button
-                aria-label="Close"
-                className={buttonRecipe(
-                  { variant: "ghost", size: "icon" },
-                  "-mt-1 -mr-2 size-8 shrink-0 rounded-full text-foreground/45 hover:text-foreground",
-                )}
-                onClick={() => requestClose()}
-                type="button"
-              >
-                <BiX className="text-2xl" />
-              </button>
+              <div className="flex items-start gap-3 px-5 pt-4 pb-3">
+                <div className="min-w-0 flex-1 font-semibold text-lg leading-snug" id={titleId}>
+                  {title}
+                </div>
+                <button
+                  aria-label="Close"
+                  className={buttonRecipe(
+                    { variant: "ghost", size: "icon" },
+                    "-mt-1 -mr-2 size-8 shrink-0 rounded-full text-foreground/45 hover:text-foreground",
+                  )}
+                  onClick={() => requestClose()}
+                  type="button"
+                >
+                  <BiX className="text-2xl" />
+                </button>
+              </div>
+            </animated.div>
+            <div
+              className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pt-4 pb-5", bodyClassName)}
+              id={contentId}
+            >
+              {children}
             </div>
+            {action ? <div className="shrink-0 border-border/70 border-t bg-muted/30 px-5 py-4">{action}</div> : null}
           </animated.div>
-          <div
-            className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pt-4 pb-5", bodyClassName)}
-            id={contentId}
-          >
-            {children}
-          </div>
-          {action ? <div className="shrink-0 border-border/70 border-t bg-muted/30 px-5 py-4">{action}</div> : null}
-        </animated.div>
+        </OverlayPortalProvider>
       </div>
     </>,
     portalElement,

@@ -12,6 +12,7 @@ import {
   OverlayOwnerProvider,
   overlayZ,
   useOverlayLayerProps,
+  useOverlayPortal,
   useOverlayScope,
 } from "./overlayLayer";
 import { useOverlayPosition } from "./overlayPosition";
@@ -49,8 +50,7 @@ export const DefaultDropdown = ({
   namespace,
 }: DropdownProps) => {
   const [opened, setOpened] = useState(false);
-  // Set in an effect: the first client pass has to match the server's, which portalled nothing.
-  const [portal, setPortal] = useState<HTMLElement | null>(null);
+  const portal = useOverlayPortal();
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
   const scope = useOverlayScope(useId());
@@ -75,9 +75,6 @@ export const DefaultDropdown = ({
     });
   // Annotated with whichever of the two actions the next click performs.
   const toggle = opened ? closeDropdown : openDropdown;
-  useEffect(() => {
-    setPortal(document.body);
-  }, []);
   useEffect(() => {
     if (!opened) return;
     const onMouseDown = (e: MouseEvent) => {
@@ -104,8 +101,9 @@ export const DefaultDropdown = ({
         left: position?.left ?? 0,
         visibility: position ? undefined : "hidden",
       }}
-      onClick={(e) => {
-        // A portalled overlay still bubbles here through the React tree, whatever the DOM says.
+      // Capture, because the framework's own item triggers (`Model.Edit`, `Model.Remove`, …) stop the bubbling click.
+      onClickCapture={(e) => {
+        // A portalled overlay still reaches here through the React tree, whatever the DOM says.
         if (isOwnOverlayClick(e.target, scope)) return;
         if (e.target instanceof Element && e.target.closest(keepOpenSelector)) return;
         setOpened(false);

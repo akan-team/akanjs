@@ -22,7 +22,7 @@ import { TiDelete } from "react-icons/ti";
 import { agentAttrs } from "./agentAttrs";
 import { Label } from "./Field/Label";
 import { Spin } from "./Loading/Spin";
-import { overlayZ, useOverlayLayerProps } from "./overlayLayer";
+import { overlayZ, useOverlayLayerProps, useOverlayPortal } from "./overlayLayer";
 import { useOverlayPosition } from "./overlayPosition";
 import { createOverridable, useUiOverride } from "./UiOverride";
 
@@ -115,8 +115,7 @@ const DefaultSelect = <
   }, [options]);
 
   const [searchText, setSearchText] = useState("");
-  // Set in an effect: the first client pass has to match the server's, which portalled nothing.
-  const [portal, setPortal] = useState<HTMLElement | null>(null);
+  const portal = useOverlayPortal();
   const [searchOptions, setSearchOptions] = useState<LabelOption<T>[]>(labeledOptions);
   const [activeIdx, setActiveIdx] = useState(-1);
   const listId = useId();
@@ -230,10 +229,6 @@ const DefaultSelect = <
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
-
-  useEffect(() => {
-    setPortal(document.body);
-  }, []);
 
   useEffect(() => {
     setSearchOptions(labeledOptions);

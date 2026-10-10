@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useS
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
 import { buttonRecipe } from "../Button";
-import { useOverlayLayerProps } from "../overlayLayer";
+import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
 
 import { DialogContext } from "./Provider";
 
@@ -26,19 +26,14 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
   const titleId = useId();
   const contentId = useId();
   const overlayLayerProps = useOverlayLayerProps();
-  // Set in an effect: the first client pass has to match the server's, which portalled nothing.
-  const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
+  const portalElement = useOverlayPortal();
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
 
   const requestClose = useCallback(() => {
     if (confirmClose && !window.confirm(l("base.confirmClose"))) return;
     setOpen(false);
     onCancel?.();
   }, [confirmClose, l, onCancel, setOpen]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    setPortalElement(document.body);
-  }, []);
 
   useBodyScrollLock(open);
   useEscapeKey(open, requestClose);
@@ -69,55 +64,59 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
   return createPortal(
     <div
       {...overlayLayerProps}
-      className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
+      ref={setRoot}
+      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      style={{ zIndex: overlayZ.modal }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         requestClose();
       }}
     >
-      <div
-        ref={ref}
-        // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
-        className={cn(
-          "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-box border border-border bg-card text-card-foreground shadow-lg outline-none",
-          className,
-        )}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
-        aria-describedby={contentId}
-        tabIndex={-1}
-      >
-        {/* The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring — a
+      <OverlayPortalProvider value={root}>
+        <div
+          ref={ref}
+          // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
+          className={cn(
+            "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-box border border-border bg-card text-card-foreground shadow-lg outline-none",
+            className,
+          )}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? titleId : undefined}
+          aria-describedby={contentId}
+          tabIndex={-1}
+        >
+          {/* The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring — a
             click on whatever the caller put here bubbles to exactly one handler. */}
-        {closeButton === false ? null : (
-          <div className="absolute top-3 right-3 z-10" onClick={() => requestClose()}>
-            {closeButton ?? (
-              <button
-                aria-label="Close"
-                className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")}
-                type="button"
-              >
-                <BiX className="text-xl" />
-              </button>
-            )}
+          {closeButton === false ? null : (
+            <div className="absolute top-3 right-3 z-10" onClick={() => requestClose()}>
+              {closeButton ?? (
+                <button
+                  aria-label="Close"
+                  className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")}
+                  type="button"
+                >
+                  <BiX className="text-xl" />
+                </button>
+              )}
+            </div>
+          )}
+          {title ? (
+            <div
+              className="shrink-0 border-border border-b py-3.5 pr-14 pl-5 font-semibold text-base leading-snug"
+              id={titleId}
+            >
+              {title}
+            </div>
+          ) : null}
+          <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-4", bodyClassName)} id={contentId}>
+            {children}
           </div>
-        )}
-        {title ? (
-          <div
-            className="shrink-0 border-border border-b py-3.5 pr-14 pl-5 font-semibold text-base leading-snug"
-            id={titleId}
-          >
-            {title}
-          </div>
-        ) : null}
-        <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 py-4", bodyClassName)} id={contentId}>
-          {children}
+          {action ? (
+            <div className="flex shrink-0 justify-end gap-2 border-border border-t px-5 py-3">{action}</div>
+          ) : null}
         </div>
-        {action ? (
-          <div className="flex shrink-0 justify-end gap-2 border-border border-t px-5 py-3">{action}</div>
-        ) : null}
-      </div>
+      </OverlayPortalProvider>
     </div>,
     portalElement,
   );

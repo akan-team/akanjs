@@ -108,7 +108,7 @@ const isApplePlatform = () => {
 };
 
 // Portalled to the body: `#pageContainers` is `isolation: isolate`, so a z-index inside it never tops a body overlay.
-// z-150 sits above modal 10, dropdown/toast 100 and sheet 101, and below Reconnect 200, which blocks on purpose.
+// z-150 sits above toast 140, modal 120, sheet 101 and dropdown 100, and below Reconnect 200, which blocks on purpose.
 const launcherLayer = "fixed right-4 bottom-4 z-[150]";
 
 const panelLayer = "fixed inset-0 z-[150] sm:inset-auto sm:right-4 sm:bottom-4";

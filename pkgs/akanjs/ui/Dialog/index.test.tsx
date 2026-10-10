@@ -5,12 +5,14 @@ import { AgenticSurface, AgentProvider } from "use-agentic";
 import { l, mountAsync, setTestEnv } from "../testHelpers.fixture";
 
 let Dialog: typeof import("./index").Dialog;
+let DefaultDropdown: typeof import("../Dropdown").DefaultDropdown;
 
 beforeAll(async () => {
   setTestEnv("dialogtest");
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l }), fetch: {} } as never);
   ({ Dialog } = await import("./index"));
+  ({ DefaultDropdown } = await import("../Dropdown"));
 });
 
 const settle = async () => {
@@ -74,5 +76,69 @@ describe("Dialog agent surface", () => {
     } finally {
       window.confirm = original;
     }
+  });
+});
+
+describe("Dialog stacking", () => {
+  const modalRoot = (panel: Element | null | undefined) => {
+    const root = panel?.parentElement;
+    if (!(root instanceof HTMLElement)) throw new Error("modal did not render");
+    return root;
+  };
+
+  test("a dropdown on the page sits under an open modal", async () => {
+    const { unmount } = await mountAsync(
+      <>
+        <DefaultDropdown value="More" content={<li>Edit</li>} />
+        <Dialog defaultOpen>
+          <Dialog.Modal>
+            <div>body</div>
+          </Dialog.Modal>
+        </Dialog>
+      </>,
+    );
+    await settle();
+
+    const menu = document.querySelector("ul");
+    const root = modalRoot(document.querySelector('[role="dialog"]'));
+    expect(menu?.parentElement).toBe(document.body);
+    expect(Number(menu?.style.zIndex)).toBeLessThan(Number(root.style.zIndex));
+    unmount();
+  });
+
+  test("a dropdown inside a modal portals into the modal's root, beside the panel that would clip it", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal>
+          <DefaultDropdown value="More" content={<li>Edit</li>} />
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    const panel = document.querySelector('[role="dialog"]');
+    const menu = document.querySelector("ul");
+    expect(menu?.parentElement).toBe(modalRoot(panel));
+    expect(panel?.contains(menu ?? null)).toBe(false);
+    unmount();
+  });
+
+  test("a modal opened inside a modal lands in its parent's root, so it stacks above it whatever the DOM order", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal>
+          <Dialog defaultOpen>
+            <Dialog.Modal>
+              <div>inner</div>
+            </Dialog.Modal>
+          </Dialog>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    const [outer, inner] = [...document.querySelectorAll('[role="dialog"]')];
+    expect(modalRoot(inner).parentElement).toBe(modalRoot(outer));
+    unmount();
   });
 });

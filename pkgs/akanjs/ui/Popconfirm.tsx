@@ -1,11 +1,11 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
 import { useEscapeKey } from "akanjs/webkit";
-import { type ButtonHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ButtonHTMLAttributes, type ReactNode, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiMessageRoundedError } from "react-icons/bi";
 import { buttonRecipe } from "./Button";
-import { overlayZ, useOverlayLayerProps } from "./overlayLayer";
+import { overlayZ, useOverlayLayerProps, useOverlayPortal } from "./overlayLayer";
 import { useOverlayPosition } from "./overlayPosition";
 import { createOverridable, useUiRecipe } from "./UiOverride";
 
@@ -52,8 +52,7 @@ export const DefaultPopconfirm = ({
   const { l } = usePage();
   const recipe = useUiRecipe("button") ?? buttonRecipe;
   const [isConfirming, setIsConfirming] = useState(false);
-  // Set in an effect: the first client pass has to match the server's, which portalled nothing.
-  const [portal, setPortal] = useState<HTMLElement | null>(null);
+  const portal = useOverlayPortal();
   const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const overlayLayerProps = useOverlayLayerProps();
@@ -73,9 +72,6 @@ export const DefaultPopconfirm = ({
     setIsConfirming(false);
   };
   useEscapeKey(isConfirming, handleCancel);
-  useEffect(() => {
-    setPortal(document.body);
-  }, []);
 
   const panel = (
     <>
@@ -142,8 +138,10 @@ export const DefaultPopconfirm = ({
   );
   return (
     <div className="relative inline-block" ref={triggerRef}>
+      {/* Keeps an enclosing dropdown open: the panel is anchored to this row, which a closed menu hides. */}
       <div
         className={cn("trigger", triggerClassName)}
+        data-dropdown-keep-open
         onClick={(e) => {
           e.stopPropagation();
           setIsConfirming(true);

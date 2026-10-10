@@ -4,12 +4,14 @@ import { act } from "react";
 import { l, mount, setTestEnv } from "./testHelpers.fixture";
 
 let DefaultPopconfirm: typeof import("./Popconfirm").DefaultPopconfirm;
+let DefaultDropdown: typeof import("./Dropdown").DefaultDropdown;
 
 beforeAll(async () => {
   setTestEnv("popconfirmtest");
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l }), fetch: {} } as never);
   ({ DefaultPopconfirm } = await import("./Popconfirm"));
+  ({ DefaultDropdown } = await import("./Dropdown"));
 });
 
 const open = (onConfirm?: () => void) => {
@@ -62,6 +64,29 @@ describe("Popconfirm", () => {
     act(() => ok.click());
     expect(confirmed).toBe(true);
     expect(document.querySelector('[role="dialog"]')).toBe(null);
+    unmount();
+  });
+
+  test("opened from a dropdown item, it leaves the menu open, because the panel is anchored to that row", () => {
+    const { container, unmount } = mount(
+      <DefaultDropdown
+        value="More"
+        content={
+          <li>
+            <DefaultPopconfirm title="Remove it?">
+              <button type="button">Remove</button>
+            </DefaultPopconfirm>
+          </li>
+        }
+      />,
+    );
+    const menu = [...document.querySelectorAll("ul")].at(-1);
+    const remove = menu?.querySelector("button");
+    if (!menu || !remove) throw new Error("dropdown menu did not render");
+    act(() => container.querySelector("button")?.click());
+    act(() => remove.click());
+    expect(document.querySelector('[role="dialog"]')).not.toBe(null);
+    expect(menu.hidden).toBe(false);
     unmount();
   });
 });

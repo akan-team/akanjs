@@ -66,6 +66,21 @@ describe("Dropdown", () => {
     unmount();
   });
 
+  test("an item whose own trigger stops the click still closes the menu", () => {
+    const { menu, unmount } = render(
+      <li>
+        <button type="button" onClick={(e) => e.stopPropagation()}>
+          Edit
+        </button>
+      </li>,
+    );
+    const menuItem = menu.querySelector("button");
+    if (!menuItem) throw new Error("menu item did not render");
+    act(() => menuItem.click());
+    expect(menu.hidden).toBe(true);
+    unmount();
+  });
+
   test("a keep-open item leaves the menu open", () => {
     const { menu, unmount } = render(
       <li data-dropdown-keep-open="">

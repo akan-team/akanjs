@@ -101,7 +101,7 @@ export const DefaultToast = ({ className, messages, topSafeArea, onClose, onClos
   <div
     id="toast"
     className={cn(
-      "pointer-events-none fixed top-0 left-1/2 z-[100] flex h-fit w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4 pt-3",
+      "pointer-events-none fixed top-0 left-1/2 z-[140] flex h-fit w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4 pt-3",
       className,
     )}
     style={{ marginTop: topSafeArea }}
