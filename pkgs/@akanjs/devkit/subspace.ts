@@ -55,6 +55,28 @@ export interface SubspacePushResult {
   prunedDependencies?: string[];
 }
 
+export interface SubspacePlan {
+  name: string;
+  repo: string;
+  branch: string;
+  /** Why a push from this branch would be refused, or null when it may push. */
+  branchRefusal: string | null;
+  apps: string[];
+  /** Each library the slice carries, with the apps whose closure pulls it in. */
+  libs: { name: string; apps: string[] }[];
+  /** Tracked files under the slice's apps/ and libs/ directories. */
+  files: number;
+  /** Workspace-root entries a push copies into the subspace. */
+  rootEntries: string[];
+  excludedRootEntries: string[];
+  /** Workspace-root entries never pushed: the subspace keeps its own copy, if it has one. */
+  subspaceOwnedRootEntries: string[];
+  prunedDependencies: string[];
+  /** Why the workspace's bun.lock would make a push refuse, or null. */
+  lockProblem: string | null;
+  warnings: string[];
+}
+
 export interface SubspaceEnvUploadResult {
   name: string;
   /** The cloud workspace whose env archive was replaced: the subspace's own, never this workspace's. */
@@ -174,6 +196,52 @@ export class Subspace {
     const libs = [...new Set(plans.flatMap((plan) => plan.libs))].sort();
     const paths = [...this.#declaration.apps.map((app) => `apps/${app}`), ...libs.map((lib) => `libs/${lib}`)];
     return { plans, libs, paths };
+  }
+
+  /** What a push from `branch` would ship, worked out from this checkout alone: no fetch, no remote, no clone. */
+  async plan(branch: string): Promise<SubspacePlan> {
+    const { plans, libs } = await this.slice();
+    const rootFiles = plans[0]?.rootFiles ?? [];
+    const present = new Set(rootFiles.map((file) => file.split("/")[0] ?? file));
+    const owned = Subspace.subspaceOwnedRootEntries;
+    const excluded = this.#config.exclude.filter((entry) => !owned.includes(entry));
+    const excludedTops = new Set(excluded.map((entry) => entry.replace(/\/+$/, "")));
+    const libFiles = new Map(plans.flatMap((plan) => Object.entries(plan.libFiles)));
+    const { pruned, warnings } = await SlicePlanner.pruneDependencies(
+      this.#workspace,
+      await this.#workspace.getPackageJson(),
+      plans.flatMap((plan) => plan.requiredDependencies),
+    );
+    let branchRefusal: string | null = null;
+    try {
+      this.#config.assertPushable(branch);
+    } catch (error) {
+      branchRefusal = error instanceof Error ? error.message : String(error);
+    }
+    return {
+      name: this.name,
+      repo: this.#declaration.repo,
+      branch,
+      branchRefusal,
+      apps: [...this.#declaration.apps],
+      libs: libs.map((lib) => ({
+        name: lib,
+        apps: plans.filter((plan) => plan.libs.includes(lib)).map((plan) => plan.app),
+      })),
+      files:
+        plans.reduce((sum, plan) => sum + plan.appFiles.length, 0) +
+        [...libFiles.values()].reduce((sum, files) => sum + files.length, 0),
+      rootEntries: [...present]
+        .filter((entry) => !excludedTops.has(entry) && !owned.includes(entry))
+        .sort((a, b) => a.localeCompare(b)),
+      excludedRootEntries: excluded,
+      subspaceOwnedRootEntries: owned.filter((entry) => present.has(entry)),
+      prunedDependencies: pruned,
+      lockProblem: rootFiles.includes("bun.lock")
+        ? await this.#loopbackRegistryLock(this.#workspace.workspaceRoot)
+        : null,
+      warnings: [...new Set([...plans.flatMap((plan) => plan.warnings), ...warnings])],
+    };
   }
 
   #isSubspaceOwned(file: string) {
@@ -516,8 +584,8 @@ export class Subspace {
   }
 
   // A lock written against a local registry (verdaccio) resolves on this machine alone: every install of it fails.
-  async #loopbackRegistryLock() {
-    const lockPath = path.join(this.#clonePath, "bun.lock");
+  async #loopbackRegistryLock(root = this.#clonePath) {
+    const lockPath = path.join(root, "bun.lock");
     if (!(await FileSys.fileExists(lockPath))) return null;
     const registry = (await FileSys.readText(lockPath)).match(Subspace.#loopbackRegistry)?.[0];
     return registry
@@ -745,6 +813,35 @@ export function formatSubspaceDiff(result: SubspaceDiffResult) {
           "",
           result.app.patch,
         ]
+      : []),
+  ];
+  return sections.join("\n");
+}
+
+export function formatSubspacePlan(plan: SubspacePlan) {
+  const list = (entries: string[]) => (entries.length ? entries.join(", ") : "(none)");
+  const blockers = [plan.branchRefusal, plan.lockProblem].filter((reason): reason is string => !!reason);
+  const sections = [
+    `Akan Subspace Plan — ${plan.name} (${plan.branch})`,
+    `repo: ${plan.repo}`,
+    "what `akan subspace push` would ship, worked out from this checkout alone",
+    "",
+    `apps: ${list(plan.apps)}`,
+    `libs: ${plan.libs.length ? "" : "(none)"}`.trimEnd(),
+    ...plan.libs.map((lib) => `  - ${lib.name} (from ${lib.apps.join(", ")})`),
+    `files under apps/ and libs/: ${plan.files}`,
+    "",
+    `root entries pushed: ${list(plan.rootEntries)}`,
+    `root entries excluded: ${list(plan.excludedRootEntries)}`,
+    `root entries the subspace keeps its own: ${list(plan.subspaceOwnedRootEntries)}`,
+    "",
+    `Root dependencies left out of package.json (${plan.prunedDependencies.length}):`,
+    ...(plan.prunedDependencies.length ? plan.prunedDependencies.map((dep) => `  - ${dep}`) : ["  (none)"]),
+    "",
+    blockers.length ? "A push would be refused:" : "Nothing here would make a push refuse.",
+    ...blockers.map((reason) => `  - ${reason}`),
+    ...(plan.warnings.length
+      ? ["", `Warnings (${plan.warnings.length}):`, ...plan.warnings.map((w) => `  - ${w}`)]
       : []),
   ];
   return sections.join("\n");

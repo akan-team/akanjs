@@ -2,7 +2,7 @@ import { CommandContainer, runner, type Workspace } from "@akanjs/devkit/command
 import { Subspace, type SubspaceEnvUploadResult } from "@akanjs/devkit/subspace";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
 
-export type SubspaceAction = "status" | "diff" | "push" | "pull" | "upload-env";
+export type SubspaceAction = "status" | "plan" | "diff" | "push" | "pull" | "upload-env";
 type SubspacePrompts = Pick<typeof import("@inquirer/prompts"), "checkbox" | "confirm" | "select">;
 
 // @inquirer is ~24MB and only the no-name form of a command ever prompts, so the stack loads on first use.
@@ -75,6 +75,13 @@ export class SubspaceRunner extends runner("subspace") {
     const results = [];
     for (const subspace of subspaces) results.push(await subspace.push(branch, { verify }));
     return results;
+  }
+
+  async plan(workspace: Workspace, name: string) {
+    const { subspaces, branch } = await this.subspaces(workspace, [name]);
+    const [subspace] = subspaces;
+    if (!subspace) throw new Error(`Unknown subspace "${name}"`);
+    return await subspace.plan(branch);
   }
 
   async diff(workspace: Workspace, name: string, filter?: string | null) {

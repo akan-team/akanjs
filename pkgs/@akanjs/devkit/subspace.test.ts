@@ -3,7 +3,13 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
-import { formatSubspaceDiff, formatSubspacePushResults, formatSubspaceStatuses, Subspace } from "./subspace";
+import {
+  formatSubspaceDiff,
+  formatSubspacePlan,
+  formatSubspacePushResults,
+  formatSubspaceStatuses,
+  Subspace,
+} from "./subspace";
 import { SubspaceConfig } from "./subspaceConfig";
 import { isolateEnv, tempDirs, writeText as write } from "./testHelpers";
 
@@ -502,5 +508,44 @@ describe("SubspaceConfig", () => {
     expect(config.pushableBranches).toEqual(SubspaceConfig.defaultPushableBranches);
     expect(() => config.assertPushable("feature/x")).toThrow(/not pushable/);
     expect(() => config.assertPushable("develop")).not.toThrow();
+  });
+});
+
+describe("Subspace.plan", () => {
+  test("reports the slice a push ships without adding a remote or a clone", async () => {
+    const { wsRoot, subspace, clonePath } = await makeMirror("served", "private", "kit");
+    const plan = await subspace.plan("develop");
+    expect(plan).toMatchObject({
+      name: "acme",
+      branch: "develop",
+      branchRefusal: null,
+      apps: ["served"],
+      libs: [{ name: "kit", apps: ["served"] }],
+      excludedRootEntries: ["benchmarks"],
+      subspaceOwnedRootEntries: ["akan.config.ts", "Jenkinsfile"],
+      prunedDependencies: ["another-app-dep"],
+      lockProblem: null,
+    });
+    expect(plan.rootEntries).toEqual(expect.arrayContaining([".gitignore", "AGENTS.md", "biome.json", "package.json"]));
+    expect(plan.rootEntries).not.toContain("benchmarks");
+    expect(plan.rootEntries).not.toContain("Jenkinsfile");
+    expect(plan.files).toBeGreaterThan(0);
+    expect((await git(wsRoot, ["remote"])).trim()).toBe("");
+    expect(await FileSys.dirExists(clonePath)).toBe(false);
+    expect(formatSubspacePlan(plan)).toContain("Nothing here would make a push refuse.");
+  });
+
+  test("names what a push would refuse: a branch it may not push and a loopback-registry lock", async () => {
+    const { wsRoot, subspace } = await makeMirror("served", "private", "kit");
+    await write(
+      path.join(wsRoot, "bun.lock"),
+      '{ "packages": { "x": ["x@1.0.0", "http://127.0.0.1:4873/x/-/x-1.0.0.tgz"] } }\n',
+    );
+    await git(wsRoot, ["add", "-f", "bun.lock"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "lock"]);
+    const plan = await subspace.plan("main");
+    expect(plan.branchRefusal).toContain('Branch "main" is not pushable');
+    expect(plan.lockProblem).toContain("http://127.0.0.1:4873");
+    expect(formatSubspacePlan(plan)).toContain("A push would be refused:");
   });
 });
