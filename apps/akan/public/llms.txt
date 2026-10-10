@@ -64,6 +64,7 @@ Akan.js is a Bun-first full-stack TypeScript framework where business definition
 - Commands: /llms/pages/references/cli/overview.md
 - Package: /llms/pages/references/cli/package.md
 - Page: /llms/pages/references/cli/page.md
+- Pipeline: /llms/pages/references/cli/pipeline.md
 - Primitive: /llms/pages/references/cli/primitive.md
 - Quality: /llms/pages/references/cli/quality.md
 - Scalar: /llms/pages/references/cli/scalar.md

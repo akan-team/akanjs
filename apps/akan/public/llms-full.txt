@@ -548,6 +548,8 @@ Headings:
 - Images And Public Env
 - Secret Files
 - Build And Runtime
+- Pipeline
+- Workspace Config
 - Defaults And Rules
 
 App Config
@@ -578,6 +580,8 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - plugins (AkanPlugin[], default []): Akan plugins this app contributes, read live by the CLI.
 
+- pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
+
 - docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
@@ -607,8 +611,6 @@ CLI commands, production builds, and native app commands all read this file.
 Config Shape
 
 The default export can be a plain object or a function. Use an object for most apps. Use a function only when the config needs app metadata while it is being loaded.
-
-Object config
 
 ## Data Layer
 
@@ -2048,7 +2050,7 @@ Headings:
 
 Cloud CLI
 
-Five optional commands for signing in to Akan Cloud, updating the framework and moving env values. Internal deployment commands are left out of this page on purpose.
+Eight optional commands for signing in to Akan Cloud, updating the framework, moving env values and managing pipeline secrets. Internal deployment commands are left out of this page on purpose.
 
 Words Used on This Page
 
@@ -2061,6 +2063,8 @@ Term
 - AKAN_WORKSPACE_ID: The cloud workspace id in the root `.env`, which decides where env values are kept.
 
 - SCP server: A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
+
+- pipeline secret: A named value build steps read as an environment variable; it is written, never read back.
 
 Where Each Command Connects
 
@@ -2084,6 +2088,14 @@ This machine only
 
   - upload-env: Pushes the local env values to that same place for the next `download-env`.
 
+- Pipeline secrets
+
+  - upload-secret: Saves a named secret that pipeline steps can read.
+
+  - list-secrets: Lists the secrets' names and scopes, never their values.
+
+  - remove-secret: Removes a secret from the project.
+
 Connects
 
 Does not connect
@@ -2095,16 +2107,6 @@ Does not connect
 **One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it.
 
 Where Env Values Are Kept
-
-`download-env` and `upload-env` read the root `.env` to pick the store. Both use the same one, so what one uploads the other downloads.
-
-Store
-
-Used when
-
-Where the archive lives
-
-- Akan Cloud — `AKAN_WORKSPACE_ID` is set — The cloud workspace with that id, after signing in if needed.
 
 ## Code CLI
 
@@ -2664,6 +2666,75 @@ Check After It Runs
 **The pages check no session.** Writes follow the slice `create-module` wrote: `cru: Admin` with `libs/shared`, `cru: None` without it. Gate the pages in a `_layout.tsx` and set the guards your screens need before you ship.
 
 **`--base-path` is a folder inside the app, not a URL prefix.** `--base-path admin` writes to `apps/shop/admin/`, outside `page/`, so no route is created. Give the whole folder, such as `page/(shop)/(admin)/product`.
+
+## Pipeline
+
+Source: /references/cli/pipeline
+Mirror: /llms/pages/references/cli/pipeline.md
+Priority: P0
+
+Headings:
+- Pipeline CLI
+
+Pipeline
+
+`akan pipeline [plan|validate|dry-run] [--branch <branch>] [--env <env>] [--apps <a,b>] [--trigger <trigger>] [-n <num>] [--commit <sha>] [--out <file>] [--format <text|json>]`
+
+Plan the build pipeline declared in the workspace and app `akan.config.ts` files, without running it. Each flag is a fact about the build: a flag you give is copied into the plan as is, and a missing one comes from git and the workspace.
+
+- action (String, default dry-run, plan | validate | dry-run): `dry-run` shows the plan, `validate` checks it, `plan` prints the envelope.
+
+- --branch (String, default current git branch): Branch the build is for; every `when.branch` is decided against it.
+
+- --env (String, default the branch): `AKAN_PUBLIC_ENV` the build is for.
+
+- --apps (String, default every app): Apps the build covers, comma-separated; an unknown or repeated app is an error.
+
+- --trigger (String, default manual, push | redeploy | initial | rebuild | manual): What started the build; every `when.trigger` is decided against it.
+
+- --build-num (Number, default 0, -n): The build's number, a whole number of 0 or more.
+
+- --commit (String, default HEAD): Commit the build is for.
+
+- --out (String): Also write the envelope to this file, whole or not at all.
+
+- --format (String, default text, text | json): `json` prints the envelope instead of text, for any action.
+
+- nothing runs: No stage runs and nothing is uploaded; Akan Cloud runs the same planner when it builds.
+
+- function form: `validate` runs a function-form `pipeline` for one sample context and warns that others may differ.
+
+- exit code: 0 a plan, 1 errors with the envelope written, 2 anything else with no envelope.
+
+Pipeline CLI
+
+`akan pipeline` turns the pipeline declared in your `akan.config.ts` files into the plan Akan Cloud would run, and runs none of it. Check a change with it before you push.
+
+Words Used on This Page
+
+Term
+
+- plan: The phases, stages and steps one build runs, as JSON that Akan Cloud executes.
+
+- phase: Stages that run together; the next phase starts when every stage of this one ends.
+
+- envelope: `{ ok, plan, diagnostics }`, the result `plan` prints or writes to `--out`.
+
+- diagnostic: An error or warning about a definition, with a code such as `pipeline.action.dockerWithoutBuild`.
+
+Three Actions
+
+Prints
+
+Use it for
+
+- dry-run — The plan as a table, phase by phase. — Seeing what a build would run.
+
+- validate — A one-line verdict and the diagnostics. — Checking a definition before you push.
+
+- plan — The envelope as JSON. — Handing the plan to a program.
+
+Exit Codes
 
 ## Primitive
 
@@ -5230,6 +5301,44 @@ You never write the branch as a value. The chart reads it from the release names
 
 You deploy into `<appName>-<branch>`, for example `myapp-main`.
 
+## Build Pipeline
+
+Source: /cheatsheet/dev/pipeline
+Mirror: /llms/pages/cheatsheet/dev/pipeline.md
+Priority: P2
+
+Headings:
+- Build Pipeline
+- Add A Stage To An App
+- Run Steps Around Every App
+- Give A Step A Secret
+- Check Before You Push
+- Pitfalls
+
+Build Pipeline
+
+Akan Cloud builds and deploys each app as `build`, `docker`, then `deploy`. Add your own stages around them in `akan.config.ts`, and check the result with `akan pipeline dry-run` before you push.
+
+Words used on this page
+
+Term
+
+- stage: One named step of a build, such as a test run, with one or more shell commands.
+
+- build, docker, deploy: The built-in actions Akan Cloud runs for an app; you place them with `{ use }`.
+
+- plan: What one build runs, made from your config; `akan pipeline` shows it locally.
+
+Two files
+
+- App — apps/<app>/akan.config.ts — That app's stages in order, its three actions included.
+
+- Workspace — akan.config.ts — Stages before and after every app, and the steps that close a build.
+
+Steps
+
+Add a stage to an app.
+
 ## PWA
 
 Source: /cheatsheet/dev/pwa
@@ -6468,6 +6577,7 @@ Use `message` for small actions the browser sends to the server: a read receipt,
 - Docker: /llms/pages/cheatsheet/dev/docker.md
 - Documentation: /llms/pages/cheatsheet/dev/docs.md
 - Kubernetes: /llms/pages/cheatsheet/dev/k8s.md
+- Build Pipeline: /llms/pages/cheatsheet/dev/pipeline.md
 - PWA: /llms/pages/cheatsheet/dev/pwa.md
 - Script: /llms/pages/cheatsheet/dev/script.md
 - Testing: /llms/pages/cheatsheet/dev/test.md

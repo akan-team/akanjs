@@ -736,11 +736,45 @@ export default page().render(() => {
       ],
     },
     {
+      title: l.trans({ en: "Pipeline", ko: "파이프라인" }),
+      href: "/references/cli/pipeline",
+      desc: l.trans({
+        en: "Plan the build pipeline declared in `akan.config.ts` without running it.",
+        ko: "`akan.config.ts`에 선언한 빌드 파이프라인을 실행하지 않고 plan만 만듭니다.",
+      }),
+      commands: [
+        {
+          name: "pipeline dry-run",
+          href: "/references/cli/pipeline#pipeline",
+          desc: l.trans({
+            en: "Shows what a build would run, phase by phase. `akan pipeline` alone runs this.",
+            ko: "빌드가 실행할 내용을 phase 순서대로 보여 줍니다. `akan pipeline`만 써도 이것이 실행됩니다.",
+          }),
+        },
+        {
+          name: "pipeline validate",
+          href: "/references/cli/pipeline#pipeline",
+          desc: l.trans({
+            en: "Checks the definitions and prints their errors and warnings.",
+            ko: "정의를 확인하고 오류와 경고를 출력합니다.",
+          }),
+        },
+        {
+          name: "pipeline plan",
+          href: "/references/cli/pipeline#pipeline",
+          desc: l.trans({
+            en: "Prints the plan as JSON, or writes it to `--out`.",
+            ko: "plan을 JSON으로 출력하거나 `--out`에 씁니다.",
+          }),
+        },
+      ],
+    },
+    {
       title: l.trans({ en: "Cloud", ko: "클라우드" }),
       href: "/references/cli/cloud",
       desc: l.trans({
-        en: "Optional helpers: Akan Cloud sign-in, environment transfer and framework updates.",
-        ko: "선택 기능입니다. Akan Cloud 로그인, 환경 변수 전송, 프레임워크 업데이트를 맡습니다.",
+        en: "Optional helpers: Akan Cloud sign-in, environment transfer, pipeline secrets and framework updates.",
+        ko: "선택 기능입니다. Akan Cloud 로그인, 환경 변수 전송, 파이프라인 시크릿, 프레임워크 업데이트를 맡습니다.",
       }),
       commands: [
         {
@@ -762,6 +796,18 @@ export default page().render(() => {
           desc: l.trans({
             en: "Downloads or uploads environment variables, from or to the cloud or an SCP server.",
             ko: "클라우드나 SCP 서버에서 환경 변수를 내려받거나 올립니다.",
+          }),
+        },
+        {
+          name: ["upload-secret", "list-secrets", "remove-secret"],
+          href: [
+            "/references/cli/cloud#upload-secret",
+            "/references/cli/cloud#list-secrets",
+            "/references/cli/cloud#remove-secret",
+          ],
+          desc: l.trans({
+            en: "Saves, lists or removes the named secrets pipeline steps read; values are write-only.",
+            ko: "파이프라인 step이 읽는 이름 붙은 시크릿을 저장, 나열, 삭제합니다. 값은 쓰기 전용입니다.",
           }),
         },
       ],

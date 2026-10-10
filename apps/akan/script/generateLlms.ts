@@ -91,6 +91,7 @@ const p0ExactHrefs = new Set([
   "/references/cli/primitive",
   "/references/cli/workflow",
   "/references/cli/quality",
+  "/references/cli/pipeline",
   "/references/cli/tunnel",
   "/references/cli/code",
   "/references/cli/cloud",

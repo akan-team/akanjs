@@ -44,6 +44,13 @@ export default page().render(() => {
         ko: "클라우드 워크스페이스가 없을 때 env 값을 보관하는 자체 서버로, SSH로 접속합니다.",
       }),
     },
+    {
+      name: <span className="font-sans">{l.trans({ en: "pipeline secret", ko: "파이프라인 시크릿" })}</span>,
+      desc: l.trans({
+        en: "A named value build steps read as an environment variable; it is written, never read back.",
+        ko: "빌드 step이 환경변수로 읽는 이름 붙은 값입니다. 쓰기만 하고 다시 읽을 수는 없습니다.",
+      }),
+    },
   ];
 
   const connectionGroups: MatrixGroup[] = [
@@ -99,6 +106,32 @@ export default page().render(() => {
             ko: "로컬 env 값을 같은 곳에 올려, 다음 `download-env`가 받게 합니다.",
           }),
           marks: { cloud: true, scp: true },
+        },
+      ],
+    },
+    {
+      label: l.trans({ en: "Pipeline secrets", ko: "파이프라인 시크릿" }),
+      rows: [
+        {
+          name: "upload-secret",
+          desc: l.trans({
+            en: "Saves a named secret that pipeline steps can read.",
+            ko: "파이프라인 step이 읽을 이름 붙은 시크릿을 저장합니다.",
+          }),
+          marks: { cloud: true },
+        },
+        {
+          name: "list-secrets",
+          desc: l.trans({
+            en: "Lists the secrets' names and scopes, never their values.",
+            ko: "시크릿의 이름과 범위를 보여 주고, 값은 보여 주지 않습니다.",
+          }),
+          marks: { cloud: true },
+        },
+        {
+          name: "remove-secret",
+          desc: l.trans({ en: "Removes a secret from the project.", ko: "프로젝트에서 시크릿을 지웁니다." }),
+          marks: { cloud: true },
         },
       ],
     },
@@ -418,6 +451,150 @@ akan download-env --host https://cloud.example.com`,
       examples: `akan upload-env
 akan upload-env --host https://cloud.example.com`,
     },
+    {
+      name: "upload-secret",
+      signature: "akan upload-secret <name> [--branch <debug|develop|main>] [--file <path>] [--host <host>]",
+      desc: l.trans({
+        en: "Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names.\nThe value is write-only: no command shows it again, so keep the original where you keep other credentials.",
+        ko: "`AKAN_WORKSPACE_ID`가 가리키는 프로젝트의 파이프라인 step이 쓸 시크릿을 이름을 붙여 저장합니다.\n값은 쓰기 전용이라 어떤 명령으로도 다시 볼 수 없으니, 원본은 다른 자격 증명과 같은 곳에 보관합니다.",
+      }),
+      args: [
+        {
+          name: "name",
+          type: "String",
+          required: "yes",
+          desc: l.trans({
+            en: "Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`.",
+            ko: "대문자, 숫자, `_`로 된 64자 이하의 이름으로, 글자로 시작합니다. 예: `DISCORD_WEBHOOK`.",
+          }),
+        },
+      ],
+      options: [
+        {
+          name: "--branch",
+          type: "String",
+          defaultValue: l.trans({ en: "every branch", ko: "모든 브랜치" }),
+          enumOrFlag: "debug | develop | main",
+          desc: l.trans({
+            en: "Use this value only in builds of that branch, over the every-branch value.",
+            ko: "그 브랜치의 빌드에서만 이 값을 쓰며, 모든 브랜치용 값보다 우선합니다.",
+          }),
+        },
+        {
+          name: "--file",
+          type: "String",
+          desc: l.trans({
+            en: "Read the value from this file instead of stdin or a hidden prompt.",
+            ko: "stdin이나 숨김 입력 대신 이 파일에서 값을 읽습니다.",
+          }),
+        },
+        hostOption,
+      ],
+      notes: [
+        {
+          name: l.trans({ en: "value", ko: "값" }),
+          desc: l.trans({
+            en: "From `--file`, piped stdin or a hidden prompt; never an argument, which shell history keeps.",
+            ko: "`--file`, 파이프로 넘긴 stdin, 숨김 입력 중 하나로 받습니다. 셸 기록에 남는 인자로는 받지 않습니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "size", ko: "크기" }),
+          desc: l.trans({
+            en: "An empty value or one over 64 KiB is refused; one trailing newline is dropped.",
+            ko: "빈 값이나 64 KiB를 넘는 값은 거부하고, 끝의 줄바꿈 하나는 뗍니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "reserved", ko: "예약된 이름" }),
+          desc: l.trans({
+            en: "`CI`, every `AKAN_CI_*` and shell names such as `PATH` are refused.",
+            ko: "`CI`, 모든 `AKAN_CI_*`, `PATH` 같은 셸 이름은 거부합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "takes effect", ko: "적용 시점" }),
+          desc: l.trans({
+            en: "Builds that start after the upload use the new value.",
+            ko: "올린 뒤에 시작하는 빌드부터 새 값을 씁니다.",
+          }),
+        },
+      ],
+      examples: `akan upload-secret DISCORD_WEBHOOK
+akan upload-secret DEPLOY_KEY --file ./deploy_key --branch main
+printf %s "$NPM_TOKEN" | akan upload-secret NPM_TOKEN`,
+    },
+    {
+      name: "list-secrets",
+      signature: "akan list-secrets [--branch <debug|develop|main>] [--host <host>]",
+      desc: l.trans({
+        en: "List the project's pipeline secrets with their scope and who set each one last.\nValues are never shown.",
+        ko: "프로젝트의 파이프라인 시크릿을 범위, 마지막으로 바꾼 사람과 함께 나열합니다.\n값은 보여 주지 않습니다.",
+      }),
+      options: [
+        {
+          name: "--branch",
+          type: "String",
+          enumOrFlag: "debug | develop | main",
+          desc: l.trans({
+            en: "Show only what builds of that branch use: its own values and the every-branch ones.",
+            ko: "그 브랜치의 빌드가 쓰는 것만 보여 줍니다. 그 브랜치 전용 값과 모든 브랜치용 값입니다.",
+          }),
+        },
+        hostOption,
+      ],
+      notes: [
+        {
+          name: l.trans({ en: "columns", ko: "열" }),
+          desc: l.trans({
+            en: "`NAME`, `SCOPE` (`every branch` or a branch), `UPDATED` and `BY`.",
+            ko: "`NAME`, `SCOPE`(`every branch` 또는 브랜치 이름), `UPDATED`, `BY`입니다.",
+          }),
+        },
+      ],
+      examples: `akan list-secrets
+akan list-secrets --branch main`,
+    },
+    {
+      name: "remove-secret",
+      signature: "akan remove-secret <name> [--branch <debug|develop|main>] [--host <host>]",
+      desc: l.trans({
+        en: "Remove a pipeline secret from the project.\nBuilds that start afterwards no longer receive it.",
+        ko: "프로젝트에서 파이프라인 시크릿을 지웁니다.\n지운 뒤에 시작하는 빌드는 그 값을 받지 않습니다.",
+      }),
+      args: [
+        {
+          name: "name",
+          type: "String",
+          required: "yes",
+          desc: l.trans({ en: "Name of the secret to remove.", ko: "지울 시크릿의 이름입니다." }),
+        },
+      ],
+      options: [
+        {
+          name: "--branch",
+          type: "String",
+          defaultValue: l.trans({ en: "every branch", ko: "모든 브랜치" }),
+          enumOrFlag: "debug | develop | main",
+          desc: l.trans({
+            en: "Remove that branch's own value; without it, the every-branch value goes.",
+            ko: "그 브랜치 전용 값을 지웁니다. 없으면 모든 브랜치용 값을 지웁니다.",
+          }),
+        },
+        hostOption,
+      ],
+      notes: [
+        {
+          name: l.trans({ en: "not there", ko: "없는 시크릿" }),
+          desc: l.trans({
+            en: "Removing a secret that does not exist says so and changes nothing.",
+            ko: "없는 시크릿을 지우면 그렇다고 알리고 아무것도 바꾸지 않습니다.",
+          }),
+        },
+      ],
+      examples: `akan remove-secret DISCORD_WEBHOOK
+akan remove-secret DEPLOY_KEY --branch main`,
+    },
   ];
 
   return (
@@ -427,8 +604,8 @@ akan upload-env --host https://cloud.example.com`,
         <Docs.Description>
           <div>
             {l.trans({
-              en: "Five optional commands for signing in to Akan Cloud, updating the framework and moving env values. Internal deployment commands are left out of this page on purpose.",
-              ko: "Akan Cloud 로그인, 프레임워크 업데이트, env 값 옮기기에 쓰는 명령 다섯 가지로, 필요할 때만 씁니다. 내부 배포용 명령은 일부러 이 페이지에서 뺐습니다.",
+              en: "Eight optional commands for signing in to Akan Cloud, updating the framework, moving env values and managing pipeline secrets. Internal deployment commands are left out of this page on purpose.",
+              ko: "Akan Cloud 로그인, 프레임워크 업데이트, env 값 옮기기, 파이프라인 시크릿 관리에 쓰는 명령 여덟 가지로, 필요할 때만 씁니다. 내부 배포용 명령은 일부러 이 페이지에서 뺐습니다.",
             })}
           </div>
         </Docs.Description>
@@ -504,6 +681,59 @@ akan upload-env --host https://cloud.example.com`,
           })}
         </Docs.Alert>
 
+        <Docs.SubSubTitle>{l.trans({ en: "Pipeline Secrets", ko: "파이프라인 시크릿" })}</Docs.SubSubTitle>
+        <ul className="my-4 list-disc space-y-2 pl-5">
+          <li>
+            {l.trans({
+              en: (
+                <>
+                  <strong>They belong to a project.</strong> The root <code>.env</code>'s <code>AKAN_WORKSPACE_ID</code>{" "}
+                  names it, and only its members signed in with <code>akan login</code> may change or list them.
+                </>
+              ),
+              ko: (
+                <>
+                  <strong>시크릿은 프로젝트에 속합니다.</strong> 루트 <code>.env</code>의 <code>AKAN_WORKSPACE_ID</code>
+                  가 프로젝트를 정하고, <code>akan login</code>으로 로그인한 그 프로젝트 멤버만 바꾸거나 볼 수 있습니다.
+                </>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <>
+                  <strong>A step asks for one by name.</strong> Only a step that lists the name in <code>secrets</code>{" "}
+                  receives it, as an environment variable of that name.
+                </>
+              ),
+              ko: (
+                <>
+                  <strong>step은 이름으로 시크릿을 요청합니다.</strong> <code>secrets</code>에 그 이름을 적은 step만,
+                  같은 이름의 환경변수로 값을 받습니다.
+                </>
+              ),
+            })}
+          </li>
+        </ul>
+        <Docs.Alert type="warning">
+          {l.trans({
+            en: (
+              <>
+                <strong>Anyone who can push to the repository can read a secret.</strong> A step they add can print it,
+                the same model as GitHub Actions secrets, so grant push access as you would grant the secret itself.
+              </>
+            ),
+            ko: (
+              <>
+                <strong>저장소에 push할 수 있는 사람은 시크릿을 읽을 수 있습니다.</strong> 그 사람이 추가한 step이 값을
+                출력할 수 있기 때문입니다. GitHub Actions 시크릿과 같은 모델이므로, push 권한은 시크릿 자체를 주듯이
+                신중하게 줍니다.
+              </>
+            ),
+          })}
+        </Docs.Alert>
+
         <Docs.SubSubTitle>{l.trans({ en: "Related Pages", ko: "관련 페이지" })}</Docs.SubSubTitle>
         <Docs.LinkGrid
           items={[
@@ -521,6 +751,14 @@ akan upload-env --host https://cloud.example.com`,
               desc: l.trans({
                 en: "Declare extra secret files that travel with the env values.",
                 ko: "env 값과 함께 옮길 시크릿 파일을 선언합니다.",
+              }),
+            },
+            {
+              href: "/cheatsheet/dev/pipeline",
+              title: l.trans({ en: "Build Pipeline", ko: "빌드 파이프라인" }),
+              desc: l.trans({
+                en: "Give a pipeline step a secret it reads at build time.",
+                ko: "파이프라인 step에 빌드 때 읽을 시크릿을 줍니다.",
               }),
             },
             {

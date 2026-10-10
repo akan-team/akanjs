@@ -263,13 +263,23 @@ Internal and development-only commands are left out on purpose.
 
   - quality ssr --format json: The same report as JSON, for tooling.
 
-- Cloud — Optional helpers: Akan Cloud sign-in, environment transfer and framework updates.
+- Pipeline — Plan the build pipeline declared in `akan.config.ts` without running it.
+
+  - pipeline dry-run: Shows what a build would run, phase by phase. `akan pipeline` alone runs this.
+
+  - pipeline validate: Checks the definitions and prints their errors and warnings.
+
+  - pipeline plan: Prints the plan as JSON, or writes it to `--out`.
+
+- Cloud — Optional helpers: Akan Cloud sign-in, environment transfer, pipeline secrets and framework updates.
 
   - login, logout: Signs in to or out of Akan Cloud.
 
   - update: Updates Akan.js to the latest version.
 
   - download-env, upload-env: Downloads or uploads environment variables, from or to the cloud or an SCP server.
+
+  - upload-secret, list-secrets, remove-secret: Saves, lists or removes the named secrets pipeline steps read; values are write-only.
 
 - Tunnel — Share a locally running app on a public URL as a command of its own, outside a dev session.
 
