@@ -2,6 +2,7 @@ import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import {
   formatSubspaceDiff,
   formatSubspaceEnvUpload,
+  formatSubspacePlan,
   formatSubspacePullResult,
   formatSubspacePushResults,
   formatSubspaceStatuses,
@@ -33,6 +34,13 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     spinner.succeed(`Pushed ${pushed} of ${results.length} subspace(s)`);
     Logger.rawLog(format === "json" ? JSON.stringify(results, null, 2) : formatSubspacePushResults(results));
     if (results.some((result) => result.outcome === "refused")) process.exitCode = 1;
+  }
+
+  async plan(workspace: Workspace, name: string, format: "text" | "json" = "text") {
+    const spinner = workspace.spinning(`Planning ${name}...`);
+    const plan = await this.subspaceRunner.plan(workspace, name);
+    spinner.succeed(`${plan.apps.length} app(s), ${plan.libs.length} librar(ies), ${plan.files} file(s)`);
+    Logger.rawLog(format === "json" ? JSON.stringify(plan, null, 2) : formatSubspacePlan(plan));
   }
 
   async diff(workspace: Workspace, name: string, filter: string | null, format: "text" | "json" = "text") {
