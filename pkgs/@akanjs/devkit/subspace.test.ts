@@ -88,9 +88,10 @@ const makeMirror = async (servedApp: string, privateApp: string, libName: string
   );
   await write(path.join(wsRoot, "benchmarks/bench.ts"), "export {};\n");
   await write(
-    path.join(wsRoot, "akan.subspace.ts"),
-    `export default { pushableBranches: ["develop"], exclude: ["benchmarks"], subspaces: [{ name: "acme", repo: ${JSON.stringify(bareRoot)}, apps: ["${servedApp}"] }] };\n`,
+    path.join(wsRoot, "akan.config.ts"),
+    `export default { subspace: { pushableBranches: ["develop"], exclude: ["benchmarks"], subspaces: [{ name: "acme", repo: ${JSON.stringify(bareRoot)}, apps: ["${servedApp}"] }] } };\n`,
   );
+  await write(path.join(wsRoot, "Jenkinsfile"), "pipeline { agent any }\n");
 
   await makeSys(wsRoot, "apps", servedApp, {
     "lib/task/task.constant.ts": [
@@ -152,7 +153,8 @@ describe("Subspace push", () => {
     expect(await FileSys.fileExists(path.join(subspaceRoot, "libs/kit/common/helper.ts"))).toBe(true);
     expect(await FileSys.dirExists(path.join(subspaceRoot, "apps/private"))).toBe(false);
     expect(entries).not.toContain("benchmarks");
-    expect(entries).not.toContain("akan.subspace.ts");
+    expect(entries).not.toContain("akan.config.ts");
+    expect(entries).not.toContain("Jenkinsfile");
     expect(await FileSys.fileExists(path.join(subspaceRoot, "apps/served/lib/cnst.ts"))).toBe(false);
     expect(await FileSys.fileExists(path.join(subspaceRoot, "apps/served/env/env.server.local.ts"))).toBe(false);
     expect(await FileSys.fileExists(path.join(subspaceRoot, "apps/served/env/env.server.ts"))).toBe(true);
@@ -214,6 +216,63 @@ describe("Subspace push", () => {
     const { subspace } = await makeMirror("idem-served", "idem-private", "idem-kit");
     expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
     expect((await subspace.push("develop", { verify: false })).outcome).toBe("skipped");
+  });
+
+  test("skips a push after an unrelated workspace commit, and re-stamps a library only when its content moves", async () => {
+    const { wsRoot, workRoot, bareRoot, subspace } = await makeMirror("calm-served", "calm-private", "calm-kit");
+    expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
+    const stampOf = async (root: string) =>
+      (
+        (await FileSys.readJson(path.join(root, "libs/calm-kit/package.json"))) as {
+          akan: { source: { sha: string; hash: string } };
+        }
+      ).akan.source;
+    const first = await stampOf(await cloneSubspace(workRoot, bareRoot, "calm-first"));
+
+    await write(path.join(wsRoot, "apps/calm-private/lib/task/task.constant.ts"), "export const task = 2;\n");
+    await git(wsRoot, ["add", "-A"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "outside the slice"]);
+    expect((await subspace.push("develop", { verify: false })).outcome).toBe("skipped");
+
+    await write(path.join(wsRoot, "libs/calm-kit/common/helper.ts"), "export const helper = 2;\n");
+    await git(wsRoot, ["add", "-A"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "inside the slice"]);
+    expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
+    const second = await stampOf(await cloneSubspace(workRoot, bareRoot, "calm-second"));
+    expect(second.hash).not.toBe(first.hash);
+    expect(second.sha).not.toBe(first.sha);
+  });
+
+  test("keeps the subspace's own root config and drops a Jenkinsfile an earlier push left there", async () => {
+    const { workRoot, bareRoot, subspace } = await makeMirror("own-served", "own-private", "own-kit");
+    const customer = await cloneSubspace(workRoot, bareRoot, "own-customer");
+    await write(path.join(customer, "akan.config.ts"), "export default { pipeline: {} };\n");
+    await git(customer, ["add", "-A"]);
+    await git(customer, ["commit", "--quiet", "-m", "our own global stages"]);
+    await write(path.join(customer, "Jenkinsfile"), "pipeline { agent none }\n");
+    await git(customer, ["add", "-A"]);
+    await git(customer, ["commit", "--quiet", "-m", `${Subspace.syncSubjectPrefix}workspace@0000000`]);
+    await git(customer, ["push", "--quiet", "origin", "develop"]);
+
+    expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
+    const subspaceRoot = await cloneSubspace(workRoot, bareRoot, "own-check");
+    expect(await FileSys.readText(path.join(subspaceRoot, "akan.config.ts"))).toContain(
+      "export default { pipeline: {} };",
+    );
+    expect(await FileSys.fileExists(path.join(subspaceRoot, "Jenkinsfile"))).toBe(false);
+  });
+
+  test("refuses a lock that resolves from a registry only this machine reaches", async () => {
+    const { wsRoot, subspace } = await makeMirror("lock-served", "lock-private", "lock-kit");
+    await write(
+      path.join(wsRoot, "bun.lock"),
+      '{ "packages": { "lodash": ["lodash@4.0.0", "http://127.0.0.1:4873/lodash/-/lodash-4.0.0.tgz"] } }\n',
+    );
+    await git(wsRoot, ["add", "-f", "bun.lock"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "a verdaccio lock"]);
+    const result = (await subspace.push("develop", { verify: false })) as { outcome: string; reason?: string };
+    expect(result.outcome).toBe("refused");
+    expect(result.reason).toContain("http://127.0.0.1:4873");
   });
 
   test("refuses a branch the subspace does not have, and one the config does not allow", async () => {

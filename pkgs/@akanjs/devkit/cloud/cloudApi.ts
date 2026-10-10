@@ -63,6 +63,17 @@ export interface TunnelGrant {
   expiresAt: string | null;
 }
 
+/** `scope` is `"*"` for every branch or the one branch it overrides. No call ever returns a value. */
+export interface PipelineSecretSummary {
+  name: string;
+  scope: string;
+  updatedAt: string;
+}
+
+export interface PipelineSecretListing extends PipelineSecretSummary {
+  updatedBy: string;
+}
+
 export interface TunnelSummary {
   code: string;
   hostname: string;
@@ -112,6 +123,15 @@ export class CloudApi {
     formData.append("devProjectId", devProjectId);
     formData.append("file", file);
     return await this.#api.post<boolean>(`/uploadEnv/${devProjectId}`, formData);
+  }
+  async uploadSecret(devProjectId: string, secret: { scope: string; name: string; value: string }) {
+    return await this.#api.post<PipelineSecretSummary>(`/uploadSecret/${encodeURIComponent(devProjectId)}`, secret);
+  }
+  async listSecrets(devProjectId: string) {
+    return await this.#api.get<PipelineSecretListing[]>(`/listSecrets/${encodeURIComponent(devProjectId)}`);
+  }
+  async removeSecret(devProjectId: string, secret: { scope: string; name: string }) {
+    return await this.#api.post<boolean>(`/removeSecret/${encodeURIComponent(devProjectId)}`, secret);
   }
   async downloadEnv(devProjectId: string): Promise<unknown> {
     const localPath = `${this.#workspace.workspaceRoot}/local/env.tar`;

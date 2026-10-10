@@ -14,7 +14,9 @@ export class SubspaceRunner extends runner("subspace") {
   async config(workspace: Workspace) {
     const config = await SubspaceConfig.from(workspace);
     if (!config)
-      throw new Error(`No ${SubspaceConfig.fileName} at the workspace root. Declare the customer repos there first.`);
+      throw new Error(
+        "The workspace root akan.config.ts declares no `subspace`. Declare the customer repos there first.",
+      );
     return config;
   }
 
@@ -41,7 +43,7 @@ export class SubspaceRunner extends runner("subspace") {
     { interactive, prompts }: { interactive: boolean; prompts?: SubspacePrompts },
   ): Promise<string[]> {
     const multiple = SubspaceRunner.multiTargetActions.includes(action);
-    if (!config.subspaces.length) throw new Error(`${SubspaceConfig.fileName} declares no subspaces.`);
+    if (!config.subspaces.length) throw new Error(`${SubspaceConfig.source} declares no subspaces.`);
     if (!interactive) {
       throw new Error(
         multiple
@@ -104,7 +106,7 @@ export class SubspaceRunner extends runner("subspace") {
     const { workspaceId } = subspace;
     if (!workspaceId)
       throw new Error(
-        `Subspace "${subspace.name}" declares no workspaceId. Add its cloud workspace id to ${SubspaceConfig.fileName}.`,
+        `Subspace "${subspace.name}" declares no workspaceId. Add its cloud workspace id to ${SubspaceConfig.source}.`,
       );
     if (workspaceId === workspace.getWorkspaceId({ allowEmpty: true }))
       throw new Error(

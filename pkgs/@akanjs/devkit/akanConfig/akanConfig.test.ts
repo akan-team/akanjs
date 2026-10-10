@@ -895,3 +895,38 @@ describe("AkanAppConfig.importConfigModule", () => {
     }
   });
 });
+
+describe("pipeline and workspace keys in app and lib configs", () => {
+  test("an app's pipeline is dropped before the instance exists, so it never reaches akan.app.json", async () => {
+    const config = await loadExtAppConfig(
+      "akan-config-app-keys-",
+      'export default { externalLibs: ["ext-a"], pipeline: { stages: [{ use: "build" }] } };\n',
+      "export default {};\n",
+    );
+    expect(config.externalLibs).toContain("ext-a");
+    expect("pipeline" in config).toBe(false);
+    expect(Object.keys(JSON.parse(JSON.stringify(config)) as object)).not.toContain("pipeline");
+  });
+
+  test("an app refuses the workspace's subspace setting", async () => {
+    const loading = loadExtAppConfig(
+      "akan-config-subspace-",
+      "export default { subspace: { subspaces: [] } };\n",
+      "export default {};\n",
+    );
+    expect(loading).rejects.toThrow("a workspace setting");
+  });
+
+  test("a lib takes neither a pipeline nor a subspace", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-config-lib-keys-"));
+    try {
+      const lib = { name: "extlib", cwdPath: root } as never;
+      fs.writeFileSync(path.join(root, "akan.config.ts"), "export default { pipeline: { stages: [] } };\n");
+      expect(AkanLibConfig.from(lib)).rejects.toThrow("which a lib does not take");
+      fs.writeFileSync(path.join(root, "akan.config.ts"), "export default { subspace: { subspaces: [] } };\n");
+      expect(AkanLibConfig.from(lib, { bustImportCache: true })).rejects.toThrow("a workspace setting");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

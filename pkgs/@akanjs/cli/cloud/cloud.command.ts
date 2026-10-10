@@ -83,6 +83,47 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(async function (workspace, tag, registry) {
       await this.cloudScript.update(workspace, tag, { registryUrl: resolveRegistryUrl(registry) });
     }),
+  uploadSecret: target({
+    desc: "Upload a named pipeline secret to the akasys project; write-only, it can never be read back",
+  })
+    .arg("name", String, { desc: "secret name, e.g. DISCORD_WEBHOOK" })
+    .option("branch", String, {
+      desc: "only builds of this branch use it: debug, develop or main (default: every branch)",
+      nullable: true,
+    })
+    .option("file", String, {
+      desc: "read the value from this file instead of stdin or a hidden prompt",
+      nullable: true,
+    })
+    .option("subspace", String, { desc: "the subspace whose project gets it", nullable: true })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (name, branch, file, subspace, host, workspace) {
+      await this.cloudScript.uploadSecret(workspace, { name, branch, file, subspace, host });
+    }),
+  listSecrets: target({ desc: "List the pipeline secrets of the akasys project: names and scopes, never values" })
+    .option("branch", String, {
+      desc: "only the secrets builds of this branch use: debug, develop or main",
+      nullable: true,
+    })
+    .option("subspace", String, { desc: "the subspace whose project to list", nullable: true })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (branch, subspace, host, workspace) {
+      await this.cloudScript.listSecrets(workspace, { branch, subspace, host });
+    }),
+  removeSecret: target({ desc: "Remove a named pipeline secret from the akasys project" })
+    .arg("name", String, { desc: "secret name" })
+    .option("branch", String, {
+      desc: "the branch override to remove: debug, develop or main (default: the every-branch value)",
+      nullable: true,
+    })
+    .option("subspace", String, { desc: "the subspace whose project holds it", nullable: true })
+    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .with(Workspace)
+    .exec(async function (name, branch, subspace, host, workspace) {
+      await this.cloudScript.removeSecret(workspace, { name, branch, subspace, host });
+    }),
   downloadEnv: target({ desc: "Download environment variables from cloud or SCP server" })
     .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
     .with(Workspace)

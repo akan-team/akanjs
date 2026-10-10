@@ -43,6 +43,7 @@ export interface TargetOption {
   desc?: string;
   runsOnWorkspaceRoot?: boolean;
   stdio?: boolean;
+  failureExitCode?: number;
 }
 
 export const Commands = () => {

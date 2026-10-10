@@ -40,7 +40,7 @@ import {
   scanScopeRecipes,
   upsertAgentBlock,
 } from "./agentsIndex";
-import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
+import { AkanAppConfig, AkanLibConfig, AkanWorkspaceConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { CodegenLock } from "./codegenLock";
 import { FileSys, getDirname } from "./fileSys";
@@ -713,6 +713,12 @@ export class WorkspaceExecutor extends Executor {
   }
   async scan(): Promise<WorkspaceInfo> {
     return await WorkspaceInfo.fromExecutor(this);
+  }
+  #akanConfig: AkanWorkspaceConfig | null = null;
+  async getConfig({ refresh }: { refresh?: boolean } = {}) {
+    if (this.#akanConfig && !refresh) return this.#akanConfig;
+    this.#akanConfig = await AkanWorkspaceConfig.from(this, { bustImportCache: refresh });
+    return this.#akanConfig;
   }
   async getApps() {
     return await this.#getDirHasFile(`${this.workspaceRoot}/apps`, "akan.config.ts");

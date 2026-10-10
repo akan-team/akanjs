@@ -288,9 +288,10 @@ export const getInternalArgumentValue = async (
 };
 
 export const runCommands = async (...commands: CommandCls[]) => {
+  let failureExitCode = 1;
   process.on("unhandledRejection", (error) => {
     printCliError(error);
-    process.exit(1);
+    process.exit(failureExitCode);
   });
   const __dirname = getDirname(import.meta.url);
   const packageJsonCandidates = [`${path.dirname(Bun.main)}/package.json`, `${__dirname}/../package.json`];
@@ -335,6 +336,10 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
         let programCommand = program.command(commandName, {
           hidden: targetMeta.targetOption.devOnly,
         });
+        const targetFailureExitCode = targetMeta.targetOption.failureExitCode;
+        //? commander exits 1 on a flag or argument it refuses, before any action runs.
+        if (targetFailureExitCode !== undefined)
+          programCommand.exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : targetFailureExitCode));
         const [allArgMetas] = getArgMetas(command, targetMeta.key);
         for (const argMeta of allArgMetas) {
           if (argMeta.type === "Option") programCommand = handleOption(programCommand, argMeta);
@@ -364,6 +369,7 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
         };
 
         programCommand.action(async (...args: unknown[]) => {
+          failureExitCode = targetFailureExitCode ?? 1;
           if (!targetMeta.targetOption.stdio) Logger.rawLog();
           const cmdArgs = args.slice(0, args.length - 2);
           const opt = args[args.length - 2] as Record<string, unknown>;
@@ -413,6 +419,6 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
   // Handled here, not by the handler above: a rejection reaching the entry's top-level await prints Bun's own trace.
   await program.parseAsync(process.argv).catch((error: unknown) => {
     printCliError(error);
-    process.exit(1);
+    process.exit(failureExitCode);
   });
 };
