@@ -248,6 +248,65 @@ export class Upload extends PrimitiveScalar {
 }
 PrimitiveRegistry.register(Upload);
 
+export type ImageResultMimeType = (typeof ImageResult.mimeTypes)[number];
+export interface ImageResultValue {
+  /** Standard padded base64, without a `data:` prefix. */
+  data: string;
+  mimeType: ImageResultMimeType;
+  caption?: string | null;
+}
+
+/** A picture an endpoint returns: JSON over HTTP, an image content block over MCP. Not storable. */
+export class ImageResult extends PrimitiveScalar {
+  static override refName: "ImageResult" = "ImageResult";
+  static override [SERVER_VALUE]: ImageResultValue;
+  static override [CLIENT_VALUE]: ImageResultValue;
+  static override [DEFAULT_VALUE]: ImageResultValue | null = null;
+  static override [PURIFIED_VALUE]: ImageResultValue | null = null;
+  static override [EXAMPLE_VALUE]: ImageResultValue = {
+    data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    mimeType: "image/png",
+    caption: "A 1x1 pixel.",
+  };
+  //? The image types MCP clients forward to Anthropic and OpenAI models; an SVG or a BMP is refused by both.
+  static readonly mimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+  static override jsonSchema: PrimitiveJsonSchema = {
+    type: "object",
+    properties: {
+      data: { type: "string", contentEncoding: "base64" },
+      mimeType: { type: "string", enum: [...ImageResult.mimeTypes] },
+      caption: { type: ["string", "null"] },
+    },
+    required: ["data", "mimeType"],
+    additionalProperties: false,
+  };
+  //? Only the MCP tool path can show a model the picture; every other agent read gets the caption, not the base64.
+  static override agent: PrimitiveAgentFace<ImageResultValue> = {
+    schema: {
+      type: "object",
+      properties: { mimeType: { type: "string" }, caption: { type: "string" } },
+      required: ["mimeType"],
+    },
+    read: ({ mimeType, caption }) => (caption ? { mimeType, caption } : { mimeType }),
+  };
+
+  static override validate(value: ImageResultValue): boolean {
+    if (!value || typeof value !== "object") return false;
+    const { data, mimeType, caption } = value;
+    return (
+      typeof data === "string" &&
+      ImageResult.#isBase64(data) &&
+      (ImageResult.mimeTypes as readonly string[]).includes(mimeType) &&
+      (caption === undefined || caption === null || typeof caption === "string")
+    );
+  }
+
+  static #isBase64(data: string) {
+    return data.length > 0 && data.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(data);
+  }
+}
+PrimitiveRegistry.register(ImageResult);
+
 declare global {
   interface StringConstructor {
     refName: "String";
@@ -391,4 +450,14 @@ Object.assign(Date, {
 });
 PrimitiveRegistry.register(Date);
 
-export type DefaultPrimitiveName = "String" | "Boolean" | "Date" | "Int" | "Float" | "ID" | "Any" | "Binary" | "Upload";
+export type DefaultPrimitiveName =
+  | "String"
+  | "Boolean"
+  | "Date"
+  | "Int"
+  | "Float"
+  | "ID"
+  | "Any"
+  | "Binary"
+  | "Upload"
+  | "ImageResult";

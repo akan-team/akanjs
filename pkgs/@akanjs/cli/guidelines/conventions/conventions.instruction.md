@@ -839,6 +839,10 @@ it.
 - **A `field.visual` field is stripped from every MCP result** and from the readable schema so the two agree.
 - **A structured result ships twice by default** — as `structuredContent` and as the same JSON in the text block.
   `option.setMcp({ legacyTextBlock: false })` leaves a pointer there instead.
+- **A picture is an `ImageResult` return** (`akanjs/base`): `query(ImageResult, { guards })` returns `{ data,
+  mimeType, caption? }` — padded base64 with no `data:` prefix, and `image/png` / `jpeg` / `webp` / `gif`. Over MCP it
+  answers the caption as a text block and the picture as an image block, with no `structuredContent`; over HTTP it
+  is that JSON object. Like `Binary` it is never a model field.
 - **A prompt is a screen: `page().prompt(name, description)`.** There is no `prompt()` on `endpoint()`.
   `prompts/get` runs the page's body in the RSC worker under the caller's token — nothing is rendered — and answers
   the description, one `resource` per `fetch.*` the page made (masked by the endpoint's return model, addressed by
@@ -917,7 +921,7 @@ what every developer must know even when not building one.
 
 ### Scalar & Field Type Reference
 
-- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Binary`, `Upload`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible payloads.
+- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Binary`, `Upload`, `ImageResult`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible payloads.
 - **Use the JS globals directly (no import needed)**: `String`, `Boolean`, `Date`. They are monkey-patched to behave like scalars, so `field(String)` typechecks.
 - **`Number` is not a valid field/body type.** `NumberConstructor` is intentionally not augmented, so `field(Number)` / `.body("x", Number)` fails to typecheck. Use `Int` or `Float` instead.
 - Runtime resolution of every scalar (globals included) goes through `PrimitiveRegistry` by `refName` (`pkgs/akanjs/base/primitiveRegistry.ts`).

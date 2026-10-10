@@ -5,6 +5,7 @@ import {
   DEFAULT_VALUE,
   type EnumInstance,
   FIELD_META,
+  ImageResult,
   type ObjectAssign,
   type ObjectAssignKeyOfObjects,
   PURIFIED_VALUE,
@@ -402,8 +403,11 @@ const applyConstantStatics = <Model>(model: ConstantCls<Model>, fieldMap: FieldO
     },
   });
   Object.entries(fieldMap).forEach(([key, field]) => {
-    if ((field.modelRef as unknown) === Binary || (field.of as unknown) === Binary)
-      throw new Error(`Field "${key}" is Binary, which is not storable. Reference the File model instead.`);
+    for (const unstorable of [Binary, ImageResult])
+      if ((field.modelRef as unknown) === unstorable || (field.of as unknown) === unstorable)
+        throw new Error(
+          `Field "${key}" is ${unstorable.refName}, which is not storable. Reference the File model instead.`,
+        );
     if (field.enum) model.enums.add(field.enum);
     if (!field.isClass) return;
     if (field.isScalar) model.children.add(field.modelRef);

@@ -9,6 +9,7 @@ import {
   dayjs,
   enumOf,
   ID,
+  ImageResult,
   type PrimitiveAgentFace,
   PrimitiveRegistry,
   PrimitiveScalar,
@@ -146,6 +147,8 @@ ConstantRegistry.buildModel(
   {},
 );
 
+const pixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 class McpItemSlice extends slice(
   serverResolverTestServiceModel,
   { guards: { root: Public, get: Public, cru: Public } },
@@ -208,6 +211,17 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
     createdAt: dayjs(0),
     updatedAt: dayjs(0),
   })),
+  shotImage: builder
+    .query(ImageResult, { guards: [Public] })
+    .search("caption", String)
+    .exec((caption) => ({ data: pixelPng, mimeType: "image/png", ...(caption ? { caption } : {}) })),
+  shotImages: builder.query([ImageResult], { guards: [Public] }).exec(() => [
+    { data: pixelPng, mimeType: "image/png", caption: "first" },
+    { data: pixelPng, mimeType: "image/webp" },
+  ]),
+  dataUrlShot: builder
+    .query(ImageResult, { guards: [Public] })
+    .exec(() => ({ data: `data:image/png;base64,${pixelPng}`, mimeType: "image/png" })),
   rewriteOutline: builder
     .mutation(String, { guards: [SignedIn] })
     .body("outline", McpOutline)
@@ -411,6 +425,7 @@ describe("MCP over a booted container", () => {
   test("lists every endpoint its guards admit", async () => {
     const { json } = await post(rpc("tools/list"));
     expect(json.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "dataUrlShot",
       "echoTitle",
       "failingTitle",
       "joinTags",
@@ -426,6 +441,8 @@ describe("MCP over a booted container", () => {
       "serverResolverTestItemInsightInCategory",
       "serverResolverTestItemList",
       "serverResolverTestItemListInCategory",
+      "shotImage",
+      "shotImages",
       "slowTitle",
       "vendorTitle",
       "visualItem",
@@ -526,10 +543,10 @@ describe("MCP over a booted container", () => {
     }
     const log = lines.join("\n");
     // The whole build, not one caller's view: per-credential hiding makes these counts exceed tools/list above.
-    expect(log).toContain("MCP catalogue: tools=21 resourceTemplates=3 · listing ");
-    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 21/");
+    expect(log).toContain("MCP catalogue: tools=24 resourceTemplates=3 · listing ");
+    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 24/");
     expect(lines.find((line) => line.includes('"publicRenameTitle"'))).toContain("`[Public]` is having none");
-    expect(log).toContain("MCP catalogue: tools=19 resourceTemplates=3 (read-only deployment)");
+    expect(log).toContain("MCP catalogue: tools=22 resourceTemplates=3 (read-only deployment)");
     expect(lines.find((line) => line.includes('did not expose "renameTitle"'))).toContain("read-only");
     // These signals carry no dictionary, so every entry, generated ones included, is named.
     expect(lines.find((line) => line.includes('exposed "echoTitle" with no description'))).toContain(
@@ -755,6 +772,26 @@ describe("MCP over a booted container", () => {
     expect(JSON.parse(resources[0]?.content.resource.text)).toBe("# A\nb");
   });
 
+  test("attaches an image result the screen fetched as its caption, not its base64", async () => {
+    const run: PagePromptRun = {
+      ok: true,
+      url: `http://127.0.0.1/en/item/${itemId}`,
+      records: [
+        {
+          key: "shotImage",
+          args: {},
+          returns: { refName: "ImageResult" },
+          value: { data: pixelPng, mimeType: "image/png", caption: "plan view" },
+        },
+      ],
+    };
+    const { json } = await postWith(promptsGet({ serverResolverTestItemId: itemId }), {
+      pagePrompts: pagePromptsOf(run),
+    });
+    const resources = (json.result.messages as { content: any }[]).filter((m) => m.content.type === "resource");
+    expect(JSON.parse(resources[0]?.content.resource.text)).toEqual({ mimeType: "image/png", caption: "plan view" });
+  });
+
   test("points a prompt missing its required argument at the tool that finds the id", async () => {
     const { json } = await postWith(promptsGet({}), { pagePrompts: pagePromptsOf(okRun()) });
     expect(json.result.messages).toEqual([
@@ -869,6 +906,61 @@ describe("MCP over a booted container", () => {
       new Request("http://127.0.0.1:8080/api/serverResolverTestItem/outlineText"),
     );
     expect(await response.json()).toEqual({ lines: ["# Title", "text"] });
+  });
+
+  test("hands an image result to an agent as its caption and an image block, never as base64 text", async () => {
+    const json = await call("shotImage", { caption: "Window 0,0 to 120,80" });
+    expect(json.result).toEqual({
+      content: [
+        { type: "text", text: "Window 0,0 to 120,80" },
+        { type: "image", data: pixelPng, mimeType: "image/png" },
+      ],
+      isError: false,
+    });
+    const bare = await call("shotImage");
+    expect(bare.result.content).toEqual([{ type: "image", data: pixelPng, mimeType: "image/png" }]);
+    const { json: lean } = await postWith(rpc("tools/call", { name: "shotImage", arguments: {} }), {
+      legacyTextBlock: false,
+    });
+    expect(lean.result.content).toEqual(bare.result.content);
+    const { json: listed } = await post(rpc("tools/list"));
+    const tool = listed.result.tools.find((entry: { name: string }) => entry.name === "shotImage");
+    expect(tool.outputSchema).toBeUndefined();
+  });
+
+  test("sends a list of image results as one caption and image per picture", async () => {
+    const json = await call("shotImages");
+    expect(json.result.content).toEqual([
+      { type: "text", text: "first" },
+      { type: "image", data: pixelPng, mimeType: "image/png" },
+      { type: "image", data: pixelPng, mimeType: "image/webp" },
+    ]);
+    expect("structuredContent" in json.result).toBe(false);
+  });
+
+  test("answers an image result over HTTP as the JSON object the client reads", async () => {
+    const routes = httpRoutes as Record<string, { GET: (req: Request) => Promise<Response> }>;
+    const response = await routes["/serverResolverTestItem/shotImage"].GET(
+      new Request("http://127.0.0.1:8080/api/serverResolverTestItem/shotImage?caption=plan"),
+    );
+    expect(await response.json()).toEqual({ data: pixelPng, mimeType: "image/png", caption: "plan" });
+  });
+
+  test("refuses an image whose data is a data URL, and logs what an ImageResult needs", async () => {
+    const lines: string[] = [];
+    const stop = Logger.addSink(({ message }) => void lines.push(message));
+    try {
+      const json = await call("dataUrlShot");
+      expect(json.result).toEqual({
+        content: [{ type: "text", text: "The server failed to complete this request." }],
+        isError: true,
+      });
+    } finally {
+      stop();
+    }
+    expect(lines.find((line) => line.includes('MCP refused the "dataUrlShot" image result'))).toContain(
+      "without a `data:` prefix",
+    );
   });
 
   test("takes an agent-faced primitive argument in its face, parsed before the handler sees it", async () => {
@@ -1296,6 +1388,23 @@ describe("MCP Apps", () => {
     expect(view._meta[MCP_APP_META.value]).toMatchObject({ title: "shot", preview: "data:image/png;base64,AAAA" });
     expect((await call(session)).json.result._meta).toBeUndefined();
     expect((await call({}, { [MCP_APP_META.view]: true })).json.result._meta).toBeUndefined();
+  });
+
+  test("hands a view an image result's JSON object beside the image block a model reads", async () => {
+    const session = { "mcp-session-id": await uiSession() };
+    const call = (meta?: object) =>
+      postAs(
+        rpc("tools/call", { name: "shotImage", arguments: { caption: "plan" }, ...(meta ? { _meta: meta } : {}) }),
+        session,
+        apps,
+      );
+    const view = (await call({ [MCP_APP_META.view]: true })).json.result;
+    expect(view.content).toEqual([
+      { type: "text", text: "plan" },
+      { type: "image", data: pixelPng, mimeType: "image/png" },
+    ]);
+    expect(view._meta[MCP_APP_META.value]).toEqual({ data: pixelPng, mimeType: "image/png", caption: "plan" });
+    expect((await call()).json.result._meta).toBeUndefined();
   });
 
   test("hands a view the domain error a browser would get, and nothing a refusal or a crash would", async () => {

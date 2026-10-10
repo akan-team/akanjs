@@ -1,4 +1,4 @@
-import { type BackendEnv, ENDPOINT_META, PrimitiveRegistry } from "akanjs/base";
+import { type BackendEnv, ENDPOINT_META, ImageResult, type ImageResultValue, PrimitiveRegistry } from "akanjs/base";
 import { interpolateTranslation, Logger } from "akanjs/common";
 import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
@@ -51,12 +51,17 @@ export class McpDispatcher {
     if (!found) return McpDispatcher.#failure(`Tool "${exposed.key}" is declared but not mounted on this server.`);
     try {
       const wire = await this.#exec(exposed.key, found, args, req);
+      const view = forView ? { _meta: { [MCP_APP_META.value]: wire ?? null } } : {};
+      if (exposed.endpoint.returns.refName === ImageResult.refName) {
+        const image = McpDispatcher.#imageResult(exposed, wire);
+        return image.isError ? image : { ...image, ...view };
+      }
       const value = McpDispatcher.#readable(exposed, wire);
       const structuredContent = McpDocument.structuredContent(exposed.endpoint, value);
       return {
         content: this.#content(structuredContent, value),
         ...(structuredContent === undefined ? {} : { structuredContent }),
-        ...(forView ? { _meta: { [MCP_APP_META.value]: wire ?? null } } : {}),
+        ...view,
         isError: false,
       };
     } catch (error) {
@@ -212,6 +217,24 @@ export class McpDispatcher {
       );
       throw new Exception.Error("The server failed to complete this request.");
     }
+  }
+
+  // No structuredContent and no JSON text block: either would repeat hundreds of KB of base64 the image block carries.
+  static #imageResult(exposed: McpExposedEndpoint, value: unknown): McpToolResult {
+    if (value === null || value === undefined) return { content: [{ type: "text", text: "null" }], isError: false };
+    const images = (exposed.endpoint.returns.arrDepth ? [value].flat(Number.POSITIVE_INFINITY) : [value]) as unknown[];
+    if (!images.length) return { content: [{ type: "text", text: "[]" }], isError: false };
+    if (!images.every((image) => ImageResult.validate(image as ImageResultValue))) {
+      McpDispatcher.logger.error(
+        `MCP refused the "${exposed.key}" image result: an ImageResult needs \`data\` in padded base64 without a \`data:\` prefix and a \`mimeType\` of ${ImageResult.mimeTypes.join(", ")}.`,
+      );
+      return McpDispatcher.#failure("The server failed to complete this request.");
+    }
+    const content = (images as ImageResultValue[]).flatMap(({ data, mimeType, caption }) => [
+      ...(caption ? [{ type: "text" as const, text: caption }] : []),
+      { type: "image" as const, data, mimeType },
+    ]);
+    return { content, isError: false };
   }
 
   static #failure(message: string): McpToolResult {
