@@ -129,8 +129,14 @@ export interface McpTextContent {
   text: string;
 }
 
+export interface McpImageContent {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
 export interface McpToolResult {
-  content: McpTextContent[];
+  content: (McpTextContent | McpImageContent)[];
   structuredContent?: unknown;
   isError?: boolean;
   _meta?: Record<string, unknown>;

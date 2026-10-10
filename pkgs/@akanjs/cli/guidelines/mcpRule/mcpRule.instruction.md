@@ -155,6 +155,17 @@ export default page()
   clients read the structured half. A scalar return is unaffected: it has no structured half to point at, so it
   ships as the value itself either way. `resources/read` is unaffected too: `ReadResourceResult` has no
   `structuredContent`, so a resource's text is its only channel and always carries the serialized value.
+- **A picture is an `ImageResult` return, and the one result a model sees rather than reads.**
+  `query(ImageResult, { guards: [...] })` (or `[ImageResult]`) returns `{ data, mimeType, caption? }`: `data` is
+  padded standard base64 with no `data:` prefix, `mimeType` one of `image/png`, `image/jpeg`, `image/webp`,
+  `image/gif` — the types the Anthropic and OpenAI models take. `tools/call` answers the caption as a text block and
+  the picture as an image block, one pair per picture, and publishes no `outputSchema` and no `structuredContent`:
+  either would repeat the base64, a few hundred KB, as text the model pays for and cannot see. A value that breaks
+  the shape is not sent — the dispatcher logs what an `ImageResult` needs and answers the generic failure. Put in
+  the caption what the picture cannot say on its own (the region or scale it spans). Over HTTP the endpoint is the
+  JSON object, so the app's own client and tests read it as usual; everywhere else an agent reads it — a page
+  prompt's resource, the in-page agent — its agent face carries `mimeType` and `caption` only. Nothing caps the
+  size, and Anthropic refuses an image over 5 MB, so keep a picture well under that. It is never a model field.
 - **A request schema asks for a relation's id, and a response schema names a nested model.** `serialize` sends a
   relation field as its id and the server never converts an object back, so publishing the related model's shape
   asked an agent for what the document layer cannot take. On the response side every entry inlines the transitive

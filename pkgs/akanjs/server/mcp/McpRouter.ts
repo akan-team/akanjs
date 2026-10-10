@@ -521,14 +521,13 @@ export class McpRouter {
     const resolved = document.resolveResource(uri);
     if (!resolved) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`);
     const result = await this.#dispatcher.call(resolved.exposed, resolved.args, call.req);
+    const [first] = result.content;
+    const firstText = first?.type === "text" ? first.text : undefined;
     // An explicit error: a client reads an empty `contents` array as "this exists and is empty".
-    if (result.isError)
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, result.content[0]?.text ?? "Read failed.");
+    if (result.isError) return McpRouter.#error(call.id, McpErrorCode.invalidParams, firstText ?? "Read failed.");
     // `ReadResourceResult` has no `structuredContent`, so the text is the resource's only channel.
     const text =
-      result.structuredContent === undefined
-        ? (result.content[0]?.text ?? "null")
-        : JSON.stringify(result.structuredContent);
+      result.structuredContent === undefined ? (firstText ?? "null") : JSON.stringify(result.structuredContent);
     return this.#result(call, { contents: [{ uri, mimeType: "application/json", text }] });
   }
 

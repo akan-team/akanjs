@@ -10,6 +10,7 @@ import {
   FIELD_META,
   Float,
   ID,
+  ImageResult,
   Int,
   PrimitiveRegistry,
   PrimitiveScalar,
@@ -701,6 +702,12 @@ describe("Binary as a model field", () => {
     expect(() => via((f) => ({ blob: f(Binary) }))).toThrow('Field "blob" is Binary, which is not storable');
     expect(() => via((f) => ({ blobs: f([Binary]) }))).toThrow('Field "blobs" is Binary, which is not storable');
     expect(() => via((f) => ({ blobs: f(Map, { of: Binary }) }))).toThrow("is Binary, which is not storable");
+  });
+});
+
+describe("ImageResult as a model field", () => {
+  test("fails the class build like Binary, since its base64 would ride every read of the row", () => {
+    expect(() => via((f) => ({ shot: f(ImageResult) }))).toThrow('Field "shot" is ImageResult, which is not storable');
   });
 });
 
