@@ -50,6 +50,50 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     return { workspaceId: null, files };
   }
 
+  async uploadSecret(
+    workspace: Workspace,
+    {
+      name,
+      branch,
+      file,
+      subspace,
+      host = GlobalConfig.akanCloudHost,
+    }: { name: string; branch: string | null; file: string | null; subspace: string | null; host?: string },
+  ) {
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const value = await this.cloudRunner.readSecretValue(name, file);
+    await this.login(workspace, host);
+    const cloudApi = await CloudApi.fromHost(workspace, host);
+    await this.cloudRunner.uploadSecret(cloudApi, devProjectId, { name, branch, value });
+  }
+  async listSecrets(
+    workspace: Workspace,
+    {
+      branch,
+      subspace,
+      host = GlobalConfig.akanCloudHost,
+    }: { branch: string | null; subspace: string | null; host?: string },
+  ) {
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    await this.login(workspace, host);
+    const cloudApi = await CloudApi.fromHost(workspace, host);
+    await this.cloudRunner.listSecrets(cloudApi, devProjectId, branch);
+  }
+  async removeSecret(
+    workspace: Workspace,
+    {
+      name,
+      branch,
+      subspace,
+      host = GlobalConfig.akanCloudHost,
+    }: { name: string; branch: string | null; subspace: string | null; host?: string },
+  ) {
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    await this.login(workspace, host);
+    const cloudApi = await CloudApi.fromHost(workspace, host);
+    await this.cloudRunner.removeSecret(cloudApi, devProjectId, { name, branch });
+  }
+
   async deployAkan(
     workspace: Workspace,
     {

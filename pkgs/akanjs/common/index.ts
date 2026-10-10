@@ -127,7 +127,41 @@ export {
 } from "./mcpExposure";
 export { deepObjectify, objectify, plainFieldsOf } from "./objectify";
 export { pathGet, pathGetLoose, pathSet, toPathSegments } from "./objectPath";
+export { PipelineNames } from "./PipelineNames";
+export { PipelinePattern } from "./PipelinePattern";
+export { PipelinePlanSchema } from "./PipelinePlanSchema";
 export { formatPhone, isPhoneNumber } from "./phone";
+export {
+  type PipelineActionName,
+  type PipelineDiagnostic,
+  type PipelineMilestone,
+  type PipelinePlan,
+  type PipelinePlanActionStep,
+  type PipelinePlanContext,
+  type PipelinePlanPhase,
+  type PipelinePlanPost,
+  type PipelinePlanResult,
+  type PipelinePlanRetry,
+  type PipelinePlanShellStep,
+  type PipelinePlanSlot,
+  type PipelinePlanSource,
+  type PipelinePlanStage,
+  type PipelinePlanStep,
+  type PipelineSkip,
+  type PipelineTrigger,
+  pipelineActionNames,
+  pipelineActions,
+  pipelineEnvNamePattern,
+  pipelineIdPattern,
+  pipelineMilestones,
+  pipelinePlanLimits,
+  pipelinePlanSlots,
+  pipelinePlanVersion,
+  pipelineReservedEnv,
+  pipelineRuntimeEnv,
+  pipelineSecretNamePattern,
+  pipelineTriggers,
+} from "./pipelinePlan";
 export { type RouteLayer, RouteLayering } from "./RouteLayering";
 export { randomPick, randomPicks } from "./randomPick";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";

@@ -44,12 +44,14 @@ const makeEnvUploadWorkspace = async () => {
   process.env.AKAN_PUBLIC_ENV = "local";
   process.env.AKAN_WORKSPACE_ID = "workspace-project";
   await writeText(
-    path.join(root, SubspaceConfig.fileName),
+    path.join(root, "akan.config.ts"),
     `export default {
-  subspaces: [
-    { name: "acme", repo: "git@github.com:acme/app.git", apps: ["acme"] },
-    { name: "globex", repo: "git@github.com:globex/app.git", apps: ["globex"], workspaceId: "workspace-project" },
-  ],
+  subspace: {
+    subspaces: [
+      { name: "acme", repo: "git@github.com:acme/app.git", apps: ["acme"] },
+      { name: "globex", repo: "git@github.com:globex/app.git", apps: ["globex"], workspaceId: "workspace-project" },
+    ],
+  },
 };
 `,
   );
