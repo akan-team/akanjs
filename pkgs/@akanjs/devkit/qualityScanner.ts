@@ -10,6 +10,7 @@ import { fileWarning, formatSsrBalance, type SsrBalanceEntry, SsrScanner } from 
 import {
   facetIndexShadowOf,
   isAllowedLibFacetRootFile,
+  libFacetRootHintOf,
   rootAllowedDirs,
   rootAllowedFiles,
   rootEntryHintOf,
@@ -145,7 +146,7 @@ const RULE_FIXES: Record<string, string> = {
   "akan.layout.lib-root-folder":
     "Move the folder's contents into a conventional lib folder (common, env, lib, page, private, public, srvkit, ui, or webkit) and delete it.",
   "akan.layout.lib-facet-file":
-    "Move the file into a domain module folder under lib/; keep the lib facet root limited to generated support facets.",
+    "Move the file into a domain module folder under lib/ (a test beside the file it covers, or into srvkit/ when it drives several modules); keep the lib facet root limited to generated support facets.",
   "akan.layout.facet-index-shadow":
     "Delete the hand-written index file and run akan sync; move a namespace it builds into <facet>/<Folder>/index.tsx.",
   "akan.layout.module-ui-file":
@@ -460,7 +461,9 @@ export class AkanQualityScanner {
           "akan.layout.lib-facet-file",
           "layout",
           sourceFile.file,
-          `Unexpected lib facet root file "${libFacetFile}". Keep direct lib/ root files limited to generated support facets.`,
+          `Unexpected lib facet root file "${libFacetFile}". ${
+            libFacetRootHintOf(libFacetFile) ?? "Keep direct lib/ root files limited to generated support facets."
+          }`,
         ),
       );
 

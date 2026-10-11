@@ -14,6 +14,9 @@ import {
   barrelFacetDirs,
   facetIndexShadowOf,
   isAllowedLibFacetRootFile,
+  libFacetRootHintOf,
+  moduleTestHint,
+  moduleTestTargetOf,
   rootAllowedDirs,
   rootAllowedFiles,
   rootEntryHintOf,
@@ -93,7 +96,7 @@ async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { 
 
   for (const filename of libRoot.files)
     if (!isAllowedLibFacetRootFile(filename))
-      addViolation(path.join("lib", filename), "unsupported lib facet root file");
+      addViolation(path.join("lib", filename), libFacetRootHintOf(filename) ?? "unsupported lib facet root file");
   for (const dirname of libRoot.dirs)
     if (dirname.startsWith("__") && !internalLibDirs.has(dirname))
       addViolation(path.join("lib", dirname), "unsupported internal lib folder");
@@ -133,12 +136,14 @@ async function validateModuleFiles(
 
   for (const filename of files) {
     const scanPath = getScanPath(exec, path.join(modulePath, filename));
-    if (filename === "index.ts" || filename === "index.tsx" || /\.(test|spec)\.(ts|tsx)$/.test(filename)) continue;
+    if (filename === "index.ts" || filename === "index.tsx") continue;
     if (filename === `${moduleName}.abstract.md`) continue;
-    const uiMatch = filename.match(/^([A-Z][A-Za-z0-9]+)\.([A-Z][A-Za-z0-9]*)\.tsx$/);
-    const match = uiMatch ?? filename.match(/^([a-z][a-zA-Z0-9]*)\.([a-z][a-z0-9]*)\.ts$/);
+    const testTarget = moduleTestTargetOf(filename);
+    const sourceName = testTarget ?? filename;
+    const uiMatch = sourceName.match(/^([A-Z][A-Za-z0-9]+)\.([A-Z][A-Za-z0-9]*)\.tsx$/);
+    const match = uiMatch ?? sourceName.match(/^([a-z][a-zA-Z0-9]*)\.([a-z][a-z0-9]*)\.ts$/);
     if (!match) {
-      violations.push(`${scanPath}: unsupported module file`);
+      violations.push(`${scanPath}: ${testTarget ? moduleTestHint : "unsupported module file"}`);
       continue;
     }
     const [, fileModuleName, fileType] = match;
@@ -146,7 +151,9 @@ async function validateModuleFiles(
     if (fileModuleName !== expectedName)
       violations.push(`${scanPath}: module name mismatch: expected '${expectedName}', got '${fileModuleName}'`);
     if (!(uiMatch ? moduleUiFileTypes : moduleNonUiFileTypes)[kind].has(fileType))
-      violations.push(`${scanPath}: unsupported ${kind}${uiMatch ? " UI" : ""} file`);
+      violations.push(
+        `${scanPath}: ${testTarget ? moduleTestHint : `unsupported ${kind}${uiMatch ? " UI" : ""} file`}`,
+      );
   }
 }
 
