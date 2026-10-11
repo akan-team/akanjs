@@ -466,4 +466,45 @@ describe("Scan convention validation", () => {
     const scanInfo = await app.scanSync({ write: false });
     expect(scanInfo.type).toBe("app");
   });
+
+  test("allows one test per module file, named after the file it covers", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.spec.ts`, "export const spec = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.service.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/Task.Zone.test.tsx`, "export const test = 1;\n");
+
+    const scanInfo = await app.scanSync({ refresh: true, write: false });
+    expect(scanInfo.type).toBe("app");
+  });
+
+  test("rejects a role's tests split across several topic suites", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.trim.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.security.test.ts`, "export const test = 1;\n");
+
+    const message = await app.scanSync({ refresh: true, write: false }).then(
+      () => "",
+      (error: Error) => error.message,
+    );
+    expect(message).toContain("apps/demo/lib/task/task.trim.signal.test.ts: a module test is named after the one");
+    expect(message).toContain("apps/demo/lib/task/task.security.test.ts: a module test is named after the one");
+    expect(message).not.toContain("task/task.signal.test.ts");
+  });
+
+  test("rejects a test at the lib root and points it at its module folder or srvkit", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task.signal.test.ts`, "export const test = 1;\n");
+
+    await expect(app.scanSync({ refresh: true, write: false })).rejects.toThrow(
+      /apps\/demo\/lib\/task.signal.test.ts: a test beside the generated barrels; .*srvkit\//,
+    );
+  });
 });

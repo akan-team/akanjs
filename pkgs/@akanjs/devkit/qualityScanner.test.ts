@@ -233,17 +233,23 @@ describe("AkanQualityScanner layout rules", () => {
     expect(warnings[0]?.fix).toContain("akan sync");
   });
 
-  test("keeps a root signal test out of the lib facet rule", async () => {
+  test("flags a test at the lib root and points it at its module folder or srvkit", async () => {
     const root = await makeWorkspace({
       "libs/demo/lib/cnst.ts": "export const cnst = 1;\n",
       "libs/demo/lib/user.signal.test.ts": "export const test = 1;\n",
+      "libs/demo/lib/user/user.signal.test.ts": "export const test = 1;\n",
       "libs/demo/lib/helper.ts": "export const helper = 1;\n",
     });
 
     const warnings = rulesOf(await new AkanQualityScanner().scan(root), "akan.layout.lib-facet-file");
 
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.file).toBe("libs/demo/lib/helper.ts");
+    expect(warnings.map((warning) => warning.file).sort()).toEqual([
+      "libs/demo/lib/helper.ts",
+      "libs/demo/lib/user.signal.test.ts",
+    ]);
+    const rootTest = warnings.find((warning) => warning.file === "libs/demo/lib/user.signal.test.ts");
+    expect(rootTest?.message).toContain("lib/<model>/<model>.signal.test.ts");
+    expect(rootTest?.message).toContain("srvkit/");
   });
 });
 
