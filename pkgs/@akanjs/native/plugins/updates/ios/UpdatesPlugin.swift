@@ -25,6 +25,8 @@ final class UpdatesPlugin: UpdatesPluginSpec {
     struct Failure: Error {
         let code: AkanNativeErrorCode
         let message: String
+        /// The reason a failed download is reported under (AkanNativeUpdateReports), nil when it is not reported.
+        var report: String? = nil
     }
 
     struct ReleaseFile: Sendable {
@@ -145,8 +147,10 @@ final class UpdatesPlugin: UpdatesPluginSpec {
             if !decision.revoke.isEmpty { AkanNativeUpdates.revoke(decision.revoke) }
             return decision.kind == .take && !state.failed.contains(release.bundle)
         case .untrusted, .revoked:
+            AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: "signature")
             throw Failure(code: .internalError, message: "the release is signed by key \(release.keyId), which this app does not trust")
         case .selfRevoke, .revokeLater:
+            AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: "manifest")
             throw Failure(code: .internalError, message: "invalid release manifest: key \(release.keyId) may not revoke \(release.revokeKeys.joined(separator: ", "))")
         }
     }
@@ -210,9 +214,26 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         //? A 1 MiB manifest is 1.4 MiB in base64.
         let data = try await fetch(url, limit: 3 << 19)
         guard let envelope = AkanNativeUpdateEnvelope.open(data, config, revoked: AkanNativeUpdates.readState().revokedKeys) else {
+            reportRefused(data, "signature")
             throw Failure(code: .internalError, message: "the release is not signed by a key of updates.publicKeys this app still trusts")
         }
-        return try parse(envelope, data, config)
+        do {
+            return try parse(envelope, data, config)
+        } catch {
+            reportRefused(data, "manifest")
+            throw error
+        }
+    }
+
+    /// The release a refused envelope names, read without trusting it and only to say which release failed: a forged
+    /// name can at worst count against a release the server already published for this app.
+    private static func reportRefused(_ raw: Data, _ reason: String) {
+        let envelope = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any]
+        let manifest = (envelope?["manifest"] as? String).flatMap { Data(base64Encoded: $0) }
+            .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+        AkanNativeUpdateReports.record(
+            "failed", bundle: manifest?["bundle"] as? String, sequence: (manifest?["sequence"] as? NSNumber)?.doubleValue, reason: reason
+        )
     }
 
     /// Checks every field of the (signed) manifest before any of it is used.
@@ -269,8 +290,23 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         return localHashes[key] == file.sha256 ? candidate : nil
     }
 
-    /// Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it.
+    /// Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure is reported
+    /// under its reason, and an error that is neither a download's nor a cancellation is the disk's.
     private func install(_ release: Release, _ config: AkanNativeUpdateConfig) async throws {
+        do {
+            try await place(release, config)
+        } catch {
+            let reason = (error as? Failure).map(\.report) ?? (Self.cancelled(error) ? nil : "disk")
+            if let reason { AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: reason) }
+            throw error
+        }
+    }
+
+    private static func cancelled(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
+    private func place(_ release: Release, _ config: AkanNativeUpdateConfig) async throws {
         let fm = FileManager.default
         let target = AkanNativeUpdates.bundleDirectory(release.bundle)
         let staging = target.deletingLastPathComponent().appendingPathComponent("\(release.bundle).partial", isDirectory: true)
@@ -286,11 +322,19 @@ final class UpdatesPlugin: UpdatesPluginSpec {
                 try fm.copyItem(at: local, to: destination)
             } else {
                 guard let url = URL(string: "\(Self.base(config))/files/\(file.sha256)") else { throw Failure(code: .internalError, message: "bad file URL") }
-                let downloaded = try await Self.download(url, size: file.size)
+                let downloaded: URL
+                do {
+                    downloaded = try await Self.download(url, size: file.size)
+                } catch let failure as Failure {
+                    throw Failure(code: failure.code, message: failure.message, report: "download")
+                } catch {
+                    if Self.cancelled(error) { throw error }
+                    throw Failure(code: .internalError, message: "\(file.path): \(error.localizedDescription)", report: "download")
+                }
                 guard (try? Self.hex(file: downloaded)) == file.sha256 else {
                     try? fm.removeItem(at: downloaded)
                     try? fm.removeItem(at: staging)
-                    throw Failure(code: .internalError, message: "\(file.path) does not match its hash")
+                    throw Failure(code: .internalError, message: "\(file.path) does not match its hash", report: "verify")
                 }
                 try fm.moveItem(at: downloaded, to: destination)
             }
@@ -304,7 +348,7 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         }
         guard complete else {
             try? fm.removeItem(at: staging)
-            throw Failure(code: .internalError, message: "the downloaded bundle is incomplete")
+            throw Failure(code: .internalError, message: "the downloaded bundle is incomplete", report: "verify")
         }
         if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
         try fm.moveItem(at: staging, to: target)

@@ -205,11 +205,12 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
     /// A web content process stuck in a script never runs the next load: one that does not answer is left behind with
     /// its window, and a new window serves the bundle the rollback made active.
     private func rollBackTrial() {
-        let root = AkanNativeUpdates.rollback()
+        let (root, trial) = AkanNativeUpdates.rollback()
         rendererAnswered = false
         webView.evaluateJavaScript("0") { [weak self] _, _ in self?.rendererAnswered = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self else { return }
+            if let trial { AkanNativeUpdateReports.record("rolledBack", trial, reason: self.rendererAnswered ? "timeout" : "hang") }
             if !self.rendererAnswered, let scene = self.view.window?.windowScene?.delegate as? AkanNativeSceneDelegate {
                 AkanNativeLog.info("updates: the page on trial does not answer; making the window again")
                 scene.recreate()

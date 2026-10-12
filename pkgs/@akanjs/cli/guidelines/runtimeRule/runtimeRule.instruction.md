@@ -286,8 +286,9 @@ const config: AppConfig = {
   `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
   `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
   an akasys project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
-  release that hangs is rolled back while the app runs. `devtools: true` opens the web inspector of a release build
-  for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
+  release that hangs is rolled back while the app runs, and `report: { url }` has a phone post what became of each
+  release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
+  opens the web inspector of a release build for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
   on a desktop, `updates.setChannel({ channel })` moves the installed app to another manifest until set back with
   `null` — a server putting a device on a pilot channel — and never to a release older than the one running. A
   release that does not come up is rolled back to the one before.

@@ -83,6 +83,7 @@ struct AkanNativeUpdateState: Sendable {
 /// updates.json from the build (akan-native.config.ts `updates`), nil when the app has no updates.
 struct AkanNativeUpdateConfig: Sendable {
     let app: String
+    let version: String
     let platform: String
     let nativeApi: String
     let embeddedSequence: Double
@@ -92,6 +93,8 @@ struct AkanNativeUpdateConfig: Sendable {
     let channel: String
     let readyTimeout: TimeInterval
     let dev: Bool
+    /// updates.report.url: where AkanNativeUpdateReports posts what became of each release; nil sends nothing.
+    let reportUrl: String?
 
     var ring: [String] { keys.map(\.keyId) }
 
@@ -105,6 +108,7 @@ struct AkanNativeUpdateConfig: Sendable {
               let nativeApi = o["nativeApi"] as? String else { return nil }
         return AkanNativeUpdateConfig(
             app: app,
+            version: o["version"] as? String ?? "",
             platform: o["platform"] as? String ?? "ios",
             nativeApi: nativeApi,
             embeddedSequence: (o["embeddedSequence"] as? NSNumber)?.doubleValue ?? 0,
@@ -112,7 +116,8 @@ struct AkanNativeUpdateConfig: Sendable {
             keys: raw.map { (keyId: AkanNativeKernel.updateKeyId($0), key: $0) },
             channel: o["channel"] as? String ?? "production",
             readyTimeout: ((o["readyTimeout"] as? NSNumber)?.doubleValue ?? 10_000) / 1000,
-            dev: o["dev"] as? Bool ?? false
+            dev: o["dev"] as? Bool ?? false,
+            reportUrl: o["reportUrl"] as? String
         )
     }
 }
@@ -179,14 +184,31 @@ enum AkanNativeUpdates {
         }
     }
 
-    /// Whether a bundle may run in this binary: built for its native API, newer than its own bundle, and signed by a
-    /// key it trusts and has not revoked.
+    /// Whether a bundle may run in this binary: one it still takes, whose files are intact.
     static func usable(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
         guard let entry else { return false }
-        return entry.nativeApi == config.nativeApi && entry.sequence > config.embeddedSequence
+        return takes(entry, config, revoked: revoked) && intact(entry, config, revoked: revoked)
+    }
+
+    /// Built for its native API, newer than its own bundle, and signed by a key it trusts and has not revoked: a bundle
+    /// a new binary or a revocation left behind is dropped as expected, not reported as a failure.
+    private static func takes(_ entry: AkanNativeUpdateEntry, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
+        entry.nativeApi == config.nativeApi && entry.sequence > config.embeddedSequence
             && config.ring.contains(entry.keyId) && !revoked.contains(entry.keyId)
-            && FileManager.default.fileExists(atPath: bundleDirectory(entry.bundle).appendingPathComponent("index.html").path)
+    }
+
+    private static func intact(_ entry: AkanNativeUpdateEntry, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
+        FileManager.default.fileExists(atPath: bundleDirectory(entry.bundle).appendingPathComponent("index.html").path)
             && verified(entry, config, revoked: revoked)
+    }
+
+    /// Drops an entry this launch cannot serve, reporting `event` (reason verify) when its files were the reason.
+    private static func drop(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String], _ event: String) -> AkanNativeUpdateEntry? {
+        guard let entry else { return nil }
+        guard takes(entry, config, revoked: revoked) else { return nil }
+        if intact(entry, config, revoked: revoked) { return entry }
+        AkanNativeUpdateReports.record(event, entry, reason: "verify")
+        return nil
     }
 
     /// The bundle's envelope (kept next to it by the plugin) verifies, describes this entry,
@@ -211,15 +233,16 @@ enum AkanNativeUpdates {
     static func launch() -> URL? {
         guard let config else { return nil }
         var state = readState()
-        if !usable(state.current, config, revoked: state.revokedKeys) { state.current = nil }
-        if !usable(state.pending, config, revoked: state.revokedKeys) { state.pending = nil }
-        if !usable(state.trial, config, revoked: state.revokedKeys) { state.trial = nil }
+        state.current = drop(state.current, config, revoked: state.revokedKeys, "rolledBack")
+        state.pending = drop(state.pending, config, revoked: state.revokedKeys, "failed")
+        state.trial = drop(state.trial, config, revoked: state.revokedKeys, "rolledBack")
         if let trial = state.trial {
             // Launched again without notifyReady(): the trial crashed or hung.
             state.failed.append(trial.bundle)
             state.rolledBack = trial.bundle
             state.trial = nil
             NSLog("[akan-native] updates: bundle %@ did not confirm; rolled back", trial.bundle)
+            AkanNativeUpdateReports.record("rolledBack", trial, reason: "relaunch")
         }
         if var pending = state.pending, !state.failed.contains(pending.bundle) {
             pending.attempts = 1
@@ -229,8 +252,10 @@ enum AkanNativeUpdates {
         if !writeState(state), state.trial != nil {
             state.trial = nil // not on record: the pending bundle waits for a launch that can record it
         }
+        if let trial = state.trial { AkanNativeUpdateReports.record("applied", trial) }
         active = state.trial ?? state.current
         onTrial = state.trial != nil
+        AkanNativeUpdateReports.start()
         return active.map { bundleDirectory($0.bundle) }
     }
 
@@ -239,7 +264,7 @@ enum AkanNativeUpdates {
         var state = readState()
         state.pending = entry
         state.failed.removeAll { $0 == entry.bundle }
-        writeState(state)
+        if writeState(state) { AkanNativeUpdateReports.record("downloaded", entry) }
     }
 
     /// apply(): makes the pending bundle the trial now; returns its folder for the reload.
@@ -253,6 +278,7 @@ enum AkanNativeUpdates {
         guard writeState(state) else { return nil }
         active = pending
         onTrial = true
+        AkanNativeUpdateReports.record("applied", pending)
         return bundleDirectory(pending.bundle)
     }
 
@@ -266,12 +292,14 @@ enum AkanNativeUpdates {
         state.rolledBack = nil
         writeState(state)
         onTrial = false
+        AkanNativeUpdateReports.record("confirmed", trial)
         prune(keep: [state.current?.bundle, state.pending?.bundle].compactMap { $0 })
     }
 
-    /// The trial did not confirm in time: back to the previous bundle. Returns its folder (nil: the app's own).
-    static func rollback() -> URL? {
-        guard onTrial, let trial = active else { return active.map { bundleDirectory($0.bundle) } }
+    /// The trial did not confirm in time: back to the previous bundle. Returns its folder (nil: the app's own) and the
+    /// trial it ended, whose report waits for the renderer probe to say whether the page timed out or hung.
+    static func rollback() -> (root: URL?, trial: AkanNativeUpdateEntry?) {
+        guard onTrial, let trial = active else { return (active.map { bundleDirectory($0.bundle) }, nil) }
         var state = readState()
         state.trial = nil
         state.failed.append(trial.bundle)
@@ -280,7 +308,7 @@ enum AkanNativeUpdates {
         onTrial = false
         active = config.flatMap { usable(state.current, $0, revoked: state.revokedKeys) ? state.current : nil }
         NSLog("[akan-native] updates: bundle %@ did not call notifyReady() in time; rolled back", trial.bundle)
-        return active.map { bundleDirectory($0.bundle) }
+        return (active.map { bundleDirectory($0.bundle) }, trial)
     }
 
     /// reset(): the app's own bundle from the next launch on. Revocations stay.

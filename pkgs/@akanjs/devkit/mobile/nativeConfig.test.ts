@@ -238,6 +238,13 @@ describe("NativeConfig.build", () => {
       publicKeys: [updatesKey, spare],
       channel: "main",
     });
+    const report = { url: "https://cloud.example.com/api/ota/report/abcdefghijklmnop" };
+    expect(build({ url, publicKey: updatesKey, report }, "main").updates).toEqual({
+      url,
+      publicKey: updatesKey,
+      channel: "main",
+      report,
+    });
     expect(build({ url, publicKey: updatesKey }, "main").plugins).toContain("updates");
     expect(build(undefined, "main").plugins).not.toContain("updates");
   });

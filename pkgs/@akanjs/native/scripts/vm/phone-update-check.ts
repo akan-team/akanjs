@@ -10,6 +10,7 @@
 //    and state.json records the revocation
 // 5. release B, signed by the revoked online key: refused
 // 6. release H, signed by the spare key, whose page never returns from a script: rolled back while the app runs
+// 7. one more launch sends what is left of the reports: every step above reached updates.report.url as events
 // It edits the sample's akan-native.config.ts and puts it back; run it on a checkout whose sample config is clean.
 
 import { createPrivateKey, sign } from "node:crypto";
@@ -143,6 +144,31 @@ function writeEnvelope(manifest: object, path: string, publicKey: string, native
   );
 }
 
+interface ReportBody {
+  app: string;
+  platform: string;
+  channel: string;
+  installId: string;
+  nativeApi: string;
+  appVersion: string;
+  os: string;
+  events: { id: number; event: string; bundle: string; sequence: number | null; reason: string | null; at: string }[];
+}
+const reports: ReportBody[] = [];
+const receiver = Bun.serve({
+  port: 8791,
+  hostname: "127.0.0.1",
+  fetch: async (request) => {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/report/pathidpathidpath")
+      return new Response(null, { status: 404 });
+    const body = (await request.json()) as ReportBody;
+    reports.push(body);
+    for (const e of body.events)
+      console.info(`  report #${e.id} ${e.event} ${e.bundle}${e.reason ? ` (${e.reason})` : ""}`);
+    return new Response(null, { status: 204 });
+  },
+});
+
 let server: ReturnType<typeof Bun.spawn> | undefined;
 try {
   const online = keygen("online");
@@ -151,7 +177,11 @@ try {
     configPath,
     original
       .replace(/publicKey: "[^"]*"/, `publicKeys: ["${online}", "${spare}"]`)
-      .replace("readyTimeout: 5000", "readyTimeout: 15000"),
+      .replace("readyTimeout: 5000", "readyTimeout: 15000")
+      .replace(
+        'url: "http://127.0.0.1:8790",',
+        'url: "http://127.0.0.1:8790",\n    report: { url: "http://127.0.0.1:8791/report/pathidpathidpath" },',
+      ),
   );
 
   step(`build, boot and install on the ${platform === "ios" ? "simulator" : "emulator"}`);
@@ -186,7 +216,10 @@ try {
   console.info(
     `  installed: native API ${installed.nativeApi}, embeddedSequence ${installed.embeddedSequence}, keys ${installed.publicKeys.map(keyIdOf).join(", ")}`,
   );
-  if (platform === "android") Bun.spawnSync([...adb, "reverse", "tcp:8790", "tcp:8790"]);
+  if (platform === "android") {
+    Bun.spawnSync([...adb, "reverse", "tcp:8790", "tcp:8790"]);
+    Bun.spawnSync([...adb, "reverse", "tcp:8791", "tcp:8791"]);
+  }
 
   await Bun.sleep(2100);
   step("release A, signed by the online key");
@@ -235,6 +268,9 @@ try {
   step("release B, signed by the revoked online key, is refused");
   await Bun.sleep(1100);
   run(["update", "publish", platform, "--out", out, "--debug"]);
+  const releaseB = JSON.parse(
+    Buffer.from(JSON.parse(readFileSync(envelopePath, "utf8")).manifest, "base64").toString(),
+  );
   const b = await probe(/check-failed .*not signed by a key/);
   if (b.some((line) => /downloaded/.test(line))) throw new Error("B was downloaded");
 
@@ -248,10 +284,54 @@ try {
   await probe(new RegExp(`rolled-back ${releaseH.bundle} running ${bundleR}`), "hang");
   console.info(`  rolled back ${Math.round((Date.now() - hangStarted) / 1000)} s after the launch`);
 
+  step("one more launch sends the rest of the reports");
+  await probe(new RegExp(`rolled-back ${releaseH.bundle}`));
+  const deadline = Date.now() + 20_000;
+  const expected = [
+    ["downloaded", releaseA.bundle, null],
+    ["applied", releaseA.bundle, null],
+    ["confirmed", releaseA.bundle, null],
+    ["downloaded", bundleR, null],
+    ["applied", bundleR, null],
+    ["confirmed", bundleR, null],
+    ["failed", releaseB.bundle, "signature"],
+    ["downloaded", releaseH.bundle, null],
+    ["applied", releaseH.bundle, null],
+    ["rolledBack", releaseH.bundle, "hang"],
+  ] as const;
+  const events = () => reports.flatMap((report) => report.events);
+  const missing = () =>
+    expected.filter(
+      ([event, bundle, reason]) =>
+        !events().some((e) => e.event === event && e.bundle === bundle && e.reason === reason),
+    );
+  while (missing().length && Date.now() < deadline) await Bun.sleep(500);
+  if (missing().length) throw new Error(`reports never arrived for ${JSON.stringify(missing())}`);
+  const ids = events().map((e) => e.id);
+  if (ids.some((id, i) => i > 0 && id <= (ids[i - 1] ?? -1)))
+    throw new Error(`event ids are not increasing: ${ids.join(", ")}`);
+  const [report] = reports;
+  if (!report || !/^[0-9a-f]{32}$/.test(report.installId) || reports.some((r) => r.installId !== report.installId))
+    throw new Error(`installId is not one 32-digit hex value: ${reports.map((r) => r.installId).join(", ")}`);
+  if (
+    report.app !== appId ||
+    report.platform !== platform ||
+    report.channel !== "production" ||
+    report.nativeApi !== installed.nativeApi
+  )
+    throw new Error(`the report names another app: ${JSON.stringify({ ...report, events: undefined })}`);
+  if (events().some((e) => Number.isNaN(Date.parse(e.at)) || !/(Z|[+-]\d\d:\d\d)$/.test(e.at)))
+    throw new Error("an event's time is not ISO 8601 with a time zone");
+  console.info(`  ${events().length} events in ${reports.length} reports from ${report.os}, app ${report.appVersion}`);
+
   step("ok");
 } finally {
+  receiver.stop(true);
   server?.kill();
   writeFileSync(configPath, original);
-  if (platform === "android") Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8790"]);
+  if (platform === "android") {
+    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8790"]);
+    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8791"]);
+  }
   rmSync(scratch, { recursive: true, force: true });
 }

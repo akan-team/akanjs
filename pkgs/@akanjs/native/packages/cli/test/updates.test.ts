@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertSigningKey, nextSequence } from "../src/lib/publish.ts";
@@ -14,6 +14,7 @@ import {
   updatesResource,
   validateUpdates,
   verifyManifest,
+  writePhoneUpdates,
 } from "../src/lib/updates.ts";
 
 describe("updates config (UP-1, UP-2)", () => {
@@ -25,15 +26,26 @@ describe("updates config (UP-1, UP-2)", () => {
       publicKeys: [key],
       channel: "production",
       readyTimeout: 10_000,
+      reportUrl: null,
     });
     expect(problems).toEqual([]);
+    expect(
+      validateUpdates(
+        { url: "https://example.com/u", publicKey: key, report: { url: "https://r.example/p/abc/" } },
+        problems,
+      )?.reportUrl,
+    ).toBe("https://r.example/p/abc");
     expect(validateUpdates(undefined, problems)).toBeNull();
-    validateUpdates({ url: "ftp://x", publicKey: "short", channel: "Bad Name", readyTimeout: 5, extra: 1 }, problems);
+    validateUpdates(
+      { url: "ftp://x", publicKey: "short", channel: "Bad Name", readyTimeout: 5, report: "https://r", extra: 1 },
+      problems,
+    );
     expect(problems).toEqual([
       "updates.url must be an http(s) URL without a query or fragment",
       "updates.publicKeys must be 1 to 3 base64 Ed25519 public keys (akan-native update keygen), or publicKey one",
       'updates.channel must be a short name like "production"',
       "updates.readyTimeout must be a number of milliseconds >= 1000",
+      "updates.report must be { url } with an http(s) URL",
       "updates.extra is not supported",
     ]);
   });
@@ -105,7 +117,7 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(updateKeyPath("dev.x", { AKAN_NATIVE_UPDATE_KEY: "/k/key.pem" })).toBe("/k/key.pem");
     const resource = JSON.parse(
       updatesResource(
-        { url: "https://u", publicKeys: ["k", "s"], channel: "beta", readyTimeout: 3000 },
+        { url: "https://u", publicKeys: ["k", "s"], channel: "beta", readyTimeout: 3000, reportUrl: "https://r/p" },
         { id: "dev.x", version: "1.2.0" },
         "ios",
         "abc",
@@ -124,8 +136,45 @@ describe("updates config (UP-1, UP-2)", () => {
       publicKey: "k",
       channel: "beta",
       readyTimeout: 3000,
+      reportUrl: "https://r/p",
     });
     expect(Math.abs(resource.embeddedSequence - Date.now() / 1000)).toBeLessThan(5);
+  });
+
+  test("a phone build's bundle.json names the report address a registering server checks", () => {
+    const out = mkdtempSync(join(tmpdir(), "akan-phone-updates-"));
+    try {
+      writeFileSync(join(out, "bundle.json"), JSON.stringify({ app: { id: "dev.x" } }));
+      const key = Buffer.alloc(32, 7).toString("base64");
+      const updates = { url: "https://u", publicKeys: [key], channel: "main", readyTimeout: 20_000 };
+      writePhoneUpdates(
+        join(out, "updates.json"),
+        out,
+        { ...updates, reportUrl: "https://r/p" },
+        { id: "dev.x", version: "1" },
+        "android",
+        "abc",
+        false,
+      );
+      expect(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).updates).toMatchObject({
+        reportUrl: "https://r/p",
+      });
+      expect(JSON.parse(readFileSync(join(out, "updates.json"), "utf8")).reportUrl).toBe("https://r/p");
+
+      writePhoneUpdates(
+        join(out, "updates.json"),
+        out,
+        { ...updates, reportUrl: null },
+        { id: "dev.x", version: "1" },
+        "android",
+        "abc",
+        false,
+      );
+      expect(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).updates.reportUrl).toBeUndefined();
+      expect(JSON.parse(readFileSync(join(out, "updates.json"), "utf8")).reportUrl).toBeUndefined();
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
   });
 });
 

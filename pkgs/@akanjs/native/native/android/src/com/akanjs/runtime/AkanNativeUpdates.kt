@@ -74,6 +74,7 @@ class AkanNativeUpdateState(
 /** updates.json from the build (akan-native.config.ts `updates`), null when the app has no updates. */
 class AkanNativeUpdateConfig(
     val app: String,
+    val version: String,
     val platform: String,
     val nativeApi: String,
     val embeddedSequence: Double,
@@ -83,6 +84,8 @@ class AkanNativeUpdateConfig(
     val channel: String,
     val readyTimeoutMs: Long,
     val dev: Boolean,
+    /** updates.report.url: where AkanNativeUpdateReports posts what became of each release; null sends nothing. */
+    val reportUrl: String?,
 ) {
     val ring: List<String> get() = keys.map { it.first }
 
@@ -105,6 +108,7 @@ class AkanNativeUpdateConfig(
             if (raw.isEmpty() || raw.any { it.size != 32 } || o.optString("url").isEmpty() || o.optString("nativeApi").isEmpty()) return null
             return AkanNativeUpdateConfig(
                 app = o.optString("app"),
+                version = o.optString("version"),
                 platform = o.optString("platform", "android"),
                 nativeApi = o.optString("nativeApi"),
                 embeddedSequence = o.optDouble("embeddedSequence", 0.0),
@@ -113,6 +117,7 @@ class AkanNativeUpdateConfig(
                 channel = o.optString("channel", "production"),
                 readyTimeoutMs = o.optLong("readyTimeout", 10_000),
                 dev = o.optBoolean("dev"),
+                reportUrl = o.optString("reportUrl").ifEmpty { null },
             )
         }
     }
@@ -142,7 +147,8 @@ object AkanNativeUpdates {
 
     var config: AkanNativeUpdateConfig? = null
         private set
-    private lateinit var directory: File
+    internal lateinit var directory: File
+        private set
 
     /** The bundle served in this session (null: the one inside the APK). */
     var active: AkanNativeUpdateEntry? = null
@@ -238,25 +244,42 @@ object AkanNativeUpdates {
         }
     }
 
-    /** Built for this native API, newer than the APK's own bundle, and signed by a key it trusts and has not revoked. */
+    /** Whether a bundle may run in this binary: one it still takes, whose files are intact. */
     fun usable(entry: AkanNativeUpdateEntry?, config: AkanNativeUpdateConfig, revoked: List<String>): Boolean =
-        entry != null && entry.nativeApi == config.nativeApi && entry.sequence > config.embeddedSequence &&
-            entry.keyId in config.ring && entry.keyId !in revoked &&
-            File(bundleDirectory(entry.bundle), "index.html").isFile && verified(entry, config, revoked)
+        entry != null && takes(entry, config, revoked) && intact(entry, config, revoked)
+
+    /**
+     * Built for this native API, newer than the APK's own bundle, and signed by a key it trusts and has not revoked: a
+     * bundle a new binary or a revocation left behind is dropped as expected, not reported as a failure.
+     */
+    private fun takes(entry: AkanNativeUpdateEntry, config: AkanNativeUpdateConfig, revoked: List<String>): Boolean =
+        entry.nativeApi == config.nativeApi && entry.sequence > config.embeddedSequence && entry.keyId in config.ring && entry.keyId !in revoked
+
+    private fun intact(entry: AkanNativeUpdateEntry, config: AkanNativeUpdateConfig, revoked: List<String>): Boolean =
+        File(bundleDirectory(entry.bundle), "index.html").isFile && verified(entry, config, revoked)
+
+    /** Drops an entry this launch cannot serve, reporting [event] (reason verify) when its files were the reason. */
+    private fun drop(entry: AkanNativeUpdateEntry?, config: AkanNativeUpdateConfig, revoked: List<String>, event: String): AkanNativeUpdateEntry? {
+        if (entry == null || !takes(entry, config, revoked)) return null
+        if (intact(entry, config, revoked)) return entry
+        AkanNativeUpdateReports.record(event, entry, "verify")
+        return null
+    }
 
     /** Picks the bundle for this launch; returns its folder, or null for the APK's own bundle. */
     fun launch(): File? {
         val config = config ?: return null
         val state = readState()
-        if (!usable(state.current, config, state.revokedKeys)) state.current = null
-        if (!usable(state.pending, config, state.revokedKeys)) state.pending = null
-        if (!usable(state.trial, config, state.revokedKeys)) state.trial = null
+        state.current = drop(state.current, config, state.revokedKeys, "rolledBack")
+        state.pending = drop(state.pending, config, state.revokedKeys, "failed")
+        state.trial = drop(state.trial, config, state.revokedKeys, "rolledBack")
         state.trial?.let {
             // Launched again without notifyReady(): the trial crashed or hung.
             state.failed.add(it.bundle)
             state.rolledBack = it.bundle
             state.trial = null
             Log.w(TAG, "bundle ${it.bundle} did not confirm; rolled back")
+            AkanNativeUpdateReports.record("rolledBack", it, "relaunch")
         }
         state.pending?.let {
             if (!state.failed.contains(it.bundle)) {
@@ -266,6 +289,7 @@ object AkanNativeUpdates {
         }
         // Not on record: the pending bundle waits for a launch that can record it.
         if (!writeState(state)) state.trial = null
+        state.trial?.let { AkanNativeUpdateReports.record("applied", it) }
         active = state.trial ?: state.current
         onTrial = state.trial != null
         return active?.let { bundleDirectory(it.bundle) }
@@ -276,7 +300,7 @@ object AkanNativeUpdates {
         val state = readState()
         state.pending = entry
         state.failed.remove(entry.bundle)
-        writeState(state)
+        if (writeState(state)) AkanNativeUpdateReports.record("downloaded", entry)
     }
 
     /** apply(): makes the pending bundle the trial now; returns its folder for the reload. */
@@ -289,6 +313,7 @@ object AkanNativeUpdates {
         if (!writeState(state)) return null
         active = pending
         onTrial = true
+        AkanNativeUpdateReports.record("applied", pending)
         return bundleDirectory(pending.bundle)
     }
 
@@ -303,13 +328,17 @@ object AkanNativeUpdates {
         state.rolledBack = null
         writeState(state)
         onTrial = false
+        AkanNativeUpdateReports.record("confirmed", trial)
         prune(listOfNotNull(state.current?.bundle, state.pending?.bundle))
     }
 
-    /** The trial did not confirm in time: back to the previous bundle (null: the APK's own). */
-    fun rollback(): File? {
+    /**
+     * The trial did not confirm in time: back to the previous bundle. Returns its folder (null: the APK's own) and the
+     * trial it ended, whose report waits for the renderer probe to say whether the page timed out or hung.
+     */
+    fun rollback(): Pair<File?, AkanNativeUpdateEntry?> {
         val trial = active
-        if (!onTrial || trial == null) return active?.let { bundleDirectory(it.bundle) }
+        if (!onTrial || trial == null) return active?.let { bundleDirectory(it.bundle) } to null
         val state = readState()
         state.trial = null
         state.failed.add(trial.bundle)
@@ -319,7 +348,7 @@ object AkanNativeUpdates {
         val config = config
         active = if (config != null && usable(state.current, config, state.revokedKeys)) state.current else null
         Log.w(TAG, "bundle ${trial.bundle} did not call notifyReady() in time; rolled back")
-        return active?.let { bundleDirectory(it.bundle) }
+        return active?.let { bundleDirectory(it.bundle) } to trial
     }
 
     /** reset(): the APK's own bundle from the next launch on. Revocations stay. */

@@ -34,6 +34,8 @@ export interface UpdatesConfig {
   channel: string;
   /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout: number;
+  /** Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed); null: no reports. */
+  reportUrl: string | null;
 }
 
 export interface UpdateFile {
@@ -182,8 +184,9 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
+  const reportUrl = updateReportUrl(r.report, problems);
   for (const key of Object.keys(r))
-    if (!["url", "publicKey", "publicKeys", "channel", "readyTimeout"].includes(key))
+    if (!["url", "publicKey", "publicKeys", "channel", "readyTimeout", "report"].includes(key))
       problems.push(`updates.${key} is not supported`);
   if (typeof r.url !== "string" || !publicKeys) return null;
   return {
@@ -191,7 +194,19 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     publicKeys,
     channel: (r.channel as string | undefined) ?? "production",
     readyTimeout: (r.readyTimeout as number | undefined) ?? 10_000,
+    reportUrl,
   };
+}
+
+/** `report: { url }`, posted to as it is: the address is the receiver's, a path of its own included. */
+function updateReportUrl(raw: unknown, problems: string[]): string | null {
+  if (raw === undefined) return null;
+  const url = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).url : undefined;
+  if (typeof url !== "string" || !/^https?:\/\/[^/?#]+[^#]*$/.test(url) || Object.keys(raw as object).length !== 1) {
+    problems.push("updates.report must be { url } with an http(s) URL");
+    return null;
+  }
+  return url.replace(/\/+$/, "");
 }
 
 /** `publicKeys` (1–3, no repeats) or the one-key `publicKey`, never both. */
@@ -344,6 +359,7 @@ export function updatesResource(
     publicKey: updates.publicKeys[0],
     channel: updates.channel,
     readyTimeout: updates.readyTimeout,
+    ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
 }
 
@@ -371,6 +387,7 @@ export function writePhoneUpdates(
     channel: updates.channel,
     keyIds: updates.publicKeys.map(keyIdOf),
     embeddedSequence,
+    ...(updates.reportUrl ? { reportUrl: updates.reportUrl } : {}),
   };
   writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
 }
