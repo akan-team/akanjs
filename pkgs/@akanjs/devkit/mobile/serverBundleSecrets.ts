@@ -42,7 +42,7 @@ export class ServerBundleSecrets {
         const value = await ServerEnvProfile.evaluate(file, path.dirname(path.dirname(file)));
         secrets.push(...ServerEnvProfile.secretValues(value).map((secret) => ({ file, ...secret })));
       } catch {
-        unread.push(path.relative(this.workspaceRoot, file));
+        unread.push(ServerBundleSecrets.#relative(this.workspaceRoot, file));
       }
     }
     const found: string[] = [];
@@ -51,7 +51,7 @@ export class ServerBundleSecrets {
       for (const secret of secrets)
         if (ServerBundleSecrets.#needles(secret.value).some((needle) => text.includes(needle)))
           found.push(
-            `${path.relative(bundleDir, bundled)} holds ${path.relative(this.workspaceRoot, secret.file)} ${secret.path}`,
+            `${ServerBundleSecrets.#relative(bundleDir, bundled)} holds ${ServerBundleSecrets.#relative(this.workspaceRoot, secret.file)} ${secret.path}`,
           );
     }
     if (found.length)
@@ -66,6 +66,10 @@ export class ServerBundleSecrets {
     const escaped = JSON.stringify(value).slice(1, -1);
     const line = value.split(/\r?\n/).find((part) => part.length >= 32);
     return [...new Set([value, escaped, ...(line ? [line] : [])])];
+  }
+
+  static #relative(from: string, to: string) {
+    return path.relative(from, to).split(path.sep).join("/");
   }
 
   static async #files(dir: string): Promise<string[]> {
