@@ -61,6 +61,10 @@ export const createFakeExecutor = <Extra extends object = object>(
       recorder.record(`${name}.scanSync`, ...args);
       return { name };
     },
+    //? `PkgExecutor.from(fake, name)` reads `.workspace`; without one it falls back to `fromRoot()`, which forks git.
+    get workspace(): unknown {
+      return this;
+    },
     ...extra,
   }) as Extra & {
     name: string;
