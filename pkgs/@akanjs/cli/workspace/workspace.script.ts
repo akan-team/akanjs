@@ -93,6 +93,13 @@ export class WorkspaceScript extends script("workspace", [
       await this.agentScript.agent(workspace, "install", "agents-md", { force: overwrite });
     spinner.succeed(`Agent rules ready (${files.length} file${files.length === 1 ? "" : "s"})`);
   }
+  async machineKeygen(workspace: Workspace, out: string) {
+    const { file, publicKey } = await this.workspaceRunner.machineKeygen(workspace, out);
+    Logger.rawLog(
+      `Wrote the private key to ${file} (mode 600). Set it as AKAN_MACHINE_PRIVATE_KEY on the server that issues machine tokens; nothing else needs it.`,
+    );
+    Logger.rawLog(`A server that only verifies them takes the public key:\nAKAN_MACHINE_PUBLIC_KEY=${publicKey}`);
+  }
   async lint(exec: Exec, workspace: Workspace, { fix = true, maxDiagnostics }: LintOptions = {}) {
     if (exec instanceof AppExecutor) await this.applicationScript.sync(exec);
     else if (exec instanceof LibExecutor) await this.libraryScript.syncLibrary(exec);

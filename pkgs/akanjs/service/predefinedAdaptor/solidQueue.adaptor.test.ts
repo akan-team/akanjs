@@ -47,10 +47,15 @@ const rowsOf = (filePath: string) => {
   }
 };
 
-const runOne = async (queue: SolidQueue, name: string, handler: (job: AkanJob) => Promise<unknown>) => {
+const runOne = async (
+  queue: SolidQueue,
+  name: string,
+  handler: (job: AkanJob) => Promise<unknown>,
+  options: Parameters<SolidQueue["runJob"]>[2] = {},
+) => {
   const job = queue.claimJob(name);
   if (!job) throw new Error(`no job to claim for ${name}`);
-  await queue.runJob(job, handler);
+  await queue.runJob(job, handler, options);
 };
 
 const succeed = async () => "ok";
@@ -117,6 +122,35 @@ describe("SolidQueue job retention", () => {
     expect(rowsOf(filePath)).toEqual([{ id, status: "pending" }]);
     await runOne(queue, "mail", succeed);
     expect(rowsOf(filePath)).toEqual([]);
+  });
+
+  test("hands a job to onFailed once, after its last attempt, and not when a retry is left", async () => {
+    const queue = await openQueue(newFilePath());
+    const dead: string[] = [];
+    const onFailed = (job: AkanJob, error: unknown) => {
+      dead.push(`${job.name}:${error instanceof Error ? error.message : error}`);
+    };
+    await queue.registerProcessQueue("mail", ["a"], { attempts: 2 });
+    await runOne(queue, "mail", fail, { onFailed });
+    expect(dead).toEqual([]);
+    await runOne(queue, "mail", fail, { onFailed });
+    expect(dead).toEqual(["mail:job failed on purpose"]);
+  });
+
+  test("waits no longer than backoff.maxDelay before the next attempt", async () => {
+    const filePath = newFilePath();
+    const queue = await openQueue(filePath);
+    await queue.registerProcessQueue("mail", ["a"], {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 60_000, maxDelay: 2_000 },
+    });
+    const before = Date.now();
+    await runOne(queue, "mail", fail);
+    const db = new Database(filePath, { readonly: true });
+    const { runAt } = db.query(`SELECT "runAt" FROM "_akan_solid_jobs"`).get() as { runAt: number };
+    db.close();
+    expect(runAt - before).toBeGreaterThanOrEqual(2_000);
+    expect(runAt - before).toBeLessThan(3_000);
   });
 
   test("boot cleanup drops completed rows from earlier versions and expired failures", async () => {

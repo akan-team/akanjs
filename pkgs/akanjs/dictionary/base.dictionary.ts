@@ -49,6 +49,14 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "서버가 예상하지 못한 응답을 보냈습니다. ({status})",
     ],
     immutableField: ["{field} cannot be changed after creation.", "{field}은(는) 생성 후에는 바꿀 수 없습니다."],
+    relationNotFound: [
+      "The {model} that {field} refers to no longer exists.",
+      "{field}이(가) 가리키는 {model}을(를) 찾을 수 없습니다.",
+    ],
+    idempotencyInFlight: [
+      "The same request is still being handled. Please try again in a moment.",
+      "같은 요청을 아직 처리하고 있습니다. 잠시 후 다시 시도해주세요.",
+    ],
     endpointClosed: [
       "{endpoint} is closed: the slice's guards name none that allows it.",
       "{endpoint}이(가) 닫혀 있습니다. 슬라이스 guards에 이 동작을 허용하는 guard를 지정해야 합니다.",

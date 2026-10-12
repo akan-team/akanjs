@@ -142,3 +142,45 @@ describe("Dialog stacking", () => {
     unmount();
   });
 });
+
+describe("Dialog presentation", () => {
+  const panelOf = () => {
+    const panel = document.querySelector('[role="dialog"]');
+    if (!(panel instanceof HTMLElement)) throw new Error("modal did not render");
+    return panel;
+  };
+
+  test("a dialog keeps its centred box and draws no drag handle", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal>
+          <div>body</div>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    expect(panelOf().className).toContain("max-w-2xl");
+    expect(panelOf().querySelector(".touch-none")).toBeNull();
+    unmount();
+  });
+
+  test("auto is a full-screen sheet with a handle below md, and right is a side sheet from md up", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal presentation="auto" placement="right">
+          <div>body</div>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    const panel = panelOf();
+    expect(panel.className).toContain("h-full");
+    expect(panel.className).toContain("pt-[env(safe-area-inset-top)]");
+    expect(panel.className).toContain("md:max-w-md");
+    expect(panel.parentElement?.className).toContain("md:justify-end");
+    expect(panel.querySelector(".touch-none")?.className).toContain("md:hidden");
+    unmount();
+  });
+});

@@ -55,7 +55,7 @@ Two Ways To Declare It
 
   - Keys — camelCase, converted to snake_case for you.
 
-  - Linked by — A `data:` URL link Akan adds to the head, so no file is served.
+  - Linked by — A link Akan adds to the head, to the `/manifest.webmanifest` it serves.
 
   - Pick it when — You want TypeScript help and app metadata in one place.
 
@@ -111,13 +111,17 @@ camelCase in, snake_case out.
 
 `shortName`, `startUrl` and `themeColor` reach the browser as the standard `short_name`, `start_url` and `theme_color`, at every depth.
 
-No file to serve.
+Served as a file.
 
-The object becomes a `<link rel="manifest">` in the head whose `href` is a `data:` URL, so there is no `/manifest.json` to open.
+The object is served at `/manifest.webmanifest` (`/[basePath]/…` when the basePath shows in the URL) and linked from the head, so a relative `startUrl`, `scope` or icon resolves. A `public/manifest.webmanifest` of your own wins; a native app carries the object inline.
 
 Root layout only.
 
 `.manifest()` is a `rootLayout()` stage, so it goes in the app's (or a base path's) root `_layout.tsx`.
+
+Status bar and notch.
+
+`rootLayout().viewport({ themeColor, fitCover: true })` colors the installed app's status bar, per theme if you give a map, and lets the page run under the notch. Pad that edge with `env(safe-area-inset-top)`.
 
 Keys You Can Write
 

@@ -259,8 +259,9 @@ function config(dir: string, extra: Partial<ResolvedConfig> = {}): ResolvedConfi
     desktop: {
       quitOnLastWindowClosed: true,
       recovery: "errorPage",
-      window: { fullscreen: false, skipTaskbar: false },
+      window: { fullscreen: false, skipTaskbar: false, frameless: false },
       screenCapture: "picker",
+      webview2: "bootstrapper",
       dmg: validateDmg(undefined, "/app", []),
     },
     updates: null,

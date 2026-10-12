@@ -171,6 +171,8 @@ export interface LaunchWindow {
   fullscreen?: boolean;
   /** No taskbar button (Windows, Linux; macOS has none). */
   skipTaskbar?: boolean;
+  /** No title bar or border. */
+  frameless?: boolean;
 }
 
 /** What the launch phase decided; sent to the main thread with "ready". */

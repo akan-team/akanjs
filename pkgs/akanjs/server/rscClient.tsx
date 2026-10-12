@@ -1,3 +1,4 @@
+import * as React from "react";
 import { createElement, type ReactNode, startTransition, type Usable, use, useLayoutEffect, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
@@ -183,8 +184,7 @@ function commitRscPatchNavigation({
         rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
         return;
       }
-      if (replace) window.history.replaceState(null, "", target);
-      else window.history.pushState(null, "", target);
+      commitHistory(target, replace);
       if (scrollToTop) bumpScrollToTop?.();
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
@@ -194,6 +194,41 @@ function commitRscPatchNavigation({
     }
   });
   return outletCommitted && headApplied;
+}
+
+//? `router.canGoBack()` reads the index off the entry, so a push records one step past the entry it leaves.
+function akanHistoryState(replace: boolean, shallow = false) {
+  const idx = (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
+  const current = Number.isInteger(idx) ? (idx as number) : 0;
+  return { __akanRouter: { idx: replace ? current : current + 1, ...(shallow ? { shallow: true } : {}) } };
+}
+
+// The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
+let renderedHref = normalizeHref(window.location.href);
+const pathnameOf = (href: string) => new URL(href).pathname;
+
+function commitHistory(target: string, replace: boolean | undefined) {
+  if (replace) window.history.replaceState(akanHistoryState(true), "", target);
+  else window.history.pushState(akanHistoryState(false), "", target);
+  renderedHref = target;
+}
+
+//? React 19.3 added it, and a named import fails the module link on 19.2: there a navigation just swaps.
+const addTransitionType = (React as { addTransitionType?: (type: string) => void }).addTransitionType;
+
+//? The page's `ViewTransition` animates only a transition that names a type, so a route left at "none" just swaps.
+function viewTransitionTypeOf(transition: string | undefined, push: boolean): string | null {
+  if (!transition || transition === "none") return null;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return null;
+  return `akan-${transition}-${push ? "push" : "pop"}`;
+}
+
+/** Writes the entry without asking the server for the page; only a change that keeps the rendered path qualifies. */
+function navigateShallow(target: string, replace: boolean | undefined): boolean {
+  if (pathnameOf(target) !== pathnameOf(renderedHref)) return false;
+  if (replace) window.history.replaceState(akanHistoryState(true, true), "", target);
+  else window.history.pushState(akanHistoryState(false, true), "", target);
+  return true;
 }
 
 async function fetchRsc(
@@ -388,6 +423,7 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
+    if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) return;
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
     const scrollToTop = options.scrollToTop ?? true;
@@ -487,6 +523,11 @@ function Root(): ReactNode {
       });
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
+      // A push plays the page it reaches; a pop plays the page it leaves, in reverse.
+      const viewTransitionType = viewTransitionTypeOf(
+        options.pop ? currentRouterState?.transition : nextNode.routerState?.transition,
+        !options.pop,
+      );
       const committed = commitLatestRscNavigation({
         cache: rscCache,
         href: target,
@@ -494,13 +535,16 @@ function Root(): ReactNode {
         maxEntries: MAX_RSC_CACHE_ENTRIES,
         startTransition,
         commitThenable: (node) => {
+          if (viewTransitionType && addTransitionType) {
+            addTransitionType("akan-nav");
+            addTransitionType(viewTransitionType);
+          }
           currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();
           setThenable(node.thenable);
         },
         updateHistory: () => {
-          if (options.replace) window.history.replaceState(null, "", target);
-          else window.history.pushState(null, "", target);
+          commitHistory(target, options.replace);
         },
         scrollToTop,
         bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
@@ -519,11 +563,16 @@ function Root(): ReactNode {
   return use(thenable as Usable<ReactNode>);
 }
 
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", (event) => {
+  const here = normalizeHref(window.location.href);
+  const shallowEntry = (event.state as { __akanRouter?: { shallow?: boolean } } | null)?.__akanRouter?.shallow;
+  //? Back from a shallow entry lands on the href already rendered, and between shallow entries nothing was rendered.
+  const keepsPage = pathnameOf(here) === pathnameOf(renderedHref) && (shallowEntry || here === renderedHref);
   // The URL already moved, so a refused route falls back to the document route's real not-found page.
-  void globalThis
-    .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false })
-    ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
+  if (!keepsPage)
+    void globalThis
+      .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, pop: true })
+      ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   window.setTimeout(() => {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
     const href = globalThis.__AKAN_GET_SYNC_ROUTE_HREF__?.(window.location.href) ?? window.location.href;

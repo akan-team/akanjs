@@ -477,7 +477,7 @@ describe("AkanAppConfig", () => {
     ).toThrow("unknown basePath");
   });
 
-  test("a desktop server is true or { omit }, its names trimmed, deduplicated and sorted", () => {
+  test("a desktop server is true or { omit, profile, modules }, its lists trimmed, deduplicated and sorted", () => {
     const resolve = (server: unknown) =>
       new AkanAppConfig(app, [], packageJson, { native: { desktop: { server } } } as never, baseDevEnv).native.targets
         .default.desktop?.server;
@@ -487,6 +487,41 @@ describe("AkanAppConfig", () => {
     expect(resolve({})).toEqual({ omit: [] });
     expect(() => resolve({ omit: "rclnodejs" })).toThrow("native.desktop.server.omit in apps/");
     expect(() => resolve({ exclude: ["rclnodejs"] })).toThrow("native.desktop.server.exclude in apps/");
+    expect(resolve({ profile: "edge", modules: ["@edge", " edgeAgent"] })).toEqual({
+      omit: [],
+      profile: "edge",
+      modules: ["@edge", "edgeAgent"],
+    });
+    expect(() => resolve({ profile: "../main" })).toThrow("native.desktop.server.profile in apps/");
+    expect(() => resolve({ modules: "@edge" })).toThrow("native.desktop.server.modules in apps/");
+  });
+
+  test("a desktop server's env, restart and watchdog: secret-free, what the stage owns refused, a watchdog defaulted", () => {
+    const resolve = (server: unknown) =>
+      new AkanAppConfig(app, [], packageJson, { native: { desktop: { server } } } as never, baseDevEnv).native.targets
+        .default.desktop?.server;
+
+    expect(
+      resolve({
+        env: { CLOUD_ORIGIN: "https://cloud.example", ENROLL_KEY: "fleet" },
+        restart: "forever",
+        watchdog: true,
+      }),
+    ).toEqual({
+      omit: [],
+      env: { CLOUD_ORIGIN: "https://cloud.example", ENROLL_KEY: "fleet" },
+      restart: "forever",
+      watchdog: { intervalMs: 10_000, failures: 3 },
+    });
+    expect(resolve({ restart: 8, watchdog: { failures: 5 } })).toMatchObject({
+      restart: 8,
+      watchdog: { intervalMs: 10_000, failures: 5 },
+    });
+    expect(() => resolve({ env: { SLACK_WEBHOOK_URL: "https://hooks" } })).toThrow("SLACK_WEBHOOK_URL");
+    expect(() => resolve({ env: { AKAN_MODULES: "@edge" } })).toThrow("the carried server's stage owns");
+    expect(() => resolve({ env: { PORT: 1 } })).toThrow("must be an object of strings");
+    expect(() => resolve({ restart: 0 })).toThrow('must be "forever" or a count');
+    expect(() => resolve({ watchdog: { intervalMs: -1 } })).toThrow("watchdog in apps/");
   });
 
   test("an app without basePaths has one target, default, with no basePath and the section's settings", () => {

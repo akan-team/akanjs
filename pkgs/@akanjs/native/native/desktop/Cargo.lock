@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "akan_native_desktop"
+version = "0.1.0"
+dependencies = [
+ "block2",
+ "gtk",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "tao",
+ "webkit2gtk",
+ "webview2-com",
+ "windows",
+ "wry",
+]
+
+[[package]]
 name = "atk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1308,22 +1324,6 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-foundation",
-]
-
-[[package]]
-name = "akan_native_desktop"
-version = "0.1.0"
-dependencies = [
- "block2",
- "gtk",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "tao",
- "webkit2gtk",
- "webview2-com",
- "windows",
- "wry",
 ]
 
 [[package]]

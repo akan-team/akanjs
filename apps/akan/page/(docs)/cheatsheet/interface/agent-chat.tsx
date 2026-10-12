@@ -1390,6 +1390,23 @@ export default layout().render(({ children }) => {
                 }),
               },
               {
+                key: "launcherPlacement",
+                type: '"right" | "left"',
+                default: '"right"',
+                desc: l.trans({
+                  en: "The button's corner, kept above a tab bar or composer and the safe area, and under menus and modals.",
+                  ko: "버튼이 놓일 모서리이며, 탭 바나 입력창과 safe area 위, 메뉴와 modal 아래에 놓입니다.",
+                }),
+              },
+              {
+                key: "hideLauncherBelow",
+                type: '"sm" | "md" | "lg"',
+                desc: l.trans({
+                  en: "Hides the button below this breakpoint; ⌘L / Ctrl+L or a controlled `open` still opens the panel.",
+                  ko: "이 breakpoint보다 좁으면 버튼을 숨기며, ⌘L / Ctrl+L이나 제어하는 `open`으로는 패널이 열립니다.",
+                }),
+              },
+              {
                 key: "intro",
                 type: "ReactNode",
                 desc: l.trans({

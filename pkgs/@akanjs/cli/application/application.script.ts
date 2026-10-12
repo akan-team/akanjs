@@ -134,12 +134,17 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
 
   async build(
     app: App,
-    { write = true, fast = false, quiet = false }: { write?: boolean; fast?: boolean; quiet?: boolean } = {},
+    {
+      write = true,
+      fast = false,
+      quiet = false,
+      profile,
+    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string } = {},
   ) {
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
-      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet });
+      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet, profile });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);
     } catch (error) {
@@ -150,16 +155,23 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
 
   async typecheck(
-    app: App,
-    { write = true, clean = false, incremental = true }: TypecheckOptions & { write?: boolean } = {},
+    exec: App | Exec,
+    { write = true, clean = false, incremental = true, tests = false }: TypecheckOptions & { write?: boolean } = {},
   ) {
-    await app.scanSync({ write });
-    const spinner = app.spinning(`Typechecking ${app.name}...`);
+    if (!(exec instanceof AppExecutor) && !(exec instanceof LibExecutor))
+      throw new Error(
+        `akan typecheck takes an app or a library; ${exec.name} is a package, checked by its own tsconfig.`,
+      );
+    if (exec instanceof LibExecutor) await this.libraryScript.syncLibrary(exec);
+    else await exec.scanSync({ write });
+    const spinner = exec.spinning(`Typechecking ${exec.name}${tests ? " with its tests" : ""}...`);
     try {
-      await this.applicationRunner.typecheck(app, { clean, incremental });
-      spinner.succeed(`${app.name} typechecked`);
+      if (exec instanceof LibExecutor)
+        await this.applicationRunner.typecheckLibrary(exec, { clean, incremental, tests });
+      else await this.applicationRunner.typecheck(exec, { clean, incremental, tests });
+      spinner.succeed(`${exec.name} typechecked`);
     } catch (error) {
-      spinner.fail(`${app.name} typecheck failed`);
+      spinner.fail(`${exec.name} typecheck failed`);
       Logger.rawLog(ApplicationBuildReporter.formatError(error), undefined, "error");
       throw error;
     }

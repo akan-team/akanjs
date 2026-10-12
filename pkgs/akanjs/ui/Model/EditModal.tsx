@@ -10,9 +10,11 @@ import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
+import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
+import { NewFormOrigin } from "./newFormOrigin";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
 
@@ -117,6 +119,10 @@ interface EditModalProps<Full extends { id: string }> extends EditModelProps<Ful
   disabled?: boolean;
   checkSubmit?: boolean;
   modalClassName?: string;
+  /** Passed to the `Modal`: `auto` is a full-screen sheet below `md`. */
+  presentation?: ModalPresentation;
+  /** Passed to the `Modal`: `right` is a side sheet from `md` up. */
+  placement?: ModalPlacement;
   renderTitle?: ((model: Full) => string | ReactNode) | string;
   submitText?: ReactNode;
   submitClassName?: string;
@@ -138,6 +144,8 @@ export default function EditModal<Full extends { id: string }>({
   disabled,
   checkSubmit = true,
   modalClassName,
+  presentation,
+  placement,
   edit,
   modal,
   renderTitle,
@@ -186,10 +194,15 @@ export default function EditModal<Full extends { id: string }>({
   );
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modalId = id ?? ((modelEdit as DynamicRecord)?.[names.modelObj] as Full | undefined)?.id ?? undefined;
+  const newFormOrigin = NewFormOrigin.use(modelName);
   const isModalOpen =
     modelModal === (modal ?? "edit") &&
     (modelFormLoading === false || modelFormLoading === modalId) &&
-    ((!modelFormId && !modalId) || modalId === modelFormId);
+    ((!modelFormId && !modalId && (!newFormOrigin || newFormOrigin === sliceName)) ||
+      (!!modalId && modalId === modelFormId));
+  useEffect(() => {
+    if (!modelModal) NewFormOrigin.clear(modelName);
+  }, [modelModal]);
   const isEditPayloadStale = useCallback((viewAt?: Date | null) => {
     if (isRscNavigationFromCache()) return true;
     return (
@@ -353,6 +366,8 @@ export default function EditModal<Full extends { id: string }>({
           handleCancel();
         }}
         className={modalClassName}
+        presentation={presentation}
+        placement={placement}
         title={<Title />}
         action={<Submit />}
       >

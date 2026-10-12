@@ -53,6 +53,7 @@ interface ShellConfig {
   /** desktop.window: the main window from its first frame, unless the launch phase says otherwise. */
   fullscreen?: boolean;
   skipTaskbar?: boolean;
+  frameless?: boolean;
 }
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -66,6 +67,7 @@ export function launchBounds(window: LaunchWindow): LaunchWindow {
   if (window.maximized === true) out.maximized = true;
   if (typeof window.fullscreen === "boolean") out.fullscreen = window.fullscreen;
   if (typeof window.skipTaskbar === "boolean") out.skipTaskbar = window.skipTaskbar;
+  if (typeof window.frameless === "boolean") out.frameless = window.frameless;
   return out;
 }
 
@@ -159,6 +161,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     height: shell.height ?? 720,
     fullscreen: shell.fullscreen === true,
     skipTaskbar: shell.skipTaskbar === true,
+    frameless: shell.frameless === true,
     ...bounds,
     appDir: paths.appDir,
     initJs,

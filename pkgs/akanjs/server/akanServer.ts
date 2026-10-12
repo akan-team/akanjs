@@ -46,6 +46,7 @@ import { SignalResolver } from "./resolver";
 import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { RoomReplay } from "./routing/roomReplay";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
 import {
   getWebConfigFromEnv,
@@ -172,6 +173,7 @@ export class AkanServer {
   #lastMetrics: AkanMetricsReport = {};
   #stopping: Promise<void> | null = null;
   #parentGone: boolean = false;
+  #schedules = true;
   #orphanExiting = false;
   constructor(
     name = "AkanServer",
@@ -188,6 +190,8 @@ export class AkanServer {
     this.logger = new Logger(name);
     this.libs = libs;
     this.env = { ...env };
+    //? An edge server runs on premises for its own screens and machines: no agent there is one to serve unasked.
+    if (AkanServer.#isEdge(this.env) && !AkanServer.#isEnvEnabled("AKAN_MCP", "AKAN_PUBLIC_MCP")) this.mcp = false;
     this.openapi = options?.openapi ?? this.openapi;
     // Each lib's `option.ts` in mount order, the app's last, and an option passed here over all of them.
     EndpointRateLimit.reset();
@@ -468,15 +472,18 @@ export class AkanServer {
         return;
       }
       const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      server?.publish(roomId, JSON.stringify(publishData));
-      wsServer?.publish(roomId, JSON.stringify(publishData));
+      const subscribed = (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
+      const frame = roomReplay.frameOf(publishData, subscribed);
+      server?.publish(roomId, frame);
+      wsServer?.publish(roomId, frame);
     };
-    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live);
+    const roomReplay = new RoomReplay({ vouches: this.#solo });
+    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
     this.#localPublish = localPublish;
 
     this.status = "running";
     this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
-    this.#di.registerSchedule(this.serverMode);
+    if (this.#schedules) this.#di.registerSchedule(this.serverMode);
     this.logger.verbose(`🚀 ${this.name} is running on ${unix ? `unix://${unix}` : `port ${port}`}`);
     const wsPort = this.#wsServer?.port;
     this.#sendReady({
@@ -489,12 +496,17 @@ export class AkanServer {
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
     });
-    await this.#di.runSchedulerInit();
+    if (this.#schedules) await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());
     return this;
   }
 
-  async start({ listen, web }: { listen?: boolean; web?: AkanWebOption } = {}) {
+  /**
+   * `listen: false` serves no HTTP and still runs the internals, as a batch replica does; `schedules: false` runs
+   * none of them (init, interval, cron, queue workers), as a test or a script wants.
+   */
+  async start({ listen, web, schedules }: { listen?: boolean; web?: AkanWebOption; schedules?: boolean } = {}) {
+    this.#schedules = schedules ?? true;
     const isNoListenCommand = process.env.AKAN_COMMAND_TYPE === "script" || process.env.AKAN_COMMAND_TYPE === "console";
     const shouldListen = (listen ?? !isNoListenCommand) && this.serverMode !== "batch";
     //? Before init: once an adaptor listens for `message`, Bun emits `disconnect` at the close only to listeners there.
@@ -509,7 +521,7 @@ export class AkanServer {
       if (!isNoListenCommand) {
         Logger.role = this.serverMode;
         this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
-        this.#di.registerSchedule(this.serverMode);
+        if (this.#schedules) this.#di.registerSchedule(this.serverMode);
         await this.#startLogTransport();
         this.#sendReady({
           type: "ready",
@@ -517,7 +529,7 @@ export class AkanServer {
           replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
           role: this.serverMode,
         });
-        await this.#di.runSchedulerInit();
+        if (this.#schedules) await this.#di.runSchedulerInit();
         ShutdownManager.register(this.logger, () => this.stop());
       }
       return this;
@@ -829,6 +841,10 @@ export class AkanServer {
           "disableModules" in value ||
           "disableLibs" in value),
     );
+  }
+
+  static #isEdge(env: BackendEnv) {
+    return ((env as { operationMode?: string }).operationMode ?? process.env.AKAN_PUBLIC_OPERATION_MODE) === "edge";
   }
 
   static #isEnvEnabled(...names: string[]) {

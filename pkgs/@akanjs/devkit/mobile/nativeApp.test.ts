@@ -58,6 +58,7 @@ describe("NativeApp", () => {
         ({
           config: {},
           api: {
+            requestedDistribution: () => ({ notice: null, unused: [] }),
             build: async ({ env }: { env?: Record<string, string> }) => {
               seen = env;
               return { artifacts: [], warnings: [] };

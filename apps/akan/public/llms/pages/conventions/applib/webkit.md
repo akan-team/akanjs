@@ -95,7 +95,7 @@ Account and routing helper
 
 A helper that reads the signed-in account and sends a guest to the sign-in page:
 
-**No `"use client"`.** `_layout.tsx` calls it on the server, so a guest is redirected before any HTML is sent.
+**No `"use client"`.** `_layout.tsx` calls it on the server, so a guest is redirected before any of the page renders.
 
 **`router.redirect`, not `router.replace`.** `redirect` works on both sides, while `replace` only moves a browser tab: on the server the page would render signed-out.
 

@@ -235,7 +235,10 @@ class FakeWebSocket {
   onerror: ((event: unknown) => void) | null = null;
   onclose: ((event: { code: number; reason: string }) => void) | null = null;
 
-  constructor(readonly url: string) {
+  constructor(
+    readonly url: string,
+    readonly options?: { headers?: Record<string, string>; tls?: unknown },
+  ) {
     FakeWebSocket.instances.push(this);
   }
 
@@ -526,6 +529,47 @@ describe("HttpClient", () => {
     } finally {
       delete globalWithFileList.FileList;
     }
+  });
+
+  test("retries a restart, an unreachable server and a 429, and a mutation under one minted Idempotency-Key", async () => {
+    setMockFetch();
+    const fast = { min: 1, jitter: 0 };
+    rawResponses.push(
+      new Response("<html>bad gateway</html>", { status: 502 }),
+      new TypeError("fetch failed") as unknown as Response,
+      Response.json({ ok: "query" }),
+    );
+    const client = new HttpClient("https://api.example");
+    expect(await client.get<{ ok: string }>("/items", { retry: fast })).toEqual({ ok: "query" });
+    expect(fetchCalls).toHaveLength(3);
+
+    fetchCalls.length = 0;
+    rawResponses.push(
+      Response.json({ error: "base.error.gatewayTimeout", statusCode: 504 }, { status: 504 }),
+      Response.json({ ok: "mutation" }),
+    );
+    expect(await client.post<{ ok: string }>("/ack", { id: "c1" }, { retry: fast })).toEqual({ ok: "mutation" });
+    const keyOf = (call?: FetchCall) => new Headers(call?.init?.headers as HeadersInit).get("Idempotency-Key");
+    const keys = fetchCalls.map(keyOf);
+    expect(keys[0]).toBeString();
+    expect(keys[1]).toBe(keys[0] ?? "");
+
+    fetchCalls.length = 0;
+    rawResponses.push(Response.json({ error: "base.error.notFound", statusCode: 404 }, { status: 404 }));
+    await expect(client.get("/missing", { retry: fast })).rejects.toMatchObject({ statusCode: 404 });
+    rawResponses.push(new Response("down", { status: 503 }));
+    await expect(client.post("/ack", { id: "c2" })).rejects.toMatchObject({ statusCode: 503 });
+    expect(fetchCalls).toHaveLength(2);
+    expect(keyOf(fetchCalls[1])).toBeNull();
+  });
+
+  test("waits out a 429's Retry-After and stops after the attempts it was given", () => {
+    const limited = Object.assign(new Error("limited"), { error: "base.error.tooManyRequests", data: { seconds: 2 } });
+    expect(HttpClient.retryWait(limited, 1, { min: 10, jitter: 0 })).toBe(2_000);
+    const restarting = Object.assign(new Error("restarting"), { error: "base.error.serverUnavailable" });
+    expect(HttpClient.retryWait(restarting, 2, { min: 100, jitter: 0 })).toBe(200);
+    expect(HttpClient.retryWait(restarting, 3, { attempts: 3 })).toBeNull();
+    expect(HttpClient.retryWait(new Error("caller aborted"), 1, {})).toBeNull();
   });
 
   test("calls fetch with expected methods, headers, and bodies", async () => {
@@ -1196,6 +1240,39 @@ describe("FetchClient HTTP generation", () => {
     expect(forwarded(1)).toBeNull();
   });
 
+  test("hands the visitor's credential only to this server: another origin gets the token its caller gave or none", async () => {
+    if (!requestStorage) return;
+    setMockFetch();
+    jsonResponses.push("same", "per-call", "machine", "bare", "same-clone");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const page = new Request("https://example.test", { headers: { authorization: "Bearer visitor" } });
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<unknown> };
+
+    await requestStorage.run(page, async () => {
+      setAkanPublicEnv();
+      const id = "abcdefabcdefabcdefabcdef";
+      await client.handler.getThing(id, [], null);
+      await client.handler.getThing(id, [], null, { origin: "https://cloud.example" });
+      const machine = client.clone({ origin: "https://cloud.example", jwt: "machine", connect: false });
+      await (machine as unknown as Getter).getThing(id, [], null);
+      await (client.clone({ origin: "https://cloud.example", connect: false }) as unknown as Getter).getThing(
+        id,
+        [],
+        null,
+      );
+      await (client.clone({ connect: false }) as unknown as Getter).getThing("bcdefabcdefabcdefabcdefa", [], null);
+    });
+
+    const sent = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit).get("authorization");
+    expect([sent(0), sent(1), sent(2), sent(3), sent(4)]).toEqual([
+      "Bearer visitor",
+      null,
+      "Bearer machine",
+      null,
+      "Bearer visitor",
+    ]);
+  });
+
   test("in a signal test each clone names its own client address, unless given one", async () => {
     setMockFetch();
     jsonResponses.push("root", "a", "b", "named");
@@ -1826,9 +1903,9 @@ describe("WsClient", () => {
     expect(events).toHaveLength(1);
   });
 
-  test("tells a resubscribed room it is behind, and says nothing on the first connect", async () => {
+  test("tells a resubscribed room it is behind once a server that numbers nothing acks, and not on the first connect", async () => {
     setFakeWebSocket();
-    const client = new WsClient("ws://example/ws");
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 5, jitter: 0 } });
     let resyncs = 0;
     client.subscribe({
       key: "taskLiveInOrg",
@@ -1843,11 +1920,167 @@ describe("WsClient", () => {
     expect(resyncs).toBe(0);
 
     FakeWebSocket.instances[0].close();
-    await new Promise((resolve) => originalSetTimeout(resolve, 3100));
+    await new Promise((resolve) => originalSetTimeout(resolve, 30));
     FakeWebSocket.instances[1].open();
+    expect(resyncs).toBe(0);
+    FakeWebSocket.instances[1].receive({
+      type: "sub",
+      roomId: "taskLiveInOrg-o1",
+      requestRoomId: "taskLiveInOrg-o1",
+      subscribe: true,
+    });
     expect(resyncs).toBe(1);
     client.destroy();
-  }, 10000);
+  });
+
+  test("waits twice as long after each failed attempt, cut at random, up to the max", () => {
+    expect([1, 2, 3, 6, 9].map((attempt) => WsClient.reconnectDelay(attempt, { jitter: 0 }))).toEqual([
+      1_000, 2_000, 4_000, 30_000, 30_000,
+    ]);
+    for (let idx = 0; idx < 50; idx++) {
+      const delay = WsClient.reconnectDelay(3, { min: 100, max: 1_000, jitter: 0.5 });
+      expect(delay).toBeGreaterThanOrEqual(200);
+      expect(delay).toBeLessThanOrEqual(400);
+    }
+  });
+
+  test("gives up after maxAttempts in a row and says so, and every state change is reported", async () => {
+    setFakeWebSocket();
+    const states: string[] = [];
+    const client = new WsClient("ws://example/ws").configure({
+      reconnect: { min: 1, jitter: 0, maxAttempts: 2 },
+      onStateChange: (state) => states.push(state),
+    });
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].close();
+    for (const idx of [1, 2]) {
+      await new Promise((resolve) => originalSetTimeout(resolve, 20));
+      FakeWebSocket.instances[idx].close();
+    }
+    await new Promise((resolve) => originalSetTimeout(resolve, 20));
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    expect(client.state).toBe("gaveUp");
+    expect(states).toEqual(["connecting", "open", "closed", "connecting", "closed", "connecting", "closed", "gaveUp"]);
+  });
+
+  test("asks a resubscribe for what it missed, and calls a room behind only when the server could not replay it", async () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 1, jitter: 0 } });
+    const events: unknown[] = [];
+    let resyncs = 0;
+    client.subscribe({
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: (data) => events.push(data),
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    client.connect();
+    const first = FakeWebSocket.instances[0];
+    first.open();
+    const roomId = "commandOfPc-pc-7";
+    first.receive({ type: "sub", roomId, requestRoomId: roomId, subscribe: true, cursor: { epoch: "e1", seq: 4 } });
+    first.receive({ type: "pub", roomId, data: { n: 5 }, seq: 5 });
+    first.close();
+
+    await new Promise((resolve) => originalSetTimeout(resolve, 20));
+    const second = FakeWebSocket.instances[1];
+    second.open();
+    expect(JSON.parse(second.sent.at(-1) ?? "{}")).toEqual({
+      key: "commandOfPc",
+      data: ["pc-7"],
+      subscribe: true,
+      since: { epoch: "e1", seq: 5 },
+    });
+    second.receive({ type: "pub", roomId, data: { n: 6 }, seq: 6 });
+    second.receive({ type: "pub", roomId, data: { n: 7 }, seq: 7 });
+    second.receive({
+      type: "sub",
+      roomId,
+      requestRoomId: roomId,
+      subscribe: true,
+      cursor: { epoch: "e1", seq: 7 },
+      replayed: true,
+    });
+    expect(events).toEqual([{ n: 5 }, { n: 6 }, { n: 7 }]);
+    expect(resyncs).toBe(0);
+
+    second.close();
+    await new Promise((resolve) => originalSetTimeout(resolve, 20));
+    const third = FakeWebSocket.instances[2];
+    third.open();
+    third.receive({
+      type: "sub",
+      roomId,
+      requestRoomId: roomId,
+      subscribe: true,
+      cursor: { epoch: "e2", seq: 0 },
+      replayed: false,
+    });
+    expect(resyncs).toBe(1);
+    client.destroy();
+  });
+
+  test("drops a frame it already took and calls the room behind at a hole in the numbering", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    const events: unknown[] = [];
+    let resyncs = 0;
+    client.subscribe({
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: (data) => events.push(data),
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const roomId = "commandOfPc-pc-7";
+    ws.receive({ type: "sub", roomId, requestRoomId: roomId, subscribe: true, cursor: { epoch: "e1", seq: 0 } });
+    ws.receive({ type: "pub", roomId, data: { n: 1 }, seq: 1 });
+    ws.receive({ type: "pub", roomId, data: { n: 1 }, seq: 1 });
+    expect(resyncs).toBe(0);
+    ws.receive({ type: "pub", roomId, data: { n: 3 }, seq: 3 });
+    expect(events).toEqual([{ n: 1 }, { n: 3 }]);
+    expect(resyncs).toBe(1);
+    client.destroy();
+  });
+
+  test("names a room the server took back and an error frame's key to their hooks", () => {
+    setFakeWebSocket();
+    const revoked: string[] = [];
+    const errors: [string, string | undefined][] = [];
+    const client = new WsClient("ws://example/ws").configure({
+      onRevoked: (roomId) => revoked.push(roomId),
+      onError: (error, key) => errors.push([(error as Error).message, key]),
+    });
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    client.subscribe({ key: "commandOfPc", data: ["pc-7"], handleEvent: () => undefined });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.receive({ type: "auth", revokedRooms: ["commandOfPc-pc-7"] });
+    ws.receive({ error: "Access denied by guard: Device", statusCode: 403, key: "pcConfigOfSelf" });
+    expect(revoked).toEqual(["commandOfPc-pc-7"]);
+    expect(errors).toEqual([[expect.stringContaining("Access denied"), "pcConfigOfSelf"]]);
+    client.destroy();
+  });
+
+  test("a server-side client sends its headers and its token with the upgrade", () => {
+    setFakeWebSocket();
+    const client = new WsClient("wss://cloud.example/ws").configure({ headers: { "x-edge-version": "3" } });
+    client.setJwt("machine-token");
+    client.connect();
+    expect(FakeWebSocket.instances[0]?.options?.headers).toEqual({
+      "x-edge-version": "3",
+      authorization: "Bearer machine-token",
+    });
+    client.destroy();
+  });
 
   test("manages websocket lifecycle, messages, listeners, and subscriptions", () => {
     setFakeWebSocket();

@@ -1,4 +1,5 @@
-import { createPublicKey, type KeyObject, verify } from "node:crypto";
+import { type KeyObject, verify } from "node:crypto";
+import { Ed25519Key } from "../ed25519Key";
 
 export interface OpsTokenClaims {
   aud: string;
@@ -31,15 +32,7 @@ export class OpsTokenVerifier {
   }
 
   static parsePublicKey(value: string): KeyObject {
-    const trimmed = value.trim();
-    if (trimmed.startsWith("{")) return createPublicKey({ key: JSON.parse(trimmed) as JsonWebKey, format: "jwk" });
-    const pem = trimmed.includes("-----BEGIN") ? trimmed.replace(/\\n/g, "\n") : null;
-    if (pem) return createPublicKey(pem);
-    const raw = Buffer.from(trimmed, "base64url");
-    if (raw.length === 32)
-      return createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: raw.toString("base64url") }, format: "jwk" });
-    if (raw.length === 44) return createPublicKey({ key: raw, format: "der", type: "spki" });
-    throw new Error("AKAN_OPS_PUBLIC_KEY must be a PEM, a JWK, base64 SPKI DER, or a raw 32-byte base64url key");
+    return Ed25519Key.parsePublic(value, "AKAN_OPS_PUBLIC_KEY");
   }
 
   verifyRequest(req: Request, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {

@@ -173,11 +173,17 @@ export default page().render(() => {
     },
     {
       name: "--akan-top-inset",
-      desc: l.trans({ en: "The resolved `topInset`, in px.", ko: "계산된 `topInset` 값(px)입니다." }),
+      desc: l.trans({
+        en: "The `topInset` in force at this width, in px.",
+        ko: "지금 화면 너비에서 적용되는 `topInset` 값(px)입니다.",
+      }),
     },
     {
       name: "--akan-bottom-inset",
-      desc: l.trans({ en: "The resolved `bottomInset`, in px.", ko: "계산된 `bottomInset` 값(px)입니다." }),
+      desc: l.trans({
+        en: "The `bottomInset` in force at this width, in px.",
+        ko: "지금 화면 너비에서 적용되는 `bottomInset` 값(px)입니다.",
+      }),
     },
     {
       name: "--akan-page-padding-top",
@@ -191,6 +197,20 @@ export default page().render(() => {
       desc: l.trans({
         en: "Bottom safe area plus bottom inset: the bottom padding a page body needs.",
         ko: "하단 safe area와 하단 inset을 더한, 페이지 본문에 필요한 아래쪽 여백입니다.",
+      }),
+    },
+    {
+      name: "--akan-content-height",
+      desc: l.trans({
+        en: "The usable height between the page's top and bottom chrome; on the web it follows the keyboard.",
+        ko: "페이지 위아래 chrome 사이에서 쓸 수 있는 높이이며, 웹에서는 키보드를 따라 줄어듭니다.",
+      }),
+    },
+    {
+      name: "--akan-keyboard-inset",
+      desc: l.trans({
+        en: "Web only: the on-screen keyboard's height over the page bottom, in px.",
+        ko: "웹 전용입니다. 화면 키보드가 페이지 아래를 덮는 높이(px)입니다.",
       }),
     },
   ];
@@ -288,13 +308,13 @@ export default page().render(() => {
               en: (
                 <span>
                   Give the page a <code>transition</code> in <code>.config()</code>. The mobile app shell then animates
-                  the change the way a native app does.
+                  the change the way a native app does, and a browser plays it as a view transition.
                 </span>
               ),
               ko: (
                 <span>
                   페이지의 <code>.config()</code>에 <code>transition</code>을 적으세요. 그러면 모바일 앱 셸이 네이티브
-                  앱처럼 화면 전환을 애니메이션으로 보여 줍니다.
+                  앱처럼 화면 전환을 애니메이션으로 보여 주고, 브라우저는 view transition으로 재생합니다.
                 </span>
               ),
             })}
@@ -353,6 +373,24 @@ export default page()
                   <>
                     <strong>값이 드래그 동작도 정합니다.</strong> 실제 뒤로 가기 제스처가 달린 것은 <code>stack</code>과{" "}
                     <code>bottomUp</code> 둘뿐입니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>The web plays it too.</strong> On a client navigation between SSR pages, a push plays the
+                    target route's transition and going back plays the one being left in reverse, while the chrome holds
+                    still. Reduced motion, or a browser without view transitions, just swaps.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>웹에서도 재생됩니다.</strong> SSR 페이지 사이를 클라이언트에서 이동하면 push는 도착할
+                    route의 전환을, 뒤로 가기는 떠나는 route의 전환을 거꾸로 재생하고, chrome은 그대로 있습니다. 동작
+                    줄이기 설정이나 view transition이 없는 브라우저에서는 그냥 바뀝니다.
                   </>
                 ),
               })}
@@ -602,20 +640,20 @@ export default page()
               },
               {
                 key: "topInset",
-                type: "number | boolean",
-                default: "0",
+                type: 'number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }',
+                default: l.trans({ en: "the chrome's height in the app · 0 on web", ko: "앱은 chrome 높이 · 웹은 0" }),
                 desc: l.trans({
-                  en: "Space reserved for a top bar in px; `true` means 48px, `false` or unset means 0.",
-                  ko: "위쪽 바를 위해 비워 둘 공간(px)이며, `true`는 48px, `false`와 미지정은 0입니다.",
+                  en: "Space reserved for a top bar: px, or px per breakpoint from its width up; `true` means 48px.",
+                  ko: "위쪽 바를 위해 비워 둘 공간입니다. px 하나, 또는 breakpoint마다 그 너비부터 쓸 px이며 `true`는 48px입니다.",
                 }),
               },
               {
                 key: "bottomInset",
-                type: "number | boolean",
-                default: "0",
+                type: 'number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }',
+                default: l.trans({ en: "the chrome's height in the app · 0 on web", ko: "앱은 chrome 높이 · 웹은 0" }),
                 desc: l.trans({
-                  en: "Space reserved for a bottom bar, in px, with the same 48px meaning for `true`.",
-                  ko: "아래쪽 바를 위해 비워 둘 공간(px)이며, `true`는 똑같이 48px입니다.",
+                  en: "Space reserved for a bottom bar, in the same forms and with the same 48px meaning for `true`.",
+                  ko: "아래쪽 바를 위해 비워 둘 공간이며, 형식이 같고 `true`도 똑같이 48px입니다.",
                 }),
               },
               {
@@ -626,8 +664,8 @@ export default page()
                   ko: 'iOS true · Android { android: "auto" } · 웹 false',
                 }),
                 desc: l.trans({
-                  en: 'Device insets to reserve; `"top"` or `"bottom"` keeps one side only.',
-                  ko: '비워 둘 기기 safe area이며, `"top"`이나 `"bottom"`은 한쪽만 비웁니다.',
+                  en: 'Device insets to reserve; `"top"` or `"bottom"` keeps one side. The web needs `fitCover`.',
+                  ko: '비워 둘 기기 safe area이며, `"top"`이나 `"bottom"`은 한쪽만 비웁니다. 웹은 `fitCover`가 필요합니다.',
                 }),
               },
               {
@@ -681,6 +719,28 @@ export default page()
                   <>
                     <strong>가장 가까운 설정이 이깁니다.</strong> 페이지 값이 layout 값을 덮어쓰고,{" "}
                     <code>safeArea</code> 객체만 키 단위로 합쳐집니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>An inset can follow the width.</strong>{" "}
+                    <code>{".config({ topInset: { base: 48, md: 0 } })"}</code> reserves a phone-only bar, each key from
+                    its own width up. In the app, an inset the route leaves out takes the height of the chrome it
+                    renders. On the web, <code>safeArea</code> pads with the browser's safe area once the root layout
+                    sets <code>{".viewport({ fitCover: true })"}</code>.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>inset은 화면 너비를 따를 수 있습니다.</strong>{" "}
+                    <code>{".config({ topInset: { base: 48, md: 0 } })"}</code>는 폰에서만 보이는 바의 자리를 비우며,
+                    키마다 그 너비부터 적용됩니다. 앱에서는 route가 적지 않은 inset이 그 route가 그리는 chrome 높이를
+                    따릅니다. 웹에서는 root layout이 <code>{".viewport({ fitCover: true })"}</code>를 두어야{" "}
+                    <code>safeArea</code>가 브라우저의 safe area만큼 여백을 줍니다.
                   </>
                 ),
               })}
@@ -921,6 +981,25 @@ export default page()
                   <>
                     <strong>바 높이를 예약한 공간에 맞춥니다.</strong> <code>h-(--akan-bottom-inset)</code>을 쓰면 바와
                     비워 둔 공간이 어긋나지 않습니다.
+                  </>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <>
+                    <strong>The web gets it too.</strong> On a server-rendered page the sticky bar rides above the
+                    keyboard as well. For a layout of your own, <code>useVisualViewportFrame()</code> from{" "}
+                    <code>akanjs/webkit</code> returns <code>{"{ keyboardHeight, height, offsetTop }"}</code> of the
+                    part left visible.
+                  </>
+                ),
+                ko: (
+                  <>
+                    <strong>웹에서도 똑같습니다.</strong> 서버 렌더링 페이지에서도 sticky 바가 키보드 위에 붙습니다.
+                    직접 배치할 때는 <code>akanjs/webkit</code>의 <code>useVisualViewportFrame()</code>이 보이는 영역의{" "}
+                    <code>{"{ keyboardHeight, height, offsetTop }"}</code>을 돌려줍니다.
                   </>
                 ),
               })}

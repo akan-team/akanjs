@@ -22,13 +22,22 @@ export type PageSafeAreaConfig =
  * `"block"` buffers the whole document, so an error in slow content can still render a clean error page. */
 export type SsrRenderMode = "stream" | "block";
 
+/** Px per Tailwind breakpoint (sm 40rem, md 48rem, lg 64rem, xl 80rem, 2xl 96rem), each from its own width up. */
+export interface ResponsiveInset {
+  base: number;
+  sm?: number;
+  md?: number;
+  lg?: number;
+  xl?: number;
+  "2xl"?: number;
+}
 export interface PageConfig {
   transition?: TransitionType;
   safeArea?: PageSafeAreaConfig;
-  /** Top chrome reservation in px. Use true for the default 48px reservation. */
-  topInset?: number | boolean;
-  /** Bottom chrome reservation in px. Use true for the default 48px reservation. */
-  bottomInset?: number | boolean;
+  /** Top chrome reservation in px, or px per breakpoint. Use true for the default 48px reservation. */
+  topInset?: number | boolean | ResponsiveInset;
+  /** Bottom chrome reservation in px, or px per breakpoint. Use true for the default 48px reservation. */
+  bottomInset?: number | boolean | ResponsiveInset;
   gesture?: boolean;
   cache?: boolean;
   /** Initial full-document SSR strategy. Defaults to `"stream"`. */
@@ -48,6 +57,10 @@ export interface CsrState {
   bottomSafeArea: number;
   topInset: number;
   bottomInset: number;
+  /** The declared per-breakpoint insets; `topInset`/`bottomInset` hold their value at the width they resolved at. */
+  responsiveInset?: { top: ResponsiveInset; bottom: ResponsiveInset };
+  /** Web only: the sides whose safe area `env(safe-area-inset-*)` measures, since a browser tells script nothing. */
+  safeAreaEnv?: { top: boolean; bottom: boolean };
   gesture: boolean;
   cache: boolean;
   ssr: SsrRenderMode;
@@ -120,8 +133,20 @@ export interface RouteRender {
   getLayoutPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
   /** A root layout's `theme`, readable before it renders. */
   getLayoutTheme?: () => PromiseOrObject<string | undefined>;
+  /** A root layout's `viewport`, readable before it renders: the document shell writes it ahead of the body. */
+  getLayoutViewport?: () => PromiseOrObject<RouteViewport | undefined>;
+  /** A root layout's `manifest`, which the server answers at the URL its documents link. */
+  getLayoutManifest?: () => PromiseOrObject<WebAppManifest | undefined>;
   /** The `page()` chain behind a page render, when it was declared as one — what a page prompt is read off. */
   getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
+}
+export interface RouteViewport {
+  /** `viewport-fit=cover`: the page runs under the notch and home indicator, and `env(safe-area-inset-*)` measures them. */
+  fitCover?: boolean;
+  /** What the on-screen keyboard resizes; `resizes-content` shrinks the layout viewport, and `dvh` with it. */
+  interactiveWidget?: "resizes-visual" | "resizes-content" | "overlays-content";
+  /** The browser chrome's color: one for every theme, or one per theme name the app switches between. */
+  themeColor?: string | { [theme: string]: string };
 }
 export interface WebAppManifestIcon {
   src: string;
@@ -166,6 +191,7 @@ export interface LayoutModule {
   reconnect?: boolean;
   wsConnect?: boolean;
   layoutStyle?: "mobile" | "web";
+  viewport?: RouteViewport;
   Loading?: LayoutLoadingRender;
   NotFound?: LayoutNotFoundRender;
   Error?: LayoutErrorRender;

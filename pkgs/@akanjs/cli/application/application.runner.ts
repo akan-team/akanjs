@@ -15,6 +15,7 @@ import {
   type ResolvedMobileTarget,
   resolveAppId,
   resolveMobileTargets,
+  UpdateUploader,
 } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import { Logger, type LogRecord } from "akanjs/common";
@@ -35,6 +36,15 @@ export interface LogsOptions {
   follow?: boolean;
   runtimeDir?: string | null;
 }
+interface CarriedServer {
+  omit: string[];
+  profile?: string;
+  modules: string[];
+  env?: Record<string, string>;
+  restart?: "forever" | number;
+  watchdog?: { intervalMs: number; failures: number };
+}
+
 export interface MobileTargetOptions {
   target?: string;
   env?: NativeEnv;
@@ -44,11 +54,20 @@ export interface MobileUpdatePackOptions extends MobileTargetOptions {
   /** The bundle.json of the store build the update is for; a bundle it cannot run fails the pack. */
   against?: string;
 }
-export interface MobilePublishOptions extends MobileTargetOptions {
+//* The env names the identity; only these flags sign, and only `notarize` sends the app anywhere (Apple's notary).
+export interface MobileSignOptions {
+  sign?: boolean;
+  notarize?: boolean;
+}
+export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOptions {
   /** The manifest to publish to; default the target's updates.channel, else the backend env it is built for. */
   channel?: string;
+  /** s3://<bucket>/<prefix> the target's updates folder goes to once it is published. */
+  upload?: string;
+  /** Desktop: the CPU of the apps the release is for, which names its feed folder (`<os>-<arch>`). */
+  arch?: "arm64" | "x64";
 }
-export interface MobileBuildOptions extends MobileTargetOptions {
+export interface MobileBuildOptions extends MobileTargetOptions, MobileSignOptions {
   profile?: "debug" | "release";
   /** What a person downloads too: a Windows setup program, a macOS dmg, a Linux AppImage. */
   installer?: boolean;
@@ -240,6 +259,21 @@ try {
   async typecheck(app: App, options: TypecheckOptions = {}) {
     await new (await loadBuildRunner())(app).typecheck(options);
   }
+  async typecheckLibrary(lib: LibExecutor, options: TypecheckOptions = {}) {
+    const { ProjectTypecheck } = await import("@akanjs/devkit/typecheck/projectTypecheck");
+    const root = lib.workspace.workspaceRoot;
+    await new ProjectTypecheck(lib.cwdPath, root, { ...process.env, AKAN_WORKSPACE_ROOT: root }).run(
+      [
+        "../../server.ts",
+        "../../client.ts",
+        "../../index.ts",
+        "../../page/**/*.ts",
+        "../../page/**/*.tsx",
+        "../../../../pkgs/akanjs/*/types/**/*.d.ts",
+      ],
+      options,
+    );
+  }
   async test(exec: Exec) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
@@ -265,9 +299,10 @@ try {
       fast = false,
       reporter,
       spinner = false,
-    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean } = {},
+      profile,
+    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean; profile?: string } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile }).build({ spinner });
   }
   async start(
     app: App,
@@ -294,7 +329,15 @@ try {
   async buildMobile(
     app: App,
     platform: NativePlatform,
-    { target, env = "debug", profile = "release", installer = false, arch }: MobileBuildOptions = {},
+    {
+      target,
+      env = "debug",
+      profile = "release",
+      installer = false,
+      arch,
+      sign = false,
+      notarize = false,
+    }: MobileBuildOptions = {},
   ) {
     const targets = await resolveMobileTargets(app, target);
     NativeApp.assertInstaller(platform, installer);
@@ -311,6 +354,8 @@ try {
           ...(carried && ApplicationRunner.carriesServer(mobileTarget, platform) ? { server: carried } : {}),
           ...(installer ? { installer } : {}),
           ...(arch ? { arch } : {}),
+          sign,
+          notarize,
         }),
       );
     });
@@ -481,28 +526,49 @@ try {
   async publishUpdate(
     app: App,
     platform: "desktop" | "android" | "ios",
-    { target, env = "main", channel }: MobilePublishOptions = {},
+    { target, env = "main", channel, upload, arch, sign = false, notarize = false }: MobilePublishOptions = {},
   ) {
+    if (arch && platform !== "desktop")
+      throw new Error(`--arch picks a desktop release's CPU; ${platform} publishes its web bundle.`);
     const targets = await resolveMobileTargets(app, target);
+    //? One prefix holds one target's feed: two targets there would overwrite each other's manifests.
+    if (upload && targets.length > 1)
+      throw new Error(
+        `--upload takes one target's release; name it with --target (${targets.map(({ name }) => name).join(", ")}).`,
+      );
+    const uploader = upload ? UpdateUploader.forTarget(upload) : null;
     const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
+    if (arch === "x64" && nativePlatform === "macos")
+      throw new Error("A macOS app is built for Apple silicon (arm64) only.");
     //? Every target before anything builds: one refused after the build would leave the targets before it published.
     for (const mobileTarget of targets)
       await new NativeApp(app, mobileTarget, env).assertPublishable(nativePlatform, {
         server: ApplicationRunner.carriesServer(mobileTarget, nativePlatform),
         ...(channel ? { channel } : {}),
+        ...(arch ? { arch } : {}),
       });
-    const carried = await this.#stageMobile(app, nativePlatform, targets, env);
+    const carried = await this.#stageMobile(app, nativePlatform, targets, env, arch);
     for (const mobileTarget of targets) {
       const nativeApp = new NativeApp(app, mobileTarget, env);
       const published = await nativeApp.publishUpdate(nativePlatform, {
         ...(channel ? { channel } : {}),
+        ...(arch ? { arch } : {}),
+        sign,
+        notarize,
         ...(carried && ApplicationRunner.carriesServer(mobileTarget, nativePlatform) ? { server: carried } : {}),
       });
       this.#reportBuild(app, mobileTarget, published.build);
       app.log(
         `${app.name}/${mobileTarget.name} ${published.bundle}: ${published.dir}/${published.channel}.json, ${published.files} files, ${Math.round(published.size / 1024)} KiB`,
       );
-      app.log(`Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last.`);
+      if (!uploader) {
+        app.log(`Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last.`);
+        continue;
+      }
+      const { uploaded, skipped } = await uploader.upload(nativeApp.updatesDir);
+      app.log(
+        `Uploaded ${uploaded} file(s) to ${upload}, the manifests last; ${skipped} the bucket already held. Installed apps read ${mobileTarget.config.updates?.url}.`,
+      );
     }
   }
 
@@ -519,18 +585,35 @@ try {
   static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
     return platform !== "ios" && platform !== "android" && !!config.desktop?.server;
   }
-  //? One build stages one server, so the targets that carry it must leave the same packages out of it.
-  static serverOmit(targets: ResolvedMobileTarget[], platform: NativePlatform): string[] {
+  //? One build stages one server, so the targets that carry it must agree on how: its packages, env profile and modules.
+  static carriedServer(targets: ResolvedMobileTarget[], platform: NativePlatform): CarriedServer {
     const carrying = targets.filter((target) => ApplicationRunner.carriesServer(target, platform));
-    const omits = carrying.map(({ config }) => {
+    const servers = carrying.map(({ config }): CarriedServer => {
       const server = config.desktop?.server;
-      return typeof server === "object" ? (server.omit ?? []) : [];
+      if (typeof server !== "object") return { omit: [], modules: [] };
+      const { omit = [], modules = [], profile, env, restart, watchdog } = server;
+      return {
+        omit,
+        modules,
+        ...(profile ? { profile } : {}),
+        ...(env ? { env } : {}),
+        ...(restart !== undefined ? { restart } : {}),
+        ...(typeof watchdog === "object" ? { watchdog: watchdog as CarriedServer["watchdog"] } : {}),
+      };
     });
-    const [first = [], ...rest] = omits;
-    if (rest.some((omit) => omit.join("\0") !== first.join("\0")))
+    const [first = { omit: [], modules: [] }, ...rest] = servers;
+    const agree = (what: string, of: (server: CarriedServer) => string) => {
+      if (rest.every((server) => of(server) === of(first))) return;
       throw new Error(
-        `The targets that carry the server omit different packages (${carrying.map(({ name }, idx) => `${name}: ${omits[idx]?.join(", ") || "none"}`).join("; ")}); build them one --target at a time.`,
+        `The targets that carry the server ${what} (${carrying.map(({ name }, idx) => `${name}: ${(servers[idx] && of(servers[idx])) || "none"}`).join("; ")}); build them one --target at a time.`,
       );
+    };
+    agree("omit different packages", ({ omit }) => omit.join(", "));
+    agree("name different env profiles", ({ profile }) => profile ?? "");
+    agree("mount different modules", ({ modules }) => modules.join(", "));
+    agree("set a different env", ({ env }) => (env ? JSON.stringify(env) : ""));
+    agree("restart differently", ({ restart }) => String(restart ?? ""));
+    agree("watch it differently", ({ watchdog }) => (watchdog ? JSON.stringify(watchdog) : ""));
     return first;
   }
   //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
@@ -544,11 +627,13 @@ try {
     const stage = targets.some((mobileTarget) => ApplicationRunner.carriesServer(mobileTarget, platform))
       ? new DesktopServerStage(app)
       : null;
-    await stage?.install(arch, ApplicationRunner.serverOmit(targets, platform));
-    await this.#buildMobileCsr(app, env);
-    return await stage?.prepare(env);
+    const server = ApplicationRunner.carriedServer(targets, platform);
+    await stage?.install(arch, server.omit);
+    await this.#buildMobileCsr(app, env, stage ? server.profile : undefined);
+    const { modules, env: serverEnv, restart, watchdog } = server;
+    return await stage?.prepare(env, { modules, env: serverEnv, restart, watchdog });
   }
-  async #buildMobileCsr(app: App, env: NativeEnv) {
+  async #buildMobileCsr(app: App, env: NativeEnv, profile?: string) {
     const prevEnv = {
       AKAN_PUBLIC_ENV: process.env.AKAN_PUBLIC_ENV,
       AKAN_PUBLIC_OPERATION_MODE: process.env.AKAN_PUBLIC_OPERATION_MODE,
@@ -560,7 +645,7 @@ try {
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app, { environment: env }).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env, profile }).build({ spinner: true });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];

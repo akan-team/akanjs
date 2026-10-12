@@ -174,9 +174,14 @@ describe("programmatic API", () => {
     }
   });
 
-  test("desktop.recovery, desktop.window, desktop.screenCapture and android.autoplay are checked", () => {
+  test("desktop.recovery, desktop.window, desktop.screenCapture, desktop.webview2 and android.autoplay are checked", () => {
     const kiosk = config({
-      desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+      desktop: {
+        recovery: "reload",
+        window: { fullscreen: true, skipTaskbar: true, frameless: true },
+        screenCapture: "auto",
+        webview2: "standalone",
+      },
       android: { autoplay: true },
     });
     expect(validateConfig(kiosk, { appDir: app("kiosk") })).toEqual([]);
@@ -186,6 +191,7 @@ describe("programmatic API", () => {
           recovery: "always" as never,
           window: { fullscreen: "yes" as never },
           screenCapture: "silent" as never,
+          webview2: "offline" as never,
         },
         android: { autoplay: 1 as never },
       }),
@@ -195,6 +201,7 @@ describe("programmatic API", () => {
       'desktop.recovery must be "errorPage" or "reload" (got "always")',
       "desktop.window.fullscreen must be a boolean",
       'desktop.screenCapture must be "picker" or "auto" (got "silent")',
+      'desktop.webview2 must be "bootstrapper" or "standalone" (got "offline")',
       "android.autoplay must be a boolean",
     ]);
   });

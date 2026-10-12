@@ -117,7 +117,7 @@ describe("recipe factory — badgeRecipe", () => {
 describe("recipe factory — inputRecipe", () => {
   test("default renders the former fixed shell", () => {
     const t = tokens(inputRecipe());
-    expect(t).toEqual(expect.arrayContaining(["h-10", "px-3", "text-sm"]));
+    expect(t).toEqual(expect.arrayContaining(["h-10", "px-3", "text-sm", "pointer-coarse:text-base"]));
   });
 
   test("size sets the field height through the kind compound", () => {

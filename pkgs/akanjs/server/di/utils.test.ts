@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { enumOf, ID } from "akanjs/base";
+import { enumOf, ID, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
-import { assertUniqueRegistrations, getModuleCascadeRefNames } from "./utils";
+import { assertUniqueRegistrations, getModuleCascadeRefNames, getModuleRelationRefNames } from "./utils";
 
 const OwnerInput = via((f) => ({ url: f(String) }));
 const OwnerObject = via(OwnerInput, () => ({}));
@@ -43,6 +43,29 @@ describe("getModuleCascadeRefNames", () => {
 
   test("reads nothing off a service module, which owns no constant", () => {
     expect([...getModuleCascadeRefNames({ service: {}, signal: {} } as unknown as ServiceModule)]).toEqual([]);
+  });
+});
+
+const SpotInput = via((f) => ({ owner: f(OwnerFull).optional(), label: f(String) }));
+ConstantRegistry.buildScalar("diUtilsSpot", SpotInput, { SpotInput });
+
+class DiUtilsLevel extends enumOf("diUtilsLevel", ["low", "high"] as const) {}
+
+describe("getModuleRelationRefNames", () => {
+  test("collects relation targets, including those inside a scalar, and skips primitives and enums", () => {
+    const Model = via((f) => ({
+      owner: f(OwnerFull).optional(),
+      spots: f([SpotInput]),
+      level: f(DiUtilsLevel),
+      count: f(Int),
+      ownerId: f(ID).optional(),
+    }));
+
+    expect([...getModuleRelationRefNames(asDatabaseModule(Model))]).toEqual(["diUtilsOwner"]);
+  });
+
+  test("reads nothing off a service module, which owns no constant", () => {
+    expect(getModuleRelationRefNames({} as ServiceModule).size).toBe(0);
   });
 });
 

@@ -79,6 +79,7 @@ function createFakeRscWorker(
   ) => {
     cacheState?: RouteCacheRenderState;
     lateControl?: SsrLateRedirect | null;
+    lateControlAfterMs?: number;
     status?: number;
   } = () => ({ cacheState: { cacheable: true, revalidate: 5 } }),
 ): FakeRscWorker {
@@ -93,7 +94,10 @@ function createFakeRscWorker(
         type: "stream",
         stream: streamOf("0:null\n"),
         status: state.status,
-        lateControl: Promise.resolve(state.lateControl ?? null),
+        lateControl:
+          state.lateControlAfterMs === undefined
+            ? Promise.resolve(state.lateControl ?? null)
+            : sleep(state.lateControlAfterMs).then(() => state.lateControl ?? null),
         cacheState: Promise.resolve(state.cacheState ?? { cacheable: true, revalidate: 5 }),
         cancel: () => {},
       };
@@ -1324,10 +1328,26 @@ describe("WebRouter full SSR cache orchestration", () => {
     );
   });
 
+  test("answers a redirect known before the response starts with a real one", async () => {
+    const fakeWorker = createFakeRscWorker(() => ({
+      lateControl: { type: "redirect", location: "/login", method: "replace", status: 307 },
+    }));
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const response = await fullSsr(new Request("https://example.test/docs/redirect"));
+        expect(response.status).toBe(307);
+        expect(response.headers.get("Location")).toBe("https://example.test/login");
+      },
+      { worker: fakeWorker },
+    );
+  });
+
   test("does not store full SSR HTML when a late redirect is observed", async () => {
     const fakeWorker = createFakeRscWorker(() => ({
       cacheState: { cacheable: true, revalidate: 5 },
       lateControl: { type: "redirect", location: "/login", method: "replace", status: 307 },
+      lateControlAfterMs: 5,
     }));
 
     await withFullSsrCacheHarness(

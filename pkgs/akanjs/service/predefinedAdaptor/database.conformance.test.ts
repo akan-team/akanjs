@@ -33,7 +33,11 @@ class ConfInput extends via((f) => ({
 class ConfObject extends via(ConfInput, () => ({})) {}
 class ConfLight extends via(ConfObject, ["title"] as const, () => ({})) {}
 class ConfFull extends via(ConfObject, ConfLight, () => ({})) {}
-class ConfInsight extends via(ConfFull, (f) => ({ count: f(Int, { default: 0, accumulate: {} }) })) {}
+class ConfInsight extends via(ConfFull, (f) => ({
+  count: f(Int, { default: 0, accumulate: {} }),
+  scoreSum: f(Int, { default: 0, accumulate: { $sum: "score" } }),
+  activeScoreSum: f(Int, { default: 0, accumulate: { $sum: "score", status: "active" } }),
+})) {}
 const confConstant = ConstantRegistry.buildModel(
   "dialectConf",
   ConfInput,
@@ -227,6 +231,35 @@ const describeDriver = (kind: SqlDriverKind) => {
     test("[PG-3] count() answers a number", async () => {
       await store.create({ title: "one" });
       expect(await store.count({})).toBe(1);
+    });
+
+    test("an insight's $sum adds a field up over the rows its condition matches", async () => {
+      await store.create({ title: "a", score: 3 });
+      await store.create({ title: "b", score: 4, status: "draft" });
+      await store.create({ title: "c", score: 5 });
+      expect(await store.insight({})).toMatchObject({ count: 3, scoreSum: 12, activeScoreSum: 8 });
+      expect(await store.insight({ title: "b" })).toMatchObject({ count: 1, scoreSum: 4, activeScoreSum: 0 });
+      expect(await store.sum("score", { title: "none" })).toBe(0);
+    });
+
+    test("upsertById writes a record under its own id twice into one row, keeping its timestamps when asked", async () => {
+      const id = "64a0000000000000000000a1";
+      const createdAt = dayjs("2026-07-01T09:00:00Z");
+      const updatedAt = dayjs("2026-07-02T09:00:00Z");
+      await store.upsertById({ id, title: "legacy", score: 1, createdAt, updatedAt }, { preserveTimestamps: true });
+      await store.upsertById({ id, title: "legacy", score: 2, createdAt, updatedAt }, { preserveTimestamps: true });
+      const [row] = await store.find({ id });
+      expect(await store.count({})).toBe(1);
+      expect(row).toMatchObject({ title: "legacy", score: 2 });
+      expect(row?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(row?.updatedAt.valueOf()).toBe(updatedAt.valueOf());
+
+      const before = Date.now();
+      await store.upsertById({ id, title: "synced", score: 3 });
+      const [synced] = await store.find({ id });
+      expect(synced?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(synced?.updatedAt.valueOf()).toBeGreaterThanOrEqual(before - 1);
+      expect(synced).toMatchObject({ title: "synced", score: 3 });
     });
 
     test("[DI-1] a nested set creates the parents it needs", async () => {

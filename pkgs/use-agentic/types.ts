@@ -36,6 +36,8 @@ interface ToolEntryBase {
   settle?: boolean;
   confirm?: ToolConfirm;
   guard?: ToolGuard;
+  /** What a person reads for the action in the host's own UI, a command palette; never sent to the model. */
+  label?: () => string | undefined;
 }
 
 export interface ToolActionEntry extends ToolEntryBase {

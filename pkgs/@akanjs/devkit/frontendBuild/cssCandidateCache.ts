@@ -2,7 +2,9 @@ import { stat } from "node:fs/promises";
 
 // The leading `[` alternation keeps arbitrary variants (`[&_td]:px-3`) whole. Brackets hold no whitespace: a labelled
 // tuple type scanned as a class compiles to a rule lightningcss cannot parse, and it then drops every variant rule.
-const CANDIDATE_RE = /-?(?:[\w@]|\[[^\]\s]+\])[\w:/.-]*(?:\[[^\]\s]+\][\w:/.-]*)*/g;
+// Parentheses pass only as Tailwind v4's variable shorthand, `(--x)` or `(length:--x)`, so `cn("flex")` still yields
+// `flex` on its own.
+const CANDIDATE_RE = /-?(?:[\w@]|\[[^\]\s]+\])[\w:/.-]*(?:(?:\[[^\]\s]+\]|\((?:[a-z-]+:)?--[^)\s]+\))[\w:/.-]*)*/g;
 
 interface CachedFile {
   mtimeMs: number;
@@ -18,7 +20,7 @@ interface CacheFile {
 /** Tailwind candidates per source file, on disk: the batch worker that compiles CSS exits before the next save. */
 export class CssCandidateCache {
   // Bump when the token regex or the entry shape changes, so stale extractions are not reused.
-  static readonly #version = 3;
+  static readonly #version = 4;
   readonly #path: string;
   readonly #entries = new Map<string, CachedFile>();
   #dirty = false;

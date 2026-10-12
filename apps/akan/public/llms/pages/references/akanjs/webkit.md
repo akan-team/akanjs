@@ -67,6 +67,8 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
+- useVisualViewportFrame(): `{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.
+
 - usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 - createRobotPage, createSitemapPage: Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.

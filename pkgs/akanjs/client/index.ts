@@ -17,3 +17,5 @@ export * from "./storage";
 export * from "./translator";
 export * from "./types";
 export * from "./useClient";
+export * from "./viewportMeta";
+export * from "./webManifest";

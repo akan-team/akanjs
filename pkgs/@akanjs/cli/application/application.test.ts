@@ -668,7 +668,7 @@ describe("ApplicationScript desktop", () => {
       args: [app, NativeApp.desktopPlatform(), { target: "default", env: "main", profile: "release", installer: true }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "installer", "arch", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "installer", "arch", "sign", "notarize", "write"]);
   });
 });
 
@@ -823,18 +823,31 @@ describe("ApplicationRunner mobile", () => {
     ).toBe(false);
   });
 
-  test("the targets that carry one build's server leave the same packages out of it", () => {
-    const carrying = (name: string, server: boolean | { omit: string[] }) => ({
+  test("the targets that carry one build's server agree on its packages, env profile and modules", () => {
+    const carrying = (name: string, server: boolean | { omit?: string[]; profile?: string; modules?: string[] }) => ({
       name,
       config: { ...target(name), desktop: { server } },
     });
-    expect(ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] })], "macos")).toEqual(["rclnodejs"]);
-    expect(ApplicationRunner.serverOmit([carrying("a", true), { name: "b", config: target("b") }], "macos")).toEqual(
-      [],
+    expect(ApplicationRunner.carriedServer([carrying("a", { omit: ["rclnodejs"] })], "macos").omit).toEqual([
+      "rclnodejs",
+    ]);
+    expect(ApplicationRunner.carriedServer([carrying("a", true), { name: "b", config: target("b") }], "macos")).toEqual(
+      { omit: [], modules: [] },
     );
+    expect(ApplicationRunner.carriedServer([carrying("a", { profile: "edge", modules: ["@edge"] })], "macos")).toEqual({
+      omit: [],
+      profile: "edge",
+      modules: ["@edge"],
+    });
     expect(() =>
-      ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] }), carrying("b", true)], "macos"),
+      ApplicationRunner.carriedServer([carrying("a", { omit: ["rclnodejs"] }), carrying("b", true)], "macos"),
     ).toThrow("omit different packages (a: rclnodejs; b: none)");
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { profile: "edge" }), carrying("b", true)], "macos"),
+    ).toThrow("name different env profiles (a: edge; b: none)");
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { modules: ["@edge"] }), carrying("b", true)], "macos"),
+    ).toThrow("mount different modules (a: @edge; b: none)");
   });
 
   test("a dev build runs one target at a time", async () => {

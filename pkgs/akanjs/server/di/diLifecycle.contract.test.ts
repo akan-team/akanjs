@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseModes } from "akanjs/base";
+import { DatabaseModes, resetEnvCache } from "akanjs/base";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import { internal } from "../../signal/internal";
@@ -383,6 +383,60 @@ describe("DiLifecycle module selection", () => {
 
     expect(() => new DiLifecycle({ env: {}, disableLibs: ["exclusionTypo"] }, ...buildExclusionLibs())).toThrow(
       '[DI:disableLibs] unknown lib "exclusionTypo"',
+    );
+  });
+
+  const buildModeLib = () => {
+    class ModeLeafService extends serve("modeLeaf" as const, () => ({})) {}
+    class ModeEdgeService extends serve("modeEdge" as const, { operationMode: ["edge"] }, ({ service }) => ({
+      modeLeafService: service<InstanceType<typeof ModeLeafService>>(),
+    })) {}
+    class ModeCloudService extends serve("modeCloud" as const, () => ({})) {}
+    return libOf("operationModeTest", new AkanOption(), {
+      services: [serviceModule(ModeLeafService), serviceModule(ModeEdgeService), serviceModule(ModeCloudService)],
+    });
+  };
+
+  const inOperationMode = async <T>(mode: string, run: () => Promise<T>) => {
+    process.env.AKAN_PUBLIC_OPERATION_MODE = mode;
+    resetEnvCache();
+    try {
+      return await run();
+    } finally {
+      process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+      resetEnvCache();
+    }
+  };
+
+  test("keeps a module out of an operation mode its serve() does not list", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+
+    await inOperationMode("cloud", async () => {
+      const lifecycle = new DiLifecycle({ env: {} }, buildModeLib());
+      await expect(lifecycle.initializeAll()).resolves.toBeDefined();
+      expect(lifecycle.registry.serviceCls.has("modeEdge")).toBe(false);
+      expect(lifecycle.registry.serviceCls.has("modeCloud")).toBe(true);
+      expect(lifecycle.disabledModules.get("modeEdge")).toBe('operationMode "cloud" is not in [edge]');
+    });
+  });
+
+  test('"@edge" mounts every module that lists edge, and what they inject', async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+
+    await inOperationMode("edge", async () => {
+      const lifecycle = new DiLifecycle({ env: {}, modules: ["@edge"] }, buildModeLib());
+      await expect(lifecycle.initializeAll()).resolves.toBeDefined();
+      expect(lifecycle.registry.serviceCls.has("modeEdge")).toBe(true);
+      expect(lifecycle.registry.serviceCls.has("modeLeaf")).toBe(true);
+      expect(lifecycle.registry.serviceCls.has("modeCloud")).toBe(false);
+    });
+  });
+
+  test("refuses a selector no serve() lists", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+
+    expect(() => new DiLifecycle({ env: {}, modules: ["@kiosk"] }, buildModeLib())).toThrow(
+      '[DI:modules] "@kiosk" names no module',
     );
   });
 

@@ -1,0 +1,23 @@
+{
+  "id": "external-view",
+  "apiVersion": 1,
+  "methods": [
+    "open",
+    "navigate",
+    "reload",
+    "close",
+    "list",
+    "setVisible",
+    "setBounds",
+    "evaluate",
+    "sendKey",
+    "setMuted",
+    "clearData",
+    "capture"
+  ],
+  "events": ["load", "loadFailed", "gone", "consoleMessage"],
+  "web": null,
+  "desktop": "./src/desktop.ts",
+  "ios": null,
+  "android": null
+}

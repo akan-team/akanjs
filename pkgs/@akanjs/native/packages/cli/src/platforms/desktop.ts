@@ -250,7 +250,8 @@ export function writeDesktopResources(
         `the server's native addons would not load on a user's computer:\n  - ${addons.problems.join("\n  - ")}`,
       );
     cpSync(server.dir, join(resources, "server"), { recursive: true, verbatimSymlinks: true });
-    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: server.entry, env: server.env }));
+    const { entry, env, restart, watchdog } = server;
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry, env, restart, watchdog }));
     writeFileSync(join(resources, "server.bunfig.toml"), "");
   }
   if (config.desktop.bin)
@@ -267,6 +268,7 @@ export function writeDesktopResources(
       screenCapture: config.desktop.screenCapture,
       fullscreen: config.desktop.window.fullscreen,
       skipTaskbar: config.desktop.window.skipTaskbar,
+      frameless: config.desktop.window.frameless,
       // Windows and Linux register them at startup (packages/desktop/src/deeplinks.ts); macOS has Info.plist.
       deepLinks: config.deepLinks.schemes,
       // L0: schemes the app adds to what links and the opener may hand to the OS.

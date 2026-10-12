@@ -56,7 +56,7 @@ import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, RscWorker } from "./rscWorkerHost";
-import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
+import { createDefaultSitemapXml, getSitemapBasePath, getWebManifestBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
 import { resolveStaticPath } from "./staticPath";
@@ -583,6 +583,22 @@ export class WebRouter {
           });
         }
 
+        const manifestBasePath = getWebManifestBasePath(
+          url.pathname,
+          this.#artifact.basePaths,
+          this.#requestBasePath(req),
+        );
+        if (manifestBasePath !== undefined) {
+          const manifest = await this.#rsc.webManifest(manifestBasePath);
+          if (manifest)
+            return new Response(JSON.stringify(manifest), {
+              headers: {
+                "Content-Type": "application/manifest+json; charset=utf-8",
+                "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
+              },
+            });
+        }
+
         const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
         if (sitemapBasePath !== undefined) {
           return new Response(
@@ -657,8 +673,13 @@ export class WebRouter {
               rscResult.cancel(reason);
             },
           });
-          //? A not-found the page raised after the stream started is known here only if the host still held the response.
+          //? A not-found or redirect the page raised after the stream started is known here only if the host still held the
+          //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
           const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
+          if (lateControl?.type === "redirect") {
+            cancelStreamForHeadResponse(htmlStream, new Error("redirected before the response started"));
+            return Response.redirect(new URL(lateControl.location, url.origin), lateControl.status);
+          }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
           const responseHeaders = this.#htmlResponseHeaders(responseStatus);
           if (req.method === "HEAD") {

@@ -114,3 +114,45 @@ describe("RscWorker render request scope", () => {
     });
   }, 20_000);
 });
+
+describe("RscWorker redirect raised by a route", () => {
+  test("is a real redirect when the body awaited no I/O first, a layout's included, and a late one after it", async () => {
+    const vars: Record<string, string> = {
+      AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
+      AKAN_PUBLIC_APP_NAME: "notfound",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+    };
+    const saved = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, vars);
+    const segmentOutlet = "pkgs/akanjs/server/rscSegmentOutlet.tsx";
+    const rsc = new RscWorker({
+      pagesBundlePath: path.join(import.meta.dir, "rscWorkerNotFound.fixture.tsx"),
+      pagesBundleBuildId: 1,
+      rscRuntimeClientManifest: {
+        [`${segmentOutlet}#AkanSegmentOutlet`]: { id: segmentOutlet, chunks: [], name: "AkanSegmentOutlet" },
+      },
+    } as unknown as BaseBuildArtifact);
+    try {
+      await rsc.ready;
+      for (const [route, location] of [
+        ["rdsync", "/en/target"],
+        ["rdresolved", "/en/target"],
+        ["gate/inner", "/en/signin"],
+      ] as const) {
+        const result = await rsc.renderWithMeta(new Request(`http://localhost/en/${route}`));
+        expect(result).toMatchObject({ type: "redirect", location, status: 307 });
+      }
+      const late = await rsc.renderWithMeta(new Request("http://localhost/en/rdio"));
+      if (late.type !== "stream") throw new Error(`expected a stream, got ${late.type}`);
+      await new Response(late.stream).text();
+      expect(await late.lateControl).toMatchObject({ type: "redirect", location: "/en/target" });
+    } finally {
+      rsc.kill();
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 20_000);
+});

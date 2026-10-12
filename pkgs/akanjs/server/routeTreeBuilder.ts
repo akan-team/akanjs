@@ -8,6 +8,8 @@ import type {
   Route,
   RouteModule,
   RouteRender,
+  RouteViewport,
+  WebAppManifest,
 } from "akanjs/client";
 import {
   assertUniqueRoutePatterns,
@@ -22,6 +24,7 @@ import {
 } from "akanjs/common";
 import { createElement } from "react";
 import { defaultPageState, validatePageConfig } from "../client/frameConfig";
+import { RouteHead } from "../client/route/RouteHead";
 import {
   type ResolvedRouteModule,
   type RouteModuleSource,
@@ -291,7 +294,16 @@ export class RouteTreeBuilder {
       },
       resolveHead: async (props: PageProps) => {
         const mod = await loadSynced();
-        return mod.generateHead ? await mod.generateHead(props) : mod.head;
+        try {
+          return mod.generateHead ? await mod.generateHead(props) : mod.head;
+        } catch (error) {
+          //? Heads resolve before the layouts render, so a read the visitor may not make — a guard refusing a signed-out
+          //? one — would fail the request ahead of the layout's own sign-in redirect. A redirect or not-found still routes.
+          const digest = (error as { digest?: unknown } | null)?.digest;
+          if (digest === "AKAN_REDIRECT" || digest === "AKAN_NOT_FOUND") throw error;
+          RouteTreeBuilder.logger.warn(`${key}: .head() threw, so the route renders without it: ${String(error)}`);
+          return undefined;
+        }
       },
       checkArgs: async ({ params, searchParams }: PageProps) => {
         (await loadModule()).definition?.resolveArgs({ params, searchParams });
@@ -305,6 +317,14 @@ export class RouteTreeBuilder {
       routeRender.getLayoutTheme = async () => {
         const { module: mod } = await loadModule();
         return "theme" in mod ? (mod.theme as string | undefined) : undefined;
+      };
+      routeRender.getLayoutViewport = async () => {
+        const { module: mod } = await loadModule();
+        return "viewport" in mod ? (mod.viewport as RouteViewport | undefined) : undefined;
+      };
+      routeRender.getLayoutManifest = async () => {
+        const { module: mod } = await loadModule();
+        return "manifest" in mod ? (mod.manifest as WebAppManifest | undefined) : undefined;
       };
       routeRender.resolveNotFound = async () => syncFallbacks((await loadModule()).module as LayoutModule).NotFound;
       routeRender.resolveError = async () => syncFallbacks((await loadModule()).module as LayoutModule).Error;
@@ -325,15 +345,10 @@ export class RouteTreeBuilder {
     };
   }
 
+  /** `resolvers` run leaf first; their heads merge root first, so a deeper level takes over each tag it writes. */
   static #composeHeadResolvers(...resolvers: (ResolveHead | undefined)[]): ResolveHead | undefined {
     const chain = resolvers.filter((resolver): resolver is ResolveHead => Boolean(resolver));
-    if (chain.length === 0) return undefined;
-    return async (props) => {
-      for (const resolver of chain) {
-        const head = await resolver(props);
-        if (head !== null && head !== undefined) return head;
-      }
-      return undefined;
-    };
+    if (chain.length <= 1) return chain[0];
+    return async (props) => RouteHead.merge(await Promise.all(chain.toReversed().map((resolver) => resolver(props))));
   }
 }

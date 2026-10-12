@@ -47,7 +47,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `AgentProvider` or an `Agent.Zone` belongs to whoever provided it.
 - **The panel is customized in three widening steps, and most designs stop at the first.** Props first:
   `open` / `onOpenChange` drive it from the app's own control (`launcher={false}` then draws no launcher of its
-  own), `launcherClassName` / `panelClassName` reach one surface each where `className` reaches both, `intro`
+  own), `launcherPlacement` / `hideLauncherBelow` place the launcher — which sits above the page's bottom chrome
+  and under every menu and modal — `launcherClassName` / `panelClassName` reach one surface each where
+  `className` reaches both, `intro`
   replaces the empty-state line — where starter questions go — and `header` adds controls beside the built-in
   clear and close. `chrome={false}` drops the header bar whole, for an `inline` chat inside a panel the app
   already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
@@ -306,7 +308,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   an inline arrow can be clicked by a person and by nobody else. `.desc()` is required and comes first, `.arg()`
   is an argument the caller must pass and `.opt()` one it may leave out (the `exec` parameter is then `| null`),
   and `.exec()` is the only hook, so the chain completes in one unconditional statement and the callable carries
-  `data-akan-action` like a store setter does. A `remove*` name defaults to a confirm gate. Reach a store action
+  `data-akan-action` like a store setter does. A `remove*` name defaults to a confirm gate. `st.tool("x", { label:
+  l("ticket.archive") })` gives the action a name a person reads — `Agent.useScreenActions()` hands it to a command
+  palette, and the model never sees it. Reach a store action
   from the body — `.exec((id) => st.do.removeX(id))` — which is how an agent gets CRUD; `st.do` on its own
   reaches nobody.
 - **`.card()` is the other way the chain ends, for an answer that is the user's to give.** Where `.exec()` runs a
@@ -357,6 +361,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   (a different `modal`, a different redirect) cannot honestly share a description, and that pair wants a
   `namespace` or nothing at all. The ids come from the `<slice>.items` resource `Load.Units` and
   `Data.ListContainer` already expose.
+- **A command palette lists the same declarations.** `Agent.useScreenActions()` returns the screen's published
+  tools that take no required argument, each with a `run` that calls the control's own handler (guard included,
+  not logged as an agent call) and `needsConfirm` for the ones a person should confirm — so ⌘K offers exactly
+  what the agent can do here, with nothing declared twice.
 
 ## What `akanjs/ui` Publishes For You
 - **`akanjs/ui` publishes its own controls, so an app writes nothing for them.** `Data.ListContainer` (and every

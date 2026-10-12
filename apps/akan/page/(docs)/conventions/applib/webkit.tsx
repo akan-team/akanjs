@@ -467,7 +467,8 @@ export const getSignedInUser = () => {
                     <strong>
                       No <code>{'"use client"'}</code>.
                     </strong>{" "}
-                    <code>_layout.tsx</code> calls it on the server, so a guest is redirected before any HTML is sent.
+                    <code>_layout.tsx</code> calls it on the server, so a guest is redirected before any of the page
+                    renders.
                   </span>
                 ),
                 ko: (
@@ -475,8 +476,8 @@ export const getSignedInUser = () => {
                     <strong>
                       <code>{'"use client"'}</code>가 없습니다.
                     </strong>{" "}
-                    <code>_layout.tsx</code>가 서버에서 호출하므로, 로그인하지 않은 사용자는 HTML이 나가기 전에 로그인
-                    페이지로 이동합니다.
+                    <code>_layout.tsx</code>가 서버에서 호출하므로, 로그인하지 않은 사용자는 페이지가 렌더링되기 전에
+                    로그인 페이지로 이동합니다.
                   </span>
                 ),
               })}

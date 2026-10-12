@@ -1,4 +1,5 @@
 "use client";
+import { useDrag } from "@use-gesture/react";
 import { cn, usePage } from "akanjs/client";
 import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
@@ -7,7 +8,10 @@ import { BiX } from "react-icons/bi";
 import { buttonRecipe } from "../Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
 
+import { isSheetNow, type ModalPlacement, type ModalPresentation, modalSurfaceOf } from "./modalSurface";
 import { DialogContext } from "./Provider";
+
+const DISMISS_DRAG_PX = 120;
 
 export interface ModalProps {
   className?: string;
@@ -17,8 +21,21 @@ export interface ModalProps {
   closeButton?: ReactNode | false;
   children?: ReactNode;
   onCancel?: () => void;
+  /** `auto` is a full-screen sheet below `md`, which a drag down on its handle or title dismisses. */
+  presentation?: ModalPresentation;
+  /** `right` is a full-height side sheet from `md` up. */
+  placement?: ModalPlacement;
 }
-export const Modal = ({ className, bodyClassName, confirmClose, closeButton, children, onCancel }: ModalProps) => {
+export const Modal = ({
+  className,
+  bodyClassName,
+  confirmClose,
+  closeButton,
+  children,
+  onCancel,
+  presentation = "dialog",
+  placement = "center",
+}: ModalProps) => {
   const { open, setOpen, registerDismiss, title, action } = useContext(DialogContext);
   const { l } = usePage();
   const ref = useRef<HTMLDivElement>(null);
@@ -28,12 +45,28 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
   const overlayLayerProps = useOverlayLayerProps();
   const portalElement = useOverlayPortal();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const surface = modalSurfaceOf(presentation, placement);
 
   const requestClose = useCallback(() => {
     if (confirmClose && !window.confirm(l("base.confirmClose"))) return;
     setOpen(false);
     onCancel?.();
   }, [confirmClose, l, onCancel, setOpen]);
+
+  const bindDismissDrag = useDrag(
+    ({ down, movement: [, my], velocity: [, vy], direction: [, dy] }) => {
+      if (!isSheetNow(presentation, placement)) return;
+      if (down) {
+        setDragY(Math.max(0, my));
+        return;
+      }
+      setDragY(0);
+      if (my > DISMISS_DRAG_PX || (vy > 0.5 && dy > 0)) requestClose();
+    },
+    { axis: "y", filterTaps: true },
+  );
+  const dragProps = presentation === "dialog" ? {} : bindDismissDrag();
 
   useBodyScrollLock(open);
   useEscapeKey(open, requestClose);
@@ -65,7 +98,7 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
     <div
       {...overlayLayerProps}
       ref={setRoot}
-      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      className={cn("fixed inset-0 flex bg-black/40", surface.root)}
       style={{ zIndex: overlayZ.modal }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -77,9 +110,12 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
           ref={ref}
           // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
           className={cn(
-            "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-box border border-border bg-card text-card-foreground shadow-lg outline-none",
+            "relative flex w-full flex-col overflow-hidden bg-card text-card-foreground shadow-lg outline-none",
+            surface.panel,
+            dragY === 0 && "transition-transform",
             className,
           )}
+          style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? titleId : undefined}
@@ -89,7 +125,7 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
           {/* The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring — a
             click on whatever the caller put here bubbles to exactly one handler. */}
           {closeButton === false ? null : (
-            <div className="absolute top-3 right-3 z-10" onClick={() => requestClose()}>
+            <div className={cn("absolute right-3 z-10", surface.close)} onClick={() => requestClose()}>
               {closeButton ?? (
                 <button
                   aria-label="Close"
@@ -101,9 +137,18 @@ export const Modal = ({ className, bodyClassName, confirmClose, closeButton, chi
               )}
             </div>
           )}
+          {presentation === "dialog" ? null : (
+            <div {...dragProps} className={cn("shrink-0 touch-none justify-center pt-2", surface.handle)}>
+              <div className="h-1 w-10 rounded-full bg-foreground/15" />
+            </div>
+          )}
           {title ? (
             <div
-              className="shrink-0 border-border border-b py-3.5 pr-14 pl-5 font-semibold text-base leading-snug"
+              {...dragProps}
+              className={cn(
+                "shrink-0 border-border border-b py-3.5 pr-14 pl-5 font-semibold text-base leading-snug",
+                presentation !== "dialog" && "touch-none",
+              )}
               id={titleId}
             >
               {title}

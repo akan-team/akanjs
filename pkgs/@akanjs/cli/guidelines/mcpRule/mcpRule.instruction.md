@@ -10,7 +10,8 @@ The always-loaded convention set carries the short version; this is the full con
 Every signal is served to AI agents as an MCP server on `POST /mcp`. **`/mcp` is mounted by default and exposure
 follows an endpoint's guards — there is no per-endpoint opt-in, and nothing to write in a signal file.** An endpoint
 that declares a real guard is published; one that declares none is refused, and so is a mutation whose only guard is
-`Public`. `AKAN_MCP=false` takes the whole surface off. The reasoning is that the guards are already the
+`Public`. `AKAN_MCP=false` takes the whole surface off, and an edge server (`AKAN_PUBLIC_OPERATION_MODE=edge`) starts
+with it off — `AKAN_MCP=true` or `setMcp(true)` puts it back. The reasoning is that the guards are already the
 authorization decision and `filterForAccount` re-reads them per caller on every listing, so a second per-endpoint
 switch says nothing the guards do not — while guaranteeing that every endpoint added later is invisible to agents
 until somebody remembers it.

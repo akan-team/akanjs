@@ -8,7 +8,8 @@
 //   exits 2 when the new build did not take the folder's place, and 0 when it did.
 // - WebView2: Windows 11 has it, and so does almost every Windows 10; LTSC editions do not. The installer
 //   runs Microsoft's Evergreen Bootstrapper (embedded, 2 MB, it downloads the runtime) only when neither
-//   the machine nor the user has one (docs: "Detect if a WebView2 Runtime is already installed").
+//   the machine nor the user has one (docs: "Detect if a WebView2 Runtime is already installed");
+//   `desktop.webview2: "standalone"` embeds the whole runtime for the CPU instead, for a PC offline at install.
 // - One setup or uninstall of the app runs at a time: another one exits with 2 before it touches anything.
 // - Whatever can fail without touching the installed app runs before it is stopped: free space, WebView2, the
 //   new files, unpacked beside the folder (`<folder>.setup-new`), and the uninstaller
@@ -34,6 +35,11 @@ import { windowsVersion } from "./windows.ts";
 
 /** Microsoft's permanent link to the Evergreen Bootstrapper (MicrosoftEdgeWebview2Setup.exe). */
 export const WEBVIEW2_BOOTSTRAPPER_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+/** The Evergreen Standalone Installer per CPU (MicrosoftEdgeWebView2RuntimeInstaller<X64|ARM64>.exe). */
+export const WEBVIEW2_STANDALONE_URLS = {
+  x64: "https://go.microsoft.com/fwlink/?linkid=2124701",
+  arm64: "https://go.microsoft.com/fwlink/?linkid=2099616",
+} as const;
 /** The WebView2 Runtime's EdgeUpdate client id; its `pv` value is the installed version. */
 const WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 /** MAX_PATH less its NUL: what a PC without long paths enabled (the Windows default) can open or unpack. */
@@ -61,6 +67,8 @@ export interface InstallerInput {
   /** deepLinks.schemes: the uninstaller removes those the app registered for its own executable. */
   schemes: string[];
   icon?: string;
+  /** desktop.publisher: the Publisher Apps & features lists, and the setup program's company name. */
+  publisher?: string;
   bootstrapper: string;
   stopScript: string;
   outFile: string;
@@ -130,7 +138,7 @@ VIAddVersionKey "ProductName" "\${APP_NAME}"
 VIAddVersionKey "ProductVersion" "${nsis(input.version)}"
 VIAddVersionKey "FileVersion" "${version}"
 VIAddVersionKey "FileDescription" "\${APP_NAME} Setup"
-
+${input.publisher ? `VIAddVersionKey "CompanyName" "${nsis(input.publisher)}"\n` : ""}
 ${icon}!define MUI_FINISHPAGE_RUN "$INSTDIR\\\${EXE}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -421,7 +429,7 @@ ${moveIn(input.entries)}
   CreateShortcut "$SMPROGRAMS\\\${APP_NAME}.lnk" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayName" "\${APP_NAME}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayVersion" "${nsis(input.version)}"
-  WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\\\${EXE}"
+${input.publisher ? `  WriteRegStr HKCU "\${UNINSTALL_KEY}" "Publisher" "${nsis(input.publisher)}"\n` : ""}  WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR.uninstall.exe"'
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR.uninstall.exe" /S'
@@ -547,16 +555,22 @@ export function findMakensis(env: Record<string, string | undefined> = process.e
   return null;
 }
 
-/** The Evergreen Bootstrapper, downloaded once into the akan-native cache and checked. */
-async function webview2Bootstrapper(): Promise<string> {
-  const file = join(akanNativeHome(), "cache", "webview2", "MicrosoftEdgeWebview2Setup.exe");
+/** The WebView2 setup the installer embeds, downloaded once into the akan-native cache and checked. */
+async function webview2Setup(mode: "bootstrapper" | "standalone", arch: "x64" | "arm64"): Promise<string> {
+  const [name, url, minBytes] =
+    mode === "standalone"
+      ? [`MicrosoftEdgeWebView2RuntimeInstaller${arch.toUpperCase()}.exe`, WEBVIEW2_STANDALONE_URLS[arch], 50_000_000]
+      : ["MicrosoftEdgeWebview2Setup.exe", WEBVIEW2_BOOTSTRAPPER_URL, 100_000];
+  const file = join(akanNativeHome(), "cache", "webview2", name);
   if (!existsSync(file)) {
-    log.info(`downloading the WebView2 Evergreen Bootstrapper (${WEBVIEW2_BOOTSTRAPPER_URL})`);
-    const response = await fetch(WEBVIEW2_BOOTSTRAPPER_URL, { redirect: "follow" });
-    if (!response.ok) throw new CliError(`the WebView2 bootstrapper download answered ${response.status}`);
+    log.info(
+      `downloading the WebView2 ${mode === "standalone" ? `Runtime for ${arch}` : "Evergreen Bootstrapper"} (${url})`,
+    );
+    const response = await fetch(url, { redirect: "follow" });
+    if (!response.ok) throw new CliError(`the WebView2 ${mode} download answered ${response.status}`);
     const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length < 100_000 || bytes[0] !== 0x4d || bytes[1] !== 0x5a)
-      throw new CliError("the WebView2 bootstrapper download is not a Windows program");
+    if (bytes.length < minBytes || bytes[0] !== 0x4d || bytes[1] !== 0x5a)
+      throw new CliError(`the WebView2 ${mode} download is not a Windows program`);
     mkdirSync(join(file, ".."), { recursive: true });
     writeFileSync(file, bytes);
   }
@@ -614,7 +628,7 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
     log.warn(
       `${deepest} reaches about ${longest} characters under %LOCALAPPDATA%\\Programs while an update unpacks: Windows refuses paths over ${WINDOWS_MAX_PATH} unless long paths are enabled, so the installer or an update fails on such a PC. Shorten app.name or that path.`,
     );
-  const bootstrapper = await webview2Bootstrapper();
+  const bootstrapper = await webview2Setup(config.desktop.webview2, ctx.arch ?? hostArch());
   const size = folderSize(folder);
   writeFileSync(
     script,
@@ -629,6 +643,7 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
       space: { install: size.disk, unpack: size.bytes + statSync(bootstrapper).size },
       schemes: config.deepLinks.schemes,
       ...(existsSync(icon) ? { icon } : {}),
+      ...(config.desktop.publisher ? { publisher: config.desktop.publisher } : {}),
       bootstrapper,
       stopScript,
       outFile,

@@ -104,6 +104,8 @@ interface State {
   rollback?: { build: number; previous: string; to: string; attempts: number };
   /** embeddedSequence of the build installed here: another one means the app was installed again. */
   installed?: number;
+  /** setChannel(): the manifest read over updates.json's `channel`. */
+  channel?: string;
 }
 
 interface Manifest {
@@ -298,7 +300,8 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         "UNSUPPORTED",
         "updates are not configured (akan-native.config.ts `updates`, a built app)",
       );
-    return config;
+    const { channel } = readState();
+    return channel ? { ...config, channel } : config;
   };
   /** `entry` when the running app is that release (installed by an update), not another build. */
   const ifRunning = <E extends Entry>(entry: E | undefined): E | undefined =>
@@ -889,6 +892,17 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           console.warn(`[akan-native] updates: ${trial.previous} stays until the next start`, error);
         }
         if (windows) void recordInstalledVersion(c.app, installed, entry.version);
+      },
+
+      async setChannel(args) {
+        need();
+        const channel = (args as { channel?: unknown } | undefined)?.channel ?? null;
+        if (channel !== null && (typeof channel !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(channel)))
+          throw new AkanNativeError("INVALID_ARGS", "channel must be a manifest name (letters, digits, . _ -) or null");
+        const state = readState();
+        if (channel === null) delete state.channel;
+        else state.channel = channel;
+        writeState(state);
       },
 
       async reset() {

@@ -282,7 +282,7 @@ const generatedFiles = [
 const validationCommands = [
   "akan sync <app-or-lib>",
   "akan lint <app-or-lib-or-pkg>",
-  "akan typecheck <app-name>",
+  "akan typecheck <app-or-lib>",
   "akan test <app-or-lib-or-pkg>",
   "akan build <app-name>",
   "akan doctor --strict --format json",

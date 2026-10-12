@@ -22,7 +22,8 @@ const render = (node: ReactNode) => {
   const { container, unmount } = mount(node);
   return {
     text: () => container.textContent ?? "",
-    label: () => container.querySelector("[role=tooltip]")?.previousElementSibling?.textContent ?? "",
+    // The tooltip's bubble opens on the overlay layer, so the component's own text is the label alone.
+    label: () => container.textContent ?? "",
     unmount,
   };
 };

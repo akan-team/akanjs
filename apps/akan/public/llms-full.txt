@@ -976,7 +976,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads are not merged — the nearest .head() wins, so restate what you still need (such as the favicon link). Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
 
 Chain Stages
 
@@ -1416,9 +1416,9 @@ router
 
 Method
 
-- push(href, { scrollToTop }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
+- push(href, { scrollToTop, shallow }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
 
-- replace(href): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
+- replace(href, { shallow }): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
 
 - back(): Goes back one entry. Browser only.
 
@@ -1883,6 +1883,8 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
+- useVisualViewportFrame(): `{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.
+
 - usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 - createRobotPage, createSitemapPage: Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
@@ -1896,8 +1898,6 @@ Other Exports
 **Push and speech come from the util library.** `usePushNotification` and `useSpeech` are imported from `@libs/util/webkit`, not from here.
 
 Writing Your Own Hook
-
-Where an app or lib puts its own browser-only hooks.
 
 ## Agent
 
@@ -6129,7 +6129,7 @@ Page Transitions
 
 Your app runs inside a native shell, yet every screen change lands like a web page swap. The user cannot tell whether they went deeper or sideways, and the back button is the only way out.
 
-Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does.
+Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does, and a browser plays it as a view transition.
 
 Words used on this page
 

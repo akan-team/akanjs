@@ -1,9 +1,10 @@
 "use client";
 import { getEnv } from "akanjs/base";
 import { cn, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useState } from "react";
 
 import { Portal } from "../Portal";
+import { FrameSlotFallback } from "./FrameSlotFallback";
 
 export interface BottomInsetProps {
   className?: string;
@@ -29,7 +30,8 @@ export const BottomInset = ({
   frameCache,
 }: BottomInsetProps) => {
   const [measuredHeight, setMeasuredHeight] = useState<number>();
-  const contentRef = useRef<HTMLDivElement>(null);
+  //? State, not a ref: the content moves from its server fallback into the slot, and the observer must follow it.
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const pathCtx = usePathCtx();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
@@ -40,7 +42,7 @@ export const BottomInset = ({
   const resolvedEstimatedHeight = estimatedHeight ?? pathRoute?.pageState.bottomInset ?? DEFAULT_BOTTOM_INSET;
   const useDeclaredHeight = pathRoute?.explicitPageConfigKeys?.bottomInset === true;
   const readContentHeight = () => {
-    const element = contentRef.current;
+    const element = contentElement;
     if (!element) return undefined;
     const height = Math.ceil(element.getBoundingClientRect().height);
     return height > 0 ? height : undefined;
@@ -84,7 +86,7 @@ export const BottomInset = ({
     useDeclaredHeight,
   ]);
   useLayoutEffect(() => {
-    const element = contentRef.current;
+    const element = contentElement;
     if (!element || typeof ResizeObserver === "undefined") return;
     const update = () => {
       const height = readContentHeight();
@@ -99,18 +101,22 @@ export const BottomInset = ({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [contentElement]);
 
+  const content = (
+    <div
+      ref={setContentElement}
+      data-akan-frame-slot="bottomInset"
+      data-akan-frame-role={frameRole}
+      className={cn("pointer-events-auto w-full", className)}
+    >
+      {children}
+    </div>
+  );
+  const fallbackSlot = frameRole === "keyboardAccessory" ? "keyboardInset" : "bottomInset";
   return (
-    <Portal id={portalId}>
-      <div
-        ref={contentRef}
-        data-akan-frame-slot="bottomInset"
-        data-akan-frame-role={frameRole}
-        className={cn("pointer-events-auto w-full", className)}
-      >
-        {children}
-      </div>
+    <Portal id={portalId} fallback={<FrameSlotFallback slot={fallbackSlot}>{content}</FrameSlotFallback>}>
+      {content}
     </Portal>
   );
 };

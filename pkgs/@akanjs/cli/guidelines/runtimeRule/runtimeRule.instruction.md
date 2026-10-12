@@ -255,16 +255,21 @@ const config: AppConfig = {
   other CPU of that OS: the Rust library, Bun's executable, the server's `bun install --cpu` and each `bin` file
   follow it, and a server addon with no binary for that CPU stops the build. A macOS app is Apple silicon only —
   Intel Macs are not a target, so `--arch x64` on macOS is refused.
-- **A macOS release for download is signed with a Developer ID and notarized, from the environment.**
+- **A release is signed only with `--sign` and notarized only with `--notarize`** (`build-desktop`,
+  `publish-update`); the environment names the identity and never decides to use it, so a shell exporting a Developer
+  ID signs and uploads nothing unasked. Before either, the server the app carries is searched for every secret value
+  of the workspace's server env files and refused with the paths, and one line names the identity and the service
+  the app goes to.
+- **A macOS release for download is signed with a Developer ID and notarized.**
   `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);
-  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` turn on
-  notarization and stapling of the app and the dmg. Every Mach-O file — the server's addons and `bin` included — is
+  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` are the
+  credentials `--notarize` staples the app and the dmg with. Every Mach-O file — the server's addons and `bin` included — is
   signed inside out with the hardened runtime and a timestamp; the executable gets Bun's JIT entitlements and the
   camera's or microphone's when a usage text asks for them, and `desktop.entitlements` adds the app's own.
-  `publish-update` signs with the same identity, since the updater checks the installed app's signature. Without a
+  `publish-update --sign` signs with the same identity, since the updater checks the installed app's signature. Without a
   Developer ID the build warns, because Gatekeeper blocks a downloaded copy.
-- **A Windows release is signed with Authenticode, from the environment.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
+- **A Windows release is signed with Authenticode.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` (a `.pfx`), `AKAN_NATIVE_WINDOWS_THUMBPRINT` (a certificate in the store, a token's or an
   HSM's), or `AKAN_NATIVE_WINDOWS_SIGN_COMMAND` (a JSON array run per file with `{file}`, e.g. signtool with Azure
   Trusted Signing's dlib) signs every PE file of the app — the server's `.node` and `bin` included — the setup program
@@ -275,19 +280,35 @@ const config: AppConfig = {
   key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
   them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
   app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
-  into `updates/`: upload that folder to `url`, the manifests last. A phone reads only
+  into `updates/`: upload that folder to `url`, the manifests last, or let `--upload s3://<bucket>/<prefix>` do it
+  (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket holds is skipped). A phone reads only
   `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its own fixes.
   `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
   `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
   an akasys project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
   release that hangs is rolled back while the app runs. `devtools: true` opens the web inspector of a release build
-  for an internal test target. The channel is the backend env the
-  binary was built for unless `channel` names one, and a release that does not come up is rolled back to the one
-  before.
+  for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
+  on a desktop, `updates.setChannel({ channel })` moves the installed app to another manifest until set back with
+  `null` — a server putting a device on a pilot channel — and never to a release older than the one running. A
+  release that does not come up is rolled back to the one before.
 - **An unattended screen** — signage, a kiosk — takes `desktop.recovery: "reload"` (a crashed page loads again,
-  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar }`,
+  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar, frameless }`,
   `desktop.screenCapture: "auto"` (Windows answers `getDisplayMedia()` with the first screen, no picker) and
-  `android.autoplay` (media plays with sound without a tap).
+  `android.autoplay` (media plays with sound without a tap). Its carried server takes `desktop.server: { restart:
+  "forever", watchdog: true }` — restarted after every crash, never given up on, and killed and restarted when its
+  health route stops answering (every 10 s, 3 misses; `{ intervalMs, failures }` to tune) — and
+  `desktop.webview2: "standalone"` puts the whole WebView2 Runtime (~200 MB) in the Windows setup for a PC offline at
+  install. `desktop.server.env` adds variables to the server's start; the build refuses a secret-named one and those
+  the stage owns. The `window` plugin places it: `placeOnDisplay({ index, bounds, unit: "physical" })` puts a window
+  on one display in that display's device pixels — a 640×128 LED panel — lowering the minimum size to fit, beside
+  `setAlwaysOnTop`, `setCursorVisible` (which hides the pointer over its external views too, on Windows) and
+  `setDecorations`. `native.backgroundColor` (or `{ light, dark }`) is what a window shows before its page paints, so a
+  dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in Apps & features.
+- **A third-party page shown first-party** — a scoreboard, a menu board — is the `external-view` plugin, listed in
+  `native.plugins`: a webview over the window with a browser profile of its own, held to the origins it was opened
+  for, with an init script, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is
+  rebuilt, by itself) / `consoleMessage` events. Every method on Windows; macOS 14+ lacks `sendKey`, `setMuted` and
+  `capture`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
@@ -348,7 +369,8 @@ const config: AppConfig = {
 - **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, whether or not
   it carries a server — keyed by the name the code spawns and then by
   `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
-  `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
+  `win32-x64`) — Node's names, unlike an update feed's folder, which is `<os>-<arch>` with the OS spelled `macos`,
+  `windows` or `linux` (`windows-x64/<channel>.json`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
   to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
   `{ path, file? }`, relative to the `akan.config.ts` that declares it. `file` is the executable inside an archive
   (`.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.tar`), unpacked with the OS's own `tar` (`unzip` for a zip
@@ -385,6 +407,18 @@ own process group: quitting the app ends the group, and when the app was killed 
 was still starting — the server sees its parent gone and ends the group itself, SIGTERM first and SIGKILL a second
 later for whatever ignored it. On Windows the job object ends them all with the app. A process started `detached`
 leaves the group, or the job, and keeps running.
+
+**An edge server carries no cloud secret.** The carried server runs `operationMode` edge, and the same app's cloud
+deployment runs cloud: a module whose `serve(ref, { operationMode: ["edge"] }, …)` lists the modes it belongs to mounts
+in those alone, and `modules: ["@edge"]` (or `AKAN_MODULES=@edge`) names every module that lists edge, with what they
+inject, cascade to and hold a relation to. `desktop: { server: { profile: "edge", modules: ["@edge"] } }` builds the
+carried server that way: `env/env.server.<env>.edge.ts` is bundled in place of `env/env.server.<env>.ts`, which never
+enters it, and the build evaluates the profile file with no app env and refuses one whose secret-named keys hold a
+value — a `process.env.X ?? "literal"` counts as the literal. Each lib's env defaults (`env.server.testing.ts`) are
+swapped the same way: for the lib's `env/env.server.testing.edge.ts`, held to the same check, or for the defaults with
+every secret-named value left out, which the build names in a warning. `akan build <app> --profile edge` does the
+same for an image. A module listing only edge does not mount under `akan start` (local): list `local` too to develop
+it there.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `"file-picker"` in
 `native.plugins`, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,

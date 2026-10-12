@@ -48,7 +48,7 @@ Override slot — _overrides.tsx
 
   - Dialog: The headless parts `Modal` is built from, for a custom layout or an agent-named dialog.
 
-  - BottomSheet: A mobile panel that slides up from the bottom edge. Drawn in place, fixed to the screen.
+  - BottomSheet: A mobile panel that slides up from the bottom edge, over the page's bars.
 
 - Anchored to a trigger
 
@@ -56,7 +56,7 @@ Override slot — _overrides.tsx
 
   - Dropdown: A short action menu, such as the actions on a list row.
 
-  - Tooltip: A hover or focus hint in pure CSS. At the screen edge it is clipped, not moved.
+  - Tooltip: A hover or focus hint. It flips to the opposite side when its own has no room.
 
 - Navigation and helpers
 
@@ -70,11 +70,9 @@ Does it
 
 Does not
 
-**A portalled overlay is never clipped.** `Modal`, `Dropdown`, `Popconfirm` and `Select` render at `document.body`, so a scrolling modal body or a table's overflow container cannot cut them off.
+**A portalled overlay is never clipped.** `Modal`, `BottomSheet`, `Dropdown`, `Popconfirm`, `Select` and `Tooltip` render at `document.body`, so a scrolling modal body or a table's overflow container cannot cut them off.
 
 **`Portal` is the same idea with a name.** It renders into a host element you pick by `id` instead of at the end of the body.
-
-**`Tooltip` does none of this on purpose.** It is pure CSS, so it costs almost nothing, and near the screen edge it is clipped rather than moved.
 
 Related pages
 
@@ -102,9 +100,15 @@ Related pages
 
   - confirmClose (boolean = false): Asks with the browser's confirm dialog before closing.
 
+  - presentation ("dialog" | "sheet" | "auto" = "dialog"): `sheet` fills the screen; `auto` is a full-screen sheet below `md` and a dialog above.
+
+  - placement ("center" | "right" = "center"): `right` makes it a full-height side sheet from `md` up.
+
   - className / bodyClassName (string): Classes for the window and for its scrolling body.
 
-  - **Nothing moves.** The window has no transition and no gesture, so content the user is reading never animates. `LegacyModal` keeps the previous spring skin, with `open` and `onCancel` required and no `trigger` or `closeButton`.
+  - **A dialog does not move.** It has no transition and no gesture, so content the user is reading never animates. `LegacyModal` keeps the previous spring skin, with `open` and `onCancel` required and no `trigger` or `closeButton`.
+
+  - **A sheet fits a phone.** It pads for the safe area, keeps the title and actions in place while the body scrolls, and closes on a drag down on its handle or title. Type a wrapper's props with `ModalPresentation` and `ModalPlacement`.
 
   - **Focus and scroll are handled.** Opening moves focus into the window and locks the page scroll; closing returns focus to where it was.
 
@@ -118,7 +122,7 @@ Related pages
 
   - Dialog.Trigger ({ className?, children }): Opens the dialog when anything inside it is clicked.
 
-  - Dialog.Modal ({ onCancel?, confirmClose?, closeButton?, className?, bodyClassName? }): The plain window `Modal` draws. Escape, a backdrop click and the corner button close it.
+  - Dialog.Modal ({ onCancel?, confirmClose?, closeButton?, presentation?, placement?, className?, bodyClassName? }): The window `Modal` draws, dialog or sheet. Escape, a backdrop click and the corner button close it.
 
   - Dialog.LegacyModal ({ onCancel?, confirmClose?, className?, bodyClassName? }): The previous window: spring open/close and drag-to-dismiss on touch.
 
@@ -190,25 +194,27 @@ Related pages
 
   - ref (BottomSheetRef): `{ open, close }`, an imperative handle for opening the sheet without a trigger.
 
-  - **Four ways to close it:** drag a `half` sheet's handle down past a third of its height, tap the backdrop, press Escape, or use a `full` sheet's close row. Each one calls `onCancel`.
+  - **Four ways to close it:** drag a `half` sheet's handle down past a third of its height, tap the backdrop, press Escape, or use a `full` sheet's close row. Each one calls `onCancel` once; mounting never does.
 
-- Tooltip: A hint that appears on hover or keyboard focus, drawn in pure CSS. It is for hints only: content that must be read does not belong in a tooltip.
+  - **It sits above the page.** The sheet opens over the frame's bars, or inside the modal it was opened from, pads for the safe area and stops the page from scrolling while open.
+
+- Tooltip: A hint that appears on hover or keyboard focus, drawn on the overlay layer. It is for hints only: content that must be read does not belong in a tooltip.
 
   - content (ReactNode): The hint. Empty, `null` or `undefined` renders `children` alone.
 
   - children (ReactNode): The trigger the bubble is anchored to.
 
-  - side ("top" | "right" | "bottom" | "left" = "top"): Which side of the trigger the bubble sits on.
+  - side ("top" | "right" | "bottom" | "left" = "top"): The side the bubble prefers. It flips to the opposite one when this side has no room.
 
   - variant ("default" | "primary" | "info" = "default"): The bubble's colour. `Field.Label` uses `info` for the help icon beside a field description.
 
   - className (string): Classes for the bubble.
 
-  - **Light, but it never moves.** No state, no portal and no position pass, so it works in the server-rendered HTML. The cost: near the viewport edge the bubble is clipped rather than flipped.
+  - **Not in the page until it opens.** The bubble is drawn on the overlay layer only while shown, so a scrolling list neither clips it nor grows wider for it.
 
-  - **A conditional hint needs no wrapper.** Pass an empty `content` and only the trigger renders. The bubble shows after 300 ms of hover, or at once on keyboard focus.
+  - **A conditional hint needs no wrapper.** Pass an empty `content` and only the trigger renders. The bubble shows after 300 ms of hover (never on touch) or at once on keyboard focus, and closes on leave, blur or Escape.
 
-  - **Need one that flips or follows the pointer?** `Tooltip` is an override slot: bind your own in `_overrides.tsx` and every existing call site follows.
+  - **Need one that follows the pointer?** `Tooltip` is an override slot: bind your own in `_overrides.tsx` and every existing call site follows.
 
 - Menu: A navigation menu built from data rather than markup: you pass an `items` tree and it draws the rows, the submenus and the active state. `mode` picks a sidebar or a top bar.
 

@@ -4,7 +4,15 @@ import { statSync } from "node:fs";
 import { basename } from "node:path";
 import { AkanNativeError, mimeFor } from "../../../packages/core/src/index.ts";
 import { createPageVeto, type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
-import type { DragDropEvent, WindowApi, WindowEvents, WindowInfo, WindowState } from "./index.ts";
+import type { Display } from "../../screen/src/index.ts";
+import type {
+  DragDropEvent,
+  PlaceOnDisplayOptions,
+  WindowApi,
+  WindowEvents,
+  WindowInfo,
+  WindowState,
+} from "./index.ts";
 
 // The pages' onCloseRequested handlers (plugins.md D4); each window's page is asked for its own window.
 const closeVeto = createPageVeto();
@@ -55,6 +63,49 @@ function shell(ctx: DesktopContext, op: string, args: unknown, extra: Record<str
   });
 }
 
+export function displayOf(displays: Display[], args: PlaceOnDisplayOptions | undefined): Display {
+  const { display, index } = args ?? {};
+  if ((display === undefined) === (index === undefined))
+    throw new AkanNativeError("INVALID_ARGS", "name the display by one of display (its id) or index");
+  const found =
+    display !== undefined
+      ? displays.find((d) => d.id === finite(display, "display"))
+      : Number.isInteger(index)
+        ? displays[index as number]
+        : undefined;
+  if (!found)
+    throw new AkanNativeError(
+      "NOT_FOUND",
+      `no display ${display !== undefined ? `with id ${display}` : `at index ${index}`}`,
+    );
+  return found;
+}
+
+//? The shell finds the display again by its centre, so ids need not agree between screen.displays and tao.
+export function placement(display: Display, args: PlaceOnDisplayOptions | undefined): Record<string, unknown> {
+  const at = { atX: display.bounds.x + display.bounds.width / 2, atY: display.bounds.y + display.bounds.height / 2 };
+  if (args?.fullscreen !== undefined && bool(args.fullscreen, "fullscreen")) {
+    if (args.bounds) throw new AkanNativeError("INVALID_ARGS", "bounds and fullscreen do not go together");
+    return { ...at, fullscreen: true };
+  }
+  const unit = args?.unit ?? "logical";
+  if (unit !== "logical" && unit !== "physical")
+    throw new AkanNativeError("INVALID_ARGS", `unit must be "logical" or "physical"`);
+  const b = args?.bounds;
+  const scale = !b || unit === "logical" ? display.scale : 1;
+  const rect = b
+    ? {
+        x: finite(b.x, "bounds.x"),
+        y: finite(b.y, "bounds.y"),
+        width: finite(b.width, "bounds.width"),
+        height: finite(b.height, "bounds.height"),
+      }
+    : { x: 0, y: 0, width: display.bounds.width, height: display.bounds.height };
+  if (rect.width <= 0 || rect.height <= 0)
+    throw new AkanNativeError("INVALID_ARGS", "bounds need a positive width and height");
+  return { ...at, x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale };
+}
+
 const op = (name: string) => (args: unknown, ctx: DesktopContext) => shell(ctx, name, args) as Promise<WindowState>;
 
 function createOptions(args: unknown): Record<string, unknown> {
@@ -70,6 +121,7 @@ function createOptions(args: unknown): Record<string, unknown> {
     if (typeof a.title !== "string") throw new AkanNativeError("INVALID_ARGS", "title must be a string");
     out.title = a.title;
   }
+  if (a.frameless !== undefined) out.frameless = bool(a.frameless, "frameless");
   for (const [x, y] of [
     ["width", "height"],
     ["x", "y"],
@@ -112,6 +164,22 @@ export default defineDesktopPlugin<WindowApi, WindowEvents>({
       shell(ctx, "setFullscreen", args, { value: bool(args?.value, "value") }) as Promise<WindowState>,
     setAlwaysOnTop: (args, ctx) =>
       shell(ctx, "setAlwaysOnTop", args, { value: bool(args?.value, "value") }) as Promise<WindowState>,
+    setDecorations: (args, ctx) =>
+      shell(ctx, "setDecorations", args, { value: bool(args?.value, "value") }) as Promise<WindowState>,
+    setCursorVisible: (args, ctx) =>
+      shell(ctx, "setCursorVisible", args, { value: bool(args?.value, "value") }) as Promise<WindowState>,
+    setMinSize: (args, ctx) => {
+      if (args?.width === undefined && args?.height === undefined)
+        return shell(ctx, "setMinSize", args) as Promise<WindowState>;
+      const size = { width: finite(args?.width, "width"), height: finite(args?.height, "height") };
+      if (size.width < 1 || size.height < 1)
+        throw new AkanNativeError("INVALID_ARGS", "width and height must be positive");
+      return shell(ctx, "setMinSize", args, size) as Promise<WindowState>;
+    },
+    placeOnDisplay: async (args, ctx) => {
+      const display = displayOf((await ctx.shell("screen.displays")) as Display[], args);
+      return shell(ctx, "placeOnDisplay", args, placement(display, args)) as Promise<WindowState>;
+    },
     show: op("show"),
     hide: op("hide"),
     focus: op("focus"),

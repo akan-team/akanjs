@@ -108,8 +108,11 @@ async function harness(options: HarnessOptions = {}) {
     quit: (code) => void quits.push(code),
   });
   await dispatcher.launched;
-  const call = async (method: string) =>
-    (await dispatcher.handle(JSON.stringify({ v: 1, id: 1, plugin: "updates", method }), 1)) as {
+  const call = async (method: string, args?: unknown) =>
+    (await dispatcher.handle(
+      JSON.stringify({ v: 1, id: 1, plugin: "updates", method, ...(args !== undefined ? { args } : {}) }),
+      1,
+    )) as {
       ok: boolean;
       result?: unknown;
       error?: { code: string; message: string };
@@ -151,6 +154,40 @@ const onTrial = (app: string) => {
     failed: [],
   };
 };
+
+describe("desktop updates: the channel a server moves this device to", () => {
+  test("setChannel reads another manifest from now on, survives a restart, and null goes back to the built one", async () => {
+    const asked: string[] = [];
+    const feed = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        asked.push(new URL(req.url).pathname);
+        return new Response("no release", { status: 404 });
+      },
+    });
+    try {
+      const url = `http://127.0.0.1:${feed.port}/releases`;
+      const { call, state, root } = await harness({ url });
+      expect(await call("setChannel", { channel: "pilot" })).toMatchObject({ ok: true });
+      expect(state().channel).toBe("pilot");
+      expect(((await call("getState")).result as { channel: string }).channel).toBe("pilot");
+      expect(await call("check")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+      expect(asked.at(-1)).toBe(`/releases/linux-${process.arch}/pilot.json`);
+
+      const restarted = await harness({ url, root });
+      expect(((await restarted.call("getState")).result as { channel: string }).channel).toBe("pilot");
+      expect(await restarted.call("setChannel", { channel: null })).toMatchObject({ ok: true });
+      await restarted.call("check");
+      expect(asked.at(-1)).toBe(`/releases/linux-${process.arch}/main.json`);
+      expect(await restarted.call("setChannel", { channel: "../stable" })).toMatchObject({
+        ok: false,
+        error: { code: "INVALID_ARGS" },
+      });
+    } finally {
+      feed.stop(true);
+    }
+  });
+});
 
 describe("desktop updates: the trial of a release that carries a server", () => {
   test("a server that never comes up rolls the release back at once and keeps it for another try", async () => {

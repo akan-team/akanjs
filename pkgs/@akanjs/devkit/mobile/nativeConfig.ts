@@ -175,10 +175,18 @@ export class NativeConfig {
     const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
       recovery: target.desktop?.recovery,
       screenCapture: target.desktop?.screenCapture,
+      webview2: target.desktop?.webview2,
+      publisher: target.desktop?.publisher,
       window: NativeConfig.#compact({ ...target.desktop?.window }),
       server: desktopServer,
       bin: desktopBin,
       dmg: NativeConfig.#dmg(target.desktop?.dmg, abs),
+    });
+    const background = target.backgroundColor;
+    const shell = NativeConfig.#compact<NonNullable<AkanNativeConfig["shell"]>>({
+      backgroundColor: typeof background === "string" ? background : background?.light,
+      backgroundColorDark: typeof background === "string" ? undefined : background?.dark,
+      devtools: target.devtools ? true : undefined,
     });
     const config: AkanNativeConfig = {
       app: {
@@ -220,10 +228,10 @@ export class NativeConfig {
         ...(target.android?.autoplay ? { autoplay: true } : {}),
       },
       keyboard: { resize: "none" },
-      ...(target.devtools ? { shell: { devtools: true } } : {}),
       ...(desktop ? { desktop } : {}),
       ...(target.icon ? { icon: NativeConfig.#icon(target.icon, abs) } : {}),
       ...(target.splash ? { splash: NativeConfig.#splash(target.splash, abs) } : {}),
+      ...(shell ? { shell } : {}),
     };
     return { config, warnings };
   }

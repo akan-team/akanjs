@@ -232,6 +232,27 @@ describe("useFrameRuntime", () => {
     expect(base.bottomInset).toBe(0);
   });
 
+  test("an undeclared inset takes the height of the chrome on screen, and a declared one keeps its own", async () => {
+    const { applyFrameSlots } = await import("./useFrameRuntime");
+    const slots = {
+      "/feed": {
+        bar: { type: "topInset" as const, source: "navbar" as const, estimatedHeight: 48, height: 56 },
+        tab: { type: "bottomInset" as const, role: "bottomChrome" as const, source: "bottomTab" as const, height: 64 },
+      },
+    };
+    const undeclared = route("/feed", { pageState: pageState({ topInset: 0, bottomInset: 0 }) });
+    const declared = route("/feed", {
+      pageState: pageState({ topInset: 0, bottomInset: 72 }),
+      explicitPageConfigKeys: { topInset: true, bottomInset: true },
+    });
+
+    const measured = applyFrameSlots(undeclared, undeclared.pageState, slots, [undeclared], new Set(["/feed"]));
+    const kept = applyFrameSlots(declared, declared.pageState, slots, [declared], new Set(["/feed"]));
+
+    expect([measured.topInset, measured.bottomInset]).toEqual([56, 64]);
+    expect([kept.topInset, kept.bottomInset]).toEqual([0, 72]);
+  });
+
   test("keeps cached layout slots but excludes inactive page-scoped slots", async () => {
     const { getFrameSlotsForPath } = await import("./useFrameRuntime");
 

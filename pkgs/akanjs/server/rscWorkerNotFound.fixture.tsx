@@ -45,6 +45,26 @@ export const pages: PagesContext = {
       return router.notFound();
     }),
   }),
+  "./rdsync/_index.tsx": async () => ({ default: page().render(() => router.redirect("/target")) }),
+  "./rdresolved/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Promise.resolve();
+      return router.redirect("/target");
+    }),
+  }),
+  "./rdio/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(20);
+      return router.redirect("/target");
+    }),
+  }),
+  "./gate/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => {
+      router.redirect("/signin");
+      return <section>{children}</section>;
+    }),
+  }),
+  "./gate/inner.tsx": async () => ({ default: page().render(() => <p>inner</p>) }),
   "./drawing/[drawingId]/_index.tsx": async () => ({
     default: page()
       .param("drawingId", ID)

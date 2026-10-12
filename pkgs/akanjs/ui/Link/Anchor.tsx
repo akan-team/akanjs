@@ -5,6 +5,7 @@ import { openExternalUrl } from "akanjs/client/native";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";
+import { isActiveHref } from "./activePath";
 
 export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
   /** Omitted, or with `disabled`, Link renders a plain div around the same children. */
@@ -13,9 +14,11 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   scrollToTop?: boolean;
   /** Replaces the current history entry instead of pushing a new one. */
   replace?: boolean;
-  /** Applied while the current path starts with `href`, or equals it with `activeExact`. */
+  /** Applied while the current page is `href` or below it, or exactly `href` with `activeExact`; basePath-aware. */
   activeClassName?: string;
   activeExact?: boolean;
+  /** More paths under which the link counts as active, as a tab does for its detail pages. */
+  activeMatch?: string[];
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;
 };
@@ -29,20 +32,20 @@ export const CsrLink = ({
   activeClassName,
   scrollToTop,
   activeExact,
+  activeMatch,
   noCache,
   ...props
 }: AnchorProps) => {
   const { prefix } = usePathCtx();
-  const currentPath = st.use.path({ agent: false });
+  const pathname = st.use.pathname({ agent: false });
   const { lang } = usePage();
-  const { path, hash } = getPathInfo(href, lang, prefix ?? "");
+  const { hash } = getPathInfo(href, lang, prefix ?? "");
+  const active =
+    !!activeClassName &&
+    isActiveHref({ pathname, href, lang, prefix: prefix ?? "", exact: activeExact, match: activeMatch });
   return (
     <a
-      className={cn(
-        "cursor-pointer",
-        className,
-        (activeExact ? currentPath === path : currentPath.startsWith(path)) && activeClassName,
-      )}
+      className={cn("cursor-pointer", className, active && activeClassName)}
       {...props}
       onClick={(event) => {
         props.onClick?.(event);
@@ -67,13 +70,17 @@ export const SsrLink = ({
   replace,
   activeClassName,
   activeExact,
+  activeMatch,
   noCache,
   ...props
 }: AnchorProps) => {
   const pathCtx = usePathCtx();
   const prefix = pathCtx.prefix ?? "";
-  const { lang, path: pagePath } = usePage();
-  const currentPath = pathCtx.location?.pathRoute?.path ?? getPathInfo(pagePath, lang, prefix).path;
+  const { lang } = usePage();
+  const statePathname = st.use.pathname({ agent: false });
+  //? The store follows every client navigation but knows nothing on the server; the request's own path does.
+  const pathname = typeof window === "undefined" ? (pathCtx.location?.pathname ?? statePathname) : statePathname;
+  const currentPath = getPathInfo(pathname, lang, prefix).path;
   const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
   const internalPathInfo = getPathInfo(href, lang, prefix);
   const requestHref = getEnv().operationMode === "local" ? internalPathInfo.href : getPathInfo(href, lang, "").href;
@@ -86,7 +93,12 @@ export const SsrLink = ({
     );
   return (
     <a
-      className={cn(className, (activeExact ? currentPath === path : currentPath.startsWith(path)) && activeClassName)}
+      className={cn(
+        className,
+        !!activeClassName &&
+          isActiveHref({ pathname, href, lang, prefix, exact: activeExact, match: activeMatch }) &&
+          activeClassName,
+      )}
       href={isExternal ? href : requestHref}
       {...props}
       onClick={(event) => {

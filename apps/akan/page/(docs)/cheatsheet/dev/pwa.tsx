@@ -61,12 +61,12 @@ export default page().render(() => {
           text: l.trans({
             en: (
               <span>
-                A <code>data:</code> URL link Akan adds to the head, so no file is served.
+                A link Akan adds to the head, to the <code>/manifest.webmanifest</code> it serves.
               </span>
             ),
             ko: (
               <span>
-                Akan이 head에 넣는 <code>data:</code> URL 링크라서 파일은 따로 없습니다.
+                Akan이 제공하는 <code>/manifest.webmanifest</code>를 가리키는 링크를 head에 넣어 줍니다.
               </span>
             ),
           }),
@@ -660,18 +660,22 @@ export default rootLayout()
               })}
             </li>
             <li>
-              <strong>{l.trans({ en: "No file to serve.", ko: "따로 제공할 파일 없음." })}</strong>{" "}
+              <strong>{l.trans({ en: "Served as a file.", ko: "파일로 제공됩니다." })}</strong>{" "}
               {l.trans({
                 en: (
                   <span>
-                    The object becomes a <code>{'<link rel="manifest">'}</code> in the head whose <code>href</code> is a{" "}
-                    <code>data:</code> URL, so there is no <code>/manifest.json</code> to open.
+                    The object is served at <code>/manifest.webmanifest</code> (<code>/[basePath]/…</code> when the
+                    basePath shows in the URL) and linked from the head, so a relative <code>startUrl</code>,{" "}
+                    <code>scope</code> or icon resolves. A <code>public/manifest.webmanifest</code> of your own wins; a
+                    native app carries the object inline.
                   </span>
                 ),
                 ko: (
                   <span>
-                    객체는 head의 <code>{'<link rel="manifest">'}</code>가 되고 <code>href</code>는 <code>data:</code>{" "}
-                    URL이라서, 열어 볼 <code>/manifest.json</code>은 없습니다.
+                    객체는 <code>/manifest.webmanifest</code>(basePath가 URL에 보이면 <code>/[basePath]/…</code>)로
+                    제공되고 head에서 연결되므로, 상대 경로로 쓴 <code>startUrl</code>, <code>scope</code>, 아이콘도
+                    제대로 풀립니다. 직접 둔 <code>public/manifest.webmanifest</code>가 있으면 그것이 우선이고, 네이티브
+                    앱은 객체를 안에 담아 둡니다.
                   </span>
                 ),
               })}
@@ -689,6 +693,25 @@ export default rootLayout()
                   <span>
                     <code>.manifest()</code>는 <code>rootLayout()</code>의 단계이므로 앱(또는 base path)의 루트{" "}
                     <code>_layout.tsx</code>에 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              <strong>{l.trans({ en: "Status bar and notch.", ko: "상태 표시줄과 노치." })}</strong>{" "}
+              {l.trans({
+                en: (
+                  <span>
+                    <code>rootLayout().viewport({"{ themeColor, fitCover: true }"})</code> colors the installed app's
+                    status bar, per theme if you give a map, and lets the page run under the notch. Pad that edge with{" "}
+                    <code>env(safe-area-inset-top)</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>rootLayout().viewport({"{ themeColor, fitCover: true }"})</code>는 설치한 앱의 상태 표시줄
+                    색을 정하고(맵으로 주면 테마마다), 화면을 노치 아래까지 그립니다. 그 가장자리는{" "}
+                    <code>env(safe-area-inset-top)</code>으로 띄웁니다.
                   </span>
                 ),
               })}

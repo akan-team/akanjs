@@ -40,6 +40,29 @@ impl V {
       None
     }
   }
+  pub fn as_array(&self) -> Option<&[V]> {
+    if let V::Arr(a) = self {
+      Some(a)
+    } else {
+      None
+    }
+  }
+}
+
+/// `v` written back as JSON: a page's argument passed on to an engine that takes JSON text.
+pub fn stringify(v: &V) -> String {
+  match v {
+    V::Null => "null".into(),
+    V::Bool(b) => b.to_string(),
+    V::Num(n) if n.is_finite() => n.to_string(),
+    V::Num(_) => "null".into(),
+    V::Str(s) => quote(s),
+    V::Arr(items) => format!("[{}]", items.iter().map(stringify).collect::<Vec<_>>().join(",")),
+    V::Obj(entries) => format!(
+      "{{{}}}",
+      entries.iter().map(|(k, v)| format!("{}:{}", quote(k), stringify(v))).collect::<Vec<_>>().join(",")
+    ),
+  }
 }
 
 /// Deeper nesting is refused: each level is a recursive call, and a page could send an array nested

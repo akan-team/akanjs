@@ -109,6 +109,7 @@ const pageContentStyle = ({ frameLayout }: RouteState, pageState: FramePageState
       (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
   ),
   height: frameLayout.contentViewport.height,
+  "--akan-content-height": `${frameLayout.contentViewport.height}px`,
 });
 
 const prevPageContentStyle = (clientHeight: number, prevPageState: FramePageState) => ({
@@ -132,6 +133,10 @@ const tweenedSafeAreas = (
   bottomSafeArea: {
     containerStyle: {
       backgroundColor: pageState.bottomSafeAreaColor,
+      visibility:
+        pageState.bottomInset > 0 || pageState.bottomSafeAreaColor !== defaultPageState.bottomSafeAreaColor
+          ? ("visible" as const)
+          : ("hidden" as const),
       top: tween(progress, clientHeight - prevPageState.bottomSafeArea, clientHeight - pageState.bottomSafeArea),
       height: tween(progress, prevPageState.bottomSafeArea, pageState.bottomSafeArea),
     },

@@ -39,6 +39,7 @@ import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/end
 import type { EndpointInfo } from "../../signal/endpointInfo";
 import { EndpointRateLimit } from "../../signal/endpointRateLimit";
 import type { Internal, InternalCls } from "../../signal/internal";
+import { Machine } from "../../signal/internalArg";
 import type { InternalInfo } from "../../signal/internalInfo";
 import type { MiddlewareCls } from "../../signal/middleware";
 import type { ServerSignal, ServerSignalCls } from "../../signal/serverSignal";
@@ -52,6 +53,8 @@ import type {
   WebsocketMessageData,
   WebsocketSubscribeAck,
 } from "../../signal/types";
+import { MachineToken } from "../machine/machineToken";
+import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
 
 type LiveChangeListener = (doc: unknown, type: unknown, previous?: unknown) => void;
@@ -79,8 +82,15 @@ export class SignalResolver {
     const separator = roomId.indexOf("-");
     return SignalResolver.#coalescingRooms.has(separator >= 0 ? roomId.slice(0, separator) : roomId);
   }
-  static setLocalPublish(localPublish: LocalPublish, websocket: WebsocketAdaptor, live?: LiveRegistry) {
+  static #roomReplay: RoomReplay | null = null;
+  static setLocalPublish(
+    localPublish: LocalPublish,
+    websocket: WebsocketAdaptor,
+    live?: LiveRegistry,
+    roomReplay: RoomReplay | null = null,
+  ) {
     SignalResolver.#localPublish = localPublish;
+    SignalResolver.#roomReplay = roomReplay;
     websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[] | Uint8Array));
     // A room that missed events cannot tell which ones, so every live room is invalidated and its subscribers refetch.
     websocket.onRecovered?.(() => {
@@ -246,12 +256,14 @@ export class SignalResolver {
           if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
           const execFn = internalInfo.execFn.bind(internal);
           // Queue adaptors pass only the job; spread `job.data` back onto the msg args so exec(...msgArgs, job) holds.
+          const { onFailed } = internalInfo.signalOption;
           internal.queue.registerProcessWorker(
             key,
             SignalResolver.#traced(
               key,
               async (job) => await execFn(...SignalResolver.#getJobArgs(key, internalInfo, job), job),
             ),
+            onFailed ? { onFailed: (job, error) => onFailed.call(internal, job, error) } : {},
           );
           break;
         }
@@ -633,6 +645,7 @@ export class SignalResolver {
     const wsRoutes: WebsocketRoutes = {};
     const defaultPrefix = endpointCls.srv.cnst?.refName;
     SignalResolver.#warnUnguarded(endpointMeta);
+    SignalResolver.#warnMachineKeyless(endpointMeta);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
       const path = endpointInfo.getRoutePath(key, defaultPrefix);
       if (endpointInfo.signalOption.globalPrefix !== undefined) {
@@ -693,7 +706,7 @@ export class SignalResolver {
           );
           break;
         case "pubsub":
-          wsRoutes[key] = async (ws, message, event) =>
+          wsRoutes[key] = async (ws, message, event, request) =>
             await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
               const websocket = SignalResolver.#getWebsocket(registry);
               const context = await new SignalContext(
@@ -717,14 +730,28 @@ export class SignalResolver {
                     roomId,
                     query: query as never,
                     fallback: liveOption.fallback,
+                    payload: liveOption.payload,
                     fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
                   });
+                const replay = SignalResolver.#roomReplay;
+                replay?.watch(roomId);
                 ws.subscribe(roomId);
+                //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
+                const missed = request?.since && replay ? replay.since(roomId, request.since) : null;
+                for (const frame of missed ?? []) ws.send(frame);
                 roomCtxMap.set(roomId, context);
                 SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                 websocket.joinRoom(ws, roomId);
                 SignalResolver.logger.verbose(`WebSocket subscribed to room ${roomId}`);
-                const ack: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe };
+                const cursor = replay?.cursor(roomId);
+                const ack: WebsocketSubscribeAck = {
+                  type: "sub",
+                  roomId,
+                  requestRoomId,
+                  subscribe,
+                  ...(cursor ? { cursor } : {}),
+                  ...(request?.since ? { replayed: !!missed } : {}),
+                };
                 return ack;
               }
               if (liveOption) await context.resolveInternalArgs();
@@ -774,6 +801,16 @@ export class SignalResolver {
     if (!open.length) return;
     SignalResolver.logger.warn(
       `${open.join(", ")} declare${open.length === 1 ? "s" : ""} no guards, so anyone can call ${open.length === 1 ? "it" : "them"} over HTTP and WebSocket. Name the guards, or \`guards: [Public]\` to keep one open on purpose.`,
+    );
+  }
+  static #warnMachineKeyless(endpointMeta: { [key: string]: EndpointInfo }) {
+    if (MachineToken.canVerify()) return;
+    const machineOnly = Object.entries(endpointMeta)
+      .filter(([, endpointInfo]) => endpointInfo.internalArgs.some((arg) => arg.argRef === Machine))
+      .map(([key]) => key);
+    if (!machineOnly.length) return;
+    SignalResolver.logger.error(
+      `${machineOnly.join(", ")} take${machineOnly.length === 1 ? "s" : ""} .with(Machine), and this server has neither AKAN_MACHINE_PUBLIC_KEY nor AKAN_MACHINE_PRIVATE_KEY to verify a machine token: every machine call to ${machineOnly.length === 1 ? "it" : "them"} is refused.`,
     );
   }
   static #selectCache = new WeakMap<Cls, Record<string, true>>();

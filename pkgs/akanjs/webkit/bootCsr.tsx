@@ -1,6 +1,7 @@
 "use client";
 import { csrContext, Device, getStoredAuthToken, initAuth } from "akanjs/client";
 import { Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
+import { st } from "akanjs/store";
 import { useSyncExternalStore } from "react";
 import * as ReactDOM from "react-dom/client";
 import { type CsrRouteContext, CsrRouteTable } from "./CsrRouteTable";
@@ -63,6 +64,8 @@ export const bootCsr = async (context: CsrRouteContext) => {
     );
   };
 
+  //? CSR.Bridge writes the store after a page renders; seeded here, the first page's first effect reads the URL's query.
+  st.set({ searchParams: searchParamsOf(window.location.search) });
   const el = document.getElementById("root");
   if (!el) throw new Error("No root element");
   const root = ReactDOM.createRoot(el);
@@ -74,6 +77,15 @@ export const bootCsr = async (context: CsrRouteContext) => {
  * changed. History, mounted pages and stores stay; `false` means the set of routes changed and the page must reload.
  */
 export const replacePages = async (context: CsrRouteContext) => (await CsrRouteTable.active?.replace(context)) ?? false;
+
+function searchParamsOf(search: string): { [key: string]: string | string[] } {
+  const params: { [key: string]: string | string[] } = {};
+  for (const [key, value] of new URLSearchParams(search)) {
+    const current = params[key];
+    params[key] = current === undefined ? value : Array.isArray(current) ? [...current, value] : [current, value];
+  }
+  return params;
+}
 
 function initializeMobileTargetFromSearch() {
   if (window.__AKAN_MOBILE_TARGET__) return;

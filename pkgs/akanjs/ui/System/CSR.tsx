@@ -41,6 +41,7 @@ const CSRProvider = ({
   manifest,
   env,
   theme,
+  viewport,
   prefix,
   children,
   fonts,
@@ -74,7 +75,14 @@ const CSRProvider = ({
           </Client.Wrapper>
           <Client.Inner />
           <CSRInner />
-          <Client.Bridge lang={lang} env={env} theme={theme} prefix={prefix} wsConnect={wsConnect} />
+          <Client.Bridge
+            lang={lang}
+            env={env}
+            theme={theme}
+            viewport={viewport}
+            prefix={prefix}
+            wsConnect={wsConnect}
+          />
           <CSRBridge lang={lang} prefix={prefix} />
         </>
       )}
@@ -185,7 +193,7 @@ const CSRWrapper = ({
         />
         <TopChromeLayer
           id="topInsetContainer"
-          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen bg-background")}
+          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background")}
           style={topInset?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topInset" />
@@ -308,12 +316,15 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
               ? slotInset?.prevContentStyle
               : undefined;
         const id = `${slot}Content-${key}`;
+        const { topInset: topHeight, bottomInset: bottomHeight } = location.pathRoute.pageState;
+        const collapsed = slot !== "keyboardInset" && (slot === "bottomInset" ? bottomHeight : topHeight) <= 0;
+        const hidden = pageType !== "current" || collapsed;
         return (
           <animated.div
             key={id}
             id={id}
-            inert={pageType !== "current"}
-            aria-hidden={pageType === "current" ? undefined : true}
+            inert={hidden}
+            aria-hidden={hidden ? true : undefined}
             className={cn(
               slot === "topInset" && "absolute top-0 left-0 isolate size-full",
               slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
@@ -327,7 +338,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
             )}
             style={
               {
-                ...getFrameCssVars(location.pathRoute.pageState),
+                ...getFrameCssVars(location.pathRoute.pageState, { cssResolved: false }),
                 ...(style ?? {}),
                 zIndex: pageType === "pending" ? -1 : zIndex,
                 ...(pageType === "pending" ? { opacity: 0 } : {}),

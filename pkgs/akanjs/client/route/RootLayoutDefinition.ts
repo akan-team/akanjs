@@ -1,4 +1,4 @@
-import type { LayoutModule, PageModule, WebAppManifest } from "../csrTypes";
+import type { LayoutModule, PageModule, RouteViewport, WebAppManifest } from "../csrTypes";
 import type { ReactFont } from "../types";
 import { LayoutDefinition } from "./LayoutDefinition";
 import type { RouteArgsShape, RouteKind } from "./RouteDefinition";
@@ -12,6 +12,7 @@ export class RootLayoutDefinition<Args extends RouteArgsShape = Record<never, ne
   #reconnect?: boolean;
   #wsConnect?: boolean;
   #layoutStyle?: "mobile" | "web";
+  #viewport?: RouteViewport;
 
   fonts(fonts: ReactFont[]) {
     this.#fonts = fonts;
@@ -37,6 +38,10 @@ export class RootLayoutDefinition<Args extends RouteArgsShape = Record<never, ne
     this.#layoutStyle = style;
     return this;
   }
+  viewport(viewport: RouteViewport) {
+    this.#viewport = viewport;
+    return this;
+  }
 
   protected override extendModule(module: PageModule & LayoutModule): PageModule & LayoutModule {
     return {
@@ -47,6 +52,7 @@ export class RootLayoutDefinition<Args extends RouteArgsShape = Record<never, ne
       ...(this.#reconnect !== undefined ? { reconnect: this.#reconnect } : {}),
       ...(this.#wsConnect !== undefined ? { wsConnect: this.#wsConnect } : {}),
       ...(this.#layoutStyle ? { layoutStyle: this.#layoutStyle } : {}),
+      ...(this.#viewport ? { viewport: this.#viewport } : {}),
     };
   }
 }
