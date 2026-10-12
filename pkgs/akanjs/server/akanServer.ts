@@ -106,6 +106,16 @@ export interface McpServerOption {
   rateLimit?: McpRateLimitOption | false;
   /** Characters a page prompt may attach before its lists are cut; 60,000 by default. `AKAN_MCP_PROMPT_BUDGET`. */
   promptBudget?: number;
+  /**
+   * MCP Apps: a `.prompt()` page is a tool as well, whose result a host speaking the extension renders from the CSR
+   * shell; an endpoint kept off the shelf by `mcp: false` stays callable by that view. `true` by default. `AKAN_MCP_APPS`.
+   */
+  apps?: boolean;
+  /**
+   * Speak the modern `2026-07-28` revision (`server/discover`) beside the legacy ones. On unless MCP Apps renders views,
+   * since claude.ai renders a view only for a server it reached through `initialize`. `AKAN_MCP_MODERN`.
+   */
+  modern?: boolean;
 }
 
 interface AkanAppPrepared {
@@ -689,6 +699,8 @@ export class AkanServer {
             readOnly: this.mcpReadOnly,
             auth: this.mcpAuth,
             pagePrompts: webRouter?.pagePrompts(),
+            apps: this.mcpOption.apps !== false,
+            appShell: this.mcpOption.apps === false ? undefined : webRouter?.mcpAppShell(),
           })
         : null;
     const mcpRoutes: HttpRoutes = mcpRouter?.createRoutes() ?? {};
@@ -889,9 +901,17 @@ export class AkanServer {
       ...(Number.isInteger(promptBudget) && promptBudget > 0 ? { promptBudget } : {}),
       ...(process.env.AKAN_MCP_LANGUAGE ? { language: process.env.AKAN_MCP_LANGUAGE } : {}),
       ...(AkanServer.#isEnvOff("AKAN_MCP_LEGACY_TEXT") ? { legacyTextBlock: false } : {}),
+      ...(AkanServer.#isEnvOff("AKAN_MCP_APPS") ? { apps: false } : {}),
+      ...AkanServer.#mcpModernFromEnv(),
       ...AkanServer.#mcpOutputSchemaFromEnv(),
       ...AkanServer.#mcpRateLimitFromEnv(),
     };
+  }
+
+  static #mcpModernFromEnv(): Pick<McpServerOption, "modern"> {
+    const raw = process.env.AKAN_MCP_MODERN;
+    if (raw === "true" || raw === "1") return { modern: true };
+    return AkanServer.#isEnvOff("AKAN_MCP_MODERN") ? { modern: false } : {};
   }
 
   static #mcpRateLimitFromEnv(): Pick<McpServerOption, "rateLimit"> {

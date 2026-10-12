@@ -104,9 +104,14 @@ export class BuilderRpc {
     };
   }
 
-  /** Arms dev CSR, which the builder skips by default (a full browser build per save), and keeps it in sync after. */
-  async buildCsr(reason: string): Promise<void> {
-    await this.#request<void>(`build-csr (${reason})`, (id) => this.#send({ type: "build-csr", id, reason }));
+  /**
+   * Arms dev CSR, which the builder skips by default (a full browser build per save), and keeps it in sync after.
+   * `shell` arms nothing: it asks for an MCP Apps view's single-file build, rebuilt only once a save moved past it.
+   */
+  async buildCsr(reason: string, { shell = false }: { shell?: boolean } = {}): Promise<void> {
+    await this.#request<void>(`build-csr (${reason})`, (id) =>
+      this.#send({ type: "build-csr", id, reason, ...(shell ? { shell } : {}) }),
+    );
   }
 
   // Generous on purpose: a cold CSR build of every page takes tens of seconds; the point is only to be finite.

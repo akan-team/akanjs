@@ -2,6 +2,7 @@ import { getEnv } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
+import { csrLocation } from "./csrLocation";
 import { Translator } from "./translator";
 
 type TransMessage<Locale extends Record<string, unknown>> = {
@@ -27,11 +28,11 @@ const getPageInfo = (): { locale: string; path: string } => {
   const activePath = Translator.getActivePath();
   if (activePath) return { locale: activeLocale ?? defaultLocale, path: activePath };
   if (getEnv().side !== "server") {
-    const [, firstSegment = "", ...rest] = window.location.pathname.split("/");
+    const [, firstSegment = "", ...rest] = csrLocation.pathname.split("/");
     const hasLocalePrefix = localeSet.has(firstSegment);
     // The server-resolved locale first, so client lookups match SSR when the first URL segment is not the locale.
     const locale = activeLocale ?? (hasLocalePrefix ? firstSegment : defaultLocale);
-    return { locale, path: activePath ?? (hasLocalePrefix ? `/${rest.join("/")}` : window.location.pathname) };
+    return { locale, path: activePath ?? (hasLocalePrefix ? `/${rest.join("/")}` : csrLocation.pathname) };
   }
   const h = untrackedHeaders();
   // Proxy headers when present, else the request URL, so an unadorned dev request (`curl /en/hello`) resolves.

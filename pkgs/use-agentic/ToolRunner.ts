@@ -133,7 +133,12 @@ export class ToolRunner {
       const approved = await approve({ callId: call.id, name: call.name, args: call.args, message }, signal);
       if (approved !== true) return { ...base, error: approved };
     }
-    return await ToolRunner.#serialized(() => this.#execute(call, entry, signal));
+    return await ToolRunner.#serialized(async () => {
+      //? A consent covers the action the user read: a screen that moved while they decided may offer another one.
+      if (message && this.#surface.tool(call.name) !== entry)
+        return { ...base, error: `${call.name} changed on screen while the user decided, so it did not run.` };
+      return await this.#execute(call, entry, signal);
+    });
   }
 
   /**
@@ -165,6 +170,8 @@ export class ToolRunner {
 
   async #execute(call: ToolCallRequest, entry: ToolEntry, signal: AbortSignal): Promise<ToolCallResult> {
     const base = { id: call.id, name: call.name };
+    //? Aborted while it queued behind another call: past this point the work starts, and an abort only stops waiting.
+    if (signal.aborted) return { ...base, error: "The call was stopped before it ran." };
     const before = this.#surface.snapshot();
     // Here rather than in `#answer`, so nothing is drawn for a call an approval or a guard turned back.
     await this.#host.activity?.({ callId: call.id, name: call.name, args: call.args, phase: "start" });

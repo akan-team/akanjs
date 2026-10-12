@@ -29,7 +29,7 @@ import {
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
-import type { ErrorConstructor } from "./remoteError";
+import type { ErrorConstructor, RestoredError } from "./remoteError";
 import { SliceInitHandle } from "./sliceInitHandle";
 import { expandQueryArgs, normalizeQueryArgs } from "./sliceQueryArgs";
 import { WsClient, type WsClientOptions } from "./wsClient";
@@ -67,6 +67,21 @@ const sharedSignalRegistry: SharedSignalRegistry = globalWithSharedSignal[SHARED
   version: 0,
 };
 globalWithSharedSignal[SHARED_SIGNAL_KEY] = sharedSignalRegistry;
+
+export interface FetchBridgeCall {
+  key: string;
+  type: "query" | "mutation";
+  args: UnknownRecord;
+  returns: SerializedReturns;
+}
+
+/** A transport that is not HTTP: a view inside an MCP host has no network, and reaches the server through the host. */
+export interface FetchBridge {
+  call(request: FetchBridgeCall): Promise<unknown>;
+}
+
+const FETCH_BRIDGE_KEY = Symbol.for("akanjs.fetch.bridge");
+const globalWithFetchBridge = globalThis as typeof globalThis & { [FETCH_BRIDGE_KEY]?: FetchBridge | null };
 
 type ClientSignalMap<SigType extends { fetch: any }> = {
   [K in keyof SigType as SigType[K] extends DatabaseSignal<any, any, any, any>
@@ -123,6 +138,13 @@ export class FetchClient {
   static resetSharedRegistry() {
     sharedSignalRegistry.signal = {};
     sharedSignalRegistry.version++;
+  }
+  /** Every client in this tab sends its queries and mutations through `bridge`, and opens no socket; `null` restores HTTP. */
+  static setBridge(bridge: FetchBridge | null) {
+    globalWithFetchBridge[FETCH_BRIDGE_KEY] = bridge;
+  }
+  static get bridged() {
+    return !!globalWithFetchBridge[FETCH_BRIDGE_KEY];
   }
   static resetSharedClient() {
     sharedClientState.proxy = null;
@@ -269,7 +291,9 @@ export class FetchClient {
     this.#handlerFactory.set(key, factory);
     delete this.#handlerStore[key];
   }
+  //? A bridged tab has no network: the socket would fail, or under a lenient host reach whatever origin hosts the view.
   connect() {
+    if (FetchClient.bridged) return;
     this.ws.connect();
   }
   disconnect() {
@@ -392,6 +416,16 @@ export class FetchClient {
       case "query":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
+          const bridge = option?.origin ? null : globalWithFetchBridge[FETCH_BRIDGE_KEY];
+          if (bridge) {
+            const value = await this.#bridged(bridge, {
+              key,
+              type: "query",
+              args: Object.fromEntries(argMap),
+              returns: endpoint.returns,
+            });
+            return parseReturn(value, { crystalize: option?.crystalize ?? true });
+          }
           const headers = this.#makeRequestHeaders(option);
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
@@ -410,6 +444,16 @@ export class FetchClient {
       case "mutation":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
+          const bridge = option?.origin ? null : globalWithFetchBridge[FETCH_BRIDGE_KEY];
+          if (bridge) {
+            const value = await this.#bridged(bridge, {
+              key,
+              type: "mutation",
+              args: Object.fromEntries(argMap),
+              returns: endpoint.returns,
+            });
+            return parseReturn(value, { crystalize: option?.crystalize ?? true });
+          }
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
           const response = await this.http.send(endpoint.method ?? "POST", url, body, {
             headers: this.#makeRequestHeaders(option),
@@ -438,6 +482,8 @@ export class FetchClient {
           const parseReturn = this.#makeReturnParser(endpoint.returns);
           const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
           return (...argData: unknown[]) => {
+            //? A bridged tab has no socket to subscribe on: the room never fires, and a queued frame would never leave.
+            if (FetchClient.bridged) return () => undefined;
             const args = argData.slice(0, roomArgLength);
             const handleEvent = argData[roomArgLength] as (data: unknown) => void;
             const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
@@ -467,6 +513,7 @@ export class FetchClient {
           const msgArgLength = msgArgs.length;
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           return (...argData: unknown[]) => {
+            if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
@@ -492,6 +539,15 @@ export class FetchClient {
       default:
         this.logger.error(`Unsupported endpoint type: ${endpoint.type}`);
         break;
+    }
+  }
+  // A refusal the server described arrives as a payload, and becomes the app's own `Err` the way an HTTP one does.
+  async #bridged(bridge: FetchBridge, request: FetchBridgeCall) {
+    try {
+      return await bridge.call(request);
+    } catch (error) {
+      const payload = (error as RestoredError | null)?.toJSON?.();
+      throw payload && this.ErrorCls ? this.ErrorCls.fromJSON(payload) : error;
     }
   }
   static #makeWsUri(origin: string) {

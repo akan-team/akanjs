@@ -5,6 +5,7 @@ import { Layout, Model } from "akanjs/ui";
 
 export default page()
   .config({ topInset: 48, transition: "stack" })
+  .prompt("showTripNotes", "Show the notes shared with everyone on this trip.")
   .render(() => {
     const { l } = usePage();
     const { memoInitInPublic } = fetch.initMemoInPublic();

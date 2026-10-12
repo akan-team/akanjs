@@ -1,5 +1,6 @@
 import { getEnv } from "akanjs/base";
 import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
+import { csrLocation } from "./csrLocation";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
@@ -261,14 +262,10 @@ class Router {
     if (getEnv().side === "server") return;
     const history = globalThis.window?.history;
     if (!history?.replaceState) return;
-    const state = (history.state ?? {}) as Record<string, unknown>;
+    const state = (csrLocation.state ?? {}) as Record<string, unknown>;
     const akanState = (state.__akanRouter ?? {}) as { idx?: number };
     this.#historyIdx = Number.isInteger(akanState.idx) ? (akanState.idx as number) : this.#historyIdx;
-    history.replaceState(
-      { ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } },
-      "",
-      globalThis.window.location.href,
-    );
+    csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
     if (!globalThis.window.addEventListener) return;
     globalThis.window.addEventListener("popstate", (event) => {
       const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
@@ -281,9 +278,10 @@ class Router {
     const history = globalThis.window?.history;
     if (!history) return;
     if (kind === "push") this.#historyIdx += 1;
-    const state = (history.state ?? {}) as Record<string, unknown>;
+    if (!history.replaceState) return;
+    const state = (csrLocation.state ?? {}) as Record<string, unknown>;
     const nextState = { ...state, __akanRouter: { ...((state.__akanRouter ?? {}) as object), idx: this.#historyIdx } };
-    if (history.replaceState) history.replaceState(nextState, "", globalThis.window.location.href);
+    csrLocation.replace(nextState);
   }
 
   #getPathInfo(href: string, prefix = this.#prefix) {
@@ -293,7 +291,7 @@ class Router {
     return this.#getPathInfo(href, shouldExposeBasePath() ? this.#prefix : "");
   }
   #withCsrRuntimeSearchParams(href: string) {
-    const currentSearch = new URLSearchParams(window.location.search);
+    const currentSearch = new URLSearchParams(csrLocation.search);
     if (currentSearch.get("csr") !== "true") return href;
 
     const [hrefWithoutHash, hash = ""] = href.split("#");
@@ -320,6 +318,8 @@ class Router {
   }
   #postPathChange({ path, pathname, hash }: { path: string; pathname: string; hash: string }) {
     Logger.info(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
+    //? An MCP host reads every message from its view as JSON-RPC; this one would arrive as a malformed request.
+    if (globalThis.__AKAN_EMBED__) return;
     window.parent.postMessage({ type: "pathChange", path, pathname, hash }, "*");
   }
   #postDevSyncNavigation(kind: "push" | "replace", href: string) {
@@ -462,11 +462,8 @@ class Router {
   setLang(lang: string) {
     if (getEnv().side === "server") throw new Error("setLang is only available in client side");
     this.#checkInitialized();
-    const currentLang = getLocaleFromPathname(window.location.pathname) ?? this.#lang;
-    const { path, search, hash } = this.#getVisiblePathInfo(
-      `${window.location.pathname}${window.location.search ?? ""}${window.location.hash ?? ""}`,
-      currentLang,
-    );
+    const currentLang = getLocaleFromPathname(csrLocation.pathname) ?? this.#lang;
+    const { path, search, hash } = this.#getVisiblePathInfo(csrLocation.href, currentLang);
     this.#lang = lang;
     this.#instance.replace(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`);
     return undefined as never;
@@ -475,7 +472,7 @@ class Router {
   routeOf(pathname: string) {
     return getPathInfo(pathname, this.#lang, this.#prefix).path;
   }
-  getPath(pathname = window.location.pathname) {
+  getPath(pathname = csrLocation.pathname) {
     if (getEnv().side === "server") throw new Error("getPath is only available in client side");
     return this.routeOf(pathname);
   }

@@ -6,12 +6,12 @@ import { NoDocumentError } from "akanjs/document";
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import type { Endpoint, EndpointCls } from "../../signal/endpoint";
 import type { EndpointInfo } from "../../signal/endpointInfo";
-import { Exception } from "../../signal/exception";
+import { Exception, isExceptionLike } from "../../signal/exception";
 import type { GuardCls } from "../../signal/guard";
 import { McpDocument, type McpExposedEndpoint, type McpToolResult } from "../../signal/mcp";
 import type { MiddlewareCls } from "../../signal/middleware";
 import { SignalContext } from "../../signal/signalContext";
-import { McpExecutionContext } from "./McpExecutionContext";
+import { McpArgumentError, McpExecutionContext } from "./McpExecutionContext";
 
 // The caller presented no credential at all, so the client must be told to authenticate.
 export class McpAuthRequiredError extends Error {}
@@ -39,23 +39,46 @@ export class McpDispatcher {
     this.#props = props;
   }
 
-  async call(exposed: McpExposedEndpoint, args: Record<string, unknown>, req: Request): Promise<McpToolResult> {
+  // `forView`: an MCP Apps view also gets the value a browser would — `visual` fields and a primitive's own form kept,
+  // `hidden`/`secret` already gone — in `_meta`, which no host shows the model. That is cost, never a secret.
+  async call(
+    exposed: McpExposedEndpoint,
+    args: Record<string, unknown>,
+    req: Request,
+    { forView = false }: { forView?: boolean } = {},
+  ): Promise<McpToolResult> {
     const found = this.#index().get(exposed.key);
     if (!found) return McpDispatcher.#failure(`Tool "${exposed.key}" is declared but not mounted on this server.`);
     try {
-      const value = McpDispatcher.#readable(exposed, await this.#exec(exposed.key, found, args, req));
+      const wire = await this.#exec(exposed.key, found, args, req);
+      const value = McpDispatcher.#readable(exposed, wire);
       const structuredContent = McpDocument.structuredContent(exposed.endpoint, value);
       return {
         content: this.#content(structuredContent, value),
         ...(structuredContent === undefined ? {} : { structuredContent }),
+        ...(forView ? { _meta: { "akanjs/value": wire ?? null } } : {}),
         isError: false,
       };
     } catch (error) {
       const status = McpDispatcher.#statusOf(error);
       // No credential: a 401 challenge, as only the client can fix it. A refused one: a tool error the model acts on.
       if ((status === 401 || status === 403) && !req.headers.get("authorization")) throw new McpAuthRequiredError();
-      return McpDispatcher.#failure(this.#message(error, status, exposed.refName));
+      const failure = McpDispatcher.#failure(this.#message(error, status, exposed.refName));
+      const restorable = forView ? McpDispatcher.#restorable(error, status) : null;
+      return restorable ? { ...failure, _meta: { "akanjs/error": restorable } } : failure;
     }
+  }
+
+  // The `Err` a browser's own call would have answered with, so the view toasts it in the user's language. Never a
+  // refusal (it names the guard structure) or a crash, which the HTTP path generalizes too.
+  static #restorable(error: unknown, status: number | undefined) {
+    if (!status || status >= 500 || status === 401 || status === 403 || error instanceof NoDocumentError) return null;
+    const data = (error as { data?: unknown }).data;
+    return {
+      error: error instanceof Error ? error.message : String(error),
+      statusCode: status,
+      ...(data && typeof data === "object" ? { data } : {}),
+    };
   }
 
   // A UX filter, never the access decision: entries without an account guard stay listed and are stopped at call time.
@@ -119,6 +142,10 @@ export class McpDispatcher {
     });
   }
 
+  isEndpoint(name: string) {
+    return this.#index().has(name);
+  }
+
   // Lazy for cost, not ordering: DI filled the registry long before any route was created.
   #index() {
     if (this.#endpoints) return this.#endpoints;
@@ -151,9 +178,11 @@ export class McpDispatcher {
   }
 
   // No status reads as a crash, so the agent-triggerable failures (McpArgumentError, NoDocumentError) carry one.
+  // Security: only what HTTP forwards keeps its status — a vendor client's own 4xx error is generalized there too.
   static #statusOf(error: unknown): number | undefined {
-    const status = (error as { statusCode?: unknown } | null)?.statusCode;
-    return typeof status === "number" ? status : undefined;
+    if (isExceptionLike(error) || error instanceof McpArgumentError || error instanceof NoDocumentError)
+      return error.statusCode;
+    return undefined;
   }
 
   // -32602 covers not-found too: this revision retired -32002 and points resource-not-found at invalid params.

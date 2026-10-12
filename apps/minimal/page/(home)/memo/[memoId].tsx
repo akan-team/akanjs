@@ -7,6 +7,7 @@ import { Layout } from "akanjs/ui";
 export default page()
   .param("memoId", ID)
   .config({ topInset: 48, transition: "stack" })
+  .prompt("showTripNote", "Show one trip note with its images.")
   .render(({ memoId }) => {
     const { l } = usePage();
     const { memoView } = fetch.viewMemo(memoId);

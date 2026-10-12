@@ -1,11 +1,11 @@
-import type { BlobStorageApi } from "@libs/util/srvkit";
+import { BlobStorageApi } from "@libs/util/srvkit";
 import { serve } from "akanjs/service";
 
 import * as db from "../db";
 import { Err } from "../dict";
 
-export class MemoService extends serve(db.memo, ({ use }) => ({
-  blobStorageApi: use<BlobStorageApi>(),
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  blobStorageApi: plug(BlobStorageApi),
 })) {
   static readonly imageLimit = 5 * 1024 * 1024;
   static readonly imageExtensions: { readonly [type: string]: string | undefined } = {

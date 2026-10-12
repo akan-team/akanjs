@@ -17,6 +17,7 @@ import {
 import { Logger } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { endpoint } from "../../signal/endpoint";
+import { Exception } from "../../signal/exception";
 import type { Guard, GuardScope } from "../../signal/guard";
 import { None, Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
@@ -214,6 +215,15 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
   failingTitle: builder.query(String, { guards: [Public] }).exec(() => {
     throw new Error("boom: internal detail that must not travel");
   }),
+  lockedTitle: builder
+    .query(String, { guards: [Public] })
+    .param("id", ID)
+    .exec((id) => {
+      throw new Exception(409, "mcpItem.error.locked", undefined, { id });
+    }),
+  vendorTitle: builder.query(String, { guards: [Public] }).exec(() => {
+    throw Object.assign(new Error("GET https://vendor.example/?key=secret 422"), { statusCode: 422, data: { raw: 1 } });
+  }),
   deniedTitle: builder.query(String, { guards: [None] }).exec(() => "denied"),
   ownedTitle: builder.query(String, { guards: [HasAccount] }).exec(() => "owned"),
   personTitle: builder.query(String, { guards: [SignedIn, PersonOnly] }).exec(() => "signed by a person"),
@@ -236,6 +246,11 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
     .mutation(String, { guards: [Public] })
     .param("id", ID)
     .exec((id) => `${id}:public`),
+  // A step a screen drives: guarded, and kept off the model's shelf.
+  quietTitle: builder
+    .query(String, { guards: [SignedIn], mcp: false })
+    .param("id", ID)
+    .exec((id) => `${id}:quiet`),
 })) {}
 
 class McpItemInternal extends internal(serverResolverTestServiceModel, () => ({})) {}
@@ -399,6 +414,7 @@ describe("MCP over a booted container", () => {
       "echoTitle",
       "failingTitle",
       "joinTags",
+      "lockedTitle",
       "maybeItem",
       "outlineItem",
       "outlineText",
@@ -411,6 +427,7 @@ describe("MCP over a booted container", () => {
       "serverResolverTestItemList",
       "serverResolverTestItemListInCategory",
       "slowTitle",
+      "vendorTitle",
       "visualItem",
     ]);
   });
@@ -509,10 +526,10 @@ describe("MCP over a booted container", () => {
     }
     const log = lines.join("\n");
     // The whole build, not one caller's view: per-credential hiding makes these counts exceed tools/list above.
-    expect(log).toContain("MCP catalogue: tools=19 resourceTemplates=3 · listing ");
-    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 19/");
+    expect(log).toContain("MCP catalogue: tools=21 resourceTemplates=3 · listing ");
+    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 21/");
     expect(lines.find((line) => line.includes('"publicRenameTitle"'))).toContain("`[Public]` is having none");
-    expect(log).toContain("MCP catalogue: tools=17 resourceTemplates=3 (read-only deployment)");
+    expect(log).toContain("MCP catalogue: tools=19 resourceTemplates=3 (read-only deployment)");
     expect(lines.find((line) => line.includes('did not expose "renameTitle"'))).toContain("read-only");
     // These signals carry no dictionary, so every entry, generated ones included, is named.
     expect(lines.find((line) => line.includes('exposed "echoTitle" with no description'))).toContain(
@@ -1038,5 +1055,303 @@ describe("MCP over a booted container", () => {
       "akan://serverResolverTestItem/list{?queryKey,skip,limit,sort}",
       "akan://serverResolverTestItem/list/inCategory{?category,skip,limit,sort}",
     ]);
+  });
+});
+
+describe("MCP Apps", () => {
+  const shellHtml =
+    '<!DOCTYPE html><html lang="en"><head><title>shell</title></head><body><div id="root"></div></body></html>';
+  const appShell = { basePaths: [] as string[], read: async () => shellHtml };
+  const apps = { apps: true, appShell, pagePrompts: pagePromptsOf(okRun()) } satisfies Partial<McpRouterProps>;
+  const uiCapabilities = { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } };
+  const names = (json: { result: { tools: { name: string }[] } }) => json.result.tools.map((tool) => tool.name);
+  const uiSession = async () => {
+    const init = rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities });
+    const { res } = await postAs(init, {}, apps);
+    return res.headers.get("mcp-session-id") ?? "";
+  };
+
+  test("publishes a `.prompt()` page as a read-only tool that names its view", async () => {
+    const { json } = await postWith(rpc("tools/list"), apps);
+    const tool = json.result.tools.find((candidate: { name: string }) => candidate.name === "briefItem");
+    expect(tool._meta).toEqual({
+      ui: { resourceUri: "ui://mcpintegration/app" },
+      "ui/resourceUri": "ui://mcpintegration/app",
+    });
+    expect(tool.annotations.readOnlyHint).toBe(true);
+    expect(tool.inputSchema.required).toEqual(["serverResolverTestItemId"]);
+    const { json: textOnly } = await postWith(rpc("tools/list"), { ...apps, appShell: undefined });
+    const plain = textOnly.result.tools.find((candidate: { name: string }) => candidate.name === "briefItem");
+    expect(plain._meta).toBeUndefined();
+    const { json: off } = await postWith(rpc("tools/list"), { pagePrompts: pagePromptsOf(okRun()) });
+    expect(names(off)).not.toContain("briefItem");
+  });
+
+  const modernMeta = {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientCapabilities": uiCapabilities,
+  };
+  const modernHeaders = (method: string) => ({ "mcp-method": method, "mcp-protocol-version": "2026-07-28" });
+
+  test("sends every client through `initialize` while it renders views, unless told to speak the modern revision", async () => {
+    const discovered = await postAs(
+      rpc("server/discover", { _meta: modernMeta }),
+      modernHeaders("server/discover"),
+      apps,
+    );
+    expect(discovered.res.status).toBe(200);
+    expect(discovered.json.error.code).toBe(-32601);
+    const cached = await postAs(rpc("tools/list", { _meta: modernMeta }), modernHeaders("tools/list"), apps);
+    expect(cached.json.error.code).toBe(-32022);
+    expect(cached.json.error.data.supported).toEqual(["2025-11-25", "2025-06-18"]);
+    const init = rpc("initialize", { protocolVersion: "2026-07-28", capabilities: uiCapabilities });
+    expect((await postAs(init, {}, apps)).json.result.protocolVersion).toBe("2025-11-25");
+    const textOnly = { ...apps, appShell: undefined };
+    expect(
+      (await postAs(rpc("server/discover", { _meta: modernMeta }), modernHeaders("server/discover"), textOnly)).json
+        .result.supportedVersions,
+    ).toContain("2026-07-28");
+    expect(
+      (
+        await postAs(rpc("server/discover", { _meta: modernMeta }), modernHeaders("server/discover"), {
+          ...apps,
+          modern: true,
+        })
+      ).json.result.supportedVersions,
+    ).toContain("2026-07-28");
+    expect(
+      (
+        await postAs(rpc("server/discover", { _meta: modernMeta }), modernHeaders("server/discover"), {
+          ...textOnly,
+          modern: false,
+        })
+      ).json.error.code,
+    ).toBe(-32601);
+  });
+
+  test("declares the UI extension on both eras' handshakes only when it can render a view", async () => {
+    const extensions = { "io.modelcontextprotocol/ui": {} };
+    const discover = async (props: Partial<McpRouterProps>) =>
+      (await postAs(rpc("server/discover", { _meta: modernMeta }), modernHeaders("server/discover"), props)).json.result
+        .capabilities;
+    expect((await discover({ ...apps, modern: true })).extensions).toEqual(extensions);
+    expect((await discover({ ...apps, appShell: undefined })).extensions).toBeUndefined();
+    const { json } = await postAs(
+      rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities }),
+      {},
+      apps,
+    );
+    expect(json.result.capabilities.extensions).toEqual(extensions);
+  });
+
+  test("issues a legacy session only to a client that declares it renders views", async () => {
+    expect(await uiSession()).toStartWith("ui.");
+    const { res } = await postAs(rpc("initialize", { protocolVersion: "2025-11-25", capabilities: {} }), {}, apps);
+    expect(res.headers.get("mcp-session-id")).toBeNull();
+    const { res: textOnly } = await postAs(
+      rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities }),
+      {},
+      { ...apps, appShell: undefined },
+    );
+    expect(textOnly.headers.get("mcp-session-id")).toBeNull();
+  });
+
+  test("lists and runs an `mcp: false` endpoint for a client that renders views, and for no other", async () => {
+    const { json: plain } = await postWith(rpc("tools/list"), apps);
+    expect(names(plain)).not.toContain("quietTitle");
+    const refused = await postWith(rpc("tools/call", { name: "quietTitle", arguments: { id: itemId } }), apps);
+    expect(refused.json.error.message).toBe("Unknown tool: quietTitle.");
+
+    const session = { "mcp-session-id": await uiSession() };
+    const { json: legacy } = await postAs(rpc("tools/list"), session, apps);
+    const quiet = legacy.result.tools.find((tool: { name: string }) => tool.name === "quietTitle");
+    expect(quiet._meta).toEqual({ ui: { visibility: ["app"] } });
+    const called = await postAs(rpc("tools/call", { name: "quietTitle", arguments: { id: itemId } }), session, apps);
+    expect(called.json.result.content[0].text).toBe(`${itemId}:quiet`);
+
+    const meta = {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": uiCapabilities,
+    };
+    const { json: modern } = await postAs(
+      rpc("tools/list", { _meta: meta }),
+      { "mcp-method": "tools/list", "mcp-protocol-version": "2026-07-28" },
+      { ...apps, modern: true },
+    );
+    expect(names(modern)).toContain("quietTitle");
+  });
+
+  test("answers the model with the briefing and the view with where the screen starts", async () => {
+    const session = { "mcp-session-id": await uiSession() };
+    const run = async (props: Partial<McpRouterProps>, headers: Record<string, string> = session) =>
+      (
+        await postAs(
+          rpc("tools/call", { name: "briefItem", arguments: { serverResolverTestItemId: itemId } }),
+          headers,
+          props,
+        )
+      ).json.result;
+    const result = await run(apps);
+    expect(result.isError).toBe(false);
+    expect(result.content.at(-1)).toEqual({
+      type: "text",
+      text: `Open this screen in a browser: http://127.0.0.1:8080/en/item/${itemId}`,
+    });
+    expect(result.structuredContent).toEqual({ href: `/en/item/${itemId}` });
+    // The raw screen values ride `_meta`, which no host hands to the model.
+    expect(result._meta["akanjs/snapshot"].map((record: { key: string }) => record.key)).toEqual([
+      "serverResolverTestItemListInCategory",
+      "echoTitle",
+    ]);
+    expect((await run({ ...apps, appShell: undefined })).structuredContent).toBeUndefined();
+    const textOnly = await run(apps, {});
+    expect(textOnly.structuredContent).toBeUndefined();
+    expect(textOnly._meta).toBeUndefined();
+    expect(textOnly.content).toEqual(result.content);
+  });
+
+  test("hands a view the value a browser would get, visual fields included, and a model the masked one", async () => {
+    const session = { "mcp-session-id": await uiSession() };
+    const call = (headers: Record<string, string>, meta?: object) =>
+      postAs(rpc("tools/call", { name: "visualItem", arguments: {}, ...(meta ? { _meta: meta } : {}) }), headers, apps);
+    const view = (await call(session, { "akanjs/view": true })).json.result;
+    expect(view.structuredContent.preview).toBeUndefined();
+    expect(view._meta["akanjs/value"]).toMatchObject({ title: "shot", preview: "data:image/png;base64,AAAA" });
+    expect((await call(session)).json.result._meta).toBeUndefined();
+    expect((await call({}, { "akanjs/view": true })).json.result._meta).toBeUndefined();
+  });
+
+  test("hands a view the domain error a browser would get, and nothing a refusal or a crash would", async () => {
+    const session = { "mcp-session-id": await uiSession() };
+    const id = "507f1f77bcf86cd799439011";
+    const call = (name: string, headers: Record<string, string>, meta?: object) =>
+      postAs(
+        rpc("tools/call", { name, arguments: name === "lockedTitle" ? { id } : {}, ...(meta ? { _meta: meta } : {}) }),
+        headers,
+        apps,
+      );
+    const view = (await call("lockedTitle", session, { "akanjs/view": true })).json.result;
+    expect(view.isError).toBe(true);
+    expect(view._meta["akanjs/error"]).toEqual({ error: "mcpItem.error.locked", statusCode: 409, data: { id } });
+    expect((await call("lockedTitle", session)).json.result._meta).toBeUndefined();
+    expect((await call("failingTitle", session, { "akanjs/view": true })).json.result._meta).toBeUndefined();
+    const vendor = (await call("vendorTitle", session, { "akanjs/view": true })).json.result;
+    expect(vendor._meta).toBeUndefined();
+    expect(vendor.content[0].text).toBe("The server failed to complete this request.");
+  });
+
+  test("gives the view the caller's claims to decide what it shows, and never the token", async () => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        appName: "mcpIntegration",
+        self: { id: "u1" },
+        aud: "http://127.0.0.1:8080/mcp",
+        exp: 4102444800,
+      }),
+    );
+    const token = `e30.${payload.toString("base64url")}.sig`;
+    const headers = { "mcp-session-id": await uiSession(), authorization: `Bearer ${token}` };
+    const { json } = await postAs(
+      rpc("tools/call", { name: "briefItem", arguments: { serverResolverTestItemId: itemId } }),
+      headers,
+      apps,
+    );
+    expect(json.result._meta["akanjs/account"]).toEqual({ appName: "mcpIntegration", self: { id: "u1" } });
+    expect(JSON.stringify(json.result)).not.toContain(token);
+  });
+
+  test("answers a refused screen as a tool error the model reads, and drops a null it was handed", async () => {
+    const tool = (args: Record<string, unknown>, run: PagePromptRun) =>
+      postWith(rpc("tools/call", { name: "briefItem", arguments: args }), {
+        ...apps,
+        pagePrompts: pagePromptsOf(run),
+      });
+    const missing = await tool({ serverResolverTestItemId: null }, okRun());
+    expect(missing.json.result.content[0].text).toContain("No serverResolverTestItemId was named");
+    const notFound = await tool({ serverResolverTestItemId: itemId }, { ok: false, reason: "not-found", message: "x" });
+    expect(notFound.json.result).toEqual({
+      content: [{ type: "text", text: "No screen exists for these arguments." }],
+      isError: true,
+    });
+    const nested = await tool({ serverResolverTestItemId: { id: itemId } }, okRun());
+    expect(nested.json.error.message).toBe("`arguments` must be an object of named values.");
+  });
+
+  test("keeps serving endpoint tools while the page list cannot be read, and gives back the caller's slot", async () => {
+    const down: PagePromptSource = {
+      list: async () => {
+        throw new Error("rsc worker is stopped");
+      },
+      run: async () => okRun(),
+    };
+    const props = { ...apps, pagePrompts: down, rateLimit: { calls: 100, concurrent: 1 } };
+    const routes = mcpRoutes(props)["/mcp"];
+    const send = async (body: object) =>
+      (
+        await routes.POST(
+          new Request("http://127.0.0.1:8080/mcp", {
+            method: "POST",
+            body: JSON.stringify(body),
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      ).json();
+    expect(names(await send(rpc("tools/list")))).toContain("echoTitle");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const called = await send(rpc("tools/call", { name: "briefItem", arguments: {} }));
+      expect(called.error.message).toBe("Unknown tool: briefItem.");
+    }
+    const echoed = await send(rpc("tools/call", { name: "echoTitle", arguments: { id: itemId } }));
+    expect(echoed.result.content[0].text).toBe(`${itemId}:none`);
+  });
+
+  test("serves the view with the app's origin as its base, and opens nothing else", async () => {
+    const read = await postWith(rpc("resources/read", { uri: "ui://mcpintegration/app" }), apps);
+    const [contents] = read.json.result.contents;
+    expect(contents.mimeType).toBe("text/html;profile=mcp-app");
+    expect(contents.text).toStartWith(
+      '<!DOCTYPE html><html lang="en"><head><base href="http://127.0.0.1:8080/"><script>\nwindow.__AKAN_EMBED__',
+    );
+    expect(contents._meta.ui.csp).toEqual({
+      resourceDomains: ["http://127.0.0.1:8080"],
+      baseUriDomains: ["http://127.0.0.1:8080"],
+    });
+    const forged = await postAs(
+      rpc("resources/read", { uri: "ui://mcpintegration/app" }),
+      { "x-forwarded-host": 'evil.test"><script>alert(1)</script>' },
+      apps,
+    );
+    expect(forged.json.result.contents[0].text).not.toContain("alert(1)");
+    const unknown = await postWith(rpc("resources/read", { uri: "ui://mcpintegration/app/admin" }), apps);
+    expect(unknown.json.error.message).toBe("Unknown resource: ui://mcpintegration/app/admin.");
+  });
+
+  test("offers the view as a resource only to a client that renders it", async () => {
+    const uris = (json: { result: { resources: { uri: string }[] } }) => json.result.resources.map(({ uri }) => uri);
+    expect(uris((await postWith(rpc("resources/list"), apps)).json)).toEqual([]);
+    const session = { "mcp-session-id": await uiSession() };
+    expect(uris((await postAs(rpc("resources/list"), session, apps)).json)).toEqual(["ui://mcpintegration/app"]);
+  });
+
+  test("keeps an endpoint's name when a page takes it too, and says so at boot", async () => {
+    const clash: PagePromptEntry = { ...briefEntry, name: "echoTitle" };
+    const refusedClash: PagePromptEntry = { ...briefEntry, name: "hiddenTitle" };
+    const props = { ...apps, pagePrompts: pagePromptsOf(okRun(), [briefEntry, clash, refusedClash]) };
+    const { json } = await postWith(rpc("tools/list"), props);
+    expect(names(json).filter((name) => name === "echoTitle")).toHaveLength(1);
+    expect(names(json)).not.toContain("hiddenTitle");
+    const echo = json.result.tools.find((tool: { name: string }) => tool.name === "echoTitle");
+    expect(echo._meta).toBeUndefined();
+    const called = await postWith(rpc("tools/call", { name: "echoTitle", arguments: { id: itemId } }), props);
+    expect(called.json.result.content[0].text).toBe(`${itemId}:none`);
+    const lines: string[] = [];
+    const stop = Logger.addSink(({ message }) => void lines.push(message));
+    try {
+      mcpRouter(props).report();
+      await Bun.sleep(20);
+    } finally {
+      stop();
+    }
+    expect(lines.some((line) => line.includes('did not publish page "echoTitle" as a tool'))).toBe(true);
   });
 });

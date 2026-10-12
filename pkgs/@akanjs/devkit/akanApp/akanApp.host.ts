@@ -1289,8 +1289,9 @@ export class AkanAppHost {
       void this.#wakeFromIdle(`${message.type} arrived while suspended`);
       return;
     }
-    // In `env`, which every builder spawn re-reads, so a restarted builder stays armed for a mobile dev session.
-    if (message.type === "build-csr" && this.env.AKAN_DEV_CSR_REBUILD !== "1") {
+    // In `env`, which every builder spawn re-reads, so a restarted builder stays armed for a mobile dev session. A view's
+    // shell is asked for per read, so it arms nothing.
+    if (message.type === "build-csr" && !message.shell && this.env.AKAN_DEV_CSR_REBUILD !== "1") {
       Object.assign(this.env, { AKAN_DEV_CSR_REBUILD: "1" });
       this.logger.verbose(`[csr] armed dev CSR rebuilds (${message.reason})`);
     }
