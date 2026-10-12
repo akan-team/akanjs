@@ -791,6 +791,16 @@ struct Colors {
   dark: (u8, u8, u8, u8),
 }
 
+impl Colors {
+  fn of(&self, window: &tao::window::Window) -> (u8, u8, u8, u8) {
+    if window_theme(window) == tao::window::Theme::Dark {
+      self.dark
+    } else {
+      self.light
+    }
+  }
+}
+
 /// SH-3 background for the current appearance, on the window and the webview.
 fn paint(window: &tao::window::Window, webview: Option<&WebView>, colors: &Colors, dark: bool) {
   let c = if dark { colors.dark } else { colors.light };
@@ -1679,7 +1689,8 @@ impl Windows {
   fn external_recover(&mut self, view: &str) {
     let Some(win) = self.external.window_of(view).and_then(|w| self.map.get(&w)) else { return };
     let inner = inner_size(&win.window, Some(&win.webview));
-    if let Err(e) = self.external.recover(view, &win.window, inner, &self.external_data, self.shell.devtools) {
+    let background = self.shell.colors.of(&win.window);
+    if let Err(e) = self.external.recover(view, &win.window, inner, &self.external_data, self.shell.devtools, background) {
       log!("external view {view}: could not load it again: {e}");
     }
   }
@@ -1727,7 +1738,8 @@ impl Windows {
         let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
         let win = &self.map[&window];
         let hidden = win.cursor_hidden;
-        let answer = self.external.open(&win.window, inner, &data, devtools, opts)?;
+        let background = self.shell.colors.of(&win.window);
+        let answer = self.external.open(&win.window, inner, &data, devtools, background, opts)?;
         if hidden {
           self.external.set_cursor_hidden(window, true);
         }

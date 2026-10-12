@@ -250,7 +250,7 @@ export interface AkanNativeDesktopConfig {
    * where none is installed; `"standalone"` carries the whole runtime (~200 MB) for a PC offline at install.
    */
   webview2?: "bootstrapper" | "standalone";
-  /** Windows: who publishes the app, as the installed app's Publisher and its executable's company name. */
+  /** Windows: who publishes the app, as the installed app's Publisher and its executable's company name (default: the app name). */
   publisher?: string;
   /**
    * macOS: entitlements of the app's executable beyond what it gets by itself — the JIT's under the hardened runtime and
@@ -309,7 +309,7 @@ export interface AkanNativeSettings {
   icon?: string | { image: string; backgroundColor?: string };
   /** A PNG shown centered at launch, or the launch screen's color, image and when it hides. */
   splash?: string | NonNullable<AkanNativeConfig["splash"]>;
-  /** The window's color before its page paints (and the splash's default): one, or `{ light, dark }`. Default white / black. */
+  /** A window's and an external view's color before its page paints (and the splash's default): one, or `{ light, dark }`. Default white / black. */
   backgroundColor?: string | { light: string; dark: string };
   permissions?: NativePermission[];
   /** Native runtime plugins beyond the ones the permissions bring: a builtin id (`"iap"`) or a folder, from the app's. */

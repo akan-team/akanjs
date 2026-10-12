@@ -12,7 +12,10 @@
 // 5. takes a trusted key press, and captures its own content,
 // 6. keeps storage of its own, which clearData clears,
 // 7. loads again when its renderer ends, counting restarts, and is built again when its browser process ends,
-// and that the window goes onto a display at an exact size in physical pixels, below the default minimum.
+// 8. keeps the window's hidden pointer hidden over it,
+// 9. shows the app's backgroundColor, not white, until its page paints,
+// and that the window goes onto a display at an exact size in physical pixels, below the default minimum, and the
+// executable names the app as its company when no publisher is set.
 
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,13 +41,20 @@ console.log("tick");
 console.warn("slow frame", 120);
 setTimeout(() => { throw new Error("boom"); }, 50);
 </script></body>`;
+const BACKGROUND = "204060";
+const SLOW = `<!doctype html><title>slow</title><body style="margin:0;background:#00aa00"></body>`;
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
-  fetch: (req) =>
-    new URL(req.url).pathname === "/board"
-      ? new Response(BOARD, { headers: { "content-type": "text/html" } })
-      : new Response("<h1>upstream down</h1>", { status: 502, headers: { "content-type": "text/html" } }),
+  fetch: async (req) => {
+    const { pathname } = new URL(req.url);
+    if (pathname === "/board") return new Response(BOARD, { headers: { "content-type": "text/html" } });
+    if (pathname === "/slow") {
+      await Bun.sleep(5_000);
+      return new Response(SLOW, { headers: { "content-type": "text/html" } });
+    }
+    return new Response("<h1>upstream down</h1>", { status: 502, headers: { "content-type": "text/html" } });
+  },
 });
 const origin = `http://127.0.0.1:${server.port}`;
 const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
@@ -138,6 +148,12 @@ function powershell(command: string): string {
   return p.stdout.toString().trim();
 }
 
+/** One screen pixel as rrggbb, read in device pixels whatever the display scale. */
+const screenPixel = (x: number, y: number) =>
+  powershell(
+    `Add-Type -AssemblyName System.Drawing; Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class Dpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'; [Dpi]::SetProcessDPIAware() | Out-Null; $b = New-Object System.Drawing.Bitmap 1,1; [System.Drawing.Graphics]::FromImage($b).CopyFromScreen(${Math.round(x)}, ${Math.round(y)}, 0, 0, $b.Size); $c = $b.GetPixel(0,0); '{0:x2}{1:x2}{2:x2}' -f $c.R,$c.G,$c.B`,
+  );
+
 const appPids = (name: string) =>
   powershell(`(Get-Process -Name '${name}' -ErrorAction SilentlyContinue).Id -join ','`)
     .split(",")
@@ -168,6 +184,7 @@ try {
       plugins: [...(sampleConfig.plugins ?? []), "external-view"],
       capabilities: [{ ...app0, permissions: [...app0.permissions, "external-view:default"] }, ...rest],
       desktop: { ...sampleConfig.desktop, window: { frameless: true } },
+      shell: { ...sampleConfig.shell, backgroundColor: `#${BACKGROUND}`, backgroundColorDark: `#${BACKGROUND}` },
     },
     platform: "windows",
     profile: "debug",
@@ -178,6 +195,9 @@ try {
   const exe = join(folder, readdirSync(folder).find((n) => n.endsWith(".exe")) ?? "");
   exeName = basename(exe, ".exe");
   for (const pid of appPids(exeName)) process.kill(pid);
+  const company = powershell(`(Get-Item '${exe}').VersionInfo.CompanyName`);
+  console.info(`  CompanyName ${company}`);
+  if (company !== sampleConfig.app.name) throw new Error(`the executable's company is ${company}, not the app's name`);
 
   const app = Bun.spawn([exe], {
     env: { ...process.env, AKAN_NATIVE_WEBVIEW2_DEBUG_PORT: String(port), AKAN_NATIVE_QUIT_ON_STDIN: "1" },
@@ -301,7 +321,29 @@ try {
   await until("the board reloaded", async () => (await inView("document.title")) === "board");
   if ((await inView(cursorNone)) !== true) throw new Error("a reloaded page shows the pointer");
 
+  step("9. a view shows the app's backgroundColor, not white, until its page paints");
   await ok("external-view", "close", { id: "board" });
+  await ok("window", "setCursorVisible", { value: true });
+  await ok("external-view", "open", {
+    id: "slow",
+    url: `${origin}/slow`,
+    allowOrigins: [origin],
+    bounds: { x: 100, y: 100, width: 200, height: 150 },
+  });
+  await Bun.sleep(1_500);
+  const at = { x: (40 + 200) * scale, y: (40 + 175) * scale };
+  const before = screenPixel(at.x, at.y);
+  await waitFor(
+    "the slow page loaded",
+    (e) => e.event === "load" && e.data.state === "finished" && e.data.id === "slow",
+  );
+  await Bun.sleep(500);
+  const after = screenPixel(at.x, at.y);
+  console.info(`  before its page: ${before}, after: ${after}`);
+  if (after !== "00aa00") throw new Error(`the sampled pixel is not the view's (${after} after its page painted)`);
+  if (before !== BACKGROUND) throw new Error(`the view showed ${before} before its page, not the app's ${BACKGROUND}`);
+
+  await ok("external-view", "close", { id: "slow" });
   if ((await ok("external-view", "list")).length !== 0) throw new Error("the view is still listed");
   console.info("\nexternal-view-check passed");
 } catch (error) {

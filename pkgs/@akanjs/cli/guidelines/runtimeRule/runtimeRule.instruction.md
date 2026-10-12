@@ -303,8 +303,9 @@ const config: AppConfig = {
   the stage owns. The `window` plugin places it: `placeOnDisplay({ index, bounds, unit: "physical" })` puts a window
   on one display in that display's device pixels — a 640×128 LED panel — lowering the minimum size to fit, beside
   `setAlwaysOnTop`, `setCursorVisible` (which hides the pointer over its external views too, on Windows) and
-  `setDecorations`. `native.backgroundColor` (or `{ light, dark }`) is what a window shows before its page paints, so a
-  dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in Apps & features.
+  `setDecorations`. `native.backgroundColor` (or `{ light, dark }`) is what a window and an external view show before
+  their page paints, so a dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in
+  Apps & features and its executable's company (the app name when unset, never Bun's own).
 - **A third-party page shown first-party** — a scoreboard, a menu board — is the `external-view` plugin, listed in
   `native.plugins`: a webview over the window with a browser profile of its own, held to the origins it was opened
   for, with an init script, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is
