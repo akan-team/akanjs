@@ -407,6 +407,14 @@ export const injectionBuilder = (parentRefName: string) => ({
     const isStructured = Array.isArray(valueRef) || !PrimitiveRegistry.has(valueRef);
     const read = opts.get as ((value: unknown) => unknown) | undefined;
     const write = opts.set as ((value: unknown) => unknown) | undefined;
+    const elementRef = (Array.isArray(valueRef) ? valueRef[0] : valueRef) as Cls | undefined;
+    const ModelCls =
+      elementRef && ConstantRegistry.has(elementRef) ? (elementRef as unknown as new (obj: object) => object) : null;
+    //? deserialize answers plain objects with parsed fields, while the declared type is the class, methods included.
+    const instanceOf = (value: unknown) =>
+      !ModelCls || value instanceof ModelCls ? value : new ModelCls(value as object);
+    const hydrate = (value: unknown) =>
+      value === null ? null : Array.isArray(value) ? value.map(instanceOf) : instanceOf(value);
     type FieldValue = [GetFn] extends [never] ? GetFieldValue<ValueRef, ExplicitType, MapValue> : ReturnType<GetFn>;
     type MapFieldValue = [GetFn] extends [never] ? FieldToValue<MapValue> : ReturnType<GetFn>;
     type IsNullable = DefaultValue extends never ? true : false;
@@ -460,7 +468,7 @@ export const injectionBuilder = (parentRefName: string) => ({
         }
         // A row written before this encoding, and the sqlite cache's own `json` type, both arrive already parsed.
         const rawValue = isStructured && typeof stored === "string" ? JSON.parse(stored) : stored;
-        const value = ConstantRegistry.deserialize(valueRef, rawValue as object, true) ?? null;
+        const value = hydrate(ConstantRegistry.deserialize(valueRef, rawValue as object, true) ?? null);
         return read && value !== null ? read(value) : value;
       },
       set: (value: never) => {
