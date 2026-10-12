@@ -19,6 +19,7 @@ export type FetchProxySignalInput<
 > = {
   handler: Record<string, unknown>;
   serializedSignal: Record<string, SerializedSignal>;
+  ownSerializedSignal?: Record<string, SerializedSignal>;
   _FetchType: FetchType;
   _SliceMetaObj: SliceMetaObj;
 };

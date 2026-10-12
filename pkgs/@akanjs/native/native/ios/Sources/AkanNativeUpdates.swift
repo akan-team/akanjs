@@ -1,13 +1,13 @@
-// Web bundle updates (UP-2): which bundle the shell serves, and the trial / confirm / rollback
+// Web bundle updates (UP-2, protocol v2): which bundle the shell serves, and the trial / confirm / rollback
 // state. @akanjs/native/plugins/updates downloads and verifies bundles and calls stage/apply/confirm; the
 // shell picks the bundle at launch (`launch`) and rolls back a trial that never confirms.
 //
-// Layout: Library/Application Support/akan-native-updates/{state.json, bundles/<bundle>/{…, manifest.json,
-// manifest.json.sig}} (the filesystem plugin's `data` is Application Support/files). A bundle is
-// served only while its signed manifest still verifies and its files are all there with their
-// sizes (checked at every launch).
-// state.json: { current?, pending?, trial?, failed: [bundle], rolledBack? } with entries
-// { bundle, sequence, nativeApi, attempts? }.
+// Layout: Library/Application Support/akan-native-updates/{state.json, bundles/<bundle>/{…, manifest.signed.json}}
+// (the filesystem plugin's `data` is Application Support/files). A bundle is served only while its envelope still
+// verifies under a key of updates.publicKeys that is not revoked, and its files are all there with their sizes
+// (checked at every launch).
+// state.json: { current?, pending?, trial?, failed: [bundle], rolledBack?, revokedKeys: [keyId] } with entries
+// { bundle, sequence, nativeApi, keyId, attempts? }. revokedKeys outlive reset(): a revocation is for good.
 // - A downloaded bundle is `pending`. At the next launch (or apply()) it becomes `trial` with one
 //   attempt. notifyReady() makes the trial `current`. A trial that is launched again without
 //   having confirmed (it crashed or hung) is marked failed and the previous bundle serves.
@@ -27,22 +27,26 @@ struct AkanNativeUpdateEntry: Equatable, Sendable {
     var bundle: String
     var sequence: Double
     var nativeApi: String
+    /// The key whose envelope the bundle came in.
+    var keyId: String
     var attempts: Int = 0
 
-    init(bundle: String, sequence: Double, nativeApi: String, attempts: Int = 0) {
+    init(bundle: String, sequence: Double, nativeApi: String, keyId: String, attempts: Int = 0) {
         self.bundle = bundle
         self.sequence = sequence
         self.nativeApi = nativeApi
+        self.keyId = keyId
         self.attempts = attempts
     }
 
     init?(_ json: Any?) {
         guard let o = json as? [String: Any], let bundle = o["bundle"] as? String, AkanNativeUpdates.isBundleId(bundle),
-              let sequence = (o["sequence"] as? NSNumber)?.doubleValue, let nativeApi = o["nativeApi"] as? String else { return nil }
-        self.init(bundle: bundle, sequence: sequence, nativeApi: nativeApi, attempts: (o["attempts"] as? NSNumber)?.intValue ?? 0)
+              let sequence = (o["sequence"] as? NSNumber)?.doubleValue, let nativeApi = o["nativeApi"] as? String,
+              let keyId = o["keyId"] as? String, AkanNativeKernel.isUpdateKeyId(keyId) else { return nil }
+        self.init(bundle: bundle, sequence: sequence, nativeApi: nativeApi, keyId: keyId, attempts: (o["attempts"] as? NSNumber)?.intValue ?? 0)
     }
 
-    var json: [String: Any] { ["bundle": bundle, "sequence": sequence, "nativeApi": nativeApi, "attempts": attempts] }
+    var json: [String: Any] { ["bundle": bundle, "sequence": sequence, "nativeApi": nativeApi, "keyId": keyId, "attempts": attempts] }
 }
 
 struct AkanNativeUpdateState: Sendable {
@@ -51,8 +55,11 @@ struct AkanNativeUpdateState: Sendable {
     var trial: AkanNativeUpdateEntry?
     var failed: [String] = []
     var rolledBack: String?
+    var revokedKeys: [String] = []
 
-    init() {}
+    init(revokedKeys: [String] = []) {
+        self.revokedKeys = revokedKeys
+    }
 
     init(_ o: [String: Any]) {
         current = AkanNativeUpdateEntry(o["current"])
@@ -60,10 +67,11 @@ struct AkanNativeUpdateState: Sendable {
         trial = AkanNativeUpdateEntry(o["trial"])
         failed = (o["failed"] as? [String] ?? []).filter(AkanNativeUpdates.isBundleId)
         rolledBack = o["rolledBack"] as? String
+        revokedKeys = (o["revokedKeys"] as? [String] ?? []).filter(AkanNativeKernel.isUpdateKeyId)
     }
 
     var json: [String: Any] {
-        var o: [String: Any] = ["failed": Array(failed.suffix(20))]
+        var o: [String: Any] = ["failed": Array(failed.suffix(20)), "revokedKeys": revokedKeys]
         if let current { o["current"] = current.json }
         if let pending { o["pending"] = pending.json }
         if let trial { o["trial"] = trial.json }
@@ -79,14 +87,21 @@ struct AkanNativeUpdateConfig: Sendable {
     let nativeApi: String
     let embeddedSequence: Double
     let url: String
-    let publicKey: Data
+    /// updates.publicKeys in order: the order decides which key may revoke which (AkanNativeKernel.updateDecision).
+    let keys: [(keyId: String, key: Data)]
     let channel: String
     let readyTimeout: TimeInterval
     let dev: Bool
 
+    var ring: [String] { keys.map(\.keyId) }
+
+    func key(_ keyId: String) -> Data? { keys.first { $0.keyId == keyId }?.key }
+
     static func load() -> AkanNativeUpdateConfig? {
         let o = AkanNativeResources.json("updates.json")
-        guard let app = o["app"] as? String, let url = o["url"] as? String, let key = (o["publicKey"] as? String).flatMap({ Data(base64Encoded: $0) }), key.count == 32,
+        let encoded = o["publicKeys"] as? [String] ?? (o["publicKey"] as? String).map { [$0] } ?? []
+        let raw = encoded.compactMap { Data(base64Encoded: $0) }.filter { $0.count == 32 }
+        guard let app = o["app"] as? String, let url = o["url"] as? String, !raw.isEmpty, raw.count == encoded.count,
               let nativeApi = o["nativeApi"] as? String else { return nil }
         return AkanNativeUpdateConfig(
             app: app,
@@ -94,11 +109,28 @@ struct AkanNativeUpdateConfig: Sendable {
             nativeApi: nativeApi,
             embeddedSequence: (o["embeddedSequence"] as? NSNumber)?.doubleValue ?? 0,
             url: url,
-            publicKey: key,
+            keys: raw.map { (keyId: AkanNativeKernel.updateKeyId($0), key: $0) },
             channel: o["channel"] as? String ?? "production",
             readyTimeout: ((o["readyTimeout"] as? NSNumber)?.doubleValue ?? 10_000) / 1000,
             dev: o["dev"] as? Bool ?? false
         )
+    }
+}
+
+/// A `<channel>/<nativeApi>.json` envelope, checked as far as its signature: what the manifest says is read after.
+struct AkanNativeUpdateEnvelope {
+    let manifest: Data
+    let keyId: String
+
+    /// nil: not an envelope, or signed by a key this binary does not trust or has revoked.
+    static func open(_ data: Data, _ config: AkanNativeUpdateConfig, revoked: [String]) -> AkanNativeUpdateEnvelope? {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let keyId = o["keyId"] as? String, AkanNativeKernel.isUpdateKeyId(keyId), !revoked.contains(keyId),
+              let raw = config.key(keyId), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: raw),
+              let manifest = (o["manifest"] as? String).flatMap({ Data(base64Encoded: $0) }), manifest.count <= 1 << 20,
+              let signature = (o["signature"] as? String).flatMap({ Data(base64Encoded: $0) }),
+              key.isValidSignature(signature, for: manifest) else { return nil }
+        return AkanNativeUpdateEnvelope(manifest: manifest, keyId: keyId)
     }
 }
 
@@ -147,24 +179,23 @@ enum AkanNativeUpdates {
         }
     }
 
-    /// Whether a bundle may run in this binary.
-    static func usable(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig) -> Bool {
+    /// Whether a bundle may run in this binary: built for its native API, newer than its own bundle, and signed by a
+    /// key it trusts and has not revoked.
+    static func usable(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
         guard let entry else { return false }
         return entry.nativeApi == config.nativeApi && entry.sequence > config.embeddedSequence
+            && config.ring.contains(entry.keyId) && !revoked.contains(entry.keyId)
             && FileManager.default.fileExists(atPath: bundleDirectory(entry.bundle).appendingPathComponent("index.html").path)
-            && verified(entry, config)
+            && verified(entry, config, revoked: revoked)
     }
 
-    /// The bundle's signed manifest (kept next to it by the plugin) verifies, describes this entry,
+    /// The bundle's envelope (kept next to it by the plugin) verifies, describes this entry,
     /// and every file it lists is there with its size. The hashes were checked at the download.
-    private static func verified(_ entry: AkanNativeUpdateEntry, _ config: AkanNativeUpdateConfig) -> Bool {
+    private static func verified(_ entry: AkanNativeUpdateEntry, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
         let dir = bundleDirectory(entry.bundle)
-        guard let manifest = try? Data(contentsOf: dir.appendingPathComponent("manifest.json")),
-              let sigText = try? String(contentsOf: dir.appendingPathComponent("manifest.json.sig"), encoding: .utf8),
-              let signature = Data(base64Encoded: sigText.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let key = try? Curve25519.Signing.PublicKey(rawRepresentation: config.publicKey),
-              key.isValidSignature(signature, for: manifest),
-              let o = try? JSONSerialization.jsonObject(with: manifest) as? [String: Any],
+        guard let data = try? Data(contentsOf: dir.appendingPathComponent("manifest.signed.json")),
+              let envelope = AkanNativeUpdateEnvelope.open(data, config, revoked: revoked), envelope.keyId == entry.keyId,
+              let o = try? JSONSerialization.jsonObject(with: envelope.manifest) as? [String: Any],
               o["bundle"] as? String == entry.bundle, (o["sequence"] as? NSNumber)?.doubleValue == entry.sequence,
               o["nativeApi"] as? String == entry.nativeApi, o["app"] as? String == config.app, o["platform"] as? String == config.platform,
               let files = o["files"] as? [[String: Any]] else { return false }
@@ -180,9 +211,9 @@ enum AkanNativeUpdates {
     static func launch() -> URL? {
         guard let config else { return nil }
         var state = readState()
-        if !usable(state.current, config) { state.current = nil }
-        if !usable(state.pending, config) { state.pending = nil }
-        if !usable(state.trial, config) { state.trial = nil }
+        if !usable(state.current, config, revoked: state.revokedKeys) { state.current = nil }
+        if !usable(state.pending, config, revoked: state.revokedKeys) { state.pending = nil }
+        if !usable(state.trial, config, revoked: state.revokedKeys) { state.trial = nil }
         if let trial = state.trial {
             // Launched again without notifyReady(): the trial crashed or hung.
             state.failed.append(trial.bundle)
@@ -215,7 +246,7 @@ enum AkanNativeUpdates {
     static func applyPending() -> URL? {
         guard let config else { return nil }
         var state = readState()
-        guard var pending = state.pending, usable(pending, config) else { return nil }
+        guard var pending = state.pending, usable(pending, config, revoked: state.revokedKeys) else { return nil }
         pending.attempts = 1
         state.trial = pending
         state.pending = nil
@@ -230,7 +261,7 @@ enum AkanNativeUpdates {
         guard onTrial, let trial = active else { return }
         var state = readState()
         guard state.trial?.bundle == trial.bundle else { return }
-        state.current = AkanNativeUpdateEntry(bundle: trial.bundle, sequence: trial.sequence, nativeApi: trial.nativeApi)
+        state.current = AkanNativeUpdateEntry(bundle: trial.bundle, sequence: trial.sequence, nativeApi: trial.nativeApi, keyId: trial.keyId)
         state.trial = nil
         state.rolledBack = nil
         writeState(state)
@@ -247,15 +278,25 @@ enum AkanNativeUpdates {
         state.rolledBack = trial.bundle
         writeState(state)
         onTrial = false
-        active = config.flatMap { usable(state.current, $0) ? state.current : nil }
+        active = config.flatMap { usable(state.current, $0, revoked: state.revokedKeys) ? state.current : nil }
         NSLog("[akan-native] updates: bundle %@ did not call notifyReady() in time; rolled back", trial.bundle)
         return active.map { bundleDirectory($0.bundle) }
     }
 
-    /// reset(): the app's own bundle from the next launch on.
+    /// reset(): the app's own bundle from the next launch on. Revocations stay.
     static func reset() {
-        writeState(AkanNativeUpdateState())
+        writeState(AkanNativeUpdateState(revokedKeys: readState().revokedKeys))
         prune(keep: active.map { [$0.bundle] } ?? [])
+    }
+
+    /// Keys a verified manifest revoked: no bundle they signed is served again, from the next launch on.
+    static func revoke(_ keyIds: [String]) {
+        var state = readState()
+        let added = keyIds.filter { !state.revokedKeys.contains($0) }
+        guard !added.isEmpty else { return }
+        state.revokedKeys += added
+        writeState(state)
+        NSLog("[akan-native] updates: revoked keys %@", added.joined(separator: ", "))
     }
 
     /// A download in progress (bundles/<bundle>.partial) is the plugin's, which removes it.

@@ -5,7 +5,8 @@ import type { PipelineDiagnostic, PipelinePlanContext, PipelinePlanResult } from
 import { AkanAppConfig, AkanWorkspaceConfig } from "../akanConfig";
 import { AppExecutor, type WorkspaceExecutor } from "../executors";
 import { FileSys } from "../fileSys";
-import { PipelineCompiler, type PipelineSourceFile } from "./PipelineCompiler";
+import { resolveMobileTargets } from "../mobile/mobileTarget";
+import { PipelineCompiler, type PipelineNativeTargets, type PipelineSourceFile } from "./PipelineCompiler";
 
 /**
  * The workspace root config and each app's, for one run. Loading evaluates the workspace's own TypeScript, so a plan is
@@ -20,6 +21,7 @@ export class PipelineDefinition {
 
   readonly diagnostics: PipelineDiagnostic[] = [];
   readonly appSources = new Map<string, PipelineSourceFile<AppPipelineConfig>>();
+  readonly nativeTargets = new Map<string, PipelineNativeTargets>();
   workspaceApps: string[] = [];
   workspaceSource: PipelineSourceFile<WorkspacePipelineConfig> | null = null;
   readonly #workspace: WorkspaceExecutor;
@@ -34,6 +36,7 @@ export class PipelineDefinition {
       workspaceApps: this.workspaceApps,
       workspace: this.workspaceSource,
       apps: this.appSources,
+      nativeTargets: this.nativeTargets,
       akanVersion: AkanAppConfig.akanVersion,
       sampled,
       diagnostics: this.diagnostics,
@@ -45,7 +48,27 @@ export class PipelineDefinition {
     this.workspaceSource = await this.#loadWorkspace();
     for (const app of new Set(apps)) {
       if (!this.workspaceApps.includes(app)) continue;
-      this.appSources.set(app, await this.#loadApp(app));
+      const source = await this.#loadApp(app);
+      this.appSources.set(app, source);
+      if (PipelineDefinition.#mayTakeOta(source.pipeline))
+        this.nativeTargets.set(app, await this.#loadNativeTargets(app));
+    }
+  }
+
+  //? A function form is only known once the compiler runs it, so it pays for the config load either way.
+  static #mayTakeOta(pipeline: AppPipelineConfig | null) {
+    if (typeof pipeline === "function") return true;
+    const stages: unknown = pipeline?.stages;
+    return Array.isArray(stages) && stages.some((stage) => (stage as { use?: unknown } | null)?.use === "ota");
+  }
+
+  //? The whole app config, libs included: a target's `updates` may come from `native.updates` or its own section.
+  async #loadNativeTargets(app: string): Promise<PipelineNativeTargets> {
+    try {
+      const targets = await resolveMobileTargets(AppExecutor.from(this.#workspace, app), "all");
+      return { targets: targets.map(({ name, config }) => ({ name, updates: !!config.updates })) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   }
 

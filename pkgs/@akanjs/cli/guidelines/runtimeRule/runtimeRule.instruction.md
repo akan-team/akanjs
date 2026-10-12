@@ -269,13 +269,21 @@ const config: AppConfig = {
   HSM's), or `AKAN_NATIVE_WINDOWS_SIGN_COMMAND` (a JSON array run per file with `{file}`, e.g. signtool with Azure
   Trusted Signing's dlib) signs every PE file of the app — the server's `.node` and `bin` included — the setup program
   and the uninstaller it writes, SHA-256 with a timestamp (`AKAN_NATIVE_WINDOWS_TIMESTAMP_URL`).
-- **`updates: { url, publicKey }` lets an installed app update itself** — the whole app on a desktop, the web
+- **`updates: { url, publicKeys }` lets an installed app update itself** — the whole app on a desktop, the web
   bundle on a phone. `akan update-keygen <app>` makes the signing key once
-  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints the
-  `publicKey`. `akan publish-update <app>` builds and signs a release into `updates/`: upload that folder to `url`,
-  the manifests last. `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign. The
-  channel is the backend env the binary was built for unless `channel` names one, and a release that does not
-  come up is rolled back to the one before.
+  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints its public
+  key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
+  them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
+  app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
+  into `updates/`: upload that folder to `url`, the manifests last. A phone reads only
+  `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its own fixes.
+  `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
+  `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
+  an akasys project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
+  release that hangs is rolled back while the app runs. `devtools: true` opens the web inspector of a release build
+  for an internal test target. The channel is the backend env the
+  binary was built for unless `channel` names one, and a release that does not come up is rolled back to the one
+  before.
 - **An unattended screen** — signage, a kiosk — takes `desktop.recovery: "reload"` (a crashed page loads again,
   and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar }`,
   `desktop.screenCapture: "auto"` (Windows answers `getDisplayMedia()` with the first screen, no picker) and
@@ -510,7 +518,7 @@ const config: AppConfig = { assets: { pruneFonts: false } }; // emergency valve,
 
 ## The Build Pipeline — `pipeline` In `akan.config.ts`
 
-Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`. **An app's own stages go in
+Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`, and `ota` after them when asked. **An app's own stages go in
 `apps/<app>/akan.config.ts` under `pipeline`; stages around every app go in the workspace root's
 `akan.config.ts`**, typed `WorkspaceConfig` (`before`, `after`, `post`, `env`, `timeout`). Both are `import type`
 objects (or `(ctx) => …`), and `akan pipeline dry-run | validate | plan` turns them into the plan Akan Cloud runs —
@@ -528,6 +536,10 @@ const config: WorkspaceConfig = {
 - **A declared list is the whole pipeline.** Without `pipeline` an app runs the three actions; with it, write them
   — a list without `{ use: "deploy" }` never deploys. Each action appears at most once, in that order, and
   `docker` needs a `build` before it (the image is made from that build).
+- **`{ use: "ota" }` ships the native web bundle over the air**, after `deploy` so the API it calls is already up.
+  It is opt-in, makes its own CSR build, and packs every native target that declares `native.updates` for iOS
+  and Android — `targets` and `platforms` narrow it, and a target without `updates` is a plan error. Akan Cloud
+  signs and publishes the packs; the plan never holds a key.
 - **A stage runs after the action before it.** Stages between two actions share a phase across apps, and a phase
   waits for every stage of the one before; `deploy` runs the apps one at a time in `after` order.
 - **App stages stand on their own.** Never rely on what a root `before` stage left on disk: the root config never

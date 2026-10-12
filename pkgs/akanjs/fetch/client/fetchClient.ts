@@ -96,6 +96,7 @@ export class FetchClient {
   static #testClientIps = false;
   static #testClientIpSeq = 0;
   serializedSignal: { [key: string]: SerializedSignal } = {};
+  #ownSignal: { [key: string]: SerializedSignal } = {};
   jwt: string | null = null;
 
   constructor(
@@ -151,31 +152,43 @@ export class FetchClient {
     signal: SerializedSignal,
   ) {
     const current = serializedSignal[refName];
-    serializedSignal[refName] = current
-      ? {
-          ...current,
-          ...signal,
-          endpoint: { ...current.endpoint, ...signal.endpoint },
-          slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
-          filter:
-            current.filter || signal.filter
-              ? {
-                  filter: { ...current.filter?.filter, ...signal.filter?.filter },
-                  sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
-                  sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
-                }
-              : undefined,
-          getGuards: signal.getGuards ?? current.getGuards,
-          cruGuards: signal.cruGuards ?? current.cruGuards,
-          createGuards: signal.createGuards ?? current.createGuards,
-          updateGuards: signal.updateGuards ?? current.updateGuards,
-          removeGuards: signal.removeGuards ?? current.removeGuards,
-          origin:
-            current.origin || signal.origin
-              ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
-              : undefined,
-        }
-      : signal;
+    serializedSignal[refName] = current ? FetchClient.#definedOnly(FetchClient.#merged(current, signal)) : signal;
+  }
+  //? A macro inlines its return as written, so a merge must not leave keys an unmerged signal does not have.
+  static #definedOnly(signal: SerializedSignal): SerializedSignal {
+    return Object.fromEntries(Object.entries(signal).filter(([, value]) => value !== undefined)) as SerializedSignal;
+  }
+  static #merged(current: SerializedSignal, signal: SerializedSignal): SerializedSignal {
+    return {
+      ...current,
+      ...signal,
+      endpoint: { ...current.endpoint, ...signal.endpoint },
+      slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
+      filter:
+        current.filter || signal.filter
+          ? {
+              filter: { ...current.filter?.filter, ...signal.filter?.filter },
+              sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
+              sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
+            }
+          : undefined,
+      getGuards: signal.getGuards ?? current.getGuards,
+      cruGuards: signal.cruGuards ?? current.cruGuards,
+      createGuards: signal.createGuards ?? current.createGuards,
+      updateGuards: signal.updateGuards ?? current.updateGuards,
+      removeGuards: signal.removeGuards ?? current.removeGuards,
+      origin:
+        current.origin || signal.origin
+          ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
+          : undefined,
+    };
+  }
+  /**
+   * What this client was built with and applied itself, never what it synced from another client in the process:
+   * a `getSerializedSignal` macro reads this, so a lib's bundle cannot depend on which app's signals loaded first.
+   */
+  get ownSerializedSignal(): { [key: string]: SerializedSignal } {
+    return this.#ownSignal;
   }
   /** For calls neither the caller nor the endpoint budgets; `false` waits as long as the runtime will (minutes). */
   setTimeout(timeout?: number | false) {
@@ -189,8 +202,10 @@ export class FetchClient {
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
-      for (const [refName, signal] of Object.entries(serializedSignal))
+      for (const [refName, signal] of Object.entries(serializedSignal)) {
         FetchClient.#mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
+        FetchClient.#mergeSerializedSignalInto(this.#ownSignal, refName, signal);
+      }
       sharedSignalRegistry.version++;
       this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
     }
@@ -828,7 +843,7 @@ export class FetchClient {
         );
       } else {
         Object.assign(handler, signal.handler);
-        Object.entries(signal.serializedSignal).forEach(([refName, signal]) => {
+        Object.entries(signal.ownSerializedSignal ?? signal.serializedSignal).forEach(([refName, signal]) => {
           FetchClient.#mergeSerializedSignalInto(serializedSignal, refName, signal);
         });
       }
@@ -893,6 +908,8 @@ export class FetchClient {
       get(target, prop) {
         if (prop in target) return (target as any)[prop];
         else if (prop === "instance") return instance;
+        //? Before the handler lookup, whose miss syncs every signal of the process into this client.
+        else if (prop === "ownSerializedSignal") return instance.ownSerializedSignal;
         else if (typeof prop === "string") {
           const handler = instance.#getOrCreateHandler(prop);
           if (handler) return handler;

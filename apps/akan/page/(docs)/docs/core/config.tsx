@@ -227,7 +227,7 @@ const nativeFields = [
   },
   {
     key: "updates",
-    type: "{ url, publicKey, channel?, readyTimeout? }",
+    type: "{ url, publicKeys, channel?, readyTimeout? }",
     en: "Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.",
     ko: "설치된 앱이 새 릴리스를 찾는 곳이며, 폰은 스스로, 데스크톱 앱은 updates를 부를 때 업데이트합니다.",
   },
@@ -238,10 +238,10 @@ const nativeFields = [
     ko: "akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등)이며, 릴리스 빌드에서는 https입니다.",
   },
   {
-    key: "updates.publicKey",
-    type: "string",
-    en: "The public key akan update-keygen prints; an app takes no release it cannot verify with it.",
-    ko: "akan update-keygen이 출력한 공개 키이며, 앱은 이 키로 검증되지 않는 릴리스를 받지 않습니다.",
+    key: "updates.publicKeys",
+    type: "string[]",
+    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it.",
+    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기합니다.",
   },
   {
     key: "updates.channel",
@@ -256,6 +256,13 @@ const nativeFields = [
     default: "10000",
     en: "How long, in ms, a release on trial has to mount its first page before it is rolled back.",
     ko: "시험 실행 중인 릴리스가 첫 페이지를 마운트하기까지의 시간(ms)이며, 넘기면 되돌립니다.",
+  },
+  {
+    key: "devtools",
+    type: "boolean",
+    default: "false",
+    en: "The web inspector in a release build too: internal test targets only.",
+    ko: "릴리스 빌드에서도 웹 인스펙터를 엽니다. 내부 테스트 타깃에만 씁니다.",
   },
   {
     key: "ios.teamId",
@@ -476,10 +483,24 @@ const pipelineKeys = [
 const stageKeys = [
   {
     key: "use",
-    type: '"build" | "docker" | "deploy"',
+    type: '"build" | "docker" | "deploy" | "ota"',
     tags: ["use"],
-    en: "A built-in action. Each appears at most once per app, in this order.",
-    ko: "내장 액션입니다. 앱마다 각각 한 번까지, 이 순서로 씁니다.",
+    en: "A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.",
+    ko: "내장 액션입니다. 앱마다 각각 한 번까지, 이 순서로 씁니다. `ota`는 적었을 때만 돕니다.",
+  },
+  {
+    key: "targets",
+    type: "string[]",
+    tags: ["use"],
+    en: "`ota` only: native targets to pack. Default: every target with `native.updates`.",
+    ko: "`ota` 전용: 업데이트를 묶을 네이티브 타깃입니다. 기본값은 `native.updates`가 있는 타깃 전부입니다.",
+  },
+  {
+    key: "platforms",
+    type: '("ios" | "android")[]',
+    tags: ["use"],
+    en: "`ota` only: phones to pack for. Default: both.",
+    ko: "`ota` 전용: 업데이트를 묶을 휴대폰 플랫폼입니다. 기본값은 둘 다입니다.",
   },
   {
     key: "name",
@@ -686,6 +707,16 @@ const workspacePipelineKeys = [
   },
 ];
 
+const workspaceCloudKeys = [
+  {
+    key: "cloud.host",
+    type: "string",
+    default: "Akan Cloud",
+    en: "The cloud every cloud command talks to when it names no --host, such as a self-hosted one.",
+    ko: "--host 없이 실행한 클라우드 명령이 연결할 클라우드입니다. 직접 운영하는 클라우드 등을 씁니다.",
+  },
+];
+
 const workspaceStageKinds = [
   {
     shape: "{ name, sh | steps }",
@@ -729,6 +760,8 @@ const phaseRows = [
     ko: "모든 앱을 `after` 순서에 따라 하나씩 배포합니다.",
   },
   { phase: "after-deploy", en: "App stages written after `deploy`.", ko: "`deploy` 뒤에 적은 앱 stage입니다." },
+  { phase: "ota", en: "Over-the-air packs of apps that list `ota`.", ko: "`ota`를 적은 앱의 OTA 업데이트를 묶습니다." },
+  { phase: "after-ota", en: "App stages written after `ota`.", ko: "`ota` 뒤에 적은 앱 stage입니다." },
   { phase: "after", en: "Each root `after` stage.", ko: "루트 `after`의 stage입니다." },
   {
     phase: "post",
@@ -1724,15 +1757,15 @@ export default config;`}
               en: (
                 <span>
                   The <code>akan.config.ts</code> at the workspace root holds what spans every app: stages around all of
-                  them and the steps that close a build. It is typed <code>WorkspaceConfig</code>, and app or library
-                  settings stay in their own files.
+                  them, the steps that close a build, and the cloud the CLI talks to. It is typed{" "}
+                  <code>WorkspaceConfig</code>, and app or library settings stay in their own files.
                 </span>
               ),
               ko: (
                 <span>
                   워크스페이스 루트의 <code>akan.config.ts</code>에는 모든 앱에 걸치는 설정, 곧 모든 앱의 앞뒤에 실행할
-                  stage와 빌드를 마무리할 step을 둡니다. 타입은 <code>WorkspaceConfig</code>이고, 앱과 라이브러리 설정은
-                  각자의 파일에 둡니다.
+                  stage, 빌드를 마무리할 step, CLI가 연결할 클라우드를 둡니다. 타입은 <code>WorkspaceConfig</code>이고,
+                  앱과 라이브러리 설정은 각자의 파일에 둡니다.
                 </span>
               ),
             })}
@@ -1796,6 +1829,15 @@ export default config;`}
             ),
           })}
         </div>
+
+        <Docs.OptionTable
+          items={workspaceCloudKeys.map(({ key, type, default: fallback, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
 
         <Docs.SubSubTitle>{l.trans({ en: "Root Stage Kinds", ko: "루트 stage의 종류" })}</Docs.SubSubTitle>
         <Docs.Table

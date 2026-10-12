@@ -5,6 +5,8 @@
 //   "apply"    check → download → apply; the new bundle (on trial) logs its mark and confirms
 //   "no-ready" the same, but the new bundle never confirms: the shell rolls it back to the
 //              previous one, which then logs "rolled-back <bundle>"
+//   "hang"     the same, but the new bundle never returns from a script: the shell rolls it back while
+//              the app runs
 import { env } from "@akanjs/native/core";
 import { markReady, updates } from "@akanjs/native/plugins/updates";
 
@@ -22,13 +24,18 @@ export async function startUpdates(): Promise<void> {
   if (state.trial) {
     log(`running ${running} trial=true mark=${env.PUBLIC_UPDATE_MARK ?? "-"}`);
     if (probe === "no-ready") return; // never confirms: the shell rolls it back after updates.readyTimeout
+    if (probe === "hang") for (;;) Date.now();
     await markReady();
     const after = await updates.getState();
     log(`confirmed ${after.bundle} trial=${after.trial}`);
     return;
   }
   log(`start ${running} mark=${env.PUBLIC_UPDATE_MARK ?? "-"}`);
-  const check = await updates.check();
+  const check = await updates.check().catch((error: Error) => {
+    log(`check-failed ${error.message}`);
+    return null;
+  });
+  if (!check) return markReady();
   log(`check ${JSON.stringify(check)}`);
   if (!check.available) return markReady();
   const { bundle } = await updates.download();

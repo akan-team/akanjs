@@ -1,5 +1,5 @@
-import { CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
-import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
+import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
@@ -8,18 +8,19 @@ import { PackageScript } from "../package/package.script";
 import { CloudRunner, type EnvScope } from "./cloud.runner";
 
 export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript, PackageScript]) {
-  async login(workspace: Workspace, host = GlobalConfig.akanCloudHost) {
-    await this.cloudRunner.login(host, workspace);
+  async login(workspace: Workspace, host?: string | null) {
+    await this.cloudRunner.login(await GlobalConfig.hostFor(workspace, host), workspace);
   }
-  async logout(workspace: Workspace, host = GlobalConfig.akanCloudHost) {
-    await this.cloudRunner.logout(host);
+  async logout(workspace: Workspace, host?: string | null) {
+    await this.cloudRunner.logout(await GlobalConfig.hostFor(workspace, host));
   }
   async downloadEnv(
     workspace: Workspace,
     workspaceId = workspace.getWorkspaceId({ allowEmpty: true }),
-    { host = GlobalConfig.akanCloudHost }: { host?: string } = {},
+    { host: given }: { host?: string | null } = {},
   ) {
     if (workspaceId) {
+      const host = await GlobalConfig.hostFor(workspace, given);
       await this.login(workspace, host);
       const cloudApi = await CloudApi.fromHost(workspace, host);
       await this.cloudRunner.downloadEnv(cloudApi, workspace, workspaceId);
@@ -30,17 +31,18 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   async uploadEnv(
     workspace: Workspace,
     {
-      host = GlobalConfig.akanCloudHost,
+      host: given,
       workspaceId = workspace.getWorkspaceId({ allowEmpty: true }),
       scope,
       archivePath,
-    }: { host?: string; workspaceId?: string; scope?: EnvScope; archivePath?: string } = {},
+    }: { host?: string | null; workspaceId?: string; scope?: EnvScope; archivePath?: string } = {},
   ) {
     //* The scp target is one path per repo, so a slice archive would replace the workspace's values with a subset.
     if (scope && !workspaceId)
       throw new Error("A scoped env upload needs a cloud workspace id — the scp target is workspace-wide.");
     const { files, path } = await this.cloudRunner.gatherEnvFiles(workspace, { scope, archivePath });
     if (workspaceId) {
+      const host = await GlobalConfig.hostFor(workspace, given);
       await this.login(workspace, host);
       const cloudApi = await CloudApi.fromHost(workspace, host);
       await this.cloudRunner.uploadEnv(cloudApi, workspaceId, path);
@@ -57,24 +59,22 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       branch,
       file,
       subspace,
-      host = GlobalConfig.akanCloudHost,
-    }: { name: string; branch: string | null; file: string | null; subspace: string | null; host?: string },
+      host: given,
+    }: { name: string; branch: string | null; file: string | null; subspace: string | null; host?: string | null },
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
     const value = await this.cloudRunner.readSecretValue(name, file);
+    const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     const cloudApi = await CloudApi.fromHost(workspace, host);
     await this.cloudRunner.uploadSecret(cloudApi, devProjectId, { name, branch, value });
   }
   async listSecrets(
     workspace: Workspace,
-    {
-      branch,
-      subspace,
-      host = GlobalConfig.akanCloudHost,
-    }: { branch: string | null; subspace: string | null; host?: string },
+    { branch, subspace, host: given }: { branch: string | null; subspace: string | null; host?: string | null },
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     const cloudApi = await CloudApi.fromHost(workspace, host);
     await this.cloudRunner.listSecrets(cloudApi, devProjectId, branch);
@@ -85,13 +85,91 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       name,
       branch,
       subspace,
-      host = GlobalConfig.akanCloudHost,
-    }: { name: string; branch: string | null; subspace: string | null; host?: string },
+      host: given,
+    }: { name: string; branch: string | null; subspace: string | null; host?: string | null },
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     const cloudApi = await CloudApi.fromHost(workspace, host);
     await this.cloudRunner.removeSecret(cloudApi, devProjectId, { name, branch });
+  }
+
+  async pushUpdate(
+    workspace: Workspace,
+    app: App,
+    {
+      platform,
+      target,
+      env,
+      channel,
+      notes,
+      subspace,
+      host: given,
+      write,
+      allowLocalRelease,
+    }: {
+      platform: "ios" | "android";
+      target?: string;
+      env: string;
+      channel: string | null;
+      notes: string | null;
+      subspace: string | null;
+      host?: string | null;
+      write: boolean;
+      allowLocalRelease: boolean;
+    },
+  ) {
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const pack = await this.applicationScript.packUpdate(app, platform, {
+      target,
+      env: env as "main",
+      write,
+      allowLocalRelease,
+    });
+    const host = await GlobalConfig.hostFor(workspace, given);
+    await this.login(workspace, host);
+    return await this.cloudRunner.pushUpdate(await CloudApi.fromHost(workspace, host), devProjectId, pack, {
+      channel,
+      notes,
+    });
+  }
+  async registerBinary(
+    workspace: Workspace,
+    app: App,
+    {
+      platform,
+      distribution,
+      target,
+      env,
+      subspace,
+      host: given,
+      write,
+      allowLocalRelease,
+    }: {
+      platform: "ios" | "android";
+      distribution: AppBinaryDistribution;
+      target?: string;
+      env: string;
+      subspace: string | null;
+      host?: string | null;
+      write: boolean;
+      allowLocalRelease: boolean;
+    },
+  ) {
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const pack = await this.applicationScript.packUpdate(app, platform, {
+      target,
+      env: env as "main",
+      write,
+      allowLocalRelease,
+    });
+    const host = await GlobalConfig.hostFor(workspace, given);
+    await this.login(workspace, host);
+    return await this.cloudRunner.registerBinary(await CloudApi.fromHost(workspace, host), devProjectId, app, pack, {
+      distribution,
+      env,
+    });
   }
 
   async deployAkan(

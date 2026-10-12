@@ -314,8 +314,8 @@ export default page().render(() => {
           }),
         },
         {
-          name: ["update-keygen", "publish-update", "pack-update"],
-          href: ["#update-keygen", "#publish-update", "#pack-update"],
+          name: ["update-keygen", "publish-update", "pack-update", "push-update", "register-binary"],
+          href: ["#update-keygen", "#publish-update", "#pack-update", "#push-update", "#register-binary"],
           desc: l.trans({
             en: "Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.",
             ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시하거나, 다른 곳에서 서명할 폰 업데이트를 묶습니다.",
@@ -1195,8 +1195,8 @@ akan release-android myapp --assemble-type apk --target all --env main`,
       name: "update-keygen",
       signature: "akan update-keygen <app> [--platform <platform>] [--target <target>]",
       desc: l.trans({
-        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
-        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `native.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `native.updates.publicKeys`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
       }),
       options: [
         {
@@ -1219,8 +1219,8 @@ akan update-keygen myapp --platform android`,
       signature:
         "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `native.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, the manifest last. A phone's is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `native.updates.url`에 올리되 매니페스트는 마지막에 올립니다. 폰은 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<channel>.json`과 `.sig`이며 CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1286,8 +1286,8 @@ akan publish-update myapp --platform android --env main`,
       signature:
         "akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.",
-        ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓰고, 매니페스트의 `channel`·`sequence`·`bundle`은 서명자가 채웁니다. 서명자는 올리는 바이트 그대로에 서명하고 `files/`를 먼저 올립니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
+        en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build. `publish-update` does the same with a key on this machine.",
+        ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, 서명자가 `channel`·`sequence`·`bundle`을 채울 `manifest.template.json`, 파이프라인이 읽는 기록 `pack.json`을 씁니다. 서명자는 `files/`를 먼저 올리고 서명한 봉투를 `<platform>/<channel>/<nativeApi>.json`에 올립니다. `--against`가 새 스토어 빌드가 필요하다고 하면 종료 코드 2로 끝납니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
       }),
       options: [
         {
@@ -1319,6 +1319,46 @@ akan publish-update myapp --platform android --env main`,
       ],
       examples: `akan pack-update myapp --platform android --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json`,
+    },
+    {
+      name: "push-update",
+      signature:
+        "akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>]",
+      desc: l.trans({
+        en: "Pack an update as `pack-update` does and upload it to the akasys project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the project rejects the pack, and prints why.",
+        ko: "`pack-update`처럼 업데이트를 묶어 akasys 프로젝트에 올립니다. 키 보관과 서명, 게시는 akasys가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝납니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          enumOrFlag: "ios | android",
+          desc: l.trans({ en: "The app it updates.", ko: "업데이트할 앱입니다." }),
+        },
+        targetOption,
+        releaseEnvOption,
+      ],
+      examples: `akan push-update myapp --platform android --env main --notes "Fix the login screen"`,
+    },
+    {
+      name: "register-binary",
+      signature:
+        "akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>]",
+      desc: l.trans({
+        en: "After `release-ios` or `release-android`, register that store build with the akasys project, with a pack of the same commit as its embedded bundle. Refused when the build and the commit provide different native APIs.",
+        ko: "`release-ios`나 `release-android` 뒤에 그 스토어 빌드를 akasys 프로젝트에 등록하고, 같은 커밋의 팩을 내장 번들로 함께 올립니다. 빌드와 커밋의 네이티브 API가 다르면 거부합니다.",
+      }),
+      options: [
+        {
+          name: "--distribution",
+          type: "String",
+          enumOrFlag: "appStore | testFlight | playStore | playTesting | direct",
+          desc: l.trans({ en: "Where the binary ships.", ko: "바이너리를 내보내는 곳입니다." }),
+        },
+        targetOption,
+        releaseEnvOption,
+      ],
+      examples: `akan release-android myapp --env main && akan register-binary myapp --platform android --distribution playTesting`,
     },
   ];
 

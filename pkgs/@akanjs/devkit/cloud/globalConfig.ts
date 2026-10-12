@@ -53,6 +53,10 @@ export class GlobalConfig {
       await GlobalConfig.#setAkanGlobalConfig(mutate(await GlobalConfig.#getAkanGlobalConfig()));
     });
   }
+  static async hostFor(workspace: { getConfig(): Promise<{ cloudHost: string | null }> }, host?: string | null) {
+    if (host) return host;
+    return (await workspace.getConfig()).cloudHost ?? GlobalConfig.akanCloudHost;
+  }
   static async getHostConfig(host = GlobalConfig.akanCloudHost): Promise<HostConfig> {
     const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
     return GlobalConfig.toHostConfig(akanConfig.cloudHost[host] ?? getDefaultHostConfig(host));

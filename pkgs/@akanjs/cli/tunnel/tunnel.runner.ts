@@ -26,8 +26,8 @@ export class TunnelRunner extends runner("tunnel") {
     await TunnelRunner.holdUntilInterrupt(() => share.close());
   }
 
-  async list(workspace: Workspace, host = GlobalConfig.akanCloudHost) {
-    const api = await CloudApi.fromHost(workspace, host);
+  async list(workspace: Workspace, host?: string | null) {
+    const api = await CloudApi.fromHost(workspace, await GlobalConfig.hostFor(workspace, host));
     const tunnels = await api.tunnelListInSelf();
     if (!tunnels.length) {
       Logger.rawLog("No tunnels are open.");
@@ -41,8 +41,8 @@ export class TunnelRunner extends runner("tunnel") {
       );
   }
 
-  async stop(code: string, workspace: Workspace, host = GlobalConfig.akanCloudHost) {
-    const api = await CloudApi.fromHost(workspace, host);
+  async stop(code: string, workspace: Workspace, host?: string | null) {
+    const api = await CloudApi.fromHost(workspace, await GlobalConfig.hostFor(workspace, host));
     const stopped = await api.revokeTunnel(code);
     if (stopped) Logger.rawLog(`Stopped ${code}.`);
     else Logger.rawLog(`No tunnel named ${code} is open.`, undefined, "error");

@@ -252,7 +252,7 @@ function config(dir: string, extra: Partial<ResolvedConfig> = {}): ResolvedConfi
     web: { dir: "dist", base: "/" },
     plugins: [],
     env: { defaults: {}, platforms: {} },
-    shell: { backgroundColor: "#ffffff", backgroundColorDark: "#000000" },
+    shell: { backgroundColor: "#ffffff", backgroundColorDark: "#000000", devtools: false },
     usageDescriptions: {},
     permissions: {},
     deepLinks: { schemes: [], domains: [] },

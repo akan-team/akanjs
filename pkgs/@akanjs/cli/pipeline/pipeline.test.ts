@@ -140,6 +140,39 @@ describe("akan pipeline", () => {
     expect(await readFile(victim, "utf8")).toBe("untouched\n");
   });
 
+  test("ota packs every native target that takes updates, and refuses one that does not", async () => {
+    const updates = `{ url: "https://cdn.example.com/ota", publicKey: "${Buffer.alloc(32, 7).toString("base64")}" }`;
+    const root = await workspaceWith({
+      "apps/web/akan.config.ts": `export default {
+  native: { targets: { store: { updates: ${updates} }, kiosk: {} } },
+  pipeline: { stages: [{ use: "build" }, { use: "ota", platforms: ["android"] }] },
+};
+`,
+      "apps/api/akan.config.ts": `export default {
+  native: { targets: { kiosk: {} } },
+  pipeline: { stages: [{ use: "ota", targets: ["kiosk"] }] },
+};
+`,
+    });
+    const out = path.join(root, "plan.json");
+    const both = await cli(root, ["plan", "--out", out, ...runFlags]);
+    expect(both.code).toBe(1);
+    const failed = PipelinePlanSchema.parseText(await readFile(out, "utf8"));
+    expect(failed.diagnostics.map(({ code, file }) => [code, file])).toEqual([
+      ["pipeline.ota.noUpdates", "apps/api/akan.config.ts"],
+    ]);
+    const web = await cli(root, ["plan", "--out", out, ...runFlags.slice(0, 2), "--apps", "web"]);
+    expect({ code: web.code, stderr: web.stderr }).toEqual({ code: 0, stderr: "" });
+    const result = PipelinePlanSchema.parseText(await readFile(out, "utf8"));
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.phases.find((phase) => phase.id === "ota")?.stages[0]?.steps[0]).toMatchObject({
+      action: "ota",
+      with: { app: "web", targets: ["store"], platforms: ["android"] },
+    });
+    const dryRun = await cli(root, ["dry-run", "--apps", "web"]);
+    expect(dryRun.stdout).toContain("web (store × android)");
+  });
+
   test("dry-run shows the plan and validate names a sampled function form", async () => {
     const root = await workspaceWith({
       "apps/web/akan.config.ts":

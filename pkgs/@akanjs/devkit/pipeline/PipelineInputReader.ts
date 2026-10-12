@@ -3,11 +3,13 @@ import {
   type PipelineDiagnostic,
   type PipelineMilestone,
   PipelineNames,
+  type PipelineOtaPlatform,
   PipelinePattern,
   type PipelinePlanRetry,
   type PipelineTrigger,
   pipelineActionNames,
   pipelineMilestones,
+  pipelineOtaPlatforms,
   pipelinePlanLimits,
   pipelineTriggers,
 } from "akanjs/common";
@@ -55,6 +57,9 @@ export interface PipelineActionStageRule extends PipelineStageRuleBase {
   action: PipelineActionName;
   named: boolean;
   retry: PipelinePlanRetry | null;
+  /** `ota` only; `null` takes the default. */
+  targets: string[] | null;
+  platforms: PipelineOtaPlatform[] | null;
 }
 
 export interface PipelineParallelStageRule extends PipelineStageRuleBase {
@@ -191,6 +196,7 @@ export class PipelineInputReader {
         "timeout",
         "allowFailure",
         "retry",
+        ...(raw.use === "ota" ? ["targets", "platforms"] : []),
       ])
     )
       return null;
@@ -213,8 +219,30 @@ export class PipelineInputReader {
       timeoutSeconds: this.#duration(raw.timeout, `${path}.timeout`),
       allowFailure: this.#boolean(raw.allowFailure, `${path}.allowFailure`),
       retry: attempts === null ? null : { attempts, delaySeconds: 0 },
+      targets:
+        raw.targets === undefined
+          ? null
+          : this.#nonEmptySet(this.#strings(raw.targets, `${path}.targets`), `${path}.targets`),
+      platforms:
+        raw.platforms === undefined
+          ? null
+          : this.#nonEmptySet(
+              this.#list(raw.platforms, `${path}.platforms`).flatMap((platform, idx) => {
+                const parsed = this.#oneOf(platform, `${path}.platforms[${idx}]`, pipelineOtaPlatforms);
+                return parsed ? [parsed] : [];
+              }),
+              `${path}.platforms`,
+            ),
       path,
     };
+  }
+
+  #nonEmptySet<T>(items: T[], path: string): T[] | null {
+    if (!items.length) {
+      this.#report("pipeline.schema.invalid", "lists none: leave it out to take the default", path);
+      return null;
+    }
+    return [...new Set(items)];
   }
 
   #shellStage(raw: JsonObject, path: string, scope: Scope): PipelineShellStageRule | null {

@@ -261,7 +261,7 @@ export function writeDesktopResources(
       title: config.app.name,
       backgroundColor: config.shell.backgroundColor,
       backgroundColorDark: config.shell.backgroundColorDark,
-      devtools: ctx.dev,
+      devtools: ctx.dev || config.shell.devtools,
       quitOnLastWindowClosed: config.desktop.quitOnLastWindowClosed,
       recovery: config.desktop.recovery,
       screenCapture: config.desktop.screenCapture,

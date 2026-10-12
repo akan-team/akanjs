@@ -589,10 +589,10 @@ describe("AkanAppConfig", () => {
           { native: { targets: { pilot: { updates: { channel: "pilot" } } } } },
           baseDevEnv,
         ),
-    ).toThrow("native.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKey");
+    ).toThrow("native.targets.pilot.updates in apps/portal/akan.config.ts has no url or publicKeys");
     expect(
       () => new AkanAppConfig(app, [], packageJson, { native: { updates: { channel: "pilot" } } }, baseDevEnv),
-    ).toThrow("native.updates in apps/portal/akan.config.ts has no url or publicKey.");
+    ).toThrow("native.updates in apps/portal/akan.config.ts has no url or publicKeys.");
   });
 
   test("merges the desktop settings field by field, the target winning", () => {

@@ -25,7 +25,7 @@ export interface ResolvedConfig
   web: Required<Pick<AkanNativeConfig["web"], "dir" | "base">> & { build?: string; devEntry?: string };
   plugins: string[];
   env: EnvConfig;
-  shell: { backgroundColor: string; backgroundColorDark: string };
+  shell: { backgroundColor: string; backgroundColorDark: string; devtools: boolean };
   usageDescriptions: Record<string, string>;
   permissions: PermissionsConfig;
   deepLinks: { schemes: string[]; domains: { host: string; pathPrefixes: string[] }[] };
@@ -253,6 +253,7 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   const shell = {
     backgroundColor: raw.shell?.backgroundColor ?? "#ffffff",
     backgroundColorDark: raw.shell?.backgroundColorDark ?? raw.shell?.backgroundColor ?? "#000000",
+    devtools: raw.shell?.devtools === true,
   };
   const icon = typeof raw.icon === "string" ? { image: raw.icon } : raw.icon;
   const splashColor = raw.splash?.backgroundColor;

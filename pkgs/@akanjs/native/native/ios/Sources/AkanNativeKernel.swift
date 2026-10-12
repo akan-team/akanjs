@@ -1,8 +1,9 @@
 // Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
-// packages/core/src/kernel.ts and protocol.ts validateRequest. Foundation only, so
+// packages/core/src/kernel.ts and protocol.ts validateRequest. Foundation and CryptoKit only, so
 // scripts/native-vectors.ts compiles it on the Mac with swiftc, and the self-test runs the same
 // vectors on the device (AkanNativeVectors.swift, dev builds). Tables come from AkanNativeContract.swift.
 
+import CryptoKit
 import Foundation
 
 enum AkanNativeRoute: Equatable {
@@ -27,6 +28,21 @@ enum AkanNativeAdmission: String {
 
 enum AkanNativeNavigation: String {
     case load, open, drop
+}
+
+/// kernel.ts UpdateDecision: what a verified web bundle manifest means to this binary (updates protocol v2).
+struct AkanNativeUpdateDecision: Equatable {
+    enum Kind: String {
+        case untrusted, revoked, selfRevoke = "self-revoke", revokeLater = "revoke-later", take, stale
+    }
+
+    let kind: Kind
+    var baseline: Double = 0
+    var revoke: [String] = []
+
+    var wire: String {
+        kind == .take || kind == .stale ? "\(kind.rawValue):\(Int(baseline)):\(revoke.joined(separator: ","))" : kind.rawValue
+    }
 }
 
 /// kernel.ts RetainedEvents: events that can come before the page listens (links, taps; C2). A live
@@ -313,5 +329,35 @@ enum AkanNativeKernel {
         guard let scheme else { return .drop }
         if !topLevel { return AkanNativeContract.frameSchemes.contains(scheme) ? .load : .drop }
         return externalSchemes(extra).contains(scheme) ? .open : .drop
+    }
+
+    /// kernel.ts updateDecision: a key revokes only keys listed before it (a leaked online key, listed first, cannot
+    /// revoke the spares that recover from it), and resetSequence counts only when it newly revokes a key.
+    static func updateDecision(
+        ring: [String], revoked: [String], signer: String, revokeKeys: [String], resetSequence: Bool,
+        sequence: Double, embedded: Double, running: (sequence: Double, keyId: String)?
+    ) -> AkanNativeUpdateDecision {
+        guard let index = ring.firstIndex(of: signer) else { return AkanNativeUpdateDecision(kind: .untrusted) }
+        if revoked.contains(signer) { return AkanNativeUpdateDecision(kind: .revoked) }
+        if revokeKeys.contains(signer) { return AkanNativeUpdateDecision(kind: .selfRevoke) }
+        if revokeKeys.contains(where: { (ring.firstIndex(of: $0) ?? -1) > index }) { return AkanNativeUpdateDecision(kind: .revokeLater) }
+        let revoke = ring.filter { revokeKeys.contains($0) && !revoked.contains($0) }
+        let bar = running.flatMap { revoked.contains($0.keyId) || revoke.contains($0.keyId) ? nil : $0.sequence } ?? 0
+        let baseline = resetSequence && !revoke.isEmpty ? embedded : max(embedded, bar)
+        return AkanNativeUpdateDecision(kind: sequence > baseline ? .take : .stale, baseline: baseline, revoke: revoke)
+    }
+
+    /// kernel.ts updateManifestUrl: one envelope per channel and native API.
+    static func updateManifestURL(_ url: String, platform: String, channel: String, nativeApi: String) -> String {
+        "\(url)/\(platform)/\(channel)/\(nativeApi).json"
+    }
+
+    /// The first 8 bytes of the raw public key's SHA-256, in hex: what an envelope names its signer by.
+    static func updateKeyId(_ publicKey: Data) -> String {
+        SHA256.hash(data: publicKey).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func isUpdateKeyId(_ s: String) -> Bool {
+        s.count == 16 && s.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
     }
 }

@@ -102,7 +102,8 @@ final class AkanNativeSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = nil
     }
 
-    /// Dev builds ($host.recreate): a new window in the same process, as when a scene connects again.
+    /// A new window in the same process, as when a scene connects again: dev builds' $host.recreate, and an update
+    /// rolled back from a page that stopped answering.
     func recreate() {
         guard let windowScene = window?.windowScene else { return }
         (window?.rootViewController as? AkanNativeViewController)?.windowEnded()

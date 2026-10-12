@@ -402,7 +402,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   ) {
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
-    await this.applicationRunner.packUpdate(app, platform, options);
+    return await this.applicationRunner.packUpdate(app, platform, options);
   }
   async updateKeygen(app: App, platform: "desktop" | "android" | "ios", { target }: { target?: string } = {}) {
     await this.applicationRunner.updateKeygen(app, platform, target);

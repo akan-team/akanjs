@@ -74,6 +74,34 @@ export interface PipelineSecretListing extends PipelineSecretSummary {
   updatedBy: string;
 }
 
+/** What akasys answers for an uploaded pack or a registered binary; a pack's release also says how it was taken. */
+export interface CloudRecord {
+  id: string;
+  status?: string;
+  problems?: string[];
+  [key: string]: unknown;
+}
+
+export interface UpdateUploadRequest {
+  appName: string;
+  target: string;
+  platform: "ios" | "android";
+  channel: string;
+  notes: string | null;
+  size: number;
+  sha256: string;
+}
+
+export interface UpdateUploadTicket {
+  uploadId: string;
+  /** A presigned PUT: whoever holds it writes the staging object, so it is never logged or put in an argv. */
+  uploadUrl: string;
+  expiresAt: string;
+  contentType: string;
+}
+
+export type AppBinaryDistribution = "appStore" | "testFlight" | "playStore" | "playTesting" | "direct";
+
 export interface TunnelSummary {
   code: string;
   hostname: string;
@@ -85,6 +113,11 @@ export interface TunnelSummary {
 }
 
 export class CloudApi {
+  /** The HTTP status an error from this client carries, or null for one without (a dropped connection, a timeout). */
+  static statusOf(error: unknown) {
+    const status = Number(/(?:^|: )(\d{3}) /.exec(error instanceof Error ? error.message : String(error))?.[1]);
+    return Number.isNaN(status) ? null : status;
+  }
   readonly #api: HttpClient;
   #accessToken: AccessToken | null = null;
   #workspace: Workspace;
@@ -132,6 +165,35 @@ export class CloudApi {
   }
   async removeSecret(devProjectId: string, secret: { scope: string; name: string }) {
     return await this.#api.post<boolean>(`/removeSecret/${encodeURIComponent(devProjectId)}`, secret);
+  }
+  async requestUpdateUpload(devProjectId: string, upload: UpdateUploadRequest) {
+    return await this.#api.post<UpdateUploadTicket>(`/requestUpdateUpload/${encodeURIComponent(devProjectId)}`, upload);
+  }
+  // The endpoint declares ten minutes; Cloudflare cuts at 100 s anyway, which is what UpdatePackUpload's retry is for.
+  async commitUpdateUpload(devProjectId: string, uploadId: string) {
+    return await this.#api.post<CloudRecord>(
+      `/commitUpdateUpload/${encodeURIComponent(devProjectId)}`,
+      { uploadId },
+      { signal: AbortSignal.timeout(11 * 60_000) },
+    );
+  }
+  async registerAppBinary(
+    devProjectId: string,
+    binary: {
+      appName: string;
+      target: string;
+      distribution: AppBinaryDistribution;
+      bundle: Blob;
+      pack?: Blob;
+      channel?: string;
+    },
+  ) {
+    const formData = new FormData();
+    for (const key of ["appName", "target", "distribution"] as const) formData.append(key, binary[key]);
+    if (binary.channel) formData.append("channel", binary.channel);
+    formData.append("bundle", binary.bundle, "bundle.json");
+    if (binary.pack) formData.append("pack", binary.pack, "pack.tgz");
+    return await this.#api.post<CloudRecord>(`/registerAppBinary/${encodeURIComponent(devProjectId)}`, formData);
   }
   async downloadEnv(devProjectId: string): Promise<unknown> {
     const localPath = `${this.#workspace.workspaceRoot}/local/env.tar`;

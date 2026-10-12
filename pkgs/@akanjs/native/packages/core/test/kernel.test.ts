@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import { stale } from "../../../scripts/contract.ts";
 import { aclCheck, loadAcl } from "../src/acl.ts";
 import { ID_BUNDLE, ID_DOCUMENT, ID_FILE_REF, ID_NAME } from "../src/contract.ts";
@@ -15,6 +15,9 @@ import {
   parseRange,
   RetainedEvents,
   route,
+  updateDecision,
+  updateDecisionWire,
+  updateManifestUrl,
 } from "../src/kernel.ts";
 import { validateRequest } from "../src/protocol.ts";
 
@@ -146,5 +149,38 @@ describe("ed25519 vectors", () => {
       Buffer.from(signature, "hex"),
     );
     expect(ok).toBe(valid);
+  });
+});
+
+// Updates protocol v2 as the Swift and Kotlin shells decide it (AkanNativeKernel.updateDecision).
+const updates = (await load("updates")) as {
+  keyIds: [string, string][];
+  decisions: [string[], string[], string, string[], boolean, number, number, [number, string] | null, string, string][];
+  urls: [string, string, string, string, string][];
+};
+describe("updates vectors", () => {
+  test.each(updates.keyIds)("keyId of %s is %s", (publicKey, keyId) => {
+    expect(createHash("sha256").update(Buffer.from(publicKey, "base64")).digest().subarray(0, 8).toString("hex")).toBe(
+      keyId,
+    );
+  });
+  test.each(updates.decisions)(
+    "%#: %j %j signer %s revokes %j reset %p seq %d over %d running %j → %s (%s)",
+    (ring, revoked, signer, revokeKeys, resetSequence, sequence, embedded, running, expected) => {
+      const decision = updateDecision({
+        ring,
+        revoked,
+        signer,
+        revokeKeys,
+        resetSequence,
+        sequence,
+        embedded,
+        running: running && { sequence: running[0], keyId: running[1] },
+      });
+      expect(updateDecisionWire(decision)).toBe(expected);
+    },
+  );
+  test.each(updates.urls)("%s %s %s %s → %s", (url, platform, channel, nativeApi, expected) => {
+    expect(updateManifestUrl(url, platform, channel, nativeApi)).toBe(expected);
   });
 });

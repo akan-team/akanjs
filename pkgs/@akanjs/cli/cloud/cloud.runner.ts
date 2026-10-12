@@ -1,14 +1,19 @@
+import { rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
+  type AppBinaryDistribution,
   CloudApi,
   GlobalConfig,
   getDefaultHostConfig,
   type PipelineSecretListing,
   type RemoteEnvServerConfig,
+  UpdatePackUpload,
   type WindowsTestTargetConfig,
 } from "@akanjs/devkit/cloud";
-import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
@@ -597,6 +602,93 @@ export class CloudRunner extends runner("cloud") {
     );
   }
 
+  /** The pack folder as the tgz akasys takes: `files/`, the manifest template, bundle.json and pack.json. */
+  static async #tarPack(pack: NativeUpdatePack) {
+    const archive = path.join(os.tmpdir(), `akan-pack-${pack.app}-${pack.target}-${pack.platform}-${process.pid}.tgz`);
+    const tar = Bun.spawn(["tar", "-czf", archive, "-C", pack.out, "."], { stdout: "ignore", stderr: "pipe" });
+    if ((await tar.exited) !== 0)
+      throw new Error(`tar of ${pack.out} failed: ${(await new Response(tar.stderr).text()).trim()}`);
+    return archive;
+  }
+
+  async pushUpdate(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    pack: NativeUpdatePack,
+    { channel, notes }: { channel: string | null; notes: string | null },
+  ) {
+    const archive = await CloudRunner.#tarPack(pack);
+    const target = channel ?? pack.channel;
+    try {
+      const release = await new UpdatePackUpload(cloudApi, devProjectId)
+        .send(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel: target, notes })
+        .catch((error: unknown) => {
+          throw CloudRunner.#refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
+        });
+      const label = `${pack.app} ${pack.target} ${pack.platform} on channel ${target}: release ${release.id}`;
+      if (release.status === "rejected") {
+        process.exitCode = 2;
+        Logger.error(
+          `The project rejected ${label}:\n${(release.problems ?? []).map((problem) => `  - ${problem}`).join("\n")}`,
+        );
+      } else if (release.status === "published")
+        Logger.rawLog(`Published ${label} (${pack.files} files, native API ${pack.nativeApi}).`);
+      else
+        Logger.rawLog(
+          `Staged ${label} (${pack.files} files, native API ${pack.nativeApi}). Publish it from the project's release screen.`,
+        );
+      return release;
+    } finally {
+      await rm(archive, { force: true });
+    }
+  }
+
+  //? The store build first, then a pack of the same commit: a server that registers the binary checks the pack runs in it.
+  async registerBinary(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    app: App,
+    pack: NativeUpdatePack,
+    { distribution, env }: { distribution: AppBinaryDistribution; env: string },
+  ) {
+    const [mobileTarget] = await resolveMobileTargets(app, pack.target);
+    if (!mobileTarget) throw new Error(`Native target '${pack.target}' was not found.`);
+    const bundlePath = path.join(new NativeApp(app, mobileTarget).outDir(pack.platform), "bundle.json");
+    const bundleFile = Bun.file(bundlePath);
+    if (!(await bundleFile.exists()))
+      throw new Error(
+        `No store build at ${bundlePath}: run \`akan release-${pack.platform} ${app.name} --target ${pack.target} --env ${env}\` first.`,
+      );
+    const bundle = (await bundleFile.json()) as { nativeApi?: { hash?: string }; updates?: { channel?: string } };
+    if (!bundle.updates)
+      throw new Error(`The store build at ${bundlePath} takes no updates: give the target native.updates.`);
+    if (bundle.nativeApi?.hash !== pack.nativeApi)
+      throw new Error(
+        `The store build at ${bundlePath} provides native API ${bundle.nativeApi?.hash}, and this commit's pack needs ${pack.nativeApi}: build the store binary from this commit.`,
+      );
+    const archive = await CloudRunner.#tarPack(pack);
+    try {
+      const binary = await cloudApi
+        .registerAppBinary(devProjectId, {
+          appName: pack.app,
+          target: pack.target,
+          distribution,
+          bundle: bundleFile,
+          pack: Bun.file(archive),
+          ...(bundle.updates.channel ? { channel: bundle.updates.channel } : {}),
+        })
+        .catch((error: unknown) => {
+          throw CloudRunner.#refusal(error, "a binary is registered by a project member signed in with `akan login`");
+        });
+      Logger.rawLog(
+        `Registered ${pack.app} ${pack.target} ${pack.platform} (${distribution}): binary ${binary.id}, native API ${pack.nativeApi}.`,
+      );
+      return binary;
+    } finally {
+      await rm(archive, { force: true });
+    }
+  }
+
   static formatSecrets(secrets: PipelineSecretListing[]) {
     if (!secrets.length) return "No pipeline secrets.";
     const rows = [...secrets]
@@ -639,7 +731,7 @@ export class CloudRunner extends runner("cloud") {
   // The project's guards answer by status: 401 no sign-in it accepts, 403 not allowed, 400 a refused request.
   static #refusal(error: unknown, who: string, { unavailable }: { unavailable?: string } = {}) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = Number(/(?:^|: )(\d{3}) /.exec(message)?.[1]);
+    const status = CloudApi.statusOf(error);
     if (status === 401) return new Error("The server did not accept your sign-in: run `akan login`, then try again.");
     if (status === 403) return new Error(`The project refused: ${who}.`);
     if (status === 400) {

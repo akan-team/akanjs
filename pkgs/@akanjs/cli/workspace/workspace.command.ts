@@ -1,4 +1,3 @@
-import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
 import { defaultMaxDiagnostics } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
@@ -89,7 +88,10 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     }),
   init: target({ desc: "Initialize the workspace", runsOnWorkspaceRoot: false })
     .arg("devProjectId", String, { desc: "the ID of the workspace" })
-    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .option("host", String, {
+      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
+      nullable: true,
+    })
     .with(Workspace)
     .exec(async function (devProjectId, host, workspace) {
       await this.workspaceScript.init(devProjectId, workspace, { host });

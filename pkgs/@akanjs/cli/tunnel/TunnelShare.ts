@@ -24,7 +24,7 @@ export class TunnelShare {
   }
 
   static async open(app: App, { workspace, host, port, ttlMinutes, onLost }: TunnelShareOptions) {
-    const api = await CloudApi.fromHost(workspace, host ?? GlobalConfig.akanCloudHost);
+    const api = await CloudApi.fromHost(workspace, await GlobalConfig.hostFor(workspace, host));
     const grant = await api.requestTunnel({ name: app.name, ...(ttlMinutes ? { ttlMinutes } : {}) });
     const origin = `http://localhost:${port ?? (await app.getDevPort())}`;
     const agent = new TunnelAgent({

@@ -208,8 +208,29 @@ describe("NativeConfig.build", () => {
       readyTimeout: 15_000,
     });
     expect(build({ url, publicKey: updatesKey }).updates).toEqual({ url, publicKey: updatesKey });
+    const spare = Buffer.alloc(32, 8).toString("base64");
+    expect(build({ url, publicKeys: [updatesKey, spare] }, "main").updates).toEqual({
+      url,
+      publicKeys: [updatesKey, spare],
+      channel: "main",
+    });
     expect(build({ url, publicKey: updatesKey }, "main").plugins).toContain("updates");
     expect(build(undefined, "main").plugins).not.toContain("updates");
+  });
+
+  test("devtools opens the web inspector of a release build only when a target asks for it", () => {
+    const build = (devtools?: boolean) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: { ...adminTarget, ...(devtools === undefined ? {} : { devtools }) },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "android",
+      }).config.shell;
+    expect(build(true)).toEqual({ devtools: true });
+    expect(build(false)).toBeUndefined();
+    expect(build()).toBeUndefined();
   });
 
   test("push, privacy and the icon and splash objects reach the runtime, paths from the app folder", () => {

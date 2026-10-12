@@ -66,7 +66,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - release-ios, release-android: Build the app for an App Store or Play Store release.
 
-  - update-keygen, publish-update, pack-update: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
+  - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
 
@@ -434,7 +434,7 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 `akan update-keygen <app> [--platform <platform>] [--target <target>]`
 
-Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
 
 - --platform (String, default desktop, desktop | android | ios): The platform whose app id the key signs for.
 
@@ -442,7 +442,7 @@ Make, once per app id, the Ed25519 key update releases are signed with, and prin
 
 `akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, the manifest last. A phone's is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.
 
 - --platform (String, default desktop, desktop | android | ios): `desktop` is this computer's own OS and CPU.
 
@@ -468,7 +468,7 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 `akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.
+Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build. `publish-update` does the same with a key on this machine.
 
 - --platform (String, ios | android): The app it updates.
 
@@ -483,6 +483,26 @@ Pack an Android or iOS web bundle update unsigned, for a signer that keeps the k
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
+
+`akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>]`
+
+Pack an update as `pack-update` does and upload it to the akasys project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the project rejects the pack, and prints why.
+
+- --platform (String, ios | android): The app it updates.
+
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+
+- --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
+
+`akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>]`
+
+After `release-ios` or `release-android`, register that store build with the akasys project, with a pack of the same commit as its embedded bundle. Refused when the build and the commit provide different native APIs.
+
+- --distribution (String, appStore | testFlight | playStore | playTesting | direct): Where the binary ships.
+
+- --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
+
+- --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
 Rules Every Command Shares
 
@@ -713,6 +733,18 @@ akan publish-update myapp --platform android --env main
 ```bash
 akan pack-update myapp --platform android --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json
+```
+
+### push-update
+
+```bash
+akan push-update myapp --platform android --env main --notes "Fix the login screen"
+```
+
+### register-binary
+
+```bash
+akan release-android myapp --env main && akan register-binary myapp --platform android --distribution playTesting
 ```
 
 ## Agent Notes

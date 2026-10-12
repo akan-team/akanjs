@@ -86,6 +86,8 @@ export interface AkanNativeConfig {
     /** Painted before the page loads, to avoid a white flash (SH-3). */
     backgroundColor?: string;
     backgroundColorDark?: string;
+    /** The web inspector in a release build too (a debug build always has it): internal test builds only. */
+    devtools?: boolean;
   };
   /** Overrides for permission usage texts, e.g. { NSCameraUsageDescription: "..." }. */
   usageDescriptions?: Record<string, string>;
@@ -112,10 +114,12 @@ export interface AkanNativeConfig {
   permissions?: { camera?: string | true; microphone?: string | true; location?: string | true };
   /**
    * Over-the-air updates (UP-2 web bundles on iOS / Android, UP-1 app updates on macOS), used by
-   * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints `publicKey`;
-   * `akan-native update publish <platform>` writes signed releases for `url`.
+   * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints its public key;
+   * `akan-native update publish <platform>` writes signed releases for `url`. `publicKeys` lists the keys a phone
+   * trusts, the online signing key first and offline spares after (a key revokes only keys before it); `publicKey` is
+   * the one-key form, and a desktop app trusts the first.
    */
-  updates?: { url: string; publicKey: string; channel?: string; readyTimeout?: number };
+  updates?: { url: string; publicKey?: string; publicKeys?: string[]; channel?: string; readyTimeout?: number };
   /** Links that open the app, delivered through the app plugin's urlOpen (and getLaunchUrl). */
   deepLinks?: {
     /** Custom URL schemes (myapp://...). */

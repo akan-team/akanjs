@@ -43,7 +43,7 @@ const step = (text: string) => console.info(`\n== ${text}`);
 
 // A throwaway key, and its public key in the sample's config.
 const keygen = run(["update", "keygen"]);
-const publicKey = /publicKey: "([^"]+)"/.exec(keygen)?.[1];
+const publicKey = /publicKeys: \["([^"]+)"\]/.exec(keygen)?.[1];
 if (!publicKey) throw new Error(`no public key in:\n${keygen}`);
 const configPath = join(sample, "akan-native.config.ts");
 const original = readFileSync(configPath, "utf8");

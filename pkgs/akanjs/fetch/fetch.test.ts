@@ -1424,6 +1424,23 @@ describe("FetchClient HTTP generation", () => {
     }
   });
 
+  test("a client's own signals are what it was built from, whatever another client applied since", () => {
+    const appSignal: SerializedSignal = {
+      prefix: "appThing",
+      endpoint: { appQuery: { type: "query", args: [], returns: { refName: "String" } } },
+    };
+    const input = (serializedSignal: Record<string, SerializedSignal>) =>
+      ({ handler: {}, serializedSignal, _FetchType: undefined, _SliceMetaObj: {} }) as const;
+    const lib = FetchClient.from(input({ service: serviceSignal }));
+    FetchClient.from(lib, input({ appThing: appSignal }));
+
+    expect(Object.keys(lib.serializedSignal)).toEqual(["service", "appThing"]);
+    expect(Object.keys(lib.ownSerializedSignal)).toEqual(["service"]);
+    expect(Object.keys(FetchClient.from(lib).ownSerializedSignal)).toEqual(["service"]);
+    const twice = FetchClient.from(lib, lib).ownSerializedSignal.service ?? {};
+    expect(Object.entries(twice).filter(([, value]) => value === undefined)).toEqual([]);
+  });
+
   test("keeps one client per package on the server", () => {
     const serverSignal: SerializedSignal = {
       prefix: "serverThing",
