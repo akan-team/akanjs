@@ -36,9 +36,14 @@ describe("single-instance socket", () => {
     );
     expect(Buffer.byteLength(a)).toBeLessThan(104);
     // Windows: a named pipe per user and app.
-    const pipe = socketPath("com.akanjs.sample", { USERNAME: "kim", USERDOMAIN: "PC" }, "win32");
+    const pipe = socketPath("com.akanjs.sample", {}, "win32", "C:\\Users\\kim");
     expect(pipe).toMatch(/^\\\\\.\\pipe\\akan-native-[0-9a-f]{16}$/);
-    expect(socketPath("com.akanjs.sample", { USERNAME: "lee", USERDOMAIN: "PC" }, "win32")).not.toBe(pipe);
+    expect(socketPath("com.akanjs.sample", {}, "win32", "C:\\Users\\lee")).not.toBe(pipe);
+    expect(socketPath("com.akanjs.other", {}, "win32", "C:\\Users\\kim")).not.toBe(pipe);
+    // An SSH or service-started session names another USERDOMAIN than the desktop: the same user still meets one pipe.
+    expect(
+      socketPath("com.akanjs.sample", { USERDOMAIN: "WORKGROUP", USERNAME: "kim" }, "win32", "C:\\Users\\Kim"),
+    ).toBe(pipe);
   });
 
   test("messages: round trip; anything else is rejected", () => {

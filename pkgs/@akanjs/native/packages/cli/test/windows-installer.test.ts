@@ -75,9 +75,7 @@ describe("the Windows installer script", () => {
       `System::Call 'kernel32::SetEnvironmentVariable(t "AKAN_NATIVE_REMOVE", t R9)'\n  nsExec::Exec '"$SYSDIR\\cmd.exe" /d /c rmdir /s /q "%AKAN_NATIVE_REMOVE%"'`,
     );
     const removeApp = section("!macro RemoveApp", "!macro RenameRetry");
-    expect(removeApp).toContain(
-      '${If} ${FileExists} "$INSTDIR\\${EXE}"\n    !insertmacro RemoveTree "$INSTDIR"\n  ${Else}',
-    );
+    expect(removeApp).toContain('${If} $R6 == 1\n    !insertmacro RemoveTree "$INSTDIR"\n  ${Else}');
     expect(section("!macro RemoveSiblings", "!macro CheckStaged")).toContain(
       '${If} ${FileExists} "$INSTDIR\\..\\$R1\\*.*"\n      !insertmacro RemoveTree "$INSTDIR\\..\\$R1"\n    ${Else}\n      Delete "$INSTDIR\\..\\$R1"',
     );
@@ -297,9 +295,35 @@ describe("the Windows installer script", () => {
     expect(script).toContain('!define MUI_ICON "C:\\build\\gen\\app.ico"');
   });
 
-  test("the stop script answers 1 when a copy is still running or the processes cannot be listed", () => {
+  test("the stop script answers 1 when a copy, or the exe it was given, is left or the processes cannot be listed", () => {
     expect(STOP_SCRIPT).toContain("$ErrorActionPreference = 'Stop'");
-    expect(STOP_SCRIPT.trimEnd().split("\n").at(-1)).toBe("if (& $running) { exit 1 }");
+    expect(STOP_SCRIPT.trimEnd().split("\n").at(-1)).toBe(
+      "if ((& $running) -or ($Exe -and (Test-Path -LiteralPath $Exe))) { exit 1 }",
+    );
+  });
+
+  test("the stop script stops again what started meanwhile, and deletes the exe in the pass that finds none", () => {
+    const loop = STOP_SCRIPT.slice(STOP_SCRIPT.indexOf("for ($i"), STOP_SCRIPT.lastIndexOf("if ((& $running)"));
+    expect(loop).toContain("$left = @(& $running)");
+    expect(loop).toContain("Stop-Process -Id $_.ProcessId -Force");
+    const idle = loop.slice(loop.indexOf("if ($left.Count -eq 0)"), loop.indexOf("$left | ForEach-Object"));
+    expect(idle).toContain("if (-not $Exe) { exit 0 }");
+    expect(idle).toContain("Remove-Item -LiteralPath $Exe -Force");
+  });
+
+  test("the uninstaller names the exe to the stop script, after deciding the folder is the app's, and says when it stays", () => {
+    const decide = uninstall.indexOf('${If} ${FileExists} "$INSTDIR\\${EXE}"\n    StrCpy $R6 1');
+    const stop = uninstall.indexOf('stop-app.ps1" "$INSTDIR" "$INSTDIR\\${EXE}"');
+    expect(decide).toBeGreaterThan(-1);
+    expect(stop).toBeGreaterThan(decide);
+    expect(uninstall).toContain("${If} $0 != 0");
+    expect(uninstall).toContain("SetErrorLevel 2");
+    expect(section("!macro RemoveApp", "!macro RenameRetry")).toContain("${If} $R6 == 1");
+    expect(uninstall).not.toMatch(/^\s*(Delete|RMDir)\b[^\n]*\/REBOOTOK/m);
+  });
+
+  test("a setup run with /S shows no verification window: the CRC check is off", () => {
+    expect(script).toContain("\nCRCCheck off\n");
   });
 
   test("finds makensis where it was named, else says there is none", () => {
