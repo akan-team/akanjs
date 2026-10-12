@@ -65,6 +65,8 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - `removeOne` / `updateOne` hit the **newest** match — the subquery they compile to is ordered `createdAt` descending
   and there is no way to change that. They also report only counts, never which row they touched, so they are for
   "there is at most one of these", not for claiming the next item off a queue. Pass a query that matches one row.
+  The query is a compare-and-set in every mode: of two concurrent `updateOne({ id, balance: { $gte: n } }, …)` that
+  both read the row as matching, only one applies, so `modifiedCount` is the verdict.
 - **A filter may not be keyed after its own model.** Filter methods are assigned after CRUD, so a filter `chat` on
   model `chat` would silently swap the single-document `removeChat`/`updateChat` for a hookless query-level one. It
   throws at boot instead (`assertFilterFitsCrud`).

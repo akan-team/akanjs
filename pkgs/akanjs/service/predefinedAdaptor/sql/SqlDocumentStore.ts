@@ -320,12 +320,14 @@ export class SqlDocumentStore {
     const { assignments, params } = this.compiledUpdate(resolved);
     const { where, params: whereParams } = this.writeQuery(query, operation, options);
     const subquery = `SELECT ${quoteIdent("id")} FROM ${quoteIdent(this.table)} WHERE ${where} ORDER BY ${this.compiler.orderBy()} LIMIT 1`;
-    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${quoteIdent("id")} IN (${subquery})`;
+    //? Postgres re-checks a row another write changed meanwhile against the outer WHERE only, never the subquery's,
+    //? so the condition is repeated there or two racing writes both apply it (READ COMMITTED's EvalPlanQual).
+    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${quoteIdent("id")} IN (${subquery}) AND (${where})`;
     const changes = this.dialect.affectedRows(
       await this.owner
         .getConnection()
         .prepare(sql)
-        .run(...params, ...whereParams),
+        .run(...params, ...whereParams, ...whereParams),
     );
     if (changes > 0) return { acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null };
     if (!options.upsert) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };

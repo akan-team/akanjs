@@ -687,7 +687,8 @@ Full contract — filter-arg `ref` pickers, `getQueryMeta` summary counters, `la
   "archived" })`. The patch cannot trail the filter args, so it lands on a terminal `.set()`; building the chain
   touches nothing.
 - `removeOne` / `updateOne` hit the **newest** match, always, and report only counts — they are for "there is at
-  most one of these", not for claiming the next item off a queue.
+  most one of these", not for claiming the next item off a queue. A condition in the query is a compare-and-set in
+  every mode: of two concurrent calls that both saw the row match, one applies, and `modifiedCount` says which.
 - **A filter may not be keyed after its own model.** A filter `chat` on model `chat` would silently swap the
   single-document `removeChat`/`updateChat` for a hookless query-level one; it throws at boot instead.
 - **"Has no value" is `q.empty`, never `q.missing`.** `q.missing` is the key being *absent from the stored JSON*,

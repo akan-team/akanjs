@@ -552,6 +552,32 @@ const describeDriver = (kind: SqlDriverKind) => {
       await outside;
       expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
     });
+
+    // A transaction holding the row makes both writes read it as matching before either can take it.
+    test("[PG-3] a conditional updateOne is a compare-and-set: of two racing writes, one applies", async () => {
+      const { id } = await store.create({ title: "counter", score: 0 });
+      let held!: () => void;
+      const holding = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const holder = driver.database.transaction(async () => {
+        await store.updateOneByQuery({ id }, { note: "held" });
+        held();
+        await released;
+      });
+      await holding;
+      const racers = [0, 1].map(() => store.updateOneByQuery({ id, score: 0 }, { score: 1 }));
+      await Bun.sleep(200);
+      release();
+      await holder;
+      const counts = (await Promise.all(racers)).map(({ modifiedCount }) => modifiedCount);
+      expect(counts.sort()).toEqual([0, 1]);
+      expect(await store.pickById(id)).toMatchObject({ score: 1, note: "held" });
+    });
   });
 
   // Two requests — or two processes — holding the same document each change a different field.
