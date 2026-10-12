@@ -385,7 +385,9 @@ Section "Install"
     !insertmacro Fail "The uninstaller could not be written to $INSTDIR.setup-uninstall.exe. \${APP_NAME} is left as it was."
   \${EndIf}
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  ; nsExec waits forever by default: a stop script that hung once kept a setup waiting 16 minutes. Past the deadline it
+  ; is ended and answers "timeout", which counts as a failed stop.
+  nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
   Pop $0
   \${If} $0 == 0
     StrCpy $AppStopped 1
@@ -472,7 +474,7 @@ Section "Uninstall"
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
   ; With the exe named, the script deletes it in the pass that finds nothing running: a watchdog that starts the app
   ; again between a stop and a later delete kept the exe, and Delete /REBOOTOK needs an administrator.
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" "$INSTDIR\\\${EXE}"'
+  nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" "$INSTDIR\\\${EXE}"'
   Pop $0
   \${If} $0 != 0
     DetailPrint "$INSTDIR\\\${EXE} is still running and stays behind."

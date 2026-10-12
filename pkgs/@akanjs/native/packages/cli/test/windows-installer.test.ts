@@ -322,6 +322,13 @@ describe("the Windows installer script", () => {
     expect(uninstall).not.toMatch(/^\s*(Delete|RMDir)\b[^\n]*\/REBOOTOK/m);
   });
 
+  test("a stop script that hangs is ended after a minute and counts as a stop that failed", () => {
+    const stops = script.split("\n").filter((line) => line.includes('stop-app.ps1" "$INSTDIR"'));
+    expect(stops).toHaveLength(2);
+    for (const line of stops) expect(line).toStartWith("  nsExec::Exec /TIMEOUT=60000 'powershell.exe");
+    expect(install).toContain("Pop $0\n  ${If} $0 == 0\n    StrCpy $AppStopped 1");
+  });
+
   test("a setup run with /S shows no verification window: the CRC check is off", () => {
     expect(script).toContain("\nCRCCheck off\n");
   });
