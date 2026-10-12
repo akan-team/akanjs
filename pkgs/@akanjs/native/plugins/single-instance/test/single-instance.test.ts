@@ -1,5 +1,5 @@
 import { dlopen, FFIType } from "bun:ffi";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { closeSync, existsSync, mkdtempSync, openSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -187,11 +187,17 @@ describe("single-instance desktop plugin", () => {
     expect(first.exits).toEqual([]);
 
     const second = fakeContext();
+    const logged: string[] = [];
+    const info = spyOn(console, "info").mockImplementation((line: string) => void logged.push(line));
     await createDesktopSingleInstance({ path: () => path, args: () => hello.args, cwd: () => hello.cwd }).setup!(
       second.ctx,
     );
     expect(second.exits).toEqual([0]);
     await Bun.sleep(20);
+    info.mockRestore();
+    // The running one says it was handed a launch, by argument count: a deep link can carry a code or a token.
+    expect(logged).toContain("[akan-native] single-instance: a second launch handed over to this one (2 arguments)");
+    expect(logged.join("\n")).not.toContain("a b.txt");
     expect(first.ops).toEqual(["window.show", "window.unminimize", "window.focus"]);
     expect(first.links).toEqual([hello.args]); // a deep link on Windows and Linux (D6) would be in there
 
