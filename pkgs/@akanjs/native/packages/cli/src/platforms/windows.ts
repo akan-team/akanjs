@@ -67,6 +67,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
     `--windows-title=${config.app.name}`,
     `--windows-description=${config.app.name}`,
     `--windows-version=${windowsVersion(config.app.version, config.app.build)}`,
+    ...(config.desktop.publisher ? [`--windows-publisher=${config.desktop.publisher}`] : []),
   ];
   if (art) {
     const icon = join(outDir, "gen", "app.ico");

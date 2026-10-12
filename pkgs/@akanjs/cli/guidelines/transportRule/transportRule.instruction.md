@@ -21,8 +21,27 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   `null` rather than a placeholder when genuinely unknown — a loopback-looking address for an unknown caller
   is the failure this replaced. The gateway also forwards the client port (`x-forwarded-port`, read with
   `context.getClientPort()`) along with host and protocol.
+- **A device or another server proves itself with a machine token.** `MachineToken.issue({ kind, id, version },
+  { expiresAt? })` in `akanjs/server` signs an EdDSA JWT (`typ: akan-machine+jwt`, `aud: <app>/<environment>`) with
+  `AKAN_MACHINE_PRIVATE_KEY`; it never expires unless asked. `akan machine-keygen <file>` writes that key to a file
+  and prints only the public one. A server with either key verifies the bearer of every call — HTTP, and the
+  websocket's auth frame — after every lib middleware, and sets `account.machine = { kind, id, version }` from a
+  verified token; it takes off a `machine` any other middleware or a session's claims put there, so a staff token
+  can never pass for one, and a session middleware already reads the EdDSA token as anonymous. `.with(Machine)` hands
+  the identity (401 without one; `{ nullable: true }` takes `null`), and a pubsub room's guards see it on subscribe
+  and on every credential change. Revocation is the app's: a guard compares `machine.version` with the record's
+  `tokenVersion`, which a removal or a reinstall bumps. An endpoint taking `.with(Machine)` on a server with no key
+  is an error at boot. The calling side is `fetch.clone({ origin, jwt: token, connect: true })`.
 - **Every socket carries a `socketId`, and only the framework mints one.** `AppWsData` assigns it at the handshake, and a `message` / `pubsub` handler reads it off the `Ws` internal arg — `.with(Ws)` hands `{ ws, socketId, subscribe, on, off }`. Never mint your own from `ws.data`: the room bookkeeping keys on the framework's id, and a second one fails to match it silently. It identifies a **connection**, not a caller — a reconnect gets a new id and the federation gateway's own socket is a different one — so per-user state keys on the account, never on this.
 
+- **A socket that dropped comes back on a backoff, and asks for what it missed.** The client waits 1 s doubling to
+  30 s, cut at random so a deploy's dropped clients return apart; `fetch.clone({ ws: { reconnect: { min, max, jitter,
+  maxAttempts } | false, headers, tls, onStateChange, onRevoked, onError } })` (or `fetch.instance.configureWs(…)`)
+  tunes it, and a server-side client sends `headers` and its token with the upgrade. A server numbers the JSON frames
+  each room delivers (`seq`); a client drops a repeat, and a hole — a frame dropped under backpressure — calls the
+  room's `onResync`. A resubscribe names its last frame (`since`): a server that saw every publish (a solo process)
+  replays what followed it ahead of the ack, and otherwise answers a gap, which calls `onResync` as before. Binary
+  rooms are not numbered.
 - **A cleanup registered with `ws.on("disconnect" | "unsubscribe", fn)` is scoped to the call that registered it.**
   From a `pubsub` subscribe it belongs to that room — `unsubscribe` runs when the client leaves it or a credential
   change revokes it, `disconnect` when the socket closes while still subscribed — so a room already left runs

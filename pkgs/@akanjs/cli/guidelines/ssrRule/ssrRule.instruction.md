@@ -125,21 +125,24 @@ Three rules the shape enforces:
 **A failure now surfaces where it happened.** One `Promise.all` in the page body reports nothing about which of
 eight queries threw; per-section boundaries put each rejection at its own boundary.
 
-**Keep the auth gate in the shell.** A redirect thrown after the shell has flushed can only be delivered as a
-soft-redirect script, so `getSelf({ unauthorize: "/signin" })` stays in `_layout.tsx` or the page body — never
-inside a streamed section.
+**Know which redirects are real.** A streaming response starts while layout and page bodies still run, so a redirect
+is a real 3xx only when it was raised before any I/O was awaited, the body's own or a layout's above it (a layout that
+awaits `fetch.viewOrg` makes every page under it late); after one — `getSelf({ unauthorize: "/signin" })` fetches —
+it reaches the browser as an HTTP 200 that navigates in the page, which a crawler or `curl` does not
+follow. Either way no markup below the redirect is sent. A route that must answer a real 3xx after I/O — a gate an
+external client hits, a moved URL — takes `.config({ ssr: "block" })`: the response waits for the whole render.
+Never redirect from inside a streamed section.
 
 **⑥ Use named `ReactNode` slots, not just `children`.** A client shell that takes one slot per region lets a
 server component supply each of them, instead of absorbing the whole subtree into the bundle. `Layout.Navbar`
-declares `title` / `left` / `right` alongside `back` and `children`, but its render body uses only `back` and
-`children` — copy the shape, not that component.
+is the shape: `title` / `left` / `right` beside `back` and `children`, each filled by the server.
 
 **⑦ Let the server do the derived work.** Display and predicate logic belongs on `Light<Model>` (`isNew()`,
 `canWrite(user?)`, `formatTimes()`), and enum→class lookups belong in a module-scope `as const` map. Both sides call
 the same method, so a client component that exists only to compute a label is markup in the wrong place.
 
-**⑧ Gate auth on the server.** `getSelf({ unauthorize: "/signin" })` in `_layout.tsx` redirects before any HTML is
-sent. A client-side check costs a hydration round-trip and flashes the wrong UI first.
+**⑧ Gate auth on the server.** `getSelf({ unauthorize: "/signin" })` in `_layout.tsx` redirects before any of the
+page's markup is rendered. A client-side check costs a hydration round-trip and flashes the wrong UI first.
 
 **⑨ Prefer CSS over client state for pure visibility.** A `data-*` attribute plus `group-data-[…]` variants (see
 `libs/util/ui/Grid/*`) or `<details>`/`<summary>` keeps both branches server-rendered. Reach for `useState` when the

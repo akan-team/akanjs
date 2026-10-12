@@ -76,8 +76,8 @@ export default page().render(() => {
       key: "transition",
       type: '"none" | "fade" | "bottomUp" | "stack" | "scaleOut"',
       desc: l.trans({
-        en: "Controls CSR page motion so navigation inside the native shell can feel closer to a native app.",
-        ko: "CSR page motion을 제어해 네이티브 shell 안의 내비게이션이 네이티브 앱에 가깝게 느껴지도록 합니다.",
+        en: "Page motion that makes navigation in the native shell feel native; a browser plays it as a view transition.",
+        ko: "네이티브 shell 안의 내비게이션을 네이티브 앱처럼 느끼게 하는 page motion이며, 브라우저는 view transition으로 재생합니다.",
       }),
     },
     {
@@ -90,10 +90,10 @@ export default page().render(() => {
     },
     {
       key: "topInset / bottomInset",
-      type: "number | boolean",
+      type: "number | boolean | { base, md?, … }",
       desc: l.trans({
-        en: "Reserves room in px for app chrome such as navbars, tabs and fixed actions; true reserves 48px.",
-        ko: "navbar, tab, fixed action 같은 앱 chrome 자리를 px 단위로 비워 page content와 나눕니다. true는 48px입니다.",
+        en: "Room for chrome such as navbars and tabs: px (true is 48) or px per breakpoint. Left out, the chrome's height.",
+        ko: "navbar, tab 같은 chrome 자리를 px(true는 48)이나 breakpoint별 px로 비웁니다. 적지 않으면 chrome 높이를 따릅니다.",
       }),
     },
   ];

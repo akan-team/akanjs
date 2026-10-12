@@ -3,6 +3,12 @@ import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } fro
 
 export interface RouteOptions {
   scrollToTop?: boolean;
+  /**
+   * Writes the URL and the store's path and search params without asking the server for the page, as for `?peek=`;
+   * honoured only when the path stays the same. A server component reading `.search()` sees it at the next full
+   * navigation.
+   */
+  shallow?: boolean;
 }
 export interface RouteManifest {
   routes: string[];
@@ -160,6 +166,8 @@ class Router {
   #indexPath = "/";
   #navigation: Promise<void> = Promise.resolve();
   #historyIdx = 0;
+  //? The RSC client pushes the entry only once its fetch lands, so a write here would stamp the page being left.
+  #historyWrittenByNavigation = false;
   #redirects = 0;
   #instance: RouterInstance = {
     push: (href: string) => {
@@ -197,6 +205,7 @@ class Router {
     Logger.verbose("Router initialized");
   }
   #initSsrClientRouter(options: SsrClientRouterOption) {
+    this.#historyWrittenByNavigation = true;
     const navigate = (method: "push" | "replace") => (href: string, routeOptions?: RouteOptions) => {
       const pathInfo = this.#getPathInfo(href);
       const navigationPathInfo = this.#getNavigationPathInfo(href);
@@ -207,10 +216,8 @@ class Router {
       push: navigate("push"),
       replace: navigate("replace"),
       back: () => {
-        const router = options.router;
-        const pathInfo = this.#getPathInfo(document.referrer);
-        this.#postPathChange(pathInfo);
-        router.back();
+        this.#postPathAfterBack();
+        options.router.back();
       },
       refresh: () => {
         const router = options.router;
@@ -236,8 +243,7 @@ class Router {
         }, 0);
       },
       back: (routeOptions) => {
-        const { path, pathname, hash } = this.#getPathInfo(document.referrer);
-        this.#postPathChange({ path, pathname, hash });
+        this.#postPathAfterBack();
         options.router.back(routeOptions);
       },
       refresh: () => {
@@ -271,7 +277,7 @@ class Router {
   }
 
   #rememberHistoryState(kind: "push" | "replace") {
-    if (getEnv().side === "server") return;
+    if (getEnv().side === "server" || this.#historyWrittenByNavigation) return;
     const history = globalThis.window?.history;
     if (!history) return;
     if (kind === "push") this.#historyIdx += 1;
@@ -303,6 +309,14 @@ class Router {
   }
   #getVisiblePathInfo(href: string, lang = this.#lang) {
     return getPathInfo(href, lang, shouldExposeBasePath() ? this.#prefix : "");
+  }
+  //? `document.referrer` names the last document, not the entry a same-document push left; once history moves, the URL is.
+  #postPathAfterBack() {
+    window.addEventListener(
+      "popstate",
+      () => this.#postPathChange(this.#getPathInfo(`${location.pathname}${location.search}${location.hash}`)),
+      { once: true },
+    );
   }
   #postPathChange({ path, pathname, hash }: { path: string; pathname: string; hash: string }) {
     Logger.info(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
@@ -386,7 +400,9 @@ class Router {
   }
   canGoBack() {
     if (getEnv().side === "server") return false;
-    return this.#historyIdx > 0;
+    const state = globalThis.window?.history?.state as { __akanRouter?: { idx?: unknown } } | null | undefined;
+    const idx = state?.__akanRouter?.idx;
+    return (Number.isInteger(idx) ? (idx as number) : this.#historyIdx) > 0;
   }
   backOrFallback(fallbackHref = this.#indexPath, routeOptions?: RouteOptions) {
     if (this.canGoBack()) {

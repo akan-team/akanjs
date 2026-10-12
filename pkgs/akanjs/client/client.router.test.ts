@@ -16,6 +16,7 @@ const requestState = {
 };
 const messages: unknown[] = [];
 const warnings: string[] = [];
+const windowListeners = new Map<string, Array<() => void>>();
 const timeoutCallbacks: Array<() => void> = [];
 
 beforeAll(() => {
@@ -86,6 +87,8 @@ const installClientWindow = (pathname = "/en/admin/current", search = "", hash =
     value: {
       location: { origin, host: "example.test", href: `${origin}${pathname}${search}${hash}`, pathname, search, hash },
       parent: { postMessage: (message: unknown) => messages.push(message) },
+      addEventListener: (type: string, listener: () => void) =>
+        windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]),
     },
     configurable: true,
   });
@@ -136,6 +139,7 @@ afterEach(() => {
   requestState.headers = new Map();
   messages.length = 0;
   warnings.length = 0;
+  windowListeners.clear();
   timeoutCallbacks.length = 0;
   globalThis.__AKAN_ROUTER__ = undefined;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
@@ -233,6 +237,44 @@ describe("router", () => {
     restoreTimeout();
   });
 
+  test("an SSR push leaves the entry it departs unstamped, and canGoBack reads the entry the RSC commit writes", async () => {
+    envState.side = "client";
+    installClientWindow("/en/org");
+    const historyStub = {
+      state: null as unknown,
+      replaceState: (state: unknown) => {
+        historyStub.state = state;
+      },
+    };
+    Object.assign(window, { history: historyStub, addEventListener: () => undefined });
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls) });
+    router.push("/org/detail");
+
+    expect(historyStub.state).toEqual({ __akanRouter: { idx: 0 } });
+    expect(router.canGoBack()).toBe(false);
+    historyStub.state = { __akanRouter: { idx: 1 } };
+    expect(router.canGoBack()).toBe(true);
+  });
+
+  test("a shallow replace reaches the navigation as such, with the query it writes", async () => {
+    envState.side = "client";
+    installClientWindow("/en/org");
+    Object.assign(window, {
+      history: { state: null, replaceState: () => undefined },
+      addEventListener: () => undefined,
+    });
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls) });
+    router.replace("/org?peek=ticket-1", { shallow: true });
+
+    expect(calls).toEqual([["replace", "/en/org?peek=ticket-1", { shallow: true }]]);
+  });
+
   test("client router init wraps push, replace, back, refresh, and path helpers", async () => {
     envState.side = "client";
     installClientWindow();
@@ -256,6 +298,12 @@ describe("router", () => {
       ["replace", "/en/admin/settings", undefined],
     ]);
     router.back({ scrollToTop: false });
+    //? The referrer is the last document, not the entry back lands on; the path is posted once history has moved.
+    expect(messages.some((message) => (message as { path?: string }).path === "/previous")).toBe(false);
+    Object.assign(globalThis.location, { pathname: "/en/admin/users", search: "", hash: "" });
+    for (const listener of windowListeners.get("popstate") ?? []) listener();
+    expect(messages.at(-1)).toMatchObject({ type: "pathChange", path: "/users", pathname: "/en/admin/users" });
+    Object.assign(globalThis.location, { pathname: "/en/admin/current" });
     router.refresh();
     expect(calls.at(-2)).toEqual(["back", { scrollToTop: false }]);
     expect(calls.at(-1)).toEqual(["refresh"]);

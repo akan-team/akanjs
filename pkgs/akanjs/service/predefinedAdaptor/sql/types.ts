@@ -46,10 +46,16 @@ export interface DatabaseConfig {
   search?: SearchConfig;
 }
 
+export interface UpsertByIdOptions {
+  /** Keep the record's own `createdAt` and `updatedAt`, as a backfill from another system must. */
+  preserveTimestamps?: boolean;
+}
+
 export interface DocumentStore {
   ensure(): Promise<void>;
   create(data: DocumentRecord): Promise<any>;
   clone(data: DocumentRecord & { id: string }): Promise<any>;
+  upsertById(data: DocumentRecord & { id: string }, options?: UpsertByIdOptions): Promise<any>;
   update(id: string, patch: DocumentRecord): Promise<any>;
   remove(id: string): Promise<any>;
   updateOneByQuery(
@@ -248,6 +254,8 @@ export interface SqlDialect {
   docColumn(): string;
   docValuePlaceholder(): string;
   extract(path: string, kind?: PathKind): string;
+  /** The aggregate summing a stored number at `path`; a value that is not a number counts as nothing. */
+  sumOf(path: string): string;
   projectExpr(path: string): string;
   decodeProjected(value: unknown): unknown;
   eq(path: string, value: unknown, kind?: PathKind): SqlFrag;

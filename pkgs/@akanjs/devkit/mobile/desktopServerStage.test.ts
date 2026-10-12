@@ -46,6 +46,12 @@ describe("DesktopServerStage", () => {
     });
     expect(env.PORT).toBeUndefined();
     expect(env.AKAN_LOG_TO_FILE).toBeUndefined();
+    expect(env.AKAN_MODULES).toBeUndefined();
+    expect(DesktopServerStage.env(appConfig(), "main", { modules: ["@edge", "edgeAgent"] }).AKAN_MODULES).toBe(
+      "@edge,edgeAgent",
+    );
+    const withEnv = DesktopServerStage.env(appConfig(), "main", { env: { CLOUD_ORIGIN: "https://cloud.example" } });
+    expect(withEnv).toMatchObject({ CLOUD_ORIGIN: "https://cloud.example", AKAN_PUBLIC_OPERATION_MODE: "edge" });
   });
 
   test("installs what the image does, minus the RSC renderer and the other modes' drivers", () => {

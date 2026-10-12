@@ -27,6 +27,8 @@ export interface AkanRouterStateV1 {
   href: string;
   routeId: string;
   segments: AkanRouteSegmentState[];
+  /** The route's `.config({ transition })`, which the browser plays as a view transition on the way in and out. */
+  transition?: string;
 }
 
 export type AkanHeadSnapshotTag = "title" | "meta" | "link";
@@ -132,6 +134,7 @@ export function isAkanRouterStateV1(value: unknown): value is AkanRouterStateV1 
     (state.buildId === undefined || typeof state.buildId === "number") &&
     typeof state.href === "string" &&
     typeof state.routeId === "string" &&
+    (state.transition === undefined || typeof state.transition === "string") &&
     Array.isArray(state.segments) &&
     state.segments.every(isSegmentState)
   );
@@ -207,10 +210,12 @@ export function createAkanRouterState({
   pathRoute,
   href,
   buildId,
+  transition,
 }: {
   pathRoute: PathRoute;
   href: string;
   buildId?: number;
+  transition?: string;
 }): AkanRouterStateV1 {
   return {
     version: AKAN_RSC_STATE_VERSION,
@@ -218,6 +223,7 @@ export function createAkanRouterState({
     href,
     routeId: pathRoute.path,
     segments: createAkanRouteSegments(pathRoute),
+    ...(transition && transition !== "none" ? { transition } : {}),
   };
 }
 

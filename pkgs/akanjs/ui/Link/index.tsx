@@ -6,7 +6,7 @@ import { type CommonLinkProps, CsrLink, SsrLink } from "./Anchor";
 
 export const Link = ({ className, href, disabled = false, children, ...props }: CommonLinkProps) => {
   if (disabled || !href) {
-    const { scrollToTop, replace, activeClassName, activeExact, noCache, ...divProps } = props;
+    const { scrollToTop, replace, activeClassName, activeExact, activeMatch, noCache, ...divProps } = props;
     return (
       <div className={className} {...(divProps as unknown as HTMLAttributes<HTMLDivElement>)}>
         {children}

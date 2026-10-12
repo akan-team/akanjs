@@ -4,6 +4,7 @@ import {
   type FetchPolicy,
   fileUploadContract,
   Logger,
+  type RetryPolicy,
   readAuthToken,
   resolveFileUploadCapability,
 } from "akanjs/common";
@@ -31,7 +32,7 @@ import { HttpClient } from "./httpClient";
 import type { ErrorConstructor } from "./remoteError";
 import { SliceInitHandle } from "./sliceInitHandle";
 import { expandQueryArgs, normalizeQueryArgs } from "./sliceQueryArgs";
-import { WsClient } from "./wsClient";
+import { WsClient, type WsClientOptions } from "./wsClient";
 
 type FetchHandler = (...args: unknown[]) => PromiseOrObject<unknown>;
 type FetchHandlerFactory = () => FetchHandler;
@@ -89,10 +90,13 @@ export class FetchClient {
   readonly sortValueMap = new Map<string, { [key: string]: { [path: string]: 1 | -1 } }>();
   readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
   readonly #originWs = new Map<string, WsClient>();
+  #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
   #sharedRegistryAppliedVersion = 0;
   #clientIp: string | null = null;
+  /** Cloned toward another server: the request being served is this server's visitor, not that server's caller. */
+  #foreign = false;
   static #testClientIps = false;
   static #testClientIpSeq = 0;
   serializedSignal: { [key: string]: SerializedSignal } = {};
@@ -279,14 +283,23 @@ export class FetchClient {
     connect = !(origin && typeof window === "undefined"),
     jwt,
     clientIp,
+    ws,
+    retry,
   }: {
     origin?: string;
     connect?: boolean;
     jwt?: string;
     /** Sent as `x-real-ip`, which a server believes only from a trusted proxy — a test's loopback is one. */
     clientIp?: string | null;
+    /** The clone's sockets: reconnect backoff, upgrade headers and TLS, and state, revocation and error hooks. */
+    ws?: WsClientOptions;
+    /** Every call's `retry` unless it names its own: transient failures, a mutation under one Idempotency-Key. */
+    retry?: RetryPolicy | false;
   } = {}) {
     const instance = new FetchClient(origin ?? this.origin, {}, this.serializedSignal, this.ErrorCls);
+    if (ws) instance.configureWs(ws);
+    if (retry !== undefined) instance.http.setRetry(retry);
+    instance.#foreign = this.#foreign || (!!origin && !FetchClient.#sameOrigin(origin, this.origin));
     instance.#clientIp =
       clientIp !== undefined ? clientIp : FetchClient.#testClientIps ? FetchClient.#nextTestClientIp() : this.#clientIp;
     Object.entries(this.handler).forEach(([key, handler]) => {
@@ -295,6 +308,12 @@ export class FetchClient {
     instance.setJwt(jwt ?? this.jwt);
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
+  }
+  /** Every socket this client holds or opens later: its own and one per `FetchPolicy.origin`. */
+  configureWs(options: WsClientOptions) {
+    this.#wsOptions = { ...this.#wsOptions, ...options };
+    this.ws.configure(options);
+    for (const ws of this.#originWs.values()) ws.configure(options);
   }
   setJwt(jwt: string | null) {
     this.jwt = jwt;
@@ -308,20 +327,20 @@ export class FetchClient {
     if (target === this.origin.replace(/\/+$/, "")) return this.ws;
     const cached = this.#originWs.get(target);
     if (cached) return cached;
-    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls);
+    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
     this.#originWs.set(target, ws);
     ws.setJwt(this.jwt);
     ws.connect();
     return ws;
   }
   #makeRequestHeaders(option?: FetchPolicy): Record<string, string> {
-    const clientIp = this.#clientIp ? { "x-real-ip": this.#clientIp } : FetchClient.#forwardedClientIp(option);
+    const clientIp = this.#clientIp ? { "x-real-ip": this.#clientIp } : this.#forwardedClientIp(option);
     return { ...this.#makeAuthHeaders(option), ...clientIp };
   }
   // A call made while rendering reaches this server from its own address; the page request's `x-real-ip` (which the
   // page renderer resolved) keeps rate limits and `.with(Ip)` about the person.
-  static #forwardedClientIp(option?: FetchPolicy): Record<string, string> {
-    if (option?.origin) return {};
+  #forwardedClientIp(option?: FetchPolicy): Record<string, string> {
+    if (!this.#forwardsVisitor(option)) return {};
     try {
       if (getEnv().side !== "server") return {};
       const clientIp = requestHeaders().get("x-real-ip");
@@ -330,10 +349,18 @@ export class FetchClient {
       return {};
     }
   }
+  static #sameOrigin(a: string, b: string) {
+    return a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
+  }
+  // Security: the request being rendered belongs to this server's visitor; a call aimed at another server carries only
+  // the token its caller gave it, or the visitor's session would reach a server they never signed in to.
+  #forwardsVisitor(option?: FetchPolicy) {
+    return !this.#foreign && (!option?.origin || FetchClient.#sameOrigin(option.origin, this.origin));
+  }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };
     try {
-      if (getEnv().side === "server") {
+      if (getEnv().side === "server" && this.#forwardsVisitor(option)) {
         const authorization = requestHeaders().get("authorization");
         if (authorization) return { Authorization: authorization };
         const token = readAuthToken((key) => requestCookies().get(key)?.value);
@@ -369,7 +396,7 @@ export class FetchClient {
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
           // An origin override targets another server, so it bypasses the request-query cache keyed by this origin.
-          const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout });
+          const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout, retry: option?.retry });
           // A caller that did not start the request parses a copy: the memo hands one response to every caller in
           // the request, and a parsed model can hold references into it.
           const claim = baseUrl
@@ -388,6 +415,8 @@ export class FetchClient {
             headers: this.#makeRequestHeaders(option),
             baseUrl: this.#baseUrlOf(endpoint, option?.origin),
             timeout: option?.timeout ?? endpoint.timeout,
+            retry: option?.retry,
+            idempotencyKey: option?.idempotencyKey,
           });
           return parseReturn(response, { crystalize: option?.crystalize ?? true });
         };

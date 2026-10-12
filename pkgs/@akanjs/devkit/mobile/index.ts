@@ -7,4 +7,5 @@ export * from "./nativeConfig";
 export * from "./nativePluginFolders";
 export * from "./nativeWebDir";
 export * from "./placeholderAppId";
+export * from "./updateUploader";
 export * from "./usageDescriptions";

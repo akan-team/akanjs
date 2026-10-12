@@ -1,7 +1,7 @@
 {
   "id": "updates",
   "apiVersion": 1,
-  "methods": ["getState", "check", "download", "apply", "notifyReady", "reset"],
+  "methods": ["getState", "check", "download", "apply", "notifyReady", "reset", "setChannel"],
   "events": ["progress"],
   "coalesce": ["progress"],
   "codegen": true,
@@ -10,10 +10,12 @@
   "ios": {
     "sources": ["ios/*.swift"],
     "class": "UpdatesPlugin",
+    "methods": ["getState", "check", "download", "apply", "notifyReady", "reset"],
     "frameworks": ["CryptoKit"]
   },
   "android": {
     "sources": ["android/*.kt"],
-    "class": "com.akanjs.plugins.updates.UpdatesPlugin"
+    "class": "com.akanjs.plugins.updates.UpdatesPlugin",
+    "methods": ["getState", "check", "download", "apply", "notifyReady", "reset"]
   }
 }

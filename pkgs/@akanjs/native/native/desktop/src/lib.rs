@@ -15,6 +15,7 @@ macro_rules! log {
 
 mod contract;
 mod devproxy;
+mod external;
 mod json;
 mod navigation;
 mod page_menu;
@@ -383,6 +384,11 @@ enum UserEvent {
   WebviewGone { window: u32, reason: &'static str },
   /// desktop.recovery "reload": the wait after a window's page ended in a row is over; load it again.
   ReloadGone(u32),
+  /// An external view's web process ended (external.rs).
+  #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+  ExternalGone { view: String, reason: &'static str },
+  /// The wait after an external view's page ended in a row is over; load it again.
+  ExternalReload(String),
 }
 
 // ───────────────────────── C ABI ─────────────────────────
@@ -660,7 +666,7 @@ fn window_state_with(window: &tao::window::Window, webview: Option<&WebView>, re
 }
 
 /// One window's shell op: everything but the ops on the set of windows (Windows::shell).
-fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json::V, op: &str) -> Result<String, String> {
+fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json::V, op: &str, min: (f64, f64)) -> Result<String, String> {
   let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
   let flag = |k: &str| cmd.get(k).and_then(|v| v.as_bool()).ok_or_else(|| format!("{k} must be a boolean"));
   let mut req = Requested::default();
@@ -677,7 +683,7 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
         return Err("width and height must be positive".into());
       }
       window.set_inner_size(LogicalSize::new(w, h));
-      req.size = Some((w.max(MIN_INNER.0), h.max(MIN_INNER.1)));
+      req.size = Some((w.max(min.0), h.max(min.1)));
     }
     "window.setPosition" => {
       let (x, y) = (num("x")?, num("y")?);
@@ -719,6 +725,9 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
       req.fullscreen = Some(value);
     }
     "window.setAlwaysOnTop" => window.set_always_on_top(flag("value")?),
+    "window.setDecorations" => window.set_decorations(flag("value")?),
+    //? Hidden while it is over this window only: a kiosk's screen shows no pointer, the rest of the desktop still does.
+    "window.setCursorVisible" => window.set_cursor_visible(flag("value")?),
     "window.show" => window.set_visible(true),
     "window.hide" => window.set_visible(false),
     "window.focus" => window.set_focus(),
@@ -770,6 +779,8 @@ struct Config {
   /// the display it is placed on, and no taskbar button (Windows, Linux).
   fullscreen: bool,
   skip_taskbar: bool,
+  /// The main window has no title bar or border (desktop.window.frameless).
+  frameless: bool,
   /// desktop.screenCapture "auto" (Windows): the page captures the first screen without the picker.
   screen_capture_auto: bool,
 }
@@ -841,6 +852,7 @@ fn parse_config(s: &str) -> Result<Config, String> {
     },
     fullscreen: get_b("fullscreen", false),
     skip_taskbar: get_b("skipTaskbar", false),
+    frameless: get_b("frameless", false),
     screen_capture_auto: match get_s("screenCapture").as_deref() {
       None | Some("picker") => false,
       Some("auto") => true,
@@ -1133,6 +1145,8 @@ struct WindowOptions {
   /// macOS has no taskbar: its Dock shows apps, not windows.
   #[cfg_attr(target_os = "macos", allow(dead_code))]
   skip_taskbar: bool,
+  /// No title bar or border: a kiosk drawn at an exact size, as an LED board needs.
+  frameless: bool,
 }
 
 /// One window. The webview is declared first so that it is dropped before its window.
@@ -1148,6 +1162,10 @@ struct Win {
   /// A reload is waiting out recovery_wait: ends reported meanwhile (an unresponsive page repeats its report) are
   /// the same end, and must neither raise the streak nor start a second wait.
   reload_pending: bool,
+  /// Its minimum inner size (window.setMinSize), logical points.
+  min_size: (f64, f64),
+  /// window.setCursorVisible(false): the external views over it hide the pointer too.
+  cursor_hidden: bool,
 }
 
 struct Windows {
@@ -1161,6 +1179,10 @@ struct Windows {
   /// Ids by last focus, most recent last.
   focus: Vec<u32>,
   next: u32,
+  /// The external-view plugin's views, by the id the page gave each.
+  external: external::Views,
+  /// Where each external view keeps its own browser profile.
+  external_data: PathBuf,
 }
 
 fn is_dark() -> bool {
@@ -1318,6 +1340,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     .with_background_color(background)
     // D2: stay hidden until the first page load finished, so no blank frame is ever shown.
     .with_visible(false)
+    .with_decorations(!opts.frameless)
     .with_window_icon(shell.icon.clone());
   // Reopen where asked, unless that display is gone (placement.rs; window-state for window 1).
   // Not WindowBuilder::with_position: on macOS tao takes that as the content's top-left corner
@@ -1510,7 +1533,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     std::thread::sleep(Duration::from_millis(3000));
     send(UserEvent::Show(id));
   });
-  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0, reload_pending: false })
+  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0, reload_pending: false, min_size: MIN_INNER, cursor_hidden: false })
 }
 
 /// A `window` argument: a positive whole number.
@@ -1521,6 +1544,22 @@ fn window_arg(cmd: &json::V) -> Result<Option<u32>, String> {
       Some(n) if n >= 1.0 && n.fract() == 0.0 && n <= u32::MAX as f64 => Ok(Some(n as u32)),
       _ => Err("window must be a window id".into()),
     },
+  }
+}
+
+/// An external view's `bounds`: "fill" (left out too), or `{ x, y, width, height }` in logical pixels.
+fn external_bounds(cmd: &json::V) -> Result<external::Bounds, String> {
+  match cmd.get("bounds") {
+    None => Ok(external::Bounds::Fill),
+    Some(v) if v.as_str() == Some("fill") => Ok(external::Bounds::Fill),
+    Some(v) => {
+      let num = |k: &str| v.get(k).and_then(|n| n.as_f64()).filter(|n| n.is_finite()).ok_or_else(|| format!("bounds.{k} must be a number"));
+      let (x, y, width, height) = (num("x")?, num("y")?, num("width")?, num("height")?);
+      if !(width > 0.0 && height > 0.0) {
+        return Err("bounds.width and bounds.height must be positive".into());
+      }
+      Ok(external::Bounds::At { x, y, width, height })
+    }
   }
 }
 
@@ -1586,6 +1625,10 @@ impl Windows {
       None => None,
       Some(v) => Some(v.as_str().ok_or("title must be a string")?.to_string()),
     };
+    let frameless = match cmd.get("frameless") {
+      None => false,
+      Some(v) => v.as_bool().ok_or("frameless must be a boolean")?,
+    };
     // Without a position, cascade from the focused window like AppKit does for new documents.
     let position = match pair("x", "y")? {
       Some(p) => Some(p),
@@ -1599,7 +1642,7 @@ impl Windows {
     };
     let id = self.next;
     self.next += 1;
-    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false, fullscreen: false, skip_taskbar: false })?;
+    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false, fullscreen: false, skip_taskbar: false, frameless })?;
     let state = self.state(id, &win);
     self.insert(id, win);
     push_event(&format!(r#"{{"type":"window","event":"created","window":{id}}}"#));
@@ -1614,6 +1657,7 @@ impl Windows {
       return Err("the last window cannot be destroyed; hide it or quit".into());
     }
     let win = self.map.remove(&id).unwrap();
+    self.external.close_window(id);
     self.ids.remove(&win.window.id());
     self.focus.retain(|&f| f != id);
     drop_pending(id);
@@ -1632,9 +1676,113 @@ impl Windows {
     Ok(format!(r#"{{"id":{id}}}"#))
   }
 
+  fn external_recover(&mut self, view: &str) {
+    let Some(win) = self.external.window_of(view).and_then(|w| self.map.get(&w)) else { return };
+    let inner = inner_size(&win.window, Some(&win.webview));
+    if let Err(e) = self.external.recover(view, &win.window, inner, &self.external_data, self.shell.devtools) {
+      log!("external view {view}: could not load it again: {e}");
+    }
+  }
+
+  /// A view's window and that window's content size, for its bounds.
+  fn external_host(&self, cmd: &json::V) -> Result<(u32, &Win), String> {
+    let id = match window_arg(cmd)? {
+      Some(id) => id,
+      None => self.primary().ok_or("there is no window")?,
+    };
+    let win = self.map.get(&id).ok_or_else(|| format!("no window {id}"))?;
+    Ok((id, win))
+  }
+
+  fn external_op(&mut self, op: &str, cmd: &json::V) -> Result<String, String> {
+    let view = || cmd.get("view").and_then(|v| v.as_str()).map(str::to_string).ok_or("view must be a string");
+    let flag = |k: &str| cmd.get(k).and_then(|v| v.as_bool()).ok_or_else(|| format!("{k} must be a boolean"));
+    match op {
+      "externalView.list" => Ok(self.external.list()),
+      "externalView.open" => {
+        let (window, win) = self.external_host(cmd)?;
+        let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?.to_string();
+        let allow: Vec<String> = cmd
+          .get("allowOrigins")
+          .and_then(|v| v.as_array())
+          .ok_or("allowOrigins must be a list of origins")?
+          .iter()
+          .map(|o| o.as_str().and_then(external::origin_of).ok_or("allowOrigins holds an origin that is not http(s)"))
+          .collect::<Result<_, _>>()?;
+        if !external::allowed(&allow, &url) {
+          return Err(format!("NOT_ALLOWED: {url} is on none of allowOrigins"));
+        }
+        let opts = external::OpenOptions {
+          view: view()?,
+          window,
+          url,
+          allow,
+          bounds: external_bounds(cmd)?,
+          init_script: cmd.get("initScript").and_then(|v| v.as_str()).map(str::to_string),
+          muted: cmd.get("muted").and_then(|v| v.as_bool()).unwrap_or(false),
+          autoplay: cmd.get("autoplay").and_then(|v| v.as_bool()).unwrap_or(true),
+          console: cmd.get("console").and_then(|v| v.as_bool()).unwrap_or(false),
+        };
+        let inner = inner_size(&win.window, Some(&win.webview));
+        let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
+        let win = &self.map[&window];
+        let hidden = win.cursor_hidden;
+        let answer = self.external.open(&win.window, inner, &data, devtools, opts)?;
+        if hidden {
+          self.external.set_cursor_hidden(window, true);
+        }
+        Ok(answer)
+      }
+      "externalView.close" => self.external.close(&view()?),
+      "externalView.navigate" => {
+        let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?;
+        self.external.navigate(&view()?, url)
+      }
+      "externalView.reload" => self.external.reload(&view()?),
+      "externalView.setVisible" => self.external.set_visible(&view()?, flag("visible")?),
+      "externalView.setBounds" => {
+        let id = view()?;
+        let window = self.external.get(&id)?.window;
+        let win = self.map.get(&window).ok_or_else(|| format!("no window {window}"))?;
+        let inner = inner_size(&win.window, Some(&win.webview));
+        self.external.set_bounds(&id, external_bounds(cmd)?, inner)
+      }
+      "externalView.setMuted" => self.external.set_muted(&view()?, flag("muted")?),
+      "externalView.clearData" => self.external.clear_data(&view()?),
+      _ => Err(format!("unknown op {op}")),
+    }
+  }
+
+  /// evaluate and cdp answer from the engine's callback: true when this took the op.
+  fn external_async(&self, id: u64, json: &str) -> bool {
+    let Ok(cmd) = json::parse(json) else { return false };
+    let op = cmd.get("op").and_then(|v| v.as_str()).unwrap_or("");
+    if op != "externalView.evaluate" && op != "externalView.cdp" {
+      return false;
+    }
+    let started = (|| -> Result<(), String> {
+      let view = cmd.get("view").and_then(|v| v.as_str()).ok_or("view must be a string")?;
+      if op == "externalView.evaluate" {
+        let script = cmd.get("script").and_then(|v| v.as_str()).ok_or("script must be a string")?;
+        //? Sent on as a JSON string: the engine's text is spliced into the reply, and not every engine's is JSON.
+        return self.external.evaluate(view, script, move |result| reply(id, result.map(|text| json::quote(&text))));
+      }
+      let method = cmd.get("method").and_then(|v| v.as_str()).ok_or("method must be a string")?;
+      let params = cmd.get("params").map(json::stringify).unwrap_or_else(|| "{}".into());
+      self.external.cdp(view, method, &params, move |result| reply(id, result.map(|text| json::quote(&text))))
+    })();
+    if let Err(e) = started {
+      reply(id, Err(e));
+    }
+    true
+  }
+
   fn shell_op(&mut self, target: &EventLoopWindowTarget<UserEvent>, json: &str) -> Result<String, String> {
     let cmd = json::parse(json)?;
     let op = cmd.get("op").and_then(|v| v.as_str()).ok_or("op is required")?;
+    if op.starts_with("externalView.") {
+      return self.external_op(op, &cmd);
+    }
     match op {
       "window.create" => return self.create(target, &cmd),
       "window.list" => {
@@ -1747,7 +1895,57 @@ impl Windows {
       win.webview.print().map_err(|e| e.to_string())?;
       return Ok("null".into());
     }
-    window_op(&win.window, Some(&win.webview), &cmd, op)
+    if op == "window.placeOnDisplay" {
+      let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
+      let monitor = monitor_at(target, num("atX")?, num("atY")?).ok_or("NOT_FOUND: no display is there now")?;
+      if cmd.get("fullscreen").and_then(|v| v.as_bool()) == Some(true) {
+        win.window.set_fullscreen(Some(tao::window::Fullscreen::Borderless(Some(monitor))));
+        return Ok(window_state(&win.window, Some(&win.webview)));
+      }
+      let (x, y, w, h) = (num("x")?.round(), num("y")?.round(), num("width")?.round(), num("height")?.round());
+      if !(w >= 1.0 && h >= 1.0) {
+        return Err("width and height must be positive".into());
+      }
+      win.window.set_fullscreen(None);
+      let scale = monitor.scale_factor();
+      let min = (win.min_size.0.min(w / scale), win.min_size.1.min(h / scale));
+      win.window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
+      //? AppKit lays every display out in points, while tao's physical position is that display's points × its own scale.
+      #[cfg(target_os = "macos")]
+      {
+        let origin = monitor.position().to_logical::<f64>(scale);
+        win.window.set_outer_position(tao::dpi::LogicalPosition::new(origin.x + x / scale, origin.y + y / scale));
+        win.window.set_inner_size(LogicalSize::new(w / scale, h / scale));
+      }
+      #[cfg(not(target_os = "macos"))]
+      {
+        let origin = monitor.position();
+        win.window.set_outer_position(tao::dpi::PhysicalPosition::new(origin.x + x as i32, origin.y + y as i32));
+        //? Second: arriving on a display of another scale, Windows resizes the window to keep its logical size (WM_DPICHANGED).
+        win.window.set_inner_size(tao::dpi::PhysicalSize::new(w as u32, h as u32));
+      }
+      let state = window_state(&win.window, Some(&win.webview));
+      self.map.get_mut(&id).expect("looked up above").min_size = min;
+      return Ok(state);
+    }
+    if op == "window.setMinSize" {
+      let min = match (cmd.get("width").and_then(|v| v.as_f64()), cmd.get("height").and_then(|v| v.as_f64())) {
+        (Some(w), Some(h)) if w >= 1.0 && h >= 1.0 => (w, h),
+        (None, None) => (1.0, 1.0),
+        _ => return Err("width and height must be positive, or both left out for no minimum".into()),
+      };
+      win.window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
+      let state = window_state(&win.window, Some(&win.webview));
+      self.map.get_mut(&id).expect("looked up above").min_size = min;
+      return Ok(state);
+    }
+    let state = window_op(&win.window, Some(&win.webview), &cmd, op, win.min_size)?;
+    if op == "window.setCursorVisible" {
+      let hidden = cmd.get("value").and_then(|v| v.as_bool()) == Some(false);
+      self.map.get_mut(&id).expect("looked up above").cursor_hidden = hidden;
+      self.external.set_cursor_hidden(id, hidden);
+    }
+    Ok(state)
   }
 }
 
@@ -1867,6 +2065,12 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     ids: HashMap::new(),
     focus: Vec::new(),
     next: 2,
+    external: external::Views::default(),
+    external_data: cfg
+      .data_dir
+      .clone()
+      .unwrap_or_else(|| std::env::temp_dir().join(format!("{}-webview", cfg.app_id)))
+      .join("external-views"),
   };
   let main = WindowOptions {
     path: cfg.start_path.clone(),
@@ -1876,6 +2080,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     maximized: cfg.maximized,
     fullscreen: cfg.fullscreen,
     skip_taskbar: cfg.skip_taskbar,
+    frameless: cfg.frameless,
   };
   match open_window(&event_loop, &windows.shell, &mut windows.web_context, 1, main) {
     Ok(win) => windows.insert(1, win),
@@ -1929,6 +2134,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
           }
           WindowEvent::Resized(_) => {
             let logical = inner_size(&win.window, Some(&win.webview)); // not the event's size (see inner_size)
+            windows.external.fit(id, logical);
             push_event(&format!(r#"{{"type":"window","event":"resized","window":{id},"width":{},"height":{}}}"#, logical.width, logical.height));
           }
           WindowEvent::Moved(position) => {
@@ -1956,6 +2162,9 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
         }
       }
       Event::UserEvent(UserEvent::Shell { id, json }) => {
+        if windows.external_async(id, &json) {
+          return;
+        }
         // notify.*, camera.*, panel.*, alert.* and autostart.* answer later, from completion
         // handlers or a thread (notify.rs, camera.rs, panels.rs, autostart.rs).
         #[cfg(target_os = "macos")]
@@ -2013,6 +2222,8 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
           }
         }
       }
+      Event::UserEvent(UserEvent::ExternalGone { view, reason }) => windows.external.gone(&view, reason),
+      Event::UserEvent(UserEvent::ExternalReload(view)) => windows.external_recover(&view),
       Event::UserEvent(UserEvent::ReloadGone(window)) => {
         if let Some(win) = windows.map.get_mut(&window) {
           win.reload_pending = false;

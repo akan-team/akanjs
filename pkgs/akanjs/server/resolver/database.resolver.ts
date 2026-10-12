@@ -31,6 +31,7 @@ import {
   DatabaseAdaptorRole,
   type DocumentStore,
   ServiceModel,
+  type UpsertByIdOptions,
 } from "akanjs/service";
 import { Exception, getCurrentTrace, traceDataLoaderBatch } from "akanjs/signal";
 
@@ -295,6 +296,8 @@ export class DatabaseResolver {
           updateById: (id: string, update: DocumentUpdateInput, options?: DocumentUpdateOptions) =>
             timedQuery(() => store.updateOneByQuery({ id }, update, options)),
           removeById: (id: string) => timedQuery(() => store.removeOneByQuery({ id })),
+          upsertById: (data: Record<string, unknown> & { id: string }, options?: UpsertByIdOptions) =>
+            timedQuery(() => store.upsertById(data, options)),
           // Kept so existing call sites keep working; `@deprecated` on the `Mdl` type is what points them onward.
           countDocuments: (query: QueryOf<any>) => timedQuery(() => store.count(query)),
           bulkWrite: (

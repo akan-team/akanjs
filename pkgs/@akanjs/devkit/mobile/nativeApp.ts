@@ -18,6 +18,7 @@ import { NativeAppLine, type NativeAppLineRead } from "./nativeAppLine";
 import { NativeConfig } from "./nativeConfig";
 import { NativePluginFolders } from "./nativePluginFolders";
 import { NativeWebDir } from "./nativeWebDir";
+import { ServerBundleSecrets } from "./serverBundleSecrets";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
@@ -43,6 +44,10 @@ export interface NativeBuildOptions {
   installer?: boolean;
   /** The CPU the desktop app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;
+  /** Sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names; the env alone signs nothing. */
+  sign?: boolean;
+  /** macOS: upload the signed app to Apple's notary service. */
+  notarize?: boolean;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -214,32 +219,19 @@ export class NativeApp {
 
   async build(
     platform: NativePlatform,
-    { profile = "release", server, installer = false, arch }: NativeBuildOptions = {},
+    { profile = "release", server, installer = false, arch, sign = false, notarize = false }: NativeBuildOptions = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     NativeApp.assertInstaller(platform, installer);
     await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server, arch);
+    const distribution = await this.#distribution(api, platform, profile, { sign, notarize }, server);
     return await api.build({
       ...this.#task(platform, config, { env: await this.#runtimeEnv(server) }),
       profile,
       ...(arch ? { arch } : {}),
-      ...(platform === "windows"
-        ? {
-            windows: {
-              ...(installer ? { installer } : {}),
-              ...(profile === "release" ? NativeApp.#windowsSigning(api) : {}),
-            },
-          }
-        : {}),
-      ...(platform === "macos"
-        ? {
-            macos: {
-              ...(profile === "release" ? api.macosDistributionFromEnv(process.env) : {}),
-              ...(installer ? { dmg: true } : {}),
-            },
-          }
-        : {}),
+      ...(platform === "windows" ? { windows: { ...(installer ? { installer } : {}), ...distribution.windows } } : {}),
+      ...(platform === "macos" ? { macos: { ...distribution.macos, ...(installer ? { dmg: true } : {}) } } : {}),
       ...(platform === "linux" && installer ? { linux: { appImage: true } } : {}),
     });
   }
@@ -326,21 +318,55 @@ export class NativeApp {
   /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */
   async publishUpdate(
     platform: NativePlatform,
-    { channel, server }: { channel?: string; server?: DesktopServerBundle } = {},
+    {
+      channel,
+      server,
+      arch,
+      sign = false,
+      notarize = false,
+    }: { channel?: string; server?: DesktopServerBundle; arch?: DesktopArch; sign?: boolean; notarize?: boolean } = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     this.#assertUpdates();
     await this.assembleWeb(platform);
-    const { api, config } = await this.prepare(platform, server);
+    const { api, config } = await this.prepare(platform, server, arch);
+    //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
+    const distribution = await this.#distribution(api, platform, "release", { sign, notarize }, server);
     return await api.publishUpdate({
       ...this.#task(platform, config, { env: await this.#runtimeEnv(server) }),
       platform,
       out: this.updatesDir,
       ...(channel ? { channel } : {}),
-      //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
-      ...(platform === "macos" ? { macos: api.macosDistributionFromEnv(process.env) } : {}),
-      ...(platform === "windows" ? { windows: NativeApp.#windowsSigning(api) } : {}),
+      ...(arch ? { arch } : {}),
+      ...(distribution.macos ? { macos: distribution.macos } : {}),
+      ...(distribution.windows ? { windows: distribution.windows } : {}),
     });
+  }
+
+  //* Only what the command asked for is signed or uploaded; a signed app's server is searched for the workspace's
+  //* secret values first, and the one line naming the identity and the service comes right before the build.
+  async #distribution(
+    api: NativeBuildApiModule,
+    platform: NativePlatform,
+    profile: "debug" | "release",
+    request: { sign: boolean; notarize: boolean },
+    server: DesktopServerBundle | undefined,
+  ) {
+    const distribution = api.requestedDistribution(platform, profile, request);
+    if (!distribution.notice) {
+      if (distribution.unused.length && (platform === "macos" || platform === "windows"))
+        this.app.logger.info(`${distribution.unused.join(", ")} set: this build is not signed without --sign.`);
+      return distribution;
+    }
+    if (server) {
+      const unread = await new ServerBundleSecrets(this.app.workspace.workspaceRoot, this.app.cwdPath).assertClean(
+        server.dir,
+      );
+      if (unread.length)
+        this.app.logger.warn(`Not searched for secrets, as they could not be evaluated: ${unread.join(", ")}.`);
+    }
+    this.app.logger.warn(distribution.notice);
+    return distribution;
   }
 
   /**
@@ -349,7 +375,7 @@ export class NativeApp {
    */
   async assertPublishable(
     platform: NativePlatform,
-    { channel, server = false }: { channel?: string; server?: boolean } = {},
+    { channel, server = false, arch }: { channel?: string; server?: boolean; arch?: DesktopArch } = {},
   ) {
     this.#assertUpdates();
     const [api, { config }] = await Promise.all([
@@ -365,6 +391,7 @@ export class NativeApp {
         out: this.updatesDir,
         server,
         ...(channel ? { channel } : {}),
+        ...(arch ? { arch } : {}),
       });
     } catch (error) {
       throw new Error(
@@ -475,11 +502,6 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
-  }
-
-  static #windowsSigning(api: NativeBuildApiModule) {
-    const signing = api.windowsSigningFromEnv(process.env);
-    return signing ? { signing } : {};
   }
 
   //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.

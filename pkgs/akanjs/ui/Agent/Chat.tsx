@@ -79,6 +79,10 @@ export interface ChatProps {
   /** `false` leaves Cmd/Ctrl+L to the browser. */
   shortcut?: boolean;
   launcherClassName?: string;
+  /** The corner the launcher sits in; it clears the page's bottom chrome and safe area either way. */
+  launcherPlacement?: "right" | "left";
+  /** Draws no launcher below this breakpoint; the panel still opens from the shortcut or a controlled `open`. */
+  hideLauncherBelow?: "sm" | "md" | "lg";
   panelClassName?: string;
   /** Shown in place of the intro line while the transcript is empty. */
   intro?: ReactNode;
@@ -108,8 +112,16 @@ const isApplePlatform = () => {
 };
 
 // Portalled to the body: `#pageContainers` is `isolation: isolate`, so a z-index inside it never tops a body overlay.
-// z-150 sits above toast 140, modal 120, sheet 101 and dropdown 100, and below Reconnect 200, which blocks on purpose.
-const launcherLayer = "fixed right-4 bottom-4 z-[150]";
+// The open panel is z-150, above toast 140, modal 120, sheet 101 and dropdown 100, and below Reconnect 200, which
+// blocks on purpose. The launcher is z-80, under every menu and modal a page opens.
+// It reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar and the home indicator.
+const launcherLayer =
+  "fixed bottom-[calc(var(--akan-bottom-inset,0px)+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))+1rem)] z-[80]";
+const launcherSides = {
+  right: "right-[calc(env(safe-area-inset-right,0px)+1rem)]",
+  left: "left-[calc(env(safe-area-inset-left,0px)+1rem)]",
+} as const;
+const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
 const panelLayer = "fixed inset-0 z-[150] sm:inset-auto sm:right-4 sm:bottom-4";
 const panelSize =
@@ -135,6 +147,8 @@ export const DefaultChat = ({
   inline = false,
   shortcut = true,
   launcherClassName,
+  launcherPlacement = "right",
+  hideLauncherBelow,
   panelClassName,
   intro,
   header,
@@ -411,7 +425,12 @@ export const DefaultChat = ({
     return launcher
       ? layer(
           <Launcher
-            className={cn(!inline && launcherLayer, className, launcherClassName)}
+            className={cn(
+              !inline && [launcherLayer, launcherSides[launcherPlacement]],
+              hideLauncherBelow && launcherHiddenBelow[hideLauncherBelow],
+              className,
+              launcherClassName,
+            )}
             hotkey={hotkey}
             label={l("base.agent")}
             buttonRef={launcherRef}

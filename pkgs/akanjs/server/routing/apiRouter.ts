@@ -142,10 +142,13 @@ export class ApiRouter {
           if (typeof message === "string" && typeof hmrHub?.handleMessage === "function") hmrHub.handleMessage(message);
           return;
         }
+        //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
+        let failedKey: string | undefined;
         try {
           if (typeof message === "string") {
             const msg = JSON.parse(message) as WebsocketReqData;
             if (!msg.key) throw new Error("Message key is required");
+            failedKey = msg.key;
             if (msg.key === websocketAuthContract.key) {
               // Must stay synchronous: the next frame (e.g. a subscribe) has to see the new credential.
               AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
@@ -161,19 +164,19 @@ export class ApiRouter {
             if (!wsRoute) throw new Error(`WebSocket route "${msg.key}" is not registered`);
             const eventType =
               typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
-            const result = await wsRoute(ws, msg.data, eventType);
+            const result = await wsRoute(ws, msg.data, eventType, { since: msg.since });
             ws.send(JSON.stringify(result));
           } else throw new Error("Message is not a string");
         } catch (error) {
           if (isExceptionLike(error)) {
-            ws.send(JSON.stringify({ ...error.toJSON(), timestamp: new Date().toISOString() }));
+            ws.send(JSON.stringify({ ...error.toJSON(), key: failedKey, timestamp: new Date().toISOString() }));
             return;
           }
           if (!SignalContext.wasReported(error)) {
             logger.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
           }
           // The same generalization the HTTP 500 makes: a socket frame is no less readable by the caller.
-          ws.send(JSON.stringify({ ...SignalFailure.body(error), at: dayjs() }));
+          ws.send(JSON.stringify({ ...SignalFailure.body(error), key: failedKey, at: dayjs() }));
         }
       },
       close: (ws) => {

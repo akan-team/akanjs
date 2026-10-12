@@ -1,3 +1,4 @@
+import { Backoff, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
 import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
 
@@ -10,6 +11,9 @@ export interface HttpClientOptions {
 
 interface FetchOptions extends Pick<HttpClientOptions, "headers" | "timeout"> {
   baseUrl?: string;
+  /** Over the client's default; `false` sends once. */
+  retry?: RetryPolicy | false;
+  idempotencyKey?: string;
 }
 
 const jsonContentType = /^application\/(?:[\w.+-]+\+)?json\b/i;
@@ -23,6 +27,14 @@ const transportErrorKeyMap = {
 } as const;
 
 const serverUnreachableKey = "base.error.serverUnreachable";
+//* What a later try can change: no answer, a restart, a slow upstream, a rate limit, or the same key still running.
+const retryableKeys = new Set([
+  serverUnreachableKey,
+  "base.error.serverUnavailable",
+  "base.error.gatewayTimeout",
+  "base.error.tooManyRequests",
+  "base.error.idempotencyInFlight",
+]);
 const unexpectedResponseKey = "base.error.unexpectedResponse";
 const transportDetailLimit = 200;
 // A solo process has no gateway to answer a dead upstream with a 504, and a severed connection answers nothing at all.
@@ -32,6 +44,7 @@ export class HttpClient {
   readonly baseUrl: string;
   #headers: Record<string, string>;
   #timeout?: number | false;
+  #retry: RetryPolicy | false = false;
   private ErrorCls?: ErrorConstructor;
   constructor(baseUrl: string, options: HttpClientOptions = {}) {
     this.baseUrl = baseUrl;
@@ -46,6 +59,10 @@ export class HttpClient {
   /** The budget every call that names none takes. `false` waits as long as the runtime will. */
   setTimeout(timeout?: number | false) {
     this.#timeout = timeout;
+  }
+  /** What every call that names no `retry` of its own does; `false`, the default, sends once. */
+  setRetry(retry: RetryPolicy | false) {
+    this.#retry = retry;
   }
   #resolveUrl(url: string, options: FetchOptions) {
     return `${(options.baseUrl ?? this.baseUrl).replace(/\/$/, "")}${url}`;
@@ -101,7 +118,37 @@ export class HttpClient {
     );
   }
 
+  //* A mutation retries only under an Idempotency-Key — named, or minted once for every try of this call — so a try
+  //* whose answer was lost runs once on the server. An upload is sent once: its body may be a stream already read.
   async #request<Returns>(url: string, init: RequestInit, options: FetchOptions = {}): Promise<Returns> {
+    const retry = options.retry ?? this.#retry;
+    const mutation = !!init.method && init.method !== "GET";
+    const idempotencyKey = options.idempotencyKey ?? (retry && mutation ? crypto.randomUUID() : undefined);
+    const sent: RequestInit = idempotencyKey
+      ? { ...init, headers: { ...(init.headers as Record<string, string>), "Idempotency-Key": idempotencyKey } }
+      : init;
+    const policy = retry && !(init.body instanceof FormData) ? retry : null;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.#requestOnce<Returns>(url, sent, options);
+      } catch (error) {
+        const wait = policy ? HttpClient.retryWait(error, attempt, policy) : null;
+        if (wait === null) throw error;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+  }
+
+  /** The wait before the next try, or `null` when this error is final or the tries are spent. */
+  static retryWait(error: unknown, attempt: number, { attempts = 4, ...backoff }: RetryPolicy): number | null {
+    const restored = error as RestoredError | undefined;
+    if (attempt >= attempts || !retryableKeys.has(restored?.error ?? "")) return null;
+    const wait = Backoff.delay(attempt, { min: 500, ...backoff });
+    const seconds = (restored?.data as { seconds?: unknown } | undefined)?.seconds;
+    return typeof seconds === "number" && seconds > 0 ? Math.max(wait, seconds * 1000) : wait;
+  }
+
+  async #requestOnce<Returns>(url: string, init: RequestInit, options: FetchOptions): Promise<Returns> {
     const res = await this.#fetch(url, this.#withTimeout(init, options));
     const body = await this.#readBody(res);
     if (res.ok) return body as Returns;

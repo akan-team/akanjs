@@ -12,7 +12,8 @@ export interface AkanJobOptions {
   attempts?: number;
   /** Smaller runs sooner, and a job with none runs before every prioritized one — bullmq's reading. */
   priority?: number;
-  backoff?: number | { type?: string; delay?: number };
+  /** `maxDelay` caps what an exponential backoff grows to between attempts. */
+  backoff?: number | { type?: string; delay?: number; maxDelay?: number };
   removeOnComplete?: boolean | number;
   removeOnFail?: boolean | number;
 }

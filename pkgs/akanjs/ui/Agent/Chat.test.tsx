@@ -685,6 +685,17 @@ describe("Agent.Chat", () => {
     inline.unmount();
   });
 
+  test("the launcher sits under menus and modals, above the page's bottom chrome, in the corner it is given", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mountChat(session, { launcherPlacement: "left", hideLauncherBelow: "md" });
+    const launcher = document.body.querySelector<HTMLButtonElement>('button[aria-label="base.agent"]');
+    expect(launcher?.className).toContain("z-[80]");
+    expect(launcher?.className).toContain("var(--akan-bottom-inset");
+    expect(launcher?.className).toContain("left-[calc(env(safe-area-inset-left,0px)+1rem)]");
+    expect(launcher?.className).toContain("max-md:hidden");
+    chat.unmount();
+  });
+
   test("a touch screen opens onto the intro without raising its keyboard, a desktop into the composer", () => {
     const openFrom = () => {
       const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));

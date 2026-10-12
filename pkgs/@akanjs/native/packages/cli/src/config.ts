@@ -254,10 +254,10 @@ export interface AkanNativeConfig {
     recovery?: "errorPage" | "reload";
     /**
      * The main window from its first frame: `fullscreen` (borderless, on the display the window opens on)
-     * and `skipTaskbar` (no taskbar button; Windows and Linux). A plugin's launch phase may still decide
-     * otherwise (DesktopContext.launch.setWindow). Default false for both.
+     * `skipTaskbar` (no taskbar button; Windows and Linux) and `frameless` (no title bar or border). A plugin's
+     * launch phase may still decide otherwise (DesktopContext.launch.setWindow). Default false for all three.
      */
-    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+    window?: { fullscreen?: boolean; skipTaskbar?: boolean; frameless?: boolean };
     /**
      * Windows: "auto" answers the page's getDisplayMedia() with the first screen at once, without the picker or a
      * user gesture: a remote-support session on an unattended screen. It is Chromium's switch for automated media
@@ -267,12 +267,28 @@ export interface AkanNativeConfig {
      */
     screenCapture?: "picker" | "auto";
     /**
+     * Windows installer: "bootstrapper" (default) carries Microsoft's 2 MB setup that downloads the WebView2
+     * Runtime when the PC has none; "standalone" carries the whole runtime (~200 MB), for a PC that is offline or
+     * behind a proxy at install. Either runs only where no runtime is installed.
+     */
+    webview2?: "bootstrapper" | "standalone";
+    /** Windows: the installed app's Publisher (Apps & features) and its executable's company name. */
+    publisher?: string;
+    /**
      * A server the app starts beside its window (akanjs `native.desktop.server`). `dir` is copied to
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher
      * sets PORT, JWT_SECRET, the data folders (`<app local data>/server`) and the listen host itself.
+     * `restart`: crashes in a row before it gives up (5), or "forever"; `watchdog`: its health route asked every
+     * `intervalMs`, `failures` missed in a row restarting it.
      */
-    server?: { dir: string; entry: string; env?: Record<string, string> };
+    server?: {
+      dir: string;
+      entry: string;
+      env?: Record<string, string>;
+      restart?: number | "forever";
+      watchdog?: { intervalMs: number; failures: number };
+    };
     /**
      * A folder of executables the app carries (akanjs `bin`): copied to the app's resources (`bin/`) and put
      * first on the app's PATH at launch, so its plugins and its server find them by name before the computer's.

@@ -81,6 +81,14 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .exec(async function (fix, maxDiagnostics, workspace) {
       await this.workspaceScript.lintAll(workspace, { fix, maxDiagnostics });
     }),
+  machineKeygen: target({
+    desc: "Make an Ed25519 key for machine tokens: write the private key to a file, print the public key",
+  })
+    .arg("out", String, { desc: "file the private key is written to (mode 600); an existing one is refused" })
+    .with(Workspace)
+    .exec(async function (out, workspace) {
+      await this.workspaceScript.machineKeygen(workspace, out);
+    }),
   syncAll: target({ desc: "Sync dependencies and configuration for all apps and libraries" })
     .with(Workspace)
     .exec(async function (workspace) {

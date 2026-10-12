@@ -26,7 +26,8 @@ interface ClientState {
   subscriptions: Map<string, () => void>;
 }
 
-// Security: the socket's 0600 file mode is the whole authentication — no TCP port is ever opened.
+// Security: the socket's 0600 file mode is the whole authentication — no TCP port is ever opened. Windows ignores the
+// mode and checks the socket file's ACL, inherited from the runtime folder: a carried server's is under %LOCALAPPDATA%.
 // Never log per delivered record here: a subscriber to everything would receive its own delivery line, forever.
 export class LogControlSocket {
   static readonly fileName = "akan-control.sock";

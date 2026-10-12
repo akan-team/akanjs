@@ -274,6 +274,158 @@ body.akan-mobile-document {
   padding-inline: 2rem;
 }
 
+/* A frame whose insets change with width carries one var per breakpoint (`topInset: { base, md }`, SSR only);
+   these pick the one in force. The breakpoints are Tailwind's defaults, which `ResponsiveInset` keys on. */
+[data-akan-frame-responsive] {
+  --akan-top-inset: var(--akan-top-inset-base);
+  --akan-bottom-inset: var(--akan-bottom-inset-base);
+  --akan-top-inset-visibility: var(--akan-top-inset-visibility-base);
+  --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-base);
+}
+@media (width >= 40rem) {
+  [data-akan-frame-responsive] {
+    --akan-top-inset: var(--akan-top-inset-sm);
+    --akan-bottom-inset: var(--akan-bottom-inset-sm);
+    --akan-top-inset-visibility: var(--akan-top-inset-visibility-sm);
+    --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-sm);
+  }
+}
+@media (width >= 48rem) {
+  [data-akan-frame-responsive] {
+    --akan-top-inset: var(--akan-top-inset-md);
+    --akan-bottom-inset: var(--akan-bottom-inset-md);
+    --akan-top-inset-visibility: var(--akan-top-inset-visibility-md);
+    --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-md);
+  }
+}
+@media (width >= 64rem) {
+  [data-akan-frame-responsive] {
+    --akan-top-inset: var(--akan-top-inset-lg);
+    --akan-bottom-inset: var(--akan-bottom-inset-lg);
+    --akan-top-inset-visibility: var(--akan-top-inset-visibility-lg);
+    --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-lg);
+  }
+}
+@media (width >= 80rem) {
+  [data-akan-frame-responsive] {
+    --akan-top-inset: var(--akan-top-inset-xl);
+    --akan-bottom-inset: var(--akan-bottom-inset-xl);
+    --akan-top-inset-visibility: var(--akan-top-inset-visibility-xl);
+    --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-xl);
+  }
+}
+@media (width >= 96rem) {
+  [data-akan-frame-responsive] {
+    --akan-top-inset: var(--akan-top-inset-2xl);
+    --akan-bottom-inset: var(--akan-bottom-inset-2xl);
+    --akan-top-inset-visibility: var(--akan-top-inset-visibility-2xl);
+    --akan-bottom-inset-visibility: var(--akan-bottom-inset-visibility-2xl);
+  }
+}
+
+/* Route transitions on the web: an RSC navigation tags itself `akan-<transition>-<push|pop>` from the route's
+   `.config({ transition })`, and the page content's ViewTransition takes that class. The rest of the page holds. */
+:root:active-view-transition-type(akan-nav)::view-transition-old(root),
+:root:active-view-transition-type(akan-nav)::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-old(.akan-stack-push) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-left;
+}
+::view-transition-new(.akan-stack-push) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-right;
+}
+::view-transition-old(.akan-stack-pop) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-right;
+}
+::view-transition-new(.akan-stack-pop) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-left;
+}
+::view-transition-old(.akan-bottomUp-push),
+::view-transition-new(.akan-bottomUp-pop) {
+  animation: none;
+}
+::view-transition-new(.akan-bottomUp-push) {
+  animation: 280ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-up;
+}
+::view-transition-old(.akan-bottomUp-pop) {
+  animation: 240ms ease-in both akan-vt-out-down;
+}
+::view-transition-old(.akan-fade-push),
+::view-transition-old(.akan-fade-pop) {
+  animation: 180ms ease-in both akan-vt-fade-out;
+}
+::view-transition-new(.akan-fade-push),
+::view-transition-new(.akan-fade-pop) {
+  animation: 180ms ease-out both akan-vt-fade-in;
+}
+::view-transition-old(.akan-scaleOut-push) {
+  animation: 220ms ease-in both akan-vt-shrink-out;
+}
+::view-transition-new(.akan-scaleOut-push) {
+  animation: 220ms ease-out both akan-vt-fade-in;
+}
+::view-transition-old(.akan-scaleOut-pop) {
+  animation: 200ms ease-in both akan-vt-fade-out;
+}
+::view-transition-new(.akan-scaleOut-pop) {
+  animation: 220ms ease-out both akan-vt-grow-in;
+}
+@keyframes akan-vt-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes akan-vt-out-left {
+  to {
+    transform: translateX(-30%);
+    opacity: 0.6;
+  }
+}
+@keyframes akan-vt-in-left {
+  from {
+    transform: translateX(-30%);
+    opacity: 0.6;
+  }
+}
+@keyframes akan-vt-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes akan-vt-in-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes akan-vt-out-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes akan-vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes akan-vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes akan-vt-shrink-out {
+  to {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+@keyframes akan-vt-grow-in {
+  from {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+
 /* Always-included keyframes (non-theme animations) */
 @keyframes smaller {
   0% {

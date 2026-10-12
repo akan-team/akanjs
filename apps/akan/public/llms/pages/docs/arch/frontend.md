@@ -137,7 +137,7 @@ Client — "use client"
 
   - fetch.*: Called in a route, it finishes before the first byte. From a mounted client it costs two extra round-trips.
 
-  - getSelf({ unauthorize }): Check sign-in in `_layout.tsx` before any HTML is sent, not after rendering.
+  - getSelf({ unauthorize }): Check sign-in in `_layout.tsx`, before any of the page's markup renders.
 
   - show / hide a panel: Usually server: a `data-*` attribute or `<details>` keeps both states server-rendered.
 

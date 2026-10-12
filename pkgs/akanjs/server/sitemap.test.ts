@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultSitemapUrls, createSitemapXml, getSitemapBasePath } from "./sitemap";
+import { createDefaultSitemapUrls, createSitemapXml, getSitemapBasePath, getWebManifestBasePath } from "./sitemap";
 
 const seedEntries = (...patterns: string[]) => patterns.map((pattern) => ({ routeId: pattern, pattern, seeds: [] }));
 
@@ -50,5 +50,16 @@ describe("sitemap fallback helpers", () => {
     expect(getSitemapBasePath("/sitemap.xml", ["akanjs"])).toBeUndefined();
     expect(getSitemapBasePath("/sitemap.xml", ["akanjs"], "akanjs")).toBe("akanjs");
     expect(getSitemapBasePath("/akanjs/sitemap.xml", ["akanjs"], "akanjs")).toBeUndefined();
+  });
+});
+
+describe("getWebManifestBasePath", () => {
+  test("answers the app root, a visible basePath prefix, or the request's basePath, and nothing else", () => {
+    expect(getWebManifestBasePath("/manifest.webmanifest", [])).toBeNull();
+    expect(getWebManifestBasePath("/office/manifest.webmanifest", ["office", "admin"])).toBe("office");
+    expect(getWebManifestBasePath("/manifest.webmanifest", ["office", "admin"], "admin")).toBe("admin");
+    expect(getWebManifestBasePath("/unknown/manifest.webmanifest", ["office"])).toBeUndefined();
+    expect(getWebManifestBasePath("/en/office/manifest.webmanifest", ["office"])).toBeUndefined();
+    expect(getWebManifestBasePath("/sitemap.xml", ["office"])).toBeUndefined();
   });
 });

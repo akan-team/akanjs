@@ -4,6 +4,7 @@ import { Guide } from "./Guide";
 import { History } from "./History";
 import { Chat } from "./index_";
 import { Skip } from "./Skip";
+import { useScreenActions } from "./useScreenActions";
 import { Zone } from "./Zone";
 
 export const Agent = {
@@ -19,4 +20,5 @@ export const Agent = {
   Tool,
   Transcript,
   Zone,
+  useScreenActions,
 };

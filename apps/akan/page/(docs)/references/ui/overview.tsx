@@ -604,8 +604,8 @@ export default page().render(() => {
       name: "Tooltip",
       href: "/references/ui/overlays#Tooltip",
       area: overlays,
-      en: "A pure-CSS hint shown on hover or focus.",
-      ko: "마우스를 올리거나 포커스를 받을 때 뜨는 순수 CSS 힌트입니다.",
+      en: "A hint shown on hover or focus that flips to the side with room.",
+      ko: "마우스를 올리거나 포커스를 받을 때 뜨고, 자리가 있는 쪽으로 뒤집히는 힌트입니다.",
     },
     {
       name: "triggerSlot",

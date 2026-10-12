@@ -1,5 +1,12 @@
 import { isRecord } from "akanjs/common";
-import type { PageConfig, PageSafeAreaConfig, PageState, SsrRenderMode, TransitionType } from "./csrTypes";
+import type {
+  PageConfig,
+  PageSafeAreaConfig,
+  PageState,
+  ResponsiveInset,
+  SsrRenderMode,
+  TransitionType,
+} from "./csrTypes";
 
 export type DevicePlatform = "ios" | "android" | "web" | (string & {});
 export type SafeAreaInsets = { top: number; bottom: number };
@@ -11,7 +18,19 @@ export interface ResolvePageStateOptions {
   platform: DevicePlatform;
   deviceSafeArea: SafeAreaInsets;
   cssSafeArea?: SafeAreaInsets;
+  /** The viewport width in px a responsive inset resolves at; left out, it resolves at `base`. */
+  width?: number;
 }
+
+/** Tailwind's default breakpoints in rem, the widths a `ResponsiveInset` keys on. */
+export const insetBreakpoints = [
+  ["sm", 40],
+  ["md", 48],
+  ["lg", 64],
+  ["xl", 80],
+  ["2xl", 96],
+] as const;
+export type InsetBreakpoint = "base" | (typeof insetBreakpoints)[number][0];
 
 const pageConfigKeys = new Set<keyof PageConfig>([
   "transition",
@@ -55,14 +74,42 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   for (const key of ["topInset", "bottomInset"] as const) {
     if (pageConfig[key] !== undefined && !isValidInsetValue(pageConfig[key]))
       throw new Error(
-        `[route-convention] pageConfig.${key} in ${routeKey} must be a boolean or non-negative px number.`,
+        `[route-convention] pageConfig.${key} in ${routeKey} must be a boolean, a non-negative px number, or { base, sm?, md?, lg?, xl?, "2xl"? } of them.`,
       );
   }
   validateSafeAreaConfig(routeKey, pageConfig.safeArea);
 }
 
+const isInsetPx = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
+const responsiveInsetKeys = new Set<string>(["base", ...insetBreakpoints.map(([name]) => name)]);
+
 function isValidInsetValue(value: unknown): value is NonNullable<PageConfig["topInset"]> {
-  return typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+  if (typeof value === "boolean" || isInsetPx(value)) return true;
+  if (!isRecord(value) || !isInsetPx(value.base)) return false;
+  return Object.entries(value).every(([key, px]) => responsiveInsetKeys.has(key) && isInsetPx(px));
+}
+
+export const isResponsiveInset = (inset: PageConfig["topInset"]): inset is ResponsiveInset => isRecord(inset);
+
+/** The inset at each breakpoint, each one the nearest declared value at or below it. */
+export function insetsByBreakpoint(inset: PageConfig["topInset"]): { [bp in InsetBreakpoint]: number } {
+  const base = isResponsiveInset(inset) ? inset.base : resolveInset(inset);
+  const values = { base } as { [bp in InsetBreakpoint]: number };
+  let current = base;
+  for (const [name] of insetBreakpoints) {
+    current = (isResponsiveInset(inset) ? inset[name] : undefined) ?? current;
+    values[name] = current;
+  }
+  return values;
+}
+
+/** The inset in force at `width` px, assuming a 16px rem. */
+export function insetAt(inset: PageConfig["topInset"], width?: number): number {
+  if (!isResponsiveInset(inset)) return resolveInset(inset);
+  if (width === undefined) return inset.base;
+  const values = insetsByBreakpoint(inset);
+  return insetBreakpoints.reduce((value, [name, rem]) => (width >= rem * 16 ? values[name] : value), values.base);
 }
 
 function validateSafeAreaConfig(routeKey: string, safeArea?: PageSafeAreaConfig) {
@@ -135,6 +182,7 @@ export function resolvePageState({
   platform,
   deviceSafeArea,
   cssSafeArea,
+  width,
 }: ResolvePageStateOptions): PageState {
   const profile = getPlatformFrameProfile(platform);
   const routeRole = getRouteRoleFrameDefaults(path, platform, basePath);
@@ -147,12 +195,25 @@ export function resolvePageState({
     cssSafeArea,
   });
   const transition = config.transition ?? "none";
+  const responsive = isResponsiveInset(config.topInset) || isResponsiveInset(config.bottomInset);
+  const safeAreaEnv = platform === "web" ? resolveSafeAreaEnv(config.safeArea) : undefined;
   return {
     transition,
     topSafeArea: safeArea.top,
     bottomSafeArea: safeArea.bottom,
-    topInset: resolveInset(config.topInset),
-    bottomInset: resolveInset(config.bottomInset),
+    topInset: insetAt(config.topInset, width),
+    bottomInset: insetAt(config.bottomInset, width),
+    ...(responsive
+      ? {
+          responsiveInset: {
+            top: isResponsiveInset(config.topInset) ? config.topInset : { base: resolveInset(config.topInset) },
+            bottom: isResponsiveInset(config.bottomInset)
+              ? config.bottomInset
+              : { base: resolveInset(config.bottomInset) },
+          },
+        }
+      : {}),
+    ...(safeAreaEnv ? { safeAreaEnv } : {}),
     gesture: explicitKeys.gesture
       ? (config.gesture ?? false)
       : transition === "none"
@@ -168,7 +229,16 @@ export function resolvePageState({
 function resolveInset(inset: PageConfig["topInset"]): number {
   if (inset === true) return DEFAULT_BOOLEAN_INSET;
   if (inset === false || inset === undefined) return 0;
+  if (isResponsiveInset(inset)) return inset.base;
   return inset;
+}
+
+//? A browser has no safe-area API for script, so a page that asks for one on the web is padded by `env()` itself.
+function resolveSafeAreaEnv(safeArea?: PageSafeAreaConfig): { top: boolean; bottom: boolean } | undefined {
+  if (safeArea === undefined || safeArea === false) return undefined;
+  const top = safeArea === true || safeArea === "top" || (isRecord(safeArea) && safeArea.top !== false);
+  const bottom = safeArea === true || safeArea === "bottom" || (isRecord(safeArea) && safeArea.bottom !== false);
+  return top || bottom ? { top, bottom } : undefined;
 }
 
 function getPlatformFrameProfile(platform: DevicePlatform): PageConfig {
@@ -224,9 +294,11 @@ function resolveSafeArea({
       bottom: bottomEnabled && source ? source.bottom : 0,
     };
   }
+  //? A browser's only safe-area source is the CSS probe, which `viewport-fit=cover` makes report the notch.
+  const source = platform === "web" && cssSafeArea ? cssSafeArea : deviceSafeArea;
   return {
-    top: topEnabled ? deviceSafeArea.top : 0,
-    bottom: bottomEnabled ? deviceSafeArea.bottom : 0,
+    top: topEnabled ? source.top : 0,
+    bottom: bottomEnabled ? source.bottom : 0,
   };
 }
 

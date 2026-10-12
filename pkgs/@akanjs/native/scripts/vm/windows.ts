@@ -2,6 +2,8 @@
 // (docs/testing-windows-linux.md; the VM was prepared with scripts/vm/windows-setup.ps1):
 //
 //   bun scripts/vm/windows.ts sync                     copy the repository to the VM
+//   bun scripts/vm/windows.ts files                    list what sync would copy, without the VM
+//   bun scripts/vm/windows.ts stubs <dir>              write the credential-free env stubs sync sends, to read
 //   bun scripts/vm/windows.ts ssh <command…>           run in the SSH session (builds, cargo, bun test)
 //   bun scripts/vm/windows.ts desktop <command…>       run in the signed-in desktop session and wait
 //   bun scripts/vm/windows.ts test                     sync, then `akan-native test windows` on the desktop
@@ -16,11 +18,17 @@
 // The VM's address and user come from ~/.akan/native/vm/windows.json (written by serve-setup.ts) or
 // AKAN_NATIVE_VM_HOST / AKAN_NATIVE_VM_USER; the key is ~/.akan/native/vm/id_ed25519.
 // AKAN_NATIVE_VM_SRC copies another tree instead of this package (the akanjs monorepo, for an e2e that builds an
-// app), into C:\akan-native-work\<AKAN_NATIVE_VM_WORK_NAME>, so it never mixes with this package's copy.
+// app), into C:\akan-native-work\<AKAN_NATIVE_VM_WORK_NAME>, so it never mixes with this package's copy. Such a
+// tree's credentials stay behind: `.env*`, `secrets/` and `env.server.<env>.ts` but `type`, `example` and `*.edge.ts`.
+// A left-out `env.server.<env>.ts` goes as its values without the secret-named ones, and the root `.env` as its
+// AKAN_PUBLIC_* lines, so the VM still resolves, typechecks and builds. Symlinks stay behind: `akan sync` makes them.
+// AKAN_NATIVE_VM_EXCLUDE leaves out more and AKAN_NATIVE_VM_KEEP takes one of those back whole: comma-separated globs,
+// matched against a path from the tree's root and against a bare name.
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { ServerEnvProfile } from "../../../devkit/transforms/serverEnvProfile";
 
 const PACKAGE = resolve(import.meta.dir, "../..");
 const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? PACKAGE);
@@ -104,21 +112,107 @@ function treeName(): string {
   return REPO === PACKAGE ? "@akanjs/native" : "an unnamed tree";
 }
 
-function sync(): void {
+//? .git, .claude (its worktrees) and local are gigabytes in the monorepo and nothing a VM build reads; no tracked
+//? folder carries one of these names.
+const SKIPPED = new Set(["node_modules", "target", ".akan", "dist", ".DS_Store", ".git", ".claude", "local"]);
+
+//? Untracked, so nothing but this list keeps an app's production credentials off the VM. `type` is generated and
+//? `example` committed; an edge profile's env is what a carried server is built with, refused if it names a secret.
+const isCredential = (name: string, isDir: boolean) =>
+  isDir
+    ? name === "secrets"
+    : name === ".env" ||
+      name.startsWith(".env.") ||
+      (/^env\.server\..+\.ts$/.test(name) && !/^env\.server\.(type|example)\.ts$|\.edge\.ts$/.test(name));
+
+const globs = (value: string | undefined) =>
+  (value ?? "")
+    .split(",")
+    .map((glob) => glob.trim())
+    .filter(Boolean)
+    .map((glob) => new Bun.Glob(glob));
+
+/**
+ * The tree's files, relative and `/`-separated, without build output, symlinks and, for another tree, its
+ * credentials; `stubs` are the left-out env files the VM gets a credential-free copy of.
+ */
+function treeFiles(): { files: string[]; left: number; stubs: string[] } {
+  const extra = globs(process.env.AKAN_NATIVE_VM_EXCLUDE);
+  const keep = globs(process.env.AKAN_NATIVE_VM_KEEP);
+  const guarded = REPO !== PACKAGE;
+  const files: string[] = [];
+  const stubs: string[] = [];
+  let left = 0;
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(join(REPO, dir), { withFileTypes: true })) {
+      const path = dir ? `${dir}/${entry.name}` : entry.name;
+      if (SKIPPED.has(entry.name) || entry.isSymbolicLink()) continue;
+      const matches = (list: Bun.Glob[]) => list.some((glob) => glob.match(path) || glob.match(entry.name));
+      if (matches(extra)) {
+        left++;
+        continue;
+      }
+      if (guarded && isCredential(entry.name, entry.isDirectory()) && !matches(keep)) {
+        left++;
+        if (entry.name.startsWith("env.server.") || path === ".env") stubs.push(path);
+        continue;
+      }
+      if (entry.isDirectory()) walk(path);
+      else files.push(path);
+    }
+  };
+  walk("");
+  return { files, left, stubs };
+}
+
+/** Writes the stubs under `stage`: an env file's values without the secret-named ones, the root `.env`'s public lines. */
+async function writeStubs(stubs: string[], stage: string): Promise<number> {
+  let written = 0;
+  for (const path of stubs) {
+    const source = join(REPO, path);
+    const out = join(stage, path);
+    mkdirSync(dirname(out), { recursive: true });
+    if (path === ".env") {
+      const lines = readFileSync(source, "utf8")
+        .split(/\r?\n/)
+        .filter((line) => /^AKAN_PUBLIC_[A-Z0-9_]+=/.test(line));
+      writeFileSync(out, `${lines.join("\n")}\n`);
+      written++;
+      continue;
+    }
+    //? Typed `any`: the declared type stayed with the original, and the stub only has to resolve and typecheck.
+    const value = await ServerEnvProfile.evaluate(source, dirname(dirname(source))).catch(() => ({}));
+    writeFileSync(out, `export const env: any = ${JSON.stringify(ServerEnvProfile.strip(value).value ?? {})};\n`);
+    written++;
+  }
+  return written;
+}
+
+async function sync(): Promise<void> {
   const archive = join(tmpdir(), `${COPY}-sync.tar.gz`);
+  const stubArchive = join(tmpdir(), `${COPY}-stubs.tar.gz`);
+  const stage = join(tmpdir(), `${COPY}-stubs`);
+  const list = join(tmpdir(), `${COPY}-sync.files`);
   const tree = treeName();
-  console.info("sync: packing the repository");
-  //? .git, .claude (its worktrees) and local are gigabytes in the monorepo and nothing a VM build reads; no tracked
-  //? folder carries one of these names.
-  const excludes = ["node_modules", "target", ".akan", "dist", ".DS_Store", ".git", ".claude", "local"].flatMap((e) => [
-    "--exclude",
-    e,
-  ]);
-  if (spawn(["tar", "-czf", archive, ...excludes, "-C", REPO, "."], { quiet: true }).code !== 0)
-    throw new Error("tar failed");
-  if (spawn(["scp", ...SSH, "-q", archive, `${target()}:${COPY}-sync.tar.gz`]).code !== 0)
-    throw new Error("scp failed");
+  const { files, left, stubs } = treeFiles();
+  rmSync(stage, { recursive: true, force: true });
+  const stubbed = await writeStubs(stubs, stage);
+  console.info(
+    `sync: packing ${files.length} files${left ? `, ${left} left out (credentials, AKAN_NATIVE_VM_EXCLUDE)` : ""}${stubbed ? `, ${stubbed} sent without their secrets` : ""}`,
+  );
+  writeFileSync(list, `${files.join("\0")}\0`);
+  const packed = spawn(["tar", "-czf", archive, "-C", REPO, "--null", "-T", list], { quiet: true });
+  rmSync(list, { force: true });
+  if (packed.code !== 0) throw new Error(`tar failed: ${packed.out.trim()}`);
+  if (stubbed && spawn(["tar", "-czf", stubArchive, "-C", stage, "."], { quiet: true }).code !== 0)
+    throw new Error("tar of the env stubs failed");
+  rmSync(stage, { recursive: true, force: true });
+  const uploads: [string, string][] = [[archive, `${COPY}-sync.tar.gz`]];
+  if (stubbed) uploads.push([stubArchive, `${COPY}-stubs.tar.gz`]);
+  for (const [file, name] of uploads)
+    if (spawn(["scp", ...SSH, "-q", file, `${target()}:${name}`]).code !== 0) throw new Error("scp failed");
   rmSync(archive, { force: true });
+  rmSync(stubArchive, { force: true });
   // Mirror the sources, keeping what the VM built (node_modules, target, .akan, dist) for
   // incremental builds: robocopy /MIR leaves excluded folders alone. Exit codes below 8 are success.
   //? Beside the copy, what it was mirrored from: another kind of tree mirrored onto it (this package onto a monorepo copy,
@@ -136,6 +230,11 @@ tar.exe -xzf "$HOME\\${COPY}-sync.tar.gz" -C $staging
 # A partial unpack mirrored with /MIR would delete the sources it missed from the work copy.
 if ($LASTEXITCODE -ne 0) { throw "tar failed with $LASTEXITCODE" }
 Remove-Item "$HOME\\${COPY}-sync.tar.gz"
+if (Test-Path "$HOME\\${COPY}-stubs.tar.gz") {
+  tar.exe -xzf "$HOME\\${COPY}-stubs.tar.gz" -C $staging
+  if ($LASTEXITCODE -ne 0) { throw "tar of the env stubs failed with $LASTEXITCODE" }
+  Remove-Item "$HOME\\${COPY}-stubs.tar.gz"
+}
 robocopy.exe $staging '${WORK}\\${COPY}' /MIR /XD node_modules target .akan dist .git .claude local /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with $LASTEXITCODE" }
 Remove-Item -Recurse -Force $staging
@@ -233,7 +332,10 @@ exit 0
 }
 
 const [sub, ...rest] = process.argv.slice(2);
-if (sub === "sync") sync();
+if (sub === "sync") await sync();
+else if (sub === "files") console.info(treeFiles().files.join("\n"));
+else if (sub === "stubs" && rest[0])
+  console.info(`${await writeStubs(treeFiles().stubs, resolve(rest[0]))} stubs in ${rest[0]}`);
 else if (sub === "ssh")
   process.exit(
     ps(
@@ -243,13 +345,13 @@ else if (sub === "ssh")
 else if (sub === "desktop") process.exit(await desktop(rest.join(" ")));
 else if (sub === "screenshot") process.exit(await screenshot(rest[0] ?? join(tmpdir(), "akan-native-vm-screen.png")));
 else if (sub === "test") {
-  sync();
+  await sync();
   process.exit(
     await desktop(`bun run akan-native test windows --app examples\\sample ${rest.join(" ")}; exit $LASTEXITCODE`),
   );
 } else {
   console.error(
-    "usage: bun scripts/vm/windows.ts sync | ssh <command…> | desktop <command…> | test [akan-native test flags] | screenshot [file.png]",
+    "usage: bun scripts/vm/windows.ts sync | files | stubs <dir> | ssh <command…> | desktop <command…> | test [akan-native test flags] | screenshot [file.png]",
   );
   process.exit(2);
 }

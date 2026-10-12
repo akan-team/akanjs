@@ -5,13 +5,14 @@ import { existsSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.ts";
 import { bold, CliError, dim, log } from "../lib/log.ts";
+import { desktopArch } from "../lib/prepare.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
 import { assertServerOfChannel, assertSigningKey, publishRelease } from "../lib/publish.ts";
-import { assertChannel, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
+import { assertChannel, type DesktopArch, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
 import { BOOLEAN_FLAGS, buildFromArgs } from "./build.ts";
 
 export const UPDATE_USAGE =
-  "akan-native update keygen [--app <dir>] | akan-native update publish <ios|android|macos|windows|linux> [--app <dir>] [--mode <mode>] [--debug] [--channel <name>] [--out <dir>] | akan-native update serve [--app <dir>] [--out <dir>] [--port <n>]";
+  "akan-native update keygen [--app <dir>] | akan-native update publish <ios|android|macos|windows|linux> [--app <dir>] [--mode <mode>] [--debug] [--channel <name>] [--out <dir>] [--arch <arm64|x64>] [--sign] [--notarize] | akan-native update serve [--app <dir>] [--out <dir>] [--port <n>]";
 
 const outDir = (args: ParsedArgs, appDir: string) =>
   resolve(stringFlag(args, "out") ?? join(appDir, ".akan", "native", "updates"));
@@ -47,6 +48,7 @@ async function publish(args: ParsedArgs): Promise<number> {
     platform,
     outDir(args, project.appDir),
     requested ?? project.config.updates?.channel ?? "production",
+    desktopArch(platform, stringFlag(args, "arch") as DesktopArch | undefined),
   );
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
@@ -98,7 +100,7 @@ export async function update(argv: string[]): Promise<number> {
   // Updates are release builds; --debug publishes a debug one (trying the update flow with a dev build).
   const known = {
     keygen: ["app"],
-    publish: ["app", "mode", "debug", "channel", "out", "skip-web-build"],
+    publish: ["app", "mode", "debug", "channel", "out", "skip-web-build", "arch", "sign", "notarize"],
     serve: ["app", "out", "port"],
   }[args.positional[0] as string];
   if (known) checkFlags(args, known, UPDATE_USAGE);

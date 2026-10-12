@@ -132,6 +132,32 @@ for (const kind of kinds) {
       expect(order).toEqual(["none", "one", "five"]);
     });
 
+    test("a job that fails every attempt reaches onFailed once, retried on a capped backoff", async () => {
+      const queue = await open(await backend());
+      const runs: number[] = [];
+      const dead: unknown[] = [];
+      queue.registerProcessWorker(
+        "mail",
+        async () => {
+          runs.push(Date.now());
+          throw new Error("refused");
+        },
+        { onFailed: (job) => void dead.push(job.data) },
+      );
+      await queue.registerProcessQueue("mail", ["to@example.com"], {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 40, maxDelay: 60 },
+      });
+      await until(() => dead.length === 1, 5_000);
+      await Bun.sleep(100);
+      expect(dead).toEqual([["to@example.com"]]);
+      expect(runs).toHaveLength(3);
+      const [first = 0, second = 0, third = 0] = runs;
+      expect(second - first).toBeGreaterThanOrEqual(35);
+      expect(third - second).toBeGreaterThanOrEqual(55);
+      expect(third - second).toBeLessThan(1_000);
+    });
+
     test("[Q-7] a destroyed adaptor stops taking jobs", async () => {
       const location = await backend();
       const worker = await openQueue(kind, location);

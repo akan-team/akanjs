@@ -23,6 +23,16 @@ describe("CssCandidateCache token extraction", () => {
     expect(candidates).not.toContain("_td");
   });
 
+  test("keeps Tailwind v4's variable shorthand whole, and leaves a call's argument its own candidate", async () => {
+    const candidates = await scan(
+      `const c = "max-md:top-(--keyboard-top) min-h-(--x) bg-(color:--brand)/50"; cn("flex"); fn(value);`,
+    );
+    expect(candidates).toEqual(
+      expect.arrayContaining(["max-md:top-(--keyboard-top)", "min-h-(--x)", "bg-(color:--brand)/50", "flex"]),
+    );
+    expect(candidates).not.toContain("-keyboard-top");
+  });
+
   test("ignores a labelled tuple type that only looks like an arbitrary property", async () => {
     const candidates = await scan(
       `type A = [key: string, make: () => unknown][];\ntype B = [setQueryArgs: (a: Args) => Args, options?: Policy];`,

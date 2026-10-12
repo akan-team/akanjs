@@ -8,15 +8,23 @@ import {
   router,
   Translator,
   usePage,
-  type WebAppManifest,
 } from "akanjs/client";
 import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
-import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
+import * as React from "react";
+import {
+  Children,
+  type ComponentType,
+  type CSSProperties,
+  Fragment,
+  type ReactNode,
+  Suspense,
+  type ViewTransitionClassPerType,
+  type ViewTransitionProps,
+} from "react";
 import { FontCss } from "../fontCss";
 import { Load } from "../Load";
-import { createServerPortalStore, ServerPortalOutlet, setActiveServerPortalStore } from "../ServerPortal";
 import { ClientBridge, ClientInner, ClientPathWrapper, ClientSsrBridge, ClientWrapper } from "./Client";
-import { getFrameCssVars, ManifestLink, type ProviderProps } from "./Common";
+import { getFrameCssVars, isResponsiveFrame, type ProviderProps } from "./Common";
 
 export const SSR = () => {
   return <></>;
@@ -31,10 +39,10 @@ const SSRProvider = ({
   appName,
   params,
   head,
-  manifest,
   env,
   children,
   theme = "css",
+  viewport,
   prefix,
   fonts,
   layoutStyle = "web",
@@ -71,7 +79,6 @@ const SSRProvider = ({
           lang={lang}
           path={path}
           head={head}
-          manifest={manifest}
           fonts={fonts}
           prefix={prefix}
           layoutStyle={layoutStyle}
@@ -83,7 +90,14 @@ const SSRProvider = ({
               <ClientInner />
             </Suspense>
             <Suspense key="client-bridge" fallback={null}>
-              <ClientBridge key="bridge" env={env} theme={theme} prefix={prefix} wsConnect={wsConnect} />
+              <ClientBridge
+                key="bridge"
+                env={env}
+                theme={theme}
+                viewport={viewport}
+                prefix={prefix}
+                wsConnect={wsConnect}
+              />
               <ClientSsrBridge key="ssr-bridge" lang={lang} prefix={prefix} initialPageState={pageState} />
             </Suspense>
           </ClientWrapper>
@@ -112,13 +126,27 @@ const ServerFontFace = ({ fonts }: { fonts: ReactFont[] }) => {
   );
 };
 
+// An RSC navigation names `akan-<transition>-<push|pop>` after the route's `.config({ transition })`; each is the
+// class ui/styles.css animates, and a navigation that names none leaves the page to swap in place.
+//? React 19.3 added it; a named import fails the module link on 19.2, so an app there boots without the animation.
+const ViewTransition = (React as { ViewTransition?: ComponentType<ViewTransitionProps> }).ViewTransition;
+
+const pageViewTransition: ViewTransitionClassPerType = Object.fromEntries([
+  ["default", "none"],
+  ...(["stack", "fade", "bottomUp", "scaleOut"] as const).flatMap((transition) =>
+    (["push", "pop"] as const).map((direction) => {
+      const type = `akan-${transition}-${direction}`;
+      return [type, type];
+    }),
+  ),
+]);
+
 interface SSRWrapperProps {
   className?: string;
   appName: string;
   lang: "en" | "ko" | (string & {});
   path: string;
   head?: ReactNode;
-  manifest?: WebAppManifest;
   fonts?: ReactFont[];
   children: ReactNode;
   prefix?: string;
@@ -129,7 +157,6 @@ interface SSRWrapperProps {
 const SSRWrapper = ({
   children,
   head,
-  manifest,
   fonts = [],
   className,
   lang,
@@ -139,37 +166,52 @@ const SSRWrapper = ({
   pageState = defaultPageState,
 }: SSRWrapperProps) => {
   const { href, pathname, search, hash } = getPathInfo(path, lang, prefix ?? "");
-  const serverPortalStore = createServerPortalStore();
-  setActiveServerPortalStore(serverPortalStore);
-  const frameCssVars = getFrameCssVars(pageState);
+  const frameCssVars = getFrameCssVars(pageState, { cssResolved: true });
   const pageContentStyle: CSSProperties = {
     paddingTop: "var(--akan-page-padding-top)",
     paddingBottom: "var(--akan-page-padding-bottom)",
   };
   const topSafeAreaStyle: CSSProperties = {
+    top: "var(--akan-viewport-offset-top, 0px)",
     height: "var(--akan-top-safe-area)",
     backgroundColor: pageState.topSafeAreaColor,
   };
   const topInsetStyle: CSSProperties = {
-    top: "var(--akan-top-safe-area)",
+    top: "calc(var(--akan-top-safe-area) + var(--akan-viewport-offset-top, 0px))",
     height: "var(--akan-top-inset)",
+    visibility: "var(--akan-top-inset-visibility, visible)" as CSSProperties["visibility"],
   };
   const bottomSafeAreaStyle: CSSProperties = {
     bottom: 0,
     height: "var(--akan-bottom-safe-area)",
     backgroundColor: pageState.bottomSafeAreaColor,
+    //? It extends the bottom chrome's colour to the screen's edge; with none, a page's own bottom bar paints that strip.
+    ...(pageState.bottomSafeAreaColor === defaultPageState.bottomSafeAreaColor
+      ? { visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"] }
+      : {}),
   };
   const bottomInsetStyle: CSSProperties = {
     bottom: "var(--akan-bottom-safe-area)",
     height: "var(--akan-bottom-inset)",
+    visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"],
+  };
+  const keyboardInsetStyle: CSSProperties = {
+    bottom: "max(var(--akan-bottom-safe-area), var(--akan-keyboard-inset, 0px))",
+    height: "var(--akan-bottom-inset)",
+    visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"],
   };
 
   return (
     <>
       <ServerFontFace key="fonts" fonts={fonts} />
-      <ManifestLink key="manifest" manifest={manifest} />
       {head ? <Fragment key="head">{head}</Fragment> : null}
-      <div key="frame-root" id="frameRoot" className={className} style={frameCssVars}>
+      <div
+        key="frame-root"
+        id="frameRoot"
+        className={className}
+        style={frameCssVars}
+        data-akan-frame-responsive={isResponsiveFrame(pageState, { cssResolved: true }) ? "" : undefined}
+      >
         <ClientPathWrapper
           layoutStyle={layoutStyle}
           prefix={prefix}
@@ -198,7 +240,18 @@ const SSRWrapper = ({
                   layoutStyle === "mobile" && "left-1/2 h-screen w-full max-w-[600px] -translate-x-1/2",
                 )}
               >
-                {Children.toArray(children)}
+                {ViewTransition ? (
+                  <ViewTransition
+                    default="none"
+                    enter={pageViewTransition}
+                    exit={pageViewTransition}
+                    update={pageViewTransition}
+                  >
+                    {Children.toArray(children)}
+                  </ViewTransition>
+                ) : (
+                  Children.toArray(children)
+                )}
               </div>
             </div>
           </div>
@@ -206,28 +259,24 @@ const SSRWrapper = ({
             key="top-inset"
             id="topInsetContainer"
             className={cn(
-              "fixed inset-x-0 top-0 isolate bg-background",
+              "fixed inset-x-0 top-0 isolate overflow-hidden bg-background",
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
             style={topInsetStyle}
           >
-            <div id="topInsetContent" className={cn("relative isolate size-full")}>
-              <ServerPortalOutlet id="topInsetContent" />
-            </div>
+            <div id="topInsetContent" className={cn("relative isolate size-full")} />
           </div>
           <div
             key="top-left-action"
             id="topLeftActionContainer"
             className={cn(
-              "absolute top-0 left-0 isolate flex aspect-1 items-center justify-center",
+              "fixed top-0 left-0 isolate flex aspect-1 items-center justify-center overflow-hidden",
               layoutStyle === "mobile" && "left-[max(0px,calc(50%_-_300px))]",
             )}
             style={topInsetStyle}
           >
-            <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center">
-              <ServerPortalOutlet id="topLeftActionContent" />
-            </div>
+            <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center" />
           </div>
           <div
             key="bottom-inset"
@@ -239,9 +288,7 @@ const SSRWrapper = ({
             )}
             style={bottomInsetStyle}
           >
-            <div id="bottomInsetContent" className="pointer-events-none isolate size-full">
-              <ServerPortalOutlet id="bottomInsetContent" />
-            </div>
+            <div id="bottomInsetContent" className="pointer-events-none isolate size-full" />
           </div>
           <div
             key="keyboard-inset"
@@ -251,11 +298,9 @@ const SSRWrapper = ({
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
-            style={bottomInsetStyle}
+            style={keyboardInsetStyle}
           >
-            <div id="keyboardInsetContent" className="pointer-events-none isolate size-full">
-              <ServerPortalOutlet id="keyboardInsetContent" />
-            </div>
+            <div id="keyboardInsetContent" className="pointer-events-none isolate size-full" />
           </div>
           <div
             key="bottom-safe-area"

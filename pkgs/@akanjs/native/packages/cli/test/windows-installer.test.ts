@@ -155,6 +155,14 @@ describe("the Windows installer script", () => {
     expect(plain).toContain('"akan-native-update ${APP_ID}"\n  DeleteRegKey HKCU "${AUMID_KEY}"');
   });
 
+  test("names the publisher in Apps & features and the setup's version info only when the config has one", () => {
+    expect(script).not.toContain('"Publisher"');
+    expect(script).not.toContain('"CompanyName"');
+    const published = installerScript({ ...input, publisher: "Leading Flight" });
+    expect(published).toContain('WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "Leading Flight"');
+    expect(published).toContain('VIAddVersionKey "CompanyName" "Leading Flight"');
+  });
+
   test("signs the uninstaller it writes only when the build signs, before makensis checks the result", () => {
     expect(script).not.toContain("!uninstfinalize");
     const signed = installerScript({ ...input, signUninstaller: '"bun" "sign.ts" "%1"' });

@@ -14,6 +14,9 @@ const deviceOption = {
   default: "",
 };
 const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to", default: "" };
+const signDesc =
+  "sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names (without it the env signs nothing)";
+const notarizeDesc = "macOS: upload the signed app to Apple's notary service (takes --sign)";
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = {
@@ -113,16 +116,21 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("fast", Boolean, { desc: "fast build", default: false })
     .option("quiet", Boolean, { desc: "hide build progress output", default: false })
-    .exec(async function (app, write, fast, quiet) {
-      await this.applicationScript.build(app, { write, fast, quiet });
+    .option("profile", String, {
+      desc: "server env profile: bundle env/env.server.<env>.<profile>.ts in place of the environment's own file",
+      nullable: true,
+    })
+    .exec(async function (app, write, fast, quiet, profile) {
+      await this.applicationScript.build(app, { write, fast, quiet, profile: profile ?? undefined });
     }),
-  typecheck: target({ short: true, desc: "Typecheck the application" })
-    .with(App)
+  typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
+    .with(Exec)
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("clean", Boolean, { desc: "clear typecheck cache before running", default: false })
     .option("incremental", Boolean, { desc: "reuse TypeScript incremental cache", default: true })
-    .exec(async function (app, write, clean, incremental) {
-      await this.applicationScript.typecheck(app, { write, clean, incremental });
+    .option("tests", Boolean, { desc: "check its *.test.ts / *.spec.ts too, which nothing imports", default: true })
+    .exec(async function (exec, write, clean, incremental, tests) {
+      await this.applicationScript.typecheck(exec, { write, clean, incremental, tests });
     }),
   test: target({ desc: "Prepare and test an app, library, or package" })
     .with(Exec)
@@ -162,14 +170,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       enum: ["arm64", "x64"] as const,
       nullable: true,
     })
+    .option("sign", Boolean, { desc: signDesc, default: false })
+    .option("notarize", Boolean, { desc: notarizeDesc, default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, installer, arch, write) {
+    .exec(async function (app, target, env, debug, installer, arch, sign, notarize, write) {
       await this.applicationScript.buildDesktop(app, {
         target,
         env,
         profile: debug ? "debug" : "release",
         installer,
         write,
+        ...(sign ? { sign } : {}),
+        ...(notarize ? { notarize } : {}),
         ...(arch ? { arch } : {}),
       });
     }),
@@ -326,13 +338,31 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "the manifest to publish to (default: the target's updates.channel, else --env)",
       nullable: true,
     })
+    .option("upload", String, {
+      desc: "s3://<bucket>/<prefix> the release goes to, its manifests last (credentials: S3_* or AWS_* env)",
+      nullable: true,
+    })
+    .option("arch", String, {
+      desc: "desktop: the CPU of the apps it updates, arm64 or x64 of this OS (default this computer's)",
+      enum: ["arm64", "x64"] as const,
+      nullable: true,
+    })
+    .option("sign", Boolean, {
+      desc: `${signDesc}; a signed app takes only a release signed the same way`,
+      default: false,
+    })
+    .option("notarize", Boolean, { desc: notarizeDesc, default: false })
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, platform, target, env, channel, write, allowLocalRelease) {
+    .exec(async function (app, platform, target, env, channel, upload, arch, sign, notarize, write, allowLocalRelease) {
       await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
         target,
         env,
+        ...(sign ? { sign } : {}),
+        ...(notarize ? { notarize } : {}),
         ...(channel ? { channel } : {}),
+        ...(upload ? { upload } : {}),
+        ...(arch ? { arch } : {}),
         write,
         allowLocalRelease,
       });

@@ -32,11 +32,13 @@ export class PagesBundleBuilder {
   #command: "build" | "start";
   #pageEntries?: PageEntry[];
   #started = Date.now();
+  #serverEnv: BunPlugin | undefined;
 
-  constructor(app: App, command: "build" | "start" = "start", pageEntries?: PageEntry[]) {
+  constructor(app: App, command: "build" | "start" = "start", pageEntries?: PageEntry[], serverEnv?: BunPlugin) {
     this.#app = app;
     this.#command = command;
     this.#pageEntries = pageEntries;
+    this.#serverEnv = serverEnv;
   }
 
   async build(): Promise<BuildPagesBundleResult> {
@@ -67,6 +69,8 @@ export class PagesBundleBuilder {
       define: bundleDefine(this.#app, this.#command, "ssr"),
       metafile: dev,
       plugins: [
+        //? First: the use-client plugins below load every module, and an env file must be swapped before they do.
+        ...(this.#serverEnv ? [this.#serverEnv] : []),
         PagesBundleBuilder.createPagesEntryPlugin(entrySource),
         PagesBundleBuilder.createCssStubPlugin(),
         PagesBundleBuilder.createServerUseClientFetchPlugin(),

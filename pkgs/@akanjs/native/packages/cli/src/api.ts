@@ -8,6 +8,7 @@ import { type DoctorCheck, doctorChecks, hostPlatforms, runFixes } from "./comma
 import type { AkanNativeConfig } from "./config.ts";
 import { makeNativeBoot } from "./lib/boot.ts";
 import { BUNDLE_FILE, compatProblems, readBundleInfo } from "./lib/compat.ts";
+import { requestedDistribution } from "./lib/distribution.ts";
 import { CancelledError, withSignal } from "./lib/exec.ts";
 import { type HmrContext, lanAddress, resolveDevEntry, startHmrServer } from "./lib/hmr.ts";
 import type { Device, DeviceSelector, Launched } from "./lib/launch.ts";
@@ -79,7 +80,7 @@ export type {
  * environment (the API itself reads no variable): pass the result as `macos`.
  */
 /** The Authenticode settings the AKAN_NATIVE_WINDOWS_* variables name: pass the result as `windows.signing`. */
-export { macosDistributionFromEnv, windowsSigningFromEnv };
+export { macosDistributionFromEnv, requestedDistribution, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
 export const API_VERSION = "0.11.0";
@@ -301,6 +302,8 @@ export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "confi
   out?: string;
   /** Whether the release will carry a server; the config's `desktop.server` by default. */
   server?: boolean;
+  /** A desktop release's CPU, which names its feed folder: this computer's by default. */
+  arch?: DesktopArch;
 }
 
 /**
@@ -321,7 +324,7 @@ export function checkPublishUpdate(options: PublishCheckOptions): { channel: str
       options.platform,
     );
     const server = options.server ?? !!options.config.desktop?.server;
-    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel);
+    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel, options.arch);
   } catch (error) {
     throw toAkanNativeError(error, "CONFIG_INVALID");
   }
@@ -341,6 +344,8 @@ export function publishUpdate(
     macos?: Pick<MacosBuild, "signing" | "notarize">;
     /** Authenticode for a Windows release's files. No setup program is made. */
     windows?: Pick<WindowsBuild, "signing">;
+    /** A desktop release's CPU, of the same OS: an x64 release from an arm64 machine. Default this computer's. */
+    arch?: DesktopArch;
   },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
@@ -348,6 +353,7 @@ export function publishUpdate(
     const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings, {
       ...(options.macos ? { macos: { ...options.macos, dmg: false } } : {}),
       ...(options.windows?.signing ? { windows: { signing: options.windows.signing } } : {}),
+      ...(options.arch ? { arch: options.arch } : {}),
     });
     const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
       throw toAkanNativeError(error, "CONFIG_INVALID");

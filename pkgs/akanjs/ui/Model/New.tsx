@@ -2,6 +2,7 @@ import { usePage } from "akanjs/client";
 import type { SliceMeta } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { AiOutlinePlus } from "react-icons/ai";
+import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
 import { buttonRecipe } from "../recipe";
 import type { DraftProp } from "./draftScope";
 import EditModal from "./EditModal";
@@ -18,9 +19,24 @@ interface NewProps<Full = any> {
   namespace?: string;
   /** Draft recovery for the form. `false` turns it off; a string names the scope explicitly. */
   draft?: DraftProp;
+  /** Passed to the form's `Modal`: `auto` is a full-screen sheet below `md`. */
+  presentation?: ModalPresentation;
+  /** Passed to the form's `Modal`: `right` is a side sheet from `md` up. */
+  placement?: ModalPlacement;
 }
 
-export default function New({ trigger, children, slice, modal, partial, renderTitle, namespace, draft }: NewProps) {
+export default function New({
+  trigger,
+  children,
+  slice,
+  modal,
+  partial,
+  renderTitle,
+  namespace,
+  draft,
+  presentation,
+  placement,
+}: NewProps) {
   const { l } = usePage();
   return (
     <>
@@ -38,7 +54,14 @@ export default function New({ trigger, children, slice, modal, partial, renderTi
           </button>
         )}
       </NewWrapper>
-      <EditModal renderTitle={renderTitle} slice={slice} draft={draft}>
+      <EditModal
+        renderTitle={renderTitle}
+        slice={slice}
+        modal={modal ?? undefined}
+        draft={draft}
+        presentation={presentation}
+        placement={placement}
+      >
         {children}
       </EditModal>
     </>

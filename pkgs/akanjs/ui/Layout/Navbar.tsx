@@ -6,20 +6,33 @@ import { BiChevronLeft, BiX } from "react-icons/bi";
 
 import { Link } from "../Link";
 import { Portal } from "../Portal";
+import { FrameSlotFallback } from "./FrameSlotFallback";
 
 export interface NavbarProps {
   className?: string;
   children?: ReactNode;
   height?: number;
   title?: ReactNode;
+  /** `true` draws the framework's back button; any other node is drawn in its place. */
   back?: ReactNode;
+  /** Where the default back button goes when there is no history to go back to, as on a deep link. */
+  backFallback?: string;
   left?: ReactNode;
   right?: ReactNode;
 }
 
 const closeIconTransitions = new Set<TransitionType>(["bottomUp", "scaleOut", "fade"]);
 
-export const Navbar = ({ back = false, className, height, children, title, left, right }: NavbarProps) => {
+export const Navbar = ({
+  back = false,
+  backFallback,
+  className,
+  height,
+  children,
+  title,
+  left,
+  right,
+}: NavbarProps) => {
   const pathCtx = usePathCtx();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathRoute?.path;
@@ -41,20 +54,33 @@ export const Navbar = ({ back = false, className, height, children, title, left,
       height,
     });
   }, [registerFrameSlot, height, path]);
+  const bar = (
+    <div className={cn("flex size-full items-center gap-2 px-5", back && "pl-14", className)}>
+      {left ? <div className="flex shrink-0 items-center gap-1">{left}</div> : null}
+      {title ? <div className="min-w-0 flex-1 truncate font-semibold text-base">{title}</div> : null}
+      {children}
+      {right ? <div className="ml-auto flex shrink-0 items-center gap-1">{right}</div> : null}
+    </div>
+  );
+  const backButton =
+    back === true ? (
+      <Link.Back className="text-4xl" fallback={backFallback}>
+        <BackIcon />
+      </Link.Back>
+    ) : (
+      back
+    );
   return (
     <>
-      <Portal id={`topInsetContent${suffix}`}>
-        <div className={cn("flex size-full items-center px-5", back && "pl-14", className)}>{children}</div>
+      <Portal id={`topInsetContent${suffix}`} fallback={<FrameSlotFallback slot="topInset">{bar}</FrameSlotFallback>}>
+        {bar}
       </Portal>
       {back ? (
-        <Portal id={`topLeftActionContent${suffix}`}>
-          {typeof back === "boolean" ? (
-            <Link.Back className="text-4xl">
-              <BackIcon />
-            </Link.Back>
-          ) : (
-            back
-          )}
+        <Portal
+          id={`topLeftActionContent${suffix}`}
+          fallback={<FrameSlotFallback slot="topLeftAction">{backButton}</FrameSlotFallback>}
+        >
+          {backButton}
         </Portal>
       ) : null}
     </>

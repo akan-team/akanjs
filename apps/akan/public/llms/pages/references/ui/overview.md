@@ -218,7 +218,7 @@ Export
 
 - tokenCount: Formats a token estimate as a short label: `950`, `1.2k`, `3.4M`.
 
-- Tooltip: A pure-CSS hint shown on hover or focus.
+- Tooltip: A hint shown on hover or focus that flips to the side with room.
 
 - triggerSlot: Clones a caller's trigger so aria state lands on the real control.
 

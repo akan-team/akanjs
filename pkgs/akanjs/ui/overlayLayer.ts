@@ -9,7 +9,15 @@ export const OVERLAY_LAYER_ATTR = "data-akan-overlay";
 // A Popconfirm (and its scrim) outranks a dropdown because `Model.RemoveWrapper` opens one from a menu item, and the
 // answering click must not also select in the menu. A Select's options, being a field's, stay under both. A modal
 // outranks all of them on `<body>`; an overlay opened inside one portals into its root, so it lands above the panel.
-export const overlayZ = { select: 90, dropdown: 100, popconfirmScrim: 105, popconfirm: 110, modal: 120 } as const;
+// A tooltip labels whichever of those it sits on, so it tops them all and stays under a modal.
+export const overlayZ = {
+  select: 90,
+  dropdown: 100,
+  popconfirmScrim: 105,
+  popconfirm: 110,
+  tooltip: 115,
+  modal: 120,
+} as const;
 
 const OverlayOwnerContext = sharedContext("overlayOwner", "");
 

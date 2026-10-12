@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BuildContext } from "../src/lib/prepare.ts";
-import { assertServerOfChannel } from "../src/lib/publish.ts";
+import { assertServerOfChannel, releaseDir } from "../src/lib/publish.ts";
 import { hostArch, type UpdateManifest } from "../src/lib/updates.ts";
 import { publishAppUpdate } from "../src/platforms/desktop-update.ts";
 
@@ -67,6 +67,26 @@ describe("publishing a desktop release", () => {
     expect(() => assertServerOfChannel({ desktop: {} }, "linux", root, "production")).not.toThrow();
     expect(() => assertServerOfChannel({ desktop: { server: {} } }, "linux", root, "pilot")).not.toThrow();
     expect(() => assertServerOfChannel({ desktop: { server: {} } }, "ios", root, "production")).not.toThrow();
+  });
+
+  test("a release built for another CPU goes to that CPU's feed, and its manifest names it", async () => {
+    const other = hostArch() === "arm64" ? "x64" : "arm64";
+    expect(releaseDir("/out", "windows", other)).toBe(join("/out", `windows-${other}`));
+    expect(releaseDir("/out", "android", other)).toBe(join("/out", "android"));
+    const root = mkdtempSync(join(tmpdir(), "akan-native-publish-"));
+    roots.push(root);
+    mkdirSync(join(root, `linux-${other}`), { recursive: true });
+    writeFileSync(
+      join(root, `linux-${other}`, "production.json"),
+      JSON.stringify({ bundle: "1.0.0-1", server: false }),
+    );
+    expect(() => assertServerOfChannel({ desktop: { server: {} } }, "linux", root, "production", other)).toThrow(
+      "carries no server and this build does",
+    );
+    expect(() => assertServerOfChannel({ desktop: { server: {} } }, "linux", root, "production")).not.toThrow();
+    const cross = { ...ctx, arch: other } as BuildContext;
+    const { manifest } = await publishAppUpdate(cross, "linux", builtApp(root), join(root, "out"), "production", 1000);
+    expect(manifest.arch).toBe(other);
   });
 
   test("a previous release published before the field was recorded is not compared", async () => {

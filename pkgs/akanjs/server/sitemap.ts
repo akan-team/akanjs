@@ -34,6 +34,20 @@ export function isSitemapPath(pathname: string, basePaths: readonly string[]): b
   return normalizePathname(pathname) === "/sitemap.xml";
 }
 
+/** The basePath a `/manifest.webmanifest` request asks for: by a visible prefix, else by the request's basePath. */
+export function getWebManifestBasePath(
+  pathname: string,
+  basePaths: readonly string[],
+  headerBasePath?: string | null,
+): string | null | undefined {
+  const segments = normalizePathname(pathname).split("/").filter(Boolean);
+  if (segments.at(-1) !== "manifest.webmanifest" || segments.length > 2) return undefined;
+  const known = basePaths.map(normalizeSegment);
+  if (segments.length === 2) return known.includes(segments[0] ?? "") ? (segments[0] ?? null) : undefined;
+  const fromHeader = normalizeSegment(headerBasePath ?? "");
+  return known.includes(fromHeader) ? fromHeader : null;
+}
+
 export function getSitemapBasePath(
   pathname: string,
   basePaths: readonly string[],

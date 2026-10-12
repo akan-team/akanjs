@@ -6,6 +6,8 @@ import type {
   PathRoute,
   RedirectStatus,
   ResolvedHead,
+  RouteRender,
+  RouteViewport,
 } from "akanjs/client";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N, getBasePathFromPathname, Logger } from "akanjs/common";
 import {
@@ -23,6 +25,8 @@ import {
 } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-server-dom-webpack/server.node";
+import { ViewportMeta } from "../client/viewportMeta";
+import { toManifestJson, webManifestHref } from "../client/webManifest";
 import type { PagePromptRunInput } from "../signal/mcp/pagePrompt";
 import { getCurrentTrace, runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
@@ -127,6 +131,11 @@ interface PagePromptRunMsg {
   requestId: string;
   input: PagePromptRunInput;
 }
+interface WebManifestMsg {
+  type: "web-manifest";
+  requestId: string;
+  basePath: string | null;
+}
 type InMsg =
   | InitMsg
   | RenderMsg
@@ -136,7 +145,8 @@ type InMsg =
   | InvalidateCacheMsg
   | LogLevelMsg
   | PagePromptsMsg
-  | PagePromptRunMsg;
+  | PagePromptRunMsg
+  | WebManifestMsg;
 type RenderControl =
   | { type: "redirect"; location: string; method: "replace" | "push"; status: RedirectStatus }
   | { type: "not-found" }
@@ -310,7 +320,18 @@ export class RscRenderer {
       case "page-prompt.run":
         void this.#answer(msg.requestId, "page-prompt.result", () => this.#pagePrompts.run(msg.input));
         return;
+      case "web-manifest":
+        void this.#answer(msg.requestId, "web-manifest.result", () => this.#webManifest(msg.basePath));
+        return;
     }
+  }
+
+  async #webManifest(basePath: string | null): Promise<unknown> {
+    const pathname = `/${this.#i18n.defaultLocale}${basePath ? `/${basePath}` : ""}`;
+    const rootLayouts = RouteTreeBuilder.matchFallback(pathname, this.#fallbackRoutes)?.fallbackRoute.renderRootLayouts;
+    const manifests = await Promise.all((rootLayouts ?? []).map((render) => render.getLayoutManifest?.()));
+    const manifest = manifests.find((entry) => entry !== undefined);
+    return manifest ? toManifestJson(manifest) : null;
   }
 
   async #answer(requestId: string, type: string, fn: () => Promise<unknown>): Promise<void> {
@@ -465,11 +486,18 @@ export class RscRenderer {
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
+        const targetFrame = match
+          ? await RouteElementComposer.resolveSsrFramePathRoute({
+              pathRoute: match.pathRoute,
+              basePath: this.#getBasePath(urlObj),
+            })
+          : null;
         const targetRouterState = match
           ? createAkanRouterState({
               pathRoute: match.pathRoute,
               href: urlObj.href,
               buildId: this.#pagesBundleBuildId,
+              transition: targetFrame?.pageState.transition,
             })
           : null;
         const searchParams = RouteTreeBuilder.parseSearchParams(urlObj.search);
@@ -942,6 +970,16 @@ export class RscRenderer {
         }
         if (controlRef.current && sentChunk) sendLateControl();
         if (done) break;
+        //? Flight writes its first row before an async render settles; held one task, a redirect or not-found the body
+        //? raised with no I/O awaited still leaves before any byte, as a real status.
+        if (!sentChunk && options.requestId) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          readProbe();
+          if (controlRef.current) {
+            await reader.cancel();
+            return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
+          }
+        }
         const chunk = value instanceof Uint8Array ? value : new Uint8Array(value as ArrayBufferLike);
         bytes += chunk.byteLength;
         chunksCount += 1;
@@ -1249,6 +1287,8 @@ export class RscRenderer {
       digest,
     });
     if (!body) return null;
+    const viewport = await RscRenderer.#rootViewport(route.renderRootLayouts);
+    const manifestLink = await this.#renderManifestLink(url, route.renderRootLayouts);
     const routeHead =
       "resolveHead" in route
         ? await RouteElementComposer.resolveHeadWithSnapshot({
@@ -1262,7 +1302,8 @@ export class RscRenderer {
       <html lang={params.lang ?? getPathnameLocale(pathname, this.#i18n)} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
-          <meta key="viewport" name="viewport" content="width=device-width, initial-scale=1" />
+          {this.#renderViewport(viewport)}
+          {manifestLink}
           <meta key="robots" name="robots" content="noindex" />
           {routeHeadSnapshot
             ? renderAkanHeadSnapshot(routeHeadSnapshot)
@@ -1294,6 +1335,8 @@ export class RscRenderer {
     const rootThemes = await Promise.all(pathRoute.renderRootLayouts.map((render) => render.getLayoutTheme?.()));
     const rootTheme = rootThemes.find((theme) => theme !== undefined);
     if (rootTheme) setRequestTheme(rootTheme);
+    const viewport = await RscRenderer.#rootViewport(pathRoute.renderRootLayouts);
+    const manifestLink = await this.#renderManifestLink(url, pathRoute.renderRootLayouts);
     const routeHead = await RouteElementComposer.resolveHeadWithSnapshot({
       pathRoute,
       params: match.params,
@@ -1312,7 +1355,8 @@ export class RscRenderer {
       <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
-          <meta key="viewport" name="viewport" content="width=device-width, initial-scale=1" />
+          {this.#renderViewport(viewport, rootTheme)}
+          {manifestLink}
           {routeHeadSnapshot
             ? renderAkanHeadSnapshot(routeHeadSnapshot)
             : (routeHead.node ?? this.#renderDefaultHead())}
@@ -1402,6 +1446,31 @@ export class RscRenderer {
       homeHref: this.#systemHomeHref(url),
       stylesheetHref: this.#getStylesheetHref(url.pathname),
     });
+  }
+
+  static async #rootViewport(renderRootLayouts: RouteRender[]): Promise<RouteViewport | undefined> {
+    const viewports = await Promise.all(renderRootLayouts.map((render) => render.getLayoutViewport?.()));
+    return viewports.find((viewport) => viewport !== undefined);
+  }
+
+  #renderViewport(viewport: RouteViewport | undefined, theme?: string): ReactNode {
+    return (
+      <>
+        <meta key="viewport" name="viewport" content={ViewportMeta.content(viewport)} />
+        {ViewportMeta.themeColors(viewport, theme).map(({ content, media }) => (
+          <meta key={`theme-color:${media ?? ""}`} name="theme-color" content={content} media={media} />
+        ))}
+      </>
+    );
+  }
+
+  //? In the shell's own head: a link streamed with the body lands in <body>, where Chromium never reads a manifest.
+  async #renderManifestLink(url: URL, renderRootLayouts: RouteRender[]): Promise<ReactNode> {
+    const manifests = await Promise.all(renderRootLayouts.map((render) => render.getLayoutManifest?.()));
+    if (!manifests.some((manifest) => manifest !== undefined)) return null;
+    //? The basePath the URL shows; one a host maps to (x-base-path) is not in the path, and the server reads it there.
+    const basePath = getBasePathFromPathname(url.pathname, { basePaths: this.#basePaths, i18n: this.#i18n });
+    return <link key="manifest" rel="manifest" href={webManifestHref(basePath)} />;
   }
 
   #renderDefaultHead(): ReactNode {

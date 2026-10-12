@@ -195,6 +195,13 @@ describe("desktop.server", () => {
       "desktop.server.env.a: Windows reads it as the same variable as another one here",
     ]);
     expect(problems({ dir: "server", entry: "main.js", env: { PATH: "/opt/x" } })).toEqual([]);
+    expect(
+      problems({ dir: "server", entry: "main.js", restart: "forever", watchdog: { intervalMs: 10_000, failures: 3 } }),
+    ).toEqual([]);
+    expect(problems({ dir: "server", entry: "main.js", restart: 0, watchdog: { intervalMs: 10_000 } })).toEqual([
+      'desktop.server.restart must be "forever" or a count of crashes in a row from 1',
+      "desktop.server.watchdog must be { intervalMs, failures }, both whole numbers from 1",
+    ]);
     expect(problems({ dir: "server", entry: "main.js", cwd: "/" })).toEqual([
       expect.stringContaining("unknown key desktop.server.cwd"),
     ]);

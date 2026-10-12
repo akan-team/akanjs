@@ -36,9 +36,11 @@ const KNOWN: Shape = {
   desktop: {
     quitOnLastWindowClosed: true,
     recovery: true,
-    window: { fullscreen: true, skipTaskbar: true },
+    window: { fullscreen: true, skipTaskbar: true, frameless: true },
     screenCapture: true,
-    server: { dir: true, entry: true, env: true },
+    webview2: true,
+    publisher: true,
+    server: { dir: true, entry: true, env: true, restart: true, watchdog: { intervalMs: true, failures: true } },
     bin: true,
     dmg: {
       background: true,

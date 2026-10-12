@@ -2,6 +2,7 @@ import type { Redis, RedisOptions } from "ioredis";
 import { adapt } from "../adapt";
 import type { AkanJob, AkanJobOptions, AkanWorker } from "../ipcTypes";
 import { RedisCache } from "./cache.adaptor";
+import { QueueBackoff } from "./queueBackoff";
 
 interface BullEmitter {
   on(event: "error", listener: (error: Error) => void): unknown;
@@ -11,7 +12,8 @@ interface BullEmitter {
 interface QueueLike extends BullEmitter {
   add(name: string, args: unknown[], options?: AkanJobOptions): Promise<unknown>;
 }
-type WorkerLike = AkanWorker & BullEmitter;
+type WorkerLike = AkanWorker &
+  BullEmitter & { on(event: "failed", listener: (job: AkanJob | undefined, error: Error) => void): unknown };
 interface BullOptions {
   connection: Redis | RedisOptions;
   prefix: string;
@@ -19,7 +21,7 @@ interface BullOptions {
 type WorkerConstructor = new (
   name: string,
   handler: (job: AkanJob) => Promise<unknown>,
-  options: BullOptions,
+  options: BullOptions & { settings?: { backoffStrategy?: (attemptsMade: number, type?: string) => number } },
 ) => WorkerLike;
 type QueueConstructor = new (
   name: string,
@@ -31,8 +33,17 @@ type BullmqModule = {
 };
 const bullmqPackage = "bullmq";
 
+export interface ProcessWorkerOptions {
+  /** After the job's last attempt failed. */
+  onFailed?: (job: AkanJob, error: unknown) => Promise<void> | void;
+}
+
 export interface QueueAdaptor {
-  registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<unknown>): AkanWorker;
+  registerProcessWorker(
+    key: string,
+    handler: (job: AkanJob) => Promise<unknown>,
+    options?: ProcessWorkerOptions,
+  ): AkanWorker;
   registerProcessQueue(key: string, args: unknown[], jobOptions?: AkanJobOptions): Promise<AkanJob>;
 }
 
@@ -79,17 +90,44 @@ export class BullQueue
     this.#queues.set(key, newQueue);
     return newQueue;
   }
-  registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<unknown>): WorkerLike {
+  registerProcessWorker(
+    key: string,
+    handler: (job: AkanJob) => Promise<unknown>,
+    { onFailed }: ProcessWorkerOptions = {},
+  ): WorkerLike {
     // Options, not the cache's client: bullmq refuses a client that gives up after a few retries, and it closes the
     // connections it opened itself even mid-open.
     const connection = { ...this.redis.options, maxRetriesPerRequest: null };
-    const worker = new this.#Worker(key, handler, { connection, prefix: this.prefix });
+    const worker = new this.#Worker(key, handler, {
+      connection,
+      prefix: this.prefix,
+      settings: { backoffStrategy: BullQueue.cappedBackoff },
+    });
     worker.on("error", (error) => this.logger.warn(`Worker ${key} error: ${error.message}`));
+    //? bullmq counts the attempt that just failed before it emits, so the last one reads attemptsMade === attempts.
+    worker.on("failed", (job, error) => {
+      if (!onFailed || !job || job.attemptsMade < Math.max(1, Number(job.opts?.attempts ?? 1))) return;
+      Promise.resolve(onFailed(job, error)).catch((hookError: unknown) =>
+        this.logger.warn(`onFailed of ${key} threw: ${hookError instanceof Error ? hookError.message : hookError}`),
+      );
+    });
     this.#workers.push(worker);
     return worker;
   }
   async registerProcessQueue(key: string, args: unknown[], jobOptions?: AkanJobOptions): Promise<AkanJob> {
-    const job = await this.getQueue(key).add(key, args, jobOptions);
+    const job = await this.getQueue(key).add(key, args, BullQueue.#withCappedBackoff(jobOptions));
     return job as unknown as AkanJob;
+  }
+  //* bullmq hands a custom strategy only the backoff's type, so a cap travels in it: `akan:<type>:<delay>:<maxDelay>`.
+  static #withCappedBackoff(jobOptions?: AkanJobOptions): AkanJobOptions | undefined {
+    const backoff = jobOptions?.backoff;
+    if (!jobOptions || typeof backoff !== "object" || backoff.maxDelay === undefined) return jobOptions;
+    const type = `akan:${backoff.type ?? "fixed"}:${Number(backoff.delay ?? 0)}:${Number(backoff.maxDelay)}`;
+    return { ...jobOptions, backoff: { type, delay: Number(backoff.delay ?? 0) } };
+  }
+  static cappedBackoff(attemptsMade: number, type?: string): number {
+    const [prefix, base, delay, maxDelay] = (type ?? "").split(":");
+    if (prefix !== "akan") return 0;
+    return QueueBackoff.delayOf({ type: base, delay: Number(delay), maxDelay: Number(maxDelay) }, attemptsMade);
   }
 }

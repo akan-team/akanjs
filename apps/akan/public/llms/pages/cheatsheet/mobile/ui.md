@@ -22,7 +22,7 @@ Page Transitions
 
 Your app runs inside a native shell, yet every screen change lands like a web page swap. The user cannot tell whether they went deeper or sideways, and the back button is the only way out.
 
-Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does.
+Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does, and a browser plays it as a view transition.
 
 Words used on this page
 
@@ -43,6 +43,8 @@ A detail page that slides in over its list:
 **Five values.** `stack`, `bottomUp`, `fade`, `scaleOut` and `none`.
 
 **The value also picks the drag.** Only `stack` and `bottomUp` come with a real back gesture.
+
+**The web plays it too.** On a client navigation between SSR pages, a push plays the target route's transition and going back plays the one being left in reverse, while the chrome holds still. Reduced motion, or a browser without view transitions, just swaps.
 
 What each one looks like
 
@@ -130,11 +132,11 @@ One `.config()` object sets the whole page frame: animation, gesture, reserved s
 
 - gesture (boolean, default true on iOS at depth ≥ 2, else false): Drag to go back, attached only by the `stack` and `bottomUp` transitions.
 
-- topInset (number | boolean, default 0): Space reserved for a top bar in px; `true` means 48px, `false` or unset means 0.
+- topInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default the chrome's height in the app · 0 on web): Space reserved for a top bar: px, or px per breakpoint from its width up; `true` means 48px.
 
-- bottomInset (number | boolean, default 0): Space reserved for a bottom bar, in px, with the same 48px meaning for `true`.
+- bottomInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default the chrome's height in the app · 0 on web): Space reserved for a bottom bar, in the same forms and with the same 48px meaning for `true`.
 
-- safeArea (boolean | "top" | "bottom" | { top?, bottom?, android? }, default iOS true · Android { android: "auto" } · web false): Device insets to reserve; `"top"` or `"bottom"` keeps one side only.
+- safeArea (boolean | "top" | "bottom" | { top?, bottom?, android? }, default iOS true · Android { android: "auto" } · web false): Device insets to reserve; `"top"` or `"bottom"` keeps one side. The web needs `fitCover`.
 
 - safeArea.android ("auto" | "edge-to-edge" | "none", default "auto"): How Android measures the safe area; `none` reserves nothing.
 
@@ -145,6 +147,8 @@ One `.config()` object sets the whole page frame: animation, gesture, reserved s
 - bottomSafeAreaColor (string, default the background color): CSS color painted behind the bottom safe-area strip.
 
 **The closest config wins.** A page's value overrides its layouts', while a `safeArea` object merges key by key.
+
+**An inset can follow the width.** `.config({ topInset: { base: 48, md: 0 } })` reserves a phone-only bar, each key from its own width up. In the app, an inset the route leaves out takes the height of the chrome it renders. On the web, `safeArea` pads with the browser's safe area once the root layout sets `.viewport({ fitCover: true })`.
 
 **Top-level routes stay still.** At depth 1 or less every platform defaults to `none`, no gesture and `cache: true`, so tabs switch instantly.
 
@@ -166,13 +170,17 @@ Variable
 
 - --akan-bottom-safe-area: Bottom safe area the page reserved, in px.
 
-- --akan-top-inset: The resolved `topInset`, in px.
+- --akan-top-inset: The `topInset` in force at this width, in px.
 
-- --akan-bottom-inset: The resolved `bottomInset`, in px.
+- --akan-bottom-inset: The `bottomInset` in force at this width, in px.
 
 - --akan-page-padding-top: Top safe area plus top inset: the top padding a page body needs.
 
 - --akan-page-padding-bottom: Bottom safe area plus bottom inset: the bottom padding a page body needs.
+
+- --akan-content-height: The usable height between the page's top and bottom chrome; on the web it follows the keyboard.
+
+- --akan-keyboard-inset: Web only: the on-screen keyboard's height over the page bottom, in px.
 
 Tailwind reads them directly: `h-(--akan-bottom-inset)` sizes a bar to exactly the space the page reserved.
 
@@ -191,6 +199,8 @@ A chat page with all three steps:
 **The declared height wins.** With `bottomInset` in `.config()`, `BottomInset` uses that height; without it, it measures its own content.
 
 **Match the bar to the reservation** with `h-(--akan-bottom-inset)`, so the bar and the reserved space never disagree.
+
+**The web gets it too.** On a server-rendered page the sticky bar rides above the keyboard as well. For a layout of your own, `useVisualViewportFrame()` from `akanjs/webkit` returns `{ keyboardHeight, height, offsetTop }` of the part left visible.
 
 Where the keyboard height comes from
 

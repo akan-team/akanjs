@@ -203,6 +203,7 @@ export class CsrRouteTable {
         platform: device.info.platform,
         deviceSafeArea: { top: device.topSafeArea, bottom: device.bottomSafeArea },
         cssSafeArea,
+        width: typeof window === "undefined" ? undefined : window.innerWidth,
       });
       return [
         ...(route.renderPage

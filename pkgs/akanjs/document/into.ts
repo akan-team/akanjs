@@ -86,6 +86,11 @@ export type Mdl<
   removeMany(query: _RawQuery): Promise<UpdateResult>;
   updateById(id: string, update: DocumentUpdateInput<_RawDoc>, options?: DocumentUpdateOptions): Promise<UpdateResult>;
   removeById(id: string): Promise<UpdateResult>;
+  /**
+   * Writes the record as the row under its own id, a new one or in place of the stored one, with no hook: a sync's or a
+   * backfill's write, which may run twice. `preserveTimestamps` keeps its `createdAt` and `updatedAt`.
+   */
+  upsertById(data: Partial<_RawDoc> & { id: string }, options?: { preserveTimestamps?: boolean }): Promise<Doc>;
   bulkWrite(operations: BulkWriteOperation<Raw, _RawDoc, _RawQuery>[]): Promise<UpdateResult>;
   /** @deprecated Renamed to `count`. */
   countDocuments(query: _RawQuery): Promise<number>;

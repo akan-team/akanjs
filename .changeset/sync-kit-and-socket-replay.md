@@ -1,0 +1,6 @@
+---
+"akanjs": minor
+"@akanjs/devkit": patch
+---
+
+`fetch.clone({ retry })` and a call's `{ retry, idempotencyKey }` retry an unreachable server, a 502/503/504 and a 429 after its Retry-After on a jittered backoff; a mutation retries under one `Idempotency-Key`, and the server runs a mutation once per key and caller, answering a repeat with the first result (409 `base.error.idempotencyInFlight` while it runs). The websocket client reconnects on a jittered exponential backoff (`ws: { reconnect, headers, tls, onStateChange, onRevoked, onError }`), sends a server-side client's token with the upgrade, numbers each room's frames, drops a repeat and calls `onResync` at a hole, and a resubscribe gets the frames it missed replayed by a solo server instead of a resync. `Model.upsertById(data, { preserveTimestamps })` writes a record under its own id with no hook. An insight field sums with `accumulate: { $sum: "<field>", ...condition }`. A `process` job's backoff takes `maxDelay` and its internal an `onFailed` dead-letter hook. Fixes: a live slice's `.live({ payload: "id" })` reaches its rooms; a clone toward another origin no longer sends the visitor's session; Tailwind v4's `top-(--x)` shorthand compiles; the root layout's manifest link is in the document head, where Chromium reads it.

@@ -301,8 +301,6 @@
         "{apps,libs}/**/*.document.ts",
         "{apps,libs}/**/*.service.ts",
         "{apps,libs}/**/*.signal.ts",
-        "{apps,libs}/**/*.signal.test.ts",
-        "{apps,libs}/**/*.service.test.ts",
         "{apps,libs}/**/*.store.ts",
         "{apps,libs}/**/*.Template.tsx",
         "{apps,libs}/**/*.Unit.tsx",
@@ -312,6 +310,13 @@
       ],
       "plugins": [
         "./node_modules/@akanjs/devkit/lint/no-import-external-library.grit",
+        "./node_modules/@akanjs/devkit/lint/no-deep-internal-import.grit"
+      ]
+    },
+    {
+      "includes": ["{apps,libs}/**/*.signal.test.ts", "{apps,libs}/**/*.service.test.ts"],
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-import-external-library-in-test.grit",
         "./node_modules/@akanjs/devkit/lint/no-deep-internal-import.grit"
       ]
     },

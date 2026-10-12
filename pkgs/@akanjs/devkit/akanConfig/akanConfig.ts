@@ -7,6 +7,7 @@ import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
+import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../types";
 import { AkanBin } from "./akanBin";
 import {
@@ -330,7 +331,7 @@ export class AkanAppConfig implements AppConfigResult {
     );
     return { appName, appId, ...(root.fileName ? { fileName: root.fileName } : {}), version, buildNum, targets };
   }
-  //? `true` or `{ omit }`: each omitted name trimmed once, so two targets that omit the same packages stage one server.
+  //? `true` or `{ omit, profile, modules }`: lists trimmed once, so two targets that agree on them stage one server.
   static #desktopServer<T extends { server?: AkanNativeDesktopConfig["server"] }>(
     desktop: T,
     where: string,
@@ -339,12 +340,74 @@ export class AkanAppConfig implements AppConfigResult {
     const { server } = desktop;
     if (server === undefined || typeof server === "boolean") return desktop;
     if (!AkanAppConfig.#isPlainObject(server))
-      throw new Error(`${where} in ${configPath} must be true or { omit: string[] }.`);
-    const omit = server.omit;
-    if (omit !== undefined && (!Array.isArray(omit) || omit.some((name) => typeof name !== "string" || !name.trim())))
-      throw new Error(`${where}.omit in ${configPath} must be a list of package names.`);
-    const names = [...new Set((omit ?? []).map((name) => name.trim()))].sort();
-    return { ...desktop, server: { omit: names } };
+      throw new Error(`${where} in ${configPath} must be true or { omit, profile, modules }.`);
+    const names = (list: unknown, key: string, what: string) => {
+      if (list === undefined) return [];
+      if (!Array.isArray(list) || list.some((name) => typeof name !== "string" || !name.trim()))
+        throw new Error(`${where}.${key} in ${configPath} must be a list of ${what}.`);
+      return [...new Set(list.map((name: string) => name.trim()))].sort();
+    };
+    const { profile } = server;
+    if (profile !== undefined && (typeof profile !== "string" || !ServerEnvProfile.namePattern.test(profile)))
+      throw new Error(
+        `${where}.profile in ${configPath} names env/env.server.<env>.<profile>.ts: a lowercase-first name of letters, digits and dashes.`,
+      );
+    const modules = names(server.modules, "modules", "module names or @<operationMode> selectors");
+    const env = AkanAppConfig.#desktopServerEnv(server.env, where, configPath);
+    const { restart } = server;
+    if (restart !== undefined && restart !== "forever" && !(Number.isInteger(restart) && (restart as number) > 0))
+      throw new Error(`${where}.restart in ${configPath} must be "forever" or a count of crashes in a row from 1.`);
+    const watchdog = AkanAppConfig.#desktopServerWatchdog(server.watchdog, where, configPath);
+    return {
+      ...desktop,
+      server: {
+        omit: names(server.omit, "omit", "package names"),
+        ...(profile ? { profile } : {}),
+        ...(modules.length ? { modules } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
+        ...(restart !== undefined ? { restart } : {}),
+        ...(watchdog ? { watchdog } : {}),
+      },
+    };
+  }
+  //? The stage owns these: the operation mode, the database mode and what is served are what make it the carried server.
+  static readonly #stagedServerEnv = new Set([
+    "AKAN_PUBLIC_OPERATION_MODE",
+    "AKAN_DATABASE_MODE",
+    "AKAN_DATABASE_MODES",
+    "AKAN_SSR",
+    "AKAN_CSR",
+    "AKAN_MODULES",
+  ]);
+  static #desktopServerEnv(env: unknown, where: string, configPath: string): Record<string, string> {
+    if (env === undefined) return {};
+    if (!AkanAppConfig.#isPlainObject(env) || Object.values(env).some((value) => typeof value !== "string"))
+      throw new Error(`${where}.env in ${configPath} must be an object of strings.`);
+    const staged = Object.keys(env).filter((key) => AkanAppConfig.#stagedServerEnv.has(key.toUpperCase()));
+    if (staged.length)
+      throw new Error(
+        `${where}.env in ${configPath} sets ${staged.join(", ")}, which the carried server's stage owns (modules: desktop.server.modules).`,
+      );
+    const secrets = ServerEnvProfile.secretPaths(env);
+    if (secrets.length)
+      throw new Error(
+        `${where}.env in ${configPath} holds secret-named values (${secrets.join(", ")}), and the app carries its env where anyone on the computer reads it. Leave them out.`,
+      );
+    return env as Record<string, string>;
+  }
+  static #desktopServerWatchdog(
+    watchdog: unknown,
+    where: string,
+    configPath: string,
+  ): { intervalMs: number; failures: number } | null {
+    if (watchdog === undefined || watchdog === false) return null;
+    const { intervalMs = 10_000, failures = 3 } = (watchdog === true ? {} : watchdog) as Record<string, unknown>;
+    const whole = (value: unknown) => Number.isInteger(value) && (value as number) > 0;
+    if ((watchdog !== true && !AkanAppConfig.#isPlainObject(watchdog)) || !whole(intervalMs) || !whole(failures))
+      throw new Error(
+        `${where}.watchdog in ${configPath} must be true or { intervalMs, failures }, whole numbers from 1.`,
+      );
+    return { intervalMs: intervalMs as number, failures: failures as number };
   }
   static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
     const { indexPath: rawIndexPath, ...rest } = section;
@@ -356,7 +419,7 @@ export class AkanAppConfig implements AppConfigResult {
     const merge = (kept: unknown, value: unknown, top: boolean, key: string): unknown => {
       if (!AkanAppConfig.#isPlainObject(kept) || !AkanAppConfig.#isPlainObject(value)) return value;
       //? An icon or splash given as an object is one value: its image and color go together.
-      if (top && (key === "icon" || key === "splash")) return value;
+      if (top && (key === "icon" || key === "splash" || key === "backgroundColor")) return value;
       const out: Record<string, unknown> = { ...kept };
       for (const [inner, next] of Object.entries(value))
         if (next !== undefined) out[inner] = merge(out[inner], next, false, inner);
@@ -381,6 +444,7 @@ export class AkanAppConfig implements AppConfigResult {
       "buildNum",
       "icon",
       "splash",
+      "backgroundColor",
       "permissions",
       "plugins",
       "deepLinks",
@@ -402,8 +466,18 @@ export class AkanAppConfig implements AppConfigResult {
       "activity",
       "files",
     ],
-    desktop: ["indexPath", "server", "recovery", "window", "screenCapture", "entitlements", "dmg"],
-    desktopServer: ["omit"],
+    desktop: [
+      "indexPath",
+      "server",
+      "recovery",
+      "window",
+      "screenCapture",
+      "webview2",
+      "publisher",
+      "entitlements",
+      "dmg",
+    ],
+    desktopServer: ["omit", "profile", "modules", "env", "restart", "watchdog"],
     dmg: ["background", "background2x", "window", "iconSize", "textSize", "app", "applications"],
     deepLinks: ["schemes", "domains"],
   } as const;

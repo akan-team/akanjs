@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Dayjs, dayjs, ENDPOINT_META, ID } from "akanjs/base";
+import { type Dayjs, dayjs, ENDPOINT_META, ID, resetEnvCache } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { assertFilterFitsCrud, DocumentSchema, type SchemaOf } from "akanjs/document";
 import { FetchClient } from "akanjs/fetch";
@@ -20,11 +20,15 @@ import {
 import { endpoint } from "../../signal/endpoint";
 import { Public } from "../../signal/guards";
 import { type Internal, internal } from "../../signal/internal";
-import { Ws } from "../../signal/internalArg";
+import { type MachineIdentity, Ws } from "../../signal/internalArg";
 import { FetchSerializer } from "../../signal/serializer";
 import type { SignalContext } from "../../signal/signalContext";
 import { slice } from "../../signal/slice";
+import type { WebsocketSubscribeAck } from "../../signal/types";
 import { ConformanceEnv } from "../../test/conformance";
+import { Ed25519Key } from "../ed25519Key";
+import { MachineAccount, MachineToken } from "../machine";
+import { RoomReplay } from "../routing/roomReplay";
 import { CascadeRunner } from "./CascadeRunner";
 import { DatabaseResolver } from "./database.resolver";
 import {
@@ -1068,6 +1072,91 @@ describe("SignalResolver declaration contracts", () => {
     expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([]);
   });
 
+  test("a machine token reaches a pubsub room's guards, and the room goes once the socket drops it", async () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, {
+      AKAN_PUBLIC_APP_NAME: "dcms",
+      AKAN_PUBLIC_REPO_NAME: "akan",
+      AKAN_PUBLIC_SERVE_DOMAIN: "example.com",
+      AKAN_PUBLIC_ENV: "main",
+      AKAN_MACHINE_PRIVATE_KEY: Ed25519Key.generate().privatePem,
+    });
+    resetEnvCache();
+    try {
+      class CourtPcOnly {
+        static name = "CourtPcOnly";
+        static scope = "account" as const;
+        canPass(context: SignalContext): boolean {
+          return context.get<{ machine?: MachineIdentity }>("account")?.machine?.kind === "courtPc";
+        }
+      }
+      class MachineRoomEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+        commandOfPc: builder
+          .pubsub(String, { guards: [CourtPcOnly] })
+          .room("pcId", ID)
+          .exec(() => undefined),
+      })) {}
+      const { registry } = withFakeWebsocket();
+      const resolved = resolveWith(
+        MachineRoomEndpoint,
+        Object.assign(new MachineRoomEndpoint(), { serverResolverTestItemService: new ServerResolverTestService() }),
+        { registry, middleware: new Map([[MachineAccount.refName, MachineAccount]]) },
+      );
+      const roomId = `commandOfPc-${validId}`;
+      const token = MachineToken.issue({ kind: "courtPc", id: validId, version: 1 });
+
+      const device = makeWs();
+      device.data.headers = new Headers({ authorization: `Bearer ${token}` });
+      await resolved.wsRoutes?.commandOfPc?.(device, [validId], "subscribe");
+      expect(device.subscribed).toEqual([roomId]);
+      expect(await SignalResolver.revalidateWsRooms(device, registry)).toEqual([]);
+      (device.data.headers as Headers).delete("authorization");
+      expect(await SignalResolver.revalidateWsRooms(device, registry)).toEqual([roomId]);
+
+      const claimed = makeWs();
+      claimed.data.headers = new Headers();
+      claimed.data.account = { machine: { kind: "courtPc", id: validId, version: 1 } };
+      await expect(resolved.wsRoutes?.commandOfPc?.(claimed, [validId], "subscribe")).rejects.toThrow(
+        "Access denied by guard: CourtPcOnly",
+      );
+    } finally {
+      for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+      Object.assign(process.env, saved);
+      resetEnvCache();
+    }
+  });
+
+  test("a resubscribe gets what it missed ahead of its ack, and an ack that says so", async () => {
+    resetResolverOrder();
+    const { registry, websocket } = withFakeWebsocket();
+    const replay = new RoomReplay({ vouches: true });
+    SignalResolver.setLocalPublish(() => undefined, websocket.instance, undefined, replay);
+    try {
+      const resolved = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry });
+      const roomId = `roomFeed-${validId}`;
+      const first = makeWs();
+      const firstAck = (await resolved.wsRoutes?.roomFeed?.(first, [validId], "subscribe")) as WebsocketSubscribeAck;
+      expect(firstAck.cursor).toMatchObject({ seq: 0 });
+      for (const n of [1, 2, 3]) replay.frameOf({ type: "pub", roomId, data: { n } }, true);
+
+      const sent: string[] = [];
+      const back = Object.assign(makeWs(), { send: (frame: string) => void sent.push(frame) });
+      const since = { epoch: firstAck.cursor?.epoch ?? "", seq: 1 };
+      const ack = (await resolved.wsRoutes?.roomFeed?.(back, [validId], "subscribe", {
+        since,
+      })) as WebsocketSubscribeAck;
+      expect(sent.map((frame) => JSON.parse(frame).seq)).toEqual([2, 3]);
+      expect(ack).toMatchObject({ replayed: true, cursor: { seq: 3 } });
+
+      const lost = await resolved.wsRoutes?.roomFeed?.(makeWs(), [validId], "subscribe", {
+        since: { epoch: "restarted", seq: 1 },
+      });
+      expect(lost).toMatchObject({ replayed: false });
+    } finally {
+      SignalResolver.setLocalPublish(() => undefined, websocket.instance);
+    }
+  });
+
   test("runs ws cleanup on unsubscribe and close, from a message handler as well as a room", async () => {
     const cleaned: string[] = [];
     class LifecycleEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
@@ -1381,6 +1470,36 @@ describe("SignalResolver declaration contracts", () => {
 
     await expect(subscribeTo(["news", "lovelace"])).rejects.toThrow(/paused while "text" carries a value/);
     expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
+  });
+
+  test("joins a live room with the payload its slice declares", async () => {
+    class IdLiveSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [Public] })
+          .param("category", String)
+          .live({ payload: "id" })
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category);
+          }),
+      }),
+    ) {}
+    const SliceEndpoint = SignalResolver.resolveSlice(IdLiveSlice);
+    const sliceEndpoint = new SliceEndpoint() as InstanceType<typeof SliceEndpoint> & Record<string, unknown>;
+    sliceEndpoint.serverResolverTestItemService = { queryInCategory: (category: string) => ({ category }) };
+    const { registry } = withFakeWebsocket();
+    const live = getDefaultLiveRegistry();
+    live.sliceCls.set(IdLiveSlice.baseName, IdLiveSlice as never);
+    live.service.set("serverResolverTestItem", {
+      listenPost: () => undefined,
+      __databaseModel: { __store: makeTextStore() },
+    } as never);
+    SignalResolver.registerLiveSync(IdLiveSlice, { registry, live });
+    const join = spyOn(live.syncHub, "join");
+    const resolved = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live });
+    await resolved.wsRoutes?.serverResolverTestItemLiveInCategory?.(makeWs(), ["news"], "subscribe");
+    expect(join.mock.calls[0]?.[0]).toMatchObject({ payload: "id" });
   });
 
   test("refuses a pauseOn naming an unknown argument or a required one", () => {

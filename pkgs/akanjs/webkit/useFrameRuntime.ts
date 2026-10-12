@@ -74,7 +74,16 @@ export function applyFrameSlots(
 ) {
   const slots = getFrameSlotsForPath(pathRoute, frameSlots, pathRoutes, visiblePaths);
   const pageState = clonePageState(basePageState);
-  if (!pathRoute.explicitPageConfigKeys?.cache && slots.some((slot) => slot.cache)) pageState.cache = true;
+  const explicit = pathRoute.explicitPageConfigKeys ?? {};
+  if (!explicit.cache && slots.some((slot) => slot.cache)) pageState.cache = true;
+  //? An undeclared inset follows the chrome on screen; a keyboard accessory is reserved by the keyboard layout instead.
+  for (const side of ["topInset", "bottomInset"] as const) {
+    if (explicit[side]) continue;
+    const heights = slots
+      .filter((slot) => slot.type === side && !isKeyboardAccessorySlot(slot))
+      .map(resolveFrameSlotHeight);
+    if (heights.length) pageState[side] = Math.max(...heights);
+  }
   return pageState;
 }
 

@@ -1249,6 +1249,47 @@ describe("RscWorker late theme", () => {
     }
   }, 20_000);
 
+  test("writes the root layout's viewport and theme color, and merges its head under the page's", async () => {
+    const saved = process.env.AKAN_RSC_WORKER_PATH;
+    process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
+    const segmentOutlet = "pkgs/akanjs/server/rscSegmentOutlet.tsx";
+    const rsc = new RscWorker({
+      pagesBundlePath: path.join(import.meta.dir, "rscWorkerViewport.fixture.tsx"),
+      pagesBundleBuildId: 1,
+      rscRuntimeClientManifest: {
+        [`${segmentOutlet}#AkanSegmentOutlet`]: { id: segmentOutlet, chunks: [], name: "AkanSegmentOutlet" },
+      },
+    } as unknown as BaseBuildArtifact);
+    try {
+      await rsc.ready;
+      const result = await rsc.renderWithMeta(new Request("http://localhost/en/viewport"));
+      if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
+      const body = await new Response(result.stream).text();
+      expect(body).toContain(
+        "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
+      );
+      expect(body).toContain("#0b1020");
+      expect(body).not.toContain("#fafafa");
+      expect(body).toContain("fixture-page-title");
+      expect(body).not.toContain("fixture-root-title");
+      expect(body).toContain("/fixture.webmanifest");
+      //? Chromium reads a manifest link only among <head>'s children, so it has to come before the body.
+      const manifestLink = body.indexOf('"rel":"manifest","href":"/manifest.webmanifest"');
+      expect(manifestLink).toBeGreaterThan(-1);
+      expect(manifestLink).toBeLessThan(body.indexOf('["$","body"'));
+      expect(await rsc.webManifest(null)).toEqual({
+        name: "Fixture",
+        short_name: "Fx",
+        start_url: "/",
+        theme_color: "#0b1020",
+      });
+    } finally {
+      rsc.kill();
+      if (saved === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = saved;
+    }
+  }, 20_000);
+
   test("names a theme the root layout declares before the first chunk, so the HTML shell can carry it", async () => {
     const saved = process.env.AKAN_RSC_WORKER_PATH;
     process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");

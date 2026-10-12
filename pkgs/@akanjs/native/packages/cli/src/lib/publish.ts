@@ -9,6 +9,7 @@ import { CliError, log } from "./log.ts";
 import type { BuildContext } from "./prepare.ts";
 import {
   assertChannel,
+  type DesktopArch,
   hostArch,
   sealManifest,
   signingKey,
@@ -61,10 +62,10 @@ export function nextSequence(dir: string, channel: string, now = Math.floor(Date
   return previous + 1;
 }
 
-/** `<out>/<os>-<arch>` for a desktop release, `<out>/<platform>` for a phone's web bundle. */
-export function releaseDir(out: string, platform: ReleasePlatform): string {
+/** `<out>/<os>-<arch>` for a desktop release (the arch it was built for), `<out>/<platform>` for a phone's web bundle. */
+export function releaseDir(out: string, platform: ReleasePlatform, arch?: DesktopArch): string {
   const desktop = platform === "macos" || platform === "windows" || platform === "linux";
-  return join(out, desktop ? `${platform}-${hostArch()}` : platform);
+  return join(out, desktop ? `${platform}-${arch ?? hostArch()}` : platform);
 }
 
 /** Refuses before the build a desktop release the apps of its channel would refuse for its server (assertSameServer). */
@@ -73,9 +74,10 @@ export function assertServerOfChannel(
   platform: ReleasePlatform,
   out: string,
   channel: string,
+  arch?: DesktopArch,
 ): void {
   if (platform === "macos" || platform === "windows" || platform === "linux")
-    assertSameServer(releaseDir(out, platform), channel, !!config.desktop?.server);
+    assertSameServer(releaseDir(out, platform, arch), channel, !!config.desktop?.server);
 }
 
 /**
@@ -127,7 +129,7 @@ export async function publishRelease(
     throw new CliError("akan-native.config.ts has no updates: { url, publicKeys } (run `akan-native update keygen`)");
   const desktop = platform === "macos" || platform === "windows" || platform === "linux" ? platform : null;
   // A desktop app runs on one CPU: x64 and arm64 releases of the same OS live side by side.
-  const dir = releaseDir(out, platform);
+  const dir = releaseDir(out, platform, ctx.arch);
   assertChannel(channel);
   assertSigningKey(config, platform);
   const keyPath = updateKeyPath(config.app.id);

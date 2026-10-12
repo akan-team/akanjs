@@ -67,6 +67,30 @@ describe("NativeConfig.build", () => {
     expect(build(undefined)).toBeUndefined();
   });
 
+  test("paints the window before its page with backgroundColor, and names the Windows publisher", () => {
+    const build = (target: Partial<AkanNativeTarget>) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/minimal",
+        target: { ...minimalTarget, ...target },
+        webDir: "/repo/dist/native/minimal/default/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "windows",
+      }).config;
+
+    expect(build({ backgroundColor: "#000000" }).shell).toEqual({ backgroundColor: "#000000" });
+    expect(build({ backgroundColor: { light: "#fafafa", dark: "#111111" } }).shell).toEqual({
+      backgroundColor: "#fafafa",
+      backgroundColorDark: "#111111",
+    });
+    expect(build({}).shell).toBeUndefined();
+    expect(build({ backgroundColor: "#000000", devtools: true }).shell).toEqual({
+      backgroundColor: "#000000",
+      devtools: true,
+    });
+    expect(build({ desktop: { publisher: "Leading Flight" } }).desktop?.publisher).toBe("Leading Flight");
+  });
+
   test("turns the minimal app's push target into the runtime's config, single-instance carrying its link scheme", () => {
     const { config, warnings } = NativeConfig.build({
       appPath: "/repo/apps/minimal",
@@ -363,7 +387,12 @@ describe("NativeConfig.build", () => {
         permissions: [],
         deepLinks: undefined,
         android: { autoplay: true },
-        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+        desktop: {
+          recovery: "reload",
+          window: { fullscreen: true, skipTaskbar: true },
+          screenCapture: "auto",
+          webview2: "standalone",
+        },
       },
       webDir: path.join(root, "web"),
       contributions: [],
@@ -376,6 +405,7 @@ describe("NativeConfig.build", () => {
       recovery: "reload",
       window: { fullscreen: true, skipTaskbar: true },
       screenCapture: "auto",
+      webview2: "standalone",
       bin: root,
     });
     expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });

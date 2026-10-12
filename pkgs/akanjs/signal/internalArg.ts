@@ -26,6 +26,20 @@ export class CallerAccount implements InternalArg<unknown> {
   }
 }
 
+/** A device or service a machine token names: `version` is what a guard compares to revoke it. */
+export interface MachineIdentity {
+  kind: string;
+  id: string;
+  version: number;
+}
+
+/** The machine a verified machine token proved for this call; required unless declared `{ nullable: true }`. */
+export class Machine implements InternalArg<MachineIdentity | null> {
+  getArg(context: SignalContext): MachineIdentity | null {
+    return context.get<{ machine?: MachineIdentity }>("account")?.machine ?? null;
+  }
+}
+
 /** The caller's IP as the nearest proxy recorded it (see `SignalContext.getClientIp`), `null` when unknown. */
 export class Ip implements InternalArg<string | null> {
   getArg(context: SignalContext): string | null {

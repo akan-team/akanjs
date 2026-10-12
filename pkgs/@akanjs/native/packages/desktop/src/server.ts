@@ -13,9 +13,13 @@
 // - The port of the last session comes first, so a URL registered somewhere stays valid while it is
 //   free. A server that exits before its first ready, while the page has not been handed its URL,
 //   is started again on that port if it is still free, else on a fresh one: another program may have taken it.
-// - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up. Before its first
-//   ready it is restarted BOOT_RESTART_DELAY apart, so a server that cannot boot gives up while the window
-//   still waits for it (READY_TIMEOUT) and the page opens with the alert, not with a URL nobody answers.
+// - A crash restarts it on the same port, 1 s → 30 s apart; MAX_FAILURES in a row give up (server.json
+//   `restart`: another count, or "forever" for a screen nobody attends). Before its first ready it is restarted
+//   BOOT_RESTART_DELAY apart, so a server that cannot boot gives up while the window still waits for it
+//   (READY_TIMEOUT) and the page opens with the alert, not with a URL nobody answers; one that never gives up
+//   falls back to the 1 s → 30 s schedule after MAX_FAILURES fast tries.
+// - server.json `watchdog`: a ready server is asked its health route every intervalMs; `failures` missed answers
+//   in a row are a hang, and it is killed and restarted as if it had crashed.
 // - A `file.resolve` request names a grant the file picker gave the page (forServer); the answer is
 //   the path the user picked, or an error for a grant this app never gave (grants.ts).
 // - Quit: an IPC shutdown, then SIGKILL after STOP_GRACE. If the shell dies first, the child sees its
@@ -45,7 +49,14 @@ export interface ServerManifest {
   /** The file in resources/server that starts the server. */
   entry: string;
   env: Record<string, string>;
+  /** Crashes in a row before the launcher gives up, MAX_FAILURES unless named; "forever" never gives up. */
+  restart?: number | "forever";
+  /** The health route asked every `intervalMs` once the server is ready; `failures` missed in a row restart it. */
+  watchdog?: { intervalMs: number; failures: number };
 }
+
+/** Answered by the server's own process, solo or behind its gateway, without a database round trip. */
+export const HEALTH_PATH = "/_akan/app/health";
 
 /** Set by the launcher at every start, so desktop.server.env may not name them (cli lib/desktop-server.ts). */
 export const LAUNCHER_ENV_KEYS = [
@@ -164,6 +175,8 @@ export interface DesktopServerOptions {
   stopGrace?: number;
   restartDelay?(failures: number, everReady: boolean): number;
   now?(): number;
+  /** Whether the server at `url` answers its health route; the watchdog's question. */
+  probe?(url: string, timeoutMs: number): Promise<boolean>;
 }
 
 export interface DesktopServer {
@@ -212,14 +225,28 @@ export function createServerStatus() {
 export function readServerManifest(resources: string): ServerManifest | null {
   const file = join(resources, "server.json");
   if (!existsSync(file)) return null;
-  const raw = JSON.parse(readFileSync(file, "utf8")) as { entry?: unknown; env?: unknown };
+  const raw = JSON.parse(readFileSync(file, "utf8")) as {
+    entry?: unknown;
+    env?: unknown;
+    restart?: unknown;
+    watchdog?: { intervalMs?: unknown; failures?: unknown } | null;
+  };
   if (typeof raw.entry !== "string" || !raw.entry) throw new Error(`${file}: entry must name a file`);
   const env = Object.fromEntries(
     Object.entries((raw.env ?? {}) as Record<string, unknown>).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
-  return { entry: raw.entry, env };
+  const restart =
+    raw.restart === "forever" || (Number.isInteger(raw.restart) && (raw.restart as number) > 0)
+      ? (raw.restart as number | "forever")
+      : undefined;
+  const { intervalMs, failures } = raw.watchdog ?? {};
+  const watchdog =
+    Number.isInteger(intervalMs) && (intervalMs as number) > 0 && Number.isInteger(failures) && (failures as number) > 0
+      ? { intervalMs: intervalMs as number, failures: failures as number }
+      : undefined;
+  return { entry: raw.entry, env, ...(restart ? { restart } : {}), ...(watchdog ? { watchdog } : {}) };
 }
 
 export function serverArgv(execPath: string, resources: string, entry: string): string[] {
@@ -325,6 +352,16 @@ export function jwtSecret(dataDir: string): string {
   writeFileSync(file, secret, { mode: 0o600 });
   chmodSync(file, 0o600);
   return secret;
+}
+
+async function probeHealth(url: string, timeoutMs: number): Promise<boolean> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    await response.body?.cancel().catch(() => {});
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function restartDelay(failures: number, everReady = true): number {
@@ -437,6 +474,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
   const pickPort = options.freePort ?? loopbackPort;
   const argv = serverArgv(options.execPath ?? process.execPath, options.resources, options.manifest.entry);
   const grace = options.stopGrace ?? STOP_GRACE;
+  const maxFailures = options.manifest.restart === "forever" ? Infinity : (options.manifest.restart ?? MAX_FAILURES);
+  const probe = options.probe ?? probeHealth;
   const logs = join(dataDir, "runtime", "logs");
   const outputLog = join(logs, "server-output.log");
   let outputSize = -1;
@@ -508,19 +547,47 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
 
   const failed = (why: string) => {
     failures++;
-    const line = `[akan-native] the server ${why} (${failures} of ${MAX_FAILURES} in a row)`;
+    const count = Number.isFinite(maxFailures) ? `${failures} of ${maxFailures}` : `${failures}`;
+    const line = `[akan-native] the server ${why} (${count} in a row)`;
     console.error(line);
     record(line);
     setState(everReady ? "restarting" : "starting");
-    if (failures >= MAX_FAILURES)
+    if (failures >= maxFailures)
       return giveUp(
-        `The app's server stopped ${MAX_FAILURES} times in a row and is not restarted again. Its logs are in ${logs}.`,
+        `The app's server stopped ${maxFailures} times in a row and is not restarted again. Its logs are in ${logs}.`,
       );
-    restartTimer = setTimeout(() => void launch(), (options.restartDelay ?? restartDelay)(failures, everReady));
+    //? A server that never gives up and never boots must not spin at BOOT_RESTART_DELAY for the rest of the day.
+    const paced = everReady || failures >= MAX_FAILURES;
+    restartTimer = setTimeout(() => void launch(), (options.restartDelay ?? restartDelay)(failures, paced));
+  };
+
+  //* A hung server still holds its port and its process: only a question it fails to answer tells it apart.
+  const watch = (child: ServerProcess) => {
+    const { watchdog } = options.manifest;
+    if (!watchdog) return () => {};
+    let missed = 0;
+    let asking = false;
+    const timer = setInterval(async () => {
+      if (asking || proc !== child || stopping) return;
+      asking = true;
+      const healthy = await probe(`http://127.0.0.1:${port}${HEALTH_PATH}`, Math.min(watchdog.intervalMs, 5000));
+      asking = false;
+      if (proc !== child || stopping) return;
+      missed = healthy ? 0 : missed + 1;
+      if (missed < watchdog.failures) return;
+      const line = `[akan-native] the server missed ${missed} health checks in a row; killing it to restart`;
+      console.error(line);
+      record(line);
+      clearInterval(timer);
+      child.kill("SIGKILL");
+    }, watchdog.intervalMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
   };
 
   const run = () => {
     let readyAt: number | null = null;
+    let unwatch = () => {};
     const child = spawn(argv, {
       cwd: dataDir,
       env,
@@ -530,6 +597,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
         if (type !== "ready" || readyAt !== null) return;
         readyAt = now();
         setState("up");
+        unwatch = watch(child);
         if (!everReady) {
           everReady = true;
           settleReady(true);
@@ -548,6 +616,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
     proc = child;
     child.exited.then(
       (code) => {
+        unwatch();
         if (proc === child) proc = null;
         child.killGroup?.(stopping ? "SIGKILL" : "SIGTERM");
         if (stopping) return;

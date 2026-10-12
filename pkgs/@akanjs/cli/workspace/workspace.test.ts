@@ -253,6 +253,25 @@ describe("WorkspaceScript", () => {
 });
 
 describe("WorkspaceRunner", () => {
+  test("machine-keygen writes a private key only the owner reads, refuses to overwrite it, and returns the public key", async () => {
+    const { mkdtemp, rm, stat } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const root = await mkdtemp(path.join(tmpdir(), "akan-machine-keygen-"));
+    try {
+      const runner = new WorkspaceRunner();
+      const workspace = { workspaceRoot: root } as never;
+      const { file, publicKey } = await runner.machineKeygen(workspace, "local/keys/cloud.pem");
+      expect(file).toBe(path.join(root, "local/keys/cloud.pem"));
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      const { createPrivateKey, createPublicKey } = await import("node:crypto");
+      const derived = createPublicKey(createPrivateKey(await Bun.file(file).text()));
+      expect(derived.export({ format: "jwk" }).x).toBe(publicKey);
+      await expect(runner.machineKeygen(workspace, "local/keys/cloud.pem")).rejects.toThrow("never overwrites a key");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses the provided akan version", async () => {
     const runner = new WorkspaceRunner();
     stubNpmLatest();

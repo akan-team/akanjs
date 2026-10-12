@@ -1,0 +1,24 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A module test still reaches vendors through a lib, but it may use the runtime's own primitives — a temp dir, a
+// socket, sqlite — that a module file leaves to srvkit/.
+JsModuleSource() as $source where {
+  $source <: within JsImport(),
+  not $source <: or {
+    r"\"\..*",
+    r"\"akanjs.*",
+    r"\"@akanjs.*",
+    r"\"@playwright.*",
+    r"\"@apps/.*",
+    r"\"@libs/.*",
+    r"\"@pkgs/.*",
+    r"\"bun:.*",
+    r"\"node:.*",
+    r"\"react.*"
+  },
+  register_diagnostic(
+    span = $source,
+    message = "External libraries should not be imported in a module test. Only internal packages and the runtime's node: and bun: modules are permitted."
+  )
+}
