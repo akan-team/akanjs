@@ -350,10 +350,16 @@ export class Logger {
       }
     }
   }
+  //? A gateway shows a child's stderr only on request (it is mostly runtime noise), so a child it spawned writes its
+  //? own error lines to the stdout it always shows; a sink still sees them as stderr.
+  static readonly #stderrHidden = envValue("AKAN_CHILD_STDERR_HIDDEN") === "1";
+  static #consoleStream(stream: "stdout" | "stderr") {
+    return stream === "stderr" && Logger.#stderrHidden ? "stdout" : stream;
+  }
   static #writeConsole(entry: LoggerSinkEntry) {
     if (!Logger.consoleOutput) return;
     if (typeof window === "undefined")
-      (process[entry.stream] as unknown as NodeJS.WriteStream | undefined)?.write(entry.message);
+      (process[Logger.#consoleStream(entry.stream)] as unknown as NodeJS.WriteStream | undefined)?.write(entry.message);
     else Logger.#writeBrowserConsole(entry.record, entry.message);
   }
   //? A native shell hands the page's console to a terminal that stamps each line itself: there a record is
@@ -404,7 +410,7 @@ export class Logger {
     Logger.#emit(Logger.#entry(Logger.#buildRecord(undefined, msg, "", null, stream, readLogContext()), msg));
     if (!Logger.consoleOutput) return;
     if (typeof window === "undefined" && method !== "console" && (process as unknown as NodeJS.Process | undefined))
-      process[stream].write(msg);
+      process[Logger.#consoleStream(stream)].write(msg);
     //? In a native shell a raw line (the banner) lands in a terminal, not devtools: at debug it stays out of the way.
     // biome-ignore lint/suspicious/noConsole: browser fallback
     else console[outputStream === "error" ? "error" : Logger.#inNativeShell() ? "debug" : "log"](msg.trim());

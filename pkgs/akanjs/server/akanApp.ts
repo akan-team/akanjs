@@ -352,6 +352,7 @@ export class AkanApp {
         ...this.#childEnv(idx, role),
         AKAN_CHILD_SOCKET: upstream.http.socketPath,
         AKAN_CHILD_WS_PORT: upstream.ws ? String(upstream.ws.port) : "",
+        ...(this.#printChildStderr || Logger.isNdjson ? {} : { AKAN_CHILD_STDERR_HIDDEN: "1" }),
       },
       ipc: (message) => this.#handleMessage(idx, message as AkanIpcMessage, proc),
       stdout: "pipe",

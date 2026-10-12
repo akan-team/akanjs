@@ -197,13 +197,15 @@ export default page().render(() => {
       en: (
         <>
           <strong>Child stderr reaches the file even when the terminal hides it.</strong> The gateway prints a child's
-          stderr only with <code>AKAN_CHILD_STDERR=1</code>.
+          stderr only with <code>AKAN_CHILD_STDERR=1</code>; a child's own Logger errors go to stdout, so they always
+          show.
         </>
       ),
       ko: (
         <>
           <strong>child의 stderr는 터미널에 안 보여도 파일에는 남습니다.</strong> gateway는{" "}
-          <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력합니다.
+          <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력합니다. child 자신의 Logger 오류는
+          stdout으로 나가므로 늘 보입니다.
         </>
       ),
     }),

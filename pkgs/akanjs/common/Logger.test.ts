@@ -355,3 +355,27 @@ describe("Logger replay", () => {
     }
   });
 });
+
+describe("Logger in a gateway's child", () => {
+  // The gateway prints a spawned child's stdout and keeps its stderr to the log file unless asked.
+  const run = (env: Record<string, string>) => {
+    const logger = new URL("./Logger.ts", import.meta.url).pathname;
+    const script = `const { Logger } = await import(${JSON.stringify(logger)}); Logger.error("boom"); Logger.rawLog("raw", "process", "error");`;
+    const proc = Bun.spawnSync(["bun", "-e", script], {
+      env: { ...process.env, ...env },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+  };
+
+  test("writes its error lines to stdout when the gateway hides its stderr", () => {
+    const hidden = run({ AKAN_CHILD_STDERR_HIDDEN: "1" });
+    expect(hidden.stdout).toContain("boom");
+    expect(hidden.stdout).toContain("raw");
+    expect(hidden.stderr).toBe("");
+    const shown = run({ AKAN_CHILD_STDERR_HIDDEN: "" });
+    expect(shown.stderr).toContain("boom");
+    expect(shown.stdout).not.toContain("boom");
+  });
+});

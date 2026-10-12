@@ -712,6 +712,23 @@ describe("AkanApp", () => {
     });
   }, 20_000);
 
+  test("tells a spawned child the gateway hides its stderr, where its Logger would put error lines", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-child-stderr-");
+    await writeOkChild(serverPath, "ok");
+    await Bun.write(
+      serverPath,
+      (await Bun.file(serverPath).text()).replace(
+        'return new Response("ok")',
+        'return new Response(process.env.AKAN_CHILD_STDERR_HIDDEN ?? "unset")',
+      ),
+    );
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+      expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toBe("1");
+    });
+  }, 20_000);
+
   test("serves immutable client artifacts only while ssr is on", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-web-");
 

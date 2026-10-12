@@ -193,7 +193,7 @@ On a server with AKAN_LOG_DIR=/var/log/akan
 
 **Child lines carry a prefix** such as `[child:0 all] [stderr]`, so one search shows which replica and which stream wrote them.
 
-**Child stderr reaches the file even when the terminal hides it.** The gateway prints a child's stderr only with `AKAN_CHILD_STDERR=1`.
+**Child stderr reaches the file even when the terminal hides it.** The gateway prints a child's stderr only with `AKAN_CHILD_STDERR=1`; a child's own Logger errors go to stdout, so they always show.
 
 **`console.log` in a child is captured** through its stdout/stderr pipes. In the gateway process it bypasses the Logger sinks, so use Logger in runtime code.
 
