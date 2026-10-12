@@ -15,7 +15,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, constants, openSync, rmSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type { SecondInstance } from "./index.ts";
 
@@ -23,6 +23,15 @@ const FORMAT = 1;
 const ACK = "ok\n";
 /** One message is a few KiB of arguments; anything larger is not from us. */
 const MAX_MESSAGE = 256 * 1024;
+
+// An account without a profile (some service accounts) has no token-named folder to read.
+const profileFolder = (env: Record<string, string | undefined>) => {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return env.USERPROFILE ?? env.USERNAME ?? "";
+  }
+};
 
 /**
  * sun_path is 104 bytes on macOS, so the name is a short hash, not the app id. Windows pipe names
@@ -33,12 +42,12 @@ export function socketPath(
   appId: string,
   env: Record<string, string | undefined> = process.env,
   platform: NodeJS.Platform = process.platform,
+  profile = platform === "win32" ? profileFolder(env) : "",
 ): string {
   if (platform === "win32") {
-    const hash = createHash("sha256")
-      .update(`${env.USERDOMAIN ?? ""}\\${env.USERNAME ?? ""}\0${appId}`)
-      .digest("hex")
-      .slice(0, 16);
+    //? The user is the profile folder the process token names, never USERDOMAIN: that reads WORKGROUP in an SSH or
+    //? service-started session and the PC's name on the desktop, so two launches missed each other's pipe and both ran.
+    const hash = createHash("sha256").update(`${profile.toLowerCase()}\0${appId}`).digest("hex").slice(0, 16);
     return `\\\\.\\pipe\\akan-native-${hash}`;
   }
   const dir = env.XDG_RUNTIME_DIR || env.TMPDIR || tmpdir();

@@ -34,6 +34,12 @@ import type {
 export const SETUP_TIMEOUT_MS = 3000;
 
 /**
+ * How long the launch waits for a gate plugin's setup. A gate decides whether this launch runs at all, so passing it
+ * by on time starts what the losing launch must not: a second app's server on the same data (single-instance).
+ */
+export const GATE_TIMEOUT_MS = 30_000;
+
+/**
  * How long a page's call to a plugin whose setup is still running (it outlasted SETUP_TIMEOUT_MS)
  * waits for it before it is answered INTERNAL with `retryable`.
  */
@@ -189,6 +195,7 @@ export const COALESCE_MS = 100;
 
 export interface DispatcherOptions {
   setupTimeoutMs?: number;
+  gateTimeoutMs?: number;
   setupWaitMs?: number;
   /** The app's resolved capabilities from boot.json (PL-11). Absent: everything is allowed. */
   acl?: ResolvedAcl | null;
@@ -301,18 +308,19 @@ export function createDispatcher(
   };
 
   const timeout = options.setupTimeoutMs ?? SETUP_TIMEOUT_MS;
+  const gateTimeout = options.gateTimeoutMs ?? GATE_TIMEOUT_MS;
   /** Setups still running (plugin lifecycle rule: calls and $listen wait for them). */
   const settingUp = new Map<string, Promise<unknown>>();
-  const setUp = async (plugin: DesktopPlugin) => {
+  const setUp = async (plugin: DesktopPlugin, limit = timeout) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const done = Promise.resolve(plugin.setup?.(context(plugin)));
       settingUp.set(plugin.id, done);
       const forget = () => void settingUp.delete(plugin.id);
       done.then(forget, forget);
-      const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), timeout)));
+      const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), limit)));
       if ((await Promise.race([done, late])) === "late")
-        console.warn(`[akan-native] ${plugin.id} setup took over ${timeout} ms; creating the window anyway`);
+        console.warn(`[akan-native] ${plugin.id} setup took over ${limit} ms; creating the window anyway`);
     } catch (error) {
       console.error(`[akan-native] ${plugin.id} setup failed`, error);
     } finally {
@@ -322,10 +330,10 @@ export function createDispatcher(
   // Gate plugins first, in order; a launch that exits there sets up nothing else.
   const setups = (async () => {
     for (const plugin of plugins.filter((p) => p.launchPhase === "gate")) {
-      await setUp(plugin);
+      await setUp(plugin, gateTimeout);
       if (launch.exit !== undefined) return;
     }
-    await Promise.all(plugins.filter((p) => p.launchPhase !== "gate").map(setUp));
+    await Promise.all(plugins.filter((p) => p.launchPhase !== "gate").map((plugin) => setUp(plugin)));
   })();
   const launched = setups.then(() => {
     launching = false;

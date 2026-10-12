@@ -462,6 +462,29 @@ describe("launch phase", () => {
     expect(order).toEqual(["g1"]);
   });
 
+  test("a gate that outlasts the setup timeout is still waited for: it decides whether the launch runs", async () => {
+    let otherSetUp = false;
+    const slowGate = defineDesktopPlugin({
+      id: "slow-gate",
+      launchPhase: "gate",
+      async setup(ctx) {
+        await Bun.sleep(80);
+        ctx.launch.exit(0);
+      },
+      methods: {},
+    });
+    const other = defineDesktopPlugin({
+      id: "other",
+      setup: () => {
+        otherSetUp = true;
+      },
+      methods: {},
+    });
+    const launch = await createDispatcher([slowGate, other], services, { setupTimeoutMs: 10 }).launched;
+    expect(launch).toEqual({ window: {}, exit: 0 });
+    expect(otherSetUp).toBe(false);
+  });
+
   test("waits for async setups, merges setWindow, keeps the first exit code", async () => {
     let finished = false;
     const slow = defineDesktopPlugin({

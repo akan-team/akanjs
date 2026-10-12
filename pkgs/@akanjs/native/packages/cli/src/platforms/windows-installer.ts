@@ -110,6 +110,9 @@ ManifestDPIAware true
 ManifestLongPathAware true
 SetCompressor /SOLID lzma
 RequestExecutionLevel user
+; /S does not hide NSIS's "Verifying installer" window (only a script's SilentInstall does), and a large setup takes
+; over a second to verify, so the window painted over a kiosk. A truncated setup still fails to unpack into .setup-new.
+CRCCheck off
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
@@ -211,8 +214,9 @@ FunctionEnd
 ${removal(input.entries)}
 !macroend
 
+; $R6 is 1 when the folder held the app's exe before the uninstall stopped the app and deleted it.
 !macro RemoveApp
-  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+  \${If} $R6 == 1
     !insertmacro RemoveTree "$INSTDIR"
   \${Else}
     !insertmacro RemoveEntries
@@ -461,9 +465,19 @@ FunctionEnd
 
 Section "Uninstall"
   InitPluginsDir
+  StrCpy $R6 0
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    StrCpy $R6 1
+  \${EndIf}
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  ; With the exe named, the script deletes it in the pass that finds nothing running: a watchdog that starts the app
+  ; again between a stop and a later delete kept the exe, and Delete /REBOOTOK needs an administrator.
+  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" "$INSTDIR\\\${EXE}"'
   Pop $0
+  \${If} $0 != 0
+    DetailPrint "$INSTDIR\\\${EXE} is still running and stays behind."
+    SetErrorLevel 2
+  \${EndIf}
   Delete "$SMPROGRAMS\\\${APP_NAME}.lnk"
   !insertmacro RemoveTree "$INSTDIR.previous"
   !insertmacro RemoveSiblings "update-"
@@ -488,17 +502,26 @@ SectionEnd
 }
 
 /**
- * Stops every process running from the install folder, waits (up to 10 s) until they are gone, and exits 1 when
- * one is left or cannot be seen. Through WMI: the installer is a 32-bit program, so its PowerShell is too, and a
- * 32-bit process cannot read a 64-bit one's path (Get-Process's Path comes back empty).
+ * Stops every process running from the install folder, again for one started meanwhile, until none is left (up to
+ * 10 s); given the app's exe, deletes it in the pass that finds none, so nothing can start it again. Exits 1 when a
+ * process (or the exe) is left or cannot be seen. Through WMI: the installer is a 32-bit program, so its PowerShell
+ * is too, and a 32-bit process cannot read a 64-bit one's path (Get-Process's Path comes back empty).
  */
-export const STOP_SCRIPT = `param([string]$Dir)
+export const STOP_SCRIPT = `param([string]$Dir, [string]$Exe = '')
 $ErrorActionPreference = 'Stop'
 $prefix = [IO.Path]::GetFullPath($Dir).TrimEnd('\\') + '\\'
 $running = { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } }
-& $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-for ($i = 0; $i -lt 50 -and (& $running); $i++) { Start-Sleep -Milliseconds 200 }
-if (& $running) { exit 1 }
+for ($i = 0; $i -lt 50; $i++) {
+  $left = @(& $running)
+  if ($left.Count -eq 0) {
+    if (-not $Exe) { exit 0 }
+    Remove-Item -LiteralPath $Exe -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $Exe)) { exit 0 }
+  }
+  $left | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Milliseconds 200
+}
+if ((& $running) -or ($Exe -and (Test-Path -LiteralPath $Exe))) { exit 1 }
 `;
 
 /** The longest path under `folder`, relative and with Windows separators. Links are not followed. */
