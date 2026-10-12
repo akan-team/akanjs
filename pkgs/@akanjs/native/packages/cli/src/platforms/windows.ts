@@ -41,6 +41,19 @@ export function windowsVersion(version: string, build: number): string {
   return [...parts, Math.max(0, Math.floor(build))].join(".");
 }
 
+export function windowsVersionInfo(
+  app: { name: string; version: string; build: number },
+  publisher?: string,
+): string[] {
+  return [
+    `--windows-title=${app.name}`,
+    `--windows-description=${app.name}`,
+    `--windows-version=${windowsVersion(app.version, app.build)}`,
+    //? Left out, the company name stays Bun's own ("Oven"), which Explorer and the firewall prompt show for the app.
+    `--windows-publisher=${publisher ?? app.name}`,
+  ];
+}
+
 const exePath = (ctx: BuildContext, dir: string) => join(dir, `${ctx.project.config.app.fileName}.exe`);
 
 export async function buildWindows(ctx: BuildContext): Promise<string> {
@@ -64,10 +77,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   const flags = [
     // A GUI program: no console window of its own. Log lines still reach the pipes `akan-native run` gives it.
     "--windows-hide-console",
-    `--windows-title=${config.app.name}`,
-    `--windows-description=${config.app.name}`,
-    `--windows-version=${windowsVersion(config.app.version, config.app.build)}`,
-    ...(config.desktop.publisher ? [`--windows-publisher=${config.desktop.publisher}`] : []),
+    ...windowsVersionInfo(config.app, config.desktop.publisher),
   ];
   if (art) {
     const icon = join(outDir, "gen", "app.ico");

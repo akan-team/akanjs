@@ -280,7 +280,7 @@ export interface AkanNativeConfig {
      * behind a proxy at install. Either runs only where no runtime is installed.
      */
     webview2?: "bootstrapper" | "standalone";
-    /** Windows: the installed app's Publisher (Apps & features) and its executable's company name. */
+    /** Windows: the installed app's Publisher (Apps & features) and its executable's company name (default: the app name). */
     publisher?: string;
     /**
      * A server the app starts beside its window (akanjs `native.desktop.server`). `dir` is copied to

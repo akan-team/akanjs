@@ -12,7 +12,7 @@ use std::{
 };
 
 use tao::dpi::{LogicalPosition, LogicalSize};
-use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, Rect, WebView, WebViewBuilder};
+use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, Rect, WebView, WebViewBuilder, RGBA};
 
 use crate::{json, push_event, send, UserEvent};
 
@@ -154,6 +154,7 @@ impl Views {
     inner: LogicalSize<f64>,
     data_root: &Path,
     devtools: bool,
+    background: RGBA,
     opts: OpenOptions,
   ) -> Result<String, String> {
     if let Some(view) = self.map.get_mut(&opts.view) {
@@ -173,7 +174,7 @@ impl Views {
       }
       return Ok(state(&opts.view, view));
     }
-    let view = build(window, inner, data_root, devtools, &opts)?;
+    let view = build(window, inner, data_root, devtools, background, &opts)?;
     let answer = state(&opts.view, &view);
     self.map.insert(opts.view, view);
     Ok(answer)
@@ -284,7 +285,15 @@ impl Views {
   }
 
   /// After `gone`: a reload, or a new webview where the old one's browser process ended.
-  pub(crate) fn recover(&mut self, view: &str, window: &tao::window::Window, inner: LogicalSize<f64>, data_root: &Path, devtools: bool) -> Result<(), String> {
+  pub(crate) fn recover(
+    &mut self,
+    view: &str,
+    window: &tao::window::Window,
+    inner: LogicalSize<f64>,
+    data_root: &Path,
+    devtools: bool,
+    background: RGBA,
+  ) -> Result<(), String> {
     let Some(v) = self.map.get(view) else { return Ok(()) };
     if !v.dead {
       return v.webview.reload().map_err(|e| e.to_string());
@@ -304,7 +313,7 @@ impl Views {
     let kept = (old.restarts, old.gone_streak, old.gone_at, old.visible);
     let cursor_hidden = old.cursor_hidden;
     drop(old);
-    let mut fresh = build(window, inner, data_root, devtools, &opts)?;
+    let mut fresh = build(window, inner, data_root, devtools, background, &opts)?;
     (fresh.restarts, fresh.gone_streak, fresh.gone_at, fresh.visible) = kept;
     if !fresh.visible {
       let _ = fresh.webview.set_visible(false);
@@ -331,10 +340,17 @@ impl Views {
   }
 }
 
-fn build(window: &tao::window::Window, inner: LogicalSize<f64>, data_root: &Path, devtools: bool, opts: &OpenOptions) -> Result<View, String> {
+fn build(
+  window: &tao::window::Window,
+  inner: LogicalSize<f64>,
+  data_root: &Path,
+  devtools: bool,
+  background: RGBA,
+  opts: &OpenOptions,
+) -> Result<View, String> {
   #[cfg(target_os = "linux")]
   {
-    let _ = (window, inner, data_root, devtools, opts);
+    let _ = (window, inner, data_root, devtools, background, opts);
     return Err("UNSUPPORTED: external views are not on Linux yet".into());
   }
   #[cfg(not(target_os = "linux"))]
@@ -348,6 +364,8 @@ fn build(window: &tao::window::Window, inner: LogicalSize<f64>, data_root: &Path
     let mut builder = WebViewBuilder::new_with_web_context(&mut context)
       .with_url(&opts.url)
       .with_bounds(rect(opts.bounds, inner))
+      // WebView2 paints a new view white until the remote page's first frame; the app's backgroundColor covers that gap.
+      .with_background_color(background)
       .with_autoplay(opts.autoplay)
       .with_devtools(devtools)
       .with_navigation_handler(move |url| {
