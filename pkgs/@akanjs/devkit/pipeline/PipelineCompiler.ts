@@ -9,6 +9,7 @@ import {
   type PipelineActionName,
   type PipelineDiagnostic,
   type PipelineMilestone,
+  type PipelineOtaPlatform,
   PipelinePattern,
   type PipelinePlan,
   type PipelinePlanContext,
@@ -23,6 +24,7 @@ import {
   pipelineActionNames,
   pipelineActions,
   pipelineMilestones,
+  pipelineOtaPlatforms,
   pipelinePlanVersion,
 } from "akanjs/common";
 import {
@@ -44,11 +46,16 @@ export interface PipelineSourceFile<T> {
   pipeline: T | null;
 }
 
+/** An app's native targets as `akan pack-update --target` names them, or why they could not be read. */
+export type PipelineNativeTargets = { targets: { name: string; updates: boolean }[] } | { error: string };
+
 export interface PipelineCompileInput {
   context: PipelinePlanContext;
   workspaceApps: readonly string[];
   workspace: PipelineSourceFile<WorkspacePipelineConfig> | null;
   apps: ReadonlyMap<string, PipelineSourceFile<AppPipelineConfig>>;
+  /** Read only for an app whose pipeline takes `ota`. */
+  nativeTargets?: ReadonlyMap<string, PipelineNativeTargets>;
   akanVersion: string;
   /** Function forms run against a sample context (`validate`), which is said once per file. */
   sampled?: boolean;
@@ -56,7 +63,7 @@ export interface PipelineCompileInput {
   diagnostics?: readonly PipelineDiagnostic[];
 }
 
-type CustomSlot = "before-build" | "after-build" | "after-docker" | "after-deploy";
+type CustomSlot = "before-build" | "after-build" | "after-docker" | "after-deploy" | "after-ota";
 
 interface AppLane {
   file: string;
@@ -65,6 +72,7 @@ interface AppLane {
   actions: Map<PipelineActionName, PipelineActionStageRule>;
   skips: Map<PipelineActionName, PipelineSkip | null>;
   slots: Record<CustomSlot, PipelineShellStageRule[]>;
+  ota: { targets: string[]; platforms: PipelineOtaPlatform[] } | null;
 }
 
 interface StageOptions {
@@ -81,22 +89,29 @@ interface StageOptions {
 
 /** Composes the workspace's and each app's rules into one plan for one run. */
 export class PipelineCompiler {
-  static readonly #slotAfter = { build: "after-build", docker: "after-docker", deploy: "after-deploy" } as const;
+  static readonly #slotAfter = {
+    build: "after-build",
+    docker: "after-docker",
+    deploy: "after-deploy",
+    ota: "after-ota",
+  } as const;
   static readonly #slotMilestones = {
     "before-build": "prepare",
     "after-build": "verify",
     "after-docker": "package",
     "after-deploy": "deploy",
+    "after-ota": "deploy",
   } as const;
   static readonly #slotNames = {
     "before-build": "Before build",
     "after-build": "After build",
     "after-docker": "After docker",
     "after-deploy": "After deploy",
+    "after-ota": "After OTA",
   } as const;
   static readonly #reservedPhaseId =
-    /^(?:build|docker|deploy|(?:before-build|after-build|after-docker|after-deploy)(?:-\d+)?)$/;
-  static readonly #actionStepNames = { build: "akan build", docker: "image", deploy: "deploy" } as const;
+    /^(?:build|docker|deploy|ota|(?:before-build|after-build|after-docker|after-deploy|after-ota)(?:-\d+)?)$/;
+  static readonly #actionStepNames = { build: "akan build", docker: "image", deploy: "deploy", ota: "ota" } as const;
 
   static compile(input: PipelineCompileInput): PipelinePlanResult {
     return new PipelineCompiler(input).#compile();
@@ -219,7 +234,8 @@ export class PipelineCompiler {
       after: rule.after,
       actions: new Map(),
       skips: new Map(),
-      slots: { "before-build": [], "after-build": [], "after-docker": [], "after-deploy": [] },
+      slots: { "before-build": [], "after-build": [], "after-docker": [], "after-deploy": [], "after-ota": [] },
+      ota: null,
     };
     let last: PipelineActionName | null = null;
     let lastMilestone = -1;
@@ -249,7 +265,7 @@ export class PipelineCompiler {
       if (last && pipelineActionNames.indexOf(stage.action) < pipelineActionNames.indexOf(last))
         this.#error(
           "pipeline.action.order",
-          `\`${stage.action}\` comes after \`${last}\` here, but the actions run build, docker, deploy`,
+          `\`${stage.action}\` comes after \`${last}\` here, but the actions run ${pipelineActionNames.join(", ")}`,
           file,
           stage.path,
         );
@@ -272,6 +288,8 @@ export class PipelineCompiler {
         file,
         deploy.path,
       );
+    const ota = lane.actions.get("ota");
+    if (ota) lane.ota = this.#otaTargets(app, ota, file);
     if (!lane.actions.size)
       this.#warning(
         "pipeline.app.noActions",
@@ -288,6 +306,50 @@ export class PipelineCompiler {
       previous = action;
     }
     return lane;
+  }
+
+  //? Checked here, not by the executor: a pack for a target without updates fails in the build pod after its CSR build.
+  #otaTargets(app: string, stage: PipelineActionStageRule, file: string): AppLane["ota"] {
+    const platforms = stage.platforms ?? [...pipelineOtaPlatforms];
+    const native = this.#input.nativeTargets?.get(app);
+    if (!native || "error" in native) {
+      this.#error(
+        "pipeline.ota.targets",
+        `\`ota\` needs the native targets of ${app}, which could not be read${native ? `: ${native.error}` : ""}`,
+        file,
+        stage.path,
+      );
+      return null;
+    }
+    const known = new Map(native.targets.map((target) => [target.name, target.updates]));
+    if (!stage.targets) {
+      const targets = native.targets.filter((target) => target.updates).map((target) => target.name);
+      if (targets.length) return { targets, platforms };
+      this.#error(
+        "pipeline.ota.noUpdates",
+        `\`ota\` packs updates for targets that declare native.updates, and no native target of ${app} does`,
+        file,
+        stage.path,
+      );
+      return null;
+    }
+    const unknown = stage.targets.filter((name) => !known.has(name));
+    const withoutUpdates = stage.targets.filter((name) => known.get(name) === false);
+    if (unknown.length)
+      this.#error(
+        "pipeline.ota.unknownTarget",
+        `${unknown.map((name) => `"${name}"`).join(", ")} ${unknown.length > 1 ? "are not native targets" : "is not a native target"} of ${app}: ${[...known.keys()].join(", ")}`,
+        file,
+        `${stage.path}.targets`,
+      );
+    if (withoutUpdates.length)
+      this.#error(
+        "pipeline.ota.noUpdates",
+        `\`ota\` packs updates for targets that declare native.updates, and ${withoutUpdates.map((name) => `"${name}"`).join(", ")} of ${app} ${withoutUpdates.length > 1 ? "do" : "does"} not`,
+        file,
+        `${stage.path}.targets`,
+      );
+    return unknown.length || withoutUpdates.length ? null : { targets: stage.targets, platforms };
   }
 
   #appOrder(lanes: ReadonlyMap<string, AppLane>): string[] {
@@ -365,9 +427,10 @@ export class PipelineCompiler {
               retry: rule.retry,
               allowFailure: false,
               kind: "action",
-              action,
               actionVersion: pipelineActions[action].version,
-              with: { app },
+              ...(action === "ota"
+                ? { action, with: { app, targets: lane.ota?.targets ?? [], platforms: lane.ota?.platforms ?? [] } }
+                : { action, with: { app } }),
             },
           ],
         },

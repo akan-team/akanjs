@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,7 +20,7 @@ import {
 import { ENV_TYPES_FILE } from "../src/lib/env.ts";
 import { prepare, WebInputError } from "../src/lib/prepare.ts";
 import { projectFromConfig } from "../src/lib/project.ts";
-import { verifyManifest } from "../src/lib/updates.ts";
+import { keyIdOf, openEnvelope } from "../src/lib/updates.ts";
 
 // docs/api.md: an in-memory config, structured results and errors, the log only in the caller's sink.
 
@@ -293,7 +293,7 @@ describe("programmatic API", () => {
     });
     const template = JSON.parse(readFileSync(join(out, "manifest.template.json"), "utf8"));
     expect(template).toEqual(manifest);
-    expect(template).toMatchObject({ schema: 1, kind: "web", app: "com.akanjs.apitest", platform: "android" });
+    expect(template).toMatchObject({ schema: 2, kind: "web", app: "com.akanjs.apitest", platform: "android" });
     expect([template.channel, template.sequence, template.bundle]).toEqual(["", 0, ""]);
     expect(template.nativeApi).toBe(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).nativeApi.hash);
     const paths = template.files.map((file: { path: string }) => file.path);
@@ -301,17 +301,62 @@ describe("programmatic API", () => {
     for (const file of template.files as { sha256: string; size: number }[])
       expect(readFileSync(join(out, "files", file.sha256)).length).toBe(file.size);
 
-    //? The contract a signer follows: fill the three fields, sign exactly the bytes it uploads.
+    //? The contract a signer follows: fill the three fields, sign exactly the bytes the envelope carries, and put the
+    //? envelope at <platform>/<channel>/<nativeApi>.json.
     const { privateKey, publicKey: spki } = generateKeyPairSync("ed25519");
     const raw = spki.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
     const bytes = new TextEncoder().encode(
       `${JSON.stringify({ ...template, channel: "main", sequence: 1_790_700_000, bundle: "1790700000-a1b2c3d4" }, null, 2)}\n`,
     );
-    expect(verifyManifest(bytes, sign(null, bytes, privateKey).toString("base64"), raw)).toBe(true);
+    const envelope = {
+      manifest: Buffer.from(bytes).toString("base64"),
+      keyId: keyIdOf(raw),
+      signature: sign(null, bytes, privateKey).toString("base64"),
+    };
+    expect(openEnvelope(JSON.stringify(envelope), [publicKey, raw])).toEqual({
+      manifest: new Uint8Array(bytes),
+      keyId: keyIdOf(raw),
+    });
     expect(compareBundles(join(out, "bundle.json"), join(out, "bundle.json"))).toEqual({
       compatible: true,
       problems: [],
     });
+  });
+
+  //? `akan test-platforms` runs this in a slim Linux image with no Xcode, Android SDK or JDK: a build pod's.
+  test("packUpdate writes the same bytes for the same input, a second later too", async () => {
+    const dir = app("pack-twice", "<!doctype html><html><head></head><body>same</body></html>");
+    mkdirSync(join(dir, "web", "icons"), { recursive: true });
+    writeFileSync(join(dir, "web", "icons", "b.png"), "b");
+    writeFileSync(join(dir, "web", "a.js"), "console.info('a')");
+    const pack = (out: string) =>
+      packUpdate({
+        appDir: dir,
+        config: config({
+          updates: { url: "https://updates.example.com/app", publicKey: Buffer.alloc(32, 7).toString("base64") },
+        }),
+        platform: "ios",
+        out: join(dir, out),
+        log: () => {},
+      });
+    await pack("one");
+    await Bun.sleep(1100);
+    await pack("two");
+    const tree = (root: string): string[] =>
+      readdirSync(root, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1))
+        .sort();
+    const [one, two] = [join(dir, "one"), join(dir, "two")];
+    expect(tree(two)).toEqual(tree(one));
+    for (const file of tree(one))
+      expect(readFileSync(join(two, file)).equals(readFileSync(join(one, file)))).toBe(true);
+  });
+
+  test("shell.devtools reaches a release build's shell only when asked for", () => {
+    const dir = app("devtools");
+    expect(projectFromConfig(config(), dir).config.shell.devtools).toBe(false);
+    expect(projectFromConfig(config({ shell: { devtools: true } }), dir).config.shell.devtools).toBe(true);
   });
 
   test("doctor: the CLI's checks as data", async () => {

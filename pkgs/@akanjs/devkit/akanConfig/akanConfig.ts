@@ -280,9 +280,9 @@ export class AkanAppConfig implements AppConfigResult {
         if (basePath && !this.basePaths.has(basePath))
           throw new Error(`Native target '${name}' uses unknown basePath '${basePath}' in ${configPath}`);
         const { updates } = merged;
-        if (updates && (!updates.url || !updates.publicKey))
+        if (updates && (!updates.url || !(updates.publicKey || updates.publicKeys?.length)))
           throw new Error(
-            `${where}.updates in ${configPath} has no url or publicKey${named ? "; give them in native.updates or the target's own" : ""}.`,
+            `${where}.updates in ${configPath} has no url or publicKeys${named ? "; give them in native.updates or the target's own" : ""}.`,
           );
         AkanAppConfig.#assertFiles(own ?? {}, where, configPath);
         const {
@@ -385,6 +385,7 @@ export class AkanAppConfig implements AppConfigResult {
       "plugins",
       "deepLinks",
       "updates",
+      "devtools",
       "ios",
       "android",
       "desktop",

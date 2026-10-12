@@ -68,7 +68,11 @@ export class PipelineDryRun {
 
   static #stage(phase: PipelinePlanPhase, stage: PipelinePlanStage) {
     const label = stage.app && !phase.action && stage.name !== stage.app ? `${stage.app}:${stage.name}` : stage.name;
+    const ota = stage.steps.find((step) => step.kind === "action" && step.action === "ota");
     const notes = [
+      ota?.kind === "action" && ota.action === "ota"
+        ? `${ota.with.targets.join(", ")} × ${ota.with.platforms.join(", ")}`
+        : null,
       stage.skip ? `skipped: ${stage.skip.reason}` : null,
       stage.allowFailure ? "may fail" : null,
       stage.runtimeWhen ? `if changed: ${stage.runtimeWhen.changed.join(", ")}` : null,

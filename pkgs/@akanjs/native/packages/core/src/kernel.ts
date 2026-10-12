@@ -300,3 +300,52 @@ export function decideNavigation(
   if (!topLevel) return FRAME_SCHEMES.includes(scheme) ? "load" : "drop";
   return externalSchemes(extra).includes(scheme) ? "open" : "drop";
 }
+
+export interface UpdateDecisionInput {
+  /** The binary's keyIds, in `updates.publicKeys` order. */
+  ring: readonly string[];
+  /** keyIds state.json has revoked. */
+  revoked: readonly string[];
+  /** The envelope's keyId, whose signature over the manifest verified. */
+  signer: string;
+  revokeKeys: readonly string[];
+  resetSequence: boolean;
+  sequence: number;
+  /** The binary's own bundle (updates.json `embeddedSequence`). */
+  embedded: number;
+  /** The bundle running now, null for the binary's own. */
+  running: { sequence: number; keyId: string } | null;
+}
+
+export type UpdateDecision =
+  | { kind: "untrusted" | "revoked" | "self-revoke" | "revoke-later" }
+  | { kind: "take" | "stale"; baseline: number; revoke: string[] };
+
+/**
+ * Whether a web bundle manifest is taken (updates protocol v2, vectors/updates.json). A key may revoke only keys listed
+ * before it, so a leaked online key — listed first — cannot revoke the offline spares that recover from it, and
+ * `resetSequence` counts only on a manifest that newly revokes a key, so replaying it cannot roll anyone back. A bundle a
+ * revoked key signed sets no bar, and revocations apply even when the release itself is not newer.
+ */
+export function updateDecision(input: UpdateDecisionInput): UpdateDecision {
+  const { ring, revoked, signer, revokeKeys } = input;
+  const index = ring.indexOf(signer);
+  if (index < 0) return { kind: "untrusted" };
+  if (revoked.includes(signer)) return { kind: "revoked" };
+  if (revokeKeys.includes(signer)) return { kind: "self-revoke" };
+  if (revokeKeys.some((id) => ring.indexOf(id) > index)) return { kind: "revoke-later" };
+  const revoke = ring.filter((id) => revokeKeys.includes(id) && !revoked.includes(id));
+  const running = input.running && ![...revoked, ...revoke].includes(input.running.keyId) ? input.running.sequence : 0;
+  const baseline = input.resetSequence && revoke.length ? input.embedded : Math.max(input.embedded, running);
+  return { kind: input.sequence > baseline ? "take" : "stale", baseline, revoke };
+}
+
+/** One answer of updateDecision as the vectors write it. */
+export const updateDecisionWire = (decision: UpdateDecision) =>
+  decision.kind === "take" || decision.kind === "stale"
+    ? `${decision.kind}:${decision.baseline}:${decision.revoke.join(",")}`
+    : decision.kind;
+
+/** The v2 envelope of a channel for one native API: one file per binary generation, so each takes its own fixes. */
+export const updateManifestUrl = (url: string, platform: string, channel: string, nativeApi: string) =>
+  `${url}/${platform}/${channel}/${nativeApi}.json`;

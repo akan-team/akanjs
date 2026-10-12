@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { GlobalConfig } from "../cloud/globalConfig";
 import { WorkspaceExecutor } from "../executors";
 import { AkanWorkspaceConfig } from "./akanWorkspaceConfig";
 
@@ -43,6 +44,28 @@ describe("AkanWorkspaceConfig", () => {
         expect(await workspace.getApps()).toEqual(["web"]);
       },
     );
+  });
+
+  test("cloud.host names the cloud the CLI talks to without --host, https unless it is this computer", async () => {
+    const hostOf = (cloud: unknown) => new AkanWorkspaceConfig(null, { cloud }).cloudHost;
+    expect(hostOf(undefined)).toBeNull();
+    expect(hostOf({})).toBeNull();
+    expect(hostOf({ host: "https://cloud.example.com/" })).toBe("https://cloud.example.com");
+    expect(hostOf({ host: "https://example.com/akasys//" })).toBe("https://example.com/akasys");
+    expect(hostOf({ host: "http://localhost:8283" })).toBe("http://localhost:8283");
+    expect(() => hostOf({ host: "http://cloud.example.com" })).toThrow("https only");
+    expect(() => hostOf({ host: "cloud.example.com" })).toThrow("is not a URL");
+    expect(() => hostOf({ host: "https://cloud.example.com?x=1" })).toThrow("is not a URL");
+    expect(() => hostOf({ host: "https://cloud.example.com", token: "x" })).toThrow("keys it does not take: token");
+
+    const workspace = (cloudHost: string | null) => ({ getConfig: async () => ({ cloudHost }) });
+    expect(await GlobalConfig.hostFor(workspace("https://akasys.example.com"), "https://given.example.com")).toBe(
+      "https://given.example.com",
+    );
+    expect(await GlobalConfig.hostFor(workspace("https://akasys.example.com"), null)).toBe(
+      "https://akasys.example.com",
+    );
+    expect(await GlobalConfig.hostFor(workspace(null))).toBe(GlobalConfig.akanCloudHost);
   });
 
   test("refuses app settings and a default export that is not an object", async () => {

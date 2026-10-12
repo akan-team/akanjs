@@ -49,6 +49,12 @@ import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
 
+export { type UpdateDecision, type UpdateDecisionInput, updateDecision } from "../../core/src/kernel.ts";
+/**
+ * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
+ * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.
+ */
+export { keyIdOf, openEnvelope } from "./lib/updates.ts";
 export type {
   AkanNativeConfig,
   AndroidSigning,
@@ -76,7 +82,7 @@ export type {
 export { macosDistributionFromEnv, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.10.0";
+export const API_VERSION = "0.11.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -304,12 +310,16 @@ export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "confi
  */
 export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
   if (!options.config.updates)
-    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
+    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKeys } to publish for");
   const channel = options.channel ?? options.config.updates.channel ?? "production";
   const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
   try {
     if (options.channel !== undefined) assertChannel(options.channel);
-    assertSigningKey(options.config);
+    const { publicKey, publicKeys } = options.config.updates;
+    assertSigningKey(
+      { app: options.config.app, updates: { publicKeys: publicKeys ?? (publicKey ? [publicKey] : []) } },
+      options.platform,
+    );
     const server = options.server ?? !!options.config.desktop?.server;
     assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel);
   } catch (error) {
@@ -368,7 +378,7 @@ export function compareBundles(shipped: string, bundle: string): { compatible: b
 
 /**
  * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
- * then read. `publicKey` goes into the config's `updates.publicKey`; the key file never leaves the machine.
+ * then read. `publicKey` goes into the config's `updates.publicKeys`; the key file never leaves the machine.
  */
 export function updateKeygen(options: { config: AkanNativeConfig }): {
   publicKey: string;

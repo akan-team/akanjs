@@ -220,6 +220,7 @@ export class NativeConfig {
         ...(target.android?.autoplay ? { autoplay: true } : {}),
       },
       keyboard: { resize: "none" },
+      ...(target.devtools ? { shell: { devtools: true } } : {}),
       ...(desktop ? { desktop } : {}),
       ...(target.icon ? { icon: NativeConfig.#icon(target.icon, abs) } : {}),
       ...(target.splash ? { splash: NativeConfig.#splash(target.splash, abs) } : {}),
@@ -252,10 +253,11 @@ export class NativeConfig {
     };
   }
 
-  //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
+  //? akanConfig refuses a target whose merged updates lack url or a key; the type still has them optional.
   static #updates(target: AkanNativeTarget, env?: NativeEnv): NonNullable<AkanNativeConfig["updates"]> | undefined {
-    const { url, publicKey, channel = env, ...rest } = target.updates ?? {};
-    return url && publicKey ? { ...rest, url, publicKey, ...(channel ? { channel } : {}) } : undefined;
+    const { url, publicKey, publicKeys, channel = env, ...rest } = target.updates ?? {};
+    const keys = publicKeys ? { publicKeys: [...publicKeys] } : publicKey ? { publicKey } : null;
+    return url && keys ? { ...rest, url, ...keys, ...(channel ? { channel } : {}) } : undefined;
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */

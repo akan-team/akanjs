@@ -1,0 +1,31 @@
+{
+  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL].",
+  "keyIds": [
+    ["BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=", "4bb06f8e4e3a7715"],
+    ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "21fe31dfa154a261"],
+    ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "66687aadf862bd77"]
+  ],
+  "decisions": [
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "take:100:", "signed by the first key, nothing running but the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "d4d4d4d4d4d4d4d4", [], false, 200, 100, null, "untrusted", "a key the binary does not carry"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "revoked", "a key revoked earlier signs nothing"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["b2b2b2b2b2b2b2b2"], false, 200, 100, null, "self-revoke", "a key never revokes itself"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", ["b2b2b2b2b2b2b2b2"], false, 200, 100, null, "revoke-later", "a key revokes only keys listed before it"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], false, 300, 100, [500, "a1a1a1a1a1a1a1a1"], "take:100:a1a1a1a1a1a1a1a1", "the bundle a revoked key signed no longer sets the bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], true, 300, 100, [500, "b2b2b2b2b2b2b2b2"], "take:100:a1a1a1a1a1a1a1a1", "resetSequence with a new revocation compares with the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], true, 300, 100, [500, "b2b2b2b2b2b2b2b2"], "stale:500:", "replayed: nothing new revoked, so the reset does not apply"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1", "d4d4d4d4d4d4d4d4"], false, 200, 100, null, "take:100:a1a1a1a1a1a1a1a1", "an id this binary does not carry is ignored"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 100, 100, null, "stale:100:", "no newer than the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 150, 100, [150, "a1a1a1a1a1a1a1a1"], "stale:150:", "the bundle already running"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "c3c3c3c3c3c3c3c3", ["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"], false, 120, 100, null, "take:100:a1a1a1a1a1a1a1a1,b2b2b2b2b2b2b2b2", "the last key revokes both before it"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1", "a1a1a1a1a1a1a1a1"], false, 200, 100, null, "take:100:a1a1a1a1a1a1a1a1", "listed twice, revoked once"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 160, 100, [150, "b2b2b2b2b2b2b2b2"], "take:150:", "another trusted key's bundle sets the bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "c3c3c3c3c3c3c3c3", ["b2b2b2b2b2b2b2b2"], false, 200, 100, [900, "a1a1a1a1a1a1a1a1"], "take:100:b2b2b2b2b2b2b2b2", "a bundle of a key revoked before still runs this session but sets no bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], true, 300, 100, [500, "a1a1a1a1a1a1a1a1"], "stale:500:", "resetSequence without a revocation does nothing"],
+    [["a1a1a1a1a1a1a1a1"], [], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "take:100:", "a ring of one"]
+  ],
+  "urls": [
+    ["https://asset.akamir.com/ota/inst1/pathA", "ios", "main", "0123456789abcdef", "https://asset.akamir.com/ota/inst1/pathA/ios/main/0123456789abcdef.json"],
+    ["http://10.0.2.2:8790", "android", "pilot", "fedcba9876543210", "http://10.0.2.2:8790/android/pilot/fedcba9876543210.json"]
+  ]
+}

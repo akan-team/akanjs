@@ -433,20 +433,27 @@ try {
     if (!mobileTarget || targets.length > 1)
       throw new Error("pack-update packs one native target at a time; pass --target <name>.");
     await this.#buildMobileCsr(app, env);
-    const packed = await new NativeApp(app, mobileTarget, env).packUpdate(platform, { out });
-    const size = packed.manifest.files.reduce((sum, file) => sum + file.size, 0);
+    const { pack } = await new NativeApp(app, mobileTarget, env).packUpdate(platform, { out });
     app.logger.info(
-      `packed ${mobileTarget.name} ${platform} for channel '${packed.channel}' to ${packed.out}: ${packed.manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB, native API ${packed.manifest.nativeApi}`,
+      `packed ${mobileTarget.name} ${platform} for channel '${pack.channel}' to ${pack.out}: ${pack.files} files, ${(pack.size / 1024).toFixed(0)} KiB, native API ${pack.nativeApi}`,
     );
-    if (!against) return;
-    const bundle = path.join(packed.out, "bundle.json");
-    const compat = await NativeApp.compareBundles(app.cwdPath, against, bundle);
-    await Bun.write(path.join(packed.out, "compat.json"), `${JSON.stringify({ against, ...compat }, null, 2)}\n`);
-    if (!compat.compatible)
-      throw new Error(
-        `This bundle needs a new store build; the one ${against} came from provides another native API:\n- ${compat.problems.join("\n- ")}`,
-      );
-    app.logger.info(`runs in the store build of ${against}`);
+    if (against) {
+      const compat = await NativeApp.compareBundles(app.cwdPath, against, path.join(pack.out, "bundle.json"));
+      pack.compat = { against, ...compat };
+      await Bun.write(path.join(pack.out, "compat.json"), `${JSON.stringify(pack.compat, null, 2)}\n`);
+    }
+    await NativeApp.writePack(pack);
+    if (!pack.compat) return pack;
+    if (pack.compat.compatible) {
+      app.logger.info(`runs in the store build of ${against}`);
+      return pack;
+    }
+    //* Exit 2, not a thrown 1: a CI tells "this needs a new store build" apart from a pack that broke.
+    app.logger.error(
+      `This bundle needs a new store build; the one ${against} came from provides another native API:\n- ${pack.compat.problems.join("\n- ")}`,
+    );
+    process.exitCode = 2;
+    return pack;
   }
 
   //* A target that shares its app id with another shares its key too, so each id is answered once.
@@ -461,11 +468,12 @@ try {
       app.log(
         `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
       );
-      app.log(`  native: { updates: { url: "https://…/${app.name}", publicKey: ${JSON.stringify(publicKey)} } }`);
-      const declared = mobileTarget.config.updates?.publicKey;
-      if (declared && declared !== publicKey)
+      app.log(`  native: { updates: { url: "https://…/${app.name}", publicKeys: [${JSON.stringify(publicKey)}] } }`);
+      const { publicKey: one, publicKeys } = mobileTarget.config.updates ?? {};
+      const declared = publicKeys ?? (one ? [one] : null);
+      if (declared && !declared.includes(publicKey))
         app.logger.warn(
-          `native.targets.${mobileTarget.name}.updates.publicKey is another key's; releases would not verify.`,
+          `native.targets.${mobileTarget.name}.updates.publicKeys does not hold this key; releases it signs would not verify.`,
         );
     }
   }

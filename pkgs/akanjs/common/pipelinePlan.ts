@@ -18,15 +18,27 @@ export type PipelineTrigger = (typeof pipelineTriggers)[number];
  * The executor's own operations, declared per app. Within one app each appears at most once, in this order, and
  * `docker` needs a `build` before it: the image is made from this run's `akan build` output. An action whose app's
  * previous action in the run was skipped or did not succeed is skipped, never run. `deploy` is the only way any part
- * of a plan reaches the master host, and its phase runs the apps one at a time.
+ * of a plan reaches the master host, and its phase runs the apps one at a time. `ota` packs an over-the-air update of
+ * the app's native web bundle per target and platform (`akan pack-update`) for the executor to sign and publish; it
+ * makes its own CSR build, so it needs no `build` before it.
  */
 export const pipelineActions = {
   build: { version: 1, milestone: "build", name: "Build" },
   docker: { version: 1, milestone: "package", name: "Docker" },
   deploy: { version: 1, milestone: "deploy", name: "Deploy" },
+  ota: { version: 1, milestone: "deploy", name: "OTA" },
 } as const satisfies Record<string, { version: number; milestone: PipelineMilestone; name: string }>;
 export type PipelineActionName = keyof typeof pipelineActions;
-export const pipelineActionNames = ["build", "docker", "deploy"] as const satisfies readonly PipelineActionName[];
+export const pipelineActionNames = [
+  "build",
+  "docker",
+  "deploy",
+  "ota",
+] as const satisfies readonly PipelineActionName[];
+
+/** The phones an `ota` action packs for; a desktop app updates itself whole, outside a pipeline. */
+export const pipelineOtaPlatforms = ["ios", "android"] as const;
+export type PipelineOtaPlatform = (typeof pipelineOtaPlatforms)[number];
 
 /**
  * Where a phase came from. Workspace `before`/`after` stages become a phase each; app stages fill the slots around the
@@ -41,6 +53,8 @@ export const pipelinePlanSlots = [
   "after-docker",
   "deploy",
   "after-deploy",
+  "ota",
+  "after-ota",
   "after",
 ] as const;
 export type PipelinePlanSlot = (typeof pipelinePlanSlots)[number];
@@ -152,12 +166,23 @@ export interface PipelinePlanShellStep extends PipelinePlanStepBase {
   skipExitCodes: number[];
 }
 
-export interface PipelinePlanActionStep extends PipelinePlanStepBase {
+interface PipelinePlanActionStepBase extends PipelinePlanStepBase {
   kind: "action";
-  action: PipelineActionName;
   actionVersion: 1;
+}
+
+export interface PipelinePlanAppActionStep extends PipelinePlanActionStepBase {
+  action: Exclude<PipelineActionName, "ota">;
   with: { app: string };
 }
+
+/** One pack per target and platform; each target is one that declares `native.updates`. */
+export interface PipelinePlanOtaStep extends PipelinePlanActionStepBase {
+  action: "ota";
+  with: { app: string; targets: string[]; platforms: PipelineOtaPlatform[] };
+}
+
+export type PipelinePlanActionStep = PipelinePlanAppActionStep | PipelinePlanOtaStep;
 
 export type PipelinePlanStep = PipelinePlanShellStep | PipelinePlanActionStep;
 

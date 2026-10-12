@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { AppPipelineConfig, WorkspacePipelineConfig } from "akanjs";
 import type { PipelinePlan, PipelinePlanContext, PipelinePlanResult } from "akanjs/common";
-import { type PipelineCompileInput, PipelineCompiler, type PipelineSourceFile } from "./PipelineCompiler";
+import {
+  type PipelineCompileInput,
+  PipelineCompiler,
+  type PipelineNativeTargets,
+  type PipelineSourceFile,
+} from "./PipelineCompiler";
 
 const sha = "0".repeat(64);
 const context = (overrides: Partial<PipelinePlanContext> = {}): PipelinePlanContext => ({
@@ -26,12 +31,14 @@ const compile = ({
   ctx = context(),
   workspaceApps = ["api", "edge", "web"],
   sampled,
+  nativeTargets,
 }: {
   apps?: Record<string, AppPipelineConfig | null>;
   workspace?: WorkspacePipelineConfig | null;
   ctx?: PipelinePlanContext;
   workspaceApps?: string[];
   sampled?: boolean;
+  nativeTargets?: Record<string, PipelineNativeTargets>;
 } = {}): PipelinePlanResult => {
   const input: PipelineCompileInput = {
     context: ctx,
@@ -40,6 +47,7 @@ const compile = ({
     apps: new Map(ctx.apps.map((app) => [app, appSource(app, apps[app] ?? null)])),
     akanVersion: "3.0.3",
     sampled,
+    nativeTargets: nativeTargets && new Map(Object.entries(nativeTargets)),
   };
   return PipelineCompiler.compile(input);
 };
@@ -390,6 +398,135 @@ describe("PipelineCompiler", () => {
         }),
       );
     expect(run()).toBe(run());
+  });
+
+  describe("ota", () => {
+    const webTargets: Record<string, PipelineNativeTargets> = {
+      web: {
+        targets: [
+          { name: "default", updates: true },
+          { name: "pilot", updates: true },
+          { name: "kiosk", updates: false },
+        ],
+      },
+    };
+    const otaPhase = (plan: PipelinePlan) => plan.phases.find((phase) => phase.action === "ota");
+
+    test("is opt-in: zero-config never packs an update", () => {
+      expect(otaPhase(planOf(compile({ nativeTargets: webTargets })))).toBeUndefined();
+    });
+
+    test("runs after deploy, packing every target with updates for both phones by default", () => {
+      const plan = planOf(
+        compile({
+          nativeTargets: webTargets,
+          apps: {
+            web: {
+              stages: [
+                { use: "build" },
+                { use: "docker" },
+                { use: "deploy" },
+                { use: "ota" },
+                { name: "Notify", sh: "echo ok" },
+              ],
+            },
+          },
+        }),
+      );
+      expect(phaseIds(plan)).toEqual(["build", "docker", "deploy", "ota", "after-ota"]);
+      expect(otaPhase(plan)).toMatchObject({ slot: "ota", milestone: "deploy", name: "OTA", order: "parallel" });
+      expect(otaPhase(plan)?.stages).toEqual([
+        {
+          id: "web:ota",
+          name: "web",
+          description: null,
+          app: "web",
+          milestone: "deploy",
+          skip: null,
+          runtimeWhen: null,
+          allowFailure: false,
+          timeoutSeconds: null,
+          steps: [
+            {
+              id: "web:ota/ota",
+              name: "ota web",
+              timeoutSeconds: null,
+              retry: null,
+              allowFailure: false,
+              kind: "action",
+              actionVersion: 1,
+              action: "ota",
+              with: { app: "web", targets: ["default", "pilot"], platforms: ["ios", "android"] },
+            },
+          ],
+        },
+      ]);
+    });
+
+    test("an app without deploy packs on its own, and named targets and platforms are kept as written", () => {
+      const plan = planOf(
+        compile({
+          ctx: context({ apps: ["web"] }),
+          nativeTargets: webTargets,
+          apps: { web: { stages: [{ use: "ota", targets: ["pilot"], platforms: ["android"], timeout: "20m" }] } },
+        }),
+      );
+      expect(phaseIds(plan)).toEqual(["ota"]);
+      expect(otaPhase(plan)?.stages[0]).toMatchObject({ skip: null, timeoutSeconds: 1200 });
+      expect(otaPhase(plan)?.stages[0]?.steps[0]).toMatchObject({
+        with: { app: "web", targets: ["pilot"], platforms: ["android"] },
+      });
+    });
+
+    test("is skipped with the app's earlier action, and takes when.changed like any action", () => {
+      const plan = planOf(
+        compile({
+          ctx: context({ branch: "develop", env: "develop", apps: ["web"] }),
+          nativeTargets: webTargets,
+          apps: {
+            web: {
+              stages: [
+                { use: "build" },
+                { use: "deploy", when: { branch: "main" } },
+                { use: "ota", when: { changed: ["apps/web/**"] } },
+              ],
+            },
+          },
+        }),
+      );
+      expect(otaPhase(plan)?.stages[0]).toMatchObject({
+        skip: { reason: "deploy of web is skipped" },
+        runtimeWhen: { changed: ["apps/web/**"] },
+      });
+    });
+
+    test("refuses targets without native.updates, unknown targets, and apps whose targets could not be read", () => {
+      const ota = (stage: Record<string, unknown>, nativeTargets: Record<string, PipelineNativeTargets> = webTargets) =>
+        compile({
+          ctx: context({ apps: ["web"] }),
+          nativeTargets,
+          apps: { web: { stages: [{ use: "ota", ...stage } as never] } },
+        });
+      const without = ota({ targets: ["default", "kiosk"] });
+      expect(without.ok).toBe(false);
+      expect(without.diagnostics).toEqual([
+        expect.objectContaining({ code: "pipeline.ota.noUpdates", path: "pipeline.stages[0].targets" }),
+      ]);
+      expect(without.diagnostics[0]?.message).toContain('"kiosk"');
+      expect(codes(ota({ targets: ["ghost"] }))).toEqual(["pipeline.ota.unknownTarget"]);
+      expect(codes(ota({}, { web: { targets: [{ name: "default", updates: false }] } }))).toEqual([
+        "pipeline.ota.noUpdates",
+      ]);
+      expect(codes(ota({}, { web: { error: "boom" } }))).toEqual(["pipeline.ota.targets"]);
+      expect(codes(ota({ platforms: ["macos"] }))).toContain("pipeline.schema.invalid");
+      expect(codes(ota({ targets: [] }))).toContain("pipeline.schema.invalid");
+      expect(codes(compile({ apps: { web: { stages: [{ use: "build", targets: ["x"] } as never] } } }))).toContain(
+        "pipeline.schema.unknownKey",
+      );
+      expect(
+        codes(compile({ nativeTargets: webTargets, apps: { web: { stages: [{ use: "ota" }, { use: "deploy" }] } } })),
+      ).toContain("pipeline.action.order");
+    });
   });
 
   test("the context is echoed, and an unknown or doubled app is refused rather than corrected", () => {

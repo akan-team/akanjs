@@ -618,3 +618,102 @@ describe("pipeline secrets", () => {
     ).rejects.toThrow("The project refused: a secret is written by a project member signed in with `akan login`.");
   });
 });
+
+describe("OTA uploads", () => {
+  test("push-update sends the pack folder as one tgz with the target's channel, and leaves no archive behind", async () => {
+    const os = await import("node:os");
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+    const out = mkdtempSync(path.join(os.tmpdir(), "akan-pack-test-"));
+    mkdirSync(path.join(out, "files"));
+    writeFileSync(path.join(out, "files", "a".repeat(64)), "<html></html>");
+    for (const name of ["manifest.template.json", "bundle.json", "pack.json"])
+      writeFileSync(path.join(out, name), "{}");
+    const pack = {
+      schema: 1 as const,
+      app: "lu",
+      target: "default",
+      platform: "android" as const,
+      env: "main" as const,
+      channel: "main",
+      appId: "com.lu",
+      appVersion: "1.0.0",
+      nativeApi: "0123456789abcdef",
+      webHash: "f".repeat(64),
+      files: 1,
+      size: 13,
+      out,
+    };
+    const stored: Uint8Array[] = [];
+    const storage = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) => {
+        stored.push(new Uint8Array(await request.arrayBuffer()));
+        return new Response(null);
+      },
+    });
+    const announced: Record<string, unknown>[] = [];
+    const apiAnswering = (release: Record<string, unknown>) =>
+      ({
+        requestUpdateUpload: async (devProjectId: string, upload: Record<string, unknown>) => {
+          announced.push({ devProjectId, ...upload });
+          return {
+            uploadId: "upload-1",
+            uploadUrl: `http://127.0.0.1:${storage.port}/upload-1`,
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+            contentType: "application/gzip",
+          };
+        },
+        commitUpdateUpload: async () => release,
+      }) as unknown as CloudApi;
+
+    try {
+      const published = { id: "release-1", status: "published", problems: [] };
+      const release = await new CloudRunner().pushUpdate(apiAnswering(published), "project-1", pack, {
+        channel: null,
+        notes: "fix",
+      });
+
+      expect(release).toEqual(published);
+      expect(announced[0]).toMatchObject({
+        devProjectId: "project-1",
+        appName: "lu",
+        target: "default",
+        platform: "android",
+        channel: "main",
+        notes: "fix",
+      });
+      const copy = path.join(out, "..", `${path.basename(out)}-sent.tgz`);
+      await Bun.write(copy, stored[0] ?? new Uint8Array());
+      const entries = Bun.spawnSync(["tar", "-tzf", copy]).stdout.toString().split("\n").filter(Boolean);
+      expect(entries).toEqual(
+        expect.arrayContaining([
+          "./bundle.json",
+          "./manifest.template.json",
+          "./pack.json",
+          `./files/${"a".repeat(64)}`,
+        ]),
+      );
+      expect(announced[0]?.size).toBe(stored[0]?.byteLength);
+      expect(existsSync(path.join(os.tmpdir(), `akan-pack-lu-default-android-${process.pid}.tgz`))).toBe(false);
+
+      const exitCode = process.exitCode;
+      const rejected = { id: "release-2", status: "rejected", problems: ["deepLinks differ from the app's"] };
+      await new CloudRunner().pushUpdate(apiAnswering(rejected), "project-1", pack, { channel: "pilot", notes: null });
+      expect(process.exitCode).toBe(2);
+      process.exitCode = exitCode;
+      expect(announced[1]).toMatchObject({ channel: "pilot", notes: null });
+
+      const refused = {
+        requestUpdateUpload: async () => {
+          throw new Error("401 Unauthorized from /requestUpdateUpload/project-1: {}");
+        },
+      } as unknown as CloudApi;
+      await expect(
+        new CloudRunner().pushUpdate(refused, "project-1", pack, { channel: "pilot", notes: null }),
+      ).rejects.toThrow("run `akan login`");
+    } finally {
+      storage.stop(true);
+    }
+  });
+});

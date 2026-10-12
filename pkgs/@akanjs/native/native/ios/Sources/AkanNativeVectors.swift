@@ -141,6 +141,24 @@ enum AkanNativeVectors {
             check(valid == c[3] as? Bool, "ed25519 \(c[4])")
         }
 
+        // Updates protocol v2 (AkanNativeUpdates, AkanNativeKernel.updateDecision).
+        let updates = load("updates")
+        for c in rows(updates, "keyIds") {
+            check(AkanNativeKernel.updateKeyId(Data(base64Encoded: c[0] as! String) ?? Data()) == c[1] as? String, "update keyId \(c[0])")
+        }
+        for c in rows(updates, "decisions") {
+            let running = (c[7] as? [Any]).map { (sequence: ($0[0] as! NSNumber).doubleValue, keyId: $0[1] as! String) }
+            let got = AkanNativeKernel.updateDecision(
+                ring: c[0] as! [String], revoked: c[1] as! [String], signer: c[2] as! String, revokeKeys: c[3] as! [String],
+                resetSequence: c[4] as! Bool, sequence: (c[5] as! NSNumber).doubleValue, embedded: (c[6] as! NSNumber).doubleValue, running: running
+            )
+            check(got.wire == c[8] as? String, "update decision \(c[9]): \(got.wire)")
+        }
+        for c in rows(updates, "urls") {
+            let got = AkanNativeKernel.updateManifestURL(c[0] as! String, platform: c[1] as! String, channel: c[2] as! String, nativeApi: c[3] as! String)
+            check(got == c[4] as? String, "update url \(got)")
+        }
+
         // A missing or truncated file must not pass as fewer checks.
         for (name, count) in AkanNativeVectorData.counts where ran[name, default: 0] != count {
             failures.append("\(name): \(ran[name, default: 0]) of \(count) checks ran")

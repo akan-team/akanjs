@@ -6,6 +6,7 @@ import {
   type PipelinePlan,
   type PipelinePlanActionStep,
   type PipelinePlanContext,
+  type PipelinePlanOtaStep,
   type PipelinePlanPhase,
   type PipelinePlanPost,
   type PipelinePlanResult,
@@ -17,6 +18,7 @@ import {
   pipelineActionNames,
   pipelineActions,
   pipelineMilestones,
+  pipelineOtaPlatforms,
   pipelinePlanLimits,
   pipelinePlanSlots,
   pipelinePlanVersion,
@@ -355,14 +357,27 @@ export class PipelinePlanSchema {
     const action = this.#oneOf(step.action, `${path}.action`, pipelineActionNames);
     if (step.actionVersion !== pipelineActions[action].version)
       this.#fail(`${path}.actionVersion`, `${JSON.stringify(step.actionVersion)} is not a version of ${action}`);
+    const actionVersion = pipelineActions[action].version;
+    if (action === "ota")
+      return { ...base, kind: "action", action, actionVersion, with: this.#otaWith(step.with, path) };
     const app = this.#object(step.with, `${path}.with`, ["app"]).app;
-    return {
-      ...base,
-      kind: "action",
-      action,
-      actionVersion: pipelineActions[action].version,
-      with: { app: this.#string(app, `${path}.with.app`) },
-    };
+    return { ...base, kind: "action", action, actionVersion, with: { app: this.#string(app, `${path}.with.app`) } };
+  }
+
+  #otaWith(value: unknown, path: string): PipelinePlanOtaStep["with"] {
+    const raw = this.#object(value, `${path}.with`, ["app", "targets", "platforms"]);
+    const targets = this.#stringList(raw.targets, `${path}.with.targets`);
+    const platforms = this.#array(raw.platforms, `${path}.with.platforms`).map((platform, idx) =>
+      this.#oneOf(platform, `${path}.with.platforms[${idx}]`, pipelineOtaPlatforms),
+    );
+    for (const [key, list] of [
+      ["targets", targets],
+      ["platforms", platforms],
+    ] as const) {
+      if (!list.length) this.#fail(`${path}.with.${key}`, "may not be empty");
+      if (new Set(list).size !== list.length) this.#fail(`${path}.with.${key}`, "lists one twice");
+    }
+    return { app: this.#string(raw.app, `${path}.with.app`), targets, platforms };
   }
 
   #post(value: unknown, path: string): PipelinePlanPost {

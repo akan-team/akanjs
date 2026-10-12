@@ -2031,7 +2031,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - release-ios, release-android: Build the app for an App Store or Play Store release.
 
-  - update-keygen, publish-update, pack-update: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
+  - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
 

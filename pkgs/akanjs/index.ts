@@ -1,5 +1,11 @@
 import type { AkanNativeConfig } from "@akanjs/native/config";
-import type { AkanI18nConfig, PipelineActionName, PipelineMilestone, PipelineTrigger } from "akanjs/common";
+import type {
+  AkanI18nConfig,
+  PipelineActionName,
+  PipelineMilestone,
+  PipelineOtaPlatform,
+  PipelineTrigger,
+} from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 
 export const archs = ["amd64", "arm64"] as const;
@@ -126,12 +132,18 @@ export interface AkanNativeDeepLinks {
  */
 export interface AkanNativeUpdatesConfig {
   /**
-   * A static base URL, https in a release build: `<url>/<os>-<arch>/<channel>.json` (desktop) or `<url>/<platform>/…`
-   * (a phone's web bundle).
+   * A static base URL, https in a release build, with no query: `<url>/<os>-<arch>/<channel>.json` (desktop) or
+   * `<url>/<platform>/<channel>/<nativeApi>.json` (a phone's web bundle, one envelope per binary generation).
    */
   url: string;
-  /** The update key's public half, the raw 32-byte Ed25519 key in base64 (`akan update-keygen` prints it). */
-  publicKey: string;
+  /**
+   * The keys a phone binary trusts, raw 32-byte Ed25519 public keys in base64 (`akan update-keygen` prints one), 1 to
+   * 3: the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A
+   * desktop app trusts the first.
+   */
+  publicKeys?: string[];
+  /** The one-key form of `publicKeys`. */
+  publicKey?: string;
   /**
    * The manifest the app follows, e.g. a "pilot" target's "pilot". Default: the backend env the app is built for
    * (`main`, `develop`, `debug`, `local`).
@@ -269,6 +281,11 @@ export interface AkanNativeSettings {
   plugins?: string[];
   deepLinks?: AkanNativeDeepLinks;
   updates?: Partial<AkanNativeUpdatesConfig>;
+  /**
+   * The web inspector (Safari's, `chrome://inspect`) in a release build too, as a debug build always has it: for an
+   * internal test target only, since anyone holding the device can then read and drive the page.
+   */
+  devtools?: boolean;
   ios?: AkanNativeIosConfig;
   android?: AkanNativeAndroidConfig;
   desktop?: AkanNativeDesktopConfig;
@@ -487,16 +504,36 @@ export interface PipelineShellStageInput extends PipelineStageBase {
 
 /** No action parameters yet: rollout wait and prepull stay the executor's settings. */
 export interface PipelineActionStageInput extends PipelineStageBase {
-  use: PipelineActionName;
+  use: Exclude<PipelineActionName, "ota">;
   name?: string;
   retry?: number;
+  targets?: never;
+  platforms?: never;
   sh?: never;
   steps?: never;
   parallel?: never;
   matrix?: never;
 }
 
-export type AppPipelineStageInput = PipelineActionStageInput | PipelineShellStageInput;
+/**
+ * An over-the-air update of the app's native web bundle, packed per target and platform for the executor to sign and
+ * publish. Every target named must declare `native.updates`.
+ */
+export interface PipelineOtaStageInput extends PipelineStageBase {
+  use: "ota";
+  name?: string;
+  retry?: number;
+  /** Default: every native target that declares `native.updates`. */
+  targets?: readonly string[];
+  /** Default: both. */
+  platforms?: readonly PipelineOtaPlatform[];
+  sh?: never;
+  steps?: never;
+  parallel?: never;
+  matrix?: never;
+}
+
+export type AppPipelineStageInput = PipelineActionStageInput | PipelineOtaStageInput | PipelineShellStageInput;
 
 export interface AppPipelineInput {
   schemaVersion?: 1;
@@ -610,9 +647,16 @@ export interface SubspaceConfigInput {
 }
 
 /** The workspace root's `akan.config.ts`. It never reaches a subspace, and app or lib settings are refused in it. */
+/** The cloud a workspace's CLI talks to when a command names no `--host`: a self-hosted akasys, say. */
+export interface WorkspaceCloudConfig {
+  /** The cloud's origin, e.g. `https://cloud.example.com`. Default: Akan Cloud. */
+  host?: string;
+}
+
 export interface WorkspaceConfig {
   subspace?: SubspaceConfigInput;
   pipeline?: WorkspacePipelineConfig;
+  cloud?: WorkspaceCloudConfig;
 }
 
 export type AppConfig = AppConfigInput | ((app: AppConfigContext) => AppConfigInput);

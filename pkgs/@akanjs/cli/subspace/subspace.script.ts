@@ -1,3 +1,4 @@
+import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import {
   formatSubspaceDiff,
@@ -55,9 +56,12 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
   async uploadEnv(
     workspace: Workspace,
     name: string,
-    { host, force, format }: { host: string; force?: boolean; format?: "text" | "json" },
+    { host, force, format }: { host: string | null; force?: boolean; format?: "text" | "json" },
   ) {
-    const result = await this.subspaceRunner.uploadEnv(workspace, name, { host, force });
+    const result = await this.subspaceRunner.uploadEnv(workspace, name, {
+      host: await GlobalConfig.hostFor(workspace, host),
+      force,
+    });
     Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : formatSubspaceEnvUpload(result));
   }
 

@@ -190,15 +190,17 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- updates ({ url, publicKey, channel?, readyTimeout? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
+- updates ({ url, publicKeys, channel?, readyTimeout? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
-- updates.publicKey (string): The public key akan update-keygen prints; an app takes no release it cannot verify with it.
+- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 
 - updates.readyTimeout (number, default 10000): How long, in ms, a release on trial has to mount its first page before it is rolled back.
+
+- devtools (boolean, default false): The web inspector in a release build too: internal test targets only.
 
 - ios.teamId (string): Apple Developer Team ID for apple-app-site-association; universal links need it.
 
@@ -314,7 +316,11 @@ Stage Keys
 
 A stage is a built-in action (`use`) or a shell stage (`name` with `sh` or `steps`). The tags say which kind takes each key.
 
-- use ("build" | "docker" | "deploy", use): A built-in action. Each appears at most once per app, in this order.
+- use ("build" | "docker" | "deploy" | "ota", use): A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.
+
+- targets (string[], use): `ota` only: native targets to pack. Default: every target with `native.updates`.
+
+- platforms (("ios" | "android")[], use): `ota` only: phones to pack for. Default: both.
 
 - name (string, shell, use): The name shown for the stage; a shell stage needs one.
 
@@ -396,7 +402,7 @@ Variable
 
 Workspace Config
 
-The `akan.config.ts` at the workspace root holds what spans every app: stages around all of them and the steps that close a build. It is typed `WorkspaceConfig`, and app or library settings stay in their own files.
+The `akan.config.ts` at the workspace root holds what spans every app: stages around all of them, the steps that close a build, and the cloud the CLI talks to. It is typed `WorkspaceConfig`, and app or library settings stay in their own files.
 
 - before (WorkspacePipelineStageInput[]): Stages that run before any app stage, one phase each.
 
@@ -409,6 +415,8 @@ The `akan.config.ts` at the workspace root holds what spans every app: stages ar
 - timeout (PipelineDuration): Time limit for the whole build.
 
 Like an app's, the root `pipeline` may be a function of the build, `(ctx) => ({ … })`, without `ctx.app`.
+
+- cloud.host (string, default Akan Cloud): The cloud every cloud command talks to when it names no --host, such as a self-hosted one.
 
 Root Stage Kinds
 
@@ -443,6 +451,10 @@ Phases run one after another, and each waits until every stage of the one before
 - deploy — Every app's deploy, one at a time, in `after` order.
 
 - after-deploy — App stages written after `deploy`.
+
+- ota — Over-the-air packs of apps that list `ota`.
+
+- after-ota — App stages written after `ota`.
 
 - after — Each root `after` stage.
 

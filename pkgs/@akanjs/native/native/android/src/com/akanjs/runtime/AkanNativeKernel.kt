@@ -3,6 +3,7 @@ package com.akanjs.runtime
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
 
 /*
  * Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
@@ -19,6 +20,13 @@ sealed class AkanNativeRoute {
     data class File(val id: String) : AkanNativeRoute()
     data class Asset(val path: String) : AkanNativeRoute()
     object NotFound : AkanNativeRoute()
+}
+
+/** kernel.ts UpdateDecision: what a verified web bundle manifest means to this binary (updates protocol v2). */
+data class AkanNativeUpdateDecision(val kind: Kind, val baseline: Double = 0.0, val revoke: List<String> = emptyList()) {
+    enum class Kind(val wire: String) { UNTRUSTED("untrusted"), REVOKED("revoked"), SELF_REVOKE("self-revoke"), REVOKE_LATER("revoke-later"), TAKE("take"), STALE("stale") }
+
+    val wire: String get() = if (kind == Kind.TAKE || kind == Kind.STALE) "${kind.wire}:${baseline.toLong()}:${revoke.joinToString(",")}" else kind.wire
 }
 
 sealed class AkanNativeRangeAnswer {
@@ -321,4 +329,33 @@ object AkanNativeKernel {
         if (!topLevel) return if (scheme in AkanNativeContract.FRAME_SCHEMES) AkanNativeNavigation.LOAD else AkanNativeNavigation.DROP
         return if (scheme in externalSchemes(extra)) AkanNativeNavigation.OPEN else AkanNativeNavigation.DROP
     }
+
+    /**
+     * kernel.ts updateDecision: a key revokes only keys listed before it (a leaked online key, listed first, cannot
+     * revoke the spares that recover from it), and resetSequence counts only when it newly revokes a key.
+     */
+    fun updateDecision(
+        ring: List<String>, revoked: List<String>, signer: String, revokeKeys: List<String>, resetSequence: Boolean,
+        sequence: Double, embedded: Double, running: Pair<Double, String>?,
+    ): AkanNativeUpdateDecision {
+        val index = ring.indexOf(signer)
+        if (index < 0) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.UNTRUSTED)
+        if (signer in revoked) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.REVOKED)
+        if (signer in revokeKeys) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.SELF_REVOKE)
+        if (revokeKeys.any { ring.indexOf(it) > index }) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.REVOKE_LATER)
+        val revoke = ring.filter { it in revokeKeys && it !in revoked }
+        val bar = running?.takeIf { it.second !in revoked && it.second !in revoke }?.first ?: 0.0
+        val baseline = if (resetSequence && revoke.isNotEmpty()) embedded else maxOf(embedded, bar)
+        val kind = if (sequence > baseline) AkanNativeUpdateDecision.Kind.TAKE else AkanNativeUpdateDecision.Kind.STALE
+        return AkanNativeUpdateDecision(kind, baseline, revoke)
+    }
+
+    /** kernel.ts updateManifestUrl: one envelope per channel and native API. */
+    fun updateManifestUrl(url: String, platform: String, channel: String, nativeApi: String): String = "$url/$platform/$channel/$nativeApi.json"
+
+    /** The first 8 bytes of the raw public key's SHA-256, in hex: what an envelope names its signer by. */
+    fun updateKeyId(publicKey: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(publicKey).take(8).joinToString("") { "%02x".format(it) }
+
+    fun isUpdateKeyId(s: String): Boolean = s.length == 16 && s.all { it in '0'..'9' || it in 'a'..'f' }
 }

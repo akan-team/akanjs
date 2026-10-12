@@ -1085,10 +1085,10 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - 참고: Capacitor는 바이너리의 versionCode·versionName이 바뀌면 라이브 업데이트 경로를 버린다(`capacitor/android/capacitor/src/main/java/com/getcapacitor/Bridge.java:429-455`, iOS `CAPBridgeViewController.swift:18-30`). 안전하지만 거칠다. 네이티브가 그대로인 새 바이너리에서도 웹 업데이트를 모두 버린다. akan-native는 지문을 비교하므로, UP-2에서 셸은 "받은 번들의 `nativeApi`가 자기 boot.json과 같을 때만 쓰고, 다르면 내장 번들로 돌아간다"는 규칙 하나만 지키면 된다.
 
 ### 업데이트 (UP-1 앱, UP-2 웹 번들)
-- 도구: `akan-native update keygen`은 Ed25519 키를 `~/.akan/native/keys/<app id>.update.key`(0600)에 만든다. `AKAN_NATIVE_UPDATE_KEY`로 경로를 바꿀 수 있고, 있으면 덮어쓰지 않는다. 출력한 공개 키는 설정 `updates.publicKey`에 넣는다.
+- 도구: `akan-native update keygen`은 Ed25519 키를 `~/.akan/native/keys/<app id>.update.key`(0600)에 만든다. `AKAN_NATIVE_UPDATE_KEY`로 경로를 바꿀 수 있고, 있으면 덮어쓰지 않는다. 출력한 공개 키는 설정 `updates.publicKeys`에 넣는다(키 하나면 `publicKey`도 된다).
 - 게시: `akan-native update publish <ios|android|macos|windows|linux>`는 release로 빌드한 뒤(`--debug`는 업데이트 흐름 시험용) `.akan/native/updates/<platform>/`에 다음을 쓴다. 데스크톱 앱은 CPU마다 따로 `.akan/native/updates/<os>-<arch>/`(예: `macos-arm64`)이고, 매니페스트에 서명되는 `arch`가 들어간다. 앱은 자기 CPU의 폴더만 보고 `arch`가 다르면 받지 않는다(다른 CPU용 앱은 시작도 못 해서 롤백도 할 수 없다).
-  - `<channel>.json`: 매니페스트
-  - `<channel>.json.sig`: 매니페스트 바이트 전체에 대한 서명
+  - 폰(프로토콜 v2): `<channel>/<nativeApi>.json` 봉투 하나. 매니페스트 바이트, 서명한 키의 `keyId`, 서명이 한 객체에 있다.
+  - 데스크톱(프로토콜 v1): `<channel>.json` 매니페스트와 `<channel>.json.sig`(매니페스트 바이트 전체에 대한 서명)
   - 웹 번들은 `files/<sha256>`에 내용 주소로 저장한다.
   - 앱은 `app/<tar sha>.tar.gz`와 직전 릴리스로부터의 `app/<from>-<to>.delta.gz`를 저장한다. 다음 delta는 직전 릴리스의 `.tar.gz`를 풀어 만든다. 예전에는 비압축 `<tar sha>.tar`를 같은 폴더에 두었는데, 폴더를 그대로 올리면 같이 올라가서 다음 게시가 지운다(2026-09-30 10 리뷰).
   - 매니페스트의 `server`는 앱이 서버를 싣는지다. 같은 채널의 직전 릴리스와 다르면 게시하지 않는다. 설치된 앱이 모두 그 릴리스와 그 뒤의 릴리스를 거부하기 때문이다. 다른 채널(`updates.channel`)로 게시하거나, `<channel>.json`을 지워 채널을 새로 시작한다.
@@ -1096,22 +1096,30 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 
   `akan-native update serve`는 이 폴더를 `0.0.0.0:8790`에서 서빙한다. Android 에뮬레이터는 `adb reverse`를 거쳐 `127.0.0.1`로 들어온다.
 - 채널 이름은 설정 `updates.channel`과 같은 규칙(소문자·숫자·`.`·`_`·`-`, 42자까지)이어야 게시된다. `--channel`과 API `publishUpdate({ channel })`는 빌드 전에 확인한다. 대문자나 경로 구분자가 든 이름은 파일은 써져도 어떤 앱도 받지 못하거나 폴더 밖에 쓰인다.
-- `sequence`는 게시하는 컴퓨터의 시각(초)이다. 앱은 자기 것보다 큰 `sequence`만 받는데, 처음 설치된 앱의 기준은 그 앱을 빌드한 컴퓨터의 시각(`embeddedSequence`)이다. 그래서 게시하는 컴퓨터의 시계가 빌드한 컴퓨터보다 늦으면 새 릴리스가 오래된 것으로 보여 오류 없이 무시된다. 게시는 같은 폴더에 이미 있는 그 채널의 매니페스트보다 큰 값을 쓴다(`max(이전 + 1, 지금)`, 시계가 늦으면 경고). 다른 컴퓨터에서 빌드·게시할 때는 두 시계를 맞춘다.
-- 게시 폴더를 CDN으로 서빙할 때: `app/*`와 `files/*`는 내용의 해시가 이름이라 오래 캐시해도 된다. `<channel>.json`과 `<channel>.json.sig`는 따로 받는 두 파일이라, 캐시하지 않거나 둘을 함께 무효화한다. 새 매니페스트와 옛 서명(또는 반대)이 짝지어지면 모든 앱이 "the release signature does not match updates.publicKey"로 캐시가 만료될 때까지 업데이트를 멈춘다(키가 바뀐 것처럼 보인다). 올릴 때는 `app/*`·`files/*`를 먼저, 두 파일을 마지막에 함께 올린다. 앱의 `cache: "no-store"`는 앱 자신의 캐시만 끈다.
-- 서명 분리(웹 번들만): API `packUpdate`(akan은 `akan pack-update`)는 키 없이 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다. 템플릿은 위 매니페스트에서 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 것이다. 키를 가진 쪽이 게시할 때 지킬 계약:
-  - `channel`: 바이너리의 `updates.channel`과 같아야 한다. 다르면 앱이 "made for another app, platform or channel"로 버린다.
-  - `sequence`: 게시 시각(초, 양수). 그 채널에 이미 게시한 값과 바이너리 빌드 시각(`embeddedSequence`)보다 커야 받는다. 롤백은 이전 번들을 새 `sequence`로 다시 게시하는 것이다.
+- `sequence`는 게시하는 컴퓨터의 시각(초)이다. 앱은 자기 것보다 큰 `sequence`만 받는데, 처음 설치된 앱의 기준은 그 앱을 빌드한 컴퓨터의 시각(`embeddedSequence`, `updates`가 있는 바이너리면 0이 아니다)이다. 그래서 1부터 세는 카운터는 어떤 앱도 받지 않고, 게시하는 컴퓨터의 시계가 빌드한 컴퓨터보다 늦으면 새 릴리스가 오래된 것으로 보여 오류 없이 무시된다. 게시는 같은 폴더에 이미 있는 그 채널의 릴리스보다 큰 값을 쓴다(`max(이전 + 1, 지금)`, 시계가 늦으면 경고). 폰은 채널의 모든 nativeApi 봉투를 한 줄로 센다. 다른 컴퓨터에서 빌드·게시할 때는 두 시계를 맞춘다.
+- 게시 폴더를 CDN으로 서빙할 때: `app/*`와 `files/*`는 내용의 해시가 이름이라 오래 캐시해도 된다. 폰의 봉투는 한 파일이라 한 번의 PUT으로 바뀐다. 캐시하지 않거나 그 파일만 무효화한다. 데스크톱의 `<channel>.json`과 `.sig`는 따로 받는 두 파일이라 함께 무효화한다. 새 매니페스트와 옛 서명이 짝지어지면 모든 앱이 캐시가 만료될 때까지 업데이트를 멈춘다. 올릴 때는 `app/*`·`files/*`를 먼저, 매니페스트를 마지막에 올린다. 앱의 `cache: "no-store"`는 앱 자신의 캐시만 끈다.
+- 프로토콜 v2(폰, 2026-10-11, akasys OTA 요청 F-M2·F-M3): 바이너리에 굽는 것이 바뀌었다. 운영 바이너리에 `updates`를 켠 적이 없어 v1 경로로 되돌아가는 길은 두지 않았다. v2 셸은 `<channel>.json`·`.sig`를 요청하지도 읽지도 않는다.
+  - nativeApi별 경로: 앱은 `<url>/<platform>/<channel>/<nativeApi>.json`만 읽는다. 지문이 다른 두 바이너리 세대가 한 채널에서 각자의 핫픽스를 받는다(CodePush `targetBinaryVersion`, Expo `runtimeVersion`이 푼 문제).
+  - 키링: `updates.publicKeys`(1~3개, 순서 있음)를 updates.json에 모두 굽는다. 봉투의 `keyId`는 raw 공개 키 sha256의 앞 8바이트 hex다. 온라인 서명 키를 맨 앞에, 오프라인 예비 키를 뒤에 둔다.
+  - 폐기: 매니페스트 `revokeKeys: [keyId]`. 키는 자기 자신도, 자기보다 뒤에 나열된 키도 폐기할 수 없다. 그래서 새어 나간 온라인 키가 예비 키를 먼저 폐기해 복구를 막을 수 없다. 이 바이너리에 없는 id는 무시한다(다른 세대의 키일 수 있다). 폐기는 `state.json` `revokedKeys`에 남고 `reset()`에도 지워지지 않으며, 그 키가 서명한 번들은 다음 시작부터 쓰지 않는다. 새 릴리스가 아니어도 폐기는 적용된다. 앱 데이터가 지워진 기기가 다시 알도록, 폐기한 뒤의 매니페스트에도 `revokeKeys`를 계속 넣는다.
+  - `resetSequence: true`는 키를 새로 폐기하는 매니페스트에서만 효력이 있고, 그 릴리스를 실행 중인 번들 대신 `embeddedSequence`와 비교한다. 같은 매니페스트를 다시 보내면 새로 폐기하는 키가 없으므로 되돌림이 통하지 않는다. 폐기된 키가 서명한 실행 중 번들은 비교 기준이 되지 않는다.
+  - 판정은 `AkanNativeKernel.updateDecision`(Swift·Kotlin)과 `kernel.ts updateDecision`이 같고, 공통 벡터 `vectors/updates.json`(keyId, 판정 17건, URL)을 Bun·swiftc·kotlinc와 기기 자가 테스트가 모두 통과한다. 끝에서 끝까지는 `bun scripts/vm/phone-update-check.ts ios|android`가 확인한다(iOS 16.4 시뮬레이터·Android 37 에뮬레이터 통과. Android 10 이미지는 WebView 91이라 앱이 뜨지 않아 벡터로만 확인).
+  - 데스크톱(UP-1)은 v1 그대로이고 `publicKeys`의 첫 키만 믿는다. 데스크톱 게시는 그 키로만 서명된다.
+- 서명 분리(웹 번들만): API `packUpdate`(akan은 `akan pack-update`)는 키 없이 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다(akan은 결과 기록 `pack.json`도). 템플릿은 v2 매니페스트(`schema: 2`)에서 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 것이다. 키를 가진 쪽이 게시할 때 지킬 계약:
+  - `channel`: 바이너리의 `updates.channel`과 같아야 한다. `nativeApi`는 템플릿 그대로 둔다. 다르면 앱이 "made for another app, platform, channel or native API"로 버린다.
+  - `sequence`: 게시 시각(초, 양수). 그 채널에 이미 게시한 값과 바이너리 빌드 시각(`embeddedSequence`, 스토어 빌드 `bundle.json`의 `updates`에 있다)보다 커야 받는다. 롤백은 이전 번들을 새 `sequence`로 다시 게시하는 것이다.
   - `bundle`: `[A-Za-z0-9_.-]{1,80}`, `.`로 시작하지 않는다. 관례는 `<sequence>-<bundle.json web.hash 앞 8자>`.
-  - 바이트: 채운 매니페스트를 직렬화한 바이트 그대로를 `<platform>/<channel>.json`으로 올리고, 그 바이트에 대한 Ed25519 서명(64바이트)의 base64를 `<channel>.json.sig`로 올린다. 앱은 받은 바이트로 검증한 뒤에 파싱하므로 키 순서·공백은 자유다. `update publish`는 `JSON.stringify(m, null, 2) + "\n"`을 쓴다. 서명 파일 앞뒤 공백은 무시한다.
-  - 순서: `files/`를 먼저 올리고 매니페스트와 서명을 마지막에 올린다. 매니페스트가 먼저 보이면 아직 없는 파일을 받으려다 실패한다.
-  - 스토어 판정: `compareBundles(<스토어 빌드의 bundle.json>, <pack의 bundle.json>)`에 문제가 있으면 그 번들은 새 바이너리가 필요하다(`akan pack-update --against`).
+  - 선택: `revokeKeys`(keyId 16자 hex, 16개까지), `resetSequence`(boolean). 규칙은 위 "프로토콜 v2".
+  - 바이트: 채운 매니페스트를 직렬화한 바이트에 Ed25519로 서명하고 `{ "manifest": <바이트의 base64>, "keyId": <서명한 키>, "signature": <서명 64바이트의 base64> }`를 `<platform>/<channel>/<nativeApi>.json`으로 올린다. 앱은 받은 바이트로 검증한 뒤에 파싱하므로 키 순서·공백은 자유다. `update publish`는 `JSON.stringify(m, null, 2) + "\n"`에 서명한다. 서버에서는 `openEnvelope`(`lib/updates.ts`)가 앱과 같은 검증을 한다.
+  - 순서: `files/`를 먼저 올리고 봉투를 마지막에 올린다. 봉투가 먼저 보이면 아직 없는 파일을 받으려다 실패한다.
+  - 스토어 판정: `compareBundles(<스토어 빌드의 bundle.json>, <pack의 bundle.json>)`에 문제가 있으면 그 번들은 새 바이너리가 필요하다(`akan pack-update --against`, 종료 코드 2).
 - release 빌드의 `updates.url`은 https여야 한다(이 기기의 http, 즉 localhost·127.x만 예외). 서명이 내용을 지키더라도 평문은 경로 위의 누구나 업데이트를 막거나 큰 매니페스트를 보낼 수 있게 한다.
-- 받는 크기 상한(세 플랫폼): 매니페스트 1 MiB, 서명 1 KiB, 파일은 매니페스트에 서명된 크기까지. Content-Length가 넘거나 받는 도중 넘으면 멈춘다. 매니페스트와 서명은 검증 전에 받으므로 필요하다. iOS와 Android는 파일을 메모리가 아니라 디스크로 받으며 해시한다(iOS `URLSession.download`, Android 64 KiB씩 쓰며 `MessageDigest`). Android worker는 `OutOfMemoryError`도 잡아 호출에 답한다.
+- 받는 크기 상한(세 플랫폼): 매니페스트 1 MiB(폰은 봉투 1.5 MiB), 서명 1 KiB, 파일은 매니페스트에 서명된 크기까지. Content-Length가 넘거나 받는 도중 넘으면 멈춘다. 매니페스트와 서명은 검증 전에 받으므로 필요하다. iOS와 Android는 파일을 메모리가 아니라 디스크로 받으며 해시한다(iOS `URLSession.download`, Android 64 KiB씩 쓰며 `MessageDigest`). Android worker는 `OutOfMemoryError`도 잡아 호출에 답한다.
 - 서명 범위: Tauri는 산출물만 서명하고 매니페스트는 열어 둔다. 그래서 다운그레이드를 막으려고 서명된 버전 문자열을 따로 비교한다(`tauri-plugins-workspace/plugins/updater/src/updater.rs:1661-1708`). Electrobun은 해시를 식별자로만 쓰고 HTTPS를 믿는다(`electrobun/package/src/sdks/main/core/Updater.ts:1426-1460`). akan-native는 매니페스트 전체를 서명한다. 서명된 `sequence`(게시 시각)가 커져야만 받아들이므로 오래된 정상 서명 릴리스를 다시 보내는 공격이 통하지 않는다. 서명이 맞기 전에는 매니페스트의 어떤 필드도 쓰지 않는다.
 - 웹 번들(UP-2, iOS·Android):
-  - 셸의 `AkanNativeUpdates`(Swift·Kotlin, 같은 규칙과 파일 형식)가 실행할 번들을 고른다. 상태는 `Application Support`(iOS) 또는 `noBackupFilesDir`(Android) 아래 `akan-native-updates/state.json`에 원자적으로 쓴다(`{ current, pending, trial, failed, rolledBack }`). 번들 파일은 `bundles/<bundle>/`에 둔다.
+  - 셸의 `AkanNativeUpdates`(Swift·Kotlin, 같은 규칙과 파일 형식)가 실행할 번들을 고른다. 상태는 `Application Support`(iOS) 또는 `noBackupFilesDir`(Android) 아래 `akan-native-updates/state.json`에 원자적으로 쓴다(`{ current, pending, trial, failed, rolledBack, revokedKeys }`, 항목마다 받은 봉투의 `keyId`). 번들 파일은 `bundles/<bundle>/`에 둔다.
     - Android 위치(2026-09-26 검토 반영): 예전에는 `filesDir/akan-native-updates`였는데, `filesDir`는 filesystem 플러그인의 `data` base다. 페이지가 번들과 state.json을 써 넣으면 서명 없는 번들이 재시작 뒤에도 돌았다. 지금은 `noBackupFilesDir`이고(백업·기기 이전에서도 빠진다), 예전 폴더는 시작할 때 지운다. iOS의 filesystem `data`는 `Application Support/files`라 원래 분리돼 있었다.
-    - 시작할 때마다 다시 검증한다: 플러그인이 번들 옆에 `manifest.json`과 받은 서명 `manifest.json.sig`를 두고, 셸은 서명, 매니페스트의 bundle·sequence·nativeApi·app·platform, 나열된 파일이 모두 그 크기로 있는지를 확인한 번들만 쓴다(해시는 받을 때 확인했다). 에뮬레이터·시뮬레이터에서 `index.html`에 한 바이트를 덧붙이면 내장 번들로 돌아가고 다시 받는 것을 확인했다.
+    - 시작할 때마다 다시 검증한다: 플러그인이 번들 옆에 받은 봉투 `manifest.signed.json`을 두고, 셸은 키(키링에 있고 폐기되지 않음)와 서명, 매니페스트의 bundle·sequence·nativeApi·app·platform, 나열된 파일이 모두 그 크기로 있는지를 확인한 번들만 쓴다(해시는 받을 때 확인했다). 에뮬레이터·시뮬레이터에서 `index.html`에 한 바이트를 덧붙이면 내장 번들로 돌아가고 다시 받는 것을 확인했다.
     - 상태 파일: 쓰기 실패(디스크 가득)를 알려 준다(iOS는 `write(options: .atomic)`의 오류, Android는 `AtomicFile`로 sync한 뒤 rename). 기록하지 못한 trial은 되돌릴 방법이 없으므로 실행하지 않는다. pending은 기록할 수 있는 다음 시작까지 기다린다.
   - 스킴 핸들러와 에셋 서버는 번들 폴더를 루트로 서빙한다. `env.runtime.json`도 번들의 것을 쓴다. boot.json과 ACL은 바이너리의 것 그대로다.
   - 버리는 번들: 다른 `nativeApi`로 만든 번들과, 바이너리 빌드 시각(`updates.json`의 `embeddedSequence`)보다 오래된 번들. Capacitor는 새 바이너리가 설치되면 라이브 업데이트를 무조건 버린다(`CAPBridgeViewController.swift:18-29`, `Bridge.java:429-455`). akan-native는 이 규칙을 지문과 시각으로 좁혔다.

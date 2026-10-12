@@ -10,7 +10,10 @@ import type {
 
 const sha = (char: string) => char.repeat(64);
 
-const actionPhase = (action: PipelineActionName, milestone: PipelinePlanPhase["milestone"]): PipelinePlanPhase => ({
+const actionPhase = (
+  action: Exclude<PipelineActionName, "ota">,
+  milestone: PipelinePlanPhase["milestone"],
+): PipelinePlanPhase => ({
   id: action,
   name: action,
   description: null,
@@ -191,6 +194,53 @@ describe("PipelinePlanSchema", () => {
     }, "is not a version of build");
     refused((plan) => Object.assign(plan.phases[0] ?? {}, { action: "ship" }), '"ship" is not one of');
     refused((plan) => Object.assign(plan.context, { trigger: "cron" }), '"cron" is not one of');
+  });
+
+  test("an ota step names its targets and phones, each once", () => {
+    const otaPlan = () => {
+      const plan = zeroConfigPlan();
+      const [stage] = actionPhase("deploy", "deploy").stages;
+      if (!stage) throw new Error("no stage");
+      plan.phases.push({
+        ...actionPhase("deploy", "deploy"),
+        id: "ota",
+        name: "OTA",
+        slot: "ota",
+        action: "ota",
+        order: "parallel",
+        stages: [
+          {
+            ...stage,
+            id: "api:ota",
+            steps: [
+              {
+                id: "api:ota/ota",
+                name: "ota api",
+                timeoutSeconds: null,
+                retry: null,
+                allowFailure: false,
+                kind: "action",
+                action: "ota",
+                actionVersion: 1,
+                with: { app: "api", targets: ["default"], platforms: ["ios", "android"] },
+              },
+            ],
+          },
+        ],
+      });
+      return plan;
+    };
+    expect(PipelinePlanSchema.parse(otaPlan())).toEqual(otaPlan());
+    const refusedOta = (with_: unknown, message: string) => {
+      const plan = otaPlan();
+      Object.assign(plan.phases[3]?.stages[0]?.steps[0] ?? {}, { with: with_ });
+      expect(() => PipelinePlanSchema.parse(plan)).toThrow(message);
+    };
+    refusedOta({ app: "api" }, '"targets" is missing');
+    refusedOta({ app: "api", targets: [], platforms: ["ios"] }, "may not be empty");
+    refusedOta({ app: "api", targets: ["a", "a"], platforms: ["ios"] }, "lists one twice");
+    refusedOta({ app: "api", targets: ["a"], platforms: ["macos"] }, '"macos" is not one of');
+    refusedOta({ app: "web", targets: ["a"], platforms: ["ios"] }, "for the stage's own app");
   });
 
   test("holds the structure every executor relies on", () => {

@@ -26,10 +26,10 @@ async function keygen(args: ParsedArgs): Promise<number> {
     );
   else log.info(`using the existing key ${path}`);
   log.info(
-    `Add to akan-native.config.ts:\n\n  updates: { url: "https://…/updates", publicKey: ${JSON.stringify(publicKey)} },\n`,
+    `Add to akan-native.config.ts:\n\n  updates: { url: "https://…/updates", publicKeys: [${JSON.stringify(publicKey)}] },\n`,
   );
-  if (project.config.updates && project.config.updates.publicKey !== publicKey)
-    log.warn("akan-native.config.ts has a different updates.publicKey");
+  if (project.config.updates && !project.config.updates.publicKeys.includes(publicKey))
+    log.warn("akan-native.config.ts has updates.publicKeys without this key");
   return 0;
 }
 
@@ -41,7 +41,7 @@ async function publish(args: ParsedArgs): Promise<number> {
   const requested = stringFlag(args, "channel");
   if (requested !== undefined) assertChannel(requested);
   const project = await loadProject(findAppDir(stringFlag(args, "app") ?? process.cwd()));
-  assertSigningKey(project.config);
+  assertSigningKey(project.config, platform);
   assertServerOfChannel(
     project.config,
     platform,
@@ -55,10 +55,10 @@ async function publish(args: ParsedArgs): Promise<number> {
   );
   const { config, appDir } = ctx.project;
   const channel = requested ?? config.updates?.channel ?? "production";
-  const { dir, manifest } = await publishRelease(ctx, platform, artifact, outDir(args, appDir), channel);
+  const { dir, manifest, file } = await publishRelease(ctx, platform, artifact, outDir(args, appDir), channel);
   const size = manifest.files.reduce((n, f) => n + f.size, 0);
   log.ok(
-    `published ${bold(manifest.bundle)} to ${relative(process.cwd(), dir) || dir}/${channel}.json ${dim(`(${manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB${manifest.nativeApi ? `, native API ${manifest.nativeApi}` : ""})`)}`,
+    `published ${bold(manifest.bundle)} to ${relative(process.cwd(), file) || file} ${dim(`(${manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB${manifest.nativeApi ? `, native API ${manifest.nativeApi}` : ""})`)}`,
   );
   log.info(
     dim(

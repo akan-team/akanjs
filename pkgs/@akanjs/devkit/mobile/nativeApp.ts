@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
@@ -48,6 +49,25 @@ export interface NativeDevOptions extends NativeRunOptions {
   /** The akan dev server the gateway proxies. */
   upstream: string;
   lang: string;
+}
+
+/** `<out>/pack.json`: what a signer needs of a pack, read instead of the log. */
+export interface NativeUpdatePack {
+  schema: 1;
+  app: string;
+  target: string;
+  platform: MobilePlatform;
+  env: NativeEnv;
+  channel: string;
+  appId: string;
+  appVersion: string;
+  nativeApi: string;
+  /** bundle.json `web.hash`: the web files as served, the part of a bundle id that names its content. */
+  webHash: string;
+  files: number;
+  size: number;
+  out: string;
+  compat?: { against: string; compatible: boolean; problems: string[] };
 }
 
 /** One native target of an app on the native runtime (a phone, or this computer as a desktop app): where it builds,
@@ -384,7 +404,7 @@ export class NativeApp {
     });
   }
 
-  /** An unsigned OTA update of this target's web bundle for `platform`, and the channel its binary follows. */
+  /** An unsigned OTA update of this target's web bundle for `platform`, and the record `pack.json` keeps of it. */
   async packUpdate(platform: MobilePlatform, { out }: { out?: string } = {}) {
     await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform);
@@ -392,12 +412,32 @@ export class NativeApp {
       throw new Error(
         `Native target '${this.target.name}' takes no updates: add native.updates: { url, publicKey } to akan.config.ts first.`,
       );
-    const packed = await api.packUpdate({
-      ...this.#task(platform, config),
+    const dir = path.resolve(out ?? path.join(this.updatesDir, platform));
+    //? A pack that fails must not leave the previous pack's record behind for whoever reads the exit code.
+    await Promise.all(["pack.json", "compat.json"].map((name) => rm(path.join(dir, name), { force: true })));
+    const packed = await api.packUpdate({ ...this.#task(platform, config), platform, out: dir });
+    const channel = config.updates.channel ?? "production";
+    const bundle = (await Bun.file(path.join(packed.out, "bundle.json")).json()) as { web: { hash: string } };
+    const pack: NativeUpdatePack = {
+      schema: 1,
+      app: this.app.name,
+      target: this.target.name,
       platform,
-      out: out ?? path.join(this.updatesDir, platform),
-    });
-    return { ...packed, channel: config.updates.channel ?? "production" };
+      env: this.env ?? "main",
+      channel,
+      appId: packed.manifest.app,
+      appVersion: packed.manifest.version,
+      nativeApi: packed.manifest.nativeApi ?? "",
+      webHash: bundle.web.hash,
+      files: packed.manifest.files.length,
+      size: packed.manifest.files.reduce((sum, file) => sum + file.size, 0),
+      out: packed.out,
+    };
+    return { ...packed, channel, pack };
+  }
+
+  static async writePack(pack: NativeUpdatePack) {
+    await Bun.write(path.join(pack.out, "pack.json"), `${JSON.stringify(pack, null, 2)}\n`);
   }
 
   static async compareBundles(appDir: string, shipped: string, bundle: string) {

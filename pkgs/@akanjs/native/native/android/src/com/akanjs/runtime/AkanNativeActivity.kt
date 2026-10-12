@@ -373,10 +373,14 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             }
         }
 
+        //? Armed when the page starts, not when it finishes: a bundle stuck in a script never finishes loading.
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            startReadyTimer()
+        }
+
         override fun onPageFinished(view: WebView, url: String) {
             root.requestApplyInsets() // push insets into the new document
             if (splashConfig.optBoolean("autoHide", true)) hideSplash(SPLASH_FADE_MS)
-            startReadyTimer()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -841,7 +845,15 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
     // ---------------------------------------------------------------- web bundle updates (UP-2)
 
     private val readyTimeout = Runnable {
-        if (AkanNativeFeatures.UPDATES && AkanNativeUpdates.onTrial) serveBundle(AkanNativeUpdates.rollback())
+        if (!AkanNativeFeatures.UPDATES || !AkanNativeUpdates.onTrial) return@Runnable
+        val root = AkanNativeUpdates.rollback()
+        // A renderer stuck in a script never runs the next navigation: one that does not answer is ended, and
+        // onRenderProcessGone makes the activity again, on the bundle the rollback made active.
+        var answered = false
+        webView.evaluateJavascript("0") { answered = true }
+        webView.postDelayed({
+            if (answered || webView.webViewRenderProcess?.terminate() != true) serveBundle(root)
+        }, RENDERER_PROBE_MS)
     }
 
     /** A bundle on trial must call notifyReady() within updates.readyTimeout of loading. */
@@ -977,6 +989,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         const val EXTRA_ENV = "akanNativeEnv"
         private const val STATE_PENDING = "akan-native.pendingResults"
         private const val SPLASH_FADE_MS = 200L
+        /** How long a page on trial has to answer before its renderer counts as stuck. */
+        private const val RENDERER_PROBE_MS = 2_000L
         // Must match @akanjs/native/core protocol.ts INIT_PREFIX / INIT_SUFFIX.
         private const val INIT_PREFIX = "window.__AKAN_NATIVE__=(function(o,b,e){for(var k in b)o[k]=b[k];o.env=e;return o})(window.__AKAN_NATIVE__||{},"
         private const val INIT_SUFFIX = ");\n"

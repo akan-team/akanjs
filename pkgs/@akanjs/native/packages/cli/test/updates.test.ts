@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertSigningKey, nextSequence } from "../src/lib/publish.ts";
 import {
   assertChannel,
   generateUpdateKey,
+  keyIdOf,
+  openEnvelope,
+  sealManifest,
   signManifest,
   updateKeyPath,
   updatesResource,
@@ -19,7 +22,7 @@ describe("updates config (UP-1, UP-2)", () => {
     const key = Buffer.alloc(32, 7).toString("base64");
     expect(validateUpdates({ url: "https://example.com/u/", publicKey: key }, problems)).toEqual({
       url: "https://example.com/u",
-      publicKey: key,
+      publicKeys: [key],
       channel: "production",
       readyTimeout: 10_000,
     });
@@ -27,12 +30,55 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(validateUpdates(undefined, problems)).toBeNull();
     validateUpdates({ url: "ftp://x", publicKey: "short", channel: "Bad Name", readyTimeout: 5, extra: 1 }, problems);
     expect(problems).toEqual([
-      "updates.url must be an http(s) URL",
-      "updates.publicKey must be a base64 Ed25519 public key (akan-native update keygen)",
+      "updates.url must be an http(s) URL without a query or fragment",
+      "updates.publicKeys must be 1 to 3 base64 Ed25519 public keys (akan-native update keygen), or publicKey one",
       'updates.channel must be a short name like "production"',
       "updates.readyTimeout must be a number of milliseconds >= 1000",
       "updates.extra is not supported",
     ]);
+  });
+
+  test("a ring of up to three keys, and a URL the shells can append a path to", () => {
+    const keys = [7, 8, 9, 10].map((byte) => Buffer.alloc(32, byte).toString("base64"));
+    const check = (raw: Record<string, unknown>) => {
+      const problems: string[] = [];
+      return { config: validateUpdates({ url: "https://cdn.example.com/ota/inst1/", ...raw }, problems), problems };
+    };
+    expect(check({ publicKeys: keys.slice(0, 3) }).config).toMatchObject({
+      url: "https://cdn.example.com/ota/inst1",
+      publicKeys: keys.slice(0, 3),
+    });
+    expect(check({ publicKeys: keys }).problems[0]).toContain("1 to 3");
+    expect(check({ publicKeys: [] }).problems[0]).toContain("1 to 3");
+    expect(check({ publicKeys: [keys[0], keys[0]] }).problems).toEqual(["updates.publicKeys lists a key twice"]);
+    expect(check({ publicKey: keys[0], publicKeys: [keys[0]] }).problems).toEqual([
+      "updates takes publicKey or publicKeys, not both",
+    ]);
+    for (const url of ["https://cdn.example.com/ota?v=1", "https://cdn.example.com/ota#x"]) {
+      const problems: string[] = [];
+      validateUpdates({ url, publicKey: keys[0] }, problems);
+      expect(problems).toEqual(["updates.url must be an http(s) URL without a query or fragment"]);
+    }
+    expect(keyIdOf(Buffer.alloc(32, 7).toString("base64"))).toBe("4bb06f8e4e3a7715");
+  });
+
+  test("a phone's envelope carries the manifest, its signer and the signature in one object", () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-keys-"));
+    const online = generateUpdateKey(join(home, "online.key")).publicKey;
+    const spare = generateUpdateKey(join(home, "spare.key")).publicKey;
+    const ring = [online, spare];
+    const bytes = new TextEncoder().encode('{"schema":2,"sequence":2}\n');
+    const envelope = sealManifest(bytes, join(home, "spare.key"), ring);
+    expect(envelope.keyId).toBe(keyIdOf(spare));
+    expect(Buffer.from(envelope.manifest, "base64").toString()).toBe('{"schema":2,"sequence":2}\n');
+    const text = JSON.stringify(envelope);
+    expect(openEnvelope(text, ring)).toEqual({ manifest: new Uint8Array(bytes), keyId: keyIdOf(spare) });
+    expect(() => openEnvelope(text, [online])).toThrow("not trusted");
+    expect(() => openEnvelope(text, ring, [keyIdOf(spare)])).toThrow("not trusted");
+    const tampered = { ...envelope, manifest: Buffer.from('{"schema":2,"sequence":9}\n').toString("base64") };
+    expect(() => openEnvelope(JSON.stringify(tampered), ring)).toThrow("does not verify");
+    expect(() => signManifest(bytes, join(home, "spare.key"), ring)).toThrow("trusts the first");
+    rmSync(home, { recursive: true, force: true });
   });
 
   test("the key stays private, signs, and verifies like the apps do", () => {
@@ -44,11 +90,11 @@ describe("updates config (UP-1, UP-2)", () => {
     // Never overwritten: the installed apps trust this key.
     expect(generateUpdateKey(path)).toEqual({ publicKey, created: false });
     const manifest = new TextEncoder().encode('{"sequence":2}');
-    const signature = signManifest(manifest, path, publicKey);
+    const signature = signManifest(manifest, path, [publicKey]);
     expect(verifyManifest(manifest, signature, publicKey)).toBe(true);
     expect(verifyManifest(new TextEncoder().encode('{"sequence":3}'), signature, publicKey)).toBe(false);
-    expect(() => signManifest(manifest, path, Buffer.alloc(32).toString("base64"))).toThrow(
-      "does not match updates.publicKey",
+    expect(() => signManifest(manifest, path, [Buffer.alloc(32).toString("base64")])).toThrow(
+      "is not one of updates.publicKeys",
     );
   });
 
@@ -59,7 +105,7 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(updateKeyPath("dev.x", { AKAN_NATIVE_UPDATE_KEY: "/k/key.pem" })).toBe("/k/key.pem");
     const resource = JSON.parse(
       updatesResource(
-        { url: "https://u", publicKey: "k", channel: "beta", readyTimeout: 3000 },
+        { url: "https://u", publicKeys: ["k", "s"], channel: "beta", readyTimeout: 3000 },
         { id: "dev.x", version: "1.2.0" },
         "ios",
         "abc",
@@ -73,6 +119,8 @@ describe("updates config (UP-1, UP-2)", () => {
       nativeApi: "abc",
       dev: false,
       url: "https://u",
+      protocol: 2,
+      publicKeys: ["k", "s"],
       publicKey: "k",
       channel: "beta",
       readyTimeout: 3000,
@@ -87,8 +135,8 @@ describe("publishing a release", () => {
       expect(() => assertChannel(channel)).not.toThrow();
     for (const channel of ["../x", "Pilot", "", "a/b", "a\\b", ".hidden", "x".repeat(42)])
       expect(() => assertChannel(channel)).toThrow("is not a short lowercase name");
-    for (const channel of ["bundle", "manifest.template", "compat"]) {
-      expect(() => assertChannel(channel)).toThrow("would overwrite");
+    for (const channel of ["bundle", "manifest.template", "compat", "pack", "files", "app"]) {
+      expect(() => assertChannel(channel)).toThrow("already uses");
       const problems: string[] = [];
       validateUpdates({ url: "https://x", publicKey: Buffer.alloc(32).toString("base64"), channel }, problems);
       expect(problems).toEqual(['updates.channel must be a short name like "production"']);
@@ -103,13 +151,18 @@ describe("publishing a release", () => {
     try {
       const app = { id: "dev.x" };
       expect(() => assertSigningKey({ app })).toThrow("has no updates");
-      expect(() => assertSigningKey({ app, updates: { publicKey: Buffer.alloc(32).toString("base64") } })).toThrow(
+      const other = Buffer.alloc(32).toString("base64");
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [other] } })).toThrow(
         `no update signing key at ${path}`,
       );
       const { publicKey } = generateUpdateKey(path);
-      expect(() => assertSigningKey({ app, updates: { publicKey } })).not.toThrow();
-      expect(() => assertSigningKey({ app, updates: { publicKey: Buffer.alloc(32).toString("base64") } })).toThrow(
-        "does not match updates.publicKey",
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [publicKey] } })).not.toThrow();
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [other, publicKey] } }, "android")).not.toThrow();
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [other, publicKey] } }, "macos")).toThrow(
+        "trusts the first",
+      );
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [other] } })).toThrow(
+        "is not one of updates.publicKeys",
       );
     } finally {
       if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
@@ -127,6 +180,17 @@ describe("publishing a release", () => {
     expect(nextSequence(dir, "production", 1000)).toBe(1201);
     expect(nextSequence(dir, "production", 1200)).toBe(1201);
     expect(nextSequence(dir, "pilot", 1000)).toBe(1000);
+    //? A phone's channel is a folder of envelopes, one per native API, sharing one count.
+    const envelope = (sequence: number) =>
+      JSON.stringify({
+        manifest: Buffer.from(JSON.stringify({ sequence })).toString("base64"),
+        keyId: "x",
+        signature: "x",
+      });
+    mkdirSync(join(dir, "main"));
+    writeFileSync(join(dir, "main", "aaaa.json"), envelope(1500));
+    writeFileSync(join(dir, "main", "bbbb.json"), envelope(1300));
+    expect(nextSequence(dir, "main", 1000)).toBe(1501);
   });
 });
 

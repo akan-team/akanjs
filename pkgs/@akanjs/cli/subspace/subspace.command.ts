@@ -1,4 +1,3 @@
-import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { SubspaceScript } from "./subspace.script";
 
@@ -22,7 +21,10 @@ export class SubspaceCommand extends command("subspace", [SubspaceScript], ({ pu
     })
     .option("adoptLibs", Boolean, { desc: "pull: also apply the subspace's library edits", default: false })
     .option("path", String, { desc: "diff: limit to one path", nullable: true })
-    .option("host", String, { desc: "upload-env: host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .option("host", String, {
+      desc: "upload-env: host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
+      nullable: true,
+    })
     //? -f is already `--format`, and -y already `--verify`.
     .option("force", Boolean, {
       flag: "F",
