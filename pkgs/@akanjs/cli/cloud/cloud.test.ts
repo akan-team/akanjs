@@ -685,7 +685,7 @@ describe("OTA uploads", () => {
       });
       const copy = path.join(out, "..", `${path.basename(out)}-sent.tgz`);
       await Bun.write(copy, stored[0] ?? new Uint8Array());
-      const entries = Bun.spawnSync(["tar", "-tzf", copy]).stdout.toString().split("\n").filter(Boolean);
+      const entries = Bun.spawnSync(["tar", "-tzf", copy]).stdout.toString().split(/\r?\n/).filter(Boolean);
       expect(entries).toEqual(
         expect.arrayContaining([
           "./bundle.json",
@@ -701,7 +701,8 @@ describe("OTA uploads", () => {
       const rejected = { id: "release-2", status: "rejected", problems: ["deepLinks differ from the app's"] };
       await new CloudRunner().pushUpdate(apiAnswering(rejected), "project-1", pack, { channel: "pilot", notes: null });
       expect(process.exitCode).toBe(2);
-      process.exitCode = exitCode;
+      //? Bun ignores `process.exitCode = undefined`, so restoring an unset code needs the 0.
+      process.exitCode = exitCode ?? 0;
       expect(announced[1]).toMatchObject({ channel: "pilot", notes: null });
 
       const refused = {

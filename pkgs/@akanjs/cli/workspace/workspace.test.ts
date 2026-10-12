@@ -262,7 +262,7 @@ describe("WorkspaceRunner", () => {
       const workspace = { workspaceRoot: root } as never;
       const { file, publicKey } = await runner.machineKeygen(workspace, "local/keys/cloud.pem");
       expect(file).toBe(path.join(root, "local/keys/cloud.pem"));
-      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
       const { createPrivateKey, createPublicKey } = await import("node:crypto");
       const derived = createPublicKey(createPrivateKey(await Bun.file(file).text()));
       expect(derived.export({ format: "jwk" }).x).toBe(publicKey);
