@@ -14,10 +14,20 @@ import {
   type WebAppManifest,
 } from "akanjs/client";
 import { st } from "akanjs/store";
-import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
+import {
+  Activity,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
+import { EmbedApproval } from "../Agent/EmbedApproval";
 import { animated } from "../animated";
 
 import { FontFace } from "../FontFace";
@@ -84,6 +94,7 @@ const CSRProvider = ({
             wsConnect={wsConnect}
           />
           <CSRBridge lang={lang} prefix={prefix} />
+          {globalThis.__AKAN_EMBED__ ? <EmbedApproval /> : null}
         </>
       )}
     />
@@ -409,7 +420,11 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
   useEffect(() => {
     if (pageType === "current") NativeUpdates.confirm();
   }, [pageType]);
-  const pageContainers = document.getElementById("pageContainers");
+  //? The root renders in the same commit as the first page, so a tree mounted afresh finds it only after committing.
+  const [pageContainers, setPageContainers] = useState(() => document.getElementById("pageContainers"));
+  useLayoutEffect(() => {
+    if (!pageContainers) setPageContainers(document.getElementById("pageContainers"));
+  }, [pageContainers]);
   if (!pageContainers) return null;
   const { page, pageContentRef, pageClassName, pageBind } =
     pageType === "current"

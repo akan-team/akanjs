@@ -794,7 +794,7 @@ it.
   `Person` for an act reserved for a person, `mcp: { cru: false }` for the tools whose input models cost the model
   tokens, `outputSchema` for nothing that reaches the model.
 - Settings live in the app's `lib/option.ts` — `option.setMcp({ enabled, readOnly, path, version, instructions,
-  allowedOrigins, pageSize, language, outputSchema, rateLimit, auth })`, or `setMcp((env) => …)` for one derived from the server env, **not
+  allowedOrigins, pageSize, language, outputSchema, rateLimit, apps, modern, auth })`, or `setMcp((env) => …)` for one derived from the server env, **not
   `main.ts`**. Each field has an `AKAN_MCP_*` env spelling. `AKAN_MCP_READONLY=true` is the read-only-deployment
   valve, not the exposure switch; `AKAN_MCP=false` takes the whole surface off, and an edge server
   (`AKAN_PUBLIC_OPERATION_MODE=edge`) starts with it off unless `AKAN_MCP=true` or `setMcp(true)`. Every call that executes an
@@ -838,7 +838,13 @@ it.
   from, minus what is already attached; lists — only lists — are cut to `promptBudget`. A guard refusing a query
   inside the body reads as the screen refusing the account, the same way a redirect does. A
   required argument left out answers a pointer to the `<model>List…` tool, never a guess. The description is the
-  only instruction, in English — `<Agent.Guide>` never reaches MCP, and the in-page chat lists no page prompts.
+  only instruction, in English — `<Agent.Guide>` never reaches a prompt, and the in-page chat lists no page prompts.
+- **The same page is a tool too, and an MCP Apps host renders it.** A `.prompt()` page answers `tools/call` with
+  that briefing plus its web URL, and a host that declares the `io.modelcontextprotocol/ui` extension (claude.ai,
+  ChatGPT, VS Code) shows the screen itself in the chat — the CSR bundle in a sandboxed iframe whose every call the
+  host relays under the agent's token. An endpoint kept off the shelf only by `mcp: false` stays callable by that
+  view and is listed to no model; a `Person` act is still refused there. `option.setMcp({ apps: false })` keeps
+  pages prompts only, and a page named like an endpoint stays one (boot warns).
 
 Full contract — configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions, and
 `McpProgress.report`: `get_guideline` with `mcpRule`, or `akan guideline show mcpRule`.

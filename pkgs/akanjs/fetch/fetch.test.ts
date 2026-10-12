@@ -13,7 +13,7 @@ import {
 } from "akanjs/signal";
 import { FetchClient, type FetchProxy } from "./client/fetchClient";
 import { HttpClient } from "./client/httpClient";
-import type { ErrorResponsePayload, RestoredError } from "./client/remoteError";
+import { type ErrorResponsePayload, type RestoredError, restoreRemoteError } from "./client/remoteError";
 import { WsClient } from "./client/wsClient";
 import type { FetchClientType, FetchTypeOfSignal, MergeAllFetchTypes, SliceMeta } from "./fetchType";
 import {
@@ -997,6 +997,53 @@ describe("requestStorage utilities", () => {
       },
       afterPublicRead: { headers: true, cookies: true },
     });
+  });
+});
+
+describe("FetchClient over a bridge", () => {
+  test("sends queries and mutations through the bridge, and opens nothing for a room or a message", async () => {
+    setMockFetch();
+    setFakeWebSocket();
+    const sent: { key: string; type: string; args: Record<string, unknown> }[] = [];
+    FetchClient.setBridge({
+      call: async ({ key, type, args }) => {
+        sent.push({ key, type, args });
+        return key === "getThing" ? "bridged" : { title: "Made", count: 1, nested: { label: "N" } };
+      },
+    });
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+      expect(await client.handler.getThing("1234567890abcdef12345678", ["x"], null)).toBe("bridged");
+      expect(await client.handler.createThing("Made", 1)).toBeInstanceOf(FetchTestFull);
+      expect(sent.map(({ key, type }) => `${type}:${key}`)).toEqual(["query:getThing", "mutation:createThing"]);
+      expect(fetchCalls).toEqual([]);
+      const unsubscribe = client.handler.subscribeRoomThing("room-1", () => undefined) as () => void;
+      client.handler.sendThing("hello");
+      expect(client.ws.hasListeners("roomThing")).toBe(false);
+      unsubscribe();
+      expect(FakeWebSocket.instances).toEqual([]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
+  test("restores a refusal the bridge carried as the app's own error", async () => {
+    FetchClient.setBridge({
+      call: async () => {
+        throw restoreRemoteError({ error: "thing.error.locked", data: { id: "1" } }, 409);
+      },
+    });
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+      const asked = client.handler.getThing("1234567890abcdef12345678", [], null) as Promise<string>;
+      const error = (await asked.catch((caught: unknown) => caught)) as TestErr;
+      expect(error).toBeInstanceOf(TestErr);
+      expect(error.error).toBe("thing.error.locked");
+      expect(error.statusCode).toBe(409);
+      expect(error.data).toEqual({ id: "1" });
+    } finally {
+      FetchClient.setBridge(null);
+    }
   });
 });
 

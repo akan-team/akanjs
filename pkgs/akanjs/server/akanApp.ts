@@ -636,7 +636,7 @@ export class AkanApp {
   static readonly #immutableArtifacts = [
     { prefix: "/_akan/client/", root: "client", strip: "/_akan/client/".length, type: "application/javascript" },
     { prefix: "/_akan/styles/", root: "", strip: "/_akan/".length, type: "text/css; charset=utf-8" },
-    { prefix: "/_akan/fonts/", root: "", strip: "/_akan/".length, type: "font/woff2" },
+    { prefix: "/_akan/fonts/", root: "", strip: "/_akan/".length, type: "font/woff2", anyOrigin: true },
   ] as const;
 
   async #serveImmutableArtifact(req: Request, url: URL): Promise<Response | null> {
@@ -650,6 +650,7 @@ export class AkanApp {
     return this.#fileResponse(req, filePath, {
       contentType: file.type || artifact.type,
       cacheControl: "public, max-age=31536000, immutable",
+      anyOrigin: "anyOrigin" in artifact,
     });
   }
 
@@ -988,13 +989,15 @@ export class AkanApp {
     }
   }
 
+  // A font is always fetched in CORS mode, so a page with another origin (an MCP view has none) needs `anyOrigin`.
   async #fileResponse(
     req: Request,
     filePath: string,
-    options: { contentType: string; cacheControl?: string },
+    options: { contentType: string; cacheControl?: string; anyOrigin?: boolean },
   ): Promise<Response> {
     const headers = new Headers({ "Content-Type": options.contentType });
     if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
+    if (options.anyOrigin) headers.set("Access-Control-Allow-Origin", "*");
     headers.set("X-Content-Type-Options", "nosniff");
     headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     return await encodedFileResponse(req, filePath, options.contentType, headers);

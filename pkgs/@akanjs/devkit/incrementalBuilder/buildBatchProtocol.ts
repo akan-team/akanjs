@@ -3,8 +3,9 @@ import type { BaseBuildArtifact, CssPayload, HmrTrace, PagesBundlePayload } from
 
 export type OptimizedFonts = Awaited<ReturnType<FontOptimizer["optimize"]>>;
 
-// `base` is the boot build: it always runs alone, before the builder can serve anything.
-export type BuildBatchNeed = "base" | "pages" | "css" | "csr" | "ssr";
+// `base` is the boot build: it always runs alone, before the builder can serve anything. `shell` is the single-file
+// CSR build an MCP Apps view needs under the dev CSR registry, made on request and reported to no tab.
+export type BuildBatchNeed = "base" | "pages" | "css" | "csr" | "ssr" | "shell";
 
 // JSON only: the worker is spawned per batch and receives this in its argv.
 export interface BuildBatchRequest {

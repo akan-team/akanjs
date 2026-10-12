@@ -4,6 +4,7 @@ import { useDrag } from "@use-gesture/react";
 import {
   type CsrContextType,
   router as clientRouter,
+  csrLocation,
   Device,
   debugFrame,
   defaultPageState,
@@ -608,7 +609,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
 
   const { getLocation } = useLocation({ rootRouteGuide });
   const [initialStack] = useState(() => {
-    const current = getLocation(window.location.href.replace(window.location.origin, ""));
+    const current = getLocation(csrLocation.href);
     return CsrStack.restore(current, getLocation) ?? { locations: [current], idx: 0 };
   });
   const {
@@ -881,8 +882,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       if (!usePendingNavigation) {
         setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
         settle(kind === "replace" ? prevLocation : fromLocation);
-        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
-        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
+        if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
+        else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
         return;
       }
 
@@ -956,8 +957,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
           navigationIntent: intent,
           phase: "transitioning",
         });
-        if (kind === "push") window.history.pushState({ akanEntryId: toLocation.entryId }, "", href);
-        else window.history.replaceState({ akanEntryId: toLocation.entryId }, "", href);
+        if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
+        else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
         debugFrame("navigation.commit", { id: intent.id, kind, to: href });
         window.setTimeout(
           () => {
@@ -1043,7 +1044,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   ]);
   useEffect(() => {
     debugFrame("csr.mount", { path: resolvedLocation.pathRoute.path, viewport });
-    window.history.replaceState({ ...(window.history.state ?? {}), akanEntryId: getCurrentLocation().entryId }, "");
+    csrLocation.replace({ ...((csrLocation.state as object | null) ?? {}), akanEntryId: getCurrentLocation().entryId });
     return () => debugFrame("csr.unmount", { lastPath: resolvedLocation.pathRoute.path });
   }, []);
   const getRouter = useCallback((): RouterInstance => {
@@ -1063,7 +1064,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       push: forward("push"),
       replace: forward("replace"),
       refresh: () => {
-        window.location.reload();
+        csrLocation.reload();
       },
       back: async ({ scrollToTop }: RouteOptions = {}) => {
         const targetLocation = getPrevLocation();
@@ -1077,12 +1078,12 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         const scrollTop = pageContentRef.current?.scrollTop ?? 0;
         setHistoryBack({ type: "back", location, scrollTop, scrollToTop });
         settle(getPrevLocation());
-        window.history.back();
+        csrLocation.back();
       },
     };
     window.onpopstate = async (event) => {
-      const href = window.location.href.replace(window.location.origin, "");
-      const entryId = (window.history.state as { akanEntryId?: string } | null)?.akanEntryId;
+      const href = csrLocation.href;
+      const entryId = (csrLocation.state as { akanEntryId?: string } | null)?.akanEntryId;
       const isAt = (target: Location | null | undefined) =>
         !!target && (entryId ? target.entryId === entryId : target.href === href);
       const routeType = isAt(getNextLocation()) ? "forward" : isAt(getPrevLocation()) ? "back" : null;

@@ -97,10 +97,10 @@ export default page().render(() => {
         {
           name: "page().prompt()",
           desc: l.trans({
-            en: "A screen the user runs as a slash command; the model does not pick it.",
-            ko: "사용자가 슬래시 커맨드로 실행하는 화면입니다. 모델이 고르는 것이 아닙니다.",
+            en: "A screen: a slash command for the user, a tool for the model, and drawn in the chat where the client renders MCP Apps.",
+            ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 툴이 되고, MCP Apps를 그리는 클라이언트에선 채팅 안에 그대로 뜹니다.",
           }),
-          marks: { tool: false, resource: false, prompt: true },
+          marks: { tool: true, resource: false, prompt: true },
         },
       ],
     },
@@ -110,8 +110,8 @@ export default page().render(() => {
     {
       when: l.trans({ en: "It declares `mcp: false`", ko: "`mcp: false`를 선언했다" }),
       why: l.trans({
-        en: "It was curated off the shelf on purpose; its guards and HTTP stay exactly as they were.",
-        ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로입니다.",
+        en: "Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.",
+        ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로이고, 채팅 안에 뜬 화면은 여전히 부를 수 있습니다.",
       }),
     },
     {
@@ -373,6 +373,26 @@ export default page().render(() => {
       desc: l.trans({
         en: "Characters of screen data one page prompt may attach before its lists are cut.",
         ko: "페이지 프롬프트 하나가 목록이 잘리기 전까지 붙일 수 있는 화면 데이터의 글자 수입니다.",
+      }),
+    },
+    {
+      key: "apps",
+      type: "boolean",
+      default: "true",
+      tags: ["AKAN_MCP_APPS"],
+      desc: l.trans({
+        en: "Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps.",
+        ko: "`.prompt()` 페이지를 툴로도 게시하고, MCP Apps를 그리는 클라이언트는 그 화면을 채팅 안에 띄웁니다.",
+      }),
+    },
+    {
+      key: "modern",
+      type: "boolean",
+      default: "true unless apps render",
+      tags: ["AKAN_MCP_MODERN"],
+      desc: l.trans({
+        en: "Offer the `2026-07-28` revision; withheld while views render, as claude.ai draws one only after `initialize`.",
+        ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 화면을 그려서, 화면을 그리는 동안에는 빼 둡니다.",
       }),
     },
     {
@@ -657,13 +677,13 @@ export default page().render(() => {
       en: (
         <>
           <strong>The description is the whole instruction.</strong> Write it in English, in API vocabulary;{" "}
-          <code>{"<Agent.Guide>"}</code> text never reaches MCP.
+          <code>{"<Agent.Guide>"}</code> text never reaches a prompt.
         </>
       ),
       ko: (
         <>
           <strong>description이 지시의 전부입니다.</strong> API 용어로, 영어로 씁니다. <code>{"<Agent.Guide>"}</code>{" "}
-          문구는 MCP에 전달되지 않습니다.
+          문구는 프롬프트에 전달되지 않습니다.
         </>
       ),
     }),
@@ -721,6 +741,22 @@ export default page().render(() => {
         <>
           <strong>프롬프트는 페이지에서만 선언합니다.</strong> 시그널에는 <code>prompt()</code> 빌더가 없고,{" "}
           <code>Msg</code>는 공개 API가 아닙니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>The same page is a tool, and can be the screen itself.</strong> Claude Code reads the briefing and a
+          link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a{" "}
+          <code>Person</code> act stays on the web.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>같은 페이지가 툴이 되고, 화면 자체로도 뜹니다.</strong> Claude Code는 브리핑과 링크를 받고,
+          claude.ai·ChatGPT·VS Code는 채팅 안에 페이지를 그립니다. 거기서 누르는 동작은 에이전트 토큰으로 실행되므로{" "}
+          <code>Person</code> 행위는 웹에서 합니다.
         </>
       ),
     }),

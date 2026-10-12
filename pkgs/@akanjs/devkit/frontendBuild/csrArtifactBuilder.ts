@@ -18,11 +18,19 @@ export class CsrArtifactBuilder {
   #app: App;
   #command: "build" | "start";
   #lang: string;
+  #cssAssets: Record<string, CssAsset> | null;
 
-  constructor(app: App, command: "build" | "start" = "start", lang = "en") {
+  //? `cssAssets` is a dev batch's current stylesheets: `base-artifact.json` keeps the ones the boot build compiled.
+  constructor(
+    app: App,
+    command: "build" | "start" = "start",
+    lang = "en",
+    { cssAssets = null }: { cssAssets?: Record<string, CssAsset> | null } = {},
+  ) {
     this.#app = app;
     this.#command = command;
     this.#lang = lang;
+    this.#cssAssets = cssAssets;
   }
 
   async build(): Promise<BuildCsrArtifactResult | null> {
@@ -152,6 +160,7 @@ void bootCsr(pages);
   }
 
   async #loadCssAssets(): Promise<Record<string, CssAsset>> {
+    if (this.#cssAssets) return this.#cssAssets;
     const artifactFile = Bun.file(path.join(this.#artifactDir, "base-artifact.json"));
     if (!(await artifactFile.exists())) return {};
     const artifact = (await artifactFile.json()) as Partial<Pick<BaseBuildArtifact, "cssAssets">>;

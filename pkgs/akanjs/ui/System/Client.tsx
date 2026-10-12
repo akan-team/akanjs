@@ -87,7 +87,7 @@ export const ClientWrapper = ({
   return (
     <>
       {Children.toArray(children)}
-      {reconnect ? <Reconnect key="reconnect" /> : null}
+      {reconnect && !globalThis.__AKAN_EMBED__ ? <Reconnect key="reconnect" /> : null}
     </>
   );
 };

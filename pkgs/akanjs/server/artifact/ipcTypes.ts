@@ -70,8 +70,11 @@ export type BuilderRes =
   | { type: "build-route-res"; id: number; ok: true; data: BuildRouteResultPayload }
   | { type: "build-route-res"; id: number; ok: false; error: string };
 
-/** Sent by the first `/__csr` or `?csr=true` request (a device WebView in mobile dev) to arm the lazy dev CSR build. */
-export type BuilderCsrReq = { type: "build-csr"; id: number; reason: string };
+/**
+ * Sent by the first `/__csr` or `?csr=true` request (a device WebView in mobile dev) to arm the lazy dev CSR build.
+ * `shell` asks once for the single-file build an MCP Apps view boots from, whatever the dev CSR mode, and arms nothing.
+ */
+export type BuilderCsrReq = { type: "build-csr"; id: number; reason: string; shell?: boolean };
 
 export type BuilderCsrRes =
   | { type: "build-csr-res"; id: number; ok: true }

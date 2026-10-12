@@ -227,7 +227,7 @@ export const DefaultChat = ({
     if (sticky.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [version, open]);
   useEffect(() => {
-    if (!shortcut) return;
+    if (!shortcut || globalThis.__AKAN_EMBED__) return;
     const apple = isApplePlatform();
     setHotkey(apple ? { label: "⌘ L", keys: "Meta+L" } : { label: "Ctrl+L", keys: "Control+L" });
     const onKeyDown = (event: KeyboardEvent) => {
@@ -420,7 +420,9 @@ export const DefaultChat = ({
   // The estimate walks every message, and the composer re-renders on every keystroke.
   const context = useMemo(() => session.context, [version]);
   const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
-  const layer = (surface: ReactNode) => (inline ? surface : overlay ? createPortal(surface, overlay) : null);
+  //? Inside an MCP host's view the person is already talking to an agent, and this one's relay is out of reach.
+  const layer = (surface: ReactNode) =>
+    globalThis.__AKAN_EMBED__ ? null : inline ? surface : overlay ? createPortal(surface, overlay) : null;
   if (!open)
     return launcher
       ? layer(

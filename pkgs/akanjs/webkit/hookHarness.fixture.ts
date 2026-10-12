@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import { csrLocation } from "../client/csrLocation";
 
 export const hooks = {
   index: 0,
@@ -76,9 +77,11 @@ export const csrClientBase = () => ({
   DEFAULT_TOP_INSET: 44,
   RouteDefinition: { renderArgsKey: () => "" },
   csrContext: { Provider: ({ children }: { children: unknown }) => children },
+  csrLocation,
   debugFrame: () => undefined,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },
+  setCookie: () => undefined,
   usePathCtx: () => ({}),
   defaultPageState: {
     transition: "none",

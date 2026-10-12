@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
+import { cn, csrLocation, getPathInfo, router, usePage, usePathCtx } from "akanjs/client";
 import { openExternalUrl } from "akanjs/client/native";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
@@ -51,7 +51,7 @@ export const CsrLink = ({
         props.onClick?.(event);
         if (event.defaultPrevented) return;
         const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
-        const url = href.startsWith("#") ? `${window.location.pathname}#${hash}` : href;
+        const url = href.startsWith("#") ? `${csrLocation.pathname}#${hash}` : href;
         if (isExternal) void openExternalUrl(href).catch(() => window.open(href, "_blank", "noopener,noreferrer"));
         else if (replace) router.replace(url, { scrollToTop });
         else router.push(url, { scrollToTop });

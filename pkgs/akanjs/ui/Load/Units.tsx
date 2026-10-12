@@ -170,7 +170,7 @@ function Render<RefName extends string, Light extends { id: string }>({
     onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => {
       void storeDo[namesOfSlice.setPageOfModel](page);
       if (option?.scrollToTop !== false) {
-        window.parent.postMessage({ type: "pathChange", page }, "*");
+        if (!globalThis.__AKAN_EMBED__) window.parent.postMessage({ type: "pathChange", page }, "*");
         window.scrollTo({ top: 0, behavior: "instant" });
       }
     },

@@ -45,6 +45,7 @@ import { DevHmrController } from "./hmr/devHmrController";
 import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { ImageOptimizer } from "./imageOptimizer";
+import type { McpAppShellSource } from "./mcp/McpApps";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
 import { createDefaultRobotsTxt } from "./robots";
 import {
@@ -285,6 +286,7 @@ export class WebRouter {
   #ssrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
   #csrOnDemandBuild: Promise<unknown> | null = null;
+  #mcpShellBuild: Promise<void> | null = null;
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
@@ -460,6 +462,7 @@ export class WebRouter {
         return WebRouter.#fileResponse(req, filePath, {
           contentType: Bun.file(filePath).type || "font/woff2",
           cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
+          anyOrigin: true,
         });
       },
       "/_akan/image": (req) => {
@@ -778,6 +781,34 @@ export class WebRouter {
     };
   }
 
+  // Never the dev registry shell: it loads its modules from this server, which a sandboxed view cannot reach.
+  mcpAppShell(): McpAppShellSource | undefined {
+    if (!this.web.csr) return undefined;
+    const localCsrDir = path.join(process.cwd(), "csr");
+    const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
+    const getBasePaths = () => this.#artifact.basePaths;
+    //? Keyed on mtime: a single-file shell is megabytes, a dev rebuild replaces the file, and a stat costs nothing.
+    const shells = new Map<string, { stamp: number; html: string }>();
+    return {
+      get basePaths() {
+        return getBasePaths();
+      },
+      read: async (basePath) => {
+        const pathname = basePath ? `/${basePath}` : "/";
+        const csrHtml = this.#csrDevShell
+          ? await this.#mcpDevShell(csrOutputDir, pathname)
+          : await this.#resolveCsrHtml(csrOutputDir, pathname);
+        if (!csrHtml) return null;
+        const file = Bun.file(csrHtml);
+        const cached = shells.get(csrHtml);
+        if (cached?.stamp === file.lastModified) return cached.html;
+        const html = await file.text();
+        shells.set(csrHtml, { stamp: file.lastModified, html });
+        return html;
+      },
+    };
+  }
+
   onLogRecords(listener: (records: LogRecord[], dropped: number) => void) {
     this.#rsc.onLogRecords = listener;
   }
@@ -1060,6 +1091,22 @@ export class WebRouter {
       });
     return this.#csrOnDemandBuild;
   }
+  //? Awaited on every read: the builder answers at once unless a save moved its generation since its last shell build.
+  async #mcpDevShell(csrOutputDir: string, pathname: string): Promise<string | null> {
+    const rpc = this.#builderRpc;
+    if (rpc) {
+      this.#mcpShellBuild ??= rpc
+        .buildCsr("mcp app view", { shell: true })
+        .catch((err: unknown) => {
+          this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
+        })
+        .finally(() => {
+          this.#mcpShellBuild = null;
+        });
+      await this.#mcpShellBuild;
+    }
+    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+  }
   #csrUnavailableResponse(pathname: string): Response {
     if (this.#prodMode) return new Response("Not Found", { status: 404 });
     const message = `No CSR artifact for ${pathname}. Dev CSR is built on demand; check the dev server log for a csr-build failure and verify the basePath in the URL.`;
@@ -1189,12 +1236,15 @@ export class WebRouter {
     return filePath && fs.existsSync(filePath) ? filePath : null;
   }
 
+  // `anyOrigin` is for public files a page elsewhere may load: a font is always fetched in CORS mode, so an MCP view,
+  // which has no origin of its own, could not use one without it.
   static async #fileResponse(
     req: Request,
     filePath: string,
-    options: { contentType: string; cacheControl?: string },
+    options: { contentType: string; cacheControl?: string; anyOrigin?: boolean },
   ): Promise<Response> {
     const headers = WebRouter.#baseAssetHeaders(options);
+    if (options.anyOrigin) headers.set("Access-Control-Allow-Origin", "*");
     const file = Bun.file(filePath);
     if (!(await file.exists())) return new Response("Not Found", { status: 404 });
     const stat = fs.statSync(filePath);

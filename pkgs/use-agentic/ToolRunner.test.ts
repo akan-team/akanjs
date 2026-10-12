@@ -207,6 +207,60 @@ describe("ToolRunner serialization", () => {
     expect((await parked).error).toBe("The user declined.");
   });
 
+  test("a call aborted while it waited in the queue never starts", async () => {
+    let release: () => void = () => undefined;
+    const busy = new ToolRunner(
+      surfaceWith({ name: "wait", run: () => new Promise<void>((resolve) => (release = resolve)) }),
+    );
+    let ran = 0;
+    const queued = new ToolRunner(
+      surfaceWith({
+        name: "removeTask",
+        run: () => {
+          ran += 1;
+        },
+      }),
+    );
+    const first = busy.run(call("wait"), new AbortController().signal);
+    await tick();
+    const controller = new AbortController();
+    const second = queued.run(call("removeTask"), controller.signal);
+    controller.abort();
+    release();
+    await first;
+    expect((await second).error).toBe("The call was stopped before it ran.");
+    expect(ran).toBe(0);
+  });
+
+  test("an approval covers the tool the user read, not one the screen put in its place meanwhile", async () => {
+    let decide = null as ((verdict: true | string) => void) | null;
+    const surface = new AgenticSurface();
+    let ran = "";
+    const unregister = surface.registerTool([], {
+      name: "removeTask",
+      confirm: true,
+      run: () => {
+        ran = "first";
+      },
+    });
+    const runner = new ToolRunner(surface, {
+      approve: () => new Promise<true | string>((resolve) => (decide = resolve)),
+    });
+    const parked = runner.run(call("removeTask"), new AbortController().signal);
+    await until(() => !!decide);
+    unregister();
+    surface.registerTool([], {
+      name: "removeTask",
+      confirm: true,
+      run: () => {
+        ran = "second";
+      },
+    });
+    decide?.(true);
+    expect((await parked).error).toContain("changed on screen");
+    expect(ran).toBe("");
+  });
+
   test("an aborted call releases the queue instead of jamming it", async () => {
     const stuck = new ToolRunner(surfaceWith({ name: "wait", run: () => new Promise<void>(() => undefined) }));
     const controller = new AbortController();

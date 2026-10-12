@@ -290,6 +290,7 @@ describe("AkanServer MCP config", () => {
       "AKAN_MCP_RATE_LIMIT",
       "AKAN_MCP_CONCURRENT",
       "AKAN_MCP_PROMPT_BUDGET",
+      "AKAN_MCP_APPS",
     ];
 
     try {
@@ -306,6 +307,7 @@ describe("AkanServer MCP config", () => {
       process.env.AKAN_MCP_RATE_LIMIT = "60/30";
       process.env.AKAN_MCP_CONCURRENT = "2";
       process.env.AKAN_MCP_PROMPT_BUDGET = "20000";
+      process.env.AKAN_MCP_APPS = "false";
 
       const fromEnv = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
       expect(fromEnv.mcp).toBe(true);
@@ -320,6 +322,7 @@ describe("AkanServer MCP config", () => {
         outputSchema: "none",
         rateLimit: { calls: 60, windowMs: 30_000, concurrent: 2 },
         promptBudget: 20_000,
+        apps: false,
       });
       expect(fromEnv.mcpAuth).toEqual({ authorizationServers: ["https://auth.example.com"] });
       process.env.AKAN_MCP_RATE_LIMIT = "off";
