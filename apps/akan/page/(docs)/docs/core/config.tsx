@@ -227,7 +227,7 @@ const nativeFields = [
   },
   {
     key: "updates",
-    type: "{ url, publicKeys, channel?, readyTimeout? }",
+    type: "{ url, publicKeys, channel?, readyTimeout?, report? }",
     en: "Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.",
     ko: "설치된 앱이 새 릴리스를 찾는 곳이며, 폰은 스스로, 데스크톱 앱은 updates를 부를 때 업데이트합니다.",
   },
@@ -256,6 +256,12 @@ const nativeFields = [
     default: "10000",
     en: "How long, in ms, a release on trial has to mount its first page before it is rolled back.",
     ko: "시험 실행 중인 릴리스가 첫 페이지를 마운트하기까지의 시간(ms)이며, 넘기면 되돌립니다.",
+  },
+  {
+    key: "updates.report",
+    type: "{ url: string }",
+    en: "Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.",
+    ko: "폰이 릴리스마다 어떻게 됐는지(되돌림 등) 보내는 주소이며, 되돌림 비율을 볼 수 있습니다. 적지 않으면 보내지 않습니다.",
   },
   {
     key: "devtools",

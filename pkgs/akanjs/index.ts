@@ -151,6 +151,11 @@ export interface AkanNativeUpdatesConfig {
   channel?: string;
   /** How long a newly applied release has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout?: number;
+  /**
+   * Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed) at its next
+   * launch or return to the foreground, so rollback rates are visible. Left out, nothing is sent.
+   */
+  report?: { url: string };
 }
 
 export interface AkanNativeIosConfig {

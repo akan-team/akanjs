@@ -221,6 +221,11 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         if (debuggable && intent.hasExtra(EXTRA_ENV)) webView.reload()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (AkanNativeFeatures.UPDATES && !unsupportedWebView) AkanNativeUpdateReports.flush()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (unsupportedWebView) return
@@ -846,12 +851,13 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     private val readyTimeout = Runnable {
         if (!AkanNativeFeatures.UPDATES || !AkanNativeUpdates.onTrial) return@Runnable
-        val root = AkanNativeUpdates.rollback()
+        val (root, trial) = AkanNativeUpdates.rollback()
         // A renderer stuck in a script never runs the next navigation: one that does not answer is ended, and
         // onRenderProcessGone makes the activity again, on the bundle the rollback made active.
         var answered = false
         webView.evaluateJavascript("0") { answered = true }
         webView.postDelayed({
+            trial?.let { AkanNativeUpdateReports.record("rolledBack", it, if (answered) "timeout" else "hang") }
             if (answered || webView.webViewRenderProcess?.terminate() != true) serveBundle(root)
         }, RENDERER_PROBE_MS)
     }

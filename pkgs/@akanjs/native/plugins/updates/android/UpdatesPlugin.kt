@@ -10,6 +10,7 @@ import com.akanjs.runtime.AkanNativeUpdateConfig
 import com.akanjs.runtime.AkanNativeUpdateDecision
 import com.akanjs.runtime.AkanNativeUpdateEntry
 import com.akanjs.runtime.AkanNativeUpdateEnvelope
+import com.akanjs.runtime.AkanNativeUpdateReports
 import com.akanjs.runtime.AkanNativeUpdates
 import com.akanjs.runtime.AkanNativeVoidReply
 import java.io.File
@@ -34,7 +35,8 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
     /** The running download's call (one at a time); its cancellation stops the read loop. */
     @Volatile private var download: com.akanjs.runtime.AkanNativeCall? = null
 
-    private class Failure(val code: String, message: String) : Exception(message)
+    /** [report]: the reason a failed download is reported under (AkanNativeUpdateReports), null when it is not reported. */
+    private class Failure(val code: String, message: String, val report: String? = null) : Exception(message)
 
     private class ReleaseFile(val path: String, val sha256: String, val size: Long)
 
@@ -160,9 +162,14 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
                 if (decision.revoke.isNotEmpty()) main.post { AkanNativeUpdates.revoke(decision.revoke) }
                 decision.kind == AkanNativeUpdateDecision.Kind.TAKE && release.bundle !in snap.failed
             }
-            AkanNativeUpdateDecision.Kind.UNTRUSTED, AkanNativeUpdateDecision.Kind.REVOKED ->
+            AkanNativeUpdateDecision.Kind.UNTRUSTED, AkanNativeUpdateDecision.Kind.REVOKED -> {
+                reportFailed(release.bundle, release.sequence, "signature")
                 throw Failure(AkanNativeErrorCode.INTERNAL, "the release is signed by key ${release.keyId}, which this app does not trust")
-            else -> throw Failure(AkanNativeErrorCode.INTERNAL, "invalid release manifest: key ${release.keyId} may not revoke ${release.revokeKeys.joinToString(", ")}")
+            }
+            else -> {
+                reportFailed(release.bundle, release.sequence, "manifest")
+                throw Failure(AkanNativeErrorCode.INTERNAL, "invalid release manifest: key ${release.keyId} may not revoke ${release.revokeKeys.joinToString(", ")}")
+            }
         }
     }
 
@@ -216,8 +223,33 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         // A 1 MiB manifest is 1.4 MiB in base64.
         val data = fetch(url, 3L shl 19)
         val envelope = AkanNativeUpdateEnvelope.open(data, config, snap.revoked)
-            ?: throw Failure(AkanNativeErrorCode.INTERNAL, "the release is not signed by a key of updates.publicKeys this app still trusts")
-        return parse(envelope, data, config)
+        if (envelope == null) {
+            reportRefused(data, "signature")
+            throw Failure(AkanNativeErrorCode.INTERNAL, "the release is not signed by a key of updates.publicKeys this app still trusts")
+        }
+        return try {
+            parse(envelope, data, config)
+        } catch (f: Failure) {
+            reportRefused(data, "manifest")
+            throw f
+        }
+    }
+
+    private fun reportFailed(bundle: String?, sequence: Double?, reason: String) {
+        main.post { AkanNativeUpdateReports.record("failed", bundle, sequence, reason) }
+    }
+
+    /**
+     * The release a refused envelope names, read without trusting it and only to say which release failed: a forged
+     * name can at worst count against a release the server already published for this app.
+     */
+    private fun reportRefused(raw: ByteArray, reason: String) {
+        val manifest = try {
+            JSONObject(String(android.util.Base64.decode(JSONObject(String(raw)).getString("manifest"), android.util.Base64.DEFAULT)))
+        } catch (e: Exception) {
+            null
+        }
+        reportFailed(manifest?.optString("bundle"), manifest?.optDouble("sequence")?.takeIf { it.isFinite() }, reason)
     }
 
     /** Checks every field of the (signed) manifest before any of it is used. */
@@ -279,8 +311,23 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         return if (data.size.toLong() == file.size && hex(data) == file.sha256) data else null
     }
 
-    /** Downloads into bundles/<bundle>.partial, verifies each file, then renames it into place. */
+    /**
+     * Downloads into bundles/<bundle>.partial, verifies each file, then renames it into place. A failure is reported
+     * under its reason, and an IOException outside a download is the disk's.
+     */
     private fun install(release: Release, config: AkanNativeUpdateConfig, snap: Snapshot) {
+        try {
+            place(release, config, snap)
+        } catch (f: Failure) {
+            f.report?.let { reportFailed(release.bundle, release.sequence, it) }
+            throw f
+        } catch (e: IOException) {
+            reportFailed(release.bundle, release.sequence, "disk")
+            throw e
+        }
+    }
+
+    private fun place(release: Release, config: AkanNativeUpdateConfig, snap: Snapshot) {
         val target = AkanNativeUpdates.bundleDirectory(release.bundle)
         val staging = File(target.parentFile, "${release.bundle}.partial")
         staging.deleteRecursively()
@@ -298,15 +345,25 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
                 val digest = MessageDigest.getInstance("SHA-256")
                 var size = 0L
                 destination.outputStream().use { out ->
-                    fetch("${base(config)}/files/${file.sha256}", file.size) { buffer, n ->
-                        digest.update(buffer, 0, n)
-                        out.write(buffer, 0, n)
-                        size += n
+                    try {
+                        fetch("${base(config)}/files/${file.sha256}", file.size) { buffer, n ->
+                            digest.update(buffer, 0, n)
+                            try {
+                                out.write(buffer, 0, n)
+                            } catch (e: IOException) {
+                                throw Failure(AkanNativeErrorCode.INTERNAL, "cannot write ${file.path}: ${e.message ?: e}", "disk")
+                            }
+                            size += n
+                        }
+                    } catch (f: Failure) {
+                        throw if (f.report != null || f.code == AkanNativeErrorCode.CANCELLED) f else Failure(f.code, f.message ?: "download failed", "download")
+                    } catch (e: IOException) {
+                        throw Failure(AkanNativeErrorCode.INTERNAL, "${file.path}: ${e.message ?: e}", "download")
                     }
                 }
                 if (size != file.size || digest.digest().joinToString("") { "%02x".format(it) } != file.sha256) {
                     staging.deleteRecursively()
-                    throw Failure(AkanNativeErrorCode.INTERNAL, "${file.path} does not match its hash")
+                    throw Failure(AkanNativeErrorCode.INTERNAL, "${file.path} does not match its hash", "verify")
                 }
             }
             received += file.size
@@ -317,9 +374,9 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         File(staging, "manifest.signed.json").writeBytes(release.envelope)
         if (release.files.any { File(staging, it.path).length() != it.size }) {
             staging.deleteRecursively()
-            throw Failure(AkanNativeErrorCode.INTERNAL, "the downloaded bundle is incomplete")
+            throw Failure(AkanNativeErrorCode.INTERNAL, "the downloaded bundle is incomplete", "verify")
         }
         target.deleteRecursively()
-        if (!staging.renameTo(target)) throw Failure(AkanNativeErrorCode.INTERNAL, "could not move the downloaded bundle into place")
+        if (!staging.renameTo(target)) throw Failure(AkanNativeErrorCode.INTERNAL, "could not move the downloaded bundle into place", "disk")
     }
 }
