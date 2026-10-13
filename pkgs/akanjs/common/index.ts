@@ -155,8 +155,6 @@ export {
   type PipelineTrigger,
   pipelineActionNames,
   pipelineActions,
-  pipelineEnvNamePattern,
-  pipelineIdPattern,
   pipelineMilestones,
   pipelineOtaPlatforms,
   pipelinePlanLimits,
@@ -164,7 +162,6 @@ export {
   pipelinePlanVersion,
   pipelineReservedEnv,
   pipelineRuntimeEnv,
-  pipelineSecretNamePattern,
   pipelineTriggers,
 } from "./pipelinePlan";
 export { type RouteLayer, RouteLayering } from "./RouteLayering";
