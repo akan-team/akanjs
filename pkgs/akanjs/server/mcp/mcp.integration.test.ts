@@ -1316,6 +1316,13 @@ describe("MCP Apps", () => {
       data: { id },
     });
     expect((await call("lockedTitle", session)).json.result._meta).toBeUndefined();
+    const misnamed = await postAs(
+      rpc("tools/call", { name: "lockedTitle", arguments: { id, extra: 1 }, _meta: { [MCP_APP_META.view]: true } }),
+      session,
+      apps,
+    );
+    expect(misnamed.json.result.isError).toBe(true);
+    expect(misnamed.json.result._meta).toBeUndefined();
     expect((await call("failingTitle", session, { [MCP_APP_META.view]: true })).json.result._meta).toBeUndefined();
     const vendor = (await call("vendorTitle", session, { [MCP_APP_META.view]: true })).json.result;
     expect(vendor._meta).toBeUndefined();

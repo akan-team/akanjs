@@ -69,17 +69,12 @@ export class McpDispatcher {
     }
   }
 
-  // The `Err` a browser's own call would have answered with, so the view toasts it in the user's language. Never a
-  // refusal (it names the guard structure) or a crash, which the HTTP path generalizes too.
+  // The `Err` a browser's own call would have answered with, in the shape its own `toJSON()` gives the HTTP path, so
+  // the view toasts it in the user's language. Never a refusal (it names the guard structure), and nothing that is
+  // not an `Err`: the HTTP path generalizes the rest too.
   static #restorable(error: unknown, status: number | undefined) {
     if (!status || status >= 500 || status === 401 || status === 403 || error instanceof NoDocumentError) return null;
-    if (isExceptionLike(error)) return error.toJSON();
-    const data = (error as { data?: unknown }).data;
-    return {
-      error: error instanceof Error ? error.message : String(error),
-      statusCode: status,
-      ...(data && typeof data === "object" ? { data } : {}),
-    };
+    return isExceptionLike(error) ? error.toJSON() : null;
   }
 
   // A UX filter, never the access decision: entries without an account guard stay listed and are stopped at call time.
