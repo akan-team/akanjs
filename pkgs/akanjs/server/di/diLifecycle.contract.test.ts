@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseModes, resetEnvCache } from "akanjs/base";
+import { type BaseEnv, DatabaseModes, resetEnvCache } from "akanjs/base";
 import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into } from "akanjs/document";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
@@ -78,7 +78,10 @@ const relationHolderConstant = ConstantRegistry.buildModel(
   { RelationHolderInput, RelationHolderObject, RelationHolderFull, RelationHolderLight, RelationHolderInsight },
 );
 
-const databaseModuleOf = (constant: ConstantModel, option: { operationMode?: string[] } = {}): DatabaseModule => {
+const databaseModuleOf = (
+  constant: ConstantModel,
+  option: { operationMode?: BaseEnv["operationMode"][] } = {},
+): DatabaseModule => {
   const { refName, input, full, insight } = constant;
   class Filter extends from(full, () => ({ query: {}, sort: {} })) {}
   class Doc extends by(full) {}
