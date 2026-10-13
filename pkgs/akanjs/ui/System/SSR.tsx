@@ -22,6 +22,7 @@ import {
   type ViewTransitionProps,
 } from "react";
 import { FontCss } from "../fontCss";
+import { frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
 import { Load } from "../Load";
 import { ClientBridge, ClientInner, ClientPathWrapper, ClientSsrBridge, ClientWrapper } from "./Client";
 import { getFrameCssVars, isResponsiveFrame, type ProviderProps } from "./Common";
@@ -176,11 +177,6 @@ const SSRWrapper = ({
     height: "var(--akan-top-safe-area)",
     backgroundColor: pageState.topSafeAreaColor,
   };
-  const topInsetStyle: CSSProperties = {
-    top: "calc(var(--akan-top-safe-area) + var(--akan-viewport-offset-top, 0px))",
-    height: "var(--akan-top-inset)",
-    visibility: "var(--akan-top-inset-visibility, visible)" as CSSProperties["visibility"],
-  };
   const bottomSafeAreaStyle: CSSProperties = {
     bottom: 0,
     height: "var(--akan-bottom-safe-area)",
@@ -189,16 +185,6 @@ const SSRWrapper = ({
     ...(pageState.bottomSafeAreaColor === defaultPageState.bottomSafeAreaColor
       ? { visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"] }
       : {}),
-  };
-  const bottomInsetStyle: CSSProperties = {
-    bottom: "var(--akan-bottom-safe-area)",
-    height: "var(--akan-bottom-inset)",
-    visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"],
-  };
-  const keyboardInsetStyle: CSSProperties = {
-    bottom: "max(var(--akan-bottom-safe-area), var(--akan-keyboard-inset, 0px))",
-    height: "var(--akan-bottom-inset)",
-    visibility: "var(--akan-bottom-inset-visibility, visible)" as CSSProperties["visibility"],
   };
 
   return (
@@ -263,9 +249,9 @@ const SSRWrapper = ({
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
-            style={topInsetStyle}
+            style={frameSlotStyles.topInset}
           >
-            <div id="topInsetContent" className={cn("relative isolate size-full")} />
+            <div id="topInsetContent" className={frameSlotContentClassNames.topInset} />
           </div>
           <div
             key="top-left-action"
@@ -274,9 +260,9 @@ const SSRWrapper = ({
               "fixed top-0 left-0 isolate flex aspect-1 items-center justify-center overflow-hidden",
               layoutStyle === "mobile" && "left-[max(0px,calc(50%_-_300px))]",
             )}
-            style={topInsetStyle}
+            style={frameSlotStyles.topLeftAction}
           >
-            <div id="topLeftActionContent" className="isolate flex size-full items-center justify-center" />
+            <div id="topLeftActionContent" className={frameSlotContentClassNames.topLeftAction} />
           </div>
           <div
             key="bottom-inset"
@@ -286,9 +272,9 @@ const SSRWrapper = ({
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
-            style={bottomInsetStyle}
+            style={frameSlotStyles.bottomInset}
           >
-            <div id="bottomInsetContent" className="pointer-events-none isolate size-full" />
+            <div id="bottomInsetContent" className={frameSlotContentClassNames.bottomInset} />
           </div>
           <div
             key="keyboard-inset"
@@ -298,9 +284,9 @@ const SSRWrapper = ({
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
-            style={keyboardInsetStyle}
+            style={frameSlotStyles.keyboardInset}
           >
-            <div id="keyboardInsetContent" className="pointer-events-none isolate size-full" />
+            <div id="keyboardInsetContent" className={frameSlotContentClassNames.keyboardInset} />
           </div>
           <div
             key="bottom-safe-area"
