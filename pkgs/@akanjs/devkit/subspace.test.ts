@@ -4,6 +4,7 @@ import path from "node:path";
 import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { Subspace } from "./subspace";
+import { SubspaceClone } from "./subspaceClone";
 import { SubspaceConfig } from "./subspaceConfig";
 import { SubspaceReport } from "./subspaceReport";
 import { isolateEnv, tempDirs, writeText as write } from "./testHelpers";
@@ -184,7 +185,7 @@ describe("Subspace push", () => {
     await subspace.push("develop", { verify: false });
     const subspaceRoot = await cloneSubspace(workRoot, bareRoot, "check");
 
-    const anchor = (await FileSys.readJson(path.join(subspaceRoot, Subspace.anchorFile))) as {
+    const anchor = (await FileSys.readJson(path.join(subspaceRoot, SubspaceClone.anchorFile))) as {
       branch: string;
       apps: string[];
     };
@@ -252,7 +253,7 @@ describe("Subspace push", () => {
     await git(customer, ["commit", "--quiet", "-m", "our own global stages"]);
     await write(path.join(customer, "Jenkinsfile"), "pipeline { agent none }\n");
     await git(customer, ["add", "-A"]);
-    await git(customer, ["commit", "--quiet", "-m", `${Subspace.syncSubjectPrefix}workspace@0000000`]);
+    await git(customer, ["commit", "--quiet", "-m", `${SubspaceClone.syncSubjectPrefix}workspace@0000000`]);
     await git(customer, ["push", "--quiet", "origin", "develop"]);
 
     expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
@@ -302,7 +303,7 @@ describe("Subspace push", () => {
       'export default { subspaces: [{ name: "globex" }] };\n',
     );
     await git(customer, ["add", "-A"]);
-    await git(customer, ["commit", "--quiet", "-m", `${Subspace.syncSubjectPrefix}workspace@0000000`]);
+    await git(customer, ["commit", "--quiet", "-m", `${SubspaceClone.syncSubjectPrefix}workspace@0000000`]);
     await git(customer, ["push", "--quiet", "origin", "develop"]);
 
     expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
