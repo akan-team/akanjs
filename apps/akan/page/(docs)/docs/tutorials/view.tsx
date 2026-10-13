@@ -66,24 +66,24 @@ export default page().render(() => {
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
-      <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}>
-        <Docs.Title>{l.trans({ en: "Add View/Edit Modal", ko: "보기/수정 모달 추가하기" })}</Docs.Title>
+      <Scroll.Slide id="view-wrapper" title={l.trans({ en: "Add View Modal", ko: "보기 모달 추가하기" })}>
+        <Docs.Title>{l.trans({ en: "Add View Modal", ko: "보기 모달 추가하기" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
-              en: `Now let's add a View/Edit modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.`,
-              ko: `이제 아이스크림 주문 페이지에 보기/수정 모달을 추가해봅시다. 이것은 고객들이 모든 주문 세부사항을 체계적인 형식으로 볼 수 있는 팝업 창을 생성합니다. 모달은 고객이 주문 정보를 검토하고 싶을 때 나타나는 상세 영수증처럼 기능합니다.`,
+              en: `Now let's add a view modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.`,
+              ko: `이제 아이스크림 주문 페이지에 보기 모달을 추가해봅시다. 이것은 고객들이 모든 주문 세부사항을 체계적인 형식으로 볼 수 있는 팝업 창을 생성합니다. 모달은 고객이 주문 정보를 검토하고 싶을 때 나타나는 상세 영수증처럼 기능합니다.`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
-"use client"; // [!code collapse:3]
+"use client"; // [!code collapse:5]
+import { type cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
-import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
-import { DefaultOf } from "akanjs/constant";
 import { Load, Model } from "akanjs/ui";
+import { Fragment } from "react";
 
 interface CardProps {
   className?: string;
@@ -92,25 +92,23 @@ interface CardProps {
 }
 export const Card = ({ className, init, slice = fetch.slice.icecreamOrder }: CardProps) => {
   return (
-    <>
-      <Load.Units
-        className={className}
-        init={init}
-        renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
-          <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} />
-        )}
-      />
-      <Model.ViewEditModal
-        slice={slice}
-        renderTitle={(icecreamOrder: DefaultOf<cnst.IcecreamOrder>) =>
-          \`IcecreamOrder - \${icecreamOrder.id ? icecreamOrder.id : "New"}\`
-        }
-        renderView={(icecreamOrder: cnst.IcecreamOrder) => (
-          <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
-        )}
-        renderTemplate={() => <IcecreamOrder.Template.General />}
-      />
-    </>
+    <Load.Units
+      className={className}
+      init={init}
+      renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
+        <Fragment key={icecreamOrder.id}>
+          <IcecreamOrder.Unit.Card icecreamOrder={icecreamOrder} />
+          <Model.ViewModal
+            id={icecreamOrder.id}
+            slice={slice}
+            renderTitle={(icecreamOrder: cnst.IcecreamOrder) => \`IcecreamOrder - \${icecreamOrder.id}\`}
+            renderView={(icecreamOrder: cnst.IcecreamOrder) => (
+              <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
+            )}
+          />
+        </Fragment>
+      )}
+    />
   );
 };
 
@@ -130,8 +128,8 @@ export const View = ({ view }: ViewProps) => {
           />
           <div>
             {l.trans({
-              en: `This code creates a modal system that handles the display and editing of orders. Let's examine what each part does:`,
-              ko: `이 코드는 주문의 표시와 편집을 처리하는 모달 시스템을 생성합니다. 각 부분이 무엇을 하는지 살펴봅시다:`,
+              en: `This code renders each order as a card with its own view modal. Let's examine what each part does:`,
+              ko: `이 코드는 각 주문을 카드로 렌더링하고, 주문마다 보기 모달을 붙입니다. 각 부분이 무엇을 하는지 살펴봅시다:`,
             })}
           </div>
           <ul className="my-4 list-disc space-y-2 pl-5">
@@ -143,17 +141,17 @@ export const View = ({ view }: ViewProps) => {
               })}
             </li>
             <li>
-              <strong>{l.trans({ en: "Model.ViewEditModal", ko: "Model.ViewEditModal" })}</strong>:{" "}
+              <strong>{l.trans({ en: "Model.ViewModal", ko: "Model.ViewModal" })}</strong>:{" "}
               {l.trans({
-                en: "Creates the modal popup that appears when customers click to view details. It automatically loads order data and displays it in a structured format",
-                ko: "고객이 세부사항을 보기 위해 클릭할 때 나타나는 모달 팝업을 생성합니다. 주문 데이터를 자동으로 로드하고 구조화된 형식으로 표시합니다",
+                en: "The modal popup for one order, opened when its View button is clicked. The id prop tells it which order it belongs to, and it loads that order's data automatically",
+                ko: "주문 하나의 모달 팝업으로, 그 주문의 보기 버튼을 누르면 열립니다. id prop으로 어느 주문의 모달인지 알려주면 주문 데이터를 자동으로 불러옵니다",
               })}
             </li>
           </ul>
           <div>
             {l.trans({
-              en: `The ViewEditModal component handles opening, closing, data loading, and content display automatically. You specify what content to show, and it manages the technical implementation. This approach allows you to add detailed views throughout your application with minimal code.`,
-              ko: `ViewEditModal 컴포넌트는 열기, 닫기, 데이터 로딩, 콘텐츠 표시를 자동으로 처리합니다. 표시할 콘텐츠를 지정하면 기술적 구현을 관리해줍니다. 이러한 접근 방식을 통해 최소한의 코드로 애플리케이션 전체에 상세 뷰를 추가할 수 있습니다.`,
+              en: `The ViewModal component handles opening, closing, data loading, and content display automatically. Model.ViewEditModal adds Edit and Remove for the verbs a signal opens; ours opens only creation, so ViewModal is all we need.`,
+              ko: `ViewModal 컴포넌트는 열기, 닫기, 데이터 로딩, 콘텐츠 표시를 자동으로 처리합니다. Model.ViewEditModal은 signal이 연 동작에 맞춰 수정·삭제 버튼을 붙이는데, 우리 signal은 생성만 열어두었으므로 ViewModal이면 충분합니다.`,
             })}
           </div>
         </Docs.Description>
@@ -175,28 +173,28 @@ export const View = ({ view }: ViewProps) => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:2]
-import { cnst, fetch, usePage } from "@apps/koyo/client";
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code ++]
+import { type cnst, fetch, usePage } from "@apps/koyo/client"; // [!code collapse:2]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui"; // [!code ++]
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -208,7 +206,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4"> // [!code ++:7]
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
           <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -243,8 +241,8 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             <li>
               <strong>Button styling</strong>:{" "}
               {l.trans({
-                en: "The button uses the buttonRecipe primary variant and lg size for consistent styling across the app",
-                ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 buttonRecipe의 primary variant와 lg size를 사용합니다",
+                en: "The button uses the buttonRecipe primary variant for consistent styling across the app",
+                ko: "버튼은 앱 전체에서 일관된 스타일링을 위해 buttonRecipe의 primary variant를 사용합니다",
               })}
             </li>
           </ul>
@@ -264,8 +262,8 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
-import { cn } from "akanjs/client"; // [!code collapse:8]
-import { cnst, usePage } from "@apps/koyo/client";
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:8]
+import { cn } from "akanjs/client";
 
 interface GeneralProps {
   className?: string;
@@ -277,9 +275,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   return (
     <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4">
-        <span className="text-3xl font-extrabold text-primary">🍦</span>
-        <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
+        <span className="font-extrabold text-3xl text-primary">🍦</span>
+        <span className="font-bold text-2xl">{l("icecreamOrder.modelName")}</span>
+        <span className="ml-auto text-foreground/50 text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
         <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
@@ -287,14 +285,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
-            <span className="italic text-foreground/70">
-              {l.trans({ en: "No toppings", ko: "토핑 없음" })}
-            </span>
+            <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
           ) : (
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 font-medium text-primary text-xs"
               >
                 {l(\`topping.\${topping}\`)}
               </span>
@@ -305,7 +301,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div>
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              "inline-block rounded-full px-2 py-1 font-semibold text-xs",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -385,8 +381,8 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             <ol className="list-decimal space-y-2 pl-5 text-foreground/70 text-sm">
               <li>
                 {l.trans({
-                  en: "Navigate to http://localhost:8282/icecreamOrder",
-                  ko: "http://localhost:8282/icecreamOrder로 이동",
+                  en: "Navigate to http://localhost:8282",
+                  ko: "http://localhost:8282 로 이동",
                 })}
               </li>
               <li>

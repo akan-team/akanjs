@@ -252,7 +252,7 @@ export class Topping extends enumOf("topping", [
 ] as const) {}
 
 export class IcecreamOrderInput extends via((field) => ({
-  size: field(Int, { min: 50, max: 200}), // [!code highlight:2]
+  size: field(Int, { min: 50, max: 200 }), // [!code highlight:2]
   toppings: field([Topping]),
 })) {}
 
@@ -263,7 +263,7 @@ export class IcecreamOrderObject extends via(IcecreamOrderInput, (field) => ({
 export class LightIcecreamOrder extends via(
   IcecreamOrderObject,
   ["size", "toppings", "status"] as const,
-  (resolve) => ({})
+  (resolve) => ({}),
 ) {}
 
 export class IcecreamOrder extends via(IcecreamOrderObject, LightIcecreamOrder, (resolve) => ({})) {}
@@ -339,7 +339,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -384,8 +384,49 @@ export const dictionary = modelDictionary(["en", "ko"])
           </div>
           <div>
             {l.trans({
-              en: `Now customers will see "Size" instead of "size" and "Small/Medium/Large" instead of "50/100/200". Next, let's create the actual form where customers can place their orders.`,
-              ko: `이제 고객들은 "size" 대신 "사이즈"를, "50/100/200" 대신 "소형/중형/대형"을 보게 됩니다. 다음으로, 고객이 실제로 주문할 수 있는 폼을 만들어봅시다.`,
+              en: `Now customers will see "Size" instead of "size", and every topping in their own language. Before building the order form, let's allow customers to place orders.`,
+              ko: `이제 고객들은 "size" 대신 "사이즈"를, 토핑도 자신의 언어로 보게 됩니다. 주문 폼을 만들기 전에, 먼저 고객이 주문을 생성할 수 있도록 허용해봅시다.`,
+            })}
+          </div>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+      <Scroll.Slide id="allow-orders" title={l.trans({ en: "Allow orders in signal", ko: "Signal에서 주문 허용하기" })}>
+        <Docs.Title>{l.trans({ en: "Allow orders in signal", ko: "Signal에서 주문 허용하기" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: `The signal file decides who may call each API. A new module lets anyone read its data, but nobody can create, update, or remove it until you name a guard. Customers order without signing in, so open creation to everyone:`,
+              ko: `Signal 파일은 각 API를 누가 호출할 수 있는지 정합니다. 새로 만든 모듈은 누구나 데이터를 읽을 수 있지만, guard를 지정하기 전에는 아무도 생성·수정·삭제할 수 없습니다. 고객은 로그인 없이 주문하므로 생성을 모두에게 열어줍시다:`,
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
+            code={`
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interval }) => ({})) {}
+
+export class IcecreamOrderSlice extends slice(
+  srv.icecreamOrder,
+  { guards: { root: None, get: Public, cru: None, create: Public } }, // [!code highlight]
+  (init) => ({
+    inPublic: init({ guards: [Public] }).exec(function () {
+      return this.icecreamOrderService.queryAny();
+    }),
+  }),
+) {}
+
+export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({})) {}
+`}
+          />
+          <div>
+            {l.trans({
+              en: `"create: Public" overrides "cru" for creation only, so updating and removing orders stays closed. If your generated file reads "Admin" instead of "None", keep it and add "create: Public" the same way.`,
+              ko: `"create: Public"은 생성에만 "cru"를 덮어쓰므로 주문 수정과 삭제는 계속 닫혀 있습니다. 생성된 파일에 "None" 대신 "Admin"이 적혀 있다면 그대로 두고 같은 방식으로 "create: Public"만 추가하세요.`,
             })}
           </div>
         </Docs.Description>
@@ -405,8 +446,8 @@ export const dictionary = modelDictionary(["en", "ko"])
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
 "use client"; // [!code collapse:8]
-import { Field, Layout } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
+import { Field, Layout } from "akanjs/ui";
 
 interface GeneralProps {
   className?: string;
@@ -435,8 +476,8 @@ export const General = ({ className }: GeneralProps) => {
           />
           <div>
             {l.trans({
-              en: `This code creates two input fields: one for selecting ice cream size (small/medium/large) and another for choosing multiple toppings. The Field.ToggleSelect shows three size options as buttons, while Field.MultiToggleSelect allows customers to pick several toppings at once.`,
-              ko: `이 코드는 두 개의 입력 필드를 만듭니다: 아이스크림 사이즈 선택(소/중/대)과 다중 토핑 선택입니다. Field.ToggleSelect는 세 가지 크기 옵션을 버튼으로 보여주고, Field.MultiToggleSelect는 고객이 여러 토핑을 한 번에 선택할 수 있게 합니다.`,
+              en: `This code creates two input fields: one for selecting ice cream size (50cc/100cc/200cc) and another for choosing multiple toppings. The Field.ToggleSelect shows three size options as buttons, while Field.MultiToggleSelect allows customers to pick several toppings at once.`,
+              ko: `이 코드는 두 개의 입력 필드를 만듭니다: 아이스크림 사이즈 선택(50cc/100cc/200cc)과 다중 토핑 선택입니다. Field.ToggleSelect는 세 가지 크기 옵션을 버튼으로 보여주고, Field.MultiToggleSelect는 고객이 여러 토핑을 한 번에 선택할 수 있게 합니다.`,
             })}
           </div>
           <div>
@@ -456,8 +497,11 @@ export const General = ({ className }: GeneralProps) => {
           })}
         </div>
       </div>
-      <Scroll.Slide id="update-unit" title={l.trans({ en: "Update unit file", ko: "Unit 파일 업데이트" })}>
-        <Docs.Title>{l.trans({ en: "Update unit file", ko: "Unit 파일 업데이트" })}</Docs.Title>
+      <Scroll.Slide
+        id="update-unit"
+        title={l.trans({ en: "Update unit and view files", ko: "Unit·View 파일 업데이트" })}
+      >
+        <Docs.Title>{l.trans({ en: "Update unit and view files", ko: "Unit·View 파일 업데이트" })}</Docs.Title>
         <Docs.Description>
           <div>
             {l.trans({
@@ -469,26 +513,27 @@ export const General = ({ className }: GeneralProps) => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { cn, ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { cnst, usePage } from "@apps/koyo/client";
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:3]
+import { cn, type ModelProps } from "akanjs/client";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-border bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded border border-border bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg text-primary">
+          <span className="inline-block rounded border border-border bg-muted px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
+          {icecreamOrder.id}
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80",
+              "ml-2 rounded-full border border-border bg-background px-3 py-1 font-semibold text-foreground/80 text-sm",
               icecreamOrder.status === "active" && "bg-primary text-primary-foreground",
               icecreamOrder.status === "processing" && "bg-warning text-warning-foreground",
               icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground",
@@ -506,8 +551,8 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           />
           <div>
             {l.trans({
-              en: `This creates a card design for each ice cream order. The card shows the order ID and status with different colors - green for "active", blue for "processing", and red for "served".`,
-              ko: `이것은 각 아이스크림 주문에 대한 카드 디자인을 만듭니다. 카드는 주문 ID와 상태를 다른 색상으로 보여줍니다 - "활성"은 녹색, "처리중"은 파란색, "완료"는 빨간색입니다.`,
+              en: `This creates a card design for each ice cream order. The card shows the order ID and its status, with a different color for each status.`,
+              ko: `이것은 각 아이스크림 주문에 대한 카드 디자인을 만듭니다. 카드는 주문 ID와 상태를 보여주며, 상태마다 다른 색으로 표시합니다.`,
             })}
           </div>
           <div>
@@ -516,6 +561,37 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
               ko: `cn 함수는 주문 상태에 따라 카드의 모양을 바꾸고, l()은 사용자의 언어로 상태 텍스트를 표시합니다.`,
             })}
           </div>
+          <div>
+            {l.trans({
+              en: `The generated View file still shows the "name" field the module started with, which our order no longer has. Show the size and toppings instead:`,
+              ko: `생성된 View 파일은 아직 모듈이 처음 갖고 있던 "name" 필드를 보여주는데, 우리 주문에는 이 필드가 없습니다. 대신 사이즈와 토핑을 보여주도록 바꿔봅시다:`,
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
+            code={`
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:7]
+import { cn } from "akanjs/client";
+
+interface GeneralProps {
+  className?: string;
+  icecreamOrder: cnst.IcecreamOrder;
+}
+export const General = ({ className, icecreamOrder }: GeneralProps) => {
+  const { l } = usePage();
+  return (
+    <div className={cn("w-full", className)}>
+      <div>
+        {l("icecreamOrder.size")}: {icecreamOrder.size}cc
+      </div>
+      <div>
+        {l("icecreamOrder.toppings")}: {icecreamOrder.toppings.map((topping) => l(\`topping.\${topping}\`)).join(", ")}
+      </div>
+    </div>
+  );
+};`}
+          />
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -539,9 +615,9 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/_index.tsx"
-            code={`import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
+            code={`import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 import { page } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -549,12 +625,12 @@ export default page().render(() => {
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-5xl font-black">
-        <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
+      <div className="flex items-center gap-4">
+        <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <Model.New
           trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
-          renderTitle="name"
+          renderTitle="default"
           partial={icecreamOrderForm}
         >
           <IcecreamOrder.Template.General />
@@ -613,8 +689,8 @@ export default page().render(() => {
           </div>
           <div>
             {l.trans({
-              en: `Now visit http://localhost:8282/icecreamOrder to see your ice cream ordering system!`,
-              ko: `이제 http://localhost:8282/icecreamOrder를 방문하면 아이스크림 주문 시스템을 볼 수 있습니다.`,
+              en: `Now visit http://localhost:8282 to see your ice cream ordering system and place your first order!`,
+              ko: `이제 http://localhost:8282 에 방문하면 아이스크림 주문 시스템을 보고 첫 주문을 넣어볼 수 있습니다.`,
             })}
           </div>
         </Docs.Description>

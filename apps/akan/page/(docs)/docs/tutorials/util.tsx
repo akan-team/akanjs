@@ -53,6 +53,17 @@ export default page().render(() => {
             </div>
             <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
               <div className="mb-2">
+                <strong className="text-primary">Served</strong> → Finished
+              </div>
+              <div className="text-foreground/70 text-sm">
+                {l.trans({
+                  en: `Once the customer has picked up the order, staff closes it as "finished".`,
+                  ko: `고객이 주문을 받아 가면 직원이 "완료"로 마무리합니다.`,
+                })}
+              </div>
+            </div>
+            <div className={panelRecipe({ radius: "lg", padding: "sm" })}>
+              <div className="mb-2">
                 <strong className="text-primary">Active</strong> → Canceled
               </div>
               <div className="text-foreground/70 text-sm">
@@ -78,9 +89,12 @@ export default page().render(() => {
                 {l.trans({ en: "Only processing orders can be served", ko: "처리중인 주문만 서빙할 수 있습니다" })}
               </li>
               <li>
+                {l.trans({ en: "Only served orders can be finished", ko: "서빙완료된 주문만 완료할 수 있습니다" })}
+              </li>
+              <li>
                 {l.trans({
-                  en: "Served and canceled orders are final states",
-                  ko: "서빙완료와 취소됨은 최종 상태입니다",
+                  en: "Finished and canceled orders are final states",
+                  ko: "완료와 취소됨은 최종 상태입니다",
                 })}
               </li>
             </ul>
@@ -106,7 +120,7 @@ export default page().render(() => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
-import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:3]
+import { by, from, into } from "akanjs/document"; // [!code collapse:3]
 
 import * as cnst from "../cnst";
 import { Err } from "../dict"; // [!code ++]
@@ -190,7 +204,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -328,9 +342,8 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
-import { Admin } from "@libs/shared/srvkit";
 import { ID } from "akanjs/base"; // [!code ++]
-import { endpoint, internal, Public, slice } from "akanjs/signal"; // [!code collapse:18]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal"; // [!code collapse:7]
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -339,31 +352,31 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder,
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init().exec(function () {
+    inPublic: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryAny();
     }),
-  })
+  }),
 ) {}
 
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder) // [!code ++:20]
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] }) // [!code ++:20]
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -378,8 +391,14 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
           </div>
           <div>
             {l.trans({
-              en: `The second argument to slice() is the guard map, not boilerplate: root is the generated admin query API and is always Admin, get covers reads, and cru covers create, update and remove — create is opened on its own here because the kiosk takes anonymous orders. Leaving root: Public hands that admin query API to every anonymous caller, and to every AI agent through /mcp.`,
-              ko: `slice()의 두 번째 인자는 guard map이며 형식적인 boilerplate가 아닙니다. root는 생성된 admin query API라서 항상 Admin이고, get은 읽기, cru는 create/update/remove를 담당합니다 — 여기서는 키오스크가 익명 주문을 받으므로 create만 따로 열었습니다. root: Public으로 두면 그 admin query API가 모든 익명 호출자에게, 그리고 /mcp를 통해 모든 AI 에이전트에게 그대로 열립니다.`,
+              en: `The second argument to slice() is the guard map, not boilerplate: root is the generated admin query API and stays closed (None here, Admin once your workspace has libs/shared), get covers reads, and cru covers create, update and remove — create is opened on its own because the kiosk takes anonymous orders. Leaving root: Public hands that admin query API to every anonymous caller, and to every AI agent through /mcp.`,
+              ko: `slice()의 두 번째 인자는 guard map이며 형식적인 boilerplate가 아닙니다. root는 생성된 admin query API라서 닫아 둡니다(여기서는 None, 워크스페이스에 libs/shared가 있다면 Admin). get은 읽기, cru는 create/update/remove를 담당하며, 키오스크가 익명 주문을 받으므로 create만 따로 열었습니다. root: Public으로 두면 그 admin query API가 모든 익명 호출자에게, 그리고 /mcp를 통해 모든 AI 에이전트에게 그대로 열립니다.`,
+            })}
+          </div>
+          <div>
+            {l.trans({
+              en: `Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them. Once you add sign-in, replace Public with a staff guard such as Admin.`,
+              ko: `직접 만든 엔드포인트도 각자 guards를 지정합니다. 아직 이 가게에는 로그인이 없으므로 직원용 동작은 guards: [Public]으로 두었고, 누구나 호출할 수 있습니다. 로그인을 추가하면 Public을 Admin 같은 직원용 guard로 바꾸세요.`,
             })}
           </div>
           <div>
@@ -402,7 +421,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -485,9 +504,8 @@ export const dictionary = modelDictionary(["en", "ko"])
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.store.ts"
             code={`
-import { store } from "akanjs/store"; // [!code collapse:5]
+import { store } from "akanjs/store"; // [!code collapse:4]
 
-import * as cnst from "../cnst";
 import { fetch, sig } from "../useClient";
 
 export class IcecreamOrderStore extends store(sig.icecreamOrder, () => ({
@@ -655,8 +673,8 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
               </div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
-                  en: `Each button has appropriate styling: primary for Process, secondary for Serve, outlined warning for Cancel`,
-                  ko: `각 버튼은 적절한 스타일링을 가집니다: Process는 primary, Serve는 secondary, Cancel은 outlined warning`,
+                  en: `Each button has its own variant: secondary for Process, accent for Serve, success for Finish, and warning for Cancel`,
+                  ko: `각 버튼은 고유한 variant를 가집니다: Process는 secondary, Serve는 accent, Finish는 success, Cancel은 warning`,
                 })}
               </div>
             </div>
@@ -710,29 +728,28 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx"
             code={`
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, usePage } from "@apps/koyo/client";
-import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
+import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:3]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:25]
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -744,7 +761,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
           <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -769,10 +786,9 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
-import { cn } from "akanjs/client"; // [!code collapse:2]
-import { cnst, usePage } from "@apps/koyo/client";
-import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
-// [!code collapse:5]
+import { type cnst, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:8]
+import { cn } from "akanjs/client";
+
 interface GeneralProps {
   className?: string;
   icecreamOrder: cnst.IcecreamOrder;
@@ -783,14 +799,14 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   return (
     <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4"> // [!code collapse:43]
-        <span className="text-3xl font-extrabold text-primary">🍦</span>
-        <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="text-foreground/50 ml-auto text-xs">#{icecreamOrder.id}</span>
+        <span className="font-extrabold text-3xl text-primary">🍦</span>
+        <span className="font-bold text-2xl">{l("icecreamOrder.modelName")}</span>
+        <span className="ml-auto text-foreground/50 text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
@@ -798,18 +814,18 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 font-medium text-primary text-xs"
               >
                 {l(\`topping.\${topping}\`)}
               </span>
             ))
           )}
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              "inline-block rounded-full px-2 py-1 font-semibold text-xs",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -820,9 +836,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2"> // [!code ++:6]
@@ -886,8 +902,8 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             <ol className="list-decimal space-y-2 pl-5 text-foreground/70 text-sm">
               <li>
                 {l.trans({
-                  en: "Navigate to http://localhost:8282/icecreamOrder",
-                  ko: "http://localhost:8282/icecreamOrder로 이동",
+                  en: "Navigate to http://localhost:8282",
+                  ko: "http://localhost:8282 로 이동",
                 })}
               </li>
               <li>
@@ -918,6 +934,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
                 {l.trans({
                   en: "Click 'Serve' - the status should change to 'served'",
                   ko: "'서빙완료' 클릭 - 상태가 '서빙완료'로 변경되어야 함",
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: "Click 'Finish' - the status should change to 'finished'",
+                  ko: "'완료' 클릭 - 상태가 '완료'로 변경되어야 함",
                 })}
               </li>
               <li>
@@ -961,8 +983,8 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: `In the next tutorial, we'll learn how to edit existing data by implementing order modification functionality. This will allow customers to update their ice cream orders before they're processed, completing the full CRUD operations for our ice cream shop.`,
-              ko: `다음 튜토리얼에서는 주문 수정 기능을 구현하여 기존 데이터를 편집하는 방법을 배울 것입니다. 이를 통해 고객이 처리되기 전에 아이스크림 주문을 업데이트할 수 있게 되어 아이스크림 가게의 완전한 CRUD 작업이 완성될 것입니다.`,
+              en: `In the next tutorial, we'll connect the service layer to the outside world: notify staff and customers through an external API, and run a scheduled job that checks on orders.`,
+              ko: `다음 튜토리얼에서는 서비스 레이어를 바깥 세계와 연결합니다. 외부 API로 직원과 고객에게 알림을 보내고, 주기적으로 주문을 확인하는 작업을 실행해봅니다.`,
             })}
           </div>
         </Docs.Description>

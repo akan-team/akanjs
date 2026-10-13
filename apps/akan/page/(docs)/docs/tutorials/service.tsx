@@ -37,8 +37,8 @@ export default page().render(() => {
           </div>
           <div>
             {l.trans({
-              en: `Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder as follows.`,
-              ko: `service, signal, document와 같은 모듈 기능은 바로 외부와 연동하지 않고, 별도로 어댑터를 만들어 이를 주입하는 방식이 바람직합니다. 먼저, /srvkit 폴더에서 다음과 같이 어댑터를 생성해봅시다.`,
+              en: `Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder with adapt(). An adapter gets its own logger as this.logger.`,
+              ko: `service, signal, document와 같은 모듈 기능은 바로 외부와 연동하지 않고, 별도로 어댑터를 만들어 이를 주입하는 방식이 바람직합니다. 먼저, /srvkit 폴더에서 adapt()로 어댑터를 생성해봅시다. 어댑터는 this.logger로 자신의 로거를 갖습니다.`,
             })}
           </div>
           <Code.Snippet
@@ -46,14 +46,11 @@ export default page().render(() => {
             language="typescript"
             title="apps/koyo/srvkit/alarmApi.ts"
             code={`
-import { Logger } from "akanjs/common";
+import { adapt } from "akanjs/service";
 
-export class AlarmApi {
-  readonly #logger = new Logger("AlarmApi");
-  constructor(readonly name: string) {}
-
+export class AlarmApi extends adapt("alarmApi" as const, () => ({})) {
   warn(message: string) {
-    this.#logger.warn(\`\${this.name}: \${message}\`);
+    this.logger.warn(message);
   }
 }`}
           />
@@ -98,47 +95,21 @@ export class AlarmApi {
         <Docs.Description>
           <div>
             {l.trans({
-              en: `Now, in order to inject the adapter for the alarm into the server, you need to declare and register the adapter to be injected in the option.ts file.`,
-              ko: `이제 알람을 위한 어댑터를 서버에 주입하기 위해서는 option.ts파일에서 주입할 어댑터를 선언하고 등록해야 합니다.`,
+              en: `adapt() registers the adapter by itself, so there is nothing to add to option.ts. Inject it into icecreamOrderService with plug():`,
+              ko: `adapt()로 만든 어댑터는 스스로 등록되므로 option.ts에 추가할 것이 없습니다. icecreamOrderService에서 plug()로 주입해봅시다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
-            title="apps/koyo/lib/option.ts"
+            title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
 import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
-import { AkanOption } from "akanjs/server"; // [!code collapse:8]
-
-import type { LibOptions } from "./srv";
-
-export type ModulesOptions = LibOptions & {
-  //
-};
-
-export const option = new AkanOption<ModulesOptions>().use((options) => ({
-  alarmApi: new AlarmApi(options.appName), // [!code ++]
-}));`}
-          />
-        </Docs.Description>
-
-        <div>
-          {l.trans({
-            en: `Now, you can inject the alarmApi in the icecreamOrderService and use it.`,
-            ko: `이제 icecreamOrderService에서 alarmApi를 주입하여 사용할 수 있습니다.`,
-          })}
-        </div>
-
-        <Code.Snippet
-          className="w-full"
-          title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
-          code={`
-import { AlarmApi } from "@apps/koyo/srvkit"; // [!code ++]
-import { serve } from "akanjs/service"; // [!code collapse:4]
+import { serve } from "akanjs/service"; // [!code collapse:3]
 
 import * as db from "../db";
 
-export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, service }) => ({
-  alarmApi: use<AlarmApi>(), // [!code ++]
+export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({ // [!code ++:3]
+  alarmApi: plug(AlarmApi),
 })) {
   async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
     const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
@@ -157,7 +128,8 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
     return await icecreamOrder.cancel().save();
   }
 }`}
-        />
+          />
+        </Docs.Description>
       </Scroll.Slide>
       <Divider />
 
@@ -177,14 +149,14 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
-import { dayjs } from "akanjs/base"; // [!code ++]
-import { serve } from "akanjs/service"; // [!code collapse:5]
 import { AlarmApi } from "@apps/koyo/srvkit";
+import { dayjs } from "akanjs/base"; // [!code ++]
+import { serve } from "akanjs/service"; // [!code collapse:4]
 
 import * as db from "../db";
 
-export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, service }) => ({
-  alarmApi: use<AlarmApi>(),
+export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({
+  alarmApi: plug(AlarmApi),
 })) {
   async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
     const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
@@ -205,7 +177,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
   async warnIcecreamMeltingAll() { // [!code ++:7]
     const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
     for (const icecreamOrder of servedIcecreamOrders) {
-      if (icecreamOrder.createdAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
+      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
       this.alarmApi.warn(\`IcecreamOrder \${icecreamOrder.id} is melting 😱\`);
     }
   }
@@ -227,7 +199,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts"
             code={`
-import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
+import { by, from, into } from "akanjs/document"; // [!code collapse:6]
 
 import * as cnst from "../cnst";
 import { Err } from "../dict";
@@ -242,7 +214,7 @@ export class IcecreamOrderFilter extends from(cnst.IcecreamOrder, (filter) => ({
   },
   sort: {},
 })) {}
-// [!code collapse:30]
+// [!code collapse:23]
 export class IcecreamOrder extends by(cnst.IcecreamOrder) {
   process() {
     if (this.status !== "active") throw new Err("icecreamOrder.error.onlyActiveCanBeProcessed");
@@ -265,12 +237,13 @@ export class IcecreamOrder extends by(cnst.IcecreamOrder) {
     return this;
   }
 }
+
 export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter, cnst.icecreamOrder, () => ({})) {}`}
           />
           <div>
             {l.trans({
-              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, insight, sample functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.`,
-              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, insight, sample 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses, insightByStatuses 등의 기능을 사용할 수 있습니다. countByStatuses는 number를, insightByStatuses는 db.IcecreamOrderInsight를 반환합니다.`,
+              en: `By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, exists, insight and other functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.`,
+              ko: `IcecreamOrderFilter에서 byStatuses 쿼리를 선언하면, 주어진 조건의 쿼리에 맞게 list, find, count, exists, insight 등의 기능을 사용할 수 있습니다. 예를 들면, listByStatuses, countByStatuses, insightByStatuses 등의 기능을 사용할 수 있습니다. countByStatuses는 number를, insightByStatuses는 db.IcecreamOrderInsight를 반환합니다.`,
             })}
           </div>
           <Docs.Alert>
@@ -291,17 +264,16 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
         <Docs.Description>
           <div>
             {l.trans({
-              en: `Now, let's use interval to execute the service every 15 seconds. The interval trigger is a trigger that works internally, and can be declared in IcecreamOrderInternal.`,
-              ko: `이제 15초마다 해당 서비스를 실행하도록 interval을 사용해봅시다. interval trigger는 내부에서 발생하는 트리거로 작동하는 구조로, IcecreamOrderInternal에서 선언할 수 있습니다.`,
+              en: `Now, let's use interval to execute the service every 10 seconds. The interval trigger is a trigger that works internally, and can be declared in IcecreamOrderInternal.`,
+              ko: `이제 10초마다 해당 서비스를 실행하도록 interval을 사용해봅시다. interval trigger는 내부에서 발생하는 트리거로 작동하는 구조로, IcecreamOrderInternal에서 선언할 수 있습니다.`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
-import { Admin } from "@libs/shared/srvkit"; // [!code collapse:8]
-import { ID } from "akanjs/base";
-import { endpoint, internal, Public, slice } from "akanjs/signal";
+import { ID } from "akanjs/base"; // [!code collapse:6]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -314,31 +286,31 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 // [!code collapse:33]
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder,
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init().exec(function () {
+    inPublic: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryAny();
     }),
-  })
+  }),
 ) {}
 
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder) // [!code ++:20]
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -354,7 +326,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
           <Code.Snippet
             className="w-full"
             language="bash"
-            code={`[AlarmApi] 44136 - 11/06/2025, 22:19:29 PM    WARN  myapp: IcecreamOrder 690c9f5d83050b6bb34b93bc is melting 😱 +331830ms`}
+            code={`[alarmApi] 87795 - 10/13/2026, 16:06:43 PM    WARN  IcecreamOrder 6acdd8707952e700b0d66142 is melting 😱 +30134ms`}
           />
           <Docs.Alert>
             <div>

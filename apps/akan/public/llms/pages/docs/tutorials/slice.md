@@ -24,7 +24,7 @@ Dashboard Slice
 
 First, let's declare a slice for the real-time dashboard to show to customers. You can display the waiting orders and the orders being picked up by querying them separately.
 
-inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. When the slice is declared, the state and actions of the store are automatically created.
+inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. Each init() names its own guards, and the dashboard is public. When the slice is declared, the state and actions of the store are automatically created.
 
 Just like labeling different shelves in an ice cream shop - "Ready for pickup", "Being made" - we need to give proper names to our slices in the dictionary. This ensures the UI displays meaningful labels and the slice functions are properly documented.
 
@@ -87,9 +87,8 @@ In the next tutorial, we'll explore how to create dynamic page navigation and us
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts
 
 ```ts
-import { Admin } from "@libs/shared/srvkit"; // [!code collapse:14]
-import { ID } from "akanjs/base";
-import { endpoint, internal, Public, slice } from "akanjs/signal";
+import { ID } from "akanjs/base"; // [!code collapse:12]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -102,37 +101,37 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder, // [!code collapse:2]
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init().exec(function () {
+    inPublic: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryAny();
     }),
-    inWaiting: init().exec(function () { // [!code ++:6]
+    inWaiting: init({ guards: [Public] }).exec(function () { // [!code ++:6]
       return this.icecreamOrderService.queryByStatuses(["active", "processing"]);
     }),
-    inPickup: init().exec(function () {
+    inPickup: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryByStatuses(["served"]);
     }),
-  })
+  }),
 ) {}
 // [!code collapse:23]
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder) // [!code ++:20]
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -153,7 +152,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -231,7 +230,7 @@ export default page().render(() => {
   return (
     <div className="flex size-full gap-2 p-4">
       <div className="w-2/3">
-        <h2 className="my-2 text-3xl font-bold">{l("icecreamOrder.pickup")}</h2>
+        <h2 className="my-2 font-bold text-3xl">{l("icecreamOrder.pickup")}</h2>
         <IcecreamOrder.Zone.Card
           className="space-y-2"
           init={icecreamOrderInitInPickup}
@@ -240,7 +239,7 @@ export default page().render(() => {
         />
       </div>
       <div className="w-1/3">
-        <h2 className="my-2 text-3xl font-bold">{l("icecreamOrder.waiting")}</h2>
+        <h2 className="my-2 font-bold text-3xl">{l("icecreamOrder.waiting")}</h2>
         <IcecreamOrder.Zone.Card
           className="space-y-2"
           init={icecreamOrderInitInWaiting}
@@ -266,7 +265,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -337,9 +336,9 @@ export const dictionary = modelDictionary(["en", "ko"])
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:4]
-import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:4]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder> { // [!code ++:4]
   showControls?: boolean;
@@ -349,19 +348,19 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:25]
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -374,7 +373,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
         </div>
       </div>
       {showControls ? ( // [!code ++]
-        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
             <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -397,13 +396,12 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx
 
 ```ts
-"use client"; // [!code collapse:5]
+"use client";
+import { type cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
-import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
-import { DefaultOf } from "akanjs/constant";
 import { Load, Model } from "akanjs/ui";
-import { st } from "@apps/koyo/client"; // [!code ++:2]
-import { useInterval } from "akanjs/webkit";
+import { useInterval } from "akanjs/webkit"; // [!code ++]
+import { Fragment } from "react";
 
 interface CardProps {
   className?: string;
@@ -416,31 +414,25 @@ export const Card = ({ className, init, slice = fetch.slice.icecreamOrder, showC
     void st.slice[slice.sliceName as "icecreamOrder"].do.refreshIcecreamOrder();
   }, 3000);
   return (
-    <>
-      <Load.Units // [!code collapse:11]
-        className={className}
-        init={init}
-        renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
-          <IcecreamOrder.Unit.Card
-            key={icecreamOrder.id}
-            icecreamOrder={icecreamOrder}
-            showControls={showControls}
-          />
-        )}
-      />
-      {showControls ? ( // [!code ++]
-        <Model.ViewEditModal
-          slice={slice} // [!code collapse:8]
-          renderTitle={(icecreamOrder: DefaultOf<cnst.IcecreamOrder>) =>
-            `IcecreamOrder - ${icecreamOrder.id ? icecreamOrder.id : "New"}`
-          }
-          renderView={(icecreamOrder: cnst.IcecreamOrder) => (
-            <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
-          )}
-          renderTemplate={() => <IcecreamOrder.Template.General />}
-        />
-      ) : null} // [!code ++]
-    </>
+    <Load.Units
+      className={className}
+      init={init}
+      renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
+        <Fragment key={icecreamOrder.id}>
+          <IcecreamOrder.Unit.Card icecreamOrder={icecreamOrder} showControls={showControls} />
+          {showControls ? ( // [!code ++]
+            <Model.ViewModal
+              id={icecreamOrder.id}
+              slice={slice}
+              renderTitle={(icecreamOrder: cnst.IcecreamOrder) => `IcecreamOrder - ${icecreamOrder.id}`}
+              renderView={(icecreamOrder: cnst.IcecreamOrder) => (
+                <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
+              )}
+            />
+          ) : null} // [!code ++]
+        </Fragment>
+      )}
+    />
   );
 };
 // [!code collapse:13]

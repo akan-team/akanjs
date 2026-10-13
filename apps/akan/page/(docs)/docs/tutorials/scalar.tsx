@@ -107,7 +107,7 @@ export class Stock extends via((field) => ({
             code={`
 import { scalarDictionary } from "akanjs/dictionary";
 
-import { type Topping } from "../../icecreamOrder/icecreamOrder.constant";
+import type { Topping } from "../../icecreamOrder/icecreamOrder.constant";
 import { dictionary as icecreamOrder } from "../../icecreamOrder/icecreamOrder.dictionary";
 import type { Stock, StockType } from "./stock.constant";
 
@@ -116,7 +116,7 @@ export const dictionary = scalarDictionary(["en", "ko"])
     t(["Stock", "재고"]).desc([
       "Stock is a collection of items that are available for purchase",
       "재고는 구매 가능한 아이템들의 모음입니다",
-    ])
+    ]),
   )
   .model<Stock>((t) => ({
     type: t(["Type", "타입"]).desc(["Type of the stock", "재고의 타입"]),
@@ -168,9 +168,8 @@ akan create-module inventory
             className="w-full"
             title="apps/koyo/lib/inventory/inventory.constant.ts"
             code={`
-import { via } from "akanjs/constant";
 import { dayjs } from "akanjs/base"; // [!code ++]
-
+import { via } from "akanjs/constant";
 import { Stock } from "../__scalar/stock/stock.constant"; // [!code ++]
 
 export class InventoryInput extends via((field) => ({
@@ -182,7 +181,7 @@ export class InventoryObject extends via(InventoryInput, (field) => ({
   at: field(Date, { default: () => dayjs().set("hour", 0).set("minute", 0).set("second", 0).set("millisecond", 0) }), // [!code ++]
 })) {}
 // [!code collapse:6]
-export class LightInventory extends via(InventoryObject, [] as const, (resolve) => ({})) {}
+export class LightInventory extends via(InventoryObject, ["at"] as const, (resolve) => ({})) {}
 
 export class Inventory extends via(InventoryObject, LightInventory, (resolve) => ({})) {}
 
@@ -213,8 +212,8 @@ export class InventoryInsight extends via(Inventory, (field) => ({})) {}
               </div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
-                  en: `A date field that defaults to midnight of the current day. This allows creating one inventory record per day and easily finding today's inventory.`,
-                  ko: `현재 날짜의 자정으로 기본 설정되는 날짜 필드입니다. 이를 통해 하루에 하나의 재고 기록을 만들고 오늘의 재고를 쉽게 찾을 수 있습니다.`,
+                  en: `A date field that defaults to midnight of the current day. This allows creating one inventory record per day and easily finding today's inventory. It is listed in LightInventory too, so a list card can show it.`,
+                  ko: `현재 날짜의 자정으로 기본 설정되는 날짜 필드입니다. 이를 통해 하루에 하나의 재고 기록을 만들고 오늘의 재고를 쉽게 찾을 수 있습니다. LightInventory에도 넣어 목록 카드에서 보여줄 수 있게 합니다.`,
                 })}
               </div>
             </div>
@@ -236,10 +235,10 @@ import type { InventoryEndpoint, InventorySlice } from "./inventory.signal";
 
 export const dictionary = modelDictionary(["en", "ko"])
   .of((t) =>
-    t(["Inventory", "Inventory"]).desc([
+    t(["Inventory", "재고"]).desc([
       "Inventory is a record of stock items at a specific time",
       "Inventory는 특정 시점의 재고 항목들을 기록한 레코드입니다",
-    ])
+    ]),
   )
   .model<Inventory>((t) => ({
     stocks: t(["Stocks", "재고"]).desc([
@@ -264,6 +263,46 @@ export const dictionary = modelDictionary(["en", "ko"])
     outOfStock: ["Out of stock", "재고가 부족합니다"],
   });`}
           />
+          <div>
+            {l.trans({
+              en: `The generated Unit and Template still read the name field the module started with. Inventory records come from refill, not from a form, so leave the Template empty and show the date on the Unit card:`,
+              ko: `생성된 Unit과 Template은 아직 모듈이 처음 갖고 있던 name 필드를 읽습니다. 재고 기록은 폼이 아니라 refill로 만들어지므로, Template은 비워 두고 Unit 카드에는 날짜를 보여줍시다:`,
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/koyo/lib/inventory/Inventory.Unit.tsx"
+            code={`
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:4]
+import type { ModelProps } from "akanjs/client";
+import { Link } from "akanjs/ui";
+
+export const Card = ({ inventory, href }: ModelProps<"inventory", cnst.LightInventory>) => {
+  const { l } = usePage();
+  return (
+    <Link href={href} className="w-full">
+      <div>
+        {l("inventory.at")}: {inventory.at.format("YYYY-MM-DD")} // [!code highlight]
+      </div>
+    </Link>
+  );
+};`}
+          />
+          <Code.Snippet
+            className="w-full"
+            title="apps/koyo/lib/inventory/Inventory.Template.tsx"
+            code={`
+"use client";
+import { Layout } from "akanjs/ui";
+
+interface GeneralProps {
+  className?: string;
+}
+
+export const General = ({ className }: GeneralProps) => {
+  return <Layout.Template className={className} />;
+};`}
+          />
         </Docs.Description>
       </Scroll.Slide>
       <Divider />
@@ -287,7 +326,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             title="apps/koyo/lib/inventory/inventory.document.ts"
             code={`
 import { dayjs } from "akanjs/base"; // [!code ++]
-import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:3]
+import { by, from, into } from "akanjs/document"; // [!code collapse:3]
 
 import * as cnst from "../cnst";
 import { Err } from "../dict"; // [!code ++]
@@ -391,7 +430,7 @@ export class InventoryModel extends into(Inventory, InventoryFilter, cnst.invent
             code={`
 import { serve } from "akanjs/service"; // [!code collapse:5]
 
-import * as cnst from "../cnst";
+import type * as cnst from "../cnst";
 import * as db from "../db";
 
 export class InventoryService extends serve(db.inventory, ({ use, service }) => ({})) {
@@ -402,7 +441,7 @@ export class InventoryService extends serve(db.inventory, ({ use, service }) => 
     const inventory = await this.getTodaysInventory();
     return await inventory.refill().save();
   }
-  async useStocks(usages: {type: cnst.StockType["value"], quantity: number}[]) {
+  async useStocks(usages: { type: cnst.StockType["value"]; quantity: number }[]) {
     const inventory = await this.getTodaysInventory();
     return await inventory.useStocks(usages).save();
   }
@@ -431,15 +470,15 @@ export class InventoryService extends serve(db.inventory, ({ use, service }) => 
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
             code={`
-import { dayjs } from "akanjs/base"; // [!code collapse:5]
+import { AlarmApi } from "@apps/koyo/srvkit"; // [!code collapse:5]
+import { dayjs } from "akanjs/base";
 import { serve } from "akanjs/service";
-import { AlarmApi } from "@apps/koyo/srvkit";
 
 import * as db from "../db";
 import type * as srv from "../srv"; // [!code ++]
 
-export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, service }) => ({
-  alarmApi: use<AlarmApi>(),
+export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug, service }) => ({ // [!code highlight]
+  alarmApi: plug(AlarmApi),
   inventoryService: service<srv.InventoryService>(), // [!code ++]
 })) {
   override async _preCreate(data: db.IcecreamOrderInput) { // [!code ++:7]
@@ -468,7 +507,7 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
   async warnIcecreamMeltingAll() {
     const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
     for (const icecreamOrder of servedIcecreamOrders) {
-      if (icecreamOrder.createdAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
+      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
       this.alarmApi.warn(\`IcecreamOrder \${icecreamOrder.id} is melting 😱\`);
     }
   }
@@ -526,8 +565,8 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
             className="w-full"
             title="apps/koyo/lib/inventory/inventory.signal.ts"
             code={`
-import { Admin } from "@libs/shared/srvkit"; // [!code collapse:18]
-import { endpoint, internal, Public, slice } from "akanjs/signal";
+import { endpoint, internal, None, Public, slice } from "akanjs/signal"; // [!code collapse:18]
+
 import * as cnst from "../cnst";
 import * as srv from "../srv";
 
@@ -535,23 +574,29 @@ export class InventoryInternal extends internal(srv.inventory, ({ interval }) =>
 
 export class InventorySlice extends slice(
   srv.inventory,
-  { guards: { root: Admin, get: Public, cru: Admin } },
+  { guards: { root: None, get: Public, cru: None } },
   (init) => ({
-    inPublic: init().exec(function () {
+    inPublic: init({ guards: [Public] }).exec(function () {
       return this.inventoryService.queryAny();
     }),
-  })
+  }),
 ) {}
 
 export class InventoryEndpoint extends endpoint(srv.inventory, ({ query, mutation }) => ({
-  getTodaysInventory: query(cnst.Inventory).exec(async function () { // [!code ++:6]
+  getTodaysInventory: query(cnst.Inventory, { guards: [Public] }).exec(async function () { // [!code ++:6]
     return await this.inventoryService.getTodaysInventory();
   }),
-  refillTodaysInventory: query(cnst.Inventory).exec(async function () {
+  refillTodaysInventory: mutation(cnst.Inventory, { guards: [Public] }).exec(async function () {
     return await this.inventoryService.refillTodaysInventory();
   }),
 })) {}`}
           />
+          <div>
+            {l.trans({
+              en: `refillTodaysInventory changes data, so it is a mutation, not a query. Both endpoints name their guards; with no sign-in yet, they are Public like the order actions.`,
+              ko: `refillTodaysInventory는 데이터를 바꾸므로 query가 아니라 mutation입니다. 두 엔드포인트 모두 guards를 지정하며, 아직 로그인이 없으므로 주문 동작처럼 Public입니다.`,
+            })}
+          </div>
           <div>
             {l.trans({
               en: `Add dictionary entries for the endpoints:`,
@@ -569,10 +614,10 @@ import type { InventoryEndpoint, InventorySlice } from "./inventory.signal";
 
 export const dictionary = modelDictionary(["en", "ko"])
   .of((t) => // [!code collapse:20]
-    t(["Inventory", "Inventory"]).desc([
+    t(["Inventory", "재고"]).desc([
       "Inventory is a record of stock items at a specific time",
       "Inventory는 특정 시점의 재고 항목들을 기록한 레코드입니다",
-    ])
+    ]),
   )
   .model<Inventory>((t) => ({
     stocks: t(["Stocks", "재고"]).desc([
@@ -618,7 +663,7 @@ export const dictionary = modelDictionary(["en", "ko"])
             code={`
 import { store } from "akanjs/store"; // [!code collapse:5]
 
-import * as cnst from "../cnst";
+import type * as cnst from "../cnst";
 import { fetch, sig } from "../useClient";
 
 export class InventoryStore extends store(sig.inventory, () => ({
@@ -657,12 +702,11 @@ export class InventoryStore extends store(sig.inventory, () => ({
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx"
             code={`
-"use client"; // [!code collapse:4]
-import { cn } from "akanjs/client";
-import { Field, Layout } from "akanjs/ui";
+"use client"; // [!code collapse:3]
 import { cnst, st, usePage } from "@apps/koyo/client";
-import { Loading } from "akanjs/ui"; // [!code ++]
-// [!code collapse:5]
+import { cn } from "akanjs/client";
+import { Field, Layout, Loading } from "akanjs/ui"; // [!code highlight]
+// [!code collapse:6]
 interface GeneralProps {
   className?: string;
   showServeType?: boolean;
@@ -682,7 +726,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
-              <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.serveType")}</h2>
+              <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.serveType")}</h2>
             </div>
             <Field.ToggleSelect
               items={cnst.ServeType}
@@ -696,7 +740,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">📏</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.size")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.size")}</h2>
           </div>
           <Field.ToggleSelect
             items={[50, 100, 200].map((size) => ({
@@ -713,11 +757,11 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3"> // [!code collapse:4]
             <span className="text-3xl">🍓</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.toppings")}</h2>
           </div>
           <Field.MultiToggleSelect
             items={cnst.Topping.map((topping) => ({ // [!code highlight:5]
-              label: topping,
+              label: l(\`topping.\${topping}\`),
               value: topping,
               disabled: !todaysInventory.isInStock(topping),
             }))}
@@ -730,7 +774,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.phone")}</h2>
           </div>
           <Field.Phone
             placeholder="010-0000-0000"
@@ -756,8 +800,8 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
               </div>
               <div className="text-foreground/70 text-sm">
                 {l.trans({
-                  en: `The form only reads the store, and shows a spinner until the value is there. Inventory.Zone.Today, which the route mounts below, is what calls loadTodaysInventory - a mount-time fetch inside a Template is what akan quality ssr reports as client-mount-load.`,
-                  ko: `폼은 스토어를 읽기만 하고, 값이 들어올 때까지 스피너를 보여줍니다. loadTodaysInventory를 호출하는 쪽은 아래에서 라우트가 마운트하는 Inventory.Zone.Today입니다 - Template 안의 마운트 시점 페칭은 akan quality ssr이 client-mount-load로 보고하는 패턴입니다.`,
+                  en: `The form only reads the store, and shows a spinner until the value is there. The Inventory zones you mount below are what call loadTodaysInventory - a mount-time fetch inside a Template is what akan quality ssr reports as client-mount-load.`,
+                  ko: `폼은 스토어를 읽기만 하고, 값이 들어올 때까지 스피너를 보여줍니다. loadTodaysInventory를 호출하는 쪽은 아래에서 마운트할 Inventory Zone들입니다 - Template 안의 마운트 시점 페칭은 akan quality ssr이 client-mount-load로 보고하는 패턴입니다.`,
                 })}
               </div>
             </div>
@@ -794,11 +838,9 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
             className="w-full"
             title="apps/koyo/lib/inventory/inventory.constant.ts"
             code={`
-import { dayjs } from "akanjs/base"; // [!code collapse:4]
+import { dayjs } from "akanjs/base"; // [!code collapse:2]
 import { via } from "akanjs/constant";
-
-import { Stock } from "../__scalar/stock/stock.constant";
-import { StockType } from "../__scalar/stock/stock.constant"; // [!code ++]
+import { Stock, type StockType } from "../__scalar/stock/stock.constant"; // [!code highlight]
 // [!code collapse:11]
 export class InventoryInput extends via((field) => ({
   stocks: field([Stock]),
@@ -808,7 +850,7 @@ export class InventoryObject extends via(InventoryInput, (field) => ({
   at: field(Date, { default: () => dayjs().set("hour", 0).set("minute", 0).set("second", 0).set("millisecond", 0) }),
 })) {}
 
-export class LightInventory extends via(InventoryObject, [] as const, (resolve) => ({})) {}
+export class LightInventory extends via(InventoryObject, ["at"] as const, (resolve) => ({})) {}
 
 export class Inventory extends via(InventoryObject, LightInventory, (resolve) => ({})) {
   isInStock(type: StockType["value"], quantity = 1) { // [!code ++:5]
@@ -862,9 +904,9 @@ export const Refill = ({ className }: RefillProps) => {
             className="w-full"
             title="apps/koyo/lib/inventory/Inventory.View.tsx"
             code={`
+import { type cnst, usePage } from "@apps/koyo/client";
 import { dayjs } from "akanjs/base";
 import { cn } from "akanjs/client";
-import { cnst, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
   className?: string;
@@ -875,7 +917,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={cn("w-full space-y-2 rounded-xl border border-border bg-background p-4", className)}>
-      <div className="text-lg font-bold text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
+      <div className="font-bold text-lg text-primary">{dayjs(inventory.at).format("YYYY-MM-DD")}</div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {inventory.stocks.map((stock, index) => {
           const status = stock.getStatus();
@@ -893,7 +935,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
               <div className="flex items-center justify-between">
                 <div
                   className={cn(
-                    "rounded px-2 py-1 text-xs font-bold",
+                    "rounded px-2 py-1 font-bold text-xs",
                     status === "empty" && "border border-border bg-background text-foreground/70",
                     status === "low" && "border border-warning/40 bg-background text-warning",
                     status === "normal" && "border border-success/40 bg-background text-success",
@@ -903,7 +945,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
                 </div>
                 <div
                   className={cn(
-                    "text-2xl font-bold",
+                    "font-bold text-2xl",
                     status === "empty" && "text-primary",
                     status === "low" && "text-warning",
                     status === "normal" && "text-success",
@@ -926,7 +968,7 @@ export const General = ({ className, inventory }: GeneralProps) => {
                 </div>
                 <div
                   className={cn(
-                    "text-right text-xs font-bold",
+                    "text-right font-bold text-xs",
                     status === "empty" && "text-primary",
                     status === "low" && "text-warning",
                     status === "normal" && "text-success",
@@ -987,14 +1029,12 @@ export class Stock extends via((field) => ({
             className="w-full"
             title="apps/koyo/lib/inventory/Inventory.Zone.tsx"
             code={`
-"use client"; // [!code collapse:4]
+"use client";
+import { type cnst, Inventory, st } from "@apps/koyo/client"; // [!code highlight]
 import type { ClientInit, ClientView } from "akanjs/fetch";
-import { Load } from "akanjs/ui";
-import { cnst, Inventory } from "@apps/koyo/client";
-import { useInterval } from "akanjs/webkit"; // [!code ++:3]
-import { Loading } from "akanjs/ui";
-import { st } from "@apps/koyo/client";
-// [!code collapse:25]
+import { Load, Loading } from "akanjs/ui"; // [!code highlight]
+import { useInterval } from "akanjs/webkit"; // [!code ++]
+// [!code collapse:23]
 interface CardProps {
   className?: string;
   init: ClientInit<"inventory", cnst.LightInventory>;
@@ -1004,9 +1044,7 @@ export const Card = ({ className, init }: CardProps) => {
     <Load.Units
       className={className}
       init={init}
-      renderItem={(inventory: cnst.LightInventory) => (
-        <Inventory.Unit.Card key={inventory.id} inventory={inventory} />
-      )}
+      renderItem={(inventory: cnst.LightInventory) => <Inventory.Unit.Card key={inventory.id} inventory={inventory} />}
     />
   );
 };
@@ -1028,8 +1066,64 @@ export const Today = ({ className }: TodayProps) => {
     void st.do.loadTodaysInventory();
   }, 1000);
   if (!todaysInventory) return <Loading.Area />;
-  return <Inventory.View.General inventory={todaysInventory} />;
+  return <Inventory.View.General className={className} inventory={todaysInventory} />;
+};
+
+export const Sync = () => { // [!code ++:6]
+  useInterval(() => {
+    void st.do.loadTodaysInventory();
+  }, 1000);
+  return null;
 };`}
+          />
+          <div>
+            {l.trans({
+              en: `Today draws the dashboard; Sync only keeps today's inventory loaded. The kiosk's order page renders the same Template, so mount Sync there, or its form waits on a spinner forever:`,
+              ko: `Today는 대시보드를 그리고, Sync는 오늘의 재고를 불러오기만 합니다. 키오스크 주문 페이지도 같은 Template을 쓰므로 그곳에 Sync를 마운트하세요. 그렇지 않으면 폼이 스피너에서 멈춥니다:`,
+            })}
+          </div>
+          <Code.Snippet
+            className="w-full"
+            title="apps/koyo/page/icecreamOrder/new.tsx"
+            code={`
+import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code highlight]
+import { page } from "akanjs/client";
+import { Load } from "akanjs/ui";
+
+export default page()
+  .search("serveType", cnst.ServeType, { desc: "How the order is served: forHere, takeOut or delivery." })
+  .render(({ serveType }) => {
+    const { l } = usePage();
+    const icecreamOrderForm: Partial<cnst.IcecreamOrder> = { serveType };
+
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-background via-muted to-border p-6">
+        <div className="w-full max-w-2xl space-y-8">
+          <div className="space-y-4 text-center">
+            <div className="flex justify-center">
+              <span className="text-8xl">🍦</span>
+            </div>
+            <h1 className="font-bold text-5xl text-primary md:text-6xl">
+              {l("base.createModel", { model: l("icecreamOrder.modelName") })}
+            </h1>
+            <p className="font-light text-primary text-xl">
+              {l.trans({ en: "Customize your perfect treat", ko: "나만의 완벽한 디저트를 만들어보세요" })}
+            </p>
+          </div>
+          <Inventory.Zone.Sync /> // [!code ++]
+          <Load.Edit
+            className="flex flex-col items-center"
+            slice={fetch.slice.icecreamOrderInPublic}
+            edit={icecreamOrderForm}
+            type="form"
+            onSubmit="/icecreamOrder/success"
+          >
+            <IcecreamOrder.Template.General showServeType={false} />
+          </Load.Edit>
+        </div>
+      </div>
+    );
+  });`}
           />
           <div>
             {l.trans({
@@ -1041,29 +1135,27 @@ export const Today = ({ className }: TodayProps) => {
             className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code collapse:3]
-import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code highlight]
 import { page } from "akanjs/client";
-import { Inventory } from "@apps/koyo/client"; // [!code ++]
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
   const { icecreamOrderInitInPublic } = fetch.initIcecreamOrderInPublic();
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
-        
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-5xl font-black"> // [!code ++:5]
-        <div className="text-5xl font-black">{l("inventory.modelName")}</div>
-        <Inventory.Util.Refill className="absolute top-2 right-2" />
+      <div className="flex items-center gap-4"> // [!code ++:5]
+        <div className="font-black text-5xl">{l("inventory.modelName")}</div>
+        <Inventory.Util.Refill />
       </div>
       <Inventory.Zone.Today />
-      <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:16]
-        <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
+      <div className="flex items-center gap-4"> // [!code collapse:16]
+        <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <Model.New
           trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
-          renderTitle="name"
+          renderTitle="default"
           partial={icecreamOrderForm}
         >
           <IcecreamOrder.Template.General />

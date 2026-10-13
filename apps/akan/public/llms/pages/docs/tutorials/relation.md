@@ -23,7 +23,7 @@ The ice cream shop is so successful that delivery orders are flooding in! Now we
 
 In this tutorial, you'll learn how to:
 
-Define relationships between models using embedded references
+Define relationships between models with Light model references
 
 Trigger side effects when related data is created
 
@@ -35,15 +35,15 @@ First, let's create the Delivery module using the CLI. This module will connect 
 
 Define Relationship
 
-Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - this creates an embedded reference that stores the essential order data directly in the delivery document.
+Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - the delivery stores each order's id, and reading a delivery hands the orders back as LightIcecreamOrder.
 
 Let's understand the key relationship pattern:
 
-This defines a one-to-many relationship by embedding an array of LightIcecreamOrder. The "Light" version contains only essential fields (serveType, size, toppings, status), which keeps embedded documents small without duplicating entire documents.
+This defines a one-to-many relationship as an array of order references. The "Light" version carries only the fields a list shows (serveType, size, toppings, status), so a delivery loads its orders without their full documents.
 
-Embedded vs Referenced
+Stored as ids
 
-By embedding LightIcecreamOrder, the delivery document contains all necessary order info without additional database queries. This is ideal for data that's read together frequently.
+The delivery document keeps only the order ids, and the orders are loaded whenever a delivery is read. A delivery therefore always shows each order's current status, never a copy taken when it was created.
 
 Add dictionary entries for the Delivery model:
 
@@ -57,13 +57,15 @@ A lifecycle hook that runs after a delivery is created. It iterates through all 
 
 Prevents updates to deliveries by throwing an Err. Once a delivery is created, it becomes immutable - ensuring data integrity.
 
+The generated slice reads "cru: None", so nobody can create a delivery yet. Open creation the way the practice tutorial did for orders. Updates stay closed, and _preUpdate refuses them on the server too:
+
 Now let's create the Template component for selecting related orders. The Field.Children component is designed specifically for selecting related data:
 
 Key features of Field.Children:
 
 Specifies which slice provides the selectable options. Here it's 'icecreamOrderInDelivery' - a slice filtered for delivery-eligible orders.
 
-Initial arguments passed to the slice query. ["served"] filters to only show orders ready for delivery.
+Arguments passed to the slice, one entry per argument. [["served"]] sets statuses to ["served"], so only orders ready to go out are listed.
 
 Custom render function for each selectable option. Shows order ID for easy identification.
 
@@ -73,9 +75,11 @@ Add arguments to support serveType filtering in the byStatuses query declaration
 
 Add dictionary entries for the new slice:
 
-Now let's create the Unit component to display deliveries with their related orders. This shows how embedded data can be rendered together:
+Now let's create the Unit component to display deliveries with their related orders:
 
-Notice how we iterate through delivery.icecreamOrders and render each one using the IcecreamOrder.Unit.Card component. The embedded data is immediately available without additional queries!
+Notice how we iterate through delivery.icecreamOrders and render each one using the IcecreamOrder.Unit.Card component. The orders arrive loaded with the delivery, so the Unit runs no query of its own.
+
+Delivery.View still renders the name field the CLI generated, which no longer exists. Render the orders there the same way:
 
 Create the Zone component with a modal for creating new deliveries:
 
@@ -85,21 +89,21 @@ Finally, let's integrate everything into the main page using Tab components to o
 
 Key features of this integrated page:
 
-Organizes related content into switchable panels. Users can easily navigate between orders and deliveries.
+Organizes related content into switchable panels. Tab.Menu styles the active and inactive tabs itself, and activeClassName adds to the active one only.
 
 Both slice queries leave at call time and each Tab.Panel gets its own promise, so the two tabs load in parallel and neither waits for the other.
 
 Summary
 
-Use LightModel for embedded data to avoid document bloat
+Reference another model through its Light class to load only the fields you show
 
-Embed data that's frequently read together
+A relation stores ids, so every read shows the related data as it is now
 
 Use lifecycle hooks for maintaining data consistency
 
 Create dedicated slices for relationship selection UIs
 
-All core tutorials are complete. Explore the System Architecture section to see how everything works together.
+All core tutorials are complete. Explore the Architecture section to see how everything works together.
 
 ## Code Examples
 
@@ -133,9 +137,10 @@ export class DeliveryInsight extends via(Delivery, (field) => ({})) {}
 ### apps/koyo/lib/delivery/delivery.dictionary.ts
 
 ```ts
-import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:5]
+import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:6]
 
 import type { Delivery, DeliveryInsight } from "./delivery.constant";
+import type { DeliveryFilter } from "./delivery.document";
 import type { DeliveryEndpoint, DeliverySlice } from "./delivery.signal";
 
 export const dictionary = modelDictionary(["en", "ko"])
@@ -143,7 +148,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Delivery", "배달"]).desc([ // [!code highlight:4]
       "Delivery is an option that allows you to deliver multiple icecream orders at once.",
       "아이스크림 주문을 배달처리하는 옵션으로, 여러 주문을 한번에 배달처리할 수 있습니다.",
-    ])
+    ]),
   )
   .model<Delivery>((t) => ({
     icecreamOrders: t(["Icecream Orders", "아이스크림 주문"]).desc([ // [!code highlight:4]
@@ -151,7 +156,9 @@ export const dictionary = modelDictionary(["en", "ko"])
       "아이스크림 주문들",
     ]),
   }))
-  .insight<DeliveryInsight>((t) => ({})) // [!code collapse:5]
+  .insight<DeliveryInsight>((t) => ({})) // [!code collapse:7]
+  .query<DeliveryFilter>((fn) => ({}))
+  .sort<DeliveryFilter>((t) => ({}))
   .slice<DeliverySlice>((fn) => ({
     inPublic: fn(["Delivery In Public", "Delivery 공개"]).arg((t) => ({})),
   }))
@@ -185,32 +192,52 @@ export class DeliveryService extends serve(db.delivery, ({ use, service }) => ({
 }
 ```
 
+### apps/koyo/lib/delivery/delivery.signal.ts
+
+```ts
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class DeliveryInternal extends internal(srv.delivery, ({ interval }) => ({})) {}
+
+export class DeliverySlice extends slice(
+  srv.delivery,
+  { guards: { root: None, get: Public, cru: None, create: Public } }, // [!code highlight]
+  (init) => ({
+    inPublic: init({ guards: [Public] }).exec(function () {
+      return this.deliveryService.queryAny();
+    }),
+  }),
+) {}
+
+export class DeliveryEndpoint extends endpoint(srv.delivery, ({ query, mutation }) => ({})) {}
+```
+
 ### apps/koyo/lib/delivery/Delivery.Template.tsx
 
 ```ts
 "use client";
+import { type cnst, fetch, st, usePage } from "@apps/koyo/client";
 import { Field, Layout } from "akanjs/ui";
-import { cnst, fetch, st, usePage } from "@apps/koyo/client";
 
 interface GeneralProps {
   className?: string;
 }
 
 export const General = ({ className }: GeneralProps) => {
-  const deliveryForm = st.use.deliveryForm();
   const { l } = usePage();
+  const deliveryForm = st.use.deliveryForm();
   return (
     <Layout.Template className={className}>
-      <Field.Children // [!code highlight:11]
+      <Field.Children // [!code highlight:9]
         label={l("delivery.icecreamOrders")}
         desc={l("delivery.icecreamOrders.desc")}
         slice={fetch.slice.icecreamOrderInDelivery}
-        initArgs={["served"]}
+        initArgs={[["served"]]}
         value={deliveryForm.icecreamOrders}
         onChange={st.do.setIcecreamOrdersOnDelivery}
-        renderOption={(icecreamOrder: cnst.LightIcecreamOrder) => (
-          <div key={icecreamOrder.id}>#{icecreamOrder.id.slice(-4)}</div>
-        )}
+        renderOption={(icecreamOrder: cnst.LightIcecreamOrder) => <div>#{icecreamOrder.id.slice(-4)}</div>}
       />
     </Layout.Template>
   );
@@ -220,9 +247,8 @@ export const General = ({ className }: GeneralProps) => {
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts
 
 ```ts
-import { Admin } from "@libs/shared/srvkit"; // [!code collapse:14]
-import { ID } from "akanjs/base";
-import { endpoint, internal, Public, slice } from "akanjs/signal";
+import { ID } from "akanjs/base"; // [!code collapse:11]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -235,44 +261,44 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder, // [!code collapse:2]
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init() // [!code collapse:11]
+    inPublic: init({ guards: [Public] }) // [!code collapse:11]
       .search("statuses", [cnst.IcecreamOrderStatus])
       .exec(function (statuses) {
         return this.icecreamOrderService.queryByStatuses(statuses);
       }),
-    inWaiting: init().exec(function () {
+    inWaiting: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryByStatuses(["active", "processing"]);
     }),
-    inPickup: init().exec(function () {
+    inPickup: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryByStatuses(["served"]);
     }),
-    inDelivery: init() // [!code ++:5]
+    inDelivery: init({ guards: [Public] }) // [!code ++:5]
       .search("statuses", [cnst.IcecreamOrderStatus])
       .exec(function (statuses) {
         return this.icecreamOrderService.queryByStatuses(statuses, "delivery");
       }),
-  })
+  }),
 ) {}
-// [!code collapse:50]
+// [!code collapse:23]
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder)
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -283,7 +309,7 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts
 
 ```ts
-import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:5]
+import { by, from, into } from "akanjs/document"; // [!code collapse:5]
 
 import * as cnst from "../cnst";
 import { Err } from "../dict";
@@ -293,6 +319,7 @@ export class IcecreamOrderFilter extends from(cnst.IcecreamOrder, (filter) => ({
     byStatuses: filter()
       .opt("statuses", [cnst.IcecreamOrderStatus])
       .opt("serveType", cnst.ServeType) // [!code ++]
+      .query((statuses, q) => ({ // [!code --]
       .query((statuses, serveType, q) => ({ // [!code ++]
         ...(statuses?.length ? { status: q.oneOf(statuses) } : {}),
         ...(serveType ? { serveType } : {}), // [!code ++]
@@ -300,7 +327,7 @@ export class IcecreamOrderFilter extends from(cnst.IcecreamOrder, (filter) => ({
   },
   sort: {},
 })) {}
-// [!code collapse:100]
+// [!code collapse:25]
 export class IcecreamOrder extends by(cnst.IcecreamOrder) {
   process() {
     if (this.status !== "active") throw new Err("icecreamOrder.error.onlyActiveCanBeProcessed");
@@ -323,6 +350,7 @@ export class IcecreamOrder extends by(cnst.IcecreamOrder) {
     return this;
   }
 }
+
 export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter, cnst.icecreamOrder, () => ({})) {}
 ```
 
@@ -341,11 +369,11 @@ import type {
 import type { IcecreamOrderEndpoint, IcecreamOrderSlice } from "./icecreamOrder.signal";
 
 export const dictionary = modelDictionary(["en", "ko"])
-  .of((t) => // [!code collapse:54]
+  .of((t) => // [!code collapse:55]
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     serveType: t(["Serve Type", "서빙 타입"]).desc(["Serve type of the icecream order", "아이스크림 주문의 서빙 타입"]),
@@ -405,7 +433,7 @@ export const dictionary = modelDictionary(["en", "ko"])
       statuses: t(["Statuses", "상태"]).desc(["Statuses of the icecream orders", "아이스크림 주문의 상태"]),
     })),
   }))
-  .endpoint<IcecreamOrderEndpoint>((fn) => ({ // [!code collapse:100]
+  .endpoint<IcecreamOrderEndpoint>((fn) => ({ // [!code collapse:32]
     processIcecreamOrder: fn(["Process", "작업시작"])
       .desc(["Start processing an ice cream order", "아이스크림 주문 처리를 시작합니다"])
       .arg((t) => ({
@@ -434,24 +462,22 @@ export const dictionary = modelDictionary(["en", "ko"])
     onlyActiveCanBeCanceled: ["Only active orders can be canceled", "활성 상태의 주문만 취소할 수 있습니다"],
   })
   .translate({
-    pickup: ["Pickup", "픽업"],
-    waiting: ["Waiting", "대기"],
+    waiting: ["Waiting", "대기중"],
+    pickup: ["Pickup", "픽업가능"],
   });
 ```
 
 ### apps/koyo/lib/delivery/Delivery.Unit.tsx
 
 ```ts
-import type { ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { cnst, usePage } from "@apps/koyo/client";
-import { Link } from "akanjs/ui";
-import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
+import { type cnst, IcecreamOrder, usePage } from "@apps/koyo/client";
+import type { ModelProps } from "akanjs/client";
 
-export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelivery>) => {
+export const Card = ({ delivery }: ModelProps<"delivery", cnst.LightDelivery>) => {
   const { l } = usePage();
   return (
-    <Link href={href} className="block w-full rounded border bg-border p-4"> // [!code highlight:10]
-      <div className="mb-3 text-lg font-bold">
+    <div className="w-full rounded-xl border border-border p-4"> // [!code highlight:10]
+      <div className="mb-3 font-bold text-lg">
         {l("delivery.modelName")} #{delivery.id.slice(-4)}
       </div>
       <div className="flex w-full flex-col gap-2">
@@ -459,7 +485,32 @@ export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelive
           <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} showControls={false} />
         ))}
       </div>
-    </Link>
+    </div>
+  );
+};
+```
+
+### apps/koyo/lib/delivery/Delivery.View.tsx
+
+```ts
+import { type cnst, IcecreamOrder, usePage } from "@apps/koyo/client";
+import { cn } from "akanjs/client";
+
+interface GeneralProps {
+  className?: string;
+  delivery: cnst.Delivery;
+}
+export const General = ({ className, delivery }: GeneralProps) => {
+  const { l } = usePage();
+  return (
+    <div className={cn("w-full space-y-2", className)}> // [!code highlight:8]
+      <div className="font-bold text-lg">
+        {l("delivery.modelName")} #{delivery.id.slice(-4)}
+      </div>
+      {delivery.icecreamOrders.map((icecreamOrder) => (
+        <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} showControls={false} />
+      ))}
+    </div>
   );
 };
 ```
@@ -467,29 +518,29 @@ export const Card = ({ delivery, href }: ModelProps<"delivery", cnst.LightDelive
 ### apps/koyo/lib/delivery/Delivery.Zone.tsx
 
 ```ts
-"use client"; // [!code collapse:4]
-import { Load } from "akanjs/ui";
-import { cnst, Delivery, fetch } from "@apps/koyo/client";
-import type { ClientInit, ClientView } from "akanjs/fetch";
-import { st, usePage } from "@apps/koyo/client"; // [!code ++:2]
-import { Model, buttonRecipe } from "akanjs/ui";
-// [!code collapse:25]
-interface CardProps {
+"use client";
+import { type cnst, Delivery, fetch, st, usePage } from "@apps/koyo/client"; // [!code highlight]
+import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
+import { buttonRecipe, Load, Model } from "akanjs/ui"; // [!code highlight]
+
+interface CardProps { // [!code collapse:10]
   className?: string;
   init: ClientInit<"delivery", cnst.LightDelivery>;
+  slice?: SliceMeta;
 }
-export const Card = ({ className, init }: CardProps) => {
+export const Card = ({ className, init, slice }: CardProps) => {
   return (
     <Load.Units
       className={className}
       init={init}
-      renderItem={(delivery: cnst.LightDelivery) => (
-        <Delivery.Unit.Card key={delivery.id} delivery={delivery} />
+      renderItem={(delivery) => ( // [!code --:3]
+        <Delivery.Unit.Card key={delivery.id} href={`/delivery/${delivery.id}`} delivery={delivery} />
       )}
+      renderItem={(delivery) => <Delivery.Unit.Card key={delivery.id} delivery={delivery} />} // [!code ++]
     />
   );
 };
-
+// [!code collapse:8]
 interface ViewProps {
   className?: string;
   view: ClientView<"delivery", cnst.Delivery>;
@@ -534,52 +585,60 @@ export const New = ({ className }: NewProps) => {
 ### apps/koyo/page/_index.tsx
 
 ```ts
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code collapse:3]
-import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code --]
+import { type cnst, Delivery, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code ++]
 import { page } from "akanjs/client";
-import { Tab } from "akanjs/ui"; // [!code ++:2]
-import { Delivery } from "@apps/koyo/client";
+import { buttonRecipe, Model } from "akanjs/ui"; // [!code --]
+import { buttonRecipe, Model, Tab } from "akanjs/ui"; // [!code ++]
 
 export default page().render(() => {
   const { l } = usePage();
   const { icecreamOrderInitInPublic } = fetch.initIcecreamOrderInPublic();
-  const { deliveryInitInPublic } = fetch.initDeliveryInPublic(); // [!code highlight]
+  const { deliveryInitInPublic } = fetch.initDeliveryInPublic(); // [!code ++]
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-5xl font-black">
-        <div className="text-5xl font-black">{l("inventory.modelName")}</div>
-        <Inventory.Util.Refill className="absolute top-2 right-2" />
+      <div className="flex items-center gap-4"> // [!code collapse:5]
+        <div className="font-black text-5xl">{l("inventory.modelName")}</div>
+        <Inventory.Util.Refill />
       </div>
       <Inventory.Zone.Today />
-      <Tab defaultMenu="icecreamOrder"> // [!code highlight:33]
+      <Tab defaultMenu="icecreamOrder"> // [!code highlight:41]
         <Tab.Menus className="flex items-center">
-          <Tab.Menu menu="icecreamOrder" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
+          <Tab.Menu
+            menu="icecreamOrder"
+            className="h-14 px-8 text-lg"
+            activeClassName="bg-primary text-primary-foreground"
+          >
             {l("icecreamOrder.modelName")}
           </Tab.Menu>
-          <Tab.Menu menu="delivery" className={buttonRecipe({ size: "lg" }, "h-14 px-8 text-lg")} activeClassName="bg-primary text-primary-foreground">
+          <Tab.Menu menu="delivery" className="h-14 px-8 text-lg" activeClassName="bg-primary text-primary-foreground">
             {l("delivery.modelName")}
           </Tab.Menu>
         </Tab.Menus>
-        <Tab.Panel menu="icecreamOrder" className="p-2">
-          <div className="flex items-center gap-4 font-black">
-            <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
+        <Tab.Panel menu="icecreamOrder" className="space-y-4 p-2">
+          <div className="flex items-center gap-4">
+            <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
               trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
               slice={fetch.slice.icecreamOrderInPublic}
-              renderTitle="name"
+              renderTitle="default"
               partial={icecreamOrderForm}
             >
               <IcecreamOrder.Template.General />
             </Model.New>
           </div>
           <IcecreamOrder.Zone.Insight slice={fetch.slice.icecreamOrderInPublic} />
-          <IcecreamOrder.Zone.Card className="space-y-2" init={icecreamOrderInitInPublic} slice={fetch.slice.icecreamOrderInPublic} />
+          <IcecreamOrder.Zone.Card
+            className="space-y-2"
+            init={icecreamOrderInitInPublic}
+            slice={fetch.slice.icecreamOrderInPublic}
+          />
         </Tab.Panel>
-        <Tab.Panel menu="delivery" className="p-2">
-          <div className="flex items-center gap-4 font-black">
-            <div className="text-5xl font-bold">{l("delivery.modelName")}</div>
+        <Tab.Panel menu="delivery" className="space-y-4 p-2">
+          <div className="flex items-center gap-4">
+            <div className="font-black text-5xl">{l("delivery.modelName")}</div>
             <Delivery.Zone.New />
           </div>
           <Delivery.Zone.Card className="space-y-2" init={deliveryInitInPublic} />
