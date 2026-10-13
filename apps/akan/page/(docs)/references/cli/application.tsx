@@ -1323,7 +1323,7 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
     {
       name: "push-update",
       signature:
-        "akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>]",
+        "akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--pack <dir>] [--subspace <name>] [--host <url>]",
       desc: l.trans({
         en: "Pack an update as `pack-update` does and upload it to the akasys project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the project rejects the pack, and prints why.",
         ko: "`pack-update`처럼 업데이트를 묶어 akasys 프로젝트에 올립니다. 키 보관과 서명, 게시는 akasys가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝납니다.",
@@ -1337,6 +1337,14 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
         },
         targetOption,
         releaseEnvOption,
+        {
+          name: "--pack",
+          type: "String",
+          desc: l.trans({
+            en: "A folder `pack-update` already wrote, uploaded as it is instead of packing again.",
+            ko: "`pack-update`가 이미 만든 폴더이며, 다시 묶지 않고 그대로 올립니다.",
+          }),
+        },
       ],
       examples: `akan push-update myapp --platform android --env main --notes "Fix the login screen"`,
     },

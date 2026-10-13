@@ -232,3 +232,36 @@ describe("NativeApp", () => {
     );
   });
 });
+
+describe("a pack read back from its folder", () => {
+  test("takes the folder as the pack's place, and refuses what is not a takeable pack", async () => {
+    const root = await makeTempRoot();
+    const pack = {
+      schema: 1,
+      app: "lu",
+      target: "default",
+      platform: "android",
+      env: "main",
+      channel: "main",
+      appId: "com.lu",
+      appVersion: "1.0.0",
+      nativeApi: "0123456789abcdef",
+      webHash: "f".repeat(64),
+      files: 1,
+      size: 13,
+      out: "/elsewhere/updates/android",
+    };
+    const moved = path.join(root, "moved");
+    await writeText(path.join(moved, "pack.json"), JSON.stringify(pack));
+    expect(await NativeApp.readPack(moved)).toEqual({ ...pack, out: moved } as never);
+
+    await expect(NativeApp.readPack(path.join(root, "empty"))).rejects.toThrow("holds no pack.json");
+    const later = path.join(root, "later");
+    await writeText(path.join(later, "pack.json"), JSON.stringify({ ...pack, schema: 2 }));
+    await expect(NativeApp.readPack(later)).rejects.toThrow("schema 2");
+    const refused = path.join(root, "refused");
+    const compat = { against: "store/bundle.json", compatible: false, problems: ["deepLinks differ"] };
+    await writeText(path.join(refused, "pack.json"), JSON.stringify({ ...pack, compat }));
+    await expect(NativeApp.readPack(refused)).rejects.toThrow("needs a new store build: deepLinks differ");
+  });
+});

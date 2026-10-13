@@ -1,6 +1,7 @@
 import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
+import { NativeApp } from "@akanjs/devkit/mobile";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
@@ -108,6 +109,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host: given,
       write,
       allowLocalRelease,
+      pack: packDir,
     }: {
       platform: "ios" | "android";
       target?: string;
@@ -118,15 +120,22 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host?: string | null;
       write: boolean;
       allowLocalRelease: boolean;
+      pack?: string | null;
     },
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
-    const pack = await this.applicationScript.packUpdate(app, platform, {
-      target,
-      env: env as "main",
-      write,
-      allowLocalRelease,
-    });
+    const pack = packDir
+      ? await NativeApp.readPack(packDir)
+      : await this.applicationScript.packUpdate(app, platform, {
+          target,
+          env: env as "main",
+          write,
+          allowLocalRelease,
+        });
+    if (pack.app !== app.name || pack.platform !== platform || (target && pack.target !== target))
+      throw new Error(
+        `The pack in ${pack.out} is ${pack.app} ${pack.target} ${pack.platform}, not ${app.name} ${target ?? pack.target} ${platform}.`,
+      );
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     return await this.cloudRunner.pushUpdate(await CloudApi.fromHost(workspace, host), devProjectId, pack, {

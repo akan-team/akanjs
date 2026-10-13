@@ -484,7 +484,7 @@ Pack an Android or iOS web bundle update unsigned, for a signer that keeps the k
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
 
-`akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>]`
+`akan push-update <app> --platform <platform> [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--pack <dir>] [--subspace <name>] [--host <url>]`
 
 Pack an update as `pack-update` does and upload it to the akasys project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the project rejects the pack, and prints why.
 
@@ -493,6 +493,8 @@ Pack an update as `pack-update` does and upload it to the akasys project, which 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
+
+- --pack (String): A folder `pack-update` already wrote, uploaded as it is instead of packing again.
 
 `akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>]`
 

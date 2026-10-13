@@ -116,9 +116,27 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .option("host", String, hostOption)
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow packing with --env local", default: false })
+    .option("pack", String, {
+      flag: "d",
+      desc: "a folder `akan pack-update` wrote, uploaded instead of packing",
+      nullable: true,
+    })
     .with(Workspace)
     .exec(
-      async function (app, platform, target, env, channel, notes, subspace, host, write, allowLocalRelease, workspace) {
+      async function (
+        app,
+        platform,
+        target,
+        env,
+        channel,
+        notes,
+        subspace,
+        host,
+        write,
+        allowLocalRelease,
+        pack,
+        workspace,
+      ) {
         await this.cloudScript.pushUpdate(workspace, app, {
           platform: platform as "ios" | "android",
           target,
@@ -129,6 +147,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
           host,
           write,
           allowLocalRelease,
+          pack,
         });
       },
     ),
