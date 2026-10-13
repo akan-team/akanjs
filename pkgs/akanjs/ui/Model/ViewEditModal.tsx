@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { AiOutlineEdit, AiOutlineSave } from "react-icons/ai";
 import { BiDotsVertical, BiTrash } from "react-icons/bi";
 
+import { servedEndpointOf } from "../../store/servedEndpointOf";
 import { agentAttrs } from "../agentAttrs";
 import { buttonRecipe } from "../Button";
 import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
@@ -121,10 +122,8 @@ export default function ViewEditModal({
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modelFormId = storeSel<string, { id: string }>((state) => state[names.modelForm].id);
-  // A verb the slice's guards close is never mounted on the client, so its button would only fail.
-  const servedFetch = fetch as unknown as { [key: string]: unknown };
-  const canUpdate = typeof servedFetch[`update${ModelName}`] === "function";
-  const canRemove = typeof servedFetch[`remove${ModelName}`] === "function";
+  const canUpdate = !!servedEndpointOf(fetch, `update${ModelName}`);
+  const canRemove = !!servedEndpointOf(fetch, `remove${ModelName}`);
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return <></>;

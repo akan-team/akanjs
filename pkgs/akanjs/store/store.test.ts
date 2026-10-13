@@ -498,6 +498,7 @@ describe("signal generated store contract", () => {
 
     await expect(instance.do.createStoreTestItem({ title: "created", count: 0, tags: [] })).rejects.toMatchObject({
       error: "base.error.endpointClosed",
+      statusCode: 404,
       data: { endpoint: "createStoreTestItem" },
     });
   });
