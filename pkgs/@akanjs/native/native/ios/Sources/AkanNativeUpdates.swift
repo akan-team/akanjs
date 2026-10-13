@@ -329,6 +329,7 @@ enum AkanNativeUpdates {
 
     /// Keys a verified manifest revoked: no bundle they signed is served again, from the next launch on.
     static func revoke(_ keyIds: [String]) {
+        guard !keyIds.isEmpty else { return }
         var state = readState()
         let added = keyIds.filter { !state.revokedKeys.contains($0) }
         guard !added.isEmpty else { return }

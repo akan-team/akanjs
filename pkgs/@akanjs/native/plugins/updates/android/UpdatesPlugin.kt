@@ -38,8 +38,14 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
     /** The running download's call (one at a time); its cancellation stops the read loop. */
     @Volatile private var download: com.akanjs.runtime.AkanNativeCall? = null
 
-    /** [report]: the reason a failed download is reported under (AkanNativeUpdateReports), null when it is not reported. */
-    private class Failure(val code: String, message: String, val report: AkanNativeUpdateReason? = null) : Exception(message)
+    /**
+     * [report]: the reason a failed release is reported under (AkanNativeUpdateReports), null when it is not reported;
+     * [bundle] and [sequence]: the release it reports, for a refused envelope what its manifest claims, read without
+     * trusting it.
+     */
+    private class Failure(
+        val code: String, message: String, val report: AkanNativeUpdateReason? = null, val bundle: String? = null, val sequence: Double? = null,
+    ) : Exception(message)
 
     private class ReleaseFile(val path: String, val sha256: String, val size: Long)
 
@@ -91,7 +97,9 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         val snap = snapshot(config)
         worker(reply) {
             val release = fetchRelease(config, snap)
-            val available = isNewer(release, snap)
+            val (available, revoke) = decide(release, snap)
+            // A stale release's revocations bind too: an install whose own bundle is newer only ever checks.
+            revoke(revoke)
             val size = if (available) release.files.filter { localCopy(it, snap) == null }.sumOf { it.size }.toDouble() else null
             reply.resolve(UpdatesUpdateCheck(available = available, bundle = release.bundle, version = release.version, sequence = release.sequence, downloadSize = size))
         }
@@ -107,7 +115,9 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         val snap = snapshot(config)
         worker(reply, done = { downloading = false; download = null }) {
             val release = fetchRelease(config, snap)
-            if (!isNewer(release, snap)) throw Failure(AkanNativeErrorCode.NOT_FOUND, "no newer release for this app (native API ${config.nativeApi})")
+            val (available, revoke) = decide(release, snap)
+            revoke(revoke)
+            if (!available) throw Failure(AkanNativeErrorCode.NOT_FOUND, "no newer release for this app (native API ${config.nativeApi})")
             if (snap.pending != release.bundle) install(release, config, snap)
             reply.resolve(UpdatesDownloadResult(bundle = release.bundle))
         }
@@ -139,6 +149,7 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
             try {
                 work()
             } catch (f: Failure) {
+                f.report?.let { reason -> main.post { AkanNativeUpdateReports.record(AkanNativeUpdateEvent.FAILED, f.bundle, f.sequence, reason) } }
                 reply.reject(f.code, f.message ?: "update failed")
             } catch (e: Throwable) { // OutOfMemoryError too: never leave the call unanswered
                 reply.reject(AkanNativeErrorCode.INTERNAL, "update failed: ${e.message ?: e}")
@@ -149,28 +160,24 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
     }
 
     /**
-     * Newer than what runs (and than the APK's own bundle), not rolled back before. A manifest's revocations are
-     * recorded whether or not its release is newer: the key behind a bad release must stop counting either way.
+     * Whether a verified release is newer than what runs (and than the APK's own bundle) and was not rolled back
+     * before, and the keys its manifest newly revokes, which bind whether or not it is newer.
      */
-    private fun isNewer(release: Release, snap: Snapshot): Boolean {
+    private fun decide(release: Release, snap: Snapshot): Pair<Boolean, List<String>> {
         val decision = AkanNativeKernel.updateDecision(
-            snap.config.ring, snap.revoked, release.keyId, release.revokeKeys, release.resetSequence,
-            release.sequence, snap.config.embeddedSequence, snap.running,
+            ring = snap.config.ring, revoked = snap.revoked, signer = release.keyId, revokeKeys = release.revokeKeys,
+            resetSequence = release.resetSequence, sequence = release.sequence, embedded = snap.config.embeddedSequence, running = snap.running,
         )
-        return when (decision.kind) {
-            AkanNativeUpdateDecision.Kind.TAKE, AkanNativeUpdateDecision.Kind.STALE -> {
-                if (decision.revoke.isNotEmpty()) main.post { AkanNativeUpdates.revoke(decision.revoke) }
-                decision.kind == AkanNativeUpdateDecision.Kind.TAKE && release.bundle !in snap.failed
-            }
-            AkanNativeUpdateDecision.Kind.UNTRUSTED, AkanNativeUpdateDecision.Kind.REVOKED -> {
-                reportFailed(release.bundle, release.sequence, AkanNativeUpdateReason.SIGNATURE)
-                throw Failure(AkanNativeErrorCode.INTERNAL, "the release is signed by key ${release.keyId}, which this app does not trust")
-            }
-            else -> {
-                reportFailed(release.bundle, release.sequence, AkanNativeUpdateReason.MANIFEST)
-                throw Failure(AkanNativeErrorCode.INTERNAL, "invalid release manifest: key ${release.keyId} may not revoke ${release.revokeKeys.joinToString(", ")}")
-            }
+        // Never untrusted or revoked: the envelope was opened against the same ring and revocations.
+        if (decision.kind != AkanNativeUpdateDecision.Kind.TAKE && decision.kind != AkanNativeUpdateDecision.Kind.STALE) {
+            val message = "invalid release manifest: key ${release.keyId} may not revoke ${release.revokeKeys.joinToString(", ")}"
+            throw Failure(AkanNativeErrorCode.INTERNAL, message, AkanNativeUpdateReason.MANIFEST, release.bundle, release.sequence)
         }
+        return (decision.kind == AkanNativeUpdateDecision.Kind.TAKE && release.bundle !in snap.failed) to decision.revoke
+    }
+
+    private fun revoke(keyIds: List<String>) {
+        if (keyIds.isNotEmpty()) main.post { AkanNativeUpdates.revoke(keyIds) }
     }
 
     private fun base(config: AkanNativeUpdateConfig) = "${config.url}/${config.platform}"
@@ -223,33 +230,25 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         // A 1 MiB manifest is 1.4 MiB in base64.
         val data = fetch(url, 3L shl 19)
         val envelope = AkanNativeUpdateEnvelope.open(data, config, snap.revoked)
-        if (envelope == null) {
-            reportRefused(data, AkanNativeUpdateReason.SIGNATURE)
-            throw Failure(AkanNativeErrorCode.INTERNAL, "the release is not signed by a key of updates.publicKeys this app still trusts")
-        }
+            ?: throw refused(data, AkanNativeUpdateReason.SIGNATURE, "the release is not signed by a key of updates.publicKeys this app still trusts")
         return try {
             parse(envelope, data, config)
         } catch (f: Failure) {
-            reportRefused(data, AkanNativeUpdateReason.MANIFEST)
-            throw f
+            throw refused(data, AkanNativeUpdateReason.MANIFEST, f.message ?: "invalid release manifest")
         }
     }
 
-    private fun reportFailed(bundle: String?, sequence: Double?, reason: AkanNativeUpdateReason) {
-        main.post { AkanNativeUpdateReports.record(AkanNativeUpdateEvent.FAILED, bundle, sequence, reason) }
-    }
-
     /**
-     * The release a refused envelope names, read without trusting it and only to say which release failed: a forged
-     * name can at worst count against a release the server already published for this app.
+     * The failure of a refused envelope, naming the release it claims, read without trusting it and only to say which
+     * release failed: a forged name can at worst count against a release the server already published for this app.
      */
-    private fun reportRefused(raw: ByteArray, reason: AkanNativeUpdateReason) {
+    private fun refused(raw: ByteArray, reason: AkanNativeUpdateReason, message: String): Failure {
         val manifest = try {
             AkanNativeKernel.strictBase64(JSONObject(String(raw)).getString("manifest"))?.let { JSONObject(String(it)) }
         } catch (e: Exception) {
             null
         }
-        reportFailed(manifest?.optString("bundle"), manifest?.optDouble("sequence")?.takeIf { it.isFinite() }, reason)
+        return Failure(AkanNativeErrorCode.INTERNAL, message, reason, manifest?.optString("bundle"), manifest?.optDouble("sequence")?.takeIf { it.isFinite() })
     }
 
     /** Checks every field of the (signed) manifest before any of it is used. */
@@ -312,18 +311,16 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
     }
 
     /**
-     * Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure is reported
-     * under its reason, and an IOException outside a download is the disk's.
+     * Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure names the
+     * release, and an IOException outside a download is the disk's.
      */
     private fun install(release: Release, config: AkanNativeUpdateConfig, snap: Snapshot) {
         try {
             place(release, config, snap)
         } catch (f: Failure) {
-            f.report?.let { reportFailed(release.bundle, release.sequence, it) }
-            throw f
+            throw Failure(f.code, f.message ?: "update failed", f.report, release.bundle, release.sequence)
         } catch (e: IOException) {
-            reportFailed(release.bundle, release.sequence, AkanNativeUpdateReason.DISK)
-            throw e
+            throw Failure(AkanNativeErrorCode.INTERNAL, "update failed: ${e.message ?: e}", AkanNativeUpdateReason.DISK, release.bundle, release.sequence)
         }
     }
 
