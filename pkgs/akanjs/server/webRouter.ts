@@ -23,6 +23,7 @@ import {
   type RoutesManifest,
   RoutesManifestStore,
 } from "./artifact";
+import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders } from "./assetHeaders";
 import {
   getClientFacingOrigin,
   hasRouteCacheInvalidationScope,
@@ -285,8 +286,7 @@ export class WebRouter {
   /** Dev only: SSR pages load their client code from the dev module registry it serves. */
   #ssrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
-  #csrOnDemandBuild: Promise<unknown> | null = null;
-  #mcpShellBuild: Promise<void> | null = null;
+  readonly #builds = new Map<string, Promise<unknown>>();
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
@@ -445,7 +445,7 @@ export class WebRouter {
         }
         const cssBytes = this.renderState.cssBytesByUrl[url.pathname];
         if (!cssBytes) return new Response("Not Found", { status: 404 });
-        const headers = WebRouter.#baseAssetHeaders({
+        const headers = assetHeaders({
           contentType: "text/css; charset=utf-8",
           cacheControl: "no-store",
         });
@@ -1062,7 +1062,7 @@ export class WebRouter {
   #htmlResponseHeaders(status: number): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
     if (status >= 400 || !this.#prodMode) headers.set("Cache-Control", "no-store");
-    return WebRouter.#applySecurityHeaders(headers, { html: true });
+    return applySecurityHeaders(headers, { html: true });
   }
   #withCsrHmr(html: string): string {
     if (this.#prodMode) return html;
@@ -1094,35 +1094,33 @@ export class WebRouter {
     const rpc = this.#builderRpc;
     // Arm once: after a build the builder keeps CSR current, so a still-missing file means an unknown basePath.
     if (this.#csrArmed || !rpc) return Promise.resolve();
-    this.#csrOnDemandBuild ??= rpc
-      .buildCsr(reason)
-      .then(() => {
-        this.#csrArmed = true;
-        this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
-      })
-      .catch((err: unknown) => {
-        this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
-      })
-      .finally(() => {
-        this.#csrOnDemandBuild = null;
-      });
-    return this.#csrOnDemandBuild;
+    return this.#singleFlight("csr", () =>
+      rpc
+        .buildCsr(reason)
+        .then(() => {
+          this.#csrArmed = true;
+          this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
+        })
+        .catch((err: unknown) => {
+          this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+    );
   }
   //? Awaited on every read: the builder answers at once unless a save moved its generation since its last shell build.
   async #mcpDevShell(csrOutputDir: string, pathname: string): Promise<string | null> {
     const rpc = this.#builderRpc;
-    if (rpc) {
-      this.#mcpShellBuild ??= rpc
-        .buildCsr("mcp app view", { shell: true })
-        .catch((err: unknown) => {
+    if (rpc)
+      await this.#singleFlight("mcpShell", () =>
+        rpc.buildCsr("mcp app view", { shell: true }).catch((err: unknown) => {
           this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
-        })
-        .finally(() => {
-          this.#mcpShellBuild = null;
-        });
-      await this.#mcpShellBuild;
-    }
+        }),
+      );
     return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+  }
+  #singleFlight(kind: string, run: () => Promise<unknown>): Promise<unknown> {
+    const pending = this.#builds.get(kind) ?? run().finally(() => this.#builds.delete(kind));
+    this.#builds.set(kind, pending);
+    return pending;
   }
   #csrUnavailableResponse(pathname: string): Response {
     if (this.#prodMode) return new Response("Not Found", { status: 404 });
@@ -1253,15 +1251,8 @@ export class WebRouter {
     return filePath && fs.existsSync(filePath) ? filePath : null;
   }
 
-  // `anyOrigin` is for public files a page elsewhere may load: a font is always fetched in CORS mode, so an MCP view,
-  // which has no origin of its own, could not use one without it.
-  static async #fileResponse(
-    req: Request,
-    filePath: string,
-    options: { contentType: string; cacheControl?: string; anyOrigin?: boolean },
-  ): Promise<Response> {
-    const headers = WebRouter.#baseAssetHeaders(options);
-    if (options.anyOrigin) headers.set("Access-Control-Allow-Origin", "*");
+  static async #fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
+    const headers = assetHeaders(options);
     const file = Bun.file(filePath);
     if (!(await file.exists())) return new Response("Not Found", { status: 404 });
     const stat = fs.statSync(filePath);
@@ -1320,21 +1311,6 @@ export class WebRouter {
         "Cache-Control": cacheControl,
       },
     });
-  }
-
-  // nosniff: Bun.file().type falls back to octet-stream, and a sniffing browser may run a public/ file as script.
-  // Referrer-Policy: paths carry ids. X-Frame-Options (HTML only): stops clickjacking of cookie-authenticated pages.
-  static #applySecurityHeaders(headers: Headers, { html = false } = {}): Headers {
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    if (html) headers.set("X-Frame-Options", "SAMEORIGIN");
-    return headers;
-  }
-
-  static #baseAssetHeaders(options: { contentType: string; cacheControl?: string }): Headers {
-    const headers = new Headers({ "Content-Type": options.contentType });
-    if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
-    return WebRouter.#applySecurityHeaders(headers);
   }
 
   static #isNotModified(req: Request, etag: string, lastModifiedMs: number): boolean {
