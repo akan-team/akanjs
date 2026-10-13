@@ -1,6 +1,7 @@
 import {
   type Device,
   getExplicitPageConfigKeys,
+  insetBreakpoints,
   type LayoutModule,
   type PageConfig,
   type PathRoute,
@@ -12,6 +13,7 @@ import {
   readCssSafeAreaInsets,
   resolvePageState,
   resolveRouteModule,
+  type SafeAreaInsets,
   validatePageConfig,
 } from "akanjs/client";
 import {
@@ -65,15 +67,19 @@ export class CsrRouteTable {
   #keys: string[] = [];
   #routes: CsrRoutes = { pathRoutes: [], routeGuide: { pathSegment: "/", children: {} } };
   #generation = 0;
+  #cssSafeArea: SafeAreaInsets = { top: 0, bottom: 0 };
+  #breakpoint = 0;
 
   private constructor(options: CsrRouteTableOptions) {
     this.#options = options;
   }
 
   subscribe = (listener: () => void) => {
+    if (this.#listeners.size === 0) window.addEventListener("resize", this.#onResize);
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
+      if (this.#listeners.size === 0) window.removeEventListener("resize", this.#onResize);
     };
   };
 
@@ -94,8 +100,27 @@ export class CsrRouteTable {
     return true;
   }
 
+  #onResize = () => {
+    const width = window.innerWidth;
+    const breakpoint = CsrRouteTable.#breakpointOf(width);
+    if (breakpoint === this.#breakpoint) return;
+    this.#breakpoint = breakpoint;
+    const current = this.#routes.pathRoutes;
+    const pathRoutes = current.map((pathRoute) => {
+      if (!pathRoute.pageState.responsiveInset) return pathRoute;
+      const pageState = this.#pageStateOf(pathRoute.path, pathRoute.pageConfigChain ?? [], width);
+      const { topInset, bottomInset } = pathRoute.pageState;
+      return pageState.topInset === topInset && pageState.bottomInset === bottomInset
+        ? pathRoute
+        : { ...pathRoute, pageState };
+    });
+    if (pathRoutes.every((pathRoute, idx) => pathRoute === current[idx])) return;
+    this.#routes = { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes) };
+    for (const listener of this.#listeners) listener();
+  };
+
   async #build(context: CsrRouteContext): Promise<CsrRoutes> {
-    const { device, basePaths, currentBasePath } = this.#options;
+    const { basePaths, currentBasePath } = this.#options;
     const otherBasePaths = basePaths?.filter((path) => path !== currentBasePath) ?? [];
     const pages: { [key: string]: RouteModule } = {};
     const asyncDefaultMap: { [key: string]: boolean | undefined } = {};
@@ -119,7 +144,9 @@ export class CsrRouteTable {
         if (pageContent.default || parsed.kind === "overrides") pages[key] = pageContent;
       }),
     );
-    const cssSafeArea = readCssSafeAreaInsets();
+    this.#cssSafeArea = readCssSafeAreaInsets();
+    const width = typeof window === "undefined" ? undefined : window.innerWidth;
+    this.#breakpoint = CsrRouteTable.#breakpointOf(width);
 
     const routeMap = new Map<string, Route>();
     routeMap.set("/", { path: "/", children: new Map() });
@@ -197,15 +224,7 @@ export class CsrRouteTable {
         route.pageIncludesOwnLayout === false && route.renderLayout ? parentPageConfigChain : pageConfigChain;
       const ownPageConfig = route.renderPage && route.pageConfig ? route.pageConfig : null;
       const finalPageConfigChain = [...pageRenderConfigChain, ...(ownPageConfig ? [ownPageConfig] : [])];
-      const pageState = resolvePageState({
-        configChain: finalPageConfigChain,
-        path,
-        basePath: currentBasePath,
-        platform: device.info.platform,
-        deviceSafeArea: { top: device.topSafeArea, bottom: device.bottomSafeArea },
-        cssSafeArea,
-        width: typeof window === "undefined" ? undefined : window.innerWidth,
-      });
+      const pageState = this.#pageStateOf(path, finalPageConfigChain, width);
       return [
         ...(route.renderPage
           ? [
@@ -229,6 +248,23 @@ export class CsrRouteTable {
     const rootRoute = routeMap.get("/");
     if (!rootRoute) throw new Error("No root route");
     const pathRoutes = getPathRoutes(rootRoute);
+    return { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes) };
+  }
+
+  #pageStateOf(path: string, configChain: PageConfig[], width: number | undefined) {
+    const { device, currentBasePath } = this.#options;
+    return resolvePageState({
+      configChain,
+      path,
+      basePath: currentBasePath,
+      platform: device.info.platform,
+      deviceSafeArea: { top: device.topSafeArea, bottom: device.bottomSafeArea },
+      cssSafeArea: this.#cssSafeArea,
+      width,
+    });
+  }
+
+  static #guideOf(pathRoutes: PathRoute[]) {
     const routeGuide: RouteGuide = { pathSegment: "/", children: {} };
     pathRoutes.forEach((pathRoute) => {
       const pathSegments = pathRoute.pathSegments.slice(1);
@@ -244,7 +280,11 @@ export class CsrRouteTable {
         return next;
       }, routeGuide);
     });
-    return { pathRoutes, routeGuide };
+    return routeGuide;
+  }
+
+  static #breakpointOf(width: number | undefined) {
+    return width === undefined ? 0 : insetBreakpoints.filter(([, rem]) => width >= rem * 16).length;
   }
 
   static #keysOf(context: CsrRouteContext) {

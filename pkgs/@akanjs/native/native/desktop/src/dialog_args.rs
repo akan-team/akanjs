@@ -125,7 +125,7 @@ impl TestAnswers {
     if !dev {
       return None;
     }
-    ANSWERS.get_or_init(|| Self::parse(&std::env::var("AKAN_NATIVE_TEST_PANELS").ok()?)).as_ref()
+    ANSWERS.get_or_init(|| Self::parse(&crate::dev_env("AKAN_NATIVE_TEST_PANELS")?)).as_ref()
   }
 
   fn parse(value: &str) -> Option<TestAnswers> {

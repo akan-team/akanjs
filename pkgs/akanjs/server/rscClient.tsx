@@ -200,7 +200,8 @@ function commitRscPatchNavigation({
 function akanHistoryState(replace: boolean, shallow = false) {
   const idx = (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
   const current = Number.isInteger(idx) ? (idx as number) : 0;
-  return { __akanRouter: { idx: replace ? current : current + 1, ...(shallow ? { shallow: true } : {}) } };
+  const shallowState = shallow ? { shallow: true, rendered: renderedHref } : {};
+  return { __akanRouter: { idx: replace ? current : current + 1, ...shallowState } };
 }
 
 // The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
@@ -411,6 +412,7 @@ function Root(): ReactNode {
           currentCommitFromCache = false;
           resetAkanSegmentOutletPatches();
           setThenable(node.thenable);
+          renderedHref = target;
         },
         navId,
         getCurrentNavId: () => navigationSeq,
@@ -565,9 +567,9 @@ function Root(): ReactNode {
 
 window.addEventListener("popstate", (event) => {
   const here = normalizeHref(window.location.href);
-  const shallowEntry = (event.state as { __akanRouter?: { shallow?: boolean } } | null)?.__akanRouter?.shallow;
-  //? Back from a shallow entry lands on the href already rendered, and between shallow entries nothing was rendered.
-  const keepsPage = pathnameOf(here) === pathnameOf(renderedHref) && (shallowEntry || here === renderedHref);
+  const entry = (event.state as { __akanRouter?: { shallow?: boolean; rendered?: string } } | null)?.__akanRouter;
+  //? A shallow entry shows the render that was on screen when it was written, which a later same-path push replaces.
+  const keepsPage = (entry?.shallow ? entry.rendered : here) === renderedHref;
   // The URL already moved, so a refused route falls back to the document route's real not-found page.
   if (!keepsPage)
     void globalThis

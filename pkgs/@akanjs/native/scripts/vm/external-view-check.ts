@@ -98,22 +98,24 @@ async function evaluate(expression: string, what: string, timeout = 10_000): Pro
   return answer.result?.result?.value;
 }
 
+interface BridgeAnswer {
+  ok: boolean;
+  result?: unknown;
+  error?: { code?: string; message?: string };
+}
+
 /** Calls a plugin method from the page, as a page does (the runtime's own request ids). */
-async function bridge(
-  plugin: string,
-  method: string,
-  args?: unknown,
-): Promise<{ ok: boolean; result?: any; error?: any }> {
+async function bridge(plugin: string, method: string, args?: unknown): Promise<BridgeAnswer> {
   const request = JSON.stringify({ v: 1, plugin, method, ...(args === undefined ? {} : { args }) });
   const expression = `(async () => { const rt = window.__AKAN_NATIVE__.__runtime; const r = ${request};
     r.id = ++rt.nextId; return JSON.stringify(await rt.transport.send(r)); })()`;
   return JSON.parse((await evaluate(expression, `${plugin}.${method}`)) ?? "{}");
 }
 
-async function ok(plugin: string, method: string, args?: unknown): Promise<any> {
+async function ok<T = unknown>(plugin: string, method: string, args?: unknown): Promise<T> {
   const answer = await bridge(plugin, method, args);
   if (!answer.ok) throw new Error(`${plugin}.${method}: ${JSON.stringify(answer.error)}`);
-  return answer.result;
+  return answer.result as T;
 }
 
 const EVENTS = ["load", "loadFailed", "gone", "consoleMessage"];
@@ -132,19 +134,31 @@ async function listen(): Promise<void> {
 
 interface Seen {
   event: string;
-  data: Record<string, any>;
+  data: {
+    id?: string;
+    state?: string;
+    url?: string;
+    errorCode?: string;
+    reason?: string;
+    level?: string;
+    text?: string;
+    line?: number;
+  };
 }
 const events = async (): Promise<Seen[]> =>
   JSON.parse((await evaluate("JSON.stringify(window.__events)", "events")) ?? "[]");
 const waitFor = (what: string, match: (e: Seen) => boolean, timeout?: number) =>
   until(what, async () => (await events()).find(match), timeout);
-const inView = async (script: string) => (await ok("external-view", "evaluate", { id: "board", script })).value;
+const inView = async (script: string) =>
+  (await ok<{ value: unknown }>("external-view", "evaluate", { id: "board", script })).value;
 
-function powershell(command: string): string {
+function powershell(command: string, timeoutMs = 60_000): string {
   const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
     stdout: "pipe",
     stderr: "pipe",
+    timeout: timeoutMs,
   });
+  if (p.exitedDueToTimeout) throw new Error(`PowerShell did not answer within ${timeoutMs / 1000} s: ${command}`);
   return p.stdout.toString().trim();
 }
 
@@ -163,7 +177,7 @@ const appPids = (name: string) =>
 /** The view's WebView2 processes: its own profile folder is on their command line. */
 const viewProcesses = (type: "renderer" | "browser") =>
   powershell(
-    `Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'external-views' -and ${
+    `Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -match '\\\\ev\\\\[0-9a-f]{8}' -and ${
       type === "browser" ? "$_.CommandLine -notmatch '--type='" : "$_.CommandLine -match '--type=renderer'"
     } } | ForEach-Object { $_.ProcessId }`,
   )
@@ -214,9 +228,10 @@ try {
   await listen();
 
   step("0. the window goes onto display 0 at 640×128 device pixels, below the default minimum size");
-  const displays = await ok("screen", "getDisplays");
-  const scale = displays[0].scale as number;
-  const placed = await ok("window", "placeOnDisplay", {
+  const [display] = await ok<{ scale: number }[]>("screen", "getDisplays");
+  if (!display) throw new Error("no display to place the window on");
+  const scale = display.scale;
+  const placed = await ok<{ width: number; height: number }>("window", "placeOnDisplay", {
     index: 0,
     bounds: { x: 0, y: 0, width: 640, height: 128 },
     unit: "physical",
@@ -229,7 +244,7 @@ try {
   await ok("window", "placeOnDisplay", { index: 0, bounds: { x: 40, y: 40, width: 800, height: 600 } });
 
   step("1. a view opens over the window, its init script first, and answers evaluate");
-  const opened = await ok("external-view", "open", {
+  const opened = await ok<{ url: string }>("external-view", "open", {
     id: "board",
     url: `${origin}/board`,
     allowOrigins: [origin, deadOrigin],
@@ -248,7 +263,10 @@ try {
   console.info(`  ${JSON.stringify(failed.data)}`);
   if (failed.data.errorCode !== "unknown") throw new Error(`a refused connection is ${failed.data.errorCode}`);
   await ok("external-view", "navigate", { id: "board", url: `${origin}/down` });
-  const status = await waitFor("an http failure", (e) => e.event === "loadFailed" && e.data.url.endsWith("/down"));
+  const status = await waitFor(
+    "an http failure",
+    (e) => e.event === "loadFailed" && e.data.url?.endsWith("/down") === true,
+  );
   console.info(`  ${JSON.stringify(status.data)}`);
   if (status.data.errorCode !== "http502") throw new Error(`a 502 page is ${status.data.errorCode}`);
   await ok("external-view", "navigate", { id: "board", url: `${origin}/board` });
@@ -275,13 +293,13 @@ try {
   await ok("external-view", "sendKey", { id: "board", key: "z", code: "KeyZ" });
   const keys = await inView("window.__keys.join()");
   if (!String(keys).includes("z:true")) throw new Error(`the page saw ${keys}`);
-  const shot = await ok("external-view", "capture", { id: "board" });
+  const shot = await ok<{ width?: number; height?: number }>("external-view", "capture", { id: "board" });
   console.info(`  capture ${shot.width}×${shot.height}`);
-  if (!(shot.width > 0 && shot.height > 0)) throw new Error("no capture");
+  if (!((shot.width ?? 0) > 0 && (shot.height ?? 0) > 0)) throw new Error("no capture");
   await ok("external-view", "setMuted", { id: "board", muted: true });
 
   step("6. storage of its own, cleared by clearData");
-  const seenBefore = await inView("window.__seen");
+  const seenBefore = Number(await inView("window.__seen"));
   await ok("external-view", "reload", { id: "board" });
   await until("a reload", async () => (await inView("window.__seen")) === seenBefore + 1);
   await ok("external-view", "clearData", { id: "board" });
@@ -304,9 +322,9 @@ try {
   process.kill(browser);
   await waitFor("browserExited", (e) => e.event === "gone" && e.data.reason === "browserExited");
   await until("the board in a new webview", async () => (await inView("document.title")) === "board", 30_000);
-  const [listed] = await ok("external-view", "list");
+  const [listed] = await ok<{ restarts: number }[]>("external-view", "list");
   console.info(`  ${JSON.stringify(listed)}`);
-  if (listed.restarts < 2) throw new Error("the restarts were not counted");
+  if ((listed?.restarts ?? 0) < 2) throw new Error("the restarts were not counted");
   if ((await inView("window.__alive")) !== "undefined") throw new Error("the rebuilt view lost its init script");
 
   step("8. the window's hidden pointer stays hidden over the view, through reloads and a rebuild, until shown");
@@ -344,7 +362,7 @@ try {
   if (before !== BACKGROUND) throw new Error(`the view showed ${before} before its page, not the app's ${BACKGROUND}`);
 
   await ok("external-view", "close", { id: "slow" });
-  if ((await ok("external-view", "list")).length !== 0) throw new Error("the view is still listed");
+  if ((await ok<unknown[]>("external-view", "list")).length !== 0) throw new Error("the view is still listed");
   console.info("\nexternal-view-check passed");
 } catch (error) {
   console.error(`the app's last lines:\n${lines.slice(-40).join("\n")}`);

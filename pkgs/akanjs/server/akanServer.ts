@@ -474,20 +474,22 @@ export class AkanServer {
     const websocket = this.#di.getWebsocketAdaptor();
     if (!websocket) throw new Error("WebSocket Redis adaptor is not registered");
     this.#binaryPubsub.setServers(server, wsServer);
+    const subscribed = (roomId: string) =>
+      (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
+    const roomReplay = new RoomReplay({ vouches: RoomReplay.vouchesFor(websocket, this.#solo), subscribed });
     const localPublish: LocalPublish = (roomId, data) => {
       if (data instanceof Uint8Array) {
+        roomReplay.unnumbered(roomId);
         this.#binaryPubsub.publish(roomId, websocketBinaryFrameContract.encode({ roomId, payload: data }), {
           coalesce: SignalResolver.coalescesRoom(roomId),
         });
         return;
       }
       const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      const subscribed = (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
-      const frame = roomReplay.frameOf(publishData, subscribed);
+      const frame = roomReplay.frameOf(publishData, subscribed(roomId));
       server?.publish(roomId, frame);
       wsServer?.publish(roomId, frame);
     };
-    const roomReplay = new RoomReplay({ vouches: this.#solo });
     SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
     this.#localPublish = localPublish;
 
@@ -909,8 +911,7 @@ export class AkanServer {
   }
 
   static #mcpModernFromEnv(): Pick<McpServerOption, "modern"> {
-    const raw = process.env.AKAN_MCP_MODERN;
-    if (raw === "true" || raw === "1") return { modern: true };
+    if (AkanServer.#isEnvEnabled("AKAN_MCP_MODERN")) return { modern: true };
     return AkanServer.#isEnvOff("AKAN_MCP_MODERN") ? { modern: false } : {};
   }
 

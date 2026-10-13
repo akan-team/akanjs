@@ -42,7 +42,7 @@ Auto-generated hook that reads the current query arguments from the store. Retur
 
 Updates the query arguments in the store, which automatically triggers a re-fetch of the filtered data.
 
-Label/value pairs, so each status is listed under the name l() translates it to.
+The enum class itself. Select lists each status under its dictionary name (icecreamOrderStatus.<value>), and shows a value the dictionary does not name as it is.
 
 Finally, add the Query Maker to your page so users can filter orders dynamically:
 
@@ -326,18 +326,17 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   );
 };
 
-interface PublicQueryMakerProps { // [!code ++:18]
+interface PublicQueryMakerProps { // [!code ++:17]
   className?: string;
 }
 export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
-  const { l } = usePage();
   const [statuses] = st.use.queryArgsOfIcecreamOrderInPublic();
   return (
     <Select
       multiple
       value={statuses ?? []}
       className={className}
-      options={cnst.IcecreamOrderStatus.map((status) => ({ label: l(`icecreamOrderStatus.${status}`), value: status }))}
+      options={cnst.IcecreamOrderStatus}
       onChange={(statuses) => {
         void st.do.setQueryArgsOfIcecreamOrderInPublic(statuses);
       }}

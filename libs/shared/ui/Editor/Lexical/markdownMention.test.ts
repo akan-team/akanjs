@@ -13,6 +13,7 @@ import { RichEditor } from "../../../common/richEditor";
 import { MENTION, mentionToken } from "./markdownMention";
 import { rememberMention } from "./mentionCache";
 import { MentionNode } from "./nodes/MentionNode";
+import { isSerializedEditorState } from "./softGuard";
 
 // `lexical` core plus `@lexical/{markdown,link}` only — see `markdownTable.test.ts` for why the real
 // `AKAN_TRANSFORMERS` cannot be imported. MENTION before LINK is the ordering `AKAN_FEATURES` encodes.
@@ -125,7 +126,11 @@ describe("markdown mention", () => {
    * transformer, or a token the agent pasted would come back as literal text.
    */
   describe("RichEditor.contentFromMentionText", () => {
-    const fromStore = (markdown: string) => makeEditor().parseEditorState(RichEditor.contentFromMentionText(markdown));
+    const fromStore = (markdown: string) => {
+      const content = RichEditor.contentFromMentionText(markdown);
+      if (!isSerializedEditorState(content)) throw new Error("contentFromMentionText built no editor state");
+      return makeEditor().parseEditorState(content);
+    };
 
     it("parses to the same markdown the transformer writes", () => {
       const markdown = "cc @[Kangmin](mention:user/u1) please review";

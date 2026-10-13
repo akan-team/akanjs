@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInitScript } from "../../core/src/protocol.ts";
+import { GATE_TIMEOUT_MS, SETUP_TIMEOUT_MS } from "./dispatcher.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
 import { appLocalDataDir, webviewDataDir } from "./paths.ts";
 import type { Launch, LaunchWindow } from "./plugin.ts";
@@ -14,8 +15,11 @@ import { READY_TIMEOUT } from "./server.ts";
 
 const ENV_OVERRIDE_PREFIX = "AKAN_NATIVE_PUBLIC_";
 
-/** How long the main thread waits for the launch phase: the plugins' setups, then the carried server. */
-const LAUNCH_TIMEOUT = 10_000 + READY_TIMEOUT;
+/**
+ * How long the main thread waits for the launch phase: a gate plugin's setup, the other setups, then the carried
+ * server, and a few seconds for the Worker's own start. Shorter, it ends a launch a gate is still deciding.
+ */
+export const LAUNCH_TIMEOUT = GATE_TIMEOUT_MS + SETUP_TIMEOUT_MS + READY_TIMEOUT + 4_000;
 
 /**
  * env.runtime.json, overlaid with what the launch phase learned (the carried server's URL), then with

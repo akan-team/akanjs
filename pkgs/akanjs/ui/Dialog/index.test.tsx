@@ -177,7 +177,7 @@ describe("Dialog presentation", () => {
 
     const panel = panelOf();
     expect(panel.className).toContain("h-full");
-    expect(panel.className).toContain("pt-[env(safe-area-inset-top)]");
+    expect(panel.className).toContain("pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))]");
     expect(panel.className).toContain("md:max-w-md");
     expect(panel.parentElement?.className).toContain("md:justify-end");
     expect(panel.querySelector(".touch-none")?.className).toContain("md:hidden");

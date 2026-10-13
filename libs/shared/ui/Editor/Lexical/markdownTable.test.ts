@@ -10,6 +10,7 @@ import { HeadingNode } from "@lexical/rich-text";
 import { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import { $getRoot, createEditor, type LexicalEditor } from "lexical";
 
+import type { EditorNodeLike } from "./feature";
 import { MENTION } from "./markdownMention";
 import { isLossyTable, tableTransformer } from "./markdownTable";
 import { MentionNode } from "./nodes/MentionNode";
@@ -146,7 +147,10 @@ describe("markdown table", () => {
       children: [{ type: "paragraph" }],
       ...extra,
     });
-    const tableOf = (...cells: unknown[]) => ({ type: "table", children: [{ type: "tablerow", children: cells }] });
+    const tableOf = (...cells: EditorNodeLike[]) => ({
+      type: "table",
+      children: [{ type: "tablerow", children: cells }],
+    });
 
     it("is no loss for an ordinary table", () => {
       expect(isLossyTable(tableOf(cell(), cell()))).toBe(false);

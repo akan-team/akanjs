@@ -55,6 +55,12 @@ export class AgenticSurface {
   #sources = new Set<SurfaceSource>();
   #listeners = new Set<() => void>();
   #warned = new Set<string>();
+  #version = 0;
+
+  /** Bumped on every change, so a store binding can use it as the snapshot. */
+  get version() {
+    return this.#version;
+  }
 
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -362,6 +368,7 @@ export class AgenticSurface {
   }
 
   #notify() {
+    this.#version += 1;
     for (const listener of this.#listeners) listener();
   }
 

@@ -31,7 +31,6 @@ export default rootLayout()
         name="description"
         content="Akan.js is a full-stack TypeScript framework for building all-stack applications at once."
       />
-      <link rel="canonical" href="https://akanjs.com" />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="Akan.js" />
       <meta property="og:title" content="Akan.js" />
@@ -39,7 +38,6 @@ export default rootLayout()
         property="og:description"
         content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
       />
-      <meta property="og:url" content="https://akanjs.com" />
       <meta property="og:image" content="https://akanjs.com/jelly/og.jpg" />
       <meta property="og:image:type" content="image/jpeg" />
       <meta property="og:image:width" content="1200" />

@@ -1152,6 +1152,58 @@ describe("SignalResolver declaration contracts", () => {
         since: { epoch: "restarted", seq: 1 },
       });
       expect(lost).toMatchObject({ replayed: false });
+
+      const late = (await resolved.wsRoutes.roomFeed(makeWs(), [validId], "subscribe")) as WebsocketSubscribeAck;
+      const peeked: string[] = [];
+      const peek = Object.assign(makeWs(), { send: (frame: string) => void peeked.push(frame) });
+      const earlier = await resolved.wsRoutes.roomFeed(peek, [validId], "subscribe", {
+        since: { epoch: late.cursor?.epoch ?? "", seq: 0 },
+      });
+      expect(peeked).toEqual([]);
+      expect(earlier).toMatchObject({ replayed: false });
+    } finally {
+      SignalResolver.setLocalPublish(() => undefined, websocket.instance);
+    }
+  });
+
+  test("a live room left empty resyncs its resubscribe, since nothing was routed to it meanwhile", async () => {
+    const { registry, live, route } = resolveLiveCategoryRoute();
+    const replay = new RoomReplay({ vouches: true });
+    SignalResolver.setLocalPublish(() => undefined, makeFakeWebsocket().instance, live, replay);
+    try {
+      const first = makeWs();
+      const firstAck = (await route(first, ["news"], "subscribe")) as WebsocketSubscribeAck;
+      replay.frameOf({ type: "pub", roomId: firstAck.roomId, data: { op: "enter", id: validId } }, true);
+      const since = { epoch: firstAck.cursor?.epoch ?? "", seq: 1 };
+
+      const kept = makeWs();
+      await route(kept, ["news"], "subscribe");
+      await SignalResolver.handleWsClose(first, registry, live);
+      const back = makeWs();
+      expect(await route(back, ["news"], "subscribe", { since })).toMatchObject({ replayed: true });
+
+      await SignalResolver.handleWsClose(kept, registry, live);
+      await SignalResolver.handleWsClose(back, registry, live);
+      expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(0);
+      expect(await route(makeWs(), ["news"], "subscribe", { since })).toMatchObject({ replayed: false });
+    } finally {
+      SignalResolver.setLocalPublish(() => undefined, makeFakeWebsocket().instance);
+    }
+  });
+
+  test("a binary room acks no cursor, so its resubscribe resyncs: its frames go out unnumbered", async () => {
+    const { registry, websocket } = withFakeWebsocket();
+    const replay = new RoomReplay({ vouches: true });
+    SignalResolver.setLocalPublish(() => undefined, websocket.instance, undefined, replay);
+    try {
+      const resolved = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry });
+      const ack = await resolved.wsRoutes.roomStream(makeWs(), ["ch1"], "subscribe");
+      expect(ack).toEqual({ type: "sub", roomId: "roomStream-ch1", requestRoomId: "roomStream-ch1", subscribe: true });
+      expect(replay.cursor("roomStream-ch1")).toBeNull();
+      const back = await resolved.wsRoutes.roomStream(makeWs(), ["ch1"], "subscribe", {
+        since: { epoch: "old", seq: 0 },
+      });
+      expect(back).toMatchObject({ replayed: false });
     } finally {
       SignalResolver.setLocalPublish(() => undefined, websocket.instance);
     }
@@ -1833,6 +1885,35 @@ describe("SignalResolver declaration contracts", () => {
     expect(dayjs.isDayjs(at)).toBe(true);
     expect(at.toISOString()).toBe("2026-07-26T00:00:00.000Z");
     expect(passedJob).toBe(job);
+  });
+
+  test("hands the queue an onFailed that rejects, never throws, when the hook throws at once", async () => {
+    class DeadLetterInternal extends internal(serverResolverTestServiceModel, (builder) => ({
+      deliver: builder
+        .process(Boolean, {
+          onFailed: () => {
+            throw new Error("dead letter exploded");
+          },
+        })
+        .exec(() => true),
+    })) {}
+    const options: { onFailed?: (job: AkanJob, error: unknown) => Promise<void> | void }[] = [];
+    const internalInstance = Object.assign(new DeadLetterInternal(), {
+      schedule: makeFakeSchedule(),
+      queue: {
+        registerProcessWorker: (_key: string, _handler: unknown, option: (typeof options)[number]) =>
+          void options.push(option),
+      },
+    });
+
+    SignalResolver.resolveSchedule(DeadLetterInternal, internalInstance as unknown as Internal, "all");
+
+    const job: AkanJob = { id: "job-1", name: "deliver", data: [], attemptsMade: 1 };
+    let failed: unknown;
+    expect(() => {
+      failed = options[0]?.onFailed?.(job, new Error("boom"));
+    }).not.toThrow();
+    await expect(failed as Promise<void>).rejects.toThrow("dead letter exploded");
   });
 
   test("runs an enqueued job end-to-end through the solid queue", async () => {

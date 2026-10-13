@@ -1,4 +1,3 @@
-import { generateKeyPairSync } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
@@ -15,6 +14,7 @@ import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
 import { Linter } from "@akanjs/devkit/linter";
 import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
+import { Ed25519Key } from "akanjs/server/ed25519Key";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 
 const defaultWorkspacePeerDependencies = new Set([
@@ -40,19 +40,16 @@ export class WorkspaceRunner extends runner("workspace") {
   //* The private key never reaches stdout: a terminal's scrollback and an agent's transcript both keep what it prints.
   async machineKeygen(workspace: Workspace, out: string) {
     const file = path.resolve(workspace.workspaceRoot, out);
-    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { privatePem, publicKey } = Ed25519Key.generate();
     await mkdir(path.dirname(file), { recursive: true });
     try {
-      await writeFile(file, privateKey.export({ format: "pem", type: "pkcs8" }).toString(), {
-        mode: 0o600,
-        flag: "wx",
-      });
+      await writeFile(file, privatePem, { mode: 0o600, flag: "wx" });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST")
         throw new Error(`${file} exists; machine-keygen never overwrites a key. Name another file.`);
       throw error;
     }
-    return { file, publicKey: publicKey.export({ format: "jwk" }).x ?? "" };
+    return { file, publicKey };
   }
 
   async generateAgentRules(

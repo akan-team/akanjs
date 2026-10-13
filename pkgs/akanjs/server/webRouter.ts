@@ -571,9 +571,11 @@ export class WebRouter {
         const filePath = resolveStaticPath(publicDir, url.pathname);
         if (filePath && (await Bun.file(filePath).exists())) {
           this.#requestStats.staticAsset += 1;
+          const contentType = Bun.file(filePath).type || "application/octet-stream";
           return WebRouter.#fileResponse(req, filePath, {
-            contentType: Bun.file(filePath).type || "application/octet-stream",
+            contentType,
             cacheControl: this.#prodMode ? "public, max-age=300" : "no-store",
+            anyOrigin: contentType.startsWith("font/"),
           });
         }
 
@@ -592,14 +594,8 @@ export class WebRouter {
           this.#requestBasePath(req),
         );
         if (manifestBasePath !== undefined) {
-          const manifest = await this.#rsc.webManifest(manifestBasePath);
-          if (manifest)
-            return new Response(JSON.stringify(manifest), {
-              headers: {
-                "Content-Type": "application/manifest+json; charset=utf-8",
-                "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
-              },
-            });
+          const manifestResponse = await this.#webManifestResponse(manifestBasePath);
+          if (manifestResponse) return manifestResponse;
         }
 
         const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
@@ -955,6 +951,27 @@ export class WebRouter {
       homeHref: this.#getSystemPageHomeHref(req, url.pathname),
       stylesheetHref: this.#getStylesheetHref(req, url.pathname),
     });
+  }
+
+  async #webManifestResponse(basePath: string | null): Promise<Response | null> {
+    try {
+      const manifest = await this.#rsc.webManifest(basePath);
+      if (!manifest) return null;
+      return new Response(JSON.stringify(manifest), {
+        headers: {
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
+        },
+      });
+    } catch (err) {
+      this.#logger.warn(
+        `web manifest unavailable basePath=${basePath ?? "(root)"}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return new Response("Service Unavailable", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
   }
 
   // A subRoutes build has no root page (routes live under `page/<basePath>`), so local dev serves a basePath picker;

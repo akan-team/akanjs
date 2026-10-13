@@ -236,6 +236,48 @@ describe("RouteTreeBuilder implicit locale", () => {
     expect(referenceHtml).toContain("Docs layout description");
     expect(referenceHtml).toContain("/root.ico");
   });
+
+  test("keeps a layout's canonical and og:url off every page below it, which names its own URL or none", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        head: (
+          <>
+            <title>Root</title>
+            <link rel="canonical" href="https://example.com" />
+            <meta property="og:url" content="https://example.com" />
+            <meta property="og:title" content="Root" />
+          </>
+        ),
+      }),
+      "./docs/guide.tsx": async () => ({ default: () => null, head: <title>Guide</title> }),
+      "./docs/api.tsx": async () => ({
+        default: () => null,
+        head: <link rel="canonical" href="https://example.com/docs/api" />,
+      }),
+      "./about.tsx": async () => ({ default: () => null }),
+    }).build();
+    const headHtml = async (pathname: string) => {
+      const matched = RouteTreeBuilder.match(pathname, routes);
+      if (!matched) throw new Error(`route did not match: ${pathname}`);
+      return await renderToText(await RouteElementComposer.resolveHead(pageInput(matched)));
+    };
+
+    const guideHtml = await headHtml("/en/docs/guide");
+    const apiHtml = await headHtml("/en/docs/api");
+    const aboutHtml = await headHtml("/en/about");
+
+    expect(guideHtml).toContain("Guide</title>");
+    expect(guideHtml).toContain('content="Root"');
+    expect(guideHtml).not.toContain("canonical");
+    expect(guideHtml).not.toContain("og:url");
+    expect(apiHtml).toContain('href="https://example.com/docs/api"');
+    expect(apiHtml.match(/canonical/g)).toHaveLength(1);
+    expect(apiHtml).not.toContain("og:url");
+    expect(aboutHtml).toContain("Root</title>");
+    expect(aboutHtml).not.toContain("canonical");
+    expect(aboutHtml).not.toContain("og:url");
+  });
   test("supports route groups, repeated search params, and cached lazy modules", async () => {
     let loadCount = 0;
     const routes = new RouteTreeBuilder({

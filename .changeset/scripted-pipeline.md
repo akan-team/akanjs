@@ -9,3 +9,5 @@ Apps declare their build pipeline in `akan.config.ts`. `pipeline: { stages, env,
 `akan upload-secret <NAME>`, `akan list-secrets` and `akan remove-secret <NAME>` manage write-only pipeline secrets per project, optionally per branch (`--branch debug|develop|main`). A value comes from `--file`, piped stdin or a hidden prompt, never from an argument. A step lists the names it reads in `secrets`. Anyone who can push to the repository can make a step print a secret, as with GitHub Actions secrets.
 
 Upgrade note: `akan.subspace.ts` is no longer read. Move its content under `subspace` in the workspace-root `akan.config.ts` (`const config: WorkspaceConfig = { subspace: { … } }`). The root config never travels to a subspace.
+
+Upgrade note: delete `akan.subspace.ts` after moving its content. `akan subspace push` and `akan subspace pull` refuse while it is still at the workspace root, and a push removes any copy of it from the subspace.

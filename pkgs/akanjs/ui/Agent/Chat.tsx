@@ -112,9 +112,9 @@ const isApplePlatform = () => {
 };
 
 // Portalled to the body: `#pageContainers` is `isolation: isolate`, so a z-index inside it never tops a body overlay.
-// The open panel is z-150, above toast 140, modal 120, sheet 101 and dropdown 100, and below Reconnect 200, which
-// blocks on purpose. The launcher is z-80, under every menu and modal a page opens.
-// It reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar and the home indicator.
+// The open panel tops every overlay a page opens and stays under Reconnect, which blocks on purpose; the launcher
+// sits under every menu and modal. It reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar
+// and the home indicator.
 const launcherLayer =
   "fixed bottom-[calc(var(--akan-bottom-inset,0px)+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))+1rem)] z-[80]";
 const launcherSides = {

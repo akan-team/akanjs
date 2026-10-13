@@ -10,6 +10,9 @@ describe("isActiveHref", () => {
     expect(at("/en/org/1/project", "/org/1/project")).toBe(true);
     expect(at("/en/office/org/1/project", "/en/office/org/1/project", { exact: true })).toBe(true);
     expect(at("/en/office/org/1/project/9", "/org/1/project", { exact: true })).toBe(false);
+    expect(at("/en/office/officers", "/officers")).toBe(true);
+    expect(at("/en/office/officers/7", "/officers")).toBe(true);
+    expect(at("/en/office/org", "/officers")).toBe(false);
   });
 
   test("matches by segment, keeps the root exact, and lights up under an extra prefix", () => {

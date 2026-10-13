@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 /** What the uploader needs of an S3 client; Bun.S3Client is one. */
@@ -10,6 +11,17 @@ export interface UpdateUploadResult {
   uploaded: number;
   skipped: number;
 }
+
+/** The release one `publish-update` wrote, as it reports it. */
+export interface PublishedUpdate {
+  /** `<updates>/<os>-<arch>` for a desktop app, `<updates>/<platform>` for a phone's web bundle. */
+  dir: string;
+  channel: string;
+  /** Its manifest's `bundle`, which tells it from the other manifests of the channel there. */
+  bundle: string;
+}
+
+type JsonObject = Record<string, unknown>;
 
 //* A manifest names files that must already be there, so they go first and the manifests last, each signature before
 //* its manifest as `publish-update` writes them. A release file never changes once published (its name carries its
@@ -34,6 +46,64 @@ export class UpdateUploader {
     };
   }
 
+  //* Never the whole folder: pack-update's records sit there too (pack.json holds this machine's paths), and so do
+  //* manifests of other channels and native APIs, which a later publish from another machine may have replaced.
+  static async releaseFiles(updatesDir: string, { dir, channel, bundle }: PublishedUpdate): Promise<string[]> {
+    const keyOf = (file: unknown) => UpdateUploader.#keyOf(updatesDir, dir, file);
+    const desktop = await UpdateUploader.#read(path.join(dir, `${channel}.json`));
+    if (desktop?.bundle === bundle) {
+      const archive = (desktop.archive as JsonObject | undefined)?.url;
+      const patches = UpdateUploader.#field(desktop.patches, "url");
+      return [archive, ...patches, `${channel}.json.sig`, `${channel}.json`].map(keyOf);
+    }
+    const names = await readdir(path.join(dir, channel)).catch(() => [] as string[]);
+    for (const name of names.filter((name) => name.endsWith(".json"))) {
+      const envelope = await UpdateUploader.#read(path.join(dir, channel, name));
+      const manifest =
+        typeof envelope?.manifest === "string"
+          ? UpdateUploader.#parse(Buffer.from(envelope.manifest, "base64").toString("utf8"))
+          : null;
+      if (manifest?.bundle !== bundle) continue;
+      const hashes = [...new Set(UpdateUploader.#field(manifest.files, "sha256"))];
+      if (!hashes.every((hash): hash is string => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))
+        throw new Error(
+          `${path.join(dir, channel, name)} lists a file whose sha256 is not 64 hex digits; nothing was uploaded.`,
+        );
+      return [...hashes.map((hash) => `files/${hash}`), `${channel}/${name}`].map(keyOf);
+    }
+    throw new Error(`${dir} holds no ${channel} manifest of release ${bundle}; nothing was uploaded.`);
+  }
+
+  static #keyOf(updatesDir: string, dir: string, file: unknown) {
+    const resolved = typeof file === "string" ? path.resolve(dir, file) : "";
+    const key = path.relative(updatesDir, resolved);
+    if (!resolved.startsWith(`${path.resolve(dir)}${path.sep}`) || key.startsWith("..") || path.isAbsolute(key))
+      throw new Error(
+        `The release in ${dir} names ${typeof file === "string" ? JSON.stringify(file) : "a file with no path"}, which is not inside that folder; nothing was uploaded.`,
+      );
+    return key.split(path.sep).join("/");
+  }
+
+  static #field(list: unknown, key: string): unknown[] {
+    return Array.isArray(list) ? list.map((item) => (item as JsonObject | null)?.[key]) : [];
+  }
+
+  static async #read(file: string) {
+    const text = await Bun.file(file)
+      .text()
+      .catch(() => "");
+    return UpdateUploader.#parse(text);
+  }
+
+  static #parse(text: string): JsonObject | null {
+    try {
+      const value: unknown = JSON.parse(text);
+      return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : null;
+    } catch {
+      return null;
+    }
+  }
+
   constructor(
     readonly bucket: UpdateBucket,
     readonly prefix: string,
@@ -44,12 +114,8 @@ export class UpdateUploader {
     return new UpdateUploader(new Bun.S3Client({ bucket }), prefix);
   }
 
-  async upload(dir: string): Promise<UpdateUploadResult> {
-    const files: string[] = [];
-    for await (const file of new Bun.Glob("**/*").scan({ cwd: dir, onlyFiles: true })) {
-      if (!file.endsWith(".tmp")) files.push(file.split(path.sep).join("/"));
-    }
-    const { releases, manifests } = UpdateUploader.order(files);
+  async upload(updatesDir: string, release: PublishedUpdate): Promise<UpdateUploadResult> {
+    const { releases, manifests } = UpdateUploader.order(await UpdateUploader.releaseFiles(updatesDir, release));
     const keyOf = (file: string) => (this.prefix ? `${this.prefix}/${file}` : file);
     let uploaded = 0;
     let skipped = 0;
@@ -58,12 +124,12 @@ export class UpdateUploader {
         skipped++;
         continue;
       }
-      await this.bucket.write(keyOf(file), Bun.file(path.join(dir, file)));
+      await this.bucket.write(keyOf(file), Bun.file(path.join(updatesDir, file)));
       uploaded++;
     }
     for (const file of manifests) {
       const type = file.endsWith(".json") ? "application/json" : "text/plain";
-      await this.bucket.write(keyOf(file), Bun.file(path.join(dir, file)), { type });
+      await this.bucket.write(keyOf(file), Bun.file(path.join(updatesDir, file)), { type });
       uploaded++;
     }
     return { uploaded, skipped };

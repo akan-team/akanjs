@@ -26,6 +26,8 @@ export interface RouterInstance {
   replace: (href: string, routeOptions?: RouteOptions) => void | Promise<void>;
   back: (routeOptions?: RouteOptions) => void;
   refresh: () => void;
+  /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
+  canGoBack?: () => boolean;
 }
 interface RouterOptions {
   prefix?: string;
@@ -151,7 +153,7 @@ export const getPathInfo = (requestUrl: string, lang: string, prefix: string) =>
     ? pathWithSubRoute
     : pathWithSubRoute === `/${prefix}`
       ? "/"
-      : pathWithSubRoute.startsWith(`/${prefix}`)
+      : pathWithSubRoute.startsWith(`/${prefix}/`)
         ? pathWithSubRoute.slice(prefixLength)
         : pathWithSubRoute;
   const subRoute = prefix ? `/${prefix}` : "";
@@ -167,8 +169,10 @@ class Router {
   #indexPath = "/";
   #navigation: Promise<void> = Promise.resolve();
   #historyIdx = 0;
-  //? The RSC client pushes the entry only once its fetch lands, so a write here would stamp the page being left.
+  //? Each client pushes the entry only once the next page is ready, so a write here would stamp the page being left.
   #historyWrittenByNavigation = false;
+  #listensToPopstate: boolean = false;
+  #backsAwaitingPopstate = 0;
   #redirects = 0;
   #instance: RouterInstance = {
     push: (href: string) => {
@@ -229,6 +233,7 @@ class Router {
     };
   }
   #initCsrClientRouter(options: CSRClientRouterOption) {
+    this.#historyWrittenByNavigation = options.router.canGoBack !== undefined;
     this.#instance = {
       push: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
@@ -248,10 +253,11 @@ class Router {
         options.router.back(routeOptions);
       },
       refresh: () => {
-        const { path, pathname, hash } = this.#getPathInfo(location.pathname);
+        const { path, pathname, hash } = this.#getPathInfo(csrLocation.pathname);
         this.#postPathChange({ path, pathname, hash });
         options.router.refresh();
       },
+      canGoBack: options.router.canGoBack,
     };
   }
   #checkInitialized() {
@@ -266,10 +272,14 @@ class Router {
     const akanState = (state.__akanRouter ?? {}) as { idx?: number };
     this.#historyIdx = Number.isInteger(akanState.idx) ? (akanState.idx as number) : this.#historyIdx;
     csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
-    if (!globalThis.window.addEventListener) return;
+    if (this.#listensToPopstate || !globalThis.window.addEventListener) return;
+    this.#listensToPopstate = true;
     globalThis.window.addEventListener("popstate", (event) => {
       const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
       if (Number.isInteger(nextState.idx)) this.#historyIdx = nextState.idx as number;
+      if (this.#backsAwaitingPopstate === 0) return;
+      this.#backsAwaitingPopstate -= 1;
+      this.#postPathChange(this.#getPathInfo(csrLocation.href));
     });
   }
 
@@ -310,11 +320,7 @@ class Router {
   }
   //? `document.referrer` names the last document, not the entry a same-document push left; once history moves, the URL is.
   #postPathAfterBack() {
-    window.addEventListener(
-      "popstate",
-      () => this.#postPathChange(this.#getPathInfo(`${location.pathname}${location.search}${location.hash}`)),
-      { once: true },
-    );
+    if (this.canGoBack()) this.#backsAwaitingPopstate += 1;
   }
   #postPathChange({ path, pathname, hash }: { path: string; pathname: string; hash: string }) {
     Logger.info(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
@@ -400,7 +406,11 @@ class Router {
   }
   canGoBack() {
     if (getEnv().side === "server") return false;
-    const state = globalThis.window?.history?.state as { __akanRouter?: { idx?: unknown } } | null | undefined;
+    const fromStack = this.#instance.canGoBack?.();
+    if (fromStack !== undefined) return fromStack;
+    const state = globalThis.window?.history
+      ? (csrLocation.state as { __akanRouter?: { idx?: unknown } } | null)
+      : null;
     const idx = state?.__akanRouter?.idx;
     return (Number.isInteger(idx) ? (idx as number) : this.#historyIdx) > 0;
   }

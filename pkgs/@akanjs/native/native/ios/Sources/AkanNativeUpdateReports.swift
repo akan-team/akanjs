@@ -1,14 +1,13 @@
-// What became of each web bundle release (F-S2), posted to updates.report.url so whoever publishes sees apply and
+// What became of each web bundle release, posted to updates.report.url so whoever publishes sees apply and
 // rollback rates; a rollback is decided before any page script runs, so only the shell can tell. The Android twin is
 // native/android/.../AkanNativeUpdateReports.kt, same file and wire format.
 //
 // akan-native-updates/report.json: { installId, nextId, events: [{ id, event, bundle, sequence, reason, at }], retryAt?,
 // seen: [key] }. Beside state.json, so backups skip it, but reset() rewrites state.json only: the installId (random,
 // not a device identifier) and the id counter live as long as the install, and an id is never used twice.
-// Sent at launch and on each return to the foreground: oldest first, 20 to a request, one request at a time. A 2xx
-// removes the batch; a 4xx other than 408 and 429 drops it, since the same body would be refused forever; a 408 (a body
-// slower than the server waits for), a 429, a 5xx or no answer keeps it for the next time (after Retry-After). At most
-// 100 wait, the oldest dropped first.
+// Sent when the first window opens and on each return to the foreground: oldest first, 20 to a request, one request at
+// a time. A 2xx removes the batch; a 400, 413 or 422 drops it, since the same body would be refused forever; any other
+// answer, or none, keeps it for the next time (after Retry-After). At most 100 wait, the oldest dropped first.
 #if AKAN_NATIVE_UPDATES
 import Foundation
 import UIKit
@@ -37,25 +36,40 @@ enum AkanNativeUpdateReports {
 
     /// downloaded, applied, confirmed, rolledBack (timeout, relaunch, hang, verify) or failed (download, verify, disk,
     /// signature, manifest). Nothing is kept when the build names no report URL.
-    static func record(_ event: String, bundle: String?, sequence: Double?, reason: String? = nil) {
-        guard AkanNativeUpdates.config?.reportUrl != nil, let bundle, AkanNativeKernel.isBundleId(bundle) else { return }
+    @discardableResult
+    static func record(_ event: String, bundle: String?, sequence: Double?, reason: String? = nil) -> Int? {
+        guard AkanNativeUpdates.config?.reportUrl != nil, let bundle, AkanNativeKernel.isBundleId(bundle) else { return nil }
         var report = read()
         //? A check runs at every launch: the same failure of the same release is one event, not one per launch.
         let key = "\(event)|\(bundle)|\(reason ?? "")"
-        guard !report.seen.contains(key) else { return }
+        guard !report.seen.contains(key) else { return nil }
         report.seen = Array((report.seen + [key]).suffix(limit))
+        let sequence = sequence.flatMap { $0.isFinite ? $0 : nil }
         let number: Any = sequence.map { $0.rounded() == $0 && abs($0) < 9e15 ? NSNumber(value: Int64($0)) : NSNumber(value: $0) } ?? NSNull()
+        let id = report.nextId
         report.events.append([
-            "id": report.nextId, "event": event, "bundle": bundle, "sequence": number, "reason": reason ?? NSNull(),
+            "id": id, "event": event, "bundle": bundle, "sequence": number, "reason": reason ?? NSNull(),
             "at": timestamp.string(from: Date()),
         ])
         report.events = Array(report.events.suffix(limit))
         report.nextId += 1
         write(report)
+        return id
     }
 
-    static func record(_ event: String, _ entry: AkanNativeUpdateEntry, reason: String? = nil) {
+    @discardableResult
+    static func record(_ event: String, _ entry: AkanNativeUpdateEntry, reason: String? = nil) -> Int? {
         record(event, bundle: entry.bundle, sequence: entry.sequence, reason: reason)
+    }
+
+    static func amend(_ id: Int, reason: String) {
+        var report = read()
+        guard let index = report.events.firstIndex(where: { ($0["id"] as? NSNumber)?.intValue == id }),
+              let event = report.events[index]["event"] as? String, let bundle = report.events[index]["bundle"] as? String else { return }
+        let key = "\(event)|\(bundle)|\(report.events[index]["reason"] as? String ?? "")"
+        report.events[index]["reason"] = reason
+        report.seen = report.seen.map { $0 == key ? "\(event)|\(bundle)|\(reason)" : $0 }
+        write(report)
     }
 
     static func start() {
@@ -97,8 +111,8 @@ enum AkanNativeUpdateReports {
 
     private static func settle(_ ids: Set<Int>, status: Int, retryAfter: String?) {
         var report = read()
-        guard (200..<300).contains(status) || ((400..<500).contains(status) && status != 408 && status != 429) else {
-            report.retryAt = retryAfter.flatMap(Double.init).map { Date().timeIntervalSince1970 + $0 }
+        guard (200..<300).contains(status) || [400, 413, 422].contains(status) else {
+            report.retryAt = retryAfter.flatMap(Double.init).flatMap { $0.isFinite && $0 >= 0 ? Date().timeIntervalSince1970 + $0 : nil }
             write(report)
             return
         }
@@ -124,7 +138,8 @@ enum AkanNativeUpdateReports {
 
     private static func write(_ report: Report) {
         var o: [String: Any] = ["installId": report.installId, "nextId": report.nextId, "events": report.events, "seen": report.seen]
-        if let retryAt = report.retryAt { o["retryAt"] = retryAt }
+        //? JSONSerialization raises on a NaN or an infinity, an exception try? does not catch.
+        if let retryAt = report.retryAt, retryAt.isFinite { o["retryAt"] = retryAt }
         guard let data = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) else { return }
         try? FileManager.default.createDirectory(at: AkanNativeUpdates.directory, withIntermediateDirectories: true)
         var directory = AkanNativeUpdates.directory

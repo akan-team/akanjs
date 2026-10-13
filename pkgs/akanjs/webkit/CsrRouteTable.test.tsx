@@ -149,3 +149,60 @@ describe("CsrRouteTable in an MCP view", () => {
     expect(view.explicit?.bottomInset).toBeUndefined();
   });
 });
+
+describe("CsrRouteTable as the window resizes", () => {
+  const context: CsrRouteContext = {
+    "./__root_layout.tsx": layout("root"),
+    "./trips.tsx": async () => ({ default: () => "trips", pageConfig: { topInset: { base: 48, lg: 64 } } }),
+    "./about.tsx": page("about"),
+  };
+  const resizeListeners = new Set<() => void>();
+  const originalWindow = globalThis.window;
+  const installWindow = (innerWidth: number) => {
+    const window = {
+      innerWidth,
+      addEventListener: (type: string, listener: () => void) => type === "resize" && resizeListeners.add(listener),
+      removeEventListener: (type: string, listener: () => void) =>
+        type === "resize" && resizeListeners.delete(listener),
+    };
+    Object.defineProperty(globalThis, "window", { value: window, configurable: true });
+    return window;
+  };
+  const resizeTo = (window: { innerWidth: number }, innerWidth: number) => {
+    window.innerWidth = innerWidth;
+    for (const listener of resizeListeners) listener();
+  };
+  afterEach(() => {
+    resizeListeners.clear();
+    Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
+  });
+
+  test("resolves a responsive inset again when the width crosses a breakpoint, and only then", async () => {
+    const window = installWindow(375);
+    const table = await CsrRouteTable.boot(context, { device, basePaths: null });
+    const stateOf = (path: string) => table.snapshot().pathRoutes.find((route) => route.path.endsWith(path))?.pageState;
+    const guided = () => table.snapshot().routeGuide.children["/:lang"]?.children["/trips"]?.pathRoute?.pageState;
+    let published = 0;
+    const unsubscribe = table.subscribe(() => {
+      published += 1;
+    });
+    const about = table.snapshot().pathRoutes.find((route) => route.path.endsWith("/about"));
+    expect(stateOf("/trips")?.topInset).toBe(48);
+
+    resizeTo(window, 1100);
+    expect(stateOf("/trips")?.topInset).toBe(64);
+    expect(guided()?.topInset).toBe(64);
+    expect(table.snapshot().pathRoutes.find((route) => route.path.endsWith("/about"))).toBe(about);
+    expect(published).toBe(1);
+
+    resizeTo(window, 1300);
+    expect(published).toBe(1);
+
+    resizeTo(window, 800);
+    expect(stateOf("/trips")?.topInset).toBe(48);
+    expect(published).toBe(2);
+
+    unsubscribe();
+    expect(resizeListeners.size).toBe(0);
+  });
+});

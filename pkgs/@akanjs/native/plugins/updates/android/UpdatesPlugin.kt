@@ -18,6 +18,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.FutureTask
 import org.json.JSONObject
 
 /**
@@ -105,10 +106,7 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         worker(reply, done = { downloading = false; download = null }) {
             val release = fetchRelease(config, snap)
             if (!isNewer(release, snap)) throw Failure(AkanNativeErrorCode.NOT_FOUND, "no newer release for this app (native API ${config.nativeApi})")
-            if (snap.pending != release.bundle) {
-                install(release, config, snap)
-                main.post { AkanNativeUpdates.stage(AkanNativeUpdateEntry(release.bundle, release.sequence, release.nativeApi, release.keyId)) }
-            }
+            if (snap.pending != release.bundle) install(release, config, snap)
             reply.resolve(UpdatesDownloadResult(bundle = release.bundle))
         }
     }
@@ -312,7 +310,7 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
     }
 
     /**
-     * Downloads into bundles/<bundle>.partial, verifies each file, then renames it into place. A failure is reported
+     * Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure is reported
      * under its reason, and an IOException outside a download is the disk's.
      */
     private fun install(release: Release, config: AkanNativeUpdateConfig, snap: Snapshot) {
@@ -377,6 +375,13 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
             throw Failure(AkanNativeErrorCode.INTERNAL, "the downloaded bundle is incomplete", "verify")
         }
         target.deleteRecursively()
-        if (!staging.renameTo(target)) throw Failure(AkanNativeErrorCode.INTERNAL, "could not move the downloaded bundle into place", "disk")
+        // In one main-thread turn: a confirm() or reset() between the rename and stage() would prune the new folder.
+        val staged = FutureTask<Boolean> {
+            staging.renameTo(target).also { moved ->
+                if (moved) AkanNativeUpdates.stage(AkanNativeUpdateEntry(release.bundle, release.sequence, release.nativeApi, release.keyId))
+            }
+        }
+        main.post(staged)
+        if (!staged.get()) throw Failure(AkanNativeErrorCode.INTERNAL, "could not move the downloaded bundle into place", "disk")
     }
 }

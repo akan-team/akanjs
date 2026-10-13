@@ -3,6 +3,7 @@ package com.akanjs.runtime
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -243,6 +244,9 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     override fun onDestroy() {
         if (unsupportedWebView) return super.onDestroy()
+        // Left queued, they would roll back the trial a recreated activity runs: onTrial belongs to the process.
+        webView.removeCallbacks(readyTimeout)
+        rendererProbe?.let(webView::removeCallbacks)
         bridge.windowEnded(this) // the window is gone: so is its page's document
         for (plugin in bridge.plugins()) runCatching { plugin.destroy() }
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -849,17 +853,25 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     // ---------------------------------------------------------------- web bundle updates (UP-2)
 
+    private var rendererProbe: Runnable? = null
+
     private val readyTimeout = Runnable {
         if (!AkanNativeFeatures.UPDATES || !AkanNativeUpdates.onTrial) return@Runnable
-        val (root, trial) = AkanNativeUpdates.rollback()
+        val (root, report) = AkanNativeUpdates.rollback()
         // A renderer stuck in a script never runs the next navigation: one that does not answer is ended, and
-        // onRenderProcessGone makes the activity again, on the bundle the rollback made active.
+        // onRenderProcessGone makes the activity again, on the bundle the rollback made active. One that cannot be
+        // ended (a single-process WebView has none of its own) takes a new process.
         var answered = false
         webView.evaluateJavascript("0") { answered = true }
-        webView.postDelayed({
-            trial?.let { AkanNativeUpdateReports.record("rolledBack", it, if (answered) "timeout" else "hang") }
-            if (answered || webView.webViewRenderProcess?.terminate() != true) serveBundle(root)
-        }, RENDERER_PROBE_MS)
+        val probe = Runnable {
+            if (answered) return@Runnable serveBundle(root)
+            report?.let { AkanNativeUpdateReports.amend(it, "hang") }
+            if (webView.webViewRenderProcess?.terminate() == true) return@Runnable
+            startActivity(Intent.makeRestartActivityTask(ComponentName(this, javaClass)))
+            Runtime.getRuntime().exit(0)
+        }
+        rendererProbe = probe
+        webView.postDelayed(probe, RENDERER_PROBE_MS)
     }
 
     /** A bundle on trial must call notifyReady() within updates.readyTimeout of loading. */
@@ -873,6 +885,7 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
     /** Serves another web bundle (null: the APK's own) and loads it from the start. */
     override fun serveBundle(root: File?) {
         webView.removeCallbacks(readyTimeout)
+        rendererProbe?.let(webView::removeCallbacks)
         server.root = root
         webView.loadUrl("${AkanNativeAssetServer.ORIGIN}/")
     }

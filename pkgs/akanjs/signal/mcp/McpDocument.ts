@@ -17,8 +17,9 @@ export interface McpDocumentOptions {
    */
   outputSchema?: McpOutputSchemaMode;
   /**
-   * MCP Apps: an endpoint kept off the shelf only by `mcp: false` is published as an app-only tool, which a host lists
-   * to the views it renders and never to the model. Every other refusal still holds.
+   * MCP Apps: an endpoint kept off the shelf only by `mcp: false`, or the `light<Model>` read a relation field makes,
+   * is published as an app-only tool, which a host lists to the views it renders and never to the model. Every other
+   * refusal still holds.
    */
   apps?: boolean;
 }
@@ -54,6 +55,8 @@ export class McpDocument {
   readonly tools: McpTool[];
   /** `visibility: ["app"]` — callable by a rendered view, absent from every model-facing list. */
   readonly appTools: McpTool[];
+  /** Each app tool, and the refusal that keeps it from a model. */
+  readonly appOnly: McpRefusal[];
   readonly resourceTemplates: McpResourceTemplate[];
   /** Every readable thing is addressed by a template, so there are no fixed resources to enumerate. */
   readonly resources: McpResource[] = [];
@@ -65,7 +68,7 @@ export class McpDocument {
   readonly #catalogue: AgentCatalogue;
   readonly #byToolName = new Map<string, McpExposedEndpoint>();
   readonly #templates = new Map<string, string>();
-  readonly #appOnly: McpExposedEndpoint[] = [];
+  readonly #appOnly: (McpExposedEndpoint & { reason: string })[] = [];
   #cost: McpListingCost | null = null;
 
   constructor(serializedSignal: Record<string, SerializedSignal>, options: McpDocumentOptions = {}) {
@@ -81,6 +84,7 @@ export class McpDocument {
     // Read after the published texts resolve, which is what fills it, and before the app-only ones: no model reads those.
     this.undescribed = this.#catalogue.undescribed;
     this.appTools = this.#appOnly.map((item) => ({ ...this.#tool(item), _meta: { ui: { visibility: ["app"] } } }));
+    this.appOnly = this.#appOnly.map(({ key, reason }) => ({ key, reason }));
   }
 
   get listingCost(): McpListingCost {
@@ -124,7 +128,7 @@ export class McpDocument {
 
   #collect(serializedSignal: Record<string, SerializedSignal>): McpExposedEndpoint[] {
     const tools: McpExposedEndpoint[] = [];
-    const appOnly: McpExposedEndpoint[] = [];
+    const appOnly: (McpExposedEndpoint & { reason: string })[] = [];
     for (const candidate of AgentCatalogue.candidates(serializedSignal, {
       excludeSignals: this.#options.excludeSignals,
     })) {
@@ -132,7 +136,7 @@ export class McpDocument {
       const item: McpExposedEndpoint = { refName, key, endpoint };
       const reason = mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly });
       if (reason && this.#isAppOnly(item)) {
-        appOnly.push(item);
+        appOnly.push({ ...item, reason });
         continue;
       }
       if (reason) {
@@ -162,8 +166,8 @@ export class McpDocument {
   }
 
   #isAppOnly({ refName, key, endpoint }: McpExposedEndpoint) {
-    if (!this.#options.apps || endpoint.mcp !== false) return false;
-    return !mcpRefusalOf({ ...endpoint, mcp: undefined }, { refName, key, readOnly: this.#options.readOnly });
+    if (!this.#options.apps) return false;
+    return !mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly, view: true });
   }
 
   static #addressable({ origin, refName, key, baseVerb }: AgentCandidate): boolean {

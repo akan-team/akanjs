@@ -349,3 +349,12 @@ export const updateDecisionWire = (decision: UpdateDecision) =>
 /** The v2 envelope of a channel for one native API: one file per binary generation, so each takes its own fixes. */
 export const updateManifestUrl = (url: string, platform: string, channel: string, nativeApi: string) =>
   `${url}/${platform}/${channel}/${nativeApi}.json`;
+
+/** An envelope's signer or a revokeKeys entry: the first 8 bytes of the raw public key's SHA-256, in hex. */
+export const isUpdateKeyId = (s: string) => /^[0-9a-f]{16}$/.test(s);
+
+/** Names the update folder already uses: what packUpdate writes beside the channels, and the folders of the files. */
+export const RESERVED_CHANNELS: readonly string[] = ["bundle", "manifest.template", "compat", "pack", "files", "app"];
+
+/** A channel the publisher can make: a file name in the release folder and a string an app's config compares. */
+export const isChannelName = (s: string) => /^[a-z0-9][a-z0-9._-]{0,40}$/.test(s) && !RESERVED_CHANNELS.includes(s);

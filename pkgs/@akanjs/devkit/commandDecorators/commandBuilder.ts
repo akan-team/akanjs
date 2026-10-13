@@ -115,7 +115,12 @@ class TargetBuilder<Deps extends readonly DependencyCls[], Params extends unknow
 
   with<const Tokens extends readonly InternalArgToken[]>(...tokens: Tokens) {
     return this.#add<AddInternalArgs<Params, Tokens>, AddInternalContext<Context, Tokens>>(
-      ...tokens.map((token, offset) => ({ key: "", idx: this.#args.length + offset, type: token.type })),
+      ...tokens.map((token, offset) => ({
+        key: "",
+        idx: this.#args.length + offset,
+        type: token.type,
+        ...(token.option ? { option: token.option } : {}),
+      })),
     );
   }
 

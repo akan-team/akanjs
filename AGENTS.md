@@ -86,8 +86,9 @@ back.
   `*.{constant,dictionary,document,service,signal,store}.ts` / `*.{Template,Unit,Util,View,Zone}.tsx`
   (`no-import-external-library.grit`). Re-export the symbol through a lib first. One-line re-export shims in a lib's
   `common/`, `webkit/`, or `ui/` exist for exactly this reason — they are load-bearing, not cruft. A module's
-  `*.signal.test.ts` / `*.service.test.ts` is held to the same rule but may import the runtime's `node:*` and
-  `bun:*` modules (a temp dir, a socket, sqlite), which module code leaves to `srvkit/`.
+  `*.signal.test.ts` / `*.service.test.ts` is held to the same rule (`no-import-external-library-in-test.grit`) but
+  may import the runtime's `node:*` and `bun:*` modules (a temp dir, a socket, sqlite), which module code leaves to
+  `srvkit/`.
 - **`#private` is banned in exactly four file suffixes:** `*.constant.ts`, `*.document.ts`, `*.service.ts`, and
   `*.store.ts` (`no-js-private-class-method.grit`). The rule is scoped by file path, not by class shape, so
   `#private` remains the house style everywhere under `srvkit/`, including `adapt()` adapter classes.
@@ -407,8 +408,11 @@ Full contract: `get_guideline` with `runtimeRule`, or `akan guideline show runti
   `dist/native/<app>/<target>/build/<platform>`, a desktop app only for the OS that builds it — `--arch` picks
   a Windows or Linux app's CPU, and a macOS app is Apple silicon only. `--installer true` adds a Windows setup, a
   macOS dmg or a Linux AppImage; `--sign` signs with the identity `AKAN_NATIVE_MACOS_*` / `AKAN_NATIVE_WINDOWS_*`
-  names and `--notarize` uploads the signed macOS app to Apple — the env alone does neither. With `updates: { url, publicKey }` an installed app takes the signed
-  releases `akan publish-update` makes; `akan update-keygen` makes the key and prints its `publicKey`.
+  names and `--notarize` uploads the signed macOS app to Apple — the env alone does neither. With
+  `updates: { url, publicKeys }` an installed app takes the signed releases `akan publish-update` makes: 1 to 3 keys,
+  the online signing key first and offline spares after it (a key may revoke only those listed before it), of which a
+  desktop app trusts the first, or `publicKey` for one. `akan update-keygen` makes the key and prints it for
+  `publicKeys`.
 - **A desktop app that carries its server (`desktop: { server: true }` in `native`, or in one target) gets nothing
   from `docker`** — and `server: { omit: [...] }` leaves out packages only the image needs. That server is API-only, runs in database mode `single`, and listens on a loopback port any
   program on the computer can call, so guard its endpoints as a network server's. An executable the app spawns
@@ -550,7 +554,8 @@ workflow changes.
 - Keep execution contracts and triggers in `.signal.ts` classes built with `internal(...)`, `slice(...)`, and `endpoint(...)`.
 - Use `Internal` for internal triggers such as init, interval, cron, or queue jobs. A `process` job's
   `backoff: { type: "exponential", delay, maxDelay }` caps the wait between attempts, and the internal's
-  `onFailed(job, error)` runs once a job has failed its last attempt — the dead letter, on either queue.
+  `onFailed(job, error)` runs once a job has failed for good — its last attempt, or bullmq's stall limit — the dead
+  letter, on either queue.
 - Use `Slice` for typed data views that feed client stores and zones; keep each slice focused on one purpose.
 - Use `Endpoint` for query and mutation contracts exposed to callers.
 - Connect external APIs or infrastructure through adapters, usually under `srvkit/`, and inject them into services instead of importing vendor clients directly into domain logic.
@@ -773,13 +778,16 @@ Conventions that hold for both shapes:
 - Best-effort code returns a sentinel (`null`, `undefined`, `[0, 0]`, `{}`). There are no Result/Either wrappers.
 - `try/catch` is rare and always converts an exception into a decision, never swallows one. Guards catch → `logger.warn` → `return false`; adapters catch → `logger.error` → `return null`; UI uses `try/finally` to reset a spinner. A bodyless `catch {}` is acceptable only with a one-line reason.
 - Store actions do not `try/catch` — let the framework toast the `Err`. Client-side validation failure is `msg.error("<key>")` plus an early return, never a throw.
-- **A server-side `fetch.clone({ origin })` opens no websocket unless `connect: true`**: it makes one-off calls to
-  another server, and a socket it opened would reconnect forever with nobody to close it. It never carries the
-  visitor's session either: a call to another origin sends only the `jwt` its caller gave the clone.
+- **A server-side `fetch.clone({ origin })` opens no websocket unless `connect: true`**, and neither does a clone of
+  such a clone: it makes one-off calls to another server, and a socket it opened would reconnect forever with nobody
+  to close it. It never carries the visitor's session either: a call to another origin sends only the `jwt` its
+  caller gave the clone.
 - **Retry a call with `retry`, never with a loop of your own.** `fetch.clone({ origin, retry: {} })` (or a call's
   own `{ retry }`) tries again on an unreachable server, a 502/503/504 and a 429 after its Retry-After, backing off
-  with jitter; a mutation retries under one `Idempotency-Key` it mints, or the `idempotencyKey` you name, and the
-  server runs a mutation once per key and caller, answering a repeat with the first result. A 4xx is never retried.
+  with jitter until the call's one deadline runs out; a mutation retries under one `Idempotency-Key` it mints, or the
+  `idempotencyKey` you name, and the server runs a mutation once per key, caller and arguments, answering a repeat
+  with the first result; a signed-out call, or one whose handler returns a `Response`, runs every time. A 4xx is
+  never retried.
 - `String(err)` and `${err}` read `Err: <key> {…data}`, the data as one line of JSON with secret-named keys masked,
   so a ``logger.warn(`…: ${String(error)}`)`` keeps the exit code or status the `Err` carried.
 - **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(..., { origin })` restores the remote `Err` — the same class, key and `data` — so a hop that rethrows it answers its own caller with that error and the dictionary translates it. Never wrap the catch in a `new Error`, and never re-key it as a `new Err` of your own: both discard what the endpoint chose to say, and a bare `Error` is generalized to `Internal Server Error` on the way out.
@@ -862,9 +870,9 @@ it.
   ChatGPT, VS Code) shows the screen itself in the chat — the CSR bundle in a sandboxed iframe whose every call the
   host relays under the agent's token. It shows the page alone: every layout above it still runs (guards, providers,
   `<Agent.Guide>`) and draws nothing, unless it draws no page, as a gate does. Nothing is written for the view. An
-  endpoint kept off the shelf only by `mcp: false` stays callable by that view and is listed to no model; a `Person`
-  act is still refused there. `option.setMcp({ apps: false })` keeps pages prompts only, and a page named like an
-  endpoint stays one (boot warns).
+  endpoint kept off the shelf only by `mcp: false`, and the generated `light<Model>` read, stay callable by that view
+  and are listed to no model; a `Person` act is still refused there. `option.setMcp({ apps: false })` keeps pages
+  prompts only, as a read-only deployment does, and a page named like an endpoint stays one (boot warns).
 
 Full contract — configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions, and
 `McpProgress.report`: `get_guideline` with `mcpRule`, or `akan guideline show mcpRule`.
@@ -1015,7 +1023,8 @@ shape, so `cascade` never means "related" — it means one of exactly these:
   of the route's args returning it, and one that throws renders no head (warned about) so a layout's sign-in redirect
   still answers; there is no metadata object, and analytics is the app's own script, not a stage.
   Heads merge root first: a deeper `.head()` replaces the `<title>`, a `<meta>` with the same `name` / `property`,
-  and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes.
+  and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes. A canonical
+  link and `og:url` each name one URL, so a page carries them only from its own `.head()`, never from a layout's.
 - **A CSR bundle (a native app, `?csr=true`) never shows a root layout's own markup.** Pages render into the
   frame, and what the root layout draws around `{children}` stays in a hidden container, so its wrappers cannot
   stack a second screen beside the frame. Its components still mount and their effects run (`<Auth.User />` works).

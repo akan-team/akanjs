@@ -32,28 +32,10 @@ export const createServerEnvPlugin = ({
   const filter = new RegExp(`${folder}(?:${others.map(escapeRegExp).join("|")})\\.ts$`);
   const own = new RegExp(`${folder}${escapeRegExp(environment)}\\.ts$`);
   const libEnvs = new Map<string, Promise<OnLoadResult>>();
-  //* A lib's `server.ts` hands its `env.server.testing.ts` to the server as defaults, so a profile swaps those as it
-  //* swaps the app's: for the lib's `env.server.<name>.<profile>.ts`, else for the defaults without a secret in them.
   const libEnv = async (file: string): Promise<OnLoadResult> => {
-    const profileFile = ServerEnvProfile.profileFileOf(file, profile ?? "");
-    const libRoot = path.dirname(path.dirname(file));
-    if (await Bun.file(profileFile).exists()) {
-      const secrets = ServerEnvProfile.secretPaths(await ServerEnvProfile.evaluate(profileFile, libRoot));
-      if (secrets.length)
-        throw new Error(
-          `${profileFile} holds secret-named values, which the "${profile}" bundle carries to every computer it runs on: ${secrets.join(", ")}.`,
-        );
-      onLibEnv?.(file, { profileFile: true, stripped: [] });
-      return { loader: "ts", contents: await Bun.file(profileFile).text() };
-    }
-    const { exports } = new Bun.Transpiler({ loader: "ts" }).scan(await Bun.file(file).text());
-    if (exports.some((name) => name !== "env"))
-      throw new Error(
-        `${file} exports ${exports.join(", ")}: a "${profile}" build carries only a lib env's \`env\`, so give the lib ${path.basename(profileFile)}.`,
-      );
-    const { value, stripped } = ServerEnvProfile.strip(await ServerEnvProfile.evaluate(file, libRoot));
-    onLibEnv?.(file, { profileFile: false, stripped });
-    return { loader: "js", contents: `export const env = ${JSON.stringify(value ?? {})};\n` };
+    const { loader, contents, profileFile, stripped } = await ServerEnvProfile.libEnvSource(file, profile ?? "");
+    onLibEnv?.(file, { profileFile, stripped });
+    return { loader, contents };
   };
   return {
     name: "akan-server-env",
@@ -62,9 +44,11 @@ export const createServerEnvPlugin = ({
       if (profile)
         build.onLoad({ filter: own }, async (args) => ({
           loader: "ts",
-          contents: await Bun.file(
-            path.join(path.dirname(args.path), `env.server.${environment}.${profile}.ts`),
-          ).text(),
+          contents: await ServerEnvProfile.sourceInPlaceOf(
+            path.join(path.dirname(args.path), ServerEnvProfile.fileName(environment, profile)),
+            args.path,
+            profile,
+          ),
         }));
       if (others.length)
         build.onLoad({ filter }, async (args) => {
@@ -82,7 +66,7 @@ export const createServerEnvPlugin = ({
         });
       //? Last: the app's own env files above are taken by the handlers before it, which match them first.
       if (profile)
-        build.onLoad({ filter: /[\\/]env[\\/]env\.server\.[A-Za-z0-9-]+\.ts$/ }, async (args) => {
+        build.onLoad({ filter: ServerEnvProfile.envFilePattern }, async (args) => {
           const name = path.basename(args.path, ".ts").slice("env.server.".length);
           if (dirs.has(path.dirname(args.path)) || name === "type" || name === "example")
             return { loader: "ts", contents: await Bun.file(args.path).text() };

@@ -4,6 +4,7 @@ import { CloudApi, type CloudRecord, type UpdateUploadRequest } from "./cloudApi
 
 interface UpdatePackUploadOptions {
   putRetryMs?: number;
+  putTimeoutMs?: number;
   commitRetryMs?: number;
   cutOffWindowMs?: number;
   commitLimitMs?: number;
@@ -15,9 +16,13 @@ interface UpdatePackUploadOptions {
 export class UpdatePackUpload {
   static readonly maxBytes = 200 * 1024 * 1024;
   static readonly #transientPut = new Set([0, 408, 429, 500, 502, 503, 504]);
+  //? A stalled PUT never fails on its own, so each try ends once the pack would be through even at this crawl.
+  static readonly #putFloorBytesPerSecond = 64 * 1024;
+  static readonly #errKey = /"error"\s*:\s*"([\w$-]+\.error\.[\w$-]+)"/;
   readonly #api: CloudApi;
   readonly #devProjectId: string;
   readonly #putRetryMs: number;
+  readonly #putTimeoutMs: number;
   readonly #commitRetryMs: number;
   readonly #cutOffWindowMs: number;
   readonly #commitLimitMs: number;
@@ -27,6 +32,7 @@ export class UpdatePackUpload {
     devProjectId: string,
     {
       putRetryMs = 1_000,
+      putTimeoutMs = 60_000,
       commitRetryMs = 10_000,
       cutOffWindowMs = 15 * 60_000,
       commitLimitMs = 60 * 60_000,
@@ -35,12 +41,12 @@ export class UpdatePackUpload {
     this.#api = api;
     this.#devProjectId = devProjectId;
     this.#putRetryMs = putRetryMs;
+    this.#putTimeoutMs = putTimeoutMs;
     this.#commitRetryMs = commitRetryMs;
     this.#cutOffWindowMs = cutOffWindowMs;
     this.#commitLimitMs = commitLimitMs;
   }
 
-  /** Stages the pack and commits it as a release of `fields.channel`. */
   async send(archive: string, fields: Omit<UpdateUploadRequest, "size" | "sha256">): Promise<CloudRecord> {
     const uploadId = await this.stage(archive, fields);
     return await this.settle(() => this.#api.commitUpdateUpload(this.#devProjectId, uploadId));
@@ -67,10 +73,9 @@ export class UpdatePackUpload {
   async #request(upload: UpdateUploadRequest) {
     return await this.#api.requestUpdateUpload(this.#devProjectId, upload).catch((error: unknown) => {
       //? A server older than staged uploads has no such route: its 404 is a page, where every refusal is an Err key.
-      const message = error instanceof Error ? error.message : String(error);
-      if (CloudApi.statusOf(error) === 404 && !/"error"\s*:\s*"[\w$-]+\.error\.[\w$-]+"/.test(message))
+      if (CloudApi.statusOf(error) === 404 && !UpdatePackUpload.#errKeyOf(error))
         throw new Error(
-          "The project's server does not take direct pack uploads yet: update akasys and try again, or upload the pack from the project's release screen.",
+          "The project's server does not take direct pack uploads yet: update Akan Cloud and try again, or upload the pack from the project's release screen.",
         );
       throw error;
     });
@@ -79,8 +84,14 @@ export class UpdatePackUpload {
   // The URL signs only its host: an unsigned x-amz-* header (a checksum included) makes storage refuse the PUT.
   // A Bun fetch error names the URL, a bearer credential, so nothing but the status leaves this method.
   async #put(url: string, contentType: string, file: BunFile) {
+    const timeoutMs = this.#putTimeoutMs + Math.ceil((file.size / UpdatePackUpload.#putFloorBytesPerSecond) * 1000);
     for (let retry = 0; ; retry++) {
-      const status = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": contentType } })
+      const status = await fetch(url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": contentType },
+        signal: AbortSignal.timeout(timeoutMs),
+      })
         .then(async (response) => {
           await response.arrayBuffer().catch(() => undefined);
           return response.status;
@@ -127,6 +138,15 @@ export class UpdatePackUpload {
   static #cutOff(error: unknown) {
     const status = CloudApi.statusOf(error);
     if (status === null) return !(error instanceof SyntaxError);
+    //? A gateway with no replica ready answers 503; the server's own 503 names an Err key and is a final refusal.
+    if (status === 503) {
+      const key = UpdatePackUpload.#errKeyOf(error);
+      return key === null || key === "base.error.serverUnavailable";
+    }
     return status === 502 || status === 504 || (status >= 520 && status <= 527);
+  }
+
+  static #errKeyOf(error: unknown) {
+    return UpdatePackUpload.#errKey.exec(error instanceof Error ? error.message : String(error))?.[1] ?? null;
   }
 }

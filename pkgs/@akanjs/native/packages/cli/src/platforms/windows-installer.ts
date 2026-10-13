@@ -14,8 +14,8 @@
 // - Whatever can fail without touching the installed app runs before it is stopped: free space, WebView2, the
 //   new files, unpacked beside the folder (`<folder>.setup-new`), and the uninstaller
 //   (`<folder>.setup-uninstall.exe`). The running copy is stopped by its path, so an unrelated program with the
-//   same file name is left alone, and the folder is swapped by two renames; a failed swap puts the old folder
-//   back, and with /RUN the app in place is started again.
+//   same file name is left alone, and the folder is swapped by two renames, the first in the stop's pass that finds
+//   nothing running; a failed swap puts the old folder back, and with /RUN the app in place is started again.
 // - The folder is the app's: updates replace it whole, so the uninstaller lives beside it
 //   (`<folder>.uninstall.exe`) and a reinstall or an uninstall removes all of it, but never what a junction in
 //   it points to. A `/D=` folder must be empty or hold the app already; without the app's executable in it only
@@ -152,6 +152,7 @@ ${icon}!define MUI_FINISHPAGE_RUN "$INSTDIR\\\${EXE}"
 
 Var AppStopped
 Var RunAfter
+Var AppInFolder
 
 Function RunApp
   \${If} \${FileExists} "$INSTDIR\\\${EXE}"
@@ -252,9 +253,21 @@ ${removal(input.entries)}
   FindClose $R0
 !macroend
 
+; The installed app goes back to its folder from where the stop moved it; past that, the next setup puts it back.
+!macro PutBack
+  \${If} $AppInFolder == 1
+  \${AndIf} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+    !insertmacro RenameRetry "$INSTDIR.setup-old" "$INSTDIR"
+    \${If} $R2 != "done"
+      !insertmacro Fail "\${APP_NAME} could not be moved back to $INSTDIR: it is in $INSTDIR.setup-old, which the next setup puts back."
+    \${EndIf}
+  \${EndIf}
+!macroend
+
 !macro CheckStaged
   \${IfNot} \${FileExists} "$INSTDIR.setup-new\\\${EXE}"
   \${OrIfNot} \${FileExists} "$INSTDIR.setup-new\\resources\\boot.json"
+    !insertmacro PutBack
     !insertmacro Fail "The files unpacked into $INSTDIR.setup-new are incomplete: another program removed some, or an antivirus took one. \${APP_NAME} is left as it was."
   \${EndIf}
 !macroend
@@ -387,16 +400,27 @@ Section "Install"
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
   ; nsExec waits forever by default: a stop script that hung once kept a setup waiting 16 minutes. Past the deadline it
   ; is ended and answers "timeout", which counts as a failed stop.
-  nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  ; With the app in the folder, the script moves the folder aside in the pass that finds nothing running: a watchdog
+  ; that started the app again between a stop and a later rename kept the folder in use, and the setup failed.
+  StrCpy $AppInFolder 0
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    StrCpy $AppInFolder 1
+    nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" -MoveTo "$INSTDIR.setup-old"'
+  \${Else}
+    nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  \${EndIf}
   Pop $0
   \${If} $0 == 0
     StrCpy $AppStopped 1
   \${EndIf}
   !insertmacro CheckStaged
-  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
-    !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"
-    \${If} $R2 != "done"
-      !insertmacro Fail "$INSTDIR is in use and could not be replaced; \${APP_NAME} is left as it was."
+  \${If} $AppInFolder == 1
+    ; Still in place when the script could not list the processes, or something kept the folder in use.
+    \${IfNot} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+      !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"
+      \${If} $R2 != "done"
+        !insertmacro Fail "$INSTDIR is in use and could not be replaced; \${APP_NAME} is left as it was."
+      \${EndIf}
     \${EndIf}
     !insertmacro RenameRetry "$INSTDIR.setup-new" "$INSTDIR"
     \${If} $R2 != "done"
@@ -505,20 +529,26 @@ SectionEnd
 
 /**
  * Stops every process running from the install folder, again for one started meanwhile, until none is left (up to
- * 10 s); given the app's exe, deletes it in the pass that finds none, so nothing can start it again. Exits 1 when a
- * process (or the exe) is left or cannot be seen. Through WMI: the installer is a 32-bit program, so its PowerShell
- * is too, and a 32-bit process cannot read a 64-bit one's path (Get-Process's Path comes back empty).
+ * 10 s); given the app's exe, deletes it in the pass that finds none, so nothing can start it again, and given
+ * `-MoveTo`, moves the folder there in that pass instead. Exits 1 when a process (or the exe) is left or cannot be
+ * seen; a folder it could not move is left where it is, for the setup to try again. Through WMI: the installer is a
+ * 32-bit program, so its PowerShell is too, and a 32-bit process cannot read a 64-bit one's path (Get-Process's Path
+ * comes back empty).
  */
-export const STOP_SCRIPT = `param([string]$Dir, [string]$Exe = '')
+export const STOP_SCRIPT = `param([string]$Dir, [string]$Exe = '', [string]$MoveTo = '')
 $ErrorActionPreference = 'Stop'
 $prefix = [IO.Path]::GetFullPath($Dir).TrimEnd('\\') + '\\'
 $running = { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } }
 for ($i = 0; $i -lt 50; $i++) {
   $left = @(& $running)
   if ($left.Count -eq 0) {
-    if (-not $Exe) { exit 0 }
-    Remove-Item -LiteralPath $Exe -Force -ErrorAction SilentlyContinue
-    if (-not (Test-Path -LiteralPath $Exe)) { exit 0 }
+    if ($MoveTo) {
+      try { [IO.Directory]::Move($Dir, $MoveTo); exit 0 } catch { }
+    } else {
+      if (-not $Exe) { exit 0 }
+      Remove-Item -LiteralPath $Exe -Force -ErrorAction SilentlyContinue
+      if (-not (Test-Path -LiteralPath $Exe)) { exit 0 }
+    }
   }
   $left | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Milliseconds 200

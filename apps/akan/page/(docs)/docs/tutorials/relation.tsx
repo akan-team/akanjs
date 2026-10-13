@@ -853,7 +853,7 @@ export default page().render(() => {
           <div>
             {l.trans({
               en: `All core tutorials are complete. Explore the Architecture section to see how everything works together.`,
-              ko: `모든 핵심 튜토리얼을 완료했습니다. System Architecture 섹션에서 모든 것이 어떻게 함께 작동하는지 더 깊이 알아보세요.`,
+              ko: `모든 핵심 튜토리얼을 완료했습니다. 시스템 아키텍처 섹션에서 모든 것이 어떻게 함께 작동하는지 더 깊이 알아보세요.`,
             })}
           </div>
         </Docs.Description>

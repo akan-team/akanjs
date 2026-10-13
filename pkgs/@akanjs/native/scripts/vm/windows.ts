@@ -18,17 +18,19 @@
 // The VM's address and user come from ~/.akan/native/vm/windows.json (written by serve-setup.ts) or
 // AKAN_NATIVE_VM_HOST / AKAN_NATIVE_VM_USER; the key is ~/.akan/native/vm/id_ed25519.
 // AKAN_NATIVE_VM_SRC copies another tree instead of this package (the akanjs monorepo, for an e2e that builds an
-// app), into C:\akan-native-work\<AKAN_NATIVE_VM_WORK_NAME>, so it never mixes with this package's copy. Such a
-// tree's credentials stay behind: `.env*`, `secrets/` and `env.server.<env>.ts` but `type`, `example` and `*.edge.ts`.
+// app), into C:\akan-native-work\<AKAN_NATIVE_VM_WORK_NAME>, so it never mixes with this package's copy.
+// What git ignores stays behind (tree-files.ts), but for an app's `env.client.<env>.ts`. Such a tree's uncommitted
+// credentials stay behind too: `.env*`, `secrets/` and `env.server.<env>.ts` but `type`, `example` and `*.edge.ts`.
 // A left-out `env.server.<env>.ts` goes as its values without the secret-named ones, and the root `.env` as its
-// AKAN_PUBLIC_* lines, so the VM still resolves, typechecks and builds. Symlinks stay behind: `akan sync` makes them.
-// AKAN_NATIVE_VM_EXCLUDE leaves out more and AKAN_NATIVE_VM_KEEP takes one of those back whole: comma-separated globs,
-// matched against a path from the tree's root and against a bare name.
+// AKAN_PUBLIC_* lines, so the VM still resolves, typechecks and builds. Symlinks and the files `akan sync` generates
+// stay behind: it makes them on the VM. AKAN_NATIVE_VM_EXCLUDE leaves out more and AKAN_NATIVE_VM_KEEP takes one of
+// those back whole: comma-separated globs, matched against a path from the tree's root and against a bare name.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ServerEnvProfile } from "../../../devkit/transforms/serverEnvProfile";
+import { treeFiles as listTree, type TreeFiles } from "./tree-files.ts";
 
 const PACKAGE = resolve(import.meta.dir, "../..");
 const REPO = resolve(process.env.AKAN_NATIVE_VM_SRC ?? PACKAGE);
@@ -76,12 +78,18 @@ const SSH = [
   "BatchMode=yes",
 ];
 
-function spawn(cmd: string[], opts: { quiet?: boolean; input?: string } = {}): { code: number; out: string } {
+/** No `timeoutMs`, no deadline: what `ssh <command…>` runs is the user's own command, watched as it runs. */
+function spawn(
+  cmd: string[],
+  opts: { quiet?: boolean; input?: string; timeoutMs?: number } = {},
+): { code: number; out: string } {
   const p = Bun.spawnSync(cmd, {
     stdin: opts.input === undefined ? "inherit" : new TextEncoder().encode(opts.input),
     stdout: opts.quiet ? "pipe" : "inherit",
     stderr: opts.quiet ? "pipe" : "inherit",
+    ...(opts.timeoutMs ? { timeout: opts.timeoutMs } : {}),
   });
+  if (p.exitedDueToTimeout) return { code: 124, out: `${cmd[0]} timed out after ${opts.timeoutMs} ms` };
   return { code: p.exitCode, out: opts.quiet ? `${p.stdout ?? ""}${p.stderr ?? ""}` : "" };
 }
 
@@ -90,14 +98,14 @@ function spawn(cmd: string[], opts: { quiet?: boolean; input?: string } = {}): {
  * shell (PowerShell) runs it itself. Not a nested `powershell -EncodedCommand`: that one writes
  * errors to stderr as CLIXML and exits 1 whatever the script's `exit` said.
  */
-function ps(script: string, quiet = false): { code: number; out: string } {
+function ps(script: string, quiet = false, timeoutMs?: number): { code: number; out: string } {
   const encoded = Buffer.from(
     `$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; ${script}`,
     "utf16le",
   ).toString("base64");
   return spawn(
     ["ssh", ...SSH, target(), `iex ([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('${encoded}')))`],
-    { quiet },
+    { quiet, ...(timeoutMs ? { timeoutMs } : {}) },
   );
 }
 
@@ -112,58 +120,12 @@ function treeName(): string {
   return REPO === PACKAGE ? "@akanjs/native" : "an unnamed tree";
 }
 
-//? .git, .claude (its worktrees) and local are gigabytes in the monorepo and nothing a VM build reads; no tracked
-//? folder carries one of these names.
-const SKIPPED = new Set(["node_modules", "target", ".akan", "dist", ".DS_Store", ".git", ".claude", "local"]);
-
-//? Untracked, so nothing but this list keeps an app's production credentials off the VM. `type` is generated and
-//? `example` committed; an edge profile's env is what a carried server is built with, refused if it names a secret.
-const isCredential = (name: string, isDir: boolean) =>
-  isDir
-    ? name === "secrets"
-    : name === ".env" ||
-      name.startsWith(".env.") ||
-      (/^env\.server\..+\.ts$/.test(name) && !/^env\.server\.(type|example)\.ts$|\.edge\.ts$/.test(name));
-
-const globs = (value: string | undefined) =>
-  (value ?? "")
-    .split(",")
-    .map((glob) => glob.trim())
-    .filter(Boolean)
-    .map((glob) => new Bun.Glob(glob));
-
-/**
- * The tree's files, relative and `/`-separated, without build output, symlinks and, for another tree, its
- * credentials; `stubs` are the left-out env files the VM gets a credential-free copy of.
- */
-function treeFiles(): { files: string[]; left: number; stubs: string[] } {
-  const extra = globs(process.env.AKAN_NATIVE_VM_EXCLUDE);
-  const keep = globs(process.env.AKAN_NATIVE_VM_KEEP);
-  const guarded = REPO !== PACKAGE;
-  const files: string[] = [];
-  const stubs: string[] = [];
-  let left = 0;
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(join(REPO, dir), { withFileTypes: true })) {
-      const path = dir ? `${dir}/${entry.name}` : entry.name;
-      if (SKIPPED.has(entry.name) || entry.isSymbolicLink()) continue;
-      const matches = (list: Bun.Glob[]) => list.some((glob) => glob.match(path) || glob.match(entry.name));
-      if (matches(extra)) {
-        left++;
-        continue;
-      }
-      if (guarded && isCredential(entry.name, entry.isDirectory()) && !matches(keep)) {
-        left++;
-        if (entry.name.startsWith("env.server.") || path === ".env") stubs.push(path);
-        continue;
-      }
-      if (entry.isDirectory()) walk(path);
-      else files.push(path);
-    }
-  };
-  walk("");
-  return { files, left, stubs };
-}
+const treeFiles = (): TreeFiles =>
+  listTree(REPO, {
+    guarded: REPO !== PACKAGE,
+    exclude: process.env.AKAN_NATIVE_VM_EXCLUDE,
+    keep: process.env.AKAN_NATIVE_VM_KEEP,
+  });
 
 /** Writes the stubs under `stage`: an env file's values without the secret-named ones, the root `.env`'s public lines. */
 async function writeStubs(stubs: string[], stage: string): Promise<number> {
@@ -198,26 +160,28 @@ async function sync(): Promise<void> {
   rmSync(stage, { recursive: true, force: true });
   const stubbed = await writeStubs(stubs, stage);
   console.info(
-    `sync: packing ${files.length} files${left ? `, ${left} left out (credentials, AKAN_NATIVE_VM_EXCLUDE)` : ""}${stubbed ? `, ${stubbed} sent without their secrets` : ""}`,
+    `sync: packing ${files.length} files${left ? `, ${left} left out (ignored by git, credentials, AKAN_NATIVE_VM_EXCLUDE)` : ""}${stubbed ? `, ${stubbed} sent without their secrets` : ""}`,
   );
   writeFileSync(list, `${files.join("\0")}\0`);
-  const packed = spawn(["tar", "-czf", archive, "-C", REPO, "--null", "-T", list], { quiet: true });
+  const packed = spawn(["tar", "-czf", archive, "-C", REPO, "--null", "-T", list], { quiet: true, timeoutMs: 600_000 });
   rmSync(list, { force: true });
   if (packed.code !== 0) throw new Error(`tar failed: ${packed.out.trim()}`);
-  if (stubbed && spawn(["tar", "-czf", stubArchive, "-C", stage, "."], { quiet: true }).code !== 0)
+  if (stubbed && spawn(["tar", "-czf", stubArchive, "-C", stage, "."], { quiet: true, timeoutMs: 600_000 }).code !== 0)
     throw new Error("tar of the env stubs failed");
   rmSync(stage, { recursive: true, force: true });
   const uploads: [string, string][] = [[archive, `${COPY}-sync.tar.gz`]];
   if (stubbed) uploads.push([stubArchive, `${COPY}-stubs.tar.gz`]);
   for (const [file, name] of uploads)
-    if (spawn(["scp", ...SSH, "-q", file, `${target()}:${name}`]).code !== 0) throw new Error("scp failed");
+    if (spawn(["scp", ...SSH, "-q", file, `${target()}:${name}`], { timeoutMs: 1_800_000 }).code !== 0)
+      throw new Error("scp failed");
   rmSync(archive, { force: true });
   rmSync(stubArchive, { force: true });
   // Mirror the sources, keeping what the VM built (node_modules, target, .akan, dist) for
   // incremental builds: robocopy /MIR leaves excluded folders alone. Exit codes below 8 are success.
   //? Beside the copy, what it was mirrored from: another kind of tree mirrored onto it (this package onto a monorepo copy,
   //? or the other way) would delete everything the two do not share.
-  const r = ps(`
+  const r = ps(
+    `
 $ErrorActionPreference = 'Stop'
 $marker = '${WORK}\\${COPY}.source'
 if ((Test-Path $marker) -and ((Get-Content -Raw $marker).Trim() -ne '${tree}')) {
@@ -242,7 +206,10 @@ Set-Content -NoNewline -Path $marker -Value '${tree}'
 Set-Location '${WORK}\\${COPY}'
 if (-not (Test-Path node_modules)) { & "$HOME\\.bun\\bin\\bun.exe" install --silent | Out-Null }
 exit 0
-`);
+`,
+    false,
+    1_800_000,
+  );
   if (r.code !== 0) throw new Error("extracting on the VM failed");
 }
 
@@ -277,6 +244,7 @@ schtasks.exe /Run /TN akan-native-${name} | Out-Null
 'started'
 `,
     true,
+    60_000,
   );
   if (r.code !== 0) {
     console.error(r.out);
@@ -298,6 +266,7 @@ $exit = if (Test-Path '${base}.exit') { (Get-Content '${base}.exit').Trim() } el
 "$out|$exit"
 `,
       true,
+      60_000,
     );
     if (poll.code !== 0) continue;
     const [data = "", exit = ""] = poll.out.trim().split("|");
@@ -326,7 +295,11 @@ exit 0
     "screenshot",
   );
   if (code !== 0) return code;
-  if (spawn(["scp", ...SSH, "-q", `${target()}:${WORK.replace(/\\/g, "/")}/screen.png`, file]).code !== 0) return 1;
+  if (
+    spawn(["scp", ...SSH, "-q", `${target()}:${WORK.replace(/\\/g, "/")}/screen.png`, file], { timeoutMs: 300_000 })
+      .code !== 0
+  )
+    return 1;
   console.info(file);
   return 0;
 }

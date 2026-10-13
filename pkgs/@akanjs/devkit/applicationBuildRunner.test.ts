@@ -5,7 +5,9 @@ import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
 import type { App } from "./commandDecorators";
-import { Executor } from "./executors";
+import { AppExecutor, Executor } from "./executors";
+import { bundleDefine } from "./frontendBuild/bundleDefine";
+import { createTempApp } from "./testHelpers";
 
 describe("ApplicationBuildRunner", () => {
   test("externalizes Akan optional backend dependencies", () => {
@@ -75,6 +77,36 @@ console.info(new SampleService().name);
       await new ApplicationBuildRunner(app).buildAppMeta();
       expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("ENV AKAN_PUBLIC_ENV=local\n");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bakes into the route bundles the env their server env is, not the shell's that the root .env outranks", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const shellEnv = process.env.AKAN_PUBLIC_ENV;
+    const stoppedBeforePhases = (app: AppExecutor) => {
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      return app;
+    };
+    const bakedEnv = (app: AppExecutor) =>
+      (bundleDefine(app, "build", "ssr") as { [key: string]: string })["process.env.AKAN_PUBLIC_ENV"];
+    try {
+      process.env.AKAN_PUBLIC_ENV = "main";
+      const app = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      await expect(new ApplicationBuildRunner(app).build()).rejects.toThrow("stopped before the phases");
+      expect(bakedEnv(app)).toBe(JSON.stringify("local"));
+
+      process.env.AKAN_PUBLIC_ENV = "main";
+      const desktop = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      await expect(new ApplicationBuildRunner(desktop, { environment: "debug" }).build()).rejects.toThrow(
+        "stopped before the phases",
+      );
+      expect(bakedEnv(desktop)).toBe(JSON.stringify("debug"));
+    } finally {
+      if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
+      else process.env.AKAN_PUBLIC_ENV = shellEnv;
       await rm(root, { recursive: true, force: true });
     }
   });

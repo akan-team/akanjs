@@ -22,6 +22,7 @@ export class McpAppView {
   readonly #blobs = new Map<string, Blob>();
   #lastHeight = 0;
   #theme: string | undefined;
+  #unwatchSize: () => void = () => undefined;
 
   constructor(bridge: McpAppBridge) {
     this.#bridge = bridge;
@@ -45,6 +46,7 @@ export class McpAppView {
 
   /** In place of the app, for a result that names no screen: the host still sizes the view to what it shows. */
   showUnavailable(message: string) {
+    this.#unwatchSize();
     this.#apply(this.#bridge.hostContext);
     const notice = document.createElement("p");
     notice.textContent = message;
@@ -80,11 +82,14 @@ export class McpAppView {
   // the host sized from the last report. The current page's content height is what the host must size to instead.
   #watchSize() {
     let scheduled = false;
+    let watching = true;
     const report = () => {
-      if (scheduled) return;
+      if (scheduled || !watching) return;
       scheduled = true;
       requestAnimationFrame(() => {
         scheduled = false;
+        if (!watching) return;
+        observeContent();
         const height = McpAppView.#contentHeight();
         if (height === this.#lastHeight) return;
         this.#lastHeight = height;
@@ -97,14 +102,17 @@ export class McpAppView {
       for (const content of document.querySelectorAll(".akan-page-content"))
         for (const child of content.children) resized.observe(child);
     };
-    new MutationObserver(() => {
-      observeContent();
-      report();
-    }).observe(document.body, { childList: true, subtree: true, attributes: true });
+    const mutated = new MutationObserver(report);
+    mutated.observe(document.body, { childList: true, subtree: true, attributes: true });
     //? An image or a font settling resizes boxes without a mutation or a document resize.
     document.addEventListener("load", report, true);
     void document.fonts.ready.then(report);
-    observeContent();
+    this.#unwatchSize = () => {
+      watching = false;
+      resized.disconnect();
+      mutated.disconnect();
+      document.removeEventListener("load", report, true);
+    };
     report();
   }
 
@@ -156,7 +164,8 @@ export class McpAppView {
   // stored file — opens through the host, which is the only party a sandboxed view may ask to navigate.
   #routeLinks() {
     const { locales } = parseAkanI18nEnv();
-    const base = McpAppView.#parse(document.baseURI);
+    const baseUrl = McpAppView.#baseUrl();
+    const base = McpAppView.#parse(baseUrl);
     const open = (raw: string) => {
       if (!raw) return;
       //? Against the `<base>`, a fragment alone would name the app's root route rather than a spot on this screen.
@@ -164,11 +173,12 @@ export class McpAppView {
         document.getElementById(decodeURIComponent(raw.slice(1)))?.scrollIntoView();
         return;
       }
-      const url = McpAppView.#parse(raw, document.baseURI);
+      const url = McpAppView.#parse(raw, baseUrl);
       if (!url) return;
       const [, lang] = url.pathname.split("/");
+      //? The router puts the view's own locale in front, so a link written in another one keeps only its route.
       if (url.origin === base?.origin && lang && locales.includes(lang))
-        router.push(`${url.pathname}${url.search}${url.hash}`);
+        router.push(`${url.pathname.slice(lang.length + 1) || "/"}${url.search}${url.hash}`);
       else if (["http:", "https:", "mailto:", "tel:"].includes(url.protocol))
         this.#bridge.openLink(url.href).catch((error: unknown) => {
           Logger.warn(`The host did not open ${url.href}: ${error instanceof Error ? error.message : error}`);
@@ -224,7 +234,7 @@ export class McpAppView {
         },
       };
     }
-    const url = McpAppView.#parse(href, document.baseURI);
+    const url = McpAppView.#parse(href, McpAppView.#baseUrl());
     if (!url || !["http:", "https:"].includes(url.protocol)) return null;
     return { type: "resource_link", uri: url.href, name: suggested ?? url.pathname.split("/").at(-1) ?? "download" };
   }
@@ -258,6 +268,12 @@ export class McpAppView {
     let binary = "";
     for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
     return btoa(binary);
+  }
+
+  //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
+  static #baseUrl() {
+    const origin = globalThis.__AKAN_EMBED__?.origin;
+    return origin ? `${origin}/` : document.baseURI;
   }
 
   static #parse(raw: string, base?: string) {

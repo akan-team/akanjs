@@ -178,6 +178,82 @@ describe("createServerEnvPlugin", () => {
     expect(refused.logs.map((log) => log.message).join("\n")).toContain("mailer.pass");
   });
 
+  test("refuses a profile, the app's or a lib's, that imports the file it is bundled in place of", async () => {
+    const root = await makeTempRoot();
+    const { envDir, entry } = await writeApp(root);
+    const profileFile = path.join(envDir, "env.server.main.edge.ts");
+    await write(
+      profileFile,
+      'import { env as main } from "./env.server.main";\nexport const env = { hostname: main.secret };\n',
+    );
+    const plugin = () => createServerEnvPlugin({ envDir, environment: "main", environments, profile: "edge" });
+    const refused = await Bun.build({ entrypoints: [entry], target: "bun", plugins: [plugin()], throw: false });
+    expect(refused.success).toBe(false);
+    expect(refused.logs.map((log) => log.message).join("\n")).toContain(
+      'env.server.main.edge.ts imports ./env.server.main, the file a "edge" build bundles it in place of, so it would import itself.',
+    );
+
+    await write(profileFile, 'export const env = { origin: "edge" };\n');
+    const libEnv = path.join(root, "libs/util/env/env.server.testing.ts");
+    await write(libEnv, 'export const env = { hostname: "lib-host" };\n');
+    await write(
+      path.join(root, "libs/util/env/env.server.testing.edge.ts"),
+      'import { env as base } from "./env.server.testing";\nexport const env = { hostname: base.hostname };\n',
+    );
+    await write(entry, `import { env } from ${JSON.stringify(libEnv)};\nconsole.info(JSON.stringify(env));\n`);
+    const lib = await Bun.build({ entrypoints: [entry], target: "bun", plugins: [plugin()], throw: false });
+    expect(lib.success).toBe(false);
+    expect(lib.logs.map((log) => log.message).join("\n")).toContain(
+      "env.server.testing.edge.ts imports ./env.server.testing, the file",
+    );
+  });
+
+  test("refuses to carry as JSON a lib's env defaults that JSON would change, naming them and the file to give", async () => {
+    const root = await makeTempRoot();
+    const libEnv = path.join(root, "libs/util/env/env.server.testing.ts");
+    await write(
+      libEnv,
+      'export const env = { hostname: "lib-host", startedAt: new Date(0), hosts: new Set(["a"]), onCleanup: async () => undefined, nested: { at: new Map() } };\n',
+    );
+    const { envDir, entry } = await writeApp(root);
+    await write(path.join(envDir, "env.server.main.edge.ts"), "export const env = {};\n");
+    await write(entry, `import { env } from ${JSON.stringify(libEnv)};\nconsole.info(JSON.stringify(env));\n`);
+    const result = await Bun.build({
+      entrypoints: [entry],
+      target: "bun",
+      plugins: [createServerEnvPlugin({ envDir, environment: "main", environments, profile: "edge" })],
+      throw: false,
+    });
+    expect(result.success).toBe(false);
+    const message = result.logs.map((log) => log.message).join("\n");
+    expect(message).toContain(
+      `${libEnv} holds startedAt, hosts, onCleanup, nested.at, which a "edge" build cannot carry`,
+    );
+    expect(message).toContain("Give the lib env.server.testing.edge.ts.");
+  });
+
+  test("a lib env that cannot be evaluated stops a profile build, which prints no line of it", async () => {
+    const root = await makeTempRoot();
+    const libEnv = path.join(root, "libs/util/env/env.server.testing.ts");
+    await write(
+      libEnv,
+      'export const env = {\n  security: { jwtSecret: "lib-jwt-dummy-0123" },\n  x: undefinedVar.y,\n};\n',
+    );
+    const { envDir, entry } = await writeApp(root);
+    await write(path.join(envDir, "env.server.main.edge.ts"), "export const env = {};\n");
+    await write(entry, `import { env } from ${JSON.stringify(libEnv)};\nconsole.info(JSON.stringify(env));\n`);
+    const result = await Bun.build({
+      entrypoints: [entry],
+      target: "bun",
+      plugins: [createServerEnvPlugin({ envDir, environment: "main", environments, profile: "edge" })],
+      throw: false,
+    });
+    expect(result.success).toBe(false);
+    const printed = result.logs.map((log) => `${log.message}\n${log.position?.lineText ?? ""}`).join("\n");
+    expect(printed).toContain("ReferenceError: undefinedVar is not defined");
+    expect(printed).not.toContain("lib-jwt-dummy-0123");
+  });
+
   test("leaves env files outside the app's env directory alone", async () => {
     const root = await makeTempRoot();
     const other = path.join(root, "libs/shared/env/env.server.testing.ts");

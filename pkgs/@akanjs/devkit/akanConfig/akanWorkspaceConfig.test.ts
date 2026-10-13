@@ -70,10 +70,10 @@ describe("AkanWorkspaceConfig", () => {
 
   test("refuses app settings and a default export that is not an object", async () => {
     await withWorkspace({ "akan.config.ts": 'export default { docker: { image: "x" } };\n' }, async (workspace) => {
-      expect(AkanWorkspaceConfig.from(workspace)).rejects.toThrow("declares `docker`, which it does not take");
+      await expect(AkanWorkspaceConfig.from(workspace)).rejects.toThrow("declares `docker`, which it does not take");
     });
     await withWorkspace({ "akan.config.ts": "export default () => ({});\n" }, async (workspace) => {
-      expect(AkanWorkspaceConfig.from(workspace)).rejects.toThrow("must default-export a WorkspaceConfig object");
+      await expect(AkanWorkspaceConfig.from(workspace)).rejects.toThrow("must default-export a WorkspaceConfig object");
     });
   });
 });

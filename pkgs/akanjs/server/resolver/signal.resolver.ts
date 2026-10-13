@@ -263,7 +263,7 @@ export class SignalResolver {
               key,
               async (job) => await execFn(...SignalResolver.#getJobArgs(key, internalInfo, job), job),
             ),
-            onFailed ? { onFailed: (job, error) => onFailed.call(internal, job, error) } : {},
+            onFailed ? { onFailed: async (job, error) => await onFailed.call(internal, job, error) } : {},
           );
           break;
         }
@@ -733,7 +733,9 @@ export class SignalResolver {
                     payload: liveOption.payload,
                     fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
                   });
-                const replay = SignalResolver.#roomReplay;
+                //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
+                const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
+                const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
                 replay?.watch(roomId);
                 ws.subscribe(roomId);
                 //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
@@ -763,7 +765,7 @@ export class SignalResolver {
                 await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
                 roomCtxMap.delete(roomId);
                 if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
-                if (liveOption) live.syncHub.leave(roomId);
+                SignalResolver.#leaveRoom(roomId, liveOption ? live : undefined);
                 websocket.leaveRoom(ws, roomId);
                 SignalResolver.logger.verbose(`WebSocket unsubscribed from room ${roomId}`);
               }
@@ -857,7 +859,7 @@ export class SignalResolver {
       ws.unsubscribe(roomId);
       await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
       roomCtxMap.delete(roomId);
-      live?.syncHub.leave(roomId);
+      SignalResolver.#leaveRoom(roomId, live);
       websocket.leaveRoom(ws, roomId);
       revokedRooms.push(roomId);
       SignalResolver.logger.verbose(`WebSocket lost access to room ${roomId}; unsubscribed`);
@@ -875,12 +877,19 @@ export class SignalResolver {
     const contexts = [...(roomCtxMap?.values() ?? []), ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? [])];
     await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
     // The routing table must hear about a close too: a room nobody is in still costs an evaluation on every write.
-    for (const roomId of roomCtxMap?.keys() ?? []) live?.syncHub.leave(roomId);
+    for (const roomId of roomCtxMap?.keys() ?? []) SignalResolver.#leaveRoom(roomId, live);
     SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
     SignalResolver.#liveWsMessageCtx.delete(ws);
 
     await SignalResolver.#getWebsocket(registry).unregisterSocket(ws);
     SignalResolver.logger.verbose(`WebSocket disconnected from all rooms`);
+  }
+  // A live room nobody here is in is routed no change, so what it numbered no longer vouches for what followed.
+  static #leaveRoom(roomId: string, live?: LiveRegistry) {
+    const liveRooms = live?.syncHub.roomCount ?? 0;
+    live?.syncHub.leave(roomId);
+    if ((live?.syncHub.roomCount ?? 0) < liveRooms) SignalResolver.#roomReplay?.forget(roomId);
+    else SignalResolver.#roomReplay?.left(roomId);
   }
   static #getWebsocket(registry: InjectRegistry): WebsocketAdaptor {
     const roleProvider = [...registry.adaptorRole.entries()].find(

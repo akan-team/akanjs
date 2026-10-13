@@ -1,4 +1,5 @@
 "use client";
+import { getEnv } from "akanjs/base";
 import { type ErrorResponsePayload, type FetchBridge, type FetchBridgeCall, restoreRemoteError } from "akanjs/fetch";
 
 interface JsonRpcMessage {
@@ -64,6 +65,7 @@ export type McpAppStart =
 export class McpAppBridge {
   static readonly protocolVersion = "2026-01-26";
   static readonly initializeTimeoutMs = 15_000;
+  static readonly callTimeoutMs = 30_000;
   static readonly #hostRequests = new Set(["ping", "ui/resource-teardown"]);
 
   readonly #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
@@ -106,14 +108,14 @@ export class McpAppBridge {
     const initialize = this.request("ui/initialize", {
       protocolVersion: McpAppBridge.protocolVersion,
       appCapabilities: { availableDisplayModes: ["inline", "fullscreen"], tools: { listChanged: true } },
-      appInfo: { name: process.env.AKAN_PUBLIC_APP_NAME ?? "akan", version: "0" },
+      appInfo: { name: getEnv().appName, version: "0" },
     });
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), McpAppBridge.initializeTimeoutMs));
     const initialized = (await Promise.race([initialize, timeout]).catch(() => null)) as {
       hostContext?: McpHostContext;
       hostCapabilities?: McpHostCapabilities;
     } | null;
-    if (!initialized) return { ok: false, message: "The host did not answer this view." };
+    if (!initialized) return this.#gaveUp("The host did not answer this view.");
     this.#context = { ...initialized.hostContext, ...this.#context };
     this.#capabilities = initialized.hostCapabilities ?? {};
     this.notify("ui/notifications/initialized", {});
@@ -121,7 +123,7 @@ export class McpAppBridge {
     const page = (result.structuredContent ?? {}) as { href?: unknown };
     const text = result.content?.find((block) => block.type === "text")?.text;
     if (result.isError || typeof page.href !== "string")
-      return { ok: false, message: text ?? "This screen is not available here." };
+      return this.#gaveUp(text ?? "This screen is not available here.");
     const snapshot = result._meta?.["akanjs/snapshot"];
     const account = result._meta?.["akanjs/account"];
     return {
@@ -140,7 +142,7 @@ export class McpAppBridge {
   request(
     method: string,
     params: Record<string, unknown>,
-    { timeoutMs }: { timeoutMs?: number } = {},
+    { timeoutMs, timedOut }: { timeoutMs?: number; timedOut?: () => Error } = {},
   ): Promise<unknown> {
     const id = ++this.#seq;
     return new Promise((resolve, reject) => {
@@ -149,7 +151,7 @@ export class McpAppBridge {
       if (timeoutMs)
         setTimeout(() => {
           if (!this.#pending.delete(id)) return;
-          reject(new Error(`The host did not answer ${method}`));
+          reject(timedOut?.() ?? new Error(`The host did not answer ${method}`));
         }, timeoutMs);
     });
   }
@@ -159,12 +161,12 @@ export class McpAppBridge {
   }
 
   // `akanjs/view` asks the server for the value a browser would receive, not the one masked for a model.
-  async callTool(name: string, args: Record<string, unknown>) {
-    return (await this.request("tools/call", {
-      name,
-      arguments: args,
-      _meta: { "akanjs/view": true },
-    })) as McpToolResultLike;
+  async callTool(name: string, args: Record<string, unknown>, { timeoutMs }: { timeoutMs?: number } = {}) {
+    return (await this.request(
+      "tools/call",
+      { name, arguments: args, _meta: { "akanjs/view": true } },
+      { timeoutMs, timedOut: McpAppBridge.#timedOut },
+    )) as McpToolResultLike;
   }
 
   async openLink(url: string) {
@@ -204,9 +206,20 @@ export class McpAppBridge {
           seeded.delete(callKey);
           return value;
         }
-        return McpAppBridge.#valueOf(request, await this.callTool(request.key, McpAppBridge.#defined(request.args)));
+        const args = McpAppBridge.#defined(request.args);
+        const result = await this.callTool(request.key, args, { timeoutMs: McpAppBridge.#deadlineOf(request) });
+        return McpAppBridge.#valueOf(request, result);
       },
     };
+  }
+
+  //? A host waits on every request it sent, so one held for a screen that will never start is answered with why.
+  #gaveUp(message: string): McpAppStart {
+    const refuse = () => {
+      throw new Error(message);
+    };
+    this.serveTools({ list: refuse, call: async () => refuse() });
+    return { ok: false, message };
   }
 
   #receive(message: JsonRpcMessage) {
@@ -285,8 +298,21 @@ export class McpAppBridge {
     return parsed ? (JSON.parse(text) as unknown) : text;
   }
 
+  //? The server reads an absent argument as null, and refuses an `Any` one by name whatever its value.
   static #defined(args: Record<string, unknown>) {
-    return Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
+    return Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined && value !== null));
+  }
+
+  //? A budget reads as an HTTP call's does: `false`, zero or a non-finite one sets no deadline.
+  static #deadlineOf(request: FetchBridgeCall) {
+    const timeout = "timeout" in request ? request.timeout : undefined;
+    if (timeout === undefined || timeout === null) return McpAppBridge.callTimeoutMs;
+    return typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : undefined;
+  }
+
+  //? The key an HTTP call that runs out of time restores to, so the app's own `Err` toasts it in the user's language.
+  static #timedOut() {
+    return restoreRemoteError({ error: "base.error.gatewayTimeout", data: { status: 408 } }, 408);
   }
 
   static #callKey(key: string, args: Record<string, unknown>) {

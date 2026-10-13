@@ -184,7 +184,6 @@ enum AkanNativeUpdates {
         }
     }
 
-    /// Whether a bundle may run in this binary: one it still takes, whose files are intact.
     static func usable(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String]) -> Bool {
         guard let entry else { return false }
         return takes(entry, config, revoked: revoked) && intact(entry, config, revoked: revoked)
@@ -297,18 +296,19 @@ enum AkanNativeUpdates {
     }
 
     /// The trial did not confirm in time: back to the previous bundle. Returns its folder (nil: the app's own) and the
-    /// trial it ended, whose report waits for the renderer probe to say whether the page timed out or hung.
-    static func rollback() -> (root: URL?, trial: AkanNativeUpdateEntry?) {
+    /// id of the rollback's report, a timeout until the renderer probe finds the page hung.
+    static func rollback() -> (root: URL?, report: Int?) {
         guard onTrial, let trial = active else { return (active.map { bundleDirectory($0.bundle) }, nil) }
         var state = readState()
         state.trial = nil
         state.failed.append(trial.bundle)
         state.rolledBack = trial.bundle
         writeState(state)
+        let report = AkanNativeUpdateReports.record("rolledBack", trial, reason: "timeout")
         onTrial = false
         active = config.flatMap { usable(state.current, $0, revoked: state.revokedKeys) ? state.current : nil }
         NSLog("[akan-native] updates: bundle %@ did not call notifyReady() in time; rolled back", trial.bundle)
-        return (active.map { bundleDirectory($0.bundle) }, trial)
+        return (active.map { bundleDirectory($0.bundle) }, report)
     }
 
     /// reset(): the app's own bundle from the next launch on. Revocations stay.

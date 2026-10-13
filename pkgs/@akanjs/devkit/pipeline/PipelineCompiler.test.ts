@@ -337,7 +337,28 @@ describe("PipelineCompiler", () => {
     ]);
     const e2e = plan.phases.at(-1);
     expect(e2e).toMatchObject({ id: "e2e", timeoutSeconds: 3600, milestone: "finish" });
-    expect(e2e?.stages.map((stage) => [stage.id, stage.name, stage.app])).toEqual([["e2e:api", "api", "api"]]);
+    expect(e2e?.stages.map((stage) => [stage.id, stage.name, stage.app])).toEqual([["e2e.apps.api", "api", "api"]]);
+  });
+
+  test("a matrix copy's id never collides with an app's own stage or a post step", () => {
+    const stageIds = (plan: PipelinePlan) => plan.phases.flatMap((phase) => phase.stages.map((stage) => stage.id));
+    const plan = planOf(
+      compile({
+        workspace: { after: [{ name: "Web", matrix: "apps", sh: "bun run e2e $AKAN_CI_APP" }] },
+        apps: { web: { stages: [{ use: "build" }, { name: "API", sh: "bun run test:api" }] } },
+      }),
+    );
+    expect(stageIds(plan)).toEqual(expect.arrayContaining(["web:api", "web.apps.api", "web.apps.web"]));
+    expect(new Set(stageIds(plan)).size).toBe(stageIds(plan).length);
+    const post = planOf(
+      compile({
+        ctx: context({ apps: ["success"] }),
+        workspaceApps: ["success"],
+        workspace: { after: [{ name: "Post", matrix: "apps", sh: "x" }], post: { success: ["y"] } },
+      }),
+    );
+    expect(stageIds(post)).toContain("post.apps.success");
+    expect(post.post.success.map((step) => step.id)).toEqual(["post.success/1"]);
   });
 
   test("env is workspace, then app, then stage, then step; secrets are each step's union", () => {
@@ -604,6 +625,30 @@ describe("PipelineCompiler", () => {
       );
     });
 
+    test("a parallel branch may not take the id of a post list's steps", () => {
+      const refused = compile({
+        workspace: { before: [{ name: "Post", parallel: [{ name: "Success", sh: "x" }] }], post: { success: ["y"] } },
+      });
+      expect(refused.ok).toBe(false);
+      expect(refused.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "pipeline.id.reserved",
+          file: "akan.config.ts",
+          path: "pipeline.before[0].parallel[0].name",
+        }),
+      ]);
+      expect(
+        compile({
+          workspace: { after: [{ id: "post", name: "Checks", parallel: [{ id: "always", name: "A", sh: "x" }] }] },
+        }).diagnostics,
+      ).toEqual([expect.objectContaining({ code: "pipeline.id.reserved", path: "pipeline.after[0].parallel[0].id" })]);
+      const otherBranch = compile({
+        workspace: { before: [{ name: "Post", parallel: [{ name: "Lint", sh: "x" }] }], post: { success: ["y"] } },
+      });
+      expect(otherBranch.ok).toBe(true);
+      expect(compile({ workspace: { after: [{ name: "Post", sh: "x" }], post: { success: ["y"] } } }).ok).toBe(true);
+    });
+
     test("loading and sampling", () => {
       const thrown = appResult(() => {
         throw new Error("boom");
@@ -618,6 +663,113 @@ describe("PipelineCompiler", () => {
         sampled: true,
       });
       expect(codes(sampled)).toContain("pipeline.function.sampled");
+    });
+
+    test("a function returning nothing, an async one, and a falsy pipeline are errors, never a default", async () => {
+      const refused = (result: PipelinePlanResult, file: string) => {
+        expect(result.ok).toBe(false);
+        expect(result.diagnostics).toContainEqual(
+          expect.objectContaining({ severity: "error", code: "pipeline.schema.invalid", file, path: "pipeline" }),
+        );
+        return result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      };
+      const onMainOnly = ((ctx: { branch: string }) =>
+        ctx.branch === "main" ? { stages: [{ use: "build" }] } : undefined) as unknown as AppPipelineConfig;
+      expect(appResult(onMainOnly).ok).toBe(true);
+      const develop = compile({ ctx: context({ branch: "develop", apps: ["web"] }), apps: { web: onMainOnly } });
+      expect(refused(develop, "apps/web/akan.config.ts")).toContain("returned nothing");
+      expect(refused(compile({ workspace: (() => undefined) as never }), "akan.config.ts")).toContain(
+        "returned nothing",
+      );
+      expect(refused(compile({ workspace: (async () => ({ before: [] })) as never }), "akan.config.ts")).toContain(
+        "Promise",
+      );
+      const rejecting = (async () => {
+        throw new Error("boom");
+      }) as unknown as AppPipelineConfig;
+      expect(refused(appResult(rejecting), "apps/web/akan.config.ts")).toContain("Promise");
+      await Bun.sleep(1);
+      expect(refused(appResult(false as never), "apps/web/akan.config.ts")).toContain("must be an object");
+      expect(refused(compile({ workspace: 0 as never }), "akan.config.ts")).toContain("must be an object");
+    });
+
+    test("a plan larger than an executor reads, as written, is refused", () => {
+      const steps = Array.from({ length: 20 }, () => "x".repeat(60_000));
+      const result = appResult({ stages: [{ use: "build" }, { name: "Big", steps }] });
+      expect(result.ok).toBe(false);
+      expect(result.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "pipeline.limit.exceeded", file: null, path: null }),
+      );
+    });
+
+    test("conditions", () => {
+      expect(appResult({ stages: [{ use: "build", when: { trigger: [] } }] }).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "pipeline.schema.invalid", path: "pipeline.stages[0].when.trigger" }),
+      );
+      const branch = Array.from({ length: 6 }, (_, idx) => `release/${String(idx).repeat(240)}`);
+      const plan = planOf(
+        compile({
+          ctx: context({ branch: "develop", env: "develop", apps: ["web"] }),
+          apps: { web: { stages: [{ use: "build", when: { branch } }] } },
+        }),
+      );
+      const reason = plan.phases[0]?.stages[0]?.skip?.reason ?? "";
+      expect(reason.startsWith('branch "develop" does not match "release/')).toBe(true);
+      expect(reason.endsWith("…")).toBe(true);
+      expect(reason.length).toBeLessThanOrEqual(1024);
+    });
+
+    test("a value the plan would refuse is reported where it was written", () => {
+      expect(
+        appResult({ stages: [{ use: "build" }, { name: "x", sh: "x", env: { BIG: "x".repeat(64 * 1024 + 1) } }] })
+          .diagnostics,
+      ).toContainEqual(
+        expect.objectContaining({ code: "pipeline.limit.exceeded", path: "pipeline.stages[1].env.BIG" }),
+      );
+      const unset = compile({ workspace: { before: [{ name: "Checks", parallel: undefined as never }] } });
+      expect(unset.ok).toBe(false);
+      expect(unset.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "pipeline.schema.invalid",
+          file: "akan.config.ts",
+          path: "pipeline.before[0].parallel",
+        }),
+      ]);
+    });
+
+    test("a key set to undefined is the key left out", () => {
+      const stage = { name: "Test", sh: "bun test", use: undefined, parallel: undefined, matrix: undefined };
+      const plan = planOf(
+        compile({
+          workspace: {
+            before: [stage as never, { name: "Checks", parallel: [{ name: "Lint", sh: "x", use: undefined }] }],
+          },
+          apps: { web: { stages: [{ use: "build", targets: undefined } as never, stage as never] } },
+        }),
+      );
+      expect(phaseIds(plan)).toEqual(["test", "checks", "build", "after-build", "docker", "deploy"]);
+      expect(appResult({ stages: [{ use: undefined } as never] }).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "pipeline.schema.invalid", path: "pipeline.stages[0].use" }),
+      );
+    });
+
+    test("a value JSON cannot hold is reported, never thrown", () => {
+      const cyclic: Record<string, unknown> = {};
+      cyclic.self = cyclic;
+      const result = appResult({ stages: [{ use: "build", timeout: 10n as never }, { use: cyclic as never }] });
+      expect(result.ok).toBe(false);
+      expect(result.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.message.split(" ")[0]])).toEqual([
+        ["pipeline.duration.invalid", "10n"],
+        ["pipeline.schema.invalid", "[object"],
+      ]);
+    });
+
+    test("a long first line names its step without splitting a surrogate pair", () => {
+      const plan = planOf(
+        appResult({ stages: [{ use: "build" }, { name: "Emoji", sh: `${"a".repeat(78)}${"😀".repeat(5)}` }] }),
+      );
+      const name = plan.phases.find((phase) => phase.id === "after-build")?.stages[0]?.steps[0]?.name;
+      expect(name).toBe(`${"a".repeat(78)}…`);
     });
 
     test("milestones that move backwards are a warning", () => {

@@ -152,6 +152,8 @@ const dedupeDockerRuns = (runs: DockerRun[]): DockerRun[] => {
   return [...byKey.values()];
 };
 
+class LibConfigRefusal extends Error {}
+
 export class AkanAppConfig implements AppConfigResult {
   app: App;
   rootPackageJson: PackageJson;
@@ -285,6 +287,11 @@ export class AkanAppConfig implements AppConfigResult {
           throw new Error(
             `${where}.updates in ${configPath} has no url or publicKeys${named ? "; give them in native.updates or the target's own" : ""}.`,
           );
+        //? NativeConfig prefers publicKeys to publicKey, so a target's own key beside the section's list would be lost.
+        if (updates?.publicKey !== undefined && updates.publicKeys !== undefined)
+          throw new Error(
+            `${where}.updates in ${configPath} has both publicKey and publicKeys${named ? ", native.updates merged in: give one, in native.updates' own form when overriding its keys" : ": give one"}.`,
+          );
         AkanAppConfig.#assertFiles(own ?? {}, where, configPath);
         const {
           basePath: _basePath,
@@ -370,13 +377,16 @@ export class AkanAppConfig implements AppConfigResult {
       },
     };
   }
-  //? The stage owns these: the operation mode, the database mode and what is served are what make it the carried server.
+  //? The stage owns these: the operation mode, the database mode, what is served and the shutdown budget the shell's
+  //? quit waits on are what make it the carried server.
   static readonly #stagedServerEnv = new Set([
     "AKAN_PUBLIC_OPERATION_MODE",
     "AKAN_DATABASE_MODE",
     "AKAN_DATABASE_MODES",
     "AKAN_SSR",
     "AKAN_CSR",
+    "AKAN_MCP",
+    "AKAN_SHUTDOWN_TIMEOUT_MS",
     "AKAN_MODULES",
   ]);
   static #desktopServerEnv(env: unknown, where: string, configPath: string): Record<string, string> {
@@ -401,13 +411,21 @@ export class AkanAppConfig implements AppConfigResult {
     configPath: string,
   ): { intervalMs: number; failures: number } | null {
     if (watchdog === undefined || watchdog === false) return null;
-    const { intervalMs = 10_000, failures = 3 } = (watchdog === true ? {} : watchdog) as Record<string, unknown>;
-    const whole = (value: unknown) => Number.isInteger(value) && (value as number) > 0;
-    if ((watchdog !== true && !AkanAppConfig.#isPlainObject(watchdog)) || !whole(intervalMs) || !whole(failures))
+    const options = watchdog === true ? {} : watchdog;
+    const whole = (value: unknown) => value === undefined || (Number.isInteger(value) && (value as number) > 0);
+    if (
+      !AkanAppConfig.#isPlainObject(options) ||
+      Object.keys(options).some((key) => key !== "intervalMs" && key !== "failures") ||
+      !whole(options.intervalMs) ||
+      !whole(options.failures)
+    )
       throw new Error(
         `${where}.watchdog in ${configPath} must be true or { intervalMs, failures }, whole numbers from 1.`,
       );
-    return { intervalMs: intervalMs as number, failures: failures as number };
+    return {
+      intervalMs: (options.intervalMs as number | undefined) ?? 10_000,
+      failures: (options.failures as number | undefined) ?? 3,
+    };
   }
   static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
     const { indexPath: rawIndexPath, ...rest } = section;
@@ -685,6 +703,8 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
         LibExecutor.from(app, libName)
           .getConfig({ refresh: bustImportCache })
           .catch((error: unknown) => {
+            //? Skipping a refused lib config would build the image without its docker steps, and the build would pass.
+            if (error instanceof LibConfigRefusal) throw error;
             app.logger.warn(`Skipped libs/${libName}/akan.config.ts contributions: ${String(error)}`);
             return null;
           }),
@@ -843,11 +863,11 @@ export class AkanLibConfig implements LibConfigResult {
     const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
     const { plugins, ...config } = (resolved ?? {}) as LibConfigDeclaration & { plugins?: AkanPlugin[] };
     if ("pipeline" in config)
-      throw new Error(
+      throw new LibConfigRefusal(
         `libs/${lib.name}/akan.config.ts declares \`pipeline\`, which a lib does not take: pipelines belong to apps and the workspace root, and a lib's build-time work goes in an akan build plugin.`,
       );
     if ("subspace" in config)
-      throw new Error(
+      throw new LibConfigRefusal(
         `libs/${lib.name}/akan.config.ts declares \`subspace\`, a workspace setting: it belongs in the workspace root akan.config.ts.`,
       );
     return new AkanLibConfig(lib, config, plugins ?? []);

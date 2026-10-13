@@ -178,6 +178,16 @@ describe("AgenticSurface", () => {
     off();
     expect(notified).toBe(2);
   });
+
+  test("the version moves with every change, heard by a subscriber or not", () => {
+    const surface = new AgenticSurface();
+    const before = surface.version;
+    const off = surface.registerTool([], tool("ping"));
+    expect(surface.version).toBe(before + 1);
+    off();
+    surface.gate(true).set(false);
+    expect(surface.version).toBe(before + 3);
+  });
 });
 
 describe("AgenticSurface views", () => {

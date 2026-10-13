@@ -1,5 +1,5 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
-import { App, Apps, command, Exec, Sys, Workspace } from "@akanjs/devkit/commandDecorators";
+import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
 import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 
 import { ApplicationScript } from "./application.script";
@@ -124,13 +124,13 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       await this.applicationScript.build(app, { write, fast, quiet, profile: profile ?? undefined });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
-    .with(Exec)
+    .with(SysOrOnlyApp)
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("clean", Boolean, { desc: "clear typecheck cache before running", default: false })
     .option("incremental", Boolean, { desc: "reuse TypeScript incremental cache", default: true })
     .option("tests", Boolean, { desc: "check its *.test.ts / *.spec.ts too, which nothing imports", default: true })
-    .exec(async function (exec, write, clean, incremental, tests) {
-      await this.applicationScript.typecheck(exec, { write, clean, incremental, tests });
+    .exec(async function (sys, write, clean, incremental, tests) {
+      await this.applicationScript.typecheck(sys, { write, clean, incremental, tests });
     }),
   test: target({ desc: "Prepare and test an app, library, or package" })
     .with(Exec)

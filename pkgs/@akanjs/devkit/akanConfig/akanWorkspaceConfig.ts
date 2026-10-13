@@ -4,7 +4,7 @@ import type { WorkspaceExecutor } from "../executors";
 import { FileSys } from "../fileSys";
 import { AkanAppConfig } from "./akanConfig";
 
-/** The workspace root's own `akan.config.ts`: settings that belong to no app. Absent, it is an empty one. */
+/** The workspace root's own `akan.config.ts`: settings that belong to no app. */
 export class AkanWorkspaceConfig {
   static readonly fileName = "akan.config.ts";
   static readonly #keys = ["subspace", "pipeline", "cloud"];

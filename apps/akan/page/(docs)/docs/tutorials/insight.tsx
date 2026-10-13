@@ -325,18 +325,17 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   );
 };
 
-interface PublicQueryMakerProps { // [!code ++:18]
+interface PublicQueryMakerProps { // [!code ++:17]
   className?: string;
 }
 export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
-  const { l } = usePage();
   const [statuses] = st.use.queryArgsOfIcecreamOrderInPublic();
   return (
     <Select
       multiple
       value={statuses ?? []}
       className={className}
-      options={cnst.IcecreamOrderStatus.map((status) => ({ label: l(\`icecreamOrderStatus.\${status}\`), value: status }))}
+      options={cnst.IcecreamOrderStatus}
       onChange={(statuses) => {
         void st.do.setQueryArgsOfIcecreamOrderInPublic(statuses);
       }}
@@ -368,8 +367,8 @@ export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
             <li>
               <strong>options</strong>:{" "}
               {l.trans({
-                en: "Label/value pairs, so each status is listed under the name l() translates it to.",
-                ko: "label/value 쌍으로 넘겨, 각 상태가 l()로 번역된 이름으로 표시되게 합니다.",
+                en: "The enum class itself. Select lists each status under its dictionary name (icecreamOrderStatus.<value>), and shows a value the dictionary does not name as it is.",
+                ko: "enum 클래스를 그대로 넘깁니다. Select가 각 상태를 사전의 이름(icecreamOrderStatus.<value>)으로 보여 주고, 사전에 없는 값은 그대로 보여 줍니다.",
               })}
             </li>
           </ul>

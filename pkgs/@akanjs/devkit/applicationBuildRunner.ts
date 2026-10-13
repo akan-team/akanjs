@@ -100,13 +100,12 @@ export class ApplicationBuildRunner {
     // serial build is needed because of Bun.build is unstable for parallel build
     this.#spinner = spinner;
     const { web, assets, baseDevEnv } = await this.#app.getConfig();
+    const environment = this.#environment ?? baseDevEnv.env;
+    //? Bundles bake AKAN_PUBLIC_ENV from process.env, where the shell outranks the .env that picked the server env.
+    process.env.AKAN_PUBLIC_ENV = environment;
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
     if (this.#profile)
-      await ServerEnvProfile.assertShippable({
-        envDir: this.#envDir,
-        environment: this.#environment ?? baseDevEnv.env,
-        profile: this.#profile,
-      });
+      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
     await this.#runPhase(

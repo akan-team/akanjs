@@ -16,7 +16,7 @@ const makeEditor = () =>
 describe("RichEditor.contentFromText", () => {
   it("builds a state Lexical parses and re-serializes unchanged", () => {
     const content = RichEditor.contentFromText("hello");
-    expect(isSerializedEditorState(content)).toBe(true);
+    if (!isSerializedEditorState(content)) throw new Error("contentFromText built no editor state");
     expect(makeEditor().parseEditorState(content).toJSON()).toEqual(content);
   });
 

@@ -1,7 +1,8 @@
+import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
-import { NativeApp } from "@akanjs/devkit/mobile";
+import type { MobilePlatform } from "@akanjs/devkit/mobile";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
@@ -63,6 +64,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host: given,
     }: { name: string; branch: string | null; file: string | null; subspace: string | null; host?: string | null },
   ) {
+    CloudRunner.assertSecretName(name);
+    CloudRunner.assertSecretBranch(branch);
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
     const value = await this.cloudRunner.readSecretValue(name, file);
     const host = await GlobalConfig.hostFor(workspace, given);
@@ -74,6 +77,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     workspace: Workspace,
     { branch, subspace, host: given }: { branch: string | null; subspace: string | null; host?: string | null },
   ) {
+    CloudRunner.assertSecretBranch(branch);
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
@@ -89,6 +93,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host: given,
     }: { name: string; branch: string | null; subspace: string | null; host?: string | null },
   ) {
+    CloudRunner.assertSecretName(name);
+    CloudRunner.assertSecretBranch(branch);
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
@@ -111,31 +117,20 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       allowLocalRelease,
       pack: packDir,
     }: {
-      platform: "ios" | "android";
-      target?: string;
-      env: string;
+      platform: MobilePlatform | null;
+      target: string | null;
+      env: NativeEnv | null;
       channel: string | null;
       notes: string | null;
       subspace: string | null;
       host?: string | null;
       write: boolean;
       allowLocalRelease: boolean;
-      pack?: string | null;
+      pack: string | null;
     },
   ) {
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
-    const pack = packDir
-      ? await NativeApp.readPack(packDir)
-      : await this.applicationScript.packUpdate(app, platform, {
-          target,
-          env: env as "main",
-          write,
-          allowLocalRelease,
-        });
-    if (pack.app !== app.name || pack.platform !== platform || (target && pack.target !== target))
-      throw new Error(
-        `The pack in ${pack.out} is ${pack.app} ${pack.target} ${pack.platform}, not ${app.name} ${target ?? pack.target} ${platform}.`,
-      );
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
+    const pack = await this.#packToPush(app, { platform, target, env, write, allowLocalRelease, packDir });
     if (pack.compat && !pack.compat.compatible) {
       //* Exit 2 as pack-update's own verdict does, so a CI reads "needs a new store build" the same from both commands.
       Logger.error(
@@ -151,6 +146,36 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       notes,
     });
   }
+  async #packToPush(
+    app: App,
+    {
+      platform,
+      target,
+      env,
+      write,
+      allowLocalRelease,
+      packDir,
+    }: {
+      platform: MobilePlatform | null;
+      target: string | null;
+      env: NativeEnv | null;
+      write: boolean;
+      allowLocalRelease: boolean;
+      packDir: string | null;
+    },
+  ) {
+    if (packDir) return await this.cloudRunner.readPack(app, packDir, { platform, target, env, allowLocalRelease });
+    if (!platform)
+      throw new Error(
+        "push-update needs --platform ios or android to pack, or --pack <dir> to upload what `akan pack-update` wrote.",
+      );
+    return await this.applicationScript.packUpdate(app, platform, {
+      target: target ?? undefined,
+      env: env ?? "main",
+      write,
+      allowLocalRelease,
+    });
+  }
   async registerBinary(
     workspace: Workspace,
     app: App,
@@ -164,23 +189,18 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       write,
       allowLocalRelease,
     }: {
-      platform: "ios" | "android";
+      platform: MobilePlatform;
       distribution: AppBinaryDistribution;
       target?: string;
-      env: string;
+      env: NativeEnv;
       subspace: string | null;
       host?: string | null;
       write: boolean;
       allowLocalRelease: boolean;
     },
   ) {
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
-    const pack = await this.applicationScript.packUpdate(app, platform, {
-      target,
-      env: env as "main",
-      write,
-      allowLocalRelease,
-    });
+    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
+    const pack = await this.applicationScript.packUpdate(app, platform, { target, env, write, allowLocalRelease });
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     return await this.cloudRunner.registerBinary(await CloudApi.fromHost(workspace, host), devProjectId, app, pack, {

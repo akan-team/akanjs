@@ -1,4 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { AppExecutor } from "@akanjs/devkit/executors";
 
 const built: { environment?: string; publicEnv?: string }[] = [];
@@ -48,5 +51,18 @@ describe("ApplicationRunner mobile builds", () => {
       { environment: "local", publicEnv: "local" },
     ]);
     expect(process.env.AKAN_PUBLIC_ENV).toBe(shellEnv);
+  });
+
+  test("pack-update drops the previous pack's record before it builds, so a failed build leaves none behind", async () => {
+    const out = await mkdtemp(path.join(tmpdir(), "akan-pack-update-"));
+    try {
+      for (const name of ["pack.json", "compat.json", "manifest.template.json"])
+        await Bun.write(path.join(out, name), "{}");
+      await expect(new ApplicationRunner().packUpdate(app, "android", { out })).rejects.toThrow("built");
+      expect(await Bun.file(path.join(out, "pack.json")).exists()).toBe(false);
+      expect(await Bun.file(path.join(out, "compat.json")).exists()).toBe(false);
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
   });
 });

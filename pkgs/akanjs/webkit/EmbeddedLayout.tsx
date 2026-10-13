@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -64,6 +65,10 @@ export const LayoutOutlet = ({ children }: LayoutOutletProps) => {
   const embedded = useContext(embeddedLayoutContext);
   const onOutlet = embedded?.onOutlet;
   useLayoutEffect(() => {
+    onOutlet?.(true);
+  }, [onOutlet]);
+  //? Suspense hiding the outlet clears its layout effects but keeps this one, so presence ends only with it.
+  useEffect(() => {
     if (!onOutlet) return;
     onOutlet(true);
     return () => onOutlet(false);

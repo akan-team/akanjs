@@ -1,14 +1,14 @@
 "use client";
 import { useDrag } from "@use-gesture/react";
 import { cn } from "akanjs/client";
-import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
+import { useBodyScrollLock, useEscapeKey, usePageActivity } from "akanjs/webkit";
 import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
 import { config, useSpring } from "react-spring";
 import { animated } from "./animated";
 import { buttonRecipe } from "./Button";
-import { overlayZ, useOverlayLayerProps, useOverlayPortal } from "./overlayLayer";
+import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "./overlayLayer";
 
 interface BottomSheetProps {
   className?: string;
@@ -33,8 +33,8 @@ export interface BottomSheetRef {
   close: () => void;
 }
 
-// A constant, not `window.innerHeight`: this renders on the server, where the global throws.
-const OFFSCREEN = 2000;
+// A share of the sheet's own height, not pixels: no height is known on the server, and 100% clears any viewport.
+const PARKED = 100;
 
 export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
   (
@@ -56,30 +56,36 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
     const shown = useRef(false);
     const portal = useOverlayPortal();
     const overlayLayerProps = useOverlayLayerProps();
+    //? It portals out of its page, so the `inert` on a page the CSR stack keeps drawn underneath never reaches it.
+    const isCurrentPage = usePageActivity() === "current";
+    const [root, setRoot] = useState<HTMLDivElement | null>(null);
     const [selfOpen, setSelfOpen] = useState(false);
+    const [dismissals, setDismissals] = useState(0);
     const isOpen = open ?? selfOpen;
+    const isActive = isOpen && isCurrentPage;
 
-    const [{ y, opacity }, api] = useSpring(() => ({ y: OFFSCREEN, opacity: 0 }));
+    const [{ y, opacity }, api] = useSpring(() => ({ y: PARKED, opacity: 0 }));
 
     const show = async () => {
       shown.current = true;
       await Promise.all(api.start({ y: 0, opacity: 1, immediate: false, config: config.default }));
     };
     const hide = async () => {
-      const height = ref.current?.clientHeight ?? OFFSCREEN;
+      // Clamped: an overshoot past the edge would flicker the parked sheet's visibility.
       await Promise.all(
-        api.start({ y: height, opacity: 0, immediate: false, config: { ...config.stiff, velocity: 0 } }),
+        api.start({ y: PARKED, opacity: 0, immediate: false, config: { ...config.stiff, velocity: 0, clamp: true } }),
       );
     };
     //? The person's dismissal; `open` alone decides what is drawn, so a controlled sheet hides once its parent agrees.
     const dismiss = () => {
       if (open === undefined) setSelfOpen(false);
+      else setDismissals((count) => count + 1);
       onCancel?.();
     };
 
     const bind = useDrag(({ down, movement: [, my] }) => {
-      const height = ref.current?.clientHeight ?? OFFSCREEN;
-      if (down) void api.start({ y: Math.max(0, my), immediate: true });
+      const height = ref.current?.offsetHeight ?? 0;
+      if (down) void api.start({ y: height ? (Math.max(0, my) / height) * PARKED : 0, immediate: true });
       else if (my > height / 3) dismiss();
       else void show();
     });
@@ -92,13 +98,14 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
       close: dismiss,
     }));
 
-    useEscapeKey(isOpen, dismiss);
-    useBodyScrollLock(isOpen);
+    useEscapeKey(isActive, dismiss);
+    useBodyScrollLock(isActive);
 
+    //? `dismissals` re-runs this when a controlled parent keeps `open` through a drag-dismiss, snapping the sheet back.
     useEffect(() => {
       if (isOpen) void show();
       else if (shown.current) void hide();
-    }, [isOpen]);
+    }, [isOpen, dismissals]);
 
     return (
       <>
@@ -114,17 +121,24 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
         ) : null}
         {portal
           ? createPortal(
-              <>
+              // Sized by nothing, so it catches no click; an overlay opened in the sheet lands here, above the panel.
+              <div
+                {...overlayLayerProps}
+                ref={setRoot}
+                className="fixed top-0 left-0"
+                style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden" }}
+              >
                 <animated.div
-                  {...overlayLayerProps}
-                  style={{ opacity, zIndex: overlayZ.modal, pointerEvents: isOpen ? "auto" : "none" }}
+                  style={{ opacity, pointerEvents: isOpen ? "auto" : "none" }}
                   onClick={dismiss}
                   className="fixed inset-0 bg-black/50 backdrop-blur-sm"
                 />
                 <animated.div
-                  {...overlayLayerProps}
                   ref={ref}
-                  style={{ y, zIndex: overlayZ.modal }}
+                  style={{
+                    translateY: y.to((value) => `${value}%`),
+                    visibility: y.to((value) => (value < PARKED ? "inherit" : "hidden")),
+                  }}
                   className={cn(
                     "fixed bottom-0 left-0 flex w-full flex-col bg-card text-card-foreground",
                     type === "half" && "h-[90dvh] rounded-t-box border-border border-t shadow-2xl",
@@ -133,39 +147,41 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
                     className,
                   )}
                 >
-                  {header ??
-                    (type === "half" ? (
-                      <animated.div {...bind()} className="flex shrink-0 cursor-grab touch-pan-y justify-center py-3">
-                        {handle ?? <div className="h-1 w-10 rounded-full bg-foreground/15" />}
-                      </animated.div>
-                    ) : (
-                      <div className="flex shrink-0 justify-end p-2">
-                        <div className="contents" onClick={dismiss}>
-                          {close ?? (
-                            <button
-                              aria-label="Close"
-                              className={buttonRecipe(
-                                { variant: "ghost", size: "icon" },
-                                "rounded-full text-foreground/50",
-                              )}
-                              type="button"
-                            >
-                              <BiX className="text-2xl" />
-                            </button>
-                          )}
+                  <OverlayPortalProvider value={root}>
+                    {header ??
+                      (type === "half" ? (
+                        <animated.div {...bind()} className="flex shrink-0 cursor-grab touch-pan-y justify-center py-3">
+                          {handle ?? <div className="h-1 w-10 rounded-full bg-foreground/15" />}
+                        </animated.div>
+                      ) : (
+                        <div className="flex shrink-0 justify-end p-2">
+                          <div className="contents" onClick={dismiss}>
+                            {close ?? (
+                              <button
+                                aria-label="Close"
+                                className={buttonRecipe(
+                                  { variant: "ghost", size: "icon" },
+                                  "rounded-full text-foreground/50",
+                                )}
+                                type="button"
+                              >
+                                <BiX className="text-2xl" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  <div
-                    className={cn(
-                      "scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(1rem+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px)))]",
-                      bodyClassName,
-                    )}
-                  >
-                    {children}
-                  </div>
+                      ))}
+                    <div
+                      className={cn(
+                        "scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(1rem+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px)))]",
+                        bodyClassName,
+                      )}
+                    >
+                      {children}
+                    </div>
+                  </OverlayPortalProvider>
                 </animated.div>
-              </>,
+              </div>,
               portal,
             )
           : null}

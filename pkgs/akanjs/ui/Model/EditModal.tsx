@@ -194,12 +194,11 @@ export default function EditModal<Full extends { id: string }>({
   );
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modalId = id ?? ((modelEdit as DynamicRecord)?.[names.modelObj] as Full | undefined)?.id ?? undefined;
-  const newFormOrigin = NewFormOrigin.use(modelName);
+  const opensNewForm = NewFormOrigin.useEditor(modelName, sliceName, modal ?? "edit", !modalId);
   const isModalOpen =
     modelModal === (modal ?? "edit") &&
     (modelFormLoading === false || modelFormLoading === modalId) &&
-    ((!modelFormId && !modalId && (!newFormOrigin || newFormOrigin === sliceName)) ||
-      (!!modalId && modalId === modelFormId));
+    ((!modelFormId && !modalId && opensNewForm) || (!!modalId && modalId === modelFormId));
   useEffect(() => {
     if (!modelModal) NewFormOrigin.clear(modelName);
   }, [modelModal]);

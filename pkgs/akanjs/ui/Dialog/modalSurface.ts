@@ -10,6 +10,7 @@ interface SurfaceClassNames {
   handle: string;
 }
 
+// The frame's own inset beside `env()`: an Android WebView before 140 reports `env(safe-area-inset-*)` as 0.
 const presentationClassNames: { [presentation in ModalPresentation]: SurfaceClassNames } = {
   dialog: {
     root: "items-center justify-center p-4",
@@ -20,24 +21,25 @@ const presentationClassNames: { [presentation in ModalPresentation]: SurfaceClas
   sheet: {
     root: "items-stretch justify-stretch p-0",
     panel:
-      "h-full max-h-full max-w-none rounded-none border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
-    close: "top-[calc(env(safe-area-inset-top)+0.75rem)]",
+      "h-full max-h-full max-w-none rounded-none border-0 pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))]",
+    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+0.75rem)]",
     handle: "flex",
   },
   auto: {
     root: "items-stretch p-0 md:items-center md:justify-center md:p-4",
     panel:
-      "h-full max-h-full rounded-none border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:h-auto md:max-w-2xl md:rounded-box md:border md:border-border md:pt-0 md:pb-0",
-    close: "top-[calc(env(safe-area-inset-top)+0.75rem)] md:top-3",
+      "h-full max-h-full rounded-none border-0 pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))] md:h-auto md:max-w-2xl md:rounded-box md:border md:border-border md:pt-0 md:pb-0",
+    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+0.75rem)] md:top-3",
     handle: "flex md:hidden",
   },
 } as const;
 
-const placementClassNames: { [placement in ModalPlacement]: Pick<SurfaceClassNames, "root" | "panel"> } = {
-  center: { root: "", panel: "" },
+const placementClassNames: { [placement in ModalPlacement]: Pick<SurfaceClassNames, "root" | "panel" | "handle"> } = {
+  center: { root: "", panel: "", handle: "" },
   right: {
     root: "md:items-stretch md:justify-end md:p-0",
     panel: "md:h-full md:max-h-full md:max-w-md md:rounded-none md:border-0 md:border-border md:border-l",
+    handle: "md:hidden",
   },
 } as const;
 
@@ -48,7 +50,7 @@ export const modalSurfaceOf = (presentation: ModalPresentation, placement: Modal
     root: [shape.root, side.root],
     panel: [shape.panel, side.panel],
     close: shape.close,
-    handle: shape.handle,
+    handle: [shape.handle, side.handle],
   };
 };
 

@@ -42,6 +42,11 @@ const slotStyles: { [slot in FrameSlotName]: CSSProperties } = {
   keyboardInset: keyboard,
 } as const;
 
+//? The frame's top slots paint after the page and catch its clicks, so while still empty they let this chrome through.
+const emptyTopSlotsStepAside =
+  "#topInsetContainer:has(> #topInsetContent:empty){background-color:transparent;pointer-events:none}" +
+  "#topLeftActionContainer:has(> #topLeftActionContent:empty){pointer-events:none}";
+
 interface FrameSlotFallbackProps {
   slot: FrameSlotName;
   children: ReactNode;
@@ -53,6 +58,7 @@ export const FrameSlotFallback = ({ slot, children }: FrameSlotFallbackProps) =>
   if (getEnv().renderMode === "csr") return null;
   return (
     <div data-akan-frame-fallback={slot} className={outerClassNames[slot]} style={slotStyles[slot]}>
+      {slot === "topInset" || slot === "topLeftAction" ? <style>{emptyTopSlotsStepAside}</style> : null}
       <div className={innerClassNames[slot]}>{children}</div>
     </div>
   );

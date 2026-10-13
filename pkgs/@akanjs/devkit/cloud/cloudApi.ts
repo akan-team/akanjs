@@ -71,10 +71,10 @@ export interface PipelineSecretSummary {
 }
 
 export interface PipelineSecretListing extends PipelineSecretSummary {
-  updatedBy: string;
+  updatedBy: string | null;
 }
 
-/** What akasys answers for an uploaded pack or a registered binary; a pack's release also says how it was taken. */
+/** What Akan Cloud answers for an uploaded pack or a registered binary; a pack's release also says how it was taken. */
 export interface CloudRecord {
   id: string;
   status?: string;
@@ -184,9 +184,8 @@ export class CloudApi {
       target: string;
       distribution: AppBinaryDistribution;
       bundle: Blob;
-      /** The pack staged with UpdatePackUpload.stage; the multipart `pack` is for a server older than staging. */
-      packUploadId?: string;
-      pack?: Blob;
+      /** The pack staged with UpdatePackUpload.stage. */
+      packUploadId: string;
       channel?: string;
     },
   ) {
@@ -194,8 +193,7 @@ export class CloudApi {
     for (const key of ["appName", "target", "distribution"] as const) formData.append(key, binary[key]);
     if (binary.channel) formData.append("channel", binary.channel);
     formData.append("bundle", binary.bundle, "bundle.json");
-    if (binary.packUploadId) formData.append("packUploadId", binary.packUploadId);
-    if (binary.pack) formData.append("pack", binary.pack, "pack.tgz");
+    formData.append("packUploadId", binary.packUploadId);
     return await this.#api.post<CloudRecord>(`/registerAppBinary/${encodeURIComponent(devProjectId)}`, formData, {
       signal: AbortSignal.timeout(11 * 60_000),
     });

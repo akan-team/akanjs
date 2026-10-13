@@ -12,6 +12,20 @@ export class PipelineScript extends script("pipeline", [PipelineRunner]) {
     action: PipelineAction,
     { flags, out, format }: { flags: PipelineFlags; out: string | null; format: "text" | "json" },
   ) {
+    const json = format === "json" || (action === "plan" && !out);
+    const restoreLogs = json ? PipelineScript.#logToStderr() : null;
+    try {
+      await this.#run(workspace, action, { flags, out, json });
+    } finally {
+      restoreLogs?.();
+    }
+  }
+
+  async #run(
+    workspace: Workspace,
+    action: PipelineAction,
+    { flags, out, json }: { flags: PipelineFlags; out: string | null; json: boolean },
+  ) {
     let result: PipelinePlanResult;
     try {
       const context = await this.pipelineRunner.context(workspace, flags);
@@ -26,12 +40,22 @@ export class PipelineScript extends script("pipeline", [PipelineRunner]) {
       process.exitCode = 2;
       return;
     }
-    if (format === "json" || (action === "plan" && !out)) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else
       Logger.rawLog(
         action === "dry-run" ? PipelineDryRun.render(result) : PipelineScript.#summary(action, result, out),
       );
     if (!result.ok) process.exitCode = 1;
+  }
+
+  static #logToStderr() {
+    const consoleOutput = Logger.consoleOutput;
+    Logger.consoleOutput = false;
+    const removeSink = Logger.addSink((entry) => void process.stderr.write(entry.message), { minLevel: Logger.level });
+    return () => {
+      removeSink();
+      Logger.consoleOutput = consoleOutput;
+    };
   }
 
   static #summary(action: PipelineAction, result: PipelinePlanResult, out: string | null) {

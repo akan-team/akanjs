@@ -73,6 +73,7 @@ export interface FetchBridgeCall {
   type: "query" | "mutation";
   args: UnknownRecord;
   returns: SerializedReturns;
+  timeout?: number | false;
 }
 
 /** A transport that is not HTTP: a view inside an MCP host has no network, and reaches the server through the host. */
@@ -304,7 +305,7 @@ export class FetchClient {
   // A server cloning toward another origin makes one-off calls; a socket it opened would reconnect forever, unclosed.
   clone({
     origin,
-    connect = !(origin && typeof window === "undefined"),
+    connect = !((origin || this.#foreign) && typeof window === "undefined"),
     jwt,
     clientIp,
     ws,
@@ -315,14 +316,15 @@ export class FetchClient {
     jwt?: string;
     /** Sent as `x-real-ip`, which a server believes only from a trusted proxy — a test's loopback is one. */
     clientIp?: string | null;
-    /** The clone's sockets: reconnect backoff, upgrade headers and TLS, and state, revocation and error hooks. */
+    /** Over this client's own: reconnect backoff, upgrade headers and TLS, and state, revocation and error hooks. */
     ws?: WsClientOptions;
-    /** Every call's `retry` unless it names its own: transient failures, a mutation under one Idempotency-Key. */
+    /** This client's unless given; every call's unless it names one. A mutation retries under one Idempotency-Key. */
     retry?: RetryPolicy | false;
   } = {}) {
     const instance = new FetchClient(origin ?? this.origin, {}, this.serializedSignal, this.ErrorCls);
-    if (ws) instance.configureWs(ws);
-    if (retry !== undefined) instance.http.setRetry(retry);
+    instance.configureWs({ ...this.#wsOptions, ...ws });
+    instance.http.setRetry(retry ?? this.http.retry);
+    instance.http.setTimeout(this.http.timeout);
     instance.#foreign = this.#foreign || (!!origin && !FetchClient.#sameOrigin(origin, this.origin));
     instance.#clientIp =
       clientIp !== undefined ? clientIp : FetchClient.#testClientIps ? FetchClient.#nextTestClientIp() : this.#clientIp;
@@ -416,13 +418,14 @@ export class FetchClient {
       case "query":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
-          const bridge = option?.origin ? null : globalWithFetchBridge[FETCH_BRIDGE_KEY];
+          const bridge = this.#bridgeOf(option?.origin);
           if (bridge) {
             const value = await this.#bridged(bridge, {
               key,
               type: "query",
               args: Object.fromEntries(argMap),
               returns: endpoint.returns,
+              timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
             });
             return parseReturn(value, { crystalize: option?.crystalize ?? true });
           }
@@ -444,13 +447,14 @@ export class FetchClient {
       case "mutation":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
-          const bridge = option?.origin ? null : globalWithFetchBridge[FETCH_BRIDGE_KEY];
+          const bridge = this.#bridgeOf(option?.origin);
           if (bridge) {
             const value = await this.#bridged(bridge, {
               key,
               type: "mutation",
               args: Object.fromEntries(argMap),
               returns: endpoint.returns,
+              timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
             });
             return parseReturn(value, { crystalize: option?.crystalize ?? true });
           }
@@ -540,6 +544,10 @@ export class FetchClient {
         this.logger.error(`Unsupported endpoint type: ${endpoint.type}`);
         break;
     }
+  }
+  //? The host relays to the server that rendered the view, so a call aimed at any other server stays off the bridge.
+  #bridgeOf(origin?: string) {
+    return origin || this.#foreign ? null : (globalWithFetchBridge[FETCH_BRIDGE_KEY] ?? null);
   }
   // A refusal the server described arrives as a payload, and becomes the app's own `Err` the way an HTTP one does.
   async #bridged(bridge: FetchBridge, request: FetchBridgeCall) {
@@ -693,6 +701,9 @@ export class FetchClient {
       names.addModelFiles,
       () =>
         (async (fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
+          //? A host relays JSON tool calls and MCP refuses a file upload: a bridged view has no way to send the bytes.
+          if (this.#bridgeOf())
+            throw new Error("File upload is unavailable in an MCP App view: its host relays tool calls, not files.");
           const cap = resolveFileUploadCapability(this.serializedSignal);
           const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
           if (!cap || !endpoint)

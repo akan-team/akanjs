@@ -268,8 +268,8 @@ describe("Subspace push", () => {
     expect(await FileSys.fileExists(path.join(subspaceRoot, "Jenkinsfile"))).toBe(false);
   });
 
-  test("refuses a lock that resolves from a registry only this machine reaches", async () => {
-    const { wsRoot, subspace } = await makeMirror("lock-served", "lock-private", "lock-kit");
+  test("refuses a lock that resolves from a registry only this machine reaches, before it clones", async () => {
+    const { wsRoot, subspace, clonePath } = await makeMirror("lock-served", "lock-private", "lock-kit");
     await write(
       path.join(wsRoot, "bun.lock"),
       '{ "packages": { "lodash": ["lodash@4.0.0", "http://127.0.0.1:4873/lodash/-/lodash-4.0.0.tgz"] } }\n',
@@ -279,6 +279,40 @@ describe("Subspace push", () => {
     const result = (await subspace.push("develop", { verify: false })) as { outcome: string; reason?: string };
     expect(result.outcome).toBe("refused");
     expect(result.reason).toContain("http://127.0.0.1:4873");
+    expect(await FileSys.dirExists(clonePath)).toBe(false);
+  });
+
+  test("refuses a push and a pull while akan.subspace.ts is left at the workspace root", async () => {
+    const { wsRoot, workRoot, bareRoot, subspace } = await makeMirror("left-served", "left-private", "left-kit");
+    await write(
+      path.join(wsRoot, Subspace.retiredConfigFile),
+      'export default { subspaces: [{ name: "globex", repo: "git@example.com:globex/app.git", apps: ["left-private"] }] };\n',
+    );
+    await git(wsRoot, ["add", "-A"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "moved the declaration, kept the file"]);
+
+    const result = await subspace.push("develop", { verify: false });
+    expect(result.outcome).toBe("refused");
+    expect(result.reason).toContain("move it under `subspace` in akan.config.ts and delete it");
+    await expect(subspace.pull("develop")).rejects.toThrow("delete it");
+    const subspaceRoot = await cloneSubspace(workRoot, bareRoot, "left-check");
+    expect(await FileSys.fileExists(path.join(subspaceRoot, Subspace.retiredConfigFile))).toBe(false);
+  });
+
+  test("removes an akan.subspace.ts an earlier push left in the subspace", async () => {
+    const { workRoot, bareRoot, subspace } = await makeMirror("leaked-served", "leaked-private", "leaked-kit");
+    const customer = await cloneSubspace(workRoot, bareRoot, "leaked-customer");
+    await write(
+      path.join(customer, Subspace.retiredConfigFile),
+      'export default { subspaces: [{ name: "globex" }] };\n',
+    );
+    await git(customer, ["add", "-A"]);
+    await git(customer, ["commit", "--quiet", "-m", `${Subspace.syncSubjectPrefix}workspace@0000000`]);
+    await git(customer, ["push", "--quiet", "origin", "develop"]);
+
+    expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
+    const subspaceRoot = await cloneSubspace(workRoot, bareRoot, "leaked-check");
+    expect(await FileSys.fileExists(path.join(subspaceRoot, Subspace.retiredConfigFile))).toBe(false);
   });
 
   test("refuses a branch the subspace does not have, and one the config does not allow", async () => {
@@ -547,5 +581,35 @@ describe("Subspace.plan", () => {
     expect(plan.branchRefusal).toContain('Branch "main" is not pushable');
     expect(plan.lockProblem).toContain("http://127.0.0.1:4873");
     expect(formatSubspacePlan(plan)).toContain("A push would be refused:");
+  });
+
+  test("names a dirty tree as a blocker, as push refuses one, and judges HEAD's lock, the one a push ships", async () => {
+    const { wsRoot, subspace } = await makeMirror("served", "private", "kit");
+    await write(path.join(wsRoot, "bun.lock"), '{ "packages": {} }\n');
+    await git(wsRoot, ["add", "-f", "bun.lock"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "a public lock"]);
+    await write(
+      path.join(wsRoot, "bun.lock"),
+      '{ "packages": { "x": ["x@1.0.0", "http://127.0.0.1:4873/x/-/x-1.0.0.tgz"] } }\n',
+    );
+
+    const plan = await subspace.plan("develop");
+
+    expect(plan.workspaceRefusal).toBe("workspace working tree is dirty");
+    expect(plan.lockProblem).toBeNull();
+    expect(Subspace.planBlockers(plan)).toEqual(["workspace working tree is dirty"]);
+    expect(formatSubspacePlan(plan)).toContain("  - workspace working tree is dirty");
+  });
+
+  test("names a leftover akan.subspace.ts as a blocker and never as an entry a push ships", async () => {
+    const { wsRoot, subspace } = await makeMirror("served", "private", "kit");
+    await write(path.join(wsRoot, Subspace.retiredConfigFile), "export default {};\n");
+    await git(wsRoot, ["add", "-A"]);
+    await git(wsRoot, ["commit", "--quiet", "-m", "kept the old declaration"]);
+
+    const plan = await subspace.plan("develop");
+
+    expect(plan.workspaceRefusal).toContain("delete it");
+    expect(plan.rootEntries).not.toContain(Subspace.retiredConfigFile);
   });
 });

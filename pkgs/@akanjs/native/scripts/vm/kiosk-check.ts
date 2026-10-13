@@ -91,11 +91,13 @@ async function bridge(plugin: string, method: string, args?: unknown): Promise<{
   return JSON.parse((await evaluate(expression, `${plugin}.${method}`)).result?.value ?? "{}");
 }
 
-function powershell(command: string): string {
+function powershell(command: string, timeoutMs = 60_000): string {
   const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
     stdout: "pipe",
     stderr: "pipe",
+    timeout: timeoutMs,
   });
+  if (p.exitedDueToTimeout) throw new Error(`PowerShell did not answer within ${timeoutMs / 1000} s: ${command}`);
   return p.stdout.toString().trim();
 }
 

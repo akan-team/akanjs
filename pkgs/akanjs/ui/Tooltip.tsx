@@ -67,8 +67,9 @@ const DefaultTooltip = ({ content, children, side = "top", className, variant = 
       ref={triggerRef}
       className="relative inline-flex w-fit"
       aria-describedby={open ? tooltipId : undefined}
+      // React bubbles these through portals: focus inside a modal the trigger opened is not on the trigger.
       onPointerEnter={(event) => {
-        if (event.pointerType === "touch") return;
+        if (event.pointerType === "touch" || !event.currentTarget.contains(event.target as Node)) return;
         cancelShow();
         showTimer.current = setTimeout(() => setOpen(true), SHOW_DELAY_MS);
       }}
@@ -76,7 +77,8 @@ const DefaultTooltip = ({ content, children, side = "top", className, variant = 
         cancelShow();
         setOpen(false);
       }}
-      onFocus={() => {
+      onFocus={(event) => {
+        if (!event.currentTarget.contains(event.target as Node)) return;
         cancelShow();
         setOpen(true);
       }}

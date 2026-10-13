@@ -7,6 +7,7 @@ import {
   formatSubspacePullResult,
   formatSubspacePushResults,
   formatSubspaceStatuses,
+  Subspace,
 } from "@akanjs/devkit/subspace";
 import { Logger } from "akanjs/common";
 import { type SubspaceAction, SubspaceRunner } from "./subspace.runner";
@@ -42,6 +43,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const plan = await this.subspaceRunner.plan(workspace, name);
     spinner.succeed(`${plan.apps.length} app(s), ${plan.libs.length} librar(ies), ${plan.files} file(s)`);
     Logger.rawLog(format === "json" ? JSON.stringify(plan, null, 2) : formatSubspacePlan(plan));
+    if (Subspace.planBlockers(plan).length) process.exitCode = 1;
   }
 
   async diff(workspace: Workspace, name: string, filter: string | null, format: "text" | "json" = "text") {

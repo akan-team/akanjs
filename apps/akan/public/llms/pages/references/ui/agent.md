@@ -240,11 +240,13 @@ A layout mounts it once, with a translated title and a transcript that survives 
 
   - **Scope or Zone?** Use `Agent.Scope` when a repeated subtree needs distinct tool names but shares the screen's one agent. `Agent.Zone` wraps a scope and adds a conversation of its own.
 
-- useScreenActions: The current screen's published tools that take no required argument: what a ⌘K command palette can offer, and exactly what the agent can do on this screen.
+- useScreenActions: The current screen's published tools that take no required argument: what a ⌘K command palette can offer, the same actions the agent can take on this screen. A card tool, which asks the user, is left out.
 
   - surface (AgenticSurface): The surface to read. Left out, the screen's shared one, which the chat reads too.
 
   - name / description (string / string | undefined): Each action's tool name and `.desc()`, as the agent sees them.
+
+  - label (string | undefined): The tool's `label` (`st.tool(name, { label })`, an `l()` result): what to show a person, in their language. It is never sent to the model.
 
   - needsConfirm (boolean): `true` for a `remove*` tool or one that declares `confirm`: ask the person before `run`.
 
@@ -441,7 +443,7 @@ export const CommandList = () => {
             onConfirm={() => void action.run()}
           >
             <button type="button" className={button}>
-              {action.name}
+              {action.label ?? action.name}
             </button>
           </Popconfirm>
         ) : (
@@ -451,7 +453,7 @@ export const CommandList = () => {
             className={button}
             onClick={() => void action.run()}
           >
-            {action.name}
+            {action.label ?? action.name}
           </button>
         ),
       )}

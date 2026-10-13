@@ -44,7 +44,7 @@ export class PipelineDefinition {
   }
 
   async #load(apps: readonly string[]) {
-    this.workspaceApps = (await this.#workspace.getApps()).sort((a, b) => a.localeCompare(b));
+    this.workspaceApps = (await this.#workspace.getApps()).sort();
     this.workspaceSource = await this.#loadWorkspace();
     for (const app of new Set(apps)) {
       if (!this.workspaceApps.includes(app)) continue;

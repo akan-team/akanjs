@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useReducer } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { AgenticSurface } from "use-agentic";
 
 export interface ScreenAction {
@@ -18,13 +18,17 @@ export interface ScreenAction {
  * what the agent can do here. A person's pick is not recorded as an agent call.
  */
 export const useScreenActions = ({ surface = AgenticSurface.shared }: { surface?: AgenticSurface } = {}) => {
-  const [, refresh] = useReducer((version: number) => version + 1, 0);
-  useEffect(() => surface.subscribe(refresh), [surface]);
+  const subscribe = useCallback((listener: () => void) => surface.subscribe(listener), [surface]);
+  useSyncExternalStore(
+    subscribe,
+    () => surface.version,
+    () => surface.version,
+  );
   return surface
     .snapshot()
     .tools.filter((tool) => {
       const required = tool.parameters?.required;
-      return !Array.isArray(required) || required.length === 0;
+      return (!Array.isArray(required) || required.length === 0) && !surface.tool(tool.name)?.card;
     })
     .map((tool): ScreenAction => {
       const label = surface.tool(tool.name)?.label?.();

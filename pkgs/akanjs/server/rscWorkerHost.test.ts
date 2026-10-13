@@ -1262,9 +1262,12 @@ describe("RscWorker late theme", () => {
     } as unknown as BaseBuildArtifact);
     try {
       await rsc.ready;
-      const result = await rsc.renderWithMeta(new Request("http://localhost/en/viewport"));
-      if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
-      const body = await new Response(result.stream).text();
+      const render = async (url: string, headers: Record<string, string> = {}) => {
+        const result = await rsc.renderWithMeta(new Request(url, { headers }));
+        if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
+        return await new Response(result.stream).text();
+      };
+      const body = await render("http://localhost/en/viewport");
       expect(body).toContain(
         "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
       );
@@ -1272,11 +1275,17 @@ describe("RscWorker late theme", () => {
       expect(body).not.toContain("#fafafa");
       expect(body).toContain("fixture-page-title");
       expect(body).not.toContain("fixture-root-title");
-      expect(body).toContain("/fixture.webmanifest");
+      expect(body).toContain("/fixture.ico");
       //? Chromium reads a manifest link only among <head>'s children, so it has to come before the body.
       const manifestLink = body.indexOf('"rel":"manifest","href":"/manifest.webmanifest"');
       expect(manifestLink).toBeGreaterThan(-1);
       expect(manifestLink).toBeLessThan(body.indexOf('["$","body"'));
+      const lightBody = await render("http://localhost/en/viewport", { cookie: "theme=light" });
+      expect(lightBody).toContain("#fafafa");
+      expect(lightBody).not.toContain("#0b1020");
+      const ownManifest = await render("http://localhost/en/own-manifest");
+      expect(ownManifest).toContain('"rel":"manifest","href":"/fixture.webmanifest"');
+      expect(ownManifest).not.toContain("/manifest.webmanifest");
       expect(await rsc.webManifest(null)).toEqual({
         name: "Fixture",
         short_name: "Fx",

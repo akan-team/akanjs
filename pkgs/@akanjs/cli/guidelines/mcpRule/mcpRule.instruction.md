@@ -231,9 +231,10 @@ export default page()
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to
   disconnect. An unknown proposal is answered at whichever end of that list it is closer to, and an unimplemented
   method answers `404` to a modern client but `200` to a legacy one, whose era spends `404` on "your session is
-  gone". **While MCP Apps renders views only the legacy pair is spoken**: `server/discover` answers `-32601` and
-  `initialize` settles on `2025-11-25`, because claude.ai renders a view only for a server it reached through
-  `initialize`. `modern: true` / `AKAN_MCP_MODERN=true` offers `2026-07-28` anyway; `false` withholds it everywhere.
+  gone". **While a `.prompt()` page may show as a view only the legacy pair is spoken**: `server/discover` answers
+  `-32601` and `initialize` settles on `2025-11-25`, because claude.ai renders a view only for a server it reached
+  through `initialize`. An app that renders no view, or whose RSC worker lists no `.prompt()` page, speaks all three.
+  `modern: true` / `AKAN_MCP_MODERN=true` offers `2026-07-28` anyway; `false` withholds it everywhere.
 - **A modern-era request mirrors `MCP-Protocol-Version` and `Mcp-Method` into headers** (plus `Mcp-Name` when the
   body names one), and one that leaves a mirror out is refused just like one that contradicts the body: a gateway
   rule keyed on a header never fires for the request that omitted it. Legacy requests are not checked. Capabilities
@@ -362,7 +363,8 @@ rule: a page taking no arguments is the most useful prompt, since MCP has no com
 when the id is already in hand.
 
 ## MCP Apps — The Page, Rendered In The Chat
-**A `.prompt()` page is also a tool**, of the same name and arguments, marked `readOnlyHint`. Its result is the
+**A `.prompt()` page is also a tool**, of the same name and arguments, marked `readOnlyHint: false`, since running
+the page makes its own `fetch.*` calls, mutations included. Its result is the
 prompt's briefing plus `Open this screen in a browser: <url>` — what a client without the
 `io.modelcontextprotocol/ui` extension (Claude Code, Codex) reads. A host that declares the extension (claude.ai,
 Claude Desktop, ChatGPT, VS Code, Goose) is also given `_meta.ui.resourceUri` (`ui://<app>/app`, or
@@ -371,14 +373,17 @@ in a sandboxed iframe started on the page the tool ran. Its first queries are an
 the result's `_meta`, the one part no host shows the model — so the first paint costs no round trip; every later
 call is relayed by the host as `tools/call` under the host's token. Nothing is declared for any of it.
 
-- **What a view may call** is every published tool and every endpoint kept off the shelf by `mcp: false` alone,
-  listed with `visibility: ["app"]` — which a host offers to the view and never to the model. Visibility is a host's
-  UX, not authorization: the guards decide, as everywhere. A client that did not declare the extension is listed
-  neither those tools nor the `ui://` resources, a call to one answers `Unknown tool`, and a page tool's result
-  carries none of the view's data for it.
+- **What a view may call** is every published tool, and every endpoint kept off the shelf by `mcp: false` alone or
+  the generated `light<Model>` read, listed with `visibility: ["app"]` — which a host offers to the view and never to
+  the model; a `Person` guard still refuses one. Visibility is a host's UX, not authorization: the guards decide, as
+  everywhere. A client that did not declare the extension is listed neither those tools nor the `ui://` resources, a
+  call to one answers `Unknown tool`, and a page tool's result carries none of the view's data for it.
 - **The capability is read per request.** A legacy client declares it once at `initialize` and is issued an
-  `Mcp-Session-Id` (`ui.<uuid>`) that stores nothing, since its id is the capability; with `modern: true` a modern
-  request carries it in `_meta`. A client that declares nothing is issued no session, exactly as before.
+  `Mcp-Session-Id` (`ui.<nonce>.<signature>`) that stores nothing: the app signs it, and an id the app did not sign is
+  served as a client without views. With `modern: true` a modern request carries the capability in `_meta`. A client
+  that declares nothing is issued no session, exactly as before.
+- **A read-only deployment has no MCP Apps.** With `readOnly` / `AKAN_MCP_READONLY` there are no page tools, app-only
+  tools, views or UI sessions, since running a page makes its own `fetch.*` calls, mutations included.
 - **The view is the page, not the app around it.** Each layout above it still runs — guards, providers,
   `<Agent.Guide>` — but what it draws around `{children}` is hidden, with its frame chrome (`Layout.Navbar`,
   `TopInset`, `BottomInset`, `BottomTab`), the `topInset` / `bottomInset` it reserves and the tools its controls

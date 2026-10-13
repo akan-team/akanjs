@@ -1,5 +1,5 @@
-// A plan is computed inside the tenant's build pod and run by an executor outside it (akasys), so this file is the
-// whole contract between them: the executor parses every plan with `PipelinePlanSchema` before trusting any of it.
+// A plan is computed inside the tenant's build pod and run by an executor outside it, so this file is the whole
+// contract between them: the executor parses every plan with `PipelinePlanSchema` before trusting any of it.
 
 export const pipelinePlanVersion = 1;
 
@@ -8,8 +8,9 @@ export const pipelineMilestones = ["prepare", "build", "verify", "package", "dep
 export type PipelineMilestone = (typeof pipelineMilestones)[number];
 
 /**
- * What started the build, in akasys's terms: a webhook push, the redeploy button, a project's first build, a rebuild of
- * a finished build, and `manual` for an admin build-and-deploy or a studio publish (also the local CLI's default).
+ * What started the build, in the executor's terms: a webhook push, the redeploy button, a project's first build, a
+ * rebuild of a finished build, and `manual` for an admin build-and-deploy or a studio publish (also the local CLI's
+ * default).
  */
 export const pipelineTriggers = ["push", "redeploy", "initial", "rebuild", "manual"] as const;
 export type PipelineTrigger = (typeof pipelineTriggers)[number];
@@ -114,10 +115,10 @@ export const pipelineIdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const pipelineSecretNamePattern = /^[A-Z][A-Z0-9_]{0,63}$/;
 export const pipelineEnvNamePattern = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 
-/** An exact echo of the planner's context flags: nothing trimmed, reordered or defaulted when the flag was given. */
+/** The planner's context flags echoed, never reordered or defaulted when given; `--apps` is split and trimmed. */
 export interface PipelinePlanContext {
   branch: string;
-  /** AKAN_PUBLIC_ENV the build is for; akasys passes the branch. */
+  /** AKAN_PUBLIC_ENV the build is for; the executor passes the branch. */
   env: string;
   /** Apps this run builds, after the executor dropped unchanged ones; a duplicate or unknown app is an error. */
   apps: string[];

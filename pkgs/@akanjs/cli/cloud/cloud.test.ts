@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
+import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
 import {
   createCallRecorder,
   createFakeExecutor,
   makeCliTempWorkspace,
   tempRoots,
+  writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
 import { CloudCommand } from "./cloud.command";
@@ -549,6 +552,36 @@ describe("pipeline secrets", () => {
     expect(CloudRunner.formatSecrets([])).toBe("No pipeline secrets.");
   });
 
+  test("a secret whose last writer is gone lists with a dash instead of failing the listing", () => {
+    expect(
+      CloudRunner.formatSecrets([{ name: "NPM_TOKEN", scope: "main", updatedAt: "2026-10-09", updatedBy: null }]).split(
+        "\n",
+      ),
+    ).toEqual(["NAME       SCOPE  UPDATED     BY", "NPM_TOKEN  main   2026-10-09  -"]);
+  });
+
+  test("upload-secret and remove-secret refuse a bad name or branch before reading a value or signing in", async () => {
+    const script = CommandContainer.get(CloudScript);
+    const recorder = createCallRecorder();
+    script.cloudRunner.secretProject = async (...args) => recorder.record<string>("secretProject", ...args);
+    script.cloudRunner.readSecretValue = async (...args) => recorder.record<string>("readSecretValue", ...args);
+    script.cloudRunner.login = async (...args) => recorder.record<boolean>("login", ...args);
+    const workspace = createFakeExecutor("workspace") as never;
+    const upload = { branch: null, file: null, subspace: null };
+
+    await expect(script.uploadSecret(workspace, { ...upload, name: "lower" })).rejects.toThrow("not a secret name");
+    await expect(script.uploadSecret(workspace, { ...upload, name: "NPM_TOKEN", branch: "feature" })).rejects.toThrow(
+      "not a deployed branch",
+    );
+    await expect(script.removeSecret(workspace, { name: "lower", branch: null, subspace: null })).rejects.toThrow(
+      "not a secret name",
+    );
+    await expect(script.listSecrets(workspace, { branch: "release", subspace: null })).rejects.toThrow(
+      "not a deployed branch",
+    );
+    expect(recorder.calls).toEqual([]);
+  });
+
   test("a file value loses one trailing newline, and an empty or oversized value is refused", async () => {
     const root = await makeTempRoot();
     const file = path.join(root, "token.txt");
@@ -558,6 +591,23 @@ describe("pipeline secrets", () => {
     await expect(new CloudRunner().readSecretValue("TOKEN", file)).rejects.toThrow("is empty");
     await writeText(file, "x".repeat(64 * 1024 + 1));
     await expect(new CloudRunner().readSecretValue("TOKEN", file)).rejects.toThrow("over 65536");
+  });
+
+  test("a value read from a piped stdin is announced on stderr first, without the value", async () => {
+    const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
+    spyOn(Bun.stdin, "text").mockResolvedValue("s3cret-value\n");
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      expect(await new CloudRunner().readSecretValue("NPM_TOKEN", null)).toBe("s3cret-value");
+      expect(stderr.mock.calls).toEqual([
+        ["Reading the value of NPM_TOKEN from stdin until it closes (or pass --file <path>).\n"],
+      ]);
+    } finally {
+      stderr.mockRestore();
+      if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+      else Reflect.deleteProperty(process.stdin, "isTTY");
+    }
   });
 
   test("a subspace's secrets go to the project its workspaceId names", async () => {
@@ -571,6 +621,10 @@ describe("pipeline secrets", () => {
     expect(await new CloudRunner().secretProject(workspace as never, "acme")).toBe("acme-project");
     await expect(new CloudRunner().secretProject(workspace as never, "bare")).rejects.toThrow(
       "declares no workspaceId",
+    );
+    expect(await new CloudRunner().secretProject(workspace as never, "acme", "web")).toBe("acme-project");
+    await expect(new CloudRunner().secretProject(workspace as never, "acme", "api")).rejects.toThrow(
+      'Subspace "acme" declares no app api in subspace in the workspace root akan.config.ts; it serves web.',
     );
   });
 
@@ -593,10 +647,36 @@ describe("pipeline secrets", () => {
         ),
       ),
     ).rejects.toThrow("The project refused the request: pipelineSecret.error.tooMany.");
-    await expect(upload(failing("503 Service Unavailable from /uploadSecret/project-1: {}"))).rejects.toThrow(
-      "The server is not configured for pipeline secrets yet.",
-    );
+    await expect(
+      upload(
+        failing(
+          '503 Service Unavailable from /uploadSecret/project-1: {"error":"pipelineSecret.error.unconfigured","statusCode":503}',
+        ),
+      ),
+    ).rejects.toThrow("The server is not configured for pipeline secrets yet: pipelineSecret.error.unconfigured.");
     await expect(upload(failing("socket hang up"))).rejects.toThrow("socket hang up");
+  });
+
+  test("only the server's own 503 reads as no pipeline secrets; a proxy's or a restarting gateway's keeps its cause", async () => {
+    const answering = (message: string) =>
+      new CloudRunner().uploadSecret(
+        {
+          uploadSecret: async () => {
+            throw new Error(message);
+          },
+        } as unknown as CloudApi,
+        "project-1",
+        { name: "NPM_TOKEN", branch: null, value: "t" },
+      );
+    for (const body of [
+      "<html><title>503 Service Temporarily Unavailable</title></html>",
+      "No healthy federation child is ready",
+      '{"error":"base.error.serverUnavailable","statusCode":503,"data":{"status":503}}',
+      "{}",
+    ]) {
+      const message = `503 Service Unavailable from /uploadSecret/project-1: ${body}`;
+      await expect(answering(message)).rejects.toThrow(message);
+    }
   });
 
   test("a secret's branch is one the server deploys", async () => {
@@ -621,8 +701,6 @@ describe("pipeline secrets", () => {
 
 describe("OTA uploads", () => {
   test("push-update sends the files the pack lists as one tgz with the target's channel, and leaves no archive behind", async () => {
-    const os = await import("node:os");
-    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
     const out = mkdtempSync(path.join(os.tmpdir(), "akan-pack-test-"));
     mkdirSync(path.join(out, "files"));
     writeFileSync(path.join(out, "files", "a".repeat(64)), "<html></html>");
@@ -659,6 +737,9 @@ describe("OTA uploads", () => {
       },
     });
     const announced: Record<string, unknown>[] = [];
+    const tmpdir = process.env.TMPDIR;
+    const scratch = mkdtempSync(path.join(os.tmpdir(), "akan-tmpdir-test-"));
+    process.env.TMPDIR = scratch;
     const apiAnswering = (release: Record<string, unknown>) =>
       ({
         requestUpdateUpload: async (devProjectId: string, upload: Record<string, unknown>) => {
@@ -699,8 +780,7 @@ describe("OTA uploads", () => {
         "./pack.json",
       ]);
       expect(announced[0]?.size).toBe(stored[0]?.byteLength);
-      for (const suffix of ["tgz", "list"])
-        expect(existsSync(path.join(os.tmpdir(), `akan-pack-lu-default-android-${process.pid}.${suffix}`))).toBe(false);
+      expect(readdirSync(scratch)).toEqual([]);
 
       const exitCode = process.exitCode;
       const rejected = { id: "release-2", status: "rejected", problems: ["deepLinks differ from the app's"] };
@@ -726,8 +806,337 @@ describe("OTA uploads", () => {
       await expect(
         new CloudRunner().pushUpdate(apiAnswering(published), "project-1", pack, { channel: null, notes: null }),
       ).rejects.toThrow("not 64 hex digits");
+
+      writeFileSync(
+        path.join(out, "manifest.template.json"),
+        JSON.stringify({ files: [{ ...listed, sha256: "c".repeat(64) }] }),
+      );
+      const asked = announced.length;
+      await expect(
+        new CloudRunner().pushUpdate(apiAnswering(published), "project-1", pack, { channel: null, notes: null }),
+      ).rejects.toThrow(`tar of ${out} failed`);
+      expect(announced).toHaveLength(asked);
+      expect(readdirSync(scratch)).toEqual([]);
     } finally {
       storage.stop(true);
+      if (tmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = tmpdir;
+      rmSync(scratch, { recursive: true, force: true });
     }
   });
+});
+
+const packFixture = async (out: string, fields: Partial<NativeUpdatePack> = {}): Promise<NativeUpdatePack> => {
+  const hash = "a".repeat(64);
+  await writeText(path.join(out, "files", hash), "<html></html>");
+  await writeJson(path.join(out, "manifest.template.json"), {
+    files: [{ path: "index.html", sha256: hash, size: 13 }],
+  });
+  await writeJson(path.join(out, "bundle.json"), { schema: 1, web: { hash: "f".repeat(64) } });
+  const pack: NativeUpdatePack = {
+    schema: 1,
+    app: "lu",
+    target: "default",
+    platform: "android",
+    env: "main",
+    channel: "main",
+    appId: "com.lu",
+    appVersion: "1.0.0",
+    nativeApi: "0123456789abcdef",
+    webHash: "f".repeat(64),
+    files: 1,
+    size: 13,
+    out,
+    ...fields,
+  };
+  await writeJson(path.join(out, "pack.json"), pack);
+  return pack;
+};
+
+const appOf = (
+  root: string,
+  {
+    name = "lu",
+    targets = { default: {} },
+    basePaths = [],
+  }: { name?: string; targets?: object; basePaths?: string[] } = {},
+) =>
+  ({
+    name,
+    cwdPath: path.join(root, "apps", name),
+    workspace: { workspaceRoot: root },
+    getConfig: async () => ({ native: { targets }, basePaths: new Set(basePaths) }),
+  }) as never;
+
+describe("push-update --pack", () => {
+  const none = { platform: null, target: null, env: null, allowLocalRelease: false };
+
+  test("takes the platform, target and env from pack.json, and refuses a flag given beside it that disagrees", async () => {
+    const root = await makeTempRoot();
+    const { out } = await packFixture(path.join(root, "pack"));
+    const app = appOf(root, { targets: { default: {}, kiosk: {} } });
+    const runner = new CloudRunner();
+
+    expect(await runner.readPack(app, out, none)).toMatchObject({
+      platform: "android",
+      target: "default",
+      env: "main",
+    });
+    expect(
+      await runner.readPack(app, out, {
+        platform: "android",
+        target: "default",
+        env: "main",
+        allowLocalRelease: false,
+      }),
+    ).toMatchObject({ target: "default" });
+    await expect(runner.readPack(app, out, { ...none, platform: "ios" })).rejects.toThrow(
+      `The pack in ${out} is lu default android --env main, not ios.`,
+    );
+    await expect(runner.readPack(app, out, { ...none, env: "debug" })).rejects.toThrow("not --env debug.");
+    await expect(runner.readPack(app, out, { ...none, target: "kiosk" })).rejects.toThrow(
+      "not --target kiosk (kiosk).",
+    );
+    await expect(runner.readPack(app, out, { ...none, target: "all" })).rejects.toThrow(
+      "not --target all (default, kiosk).",
+    );
+    await expect(runner.readPack(appOf(root, { name: "globex" }), out, none)).rejects.toThrow("not globex's.");
+  });
+
+  test("compares --target with the target it resolves to, so a basePath or `all` naming the pack's target passes", async () => {
+    const root = await makeTempRoot();
+    const runner = new CloudRunner();
+    const admin = await packFixture(path.join(root, "admin"), { target: "adminApp" });
+    const app = appOf(root, { targets: { default: {}, adminApp: { basePath: "admin" } }, basePaths: ["admin"] });
+    expect(await runner.readPack(app, admin.out, { ...none, target: "admin" })).toMatchObject({ target: "adminApp" });
+
+    const single = await packFixture(path.join(root, "single"));
+    expect(await runner.readPack(appOf(root), single.out, { ...none, target: "all" })).toMatchObject({
+      target: "default",
+    });
+  });
+
+  test("a pack built with --env local is refused unless --allow-local-release is given", async () => {
+    const root = await makeTempRoot();
+    const { out } = await packFixture(path.join(root, "pack"), { env: "local", channel: "local" });
+    await expect(new CloudRunner().readPack(appOf(root), out, none)).rejects.toThrow(
+      "and a local pack is blocked. Pass --allow-local-release only for explicit local release testing.",
+    );
+    await expect(new CloudRunner().readPack(appOf(root), out, { ...none, env: "main" })).rejects.toThrow(
+      "not --env main.",
+    );
+    expect(await new CloudRunner().readPack(appOf(root), out, { ...none, allowLocalRelease: true })).toMatchObject({
+      env: "local",
+    });
+  });
+});
+
+describe("push-update", () => {
+  const options = {
+    platform: null,
+    target: null,
+    env: null,
+    channel: null,
+    notes: null,
+    subspace: null,
+    write: false,
+    allowLocalRelease: false,
+    pack: null,
+  };
+  const stubPush = (pack: NativeUpdatePack) => {
+    const script = CommandContainer.get(CloudScript);
+    const recorder = createCallRecorder();
+    script.cloudRunner.secretProject = async (...args) => {
+      recorder.record("secretProject", ...args);
+      return "project-1";
+    };
+    script.applicationScript.packUpdate = async (...args) => {
+      recorder.record("packUpdate", ...args);
+      return pack;
+    };
+    script.cloudRunner.login = async () => true;
+    script.cloudRunner.pushUpdate = async (...args) => {
+      recorder.record("pushUpdate", ...args);
+      return { id: "release-1" };
+    };
+    spyOn(GlobalConfig, "hostFor").mockResolvedValue("https://cloud.test");
+    spyOn(CloudApi, "fromHost").mockResolvedValue({} as never);
+    return { script, recorder };
+  };
+
+  test("packs for the target --target resolves to, without comparing the raw flag with the target's name", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"), { target: "adminApp" });
+    const { script, recorder } = stubPush(pack);
+
+    await script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), {
+      ...options,
+      platform: "android",
+      target: "admin",
+    });
+
+    expect(recorder.names()).toEqual(["secretProject", "packUpdate", "pushUpdate"]);
+    expect(recorder.calls[0]?.args.slice(1)).toEqual([null, "lu"]);
+    expect(recorder.calls[1]?.args.slice(1)).toEqual([
+      "android",
+      { target: "admin", env: "main", write: false, allowLocalRelease: false },
+    ]);
+    expect(recorder.calls[2]?.args[2]).toBe(pack);
+  });
+
+  test("uploads a --pack folder given no other flag, the way a CI step runs it", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"));
+    const { script, recorder } = stubPush(pack);
+
+    await script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), { ...options, pack: pack.out });
+
+    expect(recorder.names()).toEqual(["secretProject", "pushUpdate"]);
+    expect(recorder.calls[1]?.args[2]).toMatchObject({ app: "lu", target: "default", platform: "android" });
+  });
+
+  test("without --pack, a missing --platform is named instead of asked for", async () => {
+    const root = await makeTempRoot();
+    const { script, recorder } = stubPush(await packFixture(path.join(root, "pack")));
+    await expect(script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), options)).rejects.toThrow(
+      "push-update needs --platform ios or android to pack, or --pack <dir>",
+    );
+    expect(recorder.names()).toEqual(["secretProject"]);
+  });
+});
+
+describe("register-binary", () => {
+  const storeBuild = async (root: string, bundle: Record<string, unknown> = {}) => {
+    const bundlePath = path.join(root, "dist", "native", "lu", "default", "build", "android", "bundle.json");
+    await writeJson(bundlePath, { schema: 1, web: { hash: "f".repeat(64) }, updates: { channel: "main" }, ...bundle });
+    return bundlePath;
+  };
+  const uploadless = {
+    requestUpdateUpload: async () => {
+      throw new Error("nothing is uploaded for a refused store build");
+    },
+  } as unknown as CloudApi;
+  const rebuild = "Run `akan release-android lu --target default --env main`, then register that build.";
+
+  //? Every native build rewrites build/<platform>/bundle.json: a debug build after the release took its place.
+  test("refuses a store build whose web bundle or channel is not the pack's", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"));
+    const compare = spyOn(NativeApp, "compareBundles").mockResolvedValue({ compatible: true, problems: [] });
+    const register = () =>
+      new CloudRunner().registerBinary(uploadless, "project-1", appOf(root), pack, {
+        distribution: "playStore",
+        env: "main",
+      });
+
+    await storeBuild(root, { web: { hash: "e".repeat(64) }, updates: { channel: "debug" } });
+    await expect(register()).rejects.toThrow(
+      `is not this commit's --env main build: its web bundle differs from the pack's. ${rebuild}`,
+    );
+    expect(compare).not.toHaveBeenCalled();
+
+    await storeBuild(root, { updates: { channel: "debug" } });
+    await expect(register()).rejects.toThrow(
+      `reads updates channel debug, and this commit's --env main pack is for main. ${rebuild}`,
+    );
+  });
+
+  test("names how the store build differs natively, as pack-update --against does", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"));
+    const bundlePath = await storeBuild(root);
+    const compare = spyOn(NativeApp, "compareBundles").mockResolvedValue({
+      compatible: false,
+      problems: ["deep link schemes [lu] vs [] in the app"],
+    });
+
+    const refusal = await new CloudRunner()
+      .registerBinary(uploadless, "project-1", appOf(root), pack, { distribution: "playStore", env: "main" })
+      .catch((error: unknown) => error);
+
+    expect(String(refusal)).toContain(
+      `The store build at ${bundlePath} differs from this commit's pack:\n- deep link schemes [lu] vs [] in the app\n${rebuild}`,
+    );
+    expect(String(refusal)).not.toContain("provides native API");
+    expect(compare).toHaveBeenCalledWith(path.join(root, "apps", "lu"), bundlePath, path.join(pack.out, "bundle.json"));
+  });
+
+  test("registers a matching store build on the pack's channel, and leaves no archive behind", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"));
+    await storeBuild(root);
+    spyOn(NativeApp, "compareBundles").mockResolvedValue({ compatible: true, problems: [] });
+    const storage = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response(null) });
+    const registered: Record<string, unknown>[] = [];
+    const api = {
+      requestUpdateUpload: async () => ({
+        uploadId: "upload-1",
+        uploadUrl: `http://127.0.0.1:${storage.port}/upload-1`,
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        contentType: "application/gzip",
+      }),
+      registerAppBinary: async (_devProjectId: string, binary: Record<string, unknown>) => {
+        registered.push(binary);
+        return { id: "binary-1" };
+      },
+    } as unknown as CloudApi;
+    const tmpdir = process.env.TMPDIR;
+    const scratch = path.join(root, "tmp");
+    mkdirSync(scratch);
+    process.env.TMPDIR = scratch;
+
+    try {
+      const binary = await new CloudRunner().registerBinary(api, "project-1", appOf(root), pack, {
+        distribution: "playStore",
+        env: "main",
+      });
+      expect(binary).toEqual({ id: "binary-1" });
+      expect(registered).toMatchObject([
+        { appName: "lu", target: "default", distribution: "playStore", packUploadId: "upload-1", channel: "main" },
+      ]);
+      expect(readdirSync(scratch)).toEqual([]);
+    } finally {
+      storage.stop(true);
+      if (tmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = tmpdir;
+    }
+  });
+});
+
+describe("upload-secret on a piped stdin", () => {
+  test("names the missing NAME and exits 1 at once, never printing the piped value", async () => {
+    const root = await makeTempRoot();
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { runCommands } from ${JSON.stringify(Bun.resolveSync("@akanjs/devkit/commandDecorators", import.meta.dir))};`,
+        `import { CloudCommand } from ${JSON.stringify(path.join(import.meta.dir, "cloud.command.ts"))};`,
+        "await runCommands(CloudCommand);",
+        "",
+      ].join("\n"),
+    );
+    const secret = "npm_FAKEtoken0123456789abcdefFAKE";
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AKAN_")));
+    const proc = Bun.spawn(["bun", entry, "upload-secret", "--host", "http://127.0.0.1:9"], {
+      cwd: root,
+      stdin: new Blob([secret]),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...env, HOME: path.join(root, "home"), GIT_CEILING_DIRECTORIES: path.dirname(root) },
+    });
+    const hung = setTimeout(() => proc.kill(), 45_000);
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    clearTimeout(hung);
+
+    expect(`${stdout}${stderr}`).not.toContain(secret);
+    expect(stdout).toContain("Missing argument 'name': stdin is not a terminal to prompt on");
+    expect(code).toBe(1);
+  }, 60_000);
 });

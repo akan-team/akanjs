@@ -261,7 +261,8 @@ export class NativeConfig {
     };
   }
 
-  //? akanConfig refuses a target whose merged updates lack url or a key; the type still has them optional.
+  //? akanConfig refuses a target whose merged updates lack url or a key, or hold both key forms; the type still has
+  //? them optional.
   static #updates(target: AkanNativeTarget, env?: NativeEnv): NonNullable<AkanNativeConfig["updates"]> | undefined {
     const { url, publicKey, publicKeys, channel = env, ...rest } = target.updates ?? {};
     const keys = publicKeys ? { publicKeys: [...publicKeys] } : publicKey ? { publicKey } : null;

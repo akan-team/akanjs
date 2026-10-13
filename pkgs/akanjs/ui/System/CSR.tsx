@@ -138,22 +138,22 @@ const CSRWrapper = ({
     stackEntries,
   } = useCsr();
   const csrLoaded = st.use.csrLoaded({ agent: false });
-  const { router: reactRouter } = useCsr();
+  const { router: reactRouter, history } = useCsr();
   useEffect(() => {
     debugFrame("csrWrapper.mount", { appName, layoutStyle, pathCount: pathRoutes.length });
     if (layoutStyle === "mobile") {
       document.documentElement.classList.add("akan-mobile-document");
       document.body.classList.add("akan-mobile-document");
     }
-    if (!router.isInitialized)
-      router.init({
-        type: "csr",
-        lang,
-        prefix,
-        router: reactRouter,
-        routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
-        indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
-      });
+    //? Every mount, not the first: a view's reload mounts a new tree, and a router left on the old one moves nothing.
+    router.init({
+      type: "csr",
+      lang,
+      prefix,
+      router: { ...reactRouter, canGoBack: () => history.current.idx > 0 },
+      routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
+      indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
+    });
     st.do.setCsrLoaded(true);
     const onVisibilityChange = () => debugFrame("document.visibility", { visibilityState: document.visibilityState });
     const onPageHide = (event: PageTransitionEvent) => debugFrame("window.pagehide", { persisted: event.persisted });

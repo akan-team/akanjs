@@ -3,6 +3,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isUpdateKeyId, updateDecision } from "../../../core/src/kernel.ts";
 import { assertSameServer, publishAppUpdate } from "../platforms/desktop-update.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError, log } from "./log.ts";
@@ -11,6 +12,8 @@ import {
   assertChannel,
   type DesktopArch,
   hostArch,
+  keyIdOf,
+  openEnvelope,
   sealManifest,
   signingKey,
   signManifest,
@@ -20,6 +23,9 @@ import {
   webManifest,
   writeWebBundle,
 } from "./updates.ts";
+
+//? Phones refuse a manifest whose revokeKeys lists more (UpdatesPlugin).
+const MAX_REVOKE_KEYS = 16;
 
 export type ReleasePlatform = "macos" | "windows" | "linux" | "ios" | "android";
 
@@ -96,6 +102,87 @@ export function assertSigningKey(
 }
 
 /**
+ * What the phone envelopes of `channel` in `dir` revoke, as a phone with `publicKeys` takes it: from an envelope that
+ * verifies, by a signer allowed to and not itself revoked. A file that does not verify revokes nothing, or a stray or
+ * forged one would have the next publish sign its revocation.
+ */
+function publishedRevocations(dir: string, channel: string, publicKeys: readonly string[]): string[] {
+  const folder = join(dir, channel);
+  if (!existsSync(folder)) return [];
+  const ring = publicKeys.map(keyIdOf);
+  const signed: { keyId: string; revokeKeys: string[] }[] = [];
+  for (const name of readdirSync(folder).filter((name) => name.endsWith(".json"))) {
+    try {
+      const { manifest, keyId } = openEnvelope(readFileSync(join(folder, name), "utf8"), publicKeys);
+      const { revokeKeys = [] } = JSON.parse(new TextDecoder().decode(manifest)) as { revokeKeys?: unknown };
+      if (
+        Array.isArray(revokeKeys) &&
+        revokeKeys.length <= MAX_REVOKE_KEYS &&
+        revokeKeys.every((id: unknown) => typeof id === "string" && isUpdateKeyId(id))
+      )
+        signed.push({ keyId, revokeKeys });
+    } catch (error) {
+      log.warn(`${join(folder, name)}: ${(error as Error).message}; what it revokes is not carried on`);
+    }
+  }
+  const revoked: string[] = [];
+  //? Later keys first: a key revoked by one after it revokes nothing itself.
+  for (const { keyId, revokeKeys } of signed.sort((a, b) => ring.indexOf(b.keyId) - ring.indexOf(a.keyId))) {
+    const { kind } = updateDecision({
+      ring,
+      revoked,
+      signer: keyId,
+      revokeKeys,
+      resetSequence: false,
+      sequence: 1,
+      embedded: 0,
+      running: null,
+    });
+    if (kind === "take") revoked.push(...revokeKeys.filter((id) => !revoked.includes(id)));
+  }
+  return revoked.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The revokeKeys of a phone release of `channel` under `out`: those of the channel's releases, since a phone that never
+ * saw a revocation (a new install, cleared data) learns it only from a later manifest. Refuses a signing key they
+ * revoke, or one listed before a key they revoke: every phone would refuse its manifest.
+ */
+export function channelRevocations(
+  config: { app: { id: string }; updates?: { publicKeys: string[] } | null },
+  platform: ReleasePlatform,
+  out: string,
+  channel: string,
+): string[] {
+  if ((platform !== "ios" && platform !== "android") || !config.updates) return [];
+  const { publicKeys } = config.updates;
+  const dir = releaseDir(out, platform);
+  const revokeKeys = publishedRevocations(dir, channel, publicKeys);
+  if (!revokeKeys.length) return [];
+  const keyPath = updateKeyPath(config.app.id);
+  const { kind } = updateDecision({
+    ring: publicKeys.map(keyIdOf),
+    revoked: [],
+    signer: signingKey(keyPath, publicKeys).keyId,
+    revokeKeys,
+    resetSequence: false,
+    sequence: 1,
+    embedded: 0,
+    running: null,
+  });
+  const by = `the ${channel} releases in ${dir} revoke ${revokeKeys.join(", ")}`;
+  if (kind === "self-revoke")
+    throw new CliError(`${by}, the key at ${keyPath}: sign with a key listed after it in updates.publicKeys`);
+  if (kind === "revoke-later")
+    throw new CliError(
+      `${by}, listed after the key at ${keyPath} in updates.publicKeys: a key revokes only keys before it, so sign with one after them`,
+    );
+  if (revokeKeys.length > MAX_REVOKE_KEYS)
+    throw new CliError(`${by}: more than the ${MAX_REVOKE_KEYS} keys a manifest may revoke`);
+  return revokeKeys;
+}
+
+/**
  * `<channel>.json` and its `.sig` land together, the signature first: an app that reads a manifest beside another
  * one's signature refuses every release until the next publish.
  */
@@ -132,6 +219,7 @@ export async function publishRelease(
   const dir = releaseDir(out, platform, ctx.arch);
   assertChannel(channel);
   assertSigningKey(config, platform);
+  const revokeKeys = channelRevocations(config, platform, out, channel);
   const keyPath = updateKeyPath(config.app.id);
   const sequence = nextSequence(dir, channel);
 
@@ -149,6 +237,7 @@ export async function publishRelease(
       sequence,
       bundle: `${sequence}-${info.web.hash.slice(0, 8)}`,
       files: writeWebBundle(dir, ctx.webDir, ctx.html, ctx.env),
+      revokeKeys,
     });
   }
   const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);

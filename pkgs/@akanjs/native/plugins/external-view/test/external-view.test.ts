@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
@@ -84,6 +87,21 @@ describe("external-view plugin", () => {
       49, 32, 191, 116,
     ]);
     expect(() => virtualKey("Hyper")).toThrow("not a key sendKey knows");
+    for (const inherited of ["toString", "__proto__", "constructor", "hasOwnProperty"])
+      expect(() => virtualKey(inherited)).toThrow("not a key sendKey knows");
+  });
+
+  test("presses Enter with the text Chrome gives it, so a form submits and a focused button clicks", async () => {
+    const host = fakeHost(createDesktopExternalView(), answer);
+    await host.call("sendKey", { id: "board", key: "Enter", code: "Enter" });
+    await host.call("sendKey", { id: "board", key: "Enter", code: "NumpadEnter" });
+    await host.call("sendKey", { id: "board", key: "Escape", code: "Escape" });
+    const downs = host.shell.map((s) => s.args?.params as Record<string, unknown>).filter((p) => p.type === "keyDown");
+    expect(downs.map((p) => [p.code, p.windowsVirtualKeyCode, p.text, p.unmodifiedText])).toEqual([
+      ["Enter", 13, "\r", "\r"],
+      ["NumpadEnter", 13, "\r", "\r"],
+      ["Escape", 27, undefined, undefined],
+    ]);
   });
 
   test("captures the view as a PNG file with its size, and parses what evaluate answers", async () => {
@@ -108,6 +126,30 @@ describe("external-view plugin", () => {
       result: { value: { frozen: false } },
     });
     expect(host.shell.map((s) => s.args?.method ?? s.op)).toEqual(["Page.captureScreenshot", "externalView.evaluate"]);
+  });
+
+  test("keeps one capture per view in the app's own temporary folder, and none from an earlier launch", async () => {
+    const dir = join(tmpdir(), "dev.test", "external-view");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "board-1.png"), "");
+    const png = Buffer.alloc(33);
+    const host = fakeHost(createDesktopExternalView(), (op, args) =>
+      op === "externalView.cdp" && args?.method === "Page.captureScreenshot"
+        ? JSON.stringify({ data: png.toString("base64") })
+        : null,
+    );
+    try {
+      for (const id of ["board", "board", "menu"]) {
+        expect(await host.call("capture", { id })).toMatchObject({ ok: true });
+        await Bun.sleep(2);
+      }
+      const kept = readdirSync(dir);
+      expect(kept).toHaveLength(2);
+      expect(kept.filter((name) => name.startsWith("board-"))).toHaveLength(1);
+      expect(kept).not.toContain("board-1.png");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("forwards loads, failures and the restart count to the view's window", async () => {

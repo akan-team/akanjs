@@ -65,7 +65,7 @@ class AkanNativeUpdateState(
                 trial = AkanNativeUpdateEntry.from(o.opt("trial")),
                 failed = MutableList(failed?.length() ?: 0) { failed!!.optString(it) }.filter(AkanNativeUpdates::isBundleId).toMutableList(),
                 rolledBack = o.optString("rolledBack").ifEmpty { null },
-                revokedKeys = MutableList(revoked?.length() ?: 0) { revoked!!.optString(it) }.filter(AkanNativeKernel::isUpdateKeyId).toMutableList(),
+                revokedKeys = MutableList(revoked?.length() ?: 0) { revoked?.optString(it).orEmpty() }.filter(AkanNativeKernel::isUpdateKeyId).toMutableList(),
             )
         }
     }
@@ -244,7 +244,6 @@ object AkanNativeUpdates {
         }
     }
 
-    /** Whether a bundle may run in this binary: one it still takes, whose files are intact. */
     fun usable(entry: AkanNativeUpdateEntry?, config: AkanNativeUpdateConfig, revoked: List<String>): Boolean =
         entry != null && takes(entry, config, revoked) && intact(entry, config, revoked)
 
@@ -334,9 +333,9 @@ object AkanNativeUpdates {
 
     /**
      * The trial did not confirm in time: back to the previous bundle. Returns its folder (null: the APK's own) and the
-     * trial it ended, whose report waits for the renderer probe to say whether the page timed out or hung.
+     * id of the rollback's report, a timeout until the renderer probe finds the page hung.
      */
-    fun rollback(): Pair<File?, AkanNativeUpdateEntry?> {
+    fun rollback(): Pair<File?, Long?> {
         val trial = active
         if (!onTrial || trial == null) return active?.let { bundleDirectory(it.bundle) } to null
         val state = readState()
@@ -344,11 +343,12 @@ object AkanNativeUpdates {
         state.failed.add(trial.bundle)
         state.rolledBack = trial.bundle
         writeState(state)
+        val report = AkanNativeUpdateReports.record("rolledBack", trial, "timeout")
         onTrial = false
         val config = config
         active = if (config != null && usable(state.current, config, state.revokedKeys)) state.current else null
         Log.w(TAG, "bundle ${trial.bundle} did not call notifyReady() in time; rolled back")
-        return active?.let { bundleDirectory(it.bundle) } to trial
+        return active?.let { bundleDirectory(it.bundle) } to report
     }
 
     /** reset(): the APK's own bundle from the next launch on. Revocations stay. */

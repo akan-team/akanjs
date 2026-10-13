@@ -408,17 +408,17 @@ export default page().render(() => {
       }),
     },
     {
-      name: "clone({ origin, jwt, connect })",
+      name: "clone({ origin, jwt, connect, retry, ws })",
       desc: l.trans({
-        en: "A copy with the same endpoints, for another origin or user. `connect` defaults to `true`.",
-        ko: "같은 endpoint를 가진 복사본을 다른 origin이나 사용자용으로 만듭니다. `connect` 기본값은 `true`입니다.",
+        en: "A copy with the same endpoints, for another origin or user. It keeps this client's default timeout, `retry` policy and WebSocket options, and its own `retry` or `ws` overrides them. `connect` defaults to `true`, except on the server for a clone given an `origin` or a clone of one that points at another origin.",
+        ko: "같은 endpoint를 가진 복사본을 다른 origin이나 사용자용으로 만듭니다. 이 client의 기본 제한 시간, `retry` 정책, WebSocket 옵션을 물려받고, 복사본에 준 `retry`나 `ws`가 그 위에 덮입니다. `connect` 기본값은 `true`이지만, 서버에서 `origin`을 준 복사본과, 다른 origin을 가리키는 복사본의 복사본은 예외입니다.",
       }),
     },
     {
       name: "setTimeout(ms)",
       desc: l.trans({
-        en: "Budget for calls whose endpoint and caller name none: 30 seconds by default, `false` for no limit.",
-        ko: "호출도 endpoint도 제한 시간을 정하지 않았을 때 쓰는 기본값입니다. 기본 30초이며, `false`면 제한이 없습니다.",
+        en: "Budget for calls whose endpoint and caller name none: 30 seconds by default, `false` for no limit. A retried call's tries and the waits between them share that one deadline, so each try gets only the time left.",
+        ko: "호출도 endpoint도 제한 시간을 정하지 않았을 때 쓰는 기본값입니다. 기본 30초이며, `false`면 제한이 없습니다. 재시도하는 호출은 모든 시도와 그 사이의 대기가 한 기한을 나눠 쓰므로, 시도마다 남은 시간만 받습니다.",
       }),
     },
     {
@@ -1161,7 +1161,9 @@ export const getUserFetch = async (jwt: string): Promise<AppFetch> => {
                     <strong>
                       <code>connect: false</code> skips the WebSocket
                     </strong>{" "}
-                    for a copy that only makes HTTP calls. The API explorer clones this way.
+                    for a copy that only makes HTTP calls. The API explorer clones this way. On the server a clone given
+                    an <code>origin</code>, and a clone of one that points at another origin, open none unless they pass{" "}
+                    <code>connect: true</code>.
                   </span>
                 ),
                 ko: (
@@ -1169,7 +1171,9 @@ export const getUserFetch = async (jwt: string): Promise<AppFetch> => {
                     <strong>
                       <code>connect: false</code>면 WebSocket을 열지 않습니다.
                     </strong>{" "}
-                    HTTP만 부르는 복사본에 씁니다. API explorer가 이렇게 복사합니다.
+                    HTTP만 부르는 복사본에 씁니다. API explorer가 이렇게 복사합니다. 서버에서 <code>origin</code>을 준
+                    복사본과, 다른 origin을 가리키는 복사본의 복사본은 <code>connect: true</code>를 주지 않으면
+                    WebSocket을 열지 않습니다.
                   </span>
                 ),
               })}

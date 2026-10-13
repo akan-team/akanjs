@@ -575,11 +575,12 @@ export class SignalContext<
       return items.filter((item) => item !== null);
     }
     const refName = ConstantRegistry.getRefName(modelRef as ConstantCls);
-    const service = live.service.get(refName) as unknown as DatabaseService;
-    if (!service) throw new Error(`Service ${refName} is not registered`);
+    const isEmpty = value === null || value === undefined;
+    const service = isEmpty ? null : (live.service.get(refName) as unknown as DatabaseService | undefined);
+    if (!isEmpty && !service) throw new Error(`Service ${refName} is not registered`);
     // Cached as nullable so one entry serves every reference to the document; the refusal below is each field's own.
     const resolved =
-      value === null || value === undefined
+      isEmpty || !service
         ? null
         : await SignalContext.#resolveOnce(cache, modelRef, String(value), async () => {
             const loaded = await SignalContext.loadNested(value, service, { arrDepth: 0 });
@@ -796,9 +797,9 @@ export class HttpExecutionContext<Appended = unknown> {
       }
     });
   }
-  //? A multipart field is text, and the client sends a string as it is and any other value as JSON: a Date arrives
-  //? as `"2026-…Z"` with its quotes. Parsed back unless the argument is a plain string, which a JSON parse could turn
-  //? into a number; text that is not JSON (an enum value, an older client's) stays as it came.
+  //? A multipart field is text: the client sends a String or ID argument as it is and every other value as JSON, so a
+  //? Date arrives as `"2026-…Z"` with its quotes. Parsed back unless the argument is a plain string, which a JSON parse
+  //? could turn into a number; text that is not JSON (an enum value, an older client's) stays as it came.
   static #multipartValue(arg: ArgInfo, text: string): unknown {
     if (arg.arrDepth === 0 && (arg.argRef === String || arg.argRef === ID)) return text;
     try {

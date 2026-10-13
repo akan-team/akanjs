@@ -85,8 +85,8 @@ export interface WindowApi {
    */
   setCursorVisible(args: { value: boolean } & On): Promise<WindowState>;
   /**
-   * The smallest inner size, logical pixels; left out, none. The default is 320×240, which an LED board drawn at
-   * its device size (640×128 ÷ the display's `scale`) is below.
+   * The smallest inner size, logical pixels: both or neither (none); one alone is INVALID_ARGS. The default is
+   * 320×240, which an LED board drawn at its device size (640×128 ÷ the display's `scale`) is below.
    */
   setMinSize(args: { width?: number; height?: number } & On): Promise<WindowState>;
   /**
@@ -198,7 +198,7 @@ export interface WindowHandle {
   setAlwaysOnTop(value: boolean): Promise<WindowState>;
   setDecorations(value: boolean): Promise<WindowState>;
   setCursorVisible(value: boolean): Promise<WindowState>;
-  /** Left out: no minimum. */
+  /** Both left out: no minimum. One alone is INVALID_ARGS. */
   setMinSize(width?: number, height?: number): Promise<WindowState>;
   placeOnDisplay(options: PlaceOnDisplayOptions): Promise<WindowState>;
   show(): Promise<WindowState>;
@@ -233,7 +233,11 @@ export function windowHandle(id: number): WindowHandle {
     setDecorations: (value) => appWindow.setDecorations({ value, ...on }),
     setCursorVisible: (value) => appWindow.setCursorVisible({ value, ...on }),
     setMinSize: (width, height) =>
-      appWindow.setMinSize({ ...(width !== undefined && height !== undefined ? { width, height } : {}), ...on }),
+      appWindow.setMinSize({
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...on,
+      }),
     placeOnDisplay: (options) => appWindow.placeOnDisplay({ ...options, ...on }),
     show: () => appWindow.show(on),
     hide: () => appWindow.hide(on),

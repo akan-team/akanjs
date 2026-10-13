@@ -282,6 +282,18 @@ class FakeCacheAdaptor {
     this.store.set(`${topic}:${key}`, String(value));
     return true;
   }
+  async acquireLease(topic: string, key: string, owner: string) {
+    const holder = this.store.get(`${topic}:${key}`);
+    if (holder !== undefined && holder !== owner) return false;
+    this.store.set(`${topic}:${key}`, owner);
+    return true;
+  }
+  async renewLease(topic: string, key: string, owner: string) {
+    return this.store.get(`${topic}:${key}`) === owner;
+  }
+  async releaseLease(topic: string, key: string, owner: string) {
+    if (this.store.get(`${topic}:${key}`) === owner) this.store.delete(`${topic}:${key}`);
+  }
 }
 
 const makeCacheRegistry = (cache: FakeCacheAdaptor) => {
@@ -1661,6 +1673,25 @@ describe("SignalContext return resolution", () => {
     await expect(
       resolveHolder({ label: "a", related: "gone", relateds: [], requiredRelated: null }),
     ).rejects.toMatchObject(notFound(null));
+  });
+
+  test("answers an empty relation without the related model's service", async () => {
+    await expect(
+      SignalContext.resolveReturn(
+        { label: "a", related: null, relateds: [], requiredRelated: null },
+        {
+          signalContext: null,
+          returnRef: SignalTestHolderFull,
+          arrDepth: 0,
+          registry: getDefaultInjectRegistry(),
+          live: getDefaultLiveRegistry(),
+        },
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      error: "base.error.relationNotFound",
+      data: { model: "signalTestRelated", field: "requiredRelated" },
+    });
   });
 
   test("drops a removed document from a relation list instead of refusing the response or leaving a null", async () => {

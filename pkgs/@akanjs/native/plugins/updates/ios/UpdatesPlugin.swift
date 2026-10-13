@@ -246,8 +246,9 @@ final class UpdatesPlugin: UpdatesPluginSpec {
             throw bad("made for another app, platform, channel or native API")
         }
         let revokeKeys = o["revokeKeys"] as? [String] ?? []
+        //? A JSON 1 or 1.0 `is Bool` too; Android and the publisher take only true or false.
         guard o["revokeKeys"] == nil || o["revokeKeys"] is [String], revokeKeys.count <= 16, revokeKeys.allSatisfy(AkanNativeKernel.isUpdateKeyId),
-              o["resetSequence"] == nil || o["resetSequence"] is Bool else { throw bad("revokeKeys or resetSequence") }
+              o["resetSequence"].map({ CFGetTypeID($0 as CFTypeRef) == CFBooleanGetTypeID() }) ?? true else { throw bad("revokeKeys or resetSequence") }
         guard let bundle = o["bundle"] as? String, AkanNativeUpdates.isBundleId(bundle) else { throw bad("bundle id") }
         guard let sequence = (o["sequence"] as? NSNumber)?.doubleValue, sequence.isFinite, sequence > 0 else { throw bad("sequence") }
         guard let nativeApi = o["nativeApi"] as? String, let list = o["files"] as? [[String: Any]], (1...5000).contains(list.count) else { throw bad("nativeApi or files") }

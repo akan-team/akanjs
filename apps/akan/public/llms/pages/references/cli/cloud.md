@@ -66,9 +66,11 @@ Does not connect
 
 **Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and `.env`.
 
-**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands.
+**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands. `cloud: { host }` in the root `akan.config.ts` makes one the default.
 
-**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it.
+**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it. `--host` and `cloud.host` are both read as the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port still names the same session.
+
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing.
 
 Where Env Values Are Kept
 
@@ -88,7 +90,7 @@ Where the archive lives
 
 Pipeline Secrets
 
-**They belong to a project.** The root `.env`'s `AKAN_WORKSPACE_ID` names it, and only its members signed in with `akan login` may change or list them.
+**They belong to a project.** The root `.env`'s `AKAN_WORKSPACE_ID` names it, or `--subspace` a subspace's `workspaceId`, and only its members signed in with `akan login` may change or list them.
 
 **A step asks for one by name.** Only a step that lists the name in `secrets` receives it, as an environment variable of that name.
 
@@ -114,7 +116,7 @@ Share a local app on a public URL with the `akan login` session.
 
 Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the browser and waits until you finish there.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).
 
 - browser: Prints the sign-in URL and a QR code and opens it; visit the URL yourself if no browser opens.
 
@@ -132,7 +134,7 @@ Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the bro
 
 Sign out of Akan Cloud on this machine. Use it to switch accounts, or to take this machine's cloud access away.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).
 
 - clears: Only the session saved for that `--host`, leaving other hosts signed in.
 
@@ -158,7 +160,7 @@ Move the global `akan` CLI and this workspace's Akan.js packages to the newest v
 
 Download the env values of every app and library in this workspace. Run it after cloning and whenever someone uploads a change, because env values are never committed.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use when `AKAN_WORKSPACE_ID` is set, chosen as for `login`; ignored for an SCP server.
 
 - where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
 
@@ -172,7 +174,7 @@ Download the env values of every app and library in this workspace. Run it after
 
 Upload the env values of every app and library to where `download-env` reads from. The stored archive is replaced whole, so download first instead of uploading a stale local copy.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use when `AKAN_WORKSPACE_ID` is set, chosen as for `login`; ignored for an SCP server.
 
 - where: Akan Cloud when the root `.env` sets `AKAN_WORKSPACE_ID`, otherwise an SCP server.
 
@@ -184,9 +186,9 @@ Upload the env values of every app and library to where `download-env` reads fro
 
 - no files: Stops with an error when there is no env file to upload.
 
-`akan upload-secret <name> [--branch <debug|develop|main>] [--file <path>] [--host <host>]`
+`akan upload-secret <name> [--branch <debug|develop|main>] [--file <path>] [--subspace <name>] [--host <host>]`
 
-Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names. The value is write-only: no command shows it again, so keep the original where you keep other credentials.
+Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names, or a subspace's with `--subspace`. The value is write-only: no command shows it again, so keep the original where you keep other credentials.
 
 - name (String, required): Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`.
 
@@ -194,9 +196,15 @@ Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` na
 
 - --file (String): Read the value from this file instead of stdin or a hidden prompt.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+- --subspace (String): A subspace of the root `akan.config.ts`: the project its `workspaceId` names. Left out, the project `AKAN_WORKSPACE_ID` names.
+
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).
 
 - value: From `--file`, piped stdin or a hidden prompt; never an argument, which shell history keeps.
+
+- stdin: Reading stdin, it prints one line to stderr saying so, never the value. With stdin piped, a missing `<name>` is an error rather than a prompt, so the pipe is never taken for the name.
+
+- order: The name and `--branch` are checked before the value is read or sign-in starts.
 
 - size: An empty value or one over 64 KiB is refused; one trailing newline is dropped.
 
@@ -204,17 +212,19 @@ Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` na
 
 - takes effect: Builds that start after the upload use the new value.
 
-`akan list-secrets [--branch <debug|develop|main>] [--host <host>]`
+`akan list-secrets [--branch <debug|develop|main>] [--subspace <name>] [--host <host>]`
 
 List the project's pipeline secrets with their scope and who set each one last. Values are never shown.
 
 - --branch (String, debug | develop | main): Show only what builds of that branch use: its own values and the every-branch ones.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+- --subspace (String): A subspace of the root `akan.config.ts`: the project its `workspaceId` names. Left out, the project `AKAN_WORKSPACE_ID` names.
 
-- columns: `NAME`, `SCOPE` (`every branch` or a branch), `UPDATED` and `BY`.
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).
 
-`akan remove-secret <name> [--branch <debug|develop|main>] [--host <host>]`
+- columns: `NAME`, `SCOPE` (`every branch` or a branch), `UPDATED` and `BY`; a cell the project does not know, such as an unknown last writer, shows `-`.
+
+`akan remove-secret <name> [--branch <debug|develop|main>] [--subspace <name>] [--host <host>]`
 
 Remove a pipeline secret from the project. Builds that start afterwards no longer receive it.
 
@@ -222,7 +232,9 @@ Remove a pipeline secret from the project. Builds that start afterwards no longe
 
 - --branch (String, default every branch, debug | develop | main): Remove that branch's own value; without it, the every-branch value goes.
 
-- --host (String, default https://cloud.akanjs.com): Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).
+- --subspace (String): A subspace of the root `akan.config.ts`: the project its `workspaceId` names. Left out, the project `AKAN_WORKSPACE_ID` names.
+
+- --host (String, default cloud.host, else Akan Cloud): The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).
 
 - not there: Removing a secret that does not exist says so and changes nothing.
 

@@ -19,7 +19,7 @@ export class ViewportMeta {
     const themeColor = viewport?.themeColor;
     if (!themeColor) return [];
     if (typeof themeColor === "string") return [{ content: themeColor }];
-    const named = theme ? themeColor[theme] : undefined;
+    const named = theme && Object.hasOwn(themeColor, theme) ? themeColor[theme] : undefined;
     if (named) return [{ content: named }];
     const schemes = (["light", "dark"] as const)
       .filter((scheme) => themeColor[scheme])
@@ -39,12 +39,13 @@ export class ViewportMeta {
     const tags = ViewportMeta.themeColors(viewport, theme);
     if (!tags.length) return;
     const existing = [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
-    const kept = existing.slice(0, tags.length);
-    for (const meta of existing.slice(tags.length)) meta.remove();
+    //? React removes the metas a document rendered itself and throws on one detached here, so a spare one is switched
+    //? off with a media query nothing matches instead.
+    for (const meta of existing.slice(tags.length)) meta.setAttribute("media", "not all");
     tags.forEach((tag, idx) => {
-      const meta = kept[idx] ?? ViewportMeta.#ensureMeta("theme-color", true);
+      const meta = existing[idx] ?? ViewportMeta.#ensureMeta("theme-color", true);
       meta.content = tag.content;
-      if (tag.media) meta.media = tag.media;
+      if (tag.media) meta.setAttribute("media", tag.media);
       else meta.removeAttribute("media");
     });
   }

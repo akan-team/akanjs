@@ -1,13 +1,13 @@
-// What became of each web bundle release (F-S2), posted to updates.report.url: the Android twin of
+// What became of each web bundle release, posted to updates.report.url: the Android twin of
 // native/ios/Sources/AkanNativeUpdateReports.swift, same file and wire format.
 //
 // noBackupFilesDir/akan-native-updates/report.json: { installId, nextId, events: [{ id, event, bundle, sequence, reason,
 // at }], retryAt?, seen: [key] }. reset() rewrites state.json only, so the installId (random, not a device identifier)
 // and the id counter live as long as the install, and an id is never used twice.
 // Sent from the activity's onResume, so at launch and on each return to the foreground: oldest first, 20 to a request,
-// one request at a time. A 2xx removes the batch; a 4xx other than 408 and 429 drops it, since the same body would be
-// refused forever; a 408 (a body slower than the server waits for), a 429, a 5xx or no answer keeps it for the next time
-// (after Retry-After). At most 100 wait, the oldest dropped first. Main thread only; the request runs on a worker thread.
+// one request at a time. A 2xx removes the batch; a 400, 413 or 422 drops it, since the same body would be refused
+// forever; any other answer, or none, keeps it for the next time (after Retry-After). At most 100 wait, the oldest
+// dropped first. Main thread only; the request runs on a worker thread.
 package com.akanjs.runtime
 
 import android.os.Build
@@ -21,7 +21,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.SecureRandom
 import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -31,6 +33,8 @@ object AkanNativeUpdateReports {
     private const val BATCH = 20
     private val main = Handler(Looper.getMainLooper())
     private var sending = false
+    // Always three fraction digits, as iOS writes them: Instant.toString() leaves out a fraction of zero.
+    private val timestamp = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
 
     private class Report(
         val installId: String,
@@ -46,25 +50,38 @@ object AkanNativeUpdateReports {
      * downloaded, applied, confirmed, rolledBack (timeout, relaunch, hang, verify) or failed (download, verify, disk,
      * signature, manifest). Nothing is kept when the build names no report URL.
      */
-    fun record(event: String, bundle: String?, sequence: Double?, reason: String? = null) {
-        if (AkanNativeUpdates.config?.reportUrl == null || bundle == null || !AkanNativeKernel.isBundleId(bundle)) return
+    fun record(event: String, bundle: String?, sequence: Double?, reason: String? = null): Long? {
+        if (AkanNativeUpdates.config?.reportUrl == null || bundle == null || !AkanNativeKernel.isBundleId(bundle)) return null
         val report = read()
         // A check runs at every launch: the same failure of the same release is one event, not one per launch.
         val key = "$event|$bundle|${reason ?: ""}"
-        if (key in report.seen) return
+        if (key in report.seen) return null
         report.seen.add(key)
         while (report.seen.size > LIMIT) report.seen.removeAt(0)
         val number: Any = sequence?.let { if (it == Math.rint(it) && Math.abs(it) < 9e15) it.toLong() else it } ?: JSONObject.NULL
+        val id = report.nextId
         report.events.add(
-            JSONObject().put("id", report.nextId).put("event", event).put("bundle", bundle).put("sequence", number)
-                .put("reason", reason ?: JSONObject.NULL).put("at", Instant.now().truncatedTo(ChronoUnit.MILLIS).toString()),
+            JSONObject().put("id", id).put("event", event).put("bundle", bundle).put("sequence", number)
+                .put("reason", reason ?: JSONObject.NULL).put("at", timestamp.format(Instant.now())),
         )
         while (report.events.size > LIMIT) report.events.removeAt(0)
         report.nextId++
         write(report)
+        return id
     }
 
     fun record(event: String, entry: AkanNativeUpdateEntry, reason: String? = null) = record(event, entry.bundle, entry.sequence, reason)
+
+    fun amend(id: Long, reason: String) {
+        val report = read()
+        val entry = report.events.firstOrNull { it.optLong("id", -1) == id } ?: return
+        val event = entry.optString("event")
+        val bundle = entry.optString("bundle")
+        val index = report.seen.indexOf("$event|$bundle|${entry.opt("reason") as? String ?: ""}")
+        entry.put("reason", reason)
+        if (index >= 0) report.seen[index] = "$event|$bundle|$reason"
+        write(report)
+    }
 
     fun flush() {
         val config = AkanNativeUpdates.config ?: return
@@ -114,8 +131,8 @@ object AkanNativeUpdateReports {
 
     private fun settle(ids: Set<Long>, status: Int, retryAfter: String?) {
         val report = read()
-        if (status !in 200..299 && (status !in 400..499 || status == 408 || status == 429)) {
-            report.retryAt = retryAfter?.trim()?.toDoubleOrNull()?.let { System.currentTimeMillis() / 1000.0 + it }
+        if (status !in 200..299 && status !in listOf(400, 413, 422)) {
+            report.retryAt = retryAfter?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }?.let { System.currentTimeMillis() / 1000.0 + it }
             write(report)
             return
         }
@@ -148,7 +165,8 @@ object AkanNativeUpdateReports {
         AkanNativeUpdates.directory.mkdirs()
         val o = JSONObject().put("installId", report.installId).put("nextId", report.nextId).put("events", JSONArray(report.events))
             .put("seen", JSONArray(report.seen))
-        report.retryAt?.let { o.put("retryAt", it) }
+        // JSONObject.put throws on a NaN or an infinity, outside the IOException handling below.
+        report.retryAt?.takeIf { it.isFinite() }?.let { o.put("retryAt", it) }
         val target = file
         val out = try {
             target.startWrite()

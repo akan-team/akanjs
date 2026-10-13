@@ -49,11 +49,15 @@ export interface ArgMeta<Context = CommandContext> {
   idx: number;
   type: ArgType;
 }
+export interface InternalArgOption {
+  nullable?: boolean;
+  onlyApp?: boolean;
+}
 export interface InternalArgMeta {
   key: string;
   idx: number;
   type: InternalArgType;
-  option?: { nullable?: boolean };
+  option?: InternalArgOption;
 }
 
 export const getArgMetas = (
@@ -69,9 +73,11 @@ export const getArgMetas = (
 export interface InternalArgToken<T = unknown, Type extends InternalArgType = InternalArgType> {
   type: Type;
   _value: T;
+  option?: InternalArgOption;
 }
 
-const createInternalArgToken = <T, Type extends InternalArgType>(type: Type) => ({ type }) as InternalArgToken<T, Type>;
+const createInternalArgToken = <T, Type extends InternalArgType>(type: Type, option?: InternalArgOption) =>
+  (option ? { type, option } : { type }) as InternalArgToken<T, Type>;
 
 export const normalizePrimitiveArgType = (type: PrimitiveArgType): NormalizedPrimitiveArgType => {
   if (type === String) return "string";
@@ -92,6 +98,9 @@ export type Lib = LibExecutor;
 
 export const Sys = createInternalArgToken<SysExecutor, "Sys">("Sys");
 export type Sys = SysExecutor;
+
+/** Sys, except that a one-app workspace given no name means its app, as with App. */
+export const SysOrOnlyApp = createInternalArgToken<SysExecutor, "Sys">("Sys", { onlyApp: true });
 
 export const Exec = createInternalArgToken<Executor, "Exec">("Exec");
 export type Exec = Executor;
