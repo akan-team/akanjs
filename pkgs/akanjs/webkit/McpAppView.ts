@@ -1,12 +1,12 @@
 "use client";
-import { Binary } from "akanjs/base";
 import { router, setCookie } from "akanjs/client";
 import { Logger, parseAkanI18nEnv } from "akanjs/common";
 import { st } from "akanjs/store";
-import type { McpAppBridge, McpDownloadContent, McpHostContext } from "./McpAppBridge";
+import type { McpAppBridge, McpHostContext } from "./McpAppBridge";
+import { McpAppDownloads } from "./McpAppDownloads";
+import { McpAppSize } from "./McpAppSize";
 
 export class McpAppView {
-  static readonly contentGap = 24;
   // The app's brand colors stay its own; radii are compiled into the app's classes, so they cannot follow.
   static readonly hostTokens = {
     "--color-background-primary": ["--background", "--card", "--popover"],
@@ -20,13 +20,14 @@ export class McpAppView {
   } as const;
 
   readonly #bridge: McpAppBridge;
-  readonly #blobs = new Map<string, Blob>();
-  #lastHeight = 0;
+  readonly #size: McpAppSize;
+  readonly #downloads: McpAppDownloads;
   #theme: string | undefined;
-  #unwatchSize: () => void = () => undefined;
 
   constructor(bridge: McpAppBridge) {
     this.#bridge = bridge;
+    this.#size = new McpAppSize(bridge);
+    this.#downloads = new McpAppDownloads(bridge, (href) => McpAppView.#parse(href, McpAppView.#baseUrl()));
   }
 
   /** `href` in the host's language when the app speaks it: the page run used the server's MCP language. */
@@ -40,14 +41,14 @@ export class McpAppView {
   mount() {
     this.#apply(this.#bridge.hostContext);
     this.#bridge.onHostContext((context) => this.#apply(context));
-    this.#watchSize();
-    this.#keepBlobs();
+    this.#size.watch();
+    this.#downloads.keepBlobs();
     this.#routeLinks();
   }
 
   /** In place of the app, for a result that names no screen: the host still sizes the view to what it shows. */
   showUnavailable(message: string) {
-    this.#unwatchSize();
+    this.#size.unwatch();
     this.#apply(this.#bridge.hostContext);
     const notice = document.createElement("p");
     notice.textContent = message;
@@ -79,88 +80,6 @@ export class McpAppView {
     }
   }
 
-  // The CSR frame is one viewport tall and scrolls the page inside it, so the document is always as tall as the iframe
-  // the host sized from the last report. The current page's content height is what the host must size to instead.
-  #watchSize() {
-    let scheduled = false;
-    let watching = true;
-    const report = () => {
-      if (scheduled || !watching) return;
-      scheduled = true;
-      requestAnimationFrame(() => {
-        scheduled = false;
-        if (!watching) return;
-        observeContent();
-        const height = McpAppView.#contentHeight();
-        if (height === this.#lastHeight) return;
-        this.#lastHeight = height;
-        this.#bridge.notify("ui/notifications/size-changed", { height });
-      });
-    };
-    const resized = new ResizeObserver(report);
-    resized.observe(document.documentElement);
-    const observeContent = () => {
-      for (const content of document.querySelectorAll(".akan-page-content"))
-        for (const child of content.children) resized.observe(child);
-    };
-    const mutated = new MutationObserver(report);
-    mutated.observe(document.body, { childList: true, subtree: true, attributes: true });
-    //? An image or a font settling resizes boxes without a mutation or a document resize.
-    document.addEventListener("load", report, true);
-    void document.fonts.ready.then(report);
-    this.#unwatchSize = () => {
-      watching = false;
-      resized.disconnect();
-      mutated.disconnect();
-      document.removeEventListener("load", report, true);
-    };
-    report();
-  }
-
-  // A screen built for a phone fills it (`min-h-screen`), so a box tied to the viewport says nothing about the content:
-  // one as tall as the viewport, or ending at its bottom edge, is walked into, and a fixed one is left out, or each
-  // report would grow the next. A zero-height box is walked into too: `display: contents` reports one.
-  static #contentHeight() {
-    const content = document.querySelector<HTMLElement>('[id^="pageContainer-"]:not([inert]) .akan-page-content');
-    if (!content) return Math.ceil(document.documentElement.scrollHeight);
-    const viewport = window.innerHeight;
-    const style = getComputedStyle(content);
-    const top = content.getBoundingClientRect().top - content.scrollTop;
-    let bottom = top + Number.parseFloat(style.paddingTop || "0");
-    const pending: Element[] = [content];
-    for (let box = pending.pop(); box; box = pending.pop())
-      for (const child of box.children) {
-        const rect = child.getBoundingClientRect();
-        if (getComputedStyle(child).position === "fixed") continue;
-        if (rect.height === 0 || rect.height >= viewport - 1 || Math.abs(rect.bottom - viewport) <= 1)
-          pending.push(child);
-        else bottom = Math.max(bottom, rect.bottom);
-      }
-    const height = bottom - top + Number.parseFloat(style.paddingBottom || "0") + McpAppView.contentGap;
-    return Math.ceil(Math.max(height + McpAppView.#overlayHeight(), McpAppView.#dialogHeight()));
-  }
-
-  // A card the view pins over its own bottom edge (an approval) must not cover the screen it asks about.
-  static #overlayHeight() {
-    let height = 0;
-    for (const overlay of document.querySelectorAll<HTMLElement>("[data-akan-embed-overlay]"))
-      height += overlay.getBoundingClientRect().height;
-    return height;
-  }
-
-  // A modal is portaled out of the page and clamped to the viewport, so the frame must grow to the panel's own height.
-  static #dialogHeight() {
-    let height = 0;
-    for (const dialog of document.querySelectorAll<HTMLElement>('[aria-modal="true"]')) {
-      if (!dialog.getClientRects().length) continue;
-      let natural = 0;
-      for (const child of dialog.children)
-        if (!["absolute", "fixed"].includes(getComputedStyle(child).position)) natural += child.scrollHeight;
-      height = Math.max(height, natural + McpAppView.contentGap * 2);
-    }
-    return height;
-  }
-
   // A link on the app's own origin under a locale is a route this bundle renders; anything else — another site, a
   // stored file — opens through the host, which is the only party a sandboxed view may ask to navigate.
   #routeLinks() {
@@ -186,7 +105,7 @@ export class McpAppView {
         });
     };
     const download = (href: string, name: string | null) =>
-      this.#download(href, name).catch((error: unknown) => {
+      this.#downloads.save(href, name).catch((error: unknown) => {
         Logger.warn(`The host did not save ${href}: ${error instanceof Error ? error.message : error}`);
       });
     document.addEventListener("click", (event) => {
@@ -209,58 +128,6 @@ export class McpAppView {
       if (this.isConnected || !this.hasAttribute("download")) click.call(this);
       else void download(this.getAttribute("href") ?? "", this.getAttribute("download"));
     };
-  }
-
-  // The sandbox has no `allow-downloads`, so a file is handed to the host to save. Its bytes are read here: the host
-  // cannot reach a `blob:` URL, and a data or blob read by `fetch` is a connection the view's CSP refuses.
-  async #download(href: string, suggested: string | null) {
-    const content = await this.#downloadOf(href, suggested || null);
-    if (!content) throw new Error("it is neither a web address nor a file this view made");
-    if (this.#bridge.hostCapabilities.downloadFile) await this.#bridge.downloadFile([content]);
-    else if (content.type === "resource_link") await this.#bridge.openLink(content.uri);
-    else throw new Error("this host does not save files");
-  }
-
-  async #downloadOf(href: string, suggested: string | null): Promise<McpDownloadContent | null> {
-    const blob = this.#blobs.get(href) ?? (href.startsWith("data:") ? McpAppView.#dataBlob(href) : null);
-    if (blob) {
-      const name = suggested ?? "download";
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      return {
-        type: "resource",
-        resource: {
-          uri: `file:///${encodeURIComponent(name)}`,
-          mimeType: blob.type || "application/octet-stream",
-          blob: Binary.toBase64(bytes),
-        },
-      };
-    }
-    const url = McpAppView.#parse(href, McpAppView.#baseUrl());
-    if (!url || !["http:", "https:"].includes(url.protocol)) return null;
-    return { type: "resource_link", uri: url.href, name: suggested ?? url.pathname.split("/").at(-1) ?? "download" };
-  }
-
-  //? `downloadBlob` revokes its URL right after the click, so the blob is held from the moment the URL is made.
-  #keepBlobs() {
-    const create = URL.createObjectURL.bind(URL);
-    const revoke = URL.revokeObjectURL.bind(URL);
-    URL.createObjectURL = (object: Blob | MediaSource) => {
-      const url = create(object);
-      if (object instanceof Blob) this.#blobs.set(url, object);
-      return url;
-    };
-    URL.revokeObjectURL = (url: string) => {
-      this.#blobs.delete(url);
-      revoke(url);
-    };
-  }
-
-  static #dataBlob(href: string) {
-    const match = /^data:([^,]*?)(;base64)?,(.*)$/s.exec(href);
-    if (!match) return null;
-    const [, type = "", base64, body = ""] = match;
-    const bytes = base64 ? Binary.fromBase64(body) : new TextEncoder().encode(decodeURIComponent(body));
-    return new Blob([bytes], { type: type.split(";")[0] });
   }
 
   //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
