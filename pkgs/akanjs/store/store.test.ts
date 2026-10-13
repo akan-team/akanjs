@@ -486,6 +486,22 @@ describe("signal generated store contract", () => {
     expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
   });
 
+  test("names the closed endpoint when the slice serves no create", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const fetch = new Proxy(signal.fetch, {
+      get: (target, key) => (key === "createStoreTestItem" ? undefined : Reflect.get(target, key)),
+    });
+    class ClosedStore extends store({ ...signal, fetch }, () => ({})) {}
+    StoreRegistry.register(ClosedStore);
+    const instance = new StoreInstance(makeRoot("closedRoot", ClosedStore));
+
+    await expect(instance.do.createStoreTestItem({ title: "created", count: 0, tags: [] })).rejects.toMatchObject({
+      error: "base.error.endpointClosed",
+      data: { endpoint: "createStoreTestItem" },
+    });
+  });
+
   test("seeds the edit form with a cloned map, not an empty object", async () => {
     setupEnv();
     const signal = makeSignal();

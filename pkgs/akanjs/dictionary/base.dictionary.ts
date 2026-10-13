@@ -49,6 +49,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "서버가 예상하지 못한 응답을 보냈습니다. ({status})",
     ],
     immutableField: ["{field} cannot be changed after creation.", "{field}은(는) 생성 후에는 바꿀 수 없습니다."],
+    endpointClosed: [
+      "{endpoint} is closed: the slice's guards name none that allows it.",
+      "{endpoint}이(가) 닫혀 있습니다. 슬라이스 guards에 이 동작을 허용하는 guard를 지정해야 합니다.",
+    ],
   })
   .translate({
     somethingWrong: ["Something's wrong!", "문제가 생겼어요!"],

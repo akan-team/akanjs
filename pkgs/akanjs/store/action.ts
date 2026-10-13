@@ -510,6 +510,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const updatedAt = (model as unknown as { updatedAt?: { toISOString?: () => string } }).updatedAt;
     return typeof updatedAt?.toISOString === "function" ? updatedAt.toISOString() : null;
   };
+  // A verb whose slice guards resolve to none never reaches the client, so the action has nothing to call.
+  const servedFetch = <T>(key: string) => {
+    const fn = fetch[key] as ((...args: any[]) => Promise<T>) | undefined;
+    if (typeof fn === "function") return fn;
+    throw Object.assign(new Error(`${key} is closed: the slice's guards name none that allows it`), {
+      error: "base.error.endpointClosed",
+      data: { endpoint: key },
+    });
+  };
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;
     if (!draftScope) return null;
@@ -598,7 +607,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
 
       if (!modelInput) return;
       this.set({ [names.modelLoading]: true });
-      const model = await (fetch[names.createModel] as (...args: any[]) => Promise<Full>)(modelInput, { onError });
+      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
       this.set({
         [names.modelForm]: immerify(modelRef, defaultModel),
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
@@ -623,11 +632,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput) return;
       if (model?.id === modelForm.id) this.set({ [names.modelLoading]: modelForm.id });
-      const updatedModel = await (fetch[names.updateModel] as (...args: any[]) => Promise<Full>)(
-        modelForm.id,
-        modelInput,
-        { onError },
-      );
+      const updatedModel = await servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError });
       this.set({
         ...(model?.id === updatedModel.id
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
@@ -650,7 +655,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
       this.set({ [names.modelLoading]: true });
-      const model = await (fetch[names.createModel] as (...args: any[]) => Promise<Full>)(modelInput, { onError });
+      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
       this.set({
         [names.model]: model,
         [names.modelLoading]: false,
@@ -673,7 +678,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
       if (model?.id === id) this.set({ [names.modelLoading]: id });
-      const updatedModel = await (fetch[names.updateModel] as (...args: any[]) => Promise<Full>)(id, modelInput, {
+      const updatedModel = await servedFetch<Full>(names.updateModel)(id, modelInput, {
         onError,
       });
       this.set({
@@ -689,10 +694,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     },
     [names.removeModel]: async function (this: SetGet, id: string, options?: FetchPolicy & { modal?: string | null }) {
       const { modal, ...fetchPolicyOptions } = options ?? {};
-      const model = await (fetch[names.removeModel] as (...args: any[]) => Promise<Full & { removedAt: Dayjs | null }>)(
-        id,
-        fetchPolicyOptions,
-      );
+      const model = await servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions);
       const lightModel = new cnst.light().set(model) as unknown as Light;
       slices.forEach(({ keys: { state: namesOfSlice } }) => {
         const currentState = this.get() as { [key: string]: any };
@@ -776,7 +778,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       this.set({ [names.modelFormLoading]: id, [names.modelModal]: modal ?? "edit" });
-      const model = await (fetch[names.model] as (...args: any[]) => Promise<Full>)(id, { onError });
+      const model = await servedFetch<Full>(names.model)(id, { onError });
       const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
       this.set({
         [names.model]: model,
@@ -798,11 +800,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const currentState = this.get() as { [key: string]: any };
       const model = currentState[names.model] as Full | null;
       if (id === model?.id) this.set({ modelLoading: id });
-      const updatedModel = await (fetch[names.mergeModel] as (...args: any[]) => Promise<Full>)(
-        modelOrId,
-        data,
-        options,
-      );
+      const updatedModel = await servedFetch<Full>(names.mergeModel)(modelOrId, data, options);
       this.set({
         [names.model]: id === model?.id ? updatedModel : model,
         [names.modelLoading]: false,
@@ -817,7 +815,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       this.set({ [names.modelModal]: modal ?? "view", [names.modelLoading]: id });
-      const model = await (fetch[names.model] as (...args: any[]) => Promise<Full>)(id, { onError });
+      const model = await servedFetch<Full>(names.model)(id, { onError });
       this.set({ [names.model]: model, [names.modelViewAt]: new Date(), [names.modelLoading]: false });
     },
     [names.setModel]: function (this: SetGet, ...fullOrLightModels: Full[]) {
