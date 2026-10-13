@@ -123,11 +123,6 @@ export class WsClient {
     this.#options.onStateChange?.(state);
   }
 
-  //* Exponential with a random cut: a fixed wait brings every client a deploy dropped back in the same instant.
-  static reconnectDelay(attempt: number, policy: WsClientReconnectOptions = {}) {
-    return Backoff.delay(attempt, policy);
-  }
-
   /**
    * For clients holding the token in memory (native, cross-origin): the handshake carries only a same-origin cookie.
    * `null` drops that cookie server-side and revokes the rooms it authorized.
@@ -325,7 +320,7 @@ export class WsClient {
       this.#setState("gaveUp");
       return;
     }
-    const interval = WsClient.reconnectDelay(this.#reconnectAttempts, reconnect || undefined);
+    const interval = Backoff.delay(this.#reconnectAttempts, reconnect || undefined);
     this.logger.debug(`WebSocket reconnecting in ${interval}ms (attempt ${this.#reconnectAttempts})`);
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null;
