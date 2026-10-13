@@ -667,16 +667,23 @@ export class CloudRunner extends runner("cloud") {
         `The store build at ${bundlePath} provides native API ${bundle.nativeApi?.hash}, and this commit's pack needs ${pack.nativeApi}: build the store binary from this commit.`,
       );
     const archive = await CloudRunner.#tarPack(pack);
+    const channel = bundle.updates.channel ?? pack.channel;
+    const upload = new UpdatePackUpload(cloudApi, devProjectId);
     try {
-      const binary = await cloudApi
-        .registerAppBinary(devProjectId, {
-          appName: pack.app,
-          target: pack.target,
-          distribution,
-          bundle: bundleFile,
-          pack: Bun.file(archive),
-          ...(bundle.updates.channel ? { channel: bundle.updates.channel } : {}),
-        })
+      const binary = await upload
+        .stage(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel, notes: null })
+        .then((packUploadId) =>
+          upload.settle(() =>
+            cloudApi.registerAppBinary(devProjectId, {
+              appName: pack.app,
+              target: pack.target,
+              distribution,
+              bundle: bundleFile,
+              packUploadId,
+              channel,
+            }),
+          ),
+        )
         .catch((error: unknown) => {
           throw CloudRunner.#refusal(error, "a binary is registered by a project member signed in with `akan login`");
         });

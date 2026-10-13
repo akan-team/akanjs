@@ -184,6 +184,8 @@ export class CloudApi {
       target: string;
       distribution: AppBinaryDistribution;
       bundle: Blob;
+      /** The pack staged with UpdatePackUpload.stage; the multipart `pack` is for a server older than staging. */
+      packUploadId?: string;
       pack?: Blob;
       channel?: string;
     },
@@ -192,8 +194,11 @@ export class CloudApi {
     for (const key of ["appName", "target", "distribution"] as const) formData.append(key, binary[key]);
     if (binary.channel) formData.append("channel", binary.channel);
     formData.append("bundle", binary.bundle, "bundle.json");
+    if (binary.packUploadId) formData.append("packUploadId", binary.packUploadId);
     if (binary.pack) formData.append("pack", binary.pack, "pack.tgz");
-    return await this.#api.post<CloudRecord>(`/registerAppBinary/${encodeURIComponent(devProjectId)}`, formData);
+    return await this.#api.post<CloudRecord>(`/registerAppBinary/${encodeURIComponent(devProjectId)}`, formData, {
+      signal: AbortSignal.timeout(11 * 60_000),
+    });
   }
   async downloadEnv(devProjectId: string): Promise<unknown> {
     const localPath = `${this.#workspace.workspaceRoot}/local/env.tar`;
