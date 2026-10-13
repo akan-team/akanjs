@@ -1,14 +1,8 @@
 import { FIELD_META, INJECT_META } from "akanjs/base";
 import { lowerlize, toError } from "akanjs/common";
-import { ConstantRegistry } from "akanjs/constant";
+import { ConstantRegistry, type FieldObject } from "akanjs/constant";
 import type { InjectInfo } from "akanjs/service";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
-
-interface FieldMeta {
-  isClass: boolean;
-  isScalar: boolean;
-  modelRef: unknown;
-}
 
 interface StageTask {
   label: string;
@@ -82,12 +76,12 @@ export const getModuleRelationRefNames = (mod: DatabaseModule | ServiceModule) =
   const visit = (modelRef: unknown) => {
     if (visited.has(modelRef)) return;
     visited.add(modelRef);
-    const fields = (modelRef as { [FIELD_META]?: Record<string, FieldMeta> })[FIELD_META] ?? {};
+    const fields = (modelRef as { [FIELD_META]?: FieldObject })[FIELD_META] ?? {};
     for (const field of Object.values(fields)) {
       if (!field.isClass) continue;
       if (field.isScalar) visit(field.modelRef);
       else {
-        const refName = ConstantRegistry.getRefName(field.modelRef as never, { allowEmpty: true });
+        const refName = ConstantRegistry.getRefName(field.modelRef, { allowEmpty: true });
         if (refName) dependencies.add(refName);
       }
     }

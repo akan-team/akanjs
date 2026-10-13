@@ -1,4 +1,4 @@
-import { type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
+import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
@@ -15,7 +15,7 @@ interface ServiceOptions {
   enabled?: boolean | (() => boolean);
   serverMode?: "batch" | "federation";
   /** The operation modes the module mounts in; `modules: ["@edge"]` selects every module that lists `edge`. */
-  operationMode?: ("cloud" | "edge" | "local" | (string & {}))[];
+  operationMode?: BaseEnv["operationMode"][];
 }
 export type ServiceType = "database" | "plain";
 
