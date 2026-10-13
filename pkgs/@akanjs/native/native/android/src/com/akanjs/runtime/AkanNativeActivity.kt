@@ -865,7 +865,7 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         webView.evaluateJavascript("0") { answered = true }
         val probe = Runnable {
             if (answered) return@Runnable serveBundle(root)
-            report?.let { AkanNativeUpdateReports.amend(it, "hang") }
+            report?.let { AkanNativeUpdateReports.amend(it, AkanNativeUpdateReason.HANG) }
             if (webView.webViewRenderProcess?.terminate() == true) return@Runnable
             startActivity(Intent.makeRestartActivityTask(ComponentName(this, javaClass)))
             Runtime.getRuntime().exit(0)

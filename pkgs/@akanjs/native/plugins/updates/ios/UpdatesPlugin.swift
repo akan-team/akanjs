@@ -26,7 +26,7 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         let code: AkanNativeErrorCode
         let message: String
         /// The reason a failed download is reported under (AkanNativeUpdateReports), nil when it is not reported.
-        var report: String? = nil
+        var report: AkanNativeUpdateReason? = nil
     }
 
     struct ReleaseFile: Sendable {
@@ -147,10 +147,10 @@ final class UpdatesPlugin: UpdatesPluginSpec {
             if !decision.revoke.isEmpty { AkanNativeUpdates.revoke(decision.revoke) }
             return decision.kind == .take && !state.failed.contains(release.bundle)
         case .untrusted, .revoked:
-            AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: "signature")
+            AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: .signature)
             throw Failure(code: .internalError, message: "the release is signed by key \(release.keyId), which this app does not trust")
         case .selfRevoke, .revokeLater:
-            AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: "manifest")
+            AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: .manifest)
             throw Failure(code: .internalError, message: "invalid release manifest: key \(release.keyId) may not revoke \(release.revokeKeys.joined(separator: ", "))")
         }
     }
@@ -214,25 +214,25 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         //? A 1 MiB manifest is 1.4 MiB in base64.
         let data = try await fetch(url, limit: 3 << 19)
         guard let envelope = AkanNativeUpdateEnvelope.open(data, config, revoked: AkanNativeUpdates.readState().revokedKeys) else {
-            reportRefused(data, "signature")
+            reportRefused(data, .signature)
             throw Failure(code: .internalError, message: "the release is not signed by a key of updates.publicKeys this app still trusts")
         }
         do {
             return try parse(envelope, data, config)
         } catch {
-            reportRefused(data, "manifest")
+            reportRefused(data, .manifest)
             throw error
         }
     }
 
     /// The release a refused envelope names, read without trusting it and only to say which release failed: a forged
     /// name can at worst count against a release the server already published for this app.
-    private static func reportRefused(_ raw: Data, _ reason: String) {
+    private static func reportRefused(_ raw: Data, _ reason: AkanNativeUpdateReason) {
         let envelope = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any]
         let manifest = (envelope?["manifest"] as? String).flatMap { Data(base64Encoded: $0) }
             .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
         AkanNativeUpdateReports.record(
-            "failed", bundle: manifest?["bundle"] as? String, sequence: (manifest?["sequence"] as? NSNumber)?.doubleValue, reason: reason
+            .failed, bundle: manifest?["bundle"] as? String, sequence: (manifest?["sequence"] as? NSNumber)?.doubleValue, reason: reason
         )
     }
 
@@ -247,7 +247,8 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         }
         let revokeKeys = o["revokeKeys"] as? [String] ?? []
         //? A JSON 1 or 1.0 `is Bool` too; Android and the publisher take only true or false.
-        guard o["revokeKeys"] == nil || o["revokeKeys"] is [String], revokeKeys.count <= 16, revokeKeys.allSatisfy(AkanNativeKernel.isUpdateKeyId),
+        guard o["revokeKeys"] == nil || o["revokeKeys"] is [String], revokeKeys.count <= AkanNativeKernel.maxRevokeKeys,
+              revokeKeys.allSatisfy(AkanNativeKernel.isUpdateKeyId),
               o["resetSequence"].map({ CFGetTypeID($0 as CFTypeRef) == CFBooleanGetTypeID() }) ?? true else { throw bad("revokeKeys or resetSequence") }
         guard let bundle = o["bundle"] as? String, AkanNativeUpdates.isBundleId(bundle) else { throw bad("bundle id") }
         guard let sequence = (o["sequence"] as? NSNumber)?.doubleValue, sequence.isFinite, sequence > 0 else { throw bad("sequence") }
@@ -297,8 +298,8 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         do {
             try await place(release, config)
         } catch {
-            let reason = (error as? Failure).map(\.report) ?? (Self.cancelled(error) ? nil : "disk")
-            if let reason { AkanNativeUpdateReports.record("failed", bundle: release.bundle, sequence: release.sequence, reason: reason) }
+            let reason = (error as? Failure).map(\.report) ?? (Self.cancelled(error) ? nil : .disk)
+            if let reason { AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: reason) }
             throw error
         }
     }
@@ -327,15 +328,15 @@ final class UpdatesPlugin: UpdatesPluginSpec {
                 do {
                     downloaded = try await Self.download(url, size: file.size)
                 } catch let failure as Failure {
-                    throw Failure(code: failure.code, message: failure.message, report: "download")
+                    throw Failure(code: failure.code, message: failure.message, report: .download)
                 } catch {
                     if Self.cancelled(error) { throw error }
-                    throw Failure(code: .internalError, message: "\(file.path): \(error.localizedDescription)", report: "download")
+                    throw Failure(code: .internalError, message: "\(file.path): \(error.localizedDescription)", report: .download)
                 }
                 guard (try? Self.hex(file: downloaded)) == file.sha256 else {
                     try? fm.removeItem(at: downloaded)
                     try? fm.removeItem(at: staging)
-                    throw Failure(code: .internalError, message: "\(file.path) does not match its hash", report: "verify")
+                    throw Failure(code: .internalError, message: "\(file.path) does not match its hash", report: .verify)
                 }
                 try fm.moveItem(at: downloaded, to: destination)
             }
@@ -349,7 +350,7 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         }
         guard complete else {
             try? fm.removeItem(at: staging)
-            throw Failure(code: .internalError, message: "the downloaded bundle is incomplete", report: "verify")
+            throw Failure(code: .internalError, message: "the downloaded bundle is incomplete", report: .verify)
         }
         if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
         try fm.moveItem(at: staging, to: target)

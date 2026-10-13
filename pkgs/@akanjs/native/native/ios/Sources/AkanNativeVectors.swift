@@ -171,6 +171,36 @@ enum AkanNativeVectors {
             }
             check(got.verdict.rawValue == c[4] as? String, "update envelope \(c[5]): \(got.verdict.rawValue)")
         }
+        let limits = [AkanNativeKernel.maxRevokeKeys, AkanNativeKernel.maxUpdateManifest, AkanNativeKernel.updateReportLimit, AkanNativeKernel.updateReportBatch]
+        let declared = updates["limits"] as? [String: Any]
+        let expectedLimits = ["revokeKeys", "manifestBytes", "reportEvents", "reportBatch"].map { (declared?[$0] as? NSNumber)?.intValue ?? -1 }
+        check(limits == expectedLimits, "update limits: \(limits)")
+
+        // What a phone posts to updates.report.url (AkanNativeUpdateReports).
+        let reports = updates["reports"] as? [String: Any] ?? [:]
+        check(AkanNativeUpdateEvent.allCases.map(\.rawValue) == reports["events"] as? [String], "report events")
+        check(AkanNativeUpdateReason.allCases.map(\.rawValue) == reports["reasons"] as? [String], "report reasons")
+        for c in rows(reports, "outcomes") {
+            let got = AkanNativeKernel.updateReportOutcome((c[0] as! NSNumber).intValue)
+            check(got.rawValue == c[1] as? String, "report outcome \(c[0]): \(got.rawValue)")
+        }
+        for c in rows(reports, "retryAfter") {
+            let got = AkanNativeKernel.updateReportRetryAt(str(c[0]), now: (c[1] as! NSNumber).doubleValue)
+            check(got == (c[2] as? NSNumber)?.doubleValue, "report Retry-After \(c[3]): \(String(describing: got))")
+        }
+        for c in rows(reports, "waits") {
+            let got = AkanNativeKernel.updateReportWaits((c[0] as? NSNumber)?.doubleValue, now: (c[1] as! NSNumber).doubleValue)
+            check(got == c[2] as? Bool, "report waits \(c)")
+        }
+        for c in rows(reports, "keys") {
+            let event = AkanNativeUpdateEvent(rawValue: c[0] as! String)
+            let got = event.map { AkanNativeKernel.updateReportKey($0, bundle: c[1] as! String, reason: str(c[2]).flatMap(AkanNativeUpdateReason.init(rawValue:))) }
+            check(got == c[3] as? String, "report key \(c)")
+        }
+        for c in rows(reports, "times") {
+            let got = AkanNativeKernel.updateReportTime((c[0] as! NSNumber).int64Value)
+            check(got == c[1] as? String, "report time \(c[0]): \(got)")
+        }
 
         // A missing or truncated file must not pass as fewer checks.
         for (name, count) in AkanNativeVectorData.counts where ran[name, default: 0] != count {

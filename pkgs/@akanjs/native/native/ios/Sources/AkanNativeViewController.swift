@@ -214,7 +214,7 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if self.rendererAnswered { return self.serveBundle(root) }
-                if let report { AkanNativeUpdateReports.amend(report, reason: "hang") }
+                if let report { AkanNativeUpdateReports.amend(report, reason: .hang) }
                 if let scene = self.view.window?.windowScene?.delegate as? AkanNativeSceneDelegate {
                     AkanNativeLog.info("updates: the page on trial does not answer; making the window again")
                     scene.recreate()

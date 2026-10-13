@@ -50,7 +50,23 @@ import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
 
-export { type UpdateDecision, type UpdateDecisionInput, updateDecision } from "../../core/src/kernel.ts";
+export {
+  MAX_REVOKE_KEYS,
+  MAX_UPDATE_MANIFEST,
+  UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_EVENTS,
+  UPDATE_REPORT_LIMIT,
+  UPDATE_REPORT_REASONS,
+  type UpdateDecision,
+  type UpdateDecisionInput,
+  type UpdateReportBody,
+  type UpdateReportEntry,
+  type UpdateReportEvent,
+  type UpdateReportOutcome,
+  type UpdateReportReason,
+  updateDecision,
+  updateReportOutcome,
+} from "../../core/src/kernel.ts";
 /**
  * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
  * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.

@@ -353,6 +353,9 @@ export const updateManifestUrl = (url: string, platform: string, channel: string
 /** An envelope's signer or a revokeKeys entry: the first 8 bytes of the raw public key's SHA-256, in hex. */
 export const isUpdateKeyId = (s: string) => /^[0-9a-f]{16}$/.test(s);
 
+/** The most keys a manifest may revoke: every host refuses a longer revokeKeys. */
+export const MAX_REVOKE_KEYS = 16;
+
 /** The largest manifest an envelope may carry, in bytes. */
 export const MAX_UPDATE_MANIFEST = 1 << 20;
 
@@ -402,3 +405,86 @@ export const RESERVED_CHANNELS: readonly string[] = ["bundle", "manifest.templat
 
 /** A channel the publisher can make: a file name in the release folder and a string an app's config compares. */
 export const isChannelName = (s: string) => /^[a-z0-9][a-z0-9._-]{0,40}$/.test(s) && !RESERVED_CHANNELS.includes(s);
+
+// ------------------------------------------------------------------ update reports
+
+/** What became of a release on a phone, posted to updates.report.url (vectors/updates.json `reports`). */
+export const UPDATE_REPORT_EVENTS = ["downloaded", "applied", "confirmed", "rolledBack", "failed"] as const;
+export type UpdateReportEvent = (typeof UPDATE_REPORT_EVENTS)[number];
+
+/** Why: rolledBack for timeout, relaunch, hang or verify; failed for download, verify, disk, signature or manifest. */
+export const UPDATE_REPORT_REASONS = [
+  "timeout",
+  "relaunch",
+  "hang",
+  "verify",
+  "download",
+  "disk",
+  "signature",
+  "manifest",
+] as const;
+export type UpdateReportReason = (typeof UPDATE_REPORT_REASONS)[number];
+
+export interface UpdateReportEntry {
+  /** Counts up for as long as the install lasts, so a receiver can drop a batch it already took. */
+  id: number;
+  event: UpdateReportEvent;
+  bundle: string;
+  sequence: number | null;
+  reason: UpdateReportReason | null;
+  /** updateReportTime: UTC, always three fraction digits. */
+  at: string;
+}
+
+/** One request to updates.report.url, with no credentials. */
+export interface UpdateReportBody {
+  app: string;
+  platform: string;
+  channel: string;
+  /** 32 random hex digits that last as long as the install: not a device identifier. */
+  installId: string;
+  nativeApi: string;
+  appVersion: string;
+  /** "iOS 18.1", "Android 15". */
+  os: string;
+  events: UpdateReportEntry[];
+}
+
+/** The events a phone keeps waiting, the oldest dropped first. */
+export const UPDATE_REPORT_LIMIT = 100;
+
+/** The events one request carries. */
+export const UPDATE_REPORT_BATCH = 20;
+
+/** An event is kept once per release and reason: a check that fails at every launch is one failure. */
+export const updateReportKey = (event: UpdateReportEvent, bundle: string, reason: UpdateReportReason | null) =>
+  `${event}|${bundle}|${reason ?? ""}`;
+
+export type UpdateReportOutcome = "sent" | "dropped" | "kept";
+
+/**
+ * What the answer to a report request does to its batch: a 2xx sends it, and a 400, 413 or 422 drops it, since the
+ * same body would be refused forever. Any other answer, or none (0), keeps it for the next time.
+ */
+export function updateReportOutcome(status: number): UpdateReportOutcome {
+  if (status >= 200 && status < 300) return "sent";
+  return status === 400 || status === 413 || status === 422 ? "dropped" : "kept";
+}
+
+/**
+ * When a kept batch may go again, in seconds since the epoch: `now` plus a Retry-After of delay-seconds (RFC 9110
+ * §10.2.3, digits only), else null. An HTTP date is not read; the batch goes at the next launch or return instead.
+ */
+export function updateReportRetryAt(retryAfter: string | null, now: number): number | null {
+  const value = retryAfter?.replace(/^[ \t]+|[ \t]+$/g, "") ?? "";
+  if (!/^[0-9]+$/.test(value)) return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? now + seconds : null;
+}
+
+/** Whether a send waits for an earlier Retry-After; a wait of more than a day is a clock that moved, so it ends. */
+export const updateReportWaits = (retryAt: number | null, now: number) =>
+  retryAt !== null && retryAt > now && retryAt < now + 86_400;
+
+/** An event's `at` for milliseconds since the epoch: UTC, always three fraction digits. */
+export const updateReportTime = (ms: number) => new Date(ms).toISOString();
