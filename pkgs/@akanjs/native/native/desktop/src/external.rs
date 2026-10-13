@@ -544,6 +544,10 @@ fn build(
         };
         push_event(&event(&view_id, window_id, &format!(r#""event":"load","state":"{state}","url":{}"#, json::quote(&url))));
       });
+    #[cfg(target_os = "windows")]
+    if crate::unattended() {
+      builder = builder.with_initialization_script_for_main_only(crate::win::kiosk::SCRIPT, false);
+    }
     if let Some(script) = opts.init_script.as_deref().filter(|s| !s.is_empty()) {
       builder = builder.with_initialization_script_for_main_only(TOP_ONLY, true).with_initialization_script_for_main_only(top_only(script), true);
     }
@@ -566,7 +570,12 @@ fn build(
     let webview = builder.build_as_child(window).map_err(|e| format!("external view: {e}"))?;
     platform::watch(&webview, &opts.view, opts.window, opts.console);
     #[cfg(target_os = "windows")]
-    platform::guard_frames(&webview, &opts.view);
+    {
+      platform::guard_frames(&webview, &opts.view);
+      if crate::unattended() {
+        crate::win::kiosk::lock(&webview, &format!("external view {}", opts.view));
+      }
+    }
     // Release builds: no Print, Save as or Inspect in its right-click menu either.
     #[cfg(target_os = "windows")]
     crate::page_menu::install(devtools, &webview);
