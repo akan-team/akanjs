@@ -602,13 +602,39 @@ export class CloudRunner extends runner("cloud") {
     );
   }
 
-  /** The pack folder as the tgz akasys takes: `files/`, the manifest template, bundle.json and pack.json. */
+  static readonly #packRecords = ["manifest.template.json", "bundle.json", "pack.json", "compat.json"];
+
+  /** The pack as the tgz akasys takes: the files its manifest template lists, and the records beside them. */
   static async #tarPack(pack: NativeUpdatePack) {
-    const archive = path.join(os.tmpdir(), `akan-pack-${pack.app}-${pack.target}-${pack.platform}-${process.pid}.tgz`);
-    const tar = Bun.spawn(["tar", "-czf", archive, "-C", pack.out, "."], { stdout: "ignore", stderr: "pipe" });
-    if ((await tar.exited) !== 0)
-      throw new Error(`tar of ${pack.out} failed: ${(await new Response(tar.stderr).text()).trim()}`);
-    return archive;
+    const templateFile = Bun.file(path.join(pack.out, "manifest.template.json"));
+    if (!(await templateFile.exists()))
+      throw new Error(`${pack.out} holds no manifest.template.json: give the folder \`akan pack-update\` wrote.`);
+    const template = (await templateFile.json()) as { files?: { sha256?: unknown }[] };
+    const hashes = new Set((template.files ?? []).map((file) => file.sha256));
+    if (![...hashes].every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))
+      throw new Error(`${pack.out}/manifest.template.json lists a file whose sha256 is not 64 hex digits.`);
+    const present = await Promise.all(
+      CloudRunner.#packRecords.map((name) => Bun.file(path.join(pack.out, name)).exists()),
+    );
+    const entries = [
+      ...CloudRunner.#packRecords.filter((_, idx) => present[idx]),
+      ...[...hashes].map((hash) => `files/${hash as string}`),
+    ];
+    const base = path.join(os.tmpdir(), `akan-pack-${pack.app}-${pack.target}-${pack.platform}-${process.pid}`);
+    //? files/ keeps every earlier pack's files (content-addressed), so the folder itself is not the pack; a name file,
+    //? not argv, because a Windows command line holds 32 KiB.
+    await Bun.write(`${base}.list`, entries.map((entry) => `./${entry}\n`).join(""));
+    try {
+      const tar = Bun.spawn(["tar", "-czf", `${base}.tgz`, "-C", pack.out, "-T", `${base}.list`], {
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      if ((await tar.exited) !== 0)
+        throw new Error(`tar of ${pack.out} failed: ${(await new Response(tar.stderr).text()).trim()}`);
+    } finally {
+      await rm(`${base}.list`, { force: true });
+    }
+    return `${base}.tgz`;
   }
 
   async pushUpdate(
