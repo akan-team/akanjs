@@ -8,7 +8,7 @@ import type { Endpoint, EndpointCls } from "../../signal/endpoint";
 import type { EndpointInfo } from "../../signal/endpointInfo";
 import { Exception, isExceptionLike } from "../../signal/exception";
 import type { GuardCls } from "../../signal/guard";
-import { McpDocument, type McpExposedEndpoint, type McpToolResult } from "../../signal/mcp";
+import { MCP_APP_META, McpDocument, type McpExposedEndpoint, type McpToolResult } from "../../signal/mcp";
 import type { MiddlewareCls } from "../../signal/middleware";
 import { SignalContext } from "../../signal/signalContext";
 import { McpArgumentError, McpExecutionContext } from "./McpExecutionContext";
@@ -56,7 +56,7 @@ export class McpDispatcher {
       return {
         content: this.#content(structuredContent, value),
         ...(structuredContent === undefined ? {} : { structuredContent }),
-        ...(forView ? { _meta: { "akanjs/value": wire ?? null } } : {}),
+        ...(forView ? { _meta: { [MCP_APP_META.value]: wire ?? null } } : {}),
         isError: false,
       };
     } catch (error) {
@@ -65,7 +65,7 @@ export class McpDispatcher {
       if ((status === 401 || status === 403) && !req.headers.get("authorization")) throw new McpAuthRequiredError();
       const failure = McpDispatcher.#failure(this.#message(error, status, exposed.refName));
       const restorable = forView ? McpDispatcher.#restorable(error, status) : null;
-      return restorable ? { ...failure, _meta: { "akanjs/error": restorable } } : failure;
+      return restorable ? { ...failure, _meta: { [MCP_APP_META.error]: restorable } } : failure;
     }
   }
 

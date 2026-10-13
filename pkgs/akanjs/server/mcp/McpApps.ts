@@ -1,9 +1,11 @@
 import { getEnv } from "akanjs/base";
 import type { PromptContent, PromptMessage } from "../../signal/mcp/Msg";
 import {
+  MCP_APP_META,
   MCP_UI_EXTENSION,
   MCP_UI_LEGACY_RESOURCE_URI,
   MCP_UI_MIME_TYPE,
+  type McpAppSnapshotRecord,
   type McpResource,
   type McpResourceContents,
   type McpTool,
@@ -17,18 +19,10 @@ export interface McpAppShellSource {
   read(basePath: string): Promise<string | null>;
 }
 
-interface McpAppSnapshotRecord {
-  key: string;
-  args: Record<string, unknown>;
-  value: unknown;
-}
-
 // MCP Apps: a `.prompt()` page is also a tool, and a host that speaks the extension renders its result from the app's
 // own CSR shell. Without a shell (an api-only build, `web: { csr: false }`) the tool answers the briefing alone.
 export class McpApps {
   static readonly scheme = "ui://";
-  // Read by `McpAppBridge` on the view side; `_meta` is the one part of a result no host hands to the model.
-  static readonly snapshotKey = "akanjs/snapshot";
   // A basePath sits under the root's own segment, so no basePath name can address the root's screens.
   static readonly rootSegment = "app";
   static readonly #tokenClaims = new Set(["iss", "aud", "exp", "nbf", "iat", "jti", "client_id", "scope"]);
@@ -214,7 +208,10 @@ export class McpApps {
       { type: "text", text: `Open this screen in a browser: ${webOrigin}${href}` },
     ];
     if (!this.#shell || !forView) return { content, isError: false };
-    const _meta = { [McpApps.snapshotKey]: McpApps.#snapshotOf(run.records), "akanjs/account": forView.account };
+    const _meta = {
+      [MCP_APP_META.snapshot]: McpApps.#snapshotOf(run.records),
+      [MCP_APP_META.account]: forView.account,
+    };
     return { content, structuredContent: { href }, _meta, isError: false };
   }
 

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bun:test";
 import type { FetchBridgeCall, RestoredError } from "akanjs/fetch";
+import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
 
 process.env.AKAN_PUBLIC_APP_NAME = "test";
@@ -70,7 +71,10 @@ describe("McpAppBridge", () => {
   test("introduces the view by `appInfo`, and starts where the result points with its seeded reads", async () => {
     const { start, initialize } = await started({
       structuredContent: { href: "/en/memo" },
-      _meta: { "akanjs/snapshot": [{ key: "memo", args: {}, value: 1 }], "akanjs/account": { self: { id: "u1" } } },
+      _meta: {
+        [MCP_APP_META.snapshot]: [{ key: "memo", args: {}, value: 1 }],
+        [MCP_APP_META.account]: { self: { id: "u1" } },
+      },
     });
     expect(initialize?.params?.appInfo).toEqual({ name: "test", version: "0" });
     expect(initialize?.params?.clientInfo).toBeUndefined();
@@ -123,10 +127,10 @@ describe("McpAppBridge", () => {
     expect(lastRequest("tools/call")).toBeUndefined();
     const asked = fetchBridge.call(call(returns, { id: "1" }));
     const request = lastRequest("tools/call");
-    expect(request?.params).toEqual({ name: "probe", arguments: { id: "1" }, _meta: { "akanjs/view": true } });
+    expect(request?.params).toEqual({ name: "probe", arguments: { id: "1" }, _meta: { [MCP_APP_META.view]: true } });
     fromHost({
       id: request?.id,
-      result: { content: [{ type: "text", text: "masked" }], _meta: { "akanjs/value": "raw" } },
+      result: { content: [{ type: "text", text: "masked" }], _meta: { [MCP_APP_META.value]: "raw" } },
     });
     expect(await asked).toBe("raw");
   });
@@ -137,7 +141,7 @@ describe("McpAppBridge", () => {
     const asked = bridge.fetchBridge([]).call(call({ refName: "String" }, { id: "1", sort: "latest", ...unset }));
     const request = lastRequest("tools/call");
     expect(request?.params?.arguments).toStrictEqual({ id: "1", sort: "latest" });
-    fromHost({ id: request?.id, result: { _meta: { "akanjs/value": "page 2" } } });
+    fromHost({ id: request?.id, result: { _meta: { [MCP_APP_META.value]: "page 2" } } });
     expect(await asked).toBe("page 2");
   });
 
@@ -151,7 +155,7 @@ describe("McpAppBridge", () => {
     const lateId = lastRequest("tools/call")?.id;
     jest.advanceTimersByTime(McpAppBridge.callTimeoutMs);
     expect(await unanswered).toEqual({ error: "base.error.gatewayTimeout", statusCode: 408, data: { status: 408 } });
-    fromHost({ id: lateId, result: { _meta: { "akanjs/value": "too late" } } });
+    fromHost({ id: lateId, result: { _meta: { [MCP_APP_META.value]: "too late" } } });
 
     const short = keyOf(fetchBridge.call(Object.assign(call({ refName: "String" }), { timeout: 5_000 })));
     jest.advanceTimersByTime(5_000);
@@ -159,7 +163,7 @@ describe("McpAppBridge", () => {
 
     const unbounded = fetchBridge.call(Object.assign(call({ refName: "String" }), { timeout: false }));
     jest.advanceTimersByTime(McpAppBridge.callTimeoutMs * 10);
-    fromHost({ id: lastRequest("tools/call")?.id, result: { _meta: { "akanjs/value": "slow but sure" } } });
+    fromHost({ id: lastRequest("tools/call")?.id, result: { _meta: { [MCP_APP_META.value]: "slow but sure" } } });
     expect(await unbounded).toBe("slow but sure");
   });
 
@@ -192,7 +196,7 @@ describe("McpAppBridge", () => {
       result: {
         content: [{ type: "text", text: "The memo is locked." }],
         isError: true,
-        _meta: { "akanjs/error": { error: "memo.error.locked", statusCode: 409, data: { id: "1" } } },
+        _meta: { [MCP_APP_META.error]: { error: "memo.error.locked", statusCode: 409, data: { id: "1" } } },
       },
     });
     const error = (await asked.catch((caught: unknown) => caught)) as { toJSON?: () => unknown };

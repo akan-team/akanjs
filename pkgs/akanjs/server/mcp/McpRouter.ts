@@ -3,6 +3,7 @@ import { Logger } from "akanjs/common";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { CacheAdaptorRole, type InjectRegistry, type LiveRegistry } from "akanjs/service";
 import {
+  MCP_APP_META,
   MCP_LEGACY_VERSION,
   MCP_META_CLIENT_CAPABILITIES,
   MCP_META_PROTOCOL_VERSION,
@@ -15,6 +16,7 @@ import {
   McpErrorCode,
   type McpExposedEndpoint,
   type McpJsonRpcRequest,
+  type McpJsonRpcResponse,
   type McpOutputSchemaMode,
   McpProgress,
   type McpProtocolVersion,
@@ -685,7 +687,7 @@ export class McpRouter {
 
   // Asked for by the view's own bridge; a model's call never carries it.
   #forView(call: McpCall) {
-    return call.ui && McpRouter.#meta(call.params)?.["akanjs/view"] === true;
+    return call.ui && McpRouter.#meta(call.params)?.[MCP_APP_META.view] === true;
   }
 
   async #uiSession(call: McpCall): Promise<Record<string, string> | undefined> {
@@ -773,7 +775,7 @@ export class McpRouter {
       call.era === "modern"
         ? { resultType: "complete", _meta: { [MCP_META_SERVER_INFO]: this.#serverInfo() }, ...cache }
         : {};
-    return { jsonrpc: "2.0", id: call.id, result: { ...meta, ...result } };
+    return { jsonrpc: "2.0", id: call.id, result: { ...meta, ...result } } satisfies McpJsonRpcResponse;
   }
 
   // An out-of-range cursor (minted by an earlier process) is refused, not clamped: a short page reads as the end.
@@ -863,6 +865,10 @@ export class McpRouter {
   }
 
   static #errorBody(id: string | number | null, code: number, message: string, data?: unknown) {
-    return { jsonrpc: "2.0", id, error: { code, message, ...(data !== undefined ? { data } : {}) } };
+    return {
+      jsonrpc: "2.0",
+      id,
+      error: { code, message, ...(data !== undefined ? { data } : {}) },
+    } satisfies McpJsonRpcResponse;
   }
 }

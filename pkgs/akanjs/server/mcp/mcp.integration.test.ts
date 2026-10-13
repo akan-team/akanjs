@@ -21,7 +21,7 @@ import { Exception } from "../../signal/exception";
 import type { Guard, GuardScope } from "../../signal/guard";
 import { None, Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
-import { McpProgress } from "../../signal/mcp";
+import { MCP_APP_META, McpProgress } from "../../signal/mcp";
 import type { PagePromptEntry, PagePromptRun, PagePromptSource } from "../../signal/mcp/pagePrompt";
 import { middleware } from "../../signal/middleware";
 import { serverSignal } from "../../signal/serverSignal";
@@ -1276,7 +1276,7 @@ describe("MCP Apps", () => {
     });
     expect(result.structuredContent).toEqual({ href: `/en/item/${itemId}` });
     // The raw screen values ride `_meta`, which no host hands to the model.
-    expect(result._meta["akanjs/snapshot"].map((record: { key: string }) => record.key)).toEqual([
+    expect(result._meta[MCP_APP_META.snapshot].map((record: { key: string }) => record.key)).toEqual([
       "serverResolverTestItemListInCategory",
       "echoTitle",
     ]);
@@ -1291,11 +1291,11 @@ describe("MCP Apps", () => {
     const session = { "mcp-session-id": await uiSession() };
     const call = (headers: Record<string, string>, meta?: object) =>
       postAs(rpc("tools/call", { name: "visualItem", arguments: {}, ...(meta ? { _meta: meta } : {}) }), headers, apps);
-    const view = (await call(session, { "akanjs/view": true })).json.result;
+    const view = (await call(session, { [MCP_APP_META.view]: true })).json.result;
     expect(view.structuredContent.preview).toBeUndefined();
-    expect(view._meta["akanjs/value"]).toMatchObject({ title: "shot", preview: "data:image/png;base64,AAAA" });
+    expect(view._meta[MCP_APP_META.value]).toMatchObject({ title: "shot", preview: "data:image/png;base64,AAAA" });
     expect((await call(session)).json.result._meta).toBeUndefined();
-    expect((await call({}, { "akanjs/view": true })).json.result._meta).toBeUndefined();
+    expect((await call({}, { [MCP_APP_META.view]: true })).json.result._meta).toBeUndefined();
   });
 
   test("hands a view the domain error a browser would get, and nothing a refusal or a crash would", async () => {
@@ -1307,17 +1307,17 @@ describe("MCP Apps", () => {
         headers,
         apps,
       );
-    const view = (await call("lockedTitle", session, { "akanjs/view": true })).json.result;
+    const view = (await call("lockedTitle", session, { [MCP_APP_META.view]: true })).json.result;
     expect(view.isError).toBe(true);
-    expect(view._meta["akanjs/error"]).toEqual({
+    expect(view._meta[MCP_APP_META.error]).toEqual({
       error: "mcpItem.error.locked",
       statusCode: 409,
       details: { field: "title" },
       data: { id },
     });
     expect((await call("lockedTitle", session)).json.result._meta).toBeUndefined();
-    expect((await call("failingTitle", session, { "akanjs/view": true })).json.result._meta).toBeUndefined();
-    const vendor = (await call("vendorTitle", session, { "akanjs/view": true })).json.result;
+    expect((await call("failingTitle", session, { [MCP_APP_META.view]: true })).json.result._meta).toBeUndefined();
+    const vendor = (await call("vendorTitle", session, { [MCP_APP_META.view]: true })).json.result;
     expect(vendor._meta).toBeUndefined();
     expect(vendor.content[0].text).toBe("The server failed to complete this request.");
   });
@@ -1338,7 +1338,7 @@ describe("MCP Apps", () => {
       headers,
       apps,
     );
-    expect(json.result._meta["akanjs/account"]).toEqual({ appName: "mcpIntegration", self: { id: "u1" } });
+    expect(json.result._meta[MCP_APP_META.account]).toEqual({ appName: "mcpIntegration", self: { id: "u1" } });
     expect(JSON.stringify(json.result)).not.toContain(token);
   });
 

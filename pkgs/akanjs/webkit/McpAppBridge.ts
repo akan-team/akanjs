@@ -1,33 +1,18 @@
 "use client";
 import { getEnv } from "akanjs/base";
 import { type ErrorResponsePayload, type FetchBridge, type FetchBridgeCall, restoreRemoteError } from "akanjs/fetch";
-
-interface JsonRpcMessage {
-  jsonrpc: "2.0";
-  id?: string | number | null;
-  method?: string;
-  params?: Record<string, unknown>;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
-
-export interface McpToolResultLike {
-  content?: { type: string; text?: string }[];
-  structuredContent?: unknown;
-  isError?: boolean;
-  _meta?: Record<string, unknown>;
-}
-
-export interface McpAppTool {
-  name: string;
-  description?: string;
-  inputSchema: Record<string, unknown>;
-  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; openWorldHint?: boolean };
-}
+import {
+  MCP_APP_META,
+  type McpAppSnapshotRecord,
+  type McpJsonRpcMessage,
+  type McpJsonRpcResponse,
+  type McpTool,
+  type McpToolResult,
+} from "../signal/mcp/mcpProtocol";
 
 export interface McpAppToolServer {
-  list: () => McpAppTool[];
-  call: (name: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResultLike>;
+  list: () => McpTool[];
+  call: (name: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>;
 }
 
 export interface McpHostCapabilities {
@@ -50,18 +35,11 @@ export interface McpHostContext {
   styles?: { variables?: Record<string, string | undefined> };
 }
 
-interface McpAppSnapshotRecord {
-  key: string;
-  args: Record<string, unknown>;
-  value: unknown;
-}
-
 export type McpAppStart =
   | { ok: true; href: string; snapshot: McpAppSnapshotRecord[]; account: Record<string, unknown> | null }
   | { ok: false; message: string };
 
 // MCP Apps (SEP-1865): JSON-RPC over postMessage to the host that rendered this view; the host relays to the server.
-// The `akanjs/*` `_meta` keys are this framework's own wire with its server (`McpApps`, `McpDispatcher`).
 export class McpAppBridge {
   static readonly protocolVersion = "2026-01-26";
   static readonly initializeTimeoutMs = 15_000;
@@ -70,12 +48,12 @@ export class McpAppBridge {
 
   readonly #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   readonly #contextListeners = new Set<(context: McpHostContext) => void>();
-  readonly #toolResult: Promise<McpToolResultLike>;
-  #resolveToolResult: (result: McpToolResultLike) => void = () => undefined;
+  readonly #toolResult: Promise<Partial<McpToolResult>>;
+  #resolveToolResult: (result: Partial<McpToolResult>) => void = () => undefined;
   #context: McpHostContext = {};
   #capabilities: McpHostCapabilities = {};
   #tools: McpAppToolServer | null = null;
-  #heldToolRequests: JsonRpcMessage[] = [];
+  #heldToolRequests: McpJsonRpcMessage[] = [];
   #toolsListed = false;
   readonly #toolCalls = new Map<string | number, AbortController>();
   #seq = 0;
@@ -86,7 +64,7 @@ export class McpAppBridge {
     });
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent) return;
-      const message = event.data as JsonRpcMessage | null;
+      const message = event.data as McpJsonRpcMessage | null;
       if (message?.jsonrpc === "2.0") this.#receive(message);
     });
   }
@@ -124,8 +102,8 @@ export class McpAppBridge {
     const text = result.content?.find((block) => block.type === "text")?.text;
     if (result.isError || typeof page.href !== "string")
       return this.#gaveUp(text ?? "This screen is not available here.");
-    const snapshot = result._meta?.["akanjs/snapshot"];
-    const account = result._meta?.["akanjs/account"];
+    const snapshot = result._meta?.[MCP_APP_META.snapshot];
+    const account = result._meta?.[MCP_APP_META.account];
     return {
       ok: true,
       href: page.href,
@@ -160,13 +138,13 @@ export class McpAppBridge {
     window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
   }
 
-  // `akanjs/view` asks the server for the value a browser would receive, not the one masked for a model.
+  // `MCP_APP_META.view` asks the server for the value a browser would receive, not the one masked for a model.
   async callTool(name: string, args: Record<string, unknown>, { timeoutMs }: { timeoutMs?: number } = {}) {
     return (await this.request(
       "tools/call",
-      { name, arguments: args, _meta: { "akanjs/view": true } },
+      { name, arguments: args, _meta: { [MCP_APP_META.view]: true } },
       { timeoutMs, timedOut: McpAppBridge.#timedOut },
-    )) as McpToolResultLike;
+    )) as Partial<McpToolResult>;
   }
 
   async openLink(url: string) {
@@ -222,7 +200,7 @@ export class McpAppBridge {
     return { ok: false, message };
   }
 
-  #receive(message: JsonRpcMessage) {
+  #receive(message: McpJsonRpcMessage) {
     if (message.method) {
       this.#handle(message);
       return;
@@ -235,8 +213,8 @@ export class McpAppBridge {
     else pending.resolve(message.result);
   }
 
-  #handle({ id, method = "", params = {} }: JsonRpcMessage) {
-    if (method === "ui/notifications/tool-result") this.#resolveToolResult(params as McpToolResultLike);
+  #handle({ id, method = "", params = {} }: McpJsonRpcMessage) {
+    if (method === "ui/notifications/tool-result") this.#resolveToolResult(params as Partial<McpToolResult>);
     if (method === "notifications/cancelled") this.#toolCalls.get(params.requestId as string | number)?.abort();
     if (method === "ui/notifications/tool-cancelled")
       this.#resolveToolResult({ isError: true, content: [{ type: "text", text: "The tool call was cancelled." }] });
@@ -264,7 +242,7 @@ export class McpAppBridge {
   //? A cancelled request gets no answer (MCP `notifications/cancelled`); the tool still settles on its own.
   async #answerTool(id: string | number, method: string, params: Record<string, unknown>, tools: McpAppToolServer) {
     const controller = new AbortController();
-    let reply: Pick<JsonRpcMessage, "result" | "error">;
+    let reply: Pick<McpJsonRpcResponse, "result" | "error">;
     try {
       if (method === "tools/list") {
         this.#toolsListed = true;
@@ -285,12 +263,12 @@ export class McpAppBridge {
   }
 
   // A view call carries the browser's value in `_meta`; the masked text is the fallback for a host that strips it.
-  static #valueOf({ key, returns }: FetchBridgeCall, result: McpToolResultLike) {
+  static #valueOf({ key, returns }: FetchBridgeCall, result: Partial<McpToolResult>) {
     const text = result.content?.find((block) => block.type === "text")?.text ?? "";
-    const failure = result._meta?.["akanjs/error"] as ErrorResponsePayload | undefined;
+    const failure = result._meta?.[MCP_APP_META.error] as ErrorResponsePayload | undefined;
     if (result.isError && failure?.error) throw restoreRemoteError(failure, failure.statusCode ?? 400);
     if (result.isError) throw new Error(text || `${key} failed`);
-    if (result._meta && "akanjs/value" in result._meta) return result._meta["akanjs/value"];
+    if (result._meta && MCP_APP_META.value in result._meta) return result._meta[MCP_APP_META.value];
     const structured = result.structuredContent as Record<string, unknown> | undefined;
     if (structured !== undefined) return returns.arrDepth ? structured.items : structured;
     if (returns.nullable && text === "null") return null;
