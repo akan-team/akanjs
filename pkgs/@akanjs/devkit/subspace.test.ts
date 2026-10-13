@@ -543,6 +543,16 @@ describe("SubspaceConfig", () => {
     expect(() => config.assertPushable("feature/x")).toThrow(/not pushable/);
     expect(() => config.assertPushable("develop")).not.toThrow();
   });
+
+  test("names the setting that allows a branch when it refuses one", () => {
+    const config = new SubspaceConfig({
+      pushableBranches: ["main"],
+      subspaces: [{ name: "a", repo: "a.git", apps: ["one"] }],
+    });
+    expect(() => config.assertPushable("develop")).toThrow(
+      'Branch "develop" is not pushable. `subspace.pushableBranches` in the workspace root akan.config.ts allows: main',
+    );
+  });
 });
 
 describe("Subspace.plan", () => {
@@ -579,6 +589,7 @@ describe("Subspace.plan", () => {
     await git(wsRoot, ["commit", "--quiet", "-m", "lock"]);
     const plan = await subspace.plan("main");
     expect(plan.branchRefusal).toContain('Branch "main" is not pushable');
+    expect(plan.branchRefusal).toContain("`subspace.pushableBranches`");
     expect(plan.lockProblem).toContain("http://127.0.0.1:4873");
     expect(formatSubspacePlan(plan)).toContain("A push would be refused:");
   });
