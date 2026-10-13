@@ -1,5 +1,4 @@
 "use client";
-import { getEnv } from "akanjs/base";
 import {
   cn,
   DEFAULT_BOTTOM_INSET,
@@ -10,8 +9,7 @@ import {
 } from "akanjs/client";
 import { type ReactNode, useLayoutEffect, useState } from "react";
 
-import { Portal } from "../Portal";
-import { FrameSlotFallback } from "./FrameSlotFallback";
+import { FrameSlotPortal } from "./FrameSlotPortal";
 
 export interface BottomInsetProps {
   className?: string;
@@ -37,16 +35,14 @@ export const BottomInset = ({
   frameCache,
 }: BottomInsetProps) => {
   const [measuredHeight, setMeasuredHeight] = useState<number>();
-  //? State, not a ref: the content moves from its server fallback into the slot, and the observer must follow it.
+  //? State, not a ref: in a CSR frame the content mounts a render later, once its portal has found the slot.
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const pathCtx = usePathCtx();
   const isHidden = useInHiddenLayout();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   const frameRole = !role && keyboardSticky ? "keyboardAccessory" : (role ?? "bottomChrome");
-  const portalId = frameRole === "keyboardAccessory" ? `keyboardInsetContent${suffix}` : `bottomInsetContent${suffix}`;
   const resolvedEstimatedHeight = estimatedHeight ?? pathRoute?.pageState.bottomInset ?? DEFAULT_BOTTOM_INSET;
   const useDeclaredHeight = pathRoute?.explicitPageConfigKeys?.bottomInset === true;
   const readContentHeight = () => {
@@ -111,22 +107,16 @@ export const BottomInset = ({
     observer.observe(element);
     return () => observer.disconnect();
   }, [contentElement]);
-  if (isHidden) return null;
-
-  const content = (
-    <div
-      ref={setContentElement}
-      data-akan-frame-slot="bottomInset"
-      data-akan-frame-role={frameRole}
-      className={cn("pointer-events-auto w-full", className)}
-    >
-      {children}
-    </div>
-  );
-  const fallbackSlot = frameRole === "keyboardAccessory" ? "keyboardInset" : "bottomInset";
   return (
-    <Portal id={portalId} fallback={<FrameSlotFallback slot={fallbackSlot}>{content}</FrameSlotFallback>}>
-      {content}
-    </Portal>
+    <FrameSlotPortal slot={frameRole === "keyboardAccessory" ? "keyboardInset" : "bottomInset"}>
+      <div
+        ref={setContentElement}
+        data-akan-frame-slot="bottomInset"
+        data-akan-frame-role={frameRole}
+        className={cn("pointer-events-auto w-full", className)}
+      >
+        {children}
+      </div>
+    </FrameSlotPortal>
   );
 };

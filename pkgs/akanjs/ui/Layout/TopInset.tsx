@@ -1,10 +1,8 @@
 "use client";
-import { getEnv } from "akanjs/base";
 import { cn, DEFAULT_TOP_INSET, debugFrame, useInHiddenLayout, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 
-import { Portal } from "../Portal";
-import { FrameSlotFallback } from "./FrameSlotFallback";
+import { FrameSlotPortal } from "./FrameSlotPortal";
 
 export interface TopInsetProps {
   className?: string;
@@ -17,7 +15,6 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
   const isHidden = useInHiddenLayout();
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
 
   useLayoutEffect(() => {
     if (!path) return;
@@ -33,17 +30,12 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
       estimatedHeight,
     });
   }, [registerFrameSlot, estimatedHeight, path, isHidden]);
-  if (isHidden) return null;
-
-  const content = (
-    <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={cn("size-full", className)}>
-      {children}
-    </div>
-  );
   return (
-    <Portal id={`topInsetContent${suffix}`} fallback={<FrameSlotFallback slot="topInset">{content}</FrameSlotFallback>}>
-      {content}
-    </Portal>
+    <FrameSlotPortal slot="topInset">
+      <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={cn("size-full", className)}>
+        {children}
+      </div>
+    </FrameSlotPortal>
   );
 };
 
@@ -53,18 +45,9 @@ export interface TopLeftActionProps {
 }
 
 export const TopLeftAction = ({ className, children }: TopLeftActionProps) => {
-  const pathCtx = usePathCtx();
-  const isHidden = useInHiddenLayout();
-  if (isHidden) return null;
-  const path = pathCtx.location?.pathRoute?.path;
-  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
-  const content = <div className={className}>{children}</div>;
   return (
-    <Portal
-      id={`topLeftActionContent${suffix}`}
-      fallback={<FrameSlotFallback slot="topLeftAction">{content}</FrameSlotFallback>}
-    >
-      {content}
-    </Portal>
+    <FrameSlotPortal slot="topLeftAction">
+      <div className={className}>{children}</div>
+    </FrameSlotPortal>
   );
 };
