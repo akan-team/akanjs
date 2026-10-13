@@ -60,7 +60,7 @@ prompt
 
 - Page (page/**)
 
-  - page().prompt(): A screen the user runs as a slash command; the model does not pick it.
+  - page().prompt(): A screen: a slash command for the user, a tool for the model, and drawn in the chat where the client renders MCP Apps.
 
 Published as
 
@@ -74,7 +74,7 @@ Refused when
 
 Why, and what to do
 
-- It declares `mcp: false` — It was curated off the shelf on purpose; its guards and HTTP stay exactly as they were.
+- It declares `mcp: false` — Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.
 
 - A guard declares `static agents = false`, like `Person` — It is an act reserved for a person, so no model is ever offered it.
 
@@ -133,6 +133,10 @@ Options
 - rateLimit ({ calls?, windowMs?, concurrent? } | false, default 120 calls / 60s, 8 in flight, AKAN_MCP_RATE_LIMIT, AKAN_MCP_CONCURRENT): Per-caller budget for `tools/call`, `resources/read` and `prompts/get`, counted per process.
 
 - promptBudget (number, default 60000, AKAN_MCP_PROMPT_BUDGET): Characters of screen data one page prompt may attach before its lists are cut.
+
+- apps (boolean, default true, AKAN_MCP_APPS): Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps.
+
+- modern (boolean, default true unless apps render, AKAN_MCP_MODERN): Offer the `2026-07-28` revision; withheld while views render, as claude.ai draws one only after `initialize`.
 
 - auth ({ authorizationServers?, scopes?, resource?, verify? }, default {}, AKAN_MCP_AUTH_SERVERS, AKAN_MCP_SCOPES, AKAN_MCP_RESOURCE): The OAuth resource-server identity; naming an authorization server makes a token mandatory.
 
@@ -204,7 +208,7 @@ Generated resource URIs
 
 A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name, description)`: the user runs it as a slash command, and the model receives what the page loads:
 
-**The description is the whole instruction.** Write it in English, in API vocabulary; `<Agent.Guide>` text never reaches MCP.
+**The description is the whole instruction.** Write it in English, in API vocabulary; `<Agent.Guide>` text never reaches a prompt.
 
 **Arguments come from the page's declaration.** `.param()` is required, `.search()` is optional, and `desc` becomes the argument's description.
 
@@ -213,6 +217,8 @@ A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name
 **Names are unique.** A name matches `^[A-Za-z0-9_-]{1,64}$` and is unique across pages; `prompts/list` lists every page with `.prompt()`.
 
 **Only pages declare prompts.** A signal has no `prompt()` builder, and `Msg` is not a public API.
+
+**The same page is a tool, and can be the screen itself.** Claude Code reads the briefing and a link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a `Person` act stays on the web.
 
 What prompts/get sends back
 
