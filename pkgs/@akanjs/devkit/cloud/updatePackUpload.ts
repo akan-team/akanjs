@@ -10,7 +10,8 @@ interface UpdatePackUploadOptions {
 }
 
 //* akasys sits behind Cloudflare's 100 s request cut, so the pack goes straight to its staging bucket and akasys
-//* only sees two small JSON calls: request a presigned PUT, then commit the object, which akasys re-hashes.
+//* only sees small calls: request a presigned PUT, then commit the object, or register a binary with it as its
+//* embedded pack; either re-hashes it, and an upload is used once, one way.
 export class UpdatePackUpload {
   static readonly maxBytes = 200 * 1024 * 1024;
   static readonly #transientPut = new Set([0, 408, 429, 500, 502, 503, 504]);
@@ -39,7 +40,14 @@ export class UpdatePackUpload {
     this.#commitLimitMs = commitLimitMs;
   }
 
+  /** Stages the pack and commits it as a release of `fields.channel`. */
   async send(archive: string, fields: Omit<UpdateUploadRequest, "size" | "sha256">): Promise<CloudRecord> {
+    const uploadId = await this.stage(archive, fields);
+    return await this.settle(() => this.#api.commitUpdateUpload(this.#devProjectId, uploadId));
+  }
+
+  /** Puts the pack in the project's staging storage and answers the upload id a commit or a registration names. */
+  async stage(archive: string, fields: Omit<UpdateUploadRequest, "size" | "sha256">): Promise<string> {
     const file = Bun.file(archive);
     if (file.size < 1 || file.size > UpdatePackUpload.maxBytes)
       throw new Error(`The pack archive is ${file.size} bytes; a project takes 1 byte to 200 MiB.`);
@@ -50,7 +58,7 @@ export class UpdatePackUpload {
     for (let ticket = 1; ; ticket++) {
       const { uploadId, uploadUrl, contentType } = await this.#request(upload);
       const status = await this.#put(uploadUrl, contentType, file);
-      if (status >= 200 && status < 300) return await this.#commit(uploadId);
+      if (status >= 200 && status < 300) return uploadId;
       if (status !== 403 || ticket === 2)
         throw new Error(`The storage refused the pack upload (${status ? `HTTP ${status}` : "no response"}).`);
     }
@@ -83,18 +91,21 @@ export class UpdatePackUpload {
     }
   }
 
-  // The server finishes a commit whoever stopped listening, and the same id answers the same release afterwards.
-  // A 409 is a live claim the server heartbeats, so only the overall limit bounds it; a run of cut-offs with no 409
-  // between them may be a server that died, whose claim lapses within minutes, so that run gets the shorter window.
-  async #commit(uploadId: string) {
+  /**
+   * Sends `call`, which consumes a staged upload, until the server answers it: the server finishes whoever stopped
+   * listening, and the same upload id answers the same record afterwards.
+   */
+  // `uploadCommitInProgress` is a live claim the server heartbeats, so only the overall limit bounds it; a run of
+  // cut-offs with none between them may be a server that died, whose claim lapses within minutes: the shorter window.
+  async settle<T>(call: () => Promise<T>): Promise<T> {
     const limit = performance.now() + this.#commitLimitMs;
     let cutOffSince: number | null = null;
     for (;;) {
       try {
-        return await this.#api.commitUpdateUpload(this.#devProjectId, uploadId);
+        return await call();
       } catch (error) {
         const now = performance.now();
-        if (CloudApi.statusOf(error) === 409) cutOffSince = null;
+        if (UpdatePackUpload.#inProgress(error)) cutOffSince = null;
         else if (UpdatePackUpload.#cutOff(error)) cutOffSince ??= now;
         else throw error;
         const deadline = cutOffSince === null ? limit : Math.min(limit, cutOffSince + this.#cutOffWindowMs);
@@ -105,6 +116,12 @@ export class UpdatePackUpload {
         await sleep(this.#commitRetryMs);
       }
     }
+  }
+
+  //? Not every 409: an upload already committed or embedded is answered 409 too, and asking again changes nothing.
+  static #inProgress(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return CloudApi.statusOf(error) === 409 && message.includes("uploadCommitInProgress");
   }
 
   static #cutOff(error: unknown) {

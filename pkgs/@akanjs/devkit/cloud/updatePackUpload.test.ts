@@ -18,8 +18,9 @@ class FakeAkasys {
   readonly requests: Record<string, unknown>[] = [];
   readonly puts: Put[] = [];
   readonly commits: string[] = [];
+  readonly registrations: Record<string, string>[] = [];
   putStatuses: number[] = [];
-  commitAnswers: number[] = [];
+  commitAnswers: (number | [number, string])[] = [];
   release: Record<string, unknown> = { id: "release-1", status: "published", problems: [] };
   requestRefusal: Response | null = null;
 
@@ -35,6 +36,7 @@ class FakeAkasys {
     this.requests.length = 0;
     this.puts.length = 0;
     this.commits.length = 0;
+    this.registrations.length = 0;
     this.putStatuses = [];
     this.commitAnswers = [];
     this.requestRefusal = null;
@@ -64,11 +66,27 @@ class FakeAkasys {
     if (url.pathname === "/api/commitUpdateUpload/project-1") {
       const { uploadId } = (await request.json()) as { uploadId: string };
       this.commits.push(uploadId);
-      const answer = this.commitAnswers.shift();
-      if (answer) return Response.json({ error: "release.error.uploadCommitInProgress" }, { status: answer });
+      const answer = this.#answer();
+      if (answer) return answer;
       return Response.json({ ...this.release, uploadId });
     }
+    if (url.pathname === "/api/registerAppBinary/project-1") {
+      const form = await request.formData();
+      this.registrations.push(
+        Object.fromEntries(
+          [...form.entries()].map(([key, value]) => [key, typeof value === "string" ? value : "<file>"]),
+        ),
+      );
+      return this.#answer() ?? Response.json({ id: "binary-1" });
+    }
     return new Response("not found", { status: 404 });
+  }
+
+  #answer() {
+    const answer = this.commitAnswers.shift();
+    if (!answer) return null;
+    const [status, key] = typeof answer === "number" ? [answer, "release.error.uploadCommitInProgress"] : answer;
+    return Response.json({ error: key }, { status });
   }
 }
 
@@ -185,6 +203,43 @@ describe("UpdatePackUpload", () => {
     const refusal = await new UpdatePackUpload(api, "project-1", quick).send(archive, fields).catch((e: Error) => e);
     expect(String(refusal)).toContain("devProject.error.appNotFound");
     expect(akasys.puts).toEqual([]);
+  });
+
+  test("stops at once on a 409 that is not a commit in progress: the upload is already used", async () => {
+    const archive = await archiveOf("pack");
+    akasys.commitAnswers = [[409, "release.error.uploadEmbedded"]];
+    await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("uploadEmbedded");
+    expect(akasys.commits).toHaveLength(1);
+  });
+
+  test("stages a binary's pack and registers it by upload id, asking again while the server is still at it", async () => {
+    const archive = await archiveOf("pack");
+    akasys.commitAnswers = [524, 409];
+    const upload = new UpdatePackUpload(api, "project-1", quick);
+    const binary = await upload.stage(archive, fields).then((packUploadId) =>
+      upload.settle(() =>
+        api.registerAppBinary("project-1", {
+          appName: "lu",
+          target: "default",
+          distribution: "playTesting",
+          bundle: new Blob(["{}"]),
+          packUploadId,
+          channel: "develop",
+        }),
+      ),
+    );
+
+    expect(binary).toEqual({ id: "binary-1" });
+    expect(akasys.commits).toEqual([]);
+    expect(akasys.registrations).toHaveLength(3);
+    expect(akasys.registrations[2]).toEqual({
+      appName: "lu",
+      target: "default",
+      distribution: "playTesting",
+      channel: "develop",
+      bundle: "<file>",
+      packUploadId: "upload-1",
+    });
   });
 
   test("refuses an empty archive before asking for a ticket", async () => {
