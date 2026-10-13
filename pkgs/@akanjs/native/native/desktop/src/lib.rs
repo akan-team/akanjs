@@ -33,6 +33,8 @@ mod camera;
 #[cfg(target_os = "macos")]
 mod js_panels;
 #[cfg(target_os = "macos")]
+mod kiosk;
+#[cfg(target_os = "macos")]
 mod page_cursor;
 #[cfg(target_os = "macos")]
 mod panels;
@@ -542,6 +544,14 @@ static DEV_BUILD: AtomicBool = AtomicBool::new(false);
 
 fn dev_build() -> bool {
   DEV_BUILD.load(Ordering::Acquire)
+}
+
+/// desktop.recovery "reload", the switch of an app nobody attends: what its pages do by themselves never takes a person
+/// out of its windows (kiosk.rs, win/kiosk.rs, linux/kiosk.rs).
+static UNATTENDED: AtomicBool = AtomicBool::new(false);
+
+fn unattended() -> bool {
+  UNATTENDED.load(Ordering::Acquire)
 }
 
 /// A test hook's variable, read by a dev build only.
@@ -1103,6 +1113,10 @@ fn in_app(url: &str) -> bool {
 /// Hands a link to the OS (navigation.rs): http(s) to the browser, mailto and tel to their apps.
 /// Any other scheme is refused, so the page cannot start other programs this way.
 fn open_external(url: &str) {
+  if unattended() {
+    log!("not opening {}: an unattended app (desktop.recovery \"reload\") hands no link to the OS", navigation::shown(url));
+    return;
+  }
   if !navigation::opens_externally(url) {
     log!("not opening {}: only http, https, mailto, tel and security.shell.externalSchemes links leave the app", navigation::shown(url));
     return;
@@ -1522,6 +1536,15 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
       ))
     }
   };
+  #[cfg(target_os = "windows")]
+  let builder = if unattended() {
+    builder.with_initialization_script_for_main_only(win::kiosk::SCRIPT, false).with_download_started_handler(|url, _| {
+      log!("refused a download of {}: an unattended app's page saves nothing", navigation::shown(&url));
+      false
+    })
+  } else {
+    builder
+  };
   // SH-4: pages never leave the app origin (navigation.rs). Linux decides in its own signal handlers.
   #[cfg(not(target_os = "linux"))]
   let builder = builder.with_navigation_handler(|url| navigation::allow(&url));
@@ -1604,6 +1627,17 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   let webview = webview.map_err(|e| format!("webview: {e}"))?;
   navigation::install(&webview);
   watch_web_process(&webview, id);
+  if unattended() {
+    #[cfg(target_os = "windows")]
+    {
+      win::kiosk::lock(&webview, &format!("window {id}"));
+      navigation::refuse_launches(&webview, &format!("window {id}"));
+    }
+    #[cfg(target_os = "macos")]
+    kiosk::install(&webview);
+    #[cfg(target_os = "linux")]
+    linux::kiosk::lock(&webview);
+  }
   // Release builds: the page's right-click menu without the browser's items.
   page_menu::install(shell.devtools, &webview);
   #[cfg(target_os = "macos")]
@@ -1989,6 +2023,9 @@ impl Windows {
       return Ok(window_state(&win.window, Some(&win.webview)));
     }
     if op == "webview.print" {
+      if unattended() {
+        return Err("NOT_ALLOWED: an unattended app (desktop.recovery \"reload\") opens no print dialog".into());
+      }
       // D8: WKWebView ignores window.print(); the page runtime calls this instead (Tauri does the
       // same, tauri/crates/tauri/src/webview/plugin.rs:198). A sheet on the window, not modal.
       win.webview.print().map_err(|e| e.to_string())?;
@@ -2088,6 +2125,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     log!("pages from {base} (akan-native dev --hmr)");
   }
   navigation::set_extra_schemes(cfg.external_schemes.clone());
+  UNATTENDED.store(cfg.recovery_reload, Ordering::Release);
   // Linux: GTK names the window after the program (X11 WM_CLASS, Wayland app_id), and a dock shows the <name>.desktop
   // that matches it, so the name is the app id the deep links and the dock plugin write their entry under. Not tao's
   // with_app_id: a second launch would then hand itself to the first over D-Bus and exit before single-instance runs.

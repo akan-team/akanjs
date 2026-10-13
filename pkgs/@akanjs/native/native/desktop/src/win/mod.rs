@@ -15,6 +15,7 @@ pub mod dialogs;
 mod dock;
 mod hotkey;
 pub mod keychain;
+pub mod kiosk;
 mod menu;
 pub(crate) mod msgwin;
 pub mod notify;

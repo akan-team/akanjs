@@ -13,7 +13,9 @@
 // 6. keeps storage of its own, which clearData clears,
 // 7. loads again when its renderer ends, counting restarts, and is built again when its browser process ends,
 // 8. keeps the window's hidden pointer hidden over it and its cross-site frame, and shows it in both again,
-// 9. shows the app's backgroundColor, not white, until its page paints,
+// 9. as the app's own page does in an unattended app, prints nothing, opens no file dialog from a trusted key press,
+//    and (the app page) hands no link to the OS and saves no download,
+// 10. shows the app's backgroundColor, not white, until its page paints,
 // and that the window goes onto a display at an exact size in physical pixels, below the default minimum, and the
 // executable names the app as its company when no publisher is set.
 
@@ -48,7 +50,10 @@ setTimeout(() => { throw new Error("boom"); }, 50);
 </script></body>`;
 const FRAME = `<!doctype html><title>frame</title><body style="margin:0">
 <script>
-setInterval(() => parent.postMessage({ cursorNone: document.getElementById("__akan_cursor_none") !== null }, "*"), 200);
+setInterval(() => parent.postMessage({
+  cursorNone: document.getElementById("__akan_cursor_none") !== null,
+  nativePrint: String(window.print).includes("[native code]"),
+}, "*"), 200);
 </script></body>`;
 const BACKGROUND = "204060";
 const SLOW = `<!doctype html><title>slow</title><body style="margin:0;background:#00aa00"></body>`;
@@ -83,7 +88,8 @@ async function until<T>(what: string, check: () => Promise<T | undefined | false
   throw new Error(`timed out waiting for ${what}${last ? ` (${String(last)})` : ""}`);
 }
 
-async function evaluate(expression: string, what: string, timeout = 10_000): Promise<string | undefined> {
+/** One DevTools Protocol call on the app page, through its debugging port. */
+async function appCall<T>(method: string, params: Record<string, unknown>, what: string, timeout = 10_000): Promise<T> {
   const pages = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as {
     type: string;
     url: string;
@@ -96,8 +102,8 @@ async function evaluate(expression: string, what: string, timeout = 10_000): Pro
     ws.onopen = resolve;
     ws.onerror = reject;
   });
-  ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, awaitPromise: true } }));
-  const answer = await new Promise<{ result?: { result?: { value?: string } } }>((resolve, reject) => {
+  ws.send(JSON.stringify({ id: 1, method, params }));
+  const answer = await new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${what}: no answer`)), timeout);
     ws.onmessage = (event) => {
       clearTimeout(timer);
@@ -105,7 +111,24 @@ async function evaluate(expression: string, what: string, timeout = 10_000): Pro
     };
   });
   ws.close();
+  return answer;
+}
+
+async function evaluate(expression: string, what: string, timeout = 10_000): Promise<string | undefined> {
+  const answer = await appCall<{ result?: { result?: { value?: string } } }>(
+    "Runtime.evaluate",
+    { expression, awaitPromise: true },
+    what,
+    timeout,
+  );
   return answer.result?.result?.value;
+}
+
+/** Space on the app page's focused element, as a person presses it: a trusted keyDown and keyUp. */
+async function appSpace(): Promise<void> {
+  const key = { key: " ", code: "Space", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 };
+  await appCall("Input.dispatchKeyEvent", { type: "keyDown", ...key, text: " ", unmodifiedText: " " }, "keyDown");
+  await appCall("Input.dispatchKeyEvent", { type: "keyUp", ...key }, "keyUp");
 }
 
 interface BridgeAnswer {
@@ -178,6 +201,14 @@ const screenPixel = (x: number, y: number) =>
     `Add-Type -AssemblyName System.Drawing; Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class Dpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'; [Dpi]::SetProcessDPIAware() | Out-Null; $b = New-Object System.Drawing.Bitmap 1,1; [System.Drawing.Graphics]::FromImage($b).CopyFromScreen(${Math.round(x)}, ${Math.round(y)}, 0, 0, $b.Size); $c = $b.GetPixel(0,0); '{0:x2}{1:x2}{2:x2}' -f $c.R,$c.G,$c.B`,
   );
 
+/** Visible top-level dialogs on the desktop (#32770): a file dialog is one; WebView2's print preview is in the page. */
+const dialogs = () =>
+  Number(
+    powershell(
+      `Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; public static class Dialogs { public delegate bool Proc(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(Proc f, IntPtr l); [DllImport("user32.dll")] static extern int GetClassName(IntPtr h, StringBuilder s, int n); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); public static int Count() { int n = 0; EnumWindows((h, l) => { var s = new StringBuilder(64); GetClassName(h, s, 64); if (s.ToString() == "#32770" && IsWindowVisible(h)) n++; return true; }, IntPtr.Zero); return n; } }'; [Dialogs]::Count()`,
+    ),
+  );
+
 const appPids = (name: string) =>
   powershell(`(Get-Process -Name '${name}' -ErrorAction SilentlyContinue).Id -join ','`)
     .split(",")
@@ -198,7 +229,7 @@ const viewProcesses = (type: "renderer" | "browser") =>
 let exeName = "";
 const lines: string[] = [];
 try {
-  step("build the sample with the external-view plugin and a frameless window");
+  step("build the sample with the external-view plugin, a frameless window and desktop.recovery reload (unattended)");
   const [app0, ...rest] = sampleConfig.capabilities ?? [];
   if (!app0) throw new Error("the sample has no capability to extend");
   const { artifacts } = await build({
@@ -207,7 +238,7 @@ try {
       ...sampleConfig,
       plugins: [...(sampleConfig.plugins ?? []), "external-view"],
       capabilities: [{ ...app0, permissions: [...app0.permissions, "external-view:default"] }, ...rest],
-      desktop: { ...sampleConfig.desktop, window: { frameless: true } },
+      desktop: { ...sampleConfig.desktop, window: { frameless: true }, recovery: "reload" },
       shell: { ...sampleConfig.shell, backgroundColor: `#${BACKGROUND}`, backgroundColorDark: `#${BACKGROUND}` },
     },
     platform: "windows",
@@ -364,7 +395,38 @@ try {
   await until("the board reloaded", async () => (await inView("document.title")) === "board");
   if ((await inView(cursorNone)) !== true) throw new Error("a reloaded page shows the pointer");
 
-  step("9. a view shows the app's backgroundColor, not white, until its page paints");
+  step("9. an unattended app's pages, the view's and its frame's included, open no way out of the kiosk");
+  if ((await inView('String(window.print).includes("[native code]")')) !== false) throw new Error("the view can print");
+  await until("its frame's print replaced", async () => (await inView("window.__frame?.nativePrint")) === false);
+  if ((await inView('window.print(); "returned"')) !== "returned") throw new Error("the view's print opened a dialog");
+  if ((await evaluate('window.print(); "returned"', "the app page's print", 5_000)) !== "returned")
+    throw new Error("the app page's print opened a dialog");
+  const shown = dialogs();
+  const fileInput = `{ const pick = document.createElement("input"); pick.type = "file"; document.body.append(pick);
+    pick.focus(); "ready" }`;
+  await inView(fileInput);
+  await ok("external-view", "sendKey", { id: "board", key: " ", code: "Space" });
+  await evaluate(fileInput, "a file input on the app page");
+  await appSpace();
+  await Bun.sleep(1_500);
+  if (dialogs() !== shown) throw new Error("a file input opened a file dialog");
+  await evaluate('location.href = "mailto:kiosk@example.com"; window.open("https://example.com/"); "sent"', "links");
+  await until(
+    "the app page's links kept from the OS",
+    async () =>
+      lines.some((line) => line.includes("not opening mailto:kiosk@example.com")) &&
+      lines.some((line) => line.includes("not opening https://example.com/")),
+  );
+  await evaluate(
+    `{ const save = document.createElement("a"); save.href = URL.createObjectURL(new Blob(["kiosk"]));
+      save.download = "kiosk.txt"; document.body.append(save); save.click(); "sent" }`,
+    "a download",
+  );
+  await until("the app page's download refused", async () =>
+    lines.some((line) => line.includes("refused a download of blob:")),
+  );
+
+  step("10. a view shows the app's backgroundColor, not white, until its page paints");
   await ok("external-view", "close", { id: "board" });
   await ok("window", "setCursorVisible", { value: true });
   await ok("external-view", "open", {

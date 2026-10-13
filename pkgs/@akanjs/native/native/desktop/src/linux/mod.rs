@@ -14,6 +14,7 @@ pub mod dialogs;
 mod dock;
 mod hotkey;
 pub mod keychain;
+pub mod kiosk;
 mod menu;
 pub mod notify;
 pub mod open;
