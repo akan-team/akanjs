@@ -1,10 +1,9 @@
-export interface RetryPolicy {
+import type { BackoffPolicy } from "./backoff";
+
+/** Its first wait is 500 ms unless `min` names one. */
+export interface RetryPolicy extends BackoffPolicy {
   /** Tries in all, the first one included; 4 unless named. */
   attempts?: number;
-  /** The first wait in ms (500 unless named), doubled each try up to `max` (30 s), cut by `jitter` (0.5) at random. */
-  min?: number;
-  max?: number;
-  jitter?: number;
 }
 
 export interface FetchPolicy<Returns = unknown> {

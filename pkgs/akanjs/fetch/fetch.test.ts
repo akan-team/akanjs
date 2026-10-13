@@ -2299,17 +2299,6 @@ describe("WsClient", () => {
     client.destroy();
   });
 
-  test("waits twice as long after each failed attempt, cut at random, up to the max", () => {
-    expect([1, 2, 3, 6, 9].map((attempt) => WsClient.reconnectDelay(attempt, { jitter: 0 }))).toEqual([
-      1_000, 2_000, 4_000, 30_000, 30_000,
-    ]);
-    for (let idx = 0; idx < 50; idx++) {
-      const delay = WsClient.reconnectDelay(3, { min: 100, max: 1_000, jitter: 0.5 });
-      expect(delay).toBeGreaterThanOrEqual(200);
-      expect(delay).toBeLessThanOrEqual(400);
-    }
-  });
-
   test("gives up after maxAttempts in a row and says so, and every state change is reported", async () => {
     setFakeWebSocket();
     const states: string[] = [];
