@@ -2,7 +2,13 @@
 import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
-import { type AgenticSurface, type ToolApprovalRequest, type ToolCallResult, ToolRunner } from "use-agentic";
+import {
+  type AgenticSurface,
+  type ToolApprovalRequest,
+  type ToolCallResult,
+  ToolOutput,
+  ToolRunner,
+} from "use-agentic";
 import type { McpTool, McpToolResult } from "../signal/mcp/mcpProtocol";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge } from "./McpAppBridge";
@@ -11,7 +17,7 @@ import type { McpAppBridge } from "./McpAppBridge";
 // setters, the built-ins — so a screen published to one agent is published to the other with nothing declared twice.
 export class McpAppAgent {
   static readonly settleMs = 500;
-  static readonly contextLimit = 20_000;
+  static readonly contextLimit = ToolOutput.limit;
   //? Under the 30s a host is told to wait for a call: a consent given after it gave up would act on a call it failed.
   static readonly approvalMs = 25_000;
 
