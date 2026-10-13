@@ -172,11 +172,20 @@ describe("McpAuth token rejection", () => {
 
   test("judges a bearer whatever the scheme's case or the spacing before it", async () => {
     const foreign = token({ aud: ["https://other.example.com/mcp"] });
-    for (const authorization of [`bearer ${foreign}`, `BEARER ${foreign}`, `Bearer  ${foreign}`, `Bearer ${foreign} x`])
+    for (const authorization of [`bearer ${foreign}`, `BEARER ${foreign}`, `Bearer  ${foreign}`])
       expect((await auth().reject(request(authorization)))?.status).toBe(401);
-    expect(McpAuth.callerKey(request("Bearer opaque\tx"))).not.toBe(McpAuth.callerKey(request("Bearer opaque")));
     const federated = auth({ authorizationServers: ["https://auth.example.com"] });
     expect(federated.challengeAnonymous(request(`bearer ${token({ aud: "https://app.example.com/mcp" })}`))).toBeNull();
+  });
+
+  test("reads no token from a header with more than one word after the scheme, as the account layer reads none", async () => {
+    const foreign = token({ aud: ["https://other.example.com/mcp"] });
+    const federated = auth({ authorizationServers: ["https://auth.example.com"] });
+    for (const authorization of [`Bearer ${foreign} x`, `Bearer\t${foreign}`, `Bearer ${foreign}\tx`]) {
+      expect(await auth().reject(request(authorization))).toBeNull();
+      expect(McpAuth.callerKey(request(authorization))).toBe("ip:anonymous");
+      expect(federated.challengeAnonymous(request(authorization))?.status).toBe(401);
+    }
   });
 });
 

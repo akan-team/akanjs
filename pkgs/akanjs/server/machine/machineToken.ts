@@ -1,6 +1,6 @@
 import { createPublicKey, type KeyObject, sign, verify } from "node:crypto";
 import { getEnv } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { bearerTokenOf, Logger } from "akanjs/common";
 import type { MachineIdentity } from "akanjs/signal";
 import { Ed25519Key } from "../ed25519Key";
 
@@ -110,7 +110,7 @@ export class MachineToken {
 
   /** The identity a bearer machine token proves, or `null`: absent, another kind of token, or one that fails. */
   static fromAuthorization(authorization: string | null | undefined): MachineIdentity | null {
-    const token = /^Bearer +(\S+)$/i.exec(authorization ?? "")?.[1];
+    const token = bearerTokenOf(authorization);
     if (!token || !MachineToken.isMachineToken(token)) return null;
     const verdict = MachineToken.verify(token);
     if (verdict.ok) return verdict.identity;

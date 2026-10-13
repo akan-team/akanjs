@@ -8,6 +8,7 @@ export {
   readAuthToken,
 } from "./authToken";
 export { Backoff, type BackoffPolicy } from "./backoff";
+export { bearerTokenOf } from "./bearerTokenOf";
 export { CodeAgentClient, type CodeAgentTransport } from "./CodeAgentClient";
 export { CodeTranscript, type CodeTranscriptPart } from "./CodeTranscript";
 export { capitalize, lowerlize } from "./capitalize";

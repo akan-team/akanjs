@@ -1,11 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import { EventStream } from "akanjs/common";
+import { bearerTokenOf, EventStream, Logger } from "akanjs/common";
 import type { LogHub, LogHubEntry } from "./logHub";
 import { LogQueryMatcher } from "./logQuery";
 import { LogStdoutWriter } from "./logStdoutWriter";
 
 // A resume past the ring gets an explicit gap event: a monitor would read a silent skip as a quiet interval.
-// Never log from here: a stream logging its own subscriptions at the level it delivers would feed on itself.
+// Never log from a stream: one logging its own subscriptions at the level it delivers would feed on itself.
 export class LogStreamRoute {
   static readonly path = "/_akan/app/logs";
   static readonly retryMs = 2_000;
@@ -22,7 +22,15 @@ export class LogStreamRoute {
   /** Without a token the route is not registered at all, rather than mounted to answer "forbidden". */
   static fromEnv(hub: () => LogHub | null): LogStreamRoute | null {
     const token = process.env.AKAN_LOG_STREAM_TOKEN?.trim();
-    return token ? new LogStreamRoute(hub, token) : null;
+    if (!token) return null;
+    if (/\s/.test(token)) {
+      //* Off rather than mounted to refuse every caller: a bearer token is one word, so no request could present it.
+      new Logger("LogStreamRoute").error(
+        "Log stream disabled: AKAN_LOG_STREAM_TOKEN must be one word, with no whitespace",
+      );
+      return null;
+    }
+    return new LogStreamRoute(hub, token);
   }
 
   handle(req: Request): Response {
@@ -48,10 +56,9 @@ export class LogStreamRoute {
   }
 
   #authorized(req: Request): boolean {
-    const header = req.headers.get("authorization") ?? "";
-    const match = /^Bearer\s+(.+)$/i.exec(header);
-    if (!match) return false;
-    const presented = Buffer.from(match[1] ?? "");
+    const token = bearerTokenOf(req.headers.get("authorization"));
+    if (!token) return false;
+    const presented = Buffer.from(token);
     return presented.length === this.#token.length && timingSafeEqual(presented, this.#token);
   }
 

@@ -55,6 +55,18 @@ describe("OpsTokenVerifier", () => {
     expect(verifier.verify(mint(claims(), { alg: "none" }), now)).toEqual({ ok: false, reason: "alg must be EdDSA" });
   });
 
+  test("reads the request's bearer as every other gate does: one word after the scheme, in any case", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    const requestWith = (authorization: string) =>
+      new Request("http://edge/_akan/ops/info", { headers: { authorization } });
+    expect(verifier.verifyRequest(requestWith(`bearer  ${mint(claims())}`), now).ok).toBe(true);
+    for (const authorization of [`Bearer\t${mint(claims())}`, `Bearer ${mint(claims())} x`, mint(claims())])
+      expect(verifier.verifyRequest(requestWith(authorization), now)).toEqual({
+        ok: false,
+        reason: "missing bearer token",
+      });
+  });
+
   test("parses the key from PEM, JWK and raw base64url", () => {
     const pem = publicKey.export({ format: "pem", type: "spki" }).toString();
     const jwk = publicKey.export({ format: "jwk" });

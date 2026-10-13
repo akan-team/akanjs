@@ -1,4 +1,5 @@
 import { type KeyObject, verify } from "node:crypto";
+import { bearerTokenOf } from "akanjs/common";
 import { Ed25519Key } from "../ed25519Key";
 
 export interface OpsTokenClaims {
@@ -36,9 +37,9 @@ export class OpsTokenVerifier {
   }
 
   verifyRequest(req: Request, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
-    const match = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "");
-    if (!match?.[1]) return { ok: false, reason: "missing bearer token" };
-    return this.verify(match[1], nowSec);
+    const token = bearerTokenOf(req.headers.get("authorization"));
+    if (!token) return { ok: false, reason: "missing bearer token" };
+    return this.verify(token, nowSec);
   }
 
   verify(token: string, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
