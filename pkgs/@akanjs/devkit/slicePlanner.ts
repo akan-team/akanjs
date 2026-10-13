@@ -51,6 +51,10 @@ export class SlicePlanner {
     return found ? peers : null;
   }
 
+  static rootEntriesOf(rootFiles: string[]) {
+    return [...new Set(rootFiles.map((file) => file.split("/")[0] ?? file))].sort();
+  }
+
   /** DefinitelyTyped's name for a package: `lodash` -> `@types/lodash`, `@scope/x` -> `@types/scope__x`. */
   static typesPackageOf(dependency: string) {
     return dependency.startsWith("@") ? `@types/${dependency.slice(1).replace("/", "__")}` : `@types/${dependency}`;
@@ -191,8 +195,6 @@ export class SlicePlanner {
   }
 }
 
-const rootEntriesOf = (rootFiles: string[]) => [...new Set(rootFiles.map((file) => file.split("/")[0] ?? file))].sort();
-
 export function formatSlicePlan(plan: SlicePlan) {
   const libCounts = Object.entries(plan.libFiles).map(([lib, files]) => `  - libs/${lib}: ${files.length} files`);
   const sections = [
@@ -200,7 +202,7 @@ export function formatSlicePlan(plan: SlicePlan) {
     `app: ${plan.app} (apps/${plan.app}: ${plan.appFiles.length} files)`,
     `libs: ${plan.libs.length ? plan.libs.join(", ") : "(none)"}`,
     ...libCounts,
-    `workspace shell: ${plan.rootFiles.length} files across ${rootEntriesOf(plan.rootFiles).join(", ")}`,
+    `workspace shell: ${plan.rootFiles.length} files across ${SlicePlanner.rootEntriesOf(plan.rootFiles).join(", ")}`,
     "",
     `Root dependencies this slice does not use (${plan.unusedDependencies.length}) — pruned:`,
     "",
