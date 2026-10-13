@@ -144,8 +144,11 @@ export class FetchClient {
   static setBridge(bridge: FetchBridge | null) {
     globalWithFetchBridge[FETCH_BRIDGE_KEY] = bridge;
   }
+  static get bridge(): FetchBridge | null {
+    return globalWithFetchBridge[FETCH_BRIDGE_KEY] ?? null;
+  }
   static get bridged() {
-    return !!globalWithFetchBridge[FETCH_BRIDGE_KEY];
+    return !!FetchClient.bridge;
   }
   static resetSharedClient() {
     sharedClientState.proxy = null;
@@ -348,9 +351,8 @@ export class FetchClient {
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
-    if (!origin) return this.ws;
-    const target = origin.replace(/\/+$/, "");
-    if (target === this.origin.replace(/\/+$/, "")) return this.ws;
+    if (!origin || FetchClient.#sameOrigin(origin, this.origin)) return this.ws;
+    const target = FetchClient.#normalizeOrigin(origin);
     const cached = this.#originWs.get(target);
     if (cached) return cached;
     const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
@@ -375,8 +377,11 @@ export class FetchClient {
       return {};
     }
   }
+  static #normalizeOrigin(origin: string) {
+    return origin.replace(/\/+$/, "");
+  }
   static #sameOrigin(a: string, b: string) {
-    return a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
+    return FetchClient.#normalizeOrigin(a) === FetchClient.#normalizeOrigin(b);
   }
   // Security: the request being rendered belongs to this server's visitor; a call aimed at another server carries only
   // the token its caller gave it, or the visitor's session would reach a server they never signed in to.
@@ -419,16 +424,10 @@ export class FetchClient {
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const bridge = this.#bridgeOf(option?.origin);
-          if (bridge) {
-            const value = await this.#bridged(bridge, {
-              key,
-              type: "query",
-              args: Object.fromEntries(argMap),
-              returns: endpoint.returns,
-              timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
+          if (bridge)
+            return parseReturn(await this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap }), {
+              crystalize: option?.crystalize ?? true,
             });
-            return parseReturn(value, { crystalize: option?.crystalize ?? true });
-          }
           const headers = this.#makeRequestHeaders(option);
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
@@ -448,16 +447,10 @@ export class FetchClient {
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const bridge = this.#bridgeOf(option?.origin);
-          if (bridge) {
-            const value = await this.#bridged(bridge, {
-              key,
-              type: "mutation",
-              args: Object.fromEntries(argMap),
-              returns: endpoint.returns,
-              timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
+          if (bridge)
+            return parseReturn(await this.#viaBridge(bridge, { key, type: "mutation", endpoint, option, argMap }), {
+              crystalize: option?.crystalize ?? true,
             });
-            return parseReturn(value, { crystalize: option?.crystalize ?? true });
-          }
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
           const response = await this.http.send(endpoint.method ?? "POST", url, body, {
             headers: this.#makeRequestHeaders(option),
@@ -547,12 +540,33 @@ export class FetchClient {
   }
   //? The host relays to the server that rendered the view, so a call aimed at any other server stays off the bridge.
   #bridgeOf(origin?: string) {
-    return origin || this.#foreign ? null : (globalWithFetchBridge[FETCH_BRIDGE_KEY] ?? null);
+    return origin || this.#foreign ? null : FetchClient.bridge;
   }
   // A refusal the server described arrives as a payload, and becomes the app's own `Err` the way an HTTP one does.
-  async #bridged(bridge: FetchBridge, request: FetchBridgeCall) {
+  async #viaBridge(
+    bridge: FetchBridge,
+    {
+      key,
+      type,
+      endpoint,
+      option,
+      argMap,
+    }: {
+      key: string;
+      type: FetchBridgeCall["type"];
+      endpoint: SerializedEndpoint;
+      option?: FetchPolicy;
+      argMap: Map<string, unknown>;
+    },
+  ) {
     try {
-      return await bridge.call(request);
+      return await bridge.call({
+        key,
+        type,
+        args: Object.fromEntries(argMap),
+        returns: endpoint.returns,
+        timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
+      });
     } catch (error) {
       const payload = (error as RestoredError | null)?.toJSON?.();
       throw payload && this.ErrorCls ? this.ErrorCls.fromJSON(payload) : error;
