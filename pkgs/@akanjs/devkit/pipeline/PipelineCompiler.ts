@@ -131,13 +131,9 @@ export class PipelineCompiler {
     const { context, workspaceApps } = this.#input;
     this.#checkContext();
     const pipelineContext: PipelineContext = {
-      branch: context.branch,
-      env: context.env,
+      ...context,
       apps: [...context.apps],
       workspaceApps: [...workspaceApps],
-      trigger: context.trigger,
-      buildNum: context.buildNum,
-      commit: context.commit,
     };
     const workspace = this.#readWorkspace(pipelineContext);
     const lanes = new Map<string, AppLane>();

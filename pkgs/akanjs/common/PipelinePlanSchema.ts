@@ -35,30 +35,30 @@ export class PipelinePlanSchema {
   static readonly #idChars = 256;
   static readonly #textChars = 1024;
   static readonly #maxSeconds = 86_400;
-  static readonly #shellKeys = [
-    "id",
-    "name",
-    "timeoutSeconds",
-    "retry",
-    "allowFailure",
-    "kind",
-    "run",
-    "cwd",
-    "env",
-    "secrets",
-    "skipExitCodes",
-  ] as const;
-  static readonly #actionKeys = [
-    "id",
-    "name",
-    "timeoutSeconds",
-    "retry",
-    "allowFailure",
-    "kind",
-    "action",
-    "actionVersion",
-    "with",
-  ] as const;
+  static readonly #shellKeys = Object.keys({
+    id: true,
+    name: true,
+    timeoutSeconds: true,
+    retry: true,
+    allowFailure: true,
+    kind: true,
+    run: true,
+    cwd: true,
+    env: true,
+    secrets: true,
+    skipExitCodes: true,
+  } satisfies { [key in keyof PipelinePlanShellStep]: true });
+  static readonly #actionKeys = Object.keys({
+    id: true,
+    name: true,
+    timeoutSeconds: true,
+    retry: true,
+    allowFailure: true,
+    kind: true,
+    action: true,
+    actionVersion: true,
+    with: true,
+  } satisfies { [key in keyof PipelinePlanActionStep]: true });
 
   /** What an executor reads off `--out`: the size is checked before the text is parsed. */
   static parseText(text: string): PipelinePlanResult {

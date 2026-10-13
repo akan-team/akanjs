@@ -4,6 +4,7 @@ import type {
   PipelineActionName,
   PipelineMilestone,
   PipelineOtaPlatform,
+  PipelinePlanContext,
   PipelineTrigger,
 } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
@@ -579,15 +580,10 @@ export interface AppPipelineInput {
   after?: readonly string[];
 }
 
-export interface PipelineContext {
-  readonly branch: string;
-  readonly env: string;
+export interface PipelineContext extends Readonly<Omit<PipelinePlanContext, "apps">> {
   readonly apps: readonly string[];
   /** Every app in this checkout: a subspace sees its slice only. */
   readonly workspaceApps: readonly string[];
-  readonly trigger: PipelineTrigger;
-  readonly buildNum: number;
-  readonly commit: string | null;
 }
 
 export interface AppPipelineContext extends PipelineContext {
