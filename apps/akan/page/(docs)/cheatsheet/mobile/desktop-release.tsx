@@ -58,13 +58,24 @@ jobs:
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\\certificate.pfx", [Convert]::FromBase64String($env:CERTIFICATE_PFX))
           "AKAN_NATIVE_WINDOWS_CERTIFICATE=$env:RUNNER_TEMP\\certificate.pfx" >> $env:GITHUB_ENV
 
-      - name: Build, sign and pack
+      - name: Build, sign and pack (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         env:
           AKAN_NATIVE_MACOS_CERTIFICATE_PASSWORD: \${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           AKAN_NATIVE_MACOS_NOTARY_KEY_ID: \${{ secrets.MACOS_NOTARY_KEY_ID }}
           AKAN_NATIVE_MACOS_NOTARY_ISSUER: \${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: akan build-desktop myapp --env main --installer true --arch \${{ matrix.arch }} --sign true --notarize true
+
+      - name: Build, sign and pack (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
           AKAN_NATIVE_WINDOWS_CERTIFICATE_PASSWORD: \${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: akan build-desktop myapp --env main --installer true --arch \${{ matrix.arch }} --sign true
+
+      - name: Build and pack (Linux)
+        if: runner.os == 'Linux'
         run: akan build-desktop myapp --env main --installer true --arch \${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
@@ -97,8 +108,8 @@ export default page().render(() => {
     {
       key: "AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER",
       desc: l.trans({
-        en: "An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id). Turns on notarization and stapling.",
-        ko: "App Store Connect API 키(AuthKey_XXXX.p8 파일, 키 ID, 발급자 ID)입니다. 공증과 staple을 켭니다.",
+        en: "An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id): the credentials `--notarize` submits and staples with.",
+        ko: "App Store Connect API 키(AuthKey_XXXX.p8 파일, 키 ID, 발급자 ID)입니다. `--notarize`가 공증과 staple에 쓰는 자격 증명입니다.",
       }),
     },
     {
@@ -182,15 +193,16 @@ export default page().render(() => {
         <Docs.Description>
           <div>
             {l.trans({
-              en: "A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs from the environment, packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.",
-              ko: "인터넷에서 내려받는 데스크톱 앱은 OS가 열어 주도록 서명해야 합니다. Gatekeeper는 서명·공증하지 않은 macOS 앱을 막고, SmartScreen은 서명하지 않은 Windows 프로그램에 경고합니다. `akan build-desktop`은 환경 변수로 서명하고, `--installer true`로 내려받을 파일을 만들고, `--arch`로 Windows·Linux 앱의 CPU를 고릅니다. macOS 앱은 Apple silicon만 만듭니다.",
+              en: "A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs with `--sign` and notarizes with `--notarize`, using the identity the environment names; the environment alone signs nothing. It packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.",
+              ko: "인터넷에서 내려받는 데스크톱 앱은 OS가 열어 주도록 서명해야 합니다. Gatekeeper는 서명·공증하지 않은 macOS 앱을 막고, SmartScreen은 서명하지 않은 Windows 프로그램에 경고합니다. `akan build-desktop`은 `--sign`을 주면 서명하고 `--notarize`를 주면 공증하며, 신원은 환경 변수가 가리키는 것을 씁니다. 환경 변수만으로는 서명하지 않습니다. `--installer true`로 내려받을 파일을 만들고, `--arch`로 Windows·Linux 앱의 CPU를 고릅니다. macOS 앱은 Apple silicon만 만듭니다.",
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="Terminal"
             language="bash"
-            code="akan build-desktop myapp --env main --installer true"
+            code={`akan build-desktop myapp --env main --installer true --sign true --notarize true   # macOS
+akan build-desktop myapp --env main --installer true --sign true                   # Windows`}
           />
           <Docs.Alert type="info">
             {l.trans({
@@ -207,23 +219,23 @@ export default page().render(() => {
           <Docs.SubSubTitle>macOS</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "A Developer ID Application certificate signs every Mach-O file inside out — the server's native addons and `bin` included — with the hardened runtime and a secure timestamp. The executable gets Bun's JIT entitlements, and the camera's or microphone's when a usage text asks for them; `native.desktop.entitlements` adds the app's own. Notarization then submits the app, staples the ticket and checks it with `spctl`.",
-              ko: "Developer ID Application 인증서로 모든 Mach-O 파일을 안쪽부터 서명합니다. 서버의 네이티브 애드온과 `bin`도 포함하고, hardened runtime과 보안 타임스탬프를 붙입니다. 실행 파일은 Bun JIT용 entitlements와, 사용 설명이 요구하면 카메라·마이크 entitlements를 받습니다. `native.desktop.entitlements`로 앱의 것을 더합니다. 이어서 공증에 내고 ticket을 staple한 뒤 `spctl`로 확인합니다.",
+              en: "With `--sign`, a Developer ID Application certificate signs every Mach-O file inside out — the server's native addons and `bin` included — with the hardened runtime and a secure timestamp. The executable gets Bun's JIT entitlements, and the camera's or microphone's when a usage text asks for them; `native.desktop.entitlements` adds the app's own. `--notarize` then submits the app, staples the ticket and checks it with `spctl`.",
+              ko: "`--sign`을 주면 Developer ID Application 인증서로 모든 Mach-O 파일을 안쪽부터 서명합니다. 서버의 네이티브 애드온과 `bin`도 포함하고, hardened runtime과 보안 타임스탬프를 붙입니다. 실행 파일은 Bun JIT용 entitlements와, 사용 설명이 요구하면 카메라·마이크 entitlements를 받습니다. `native.desktop.entitlements`로 앱의 것을 더합니다. 이어서 `--notarize`가 공증에 내고 ticket을 staple한 뒤 `spctl`로 확인합니다.",
             })}
           </div>
           {envList(macosEnv)}
           <Docs.SubSubTitle>Windows</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "Authenticode signs every PE file of the app — the executable, its DLL, the server's addons and `bin` — SHA-256 with an RFC 3161 timestamp, and verifies them. signtool comes from the Windows SDK (`AKAN_NATIVE_SIGNTOOL` names another).",
-              ko: "Authenticode로 앱의 모든 PE 파일(실행 파일, DLL, 서버의 애드온과 `bin`)을 SHA-256과 RFC 3161 타임스탬프로 서명하고 확인합니다. signtool은 Windows SDK의 것을 씁니다(`AKAN_NATIVE_SIGNTOOL`로 다른 것을 고릅니다).",
+              en: "With `--sign`, Authenticode signs every PE file of the app — the executable, its DLL, the server's addons and `bin` — SHA-256 with an RFC 3161 timestamp, and verifies them. signtool comes from the Windows SDK (`AKAN_NATIVE_SIGNTOOL` names another).",
+              ko: "`--sign`을 주면 Authenticode로 앱의 모든 PE 파일(실행 파일, DLL, 서버의 애드온과 `bin`)을 SHA-256과 RFC 3161 타임스탬프로 서명하고 확인합니다. signtool은 Windows SDK의 것을 씁니다(`AKAN_NATIVE_SIGNTOOL`로 다른 것을 고릅니다).",
             })}
           </div>
           {envList(windowsEnv)}
           <Docs.Alert type="warning">
             {l.trans({
-              en: "`akan publish-update` signs with the same settings: the updater checks the installed app's signature, so a release signed differently is refused.",
-              ko: "`akan publish-update`도 같은 설정으로 서명합니다. 업데이터가 설치된 앱의 서명을 확인하므로 다르게 서명한 릴리스는 거부됩니다.",
+              en: "An update release must be signed the same way: the updater checks the installed app's signature, so a signed installed app accepts only a release `akan publish-update --sign` signed with the same identity.",
+              ko: "업데이트 릴리스도 같은 방식으로 서명해야 합니다. 업데이터가 설치된 앱의 서명을 확인하므로, 서명된 설치 앱은 `akan publish-update --sign`으로 같은 신원으로 서명한 릴리스만 받습니다.",
             })}
           </Docs.Alert>
         </Docs.Description>

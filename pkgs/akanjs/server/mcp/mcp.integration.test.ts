@@ -219,7 +219,7 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
     .query(String, { guards: [Public] })
     .param("id", ID)
     .exec((id) => {
-      throw new Exception(409, "mcpItem.error.locked", undefined, { id });
+      throw new Exception(409, "mcpItem.error.locked", { field: "title" }, { id });
     }),
   vendorTitle: builder.query(String, { guards: [Public] }).exec(() => {
     throw Object.assign(new Error("GET https://vendor.example/?key=secret 422"), { statusCode: 422, data: { raw: 1 } });
@@ -834,6 +834,19 @@ describe("MCP over a booted container", () => {
     expect(unknown.error.message).toBe("Unknown prompt: nope.");
   });
 
+  test("answers a prompt the worker could not list as the server's failure, never as an unknown prompt", async () => {
+    const down: PagePromptSource = {
+      list: async () => {
+        throw new Error("rsc worker is stopped");
+      },
+      run: async () => okRun(),
+    };
+    for (const body of [promptsGet({ serverResolverTestItemId: itemId }), rpc("prompts/list")]) {
+      const { json } = await postWith(body, { pagePrompts: down });
+      expect(json.error).toEqual({ code: -32603, message: "Internal server error." });
+    }
+  });
+
   test("leaves a visual field out of what an agent is handed, and in what the page is", async () => {
     const json = await call("visualItem");
     expect(json.result.structuredContent).toMatchObject({ id: "507f1f77bcf86cd799439011", title: "shot" });
@@ -1070,15 +1083,28 @@ describe("MCP Apps", () => {
     const { res } = await postAs(init, {}, apps);
     return res.headers.get("mcp-session-id") ?? "";
   };
+  const sender = (props: Partial<McpRouterProps>) => {
+    const routes = mcpRoutes(props)["/mcp"];
+    return async (body: object, headers: Record<string, string> = {}) =>
+      await (
+        await routes.POST(
+          new Request("http://127.0.0.1:8080/mcp", {
+            method: "POST",
+            body: JSON.stringify(body),
+            headers: { "Content-Type": "application/json", ...headers },
+          }),
+        )
+      ).json();
+  };
 
-  test("publishes a `.prompt()` page as a read-only tool that names its view", async () => {
+  test("publishes a `.prompt()` page as a tool that names its view, and never claims its run reads only", async () => {
     const { json } = await postWith(rpc("tools/list"), apps);
     const tool = json.result.tools.find((candidate: { name: string }) => candidate.name === "briefItem");
     expect(tool._meta).toEqual({
       ui: { resourceUri: "ui://mcpintegration/app" },
       "ui/resourceUri": "ui://mcpintegration/app",
     });
-    expect(tool.annotations.readOnlyHint).toBe(true);
+    expect(tool.annotations).toEqual({ readOnlyHint: false, openWorldHint: false });
     expect(tool.inputSchema.required).toEqual(["serverResolverTestItemId"]);
     const { json: textOnly } = await postWith(rpc("tools/list"), { ...apps, appShell: undefined });
     const plain = textOnly.result.tools.find((candidate: { name: string }) => candidate.name === "briefItem");
@@ -1127,6 +1153,19 @@ describe("MCP Apps", () => {
         })
       ).json.error.code,
     ).toBe(-32601);
+  });
+
+  test("speaks the modern revision once the worker has listed no `.prompt()` page, which no view then needs", async () => {
+    const discover = rpc("server/discover", { _meta: modernMeta });
+    const pageless = sender({ ...apps, pagePrompts: pagePromptsOf(okRun(), []) });
+    expect((await pageless(discover, modernHeaders("server/discover"))).error.code).toBe(-32601);
+    await pageless(rpc("tools/list"));
+    expect((await pageless(discover, modernHeaders("server/discover"))).result.supportedVersions).toContain(
+      "2026-07-28",
+    );
+    const paged = sender(apps);
+    await paged(rpc("tools/list"));
+    expect((await paged(discover, modernHeaders("server/discover"))).error.code).toBe(-32601);
   });
 
   test("declares the UI extension on both eras' handshakes only when it can render a view", async () => {
@@ -1181,6 +1220,44 @@ describe("MCP Apps", () => {
     expect(names(modern)).toContain("quietTitle");
   });
 
+  test("counts a client as rendering views only by a session this server issued it", async () => {
+    const issued = await uiSession();
+    const [nonce] = issued.slice("ui.".length).split(".");
+    for (const forged of ["ui.forged", `ui.${nonce}`, `ui.${nonce}.${"A".repeat(43)}`]) {
+      const session = { "mcp-session-id": forged };
+      expect(names((await postAs(rpc("tools/list"), session, apps)).json)).not.toContain("quietTitle");
+      const called = await postAs(rpc("tools/call", { name: "quietTitle", arguments: { id: itemId } }), session, apps);
+      expect(called.json.error.message).toBe("Unknown tool: quietTitle.");
+    }
+    expect(names((await postAs(rpc("tools/list"), { "mcp-session-id": issued }, apps)).json)).toContain("quietTitle");
+  });
+
+  test("lets a view read a relation's light shape, which no model is shown", async () => {
+    const light = "lightServerResolverTestItem";
+    const session = { "mcp-session-id": await uiSession() };
+    const { json: listed } = await postAs(rpc("tools/list"), session, apps);
+    const tool = listed.result.tools.find((candidate: { name: string }) => candidate.name === light);
+    expect(tool._meta).toEqual({ ui: { visibility: ["app"] } });
+    const args = { serverResolverTestItemId: itemId };
+    const read = await postAs(rpc("tools/call", { name: light, arguments: args }), session, apps);
+    expect(read.json.result.content[0].text).toBe("No serverResolverTestItem found for the arguments given.");
+    expect(names((await postWith(rpc("tools/list"), apps)).json)).not.toContain(light);
+    const refused = await postWith(rpc("tools/call", { name: light, arguments: args }), apps);
+    expect(refused.json.error.message).toBe(`Unknown tool: ${light}.`);
+  });
+
+  test("turns MCP Apps off in a read-only deployment, where a page tool would run the page's own mutations", async () => {
+    const readOnly = { ...apps, readOnly: true };
+    expect(names((await postWith(rpc("tools/list"), readOnly)).json)).not.toContain("briefItem");
+    const args = { serverResolverTestItemId: itemId };
+    const called = await postWith(rpc("tools/call", { name: "briefItem", arguments: args }), readOnly);
+    expect(called.json.error.message).toBe("Unknown tool: briefItem.");
+    const init = rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities });
+    const { res, json } = await postAs(init, {}, readOnly);
+    expect(res.headers.get("mcp-session-id")).toBeNull();
+    expect(json.result.capabilities.extensions).toBeUndefined();
+  });
+
   test("answers the model with the briefing and the view with where the screen starts", async () => {
     const session = { "mcp-session-id": await uiSession() };
     const run = async (props: Partial<McpRouterProps>, headers: Record<string, string> = session) =>
@@ -1232,7 +1309,12 @@ describe("MCP Apps", () => {
       );
     const view = (await call("lockedTitle", session, { "akanjs/view": true })).json.result;
     expect(view.isError).toBe(true);
-    expect(view._meta["akanjs/error"]).toEqual({ error: "mcpItem.error.locked", statusCode: 409, data: { id } });
+    expect(view._meta["akanjs/error"]).toEqual({
+      error: "mcpItem.error.locked",
+      statusCode: 409,
+      details: { field: "title" },
+      data: { id },
+    });
     expect((await call("lockedTitle", session)).json.result._meta).toBeUndefined();
     expect((await call("failingTitle", session, { "akanjs/view": true })).json.result._meta).toBeUndefined();
     const vendor = (await call("vendorTitle", session, { "akanjs/view": true })).json.result;
@@ -1305,6 +1387,20 @@ describe("MCP Apps", () => {
     expect(echoed.result.content[0].text).toBe(`${itemId}:none`);
   });
 
+  test("lists the endpoint tools at once while the worker restarts, beside the page tools it listed last", async () => {
+    const answers = [Promise.resolve([briefEntry])];
+    const worker: PagePromptSource = {
+      list: () => answers.shift() ?? new Promise<PagePromptEntry[]>(() => {}),
+      run: async () => okRun(),
+    };
+    const send = sender({ ...apps, pagePrompts: worker });
+    expect(names(await send(rpc("tools/list")))).toContain("briefItem");
+    expect(names(await send(rpc("tools/list")))).toEqual(expect.arrayContaining(["echoTitle", "briefItem"]));
+    const cold = names(await sender({ ...apps, pagePrompts: worker })(rpc("tools/list")));
+    expect(cold).toContain("echoTitle");
+    expect(cold).not.toContain("briefItem");
+  });
+
   test("serves the view with the app's origin as its base, and opens nothing else", async () => {
     const read = await postWith(rpc("resources/read", { uri: "ui://mcpintegration/app" }), apps);
     const [contents] = read.json.result.contents;
@@ -1322,6 +1418,16 @@ describe("MCP Apps", () => {
       apps,
     );
     expect(forged.json.result.contents[0].text).not.toContain("alert(1)");
+    for (const host of ['evil.test"target="_top', "evil.test%22target=%22_top"]) {
+      const quoted = await postAs(
+        rpc("resources/read", { uri: "ui://mcpintegration/app" }),
+        { "x-forwarded-host": host },
+        apps,
+      );
+      const [read] = quoted.json.result.contents;
+      expect(read.text).not.toContain("evil.test");
+      expect(read._meta.ui.csp).toBeUndefined();
+    }
     const unknown = await postWith(rpc("resources/read", { uri: "ui://mcpintegration/app/admin" }), apps);
     expect(unknown.json.error.message).toBe("Unknown resource: ui://mcpintegration/app/admin.");
   });

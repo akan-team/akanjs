@@ -99,14 +99,24 @@ export interface PipelineAppRule {
   stages: PipelineAppStageRule[];
 }
 
-type Scope = "workspace" | "app";
 type JsonObject = Record<string, unknown>;
 
 /** Turns one file's `pipeline` value into rules, reporting what is wrong with it rather than throwing. */
 export class PipelineInputReader {
   static readonly #futureKeys = ["cache", "artifacts", "input", "image", "services", "notify"];
+  static readonly #stageKeys = ["id", "name", "description", "milestone", "when", "timeout", "allowFailure"];
+  static readonly #shellKeys = [...PipelineInputReader.#stageKeys, "sh", "steps", "env", "secrets", "retry"];
+  static readonly #postResults: readonly string[] = ["success", "failure", "canceled", "always"];
   static readonly #durationPattern = /^(\d+)(s|m|h)$/;
+  static readonly #trailingHighSurrogate = /[\uD800-\uDBFF]$/;
   static readonly #stepNameChars = 80;
+  static readonly #shownChars = 80;
+
+  static clip(text: string, max: number) {
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max - 1);
+    return `${PipelineInputReader.#trailingHighSurrogate.test(cut) ? cut.slice(0, -1) : cut}…`;
+  }
 
   readonly diagnostics: PipelineDiagnostic[] = [];
   readonly #file: string;
@@ -156,7 +166,7 @@ export class PipelineInputReader {
   #workspaceStage(value: unknown, path: string): PipelineWorkspaceStageRule | null {
     const raw = this.#object(value, path);
     if (!raw) return null;
-    if ("use" in raw) {
+    if (this.#declares(raw, "use")) {
       this.#report(
         "pipeline.schema.invalid",
         "built-in actions are declared per app, in apps/<app>/akan.config.ts",
@@ -164,37 +174,37 @@ export class PipelineInputReader {
       );
       return null;
     }
-    if ("parallel" in raw) return this.#parallelStage(raw, path);
-    if ("matrix" in raw) return this.#matrixStage(raw, path);
-    return this.#shellStage(raw, path, "workspace");
+    if (this.#declares(raw, "parallel")) return this.#parallelStage(raw, path);
+    if (this.#declares(raw, "matrix")) return this.#matrixStage(raw, path);
+    return this.#shellStage(raw, path);
   }
 
   #appStage(value: unknown, path: string): PipelineAppStageRule | null {
     const raw = this.#object(value, path);
     if (!raw) return null;
-    if ("parallel" in raw || "matrix" in raw) {
+    const workspaceKey = this.#declares(raw, "parallel") ? "parallel" : this.#declares(raw, "matrix") ? "matrix" : null;
+    if (workspaceKey) {
       this.#report(
         "pipeline.schema.invalid",
-        `an app's own stage takes no \`${"parallel" in raw ? "parallel" : "matrix"}\`: it is already that app's, and parallel or per-app copies belong to the workspace root akan.config.ts`,
+        `an app's own stage takes no \`${workspaceKey}\`: it is already that app's, and parallel or per-app copies belong to the workspace root akan.config.ts`,
         path,
       );
       return null;
     }
-    if ("use" in raw) return this.#actionStage(raw, path);
-    return this.#shellStage(raw, path, "app");
+    if (this.#declares(raw, "use")) return this.#actionStage(raw, path);
+    return this.#shellStage(raw, path);
+  }
+
+  //? `key: undefined` is the key left out, but on a stage without `sh` or `steps` it still tells which kind was meant.
+  #declares(raw: JsonObject, key: "use" | "parallel" | "matrix") {
+    return raw[key] !== undefined || (key in raw && raw.sh === undefined && raw.steps === undefined);
   }
 
   #actionStage(raw: JsonObject, path: string): PipelineActionStageRule | null {
     if (
       !this.#keys(raw, path, [
         "use",
-        "id",
-        "name",
-        "description",
-        "milestone",
-        "when",
-        "timeout",
-        "allowFailure",
+        ...PipelineInputReader.#stageKeys,
         "retry",
         ...(raw.use === "ota" ? ["targets", "platforms"] : []),
       ])
@@ -245,55 +255,25 @@ export class PipelineInputReader {
     return [...new Set(items)];
   }
 
-  #shellStage(raw: JsonObject, path: string, scope: Scope): PipelineShellStageRule | null {
-    const keys = [
-      "id",
-      "name",
-      "description",
-      "milestone",
-      "when",
-      "timeout",
-      "allowFailure",
-      "sh",
-      "steps",
-      "env",
-      "secrets",
-      "retry",
-    ];
-    if (!this.#keys(raw, path, keys)) return null;
-    const head = this.#stageHead(raw, path, scope === "workspace" ? "workspace" : "app");
+  #shellStage(raw: JsonObject, path: string): PipelineShellStageRule | null {
+    if (!this.#keys(raw, path, PipelineInputReader.#shellKeys)) return null;
+    const head = this.#stageHead(raw, path, false);
     if (!head) return null;
     const steps = this.#stageSteps(raw, path);
     return steps ? { kind: "sh", ...head, steps } : null;
   }
 
   #matrixStage(raw: JsonObject, path: string): PipelineMatrixStageRule | null {
-    const keys = [
-      "id",
-      "name",
-      "description",
-      "milestone",
-      "when",
-      "timeout",
-      "allowFailure",
-      "sh",
-      "steps",
-      "env",
-      "secrets",
-      "retry",
-      "matrix",
-      "maxParallel",
-    ];
-    if (!this.#keys(raw, path, keys)) return null;
+    if (!this.#keys(raw, path, [...PipelineInputReader.#shellKeys, "matrix", "maxParallel"])) return null;
     if (raw.matrix !== "apps") {
       this.#report(
         "pipeline.schema.invalid",
-        `${JSON.stringify(raw.matrix)} is not a matrix axis: only "apps"`,
+        `${PipelineInputReader.#show(raw.matrix)} is not a matrix axis: only "apps"`,
         `${path}.matrix`,
       );
       return null;
     }
-    const head = this.#stageHead(raw, path, "matrix");
+    const head = this.#stageHead(raw, path, true);
     if (!head) return null;
     const steps = this.#stageSteps(raw, path);
     if (!steps) return null;
@@ -301,22 +281,9 @@ export class PipelineInputReader {
   }
 
   #parallelStage(raw: JsonObject, path: string): PipelineParallelStageRule | null {
-    const keys = [
-      "id",
-      "name",
-      "description",
-      "milestone",
-      "when",
-      "timeout",
-      "allowFailure",
-      "parallel",
-      "maxParallel",
-      "failFast",
-      "env",
-      "secrets",
-    ];
+    const keys = [...PipelineInputReader.#stageKeys, "parallel", "maxParallel", "failFast", "env", "secrets"];
     if (!this.#keys(raw, path, keys)) return null;
-    const head = this.#stageHead(raw, path, "workspace");
+    const head = this.#stageHead(raw, path, false);
     if (!head) return null;
     const env = this.#env(raw.env, `${path}.env`);
     const secrets = this.#secrets(raw.secrets, `${path}.secrets`);
@@ -325,11 +292,11 @@ export class PipelineInputReader {
       const branchPath = `${path}.parallel[${idx}]`;
       const branchRaw = this.#object(branch, branchPath);
       if (!branchRaw) return [];
-      if ("use" in branchRaw || "parallel" in branchRaw || "matrix" in branchRaw) {
+      if ((["use", "parallel", "matrix"] as const).some((key) => this.#declares(branchRaw, key))) {
         this.#report("pipeline.schema.invalid", "a parallel branch is a shell stage", branchPath);
         return [];
       }
-      const rule = this.#shellStage(branchRaw, branchPath, "workspace");
+      const rule = this.#shellStage(branchRaw, branchPath);
       if (!rule) return [];
       if (rule.when.changed && head.when.changed) {
         this.#report(
@@ -339,6 +306,12 @@ export class PipelineInputReader {
         );
         return [];
       }
+      if (head.id === "post" && PipelineInputReader.#postResults.includes(rule.id))
+        this.#report(
+          "pipeline.id.reserved",
+          `"post.${rule.id}" is reserved for the steps of post.${rule.id}; give this branch or its parallel stage another \`id\``,
+          `${branchPath}.${branchRaw.id === undefined ? "name" : "id"}`,
+        );
       this.#claimId(ids, rule.id, rule.path);
       const steps = rule.steps.map((step) => ({
         ...step,
@@ -347,7 +320,7 @@ export class PipelineInputReader {
       }));
       return [{ ...rule, steps }];
     });
-    if (!branches.length && Array.isArray(raw.parallel))
+    if (!branches.length && (raw.parallel === undefined || Array.isArray(raw.parallel)))
       this.#report("pipeline.schema.invalid", "a parallel stage holds at least one branch", `${path}.parallel`);
     return {
       kind: "parallel",
@@ -358,7 +331,7 @@ export class PipelineInputReader {
     };
   }
 
-  #stageHead(raw: JsonObject, path: string, whenScope: "workspace" | "app" | "matrix") {
+  #stageHead(raw: JsonObject, path: string, allowApp: boolean) {
     const name = this.#text(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
     if (name === null) return null;
     const id = raw.id === undefined ? this.#slugId(name, `${path}.name`) : this.#id(raw.id, `${path}.id`);
@@ -368,7 +341,7 @@ export class PipelineInputReader {
       name,
       description: this.#description(raw.description, `${path}.description`),
       milestone: this.#milestone(raw.milestone, `${path}.milestone`),
-      when: this.#when(raw.when, `${path}.when`, whenScope === "matrix"),
+      when: this.#when(raw.when, `${path}.when`, allowApp),
       timeoutSeconds: this.#duration(raw.timeout, `${path}.timeout`),
       allowFailure: this.#boolean(raw.allowFailure, `${path}.allowFailure`),
       path,
@@ -449,7 +422,7 @@ export class PipelineInputReader {
     const raw = this.#object(value, path);
     if (!raw) return empty;
     for (const key of Object.keys(raw))
-      if (!["success", "failure", "canceled", "always"].includes(key))
+      if (!PipelineInputReader.#postResults.includes(key))
         this.#report(
           "pipeline.schema.unknownKey",
           key === "unstable"
@@ -497,6 +470,8 @@ export class PipelineInputReader {
               return parsed ? [parsed] : [];
             },
           );
+    if (Array.isArray(raw.trigger) && !raw.trigger.length)
+      this.#report("pipeline.schema.invalid", "a trigger list may not be empty", `${path}.trigger`);
     return {
       branch: this.#patterns(raw.branch, `${path}.branch`),
       trigger: triggers,
@@ -520,7 +495,7 @@ export class PipelineInputReader {
     if (value !== undefined && value !== 1)
       this.#report(
         "pipeline.schema.unsupported",
-        `${JSON.stringify(value)} is not a schemaVersion this CLI reads (1)`,
+        `${PipelineInputReader.#show(value)} is not a schemaVersion this CLI reads (1)`,
         path,
       );
   }
@@ -535,6 +510,12 @@ export class PipelineInputReader {
       if (problem) this.#report("pipeline.env.name", problem, `${path}.${name}`);
       else if (typeof entry !== "string")
         this.#report("pipeline.schema.invalid", "must be a string", `${path}.${name}`);
+      else if (entry.length > pipelinePlanLimits.shBytes)
+        this.#report(
+          "pipeline.limit.exceeded",
+          `an env value is at most ${pipelinePlanLimits.shBytes} characters`,
+          `${path}.${name}`,
+        );
       else env[name] = entry;
     }
     return env;
@@ -598,7 +579,7 @@ export class PipelineInputReader {
     if (!Number.isInteger(seconds) || seconds < min || seconds > max) {
       this.#report(
         "pipeline.duration.invalid",
-        `${JSON.stringify(value)} is not a duration between ${min} and ${max} seconds: whole seconds, or "30s", "20m", "1h"`,
+        `${PipelineInputReader.#show(value)} is not a duration between ${min} and ${max} seconds: whole seconds, or "30s", "20m", "1h"`,
         path,
       );
       return null;
@@ -657,16 +638,23 @@ export class PipelineInputReader {
       .split("\n")
       .map((text) => text.trim())
       .find(Boolean);
-    const name = line ?? run.trim();
-    return name.length > PipelineInputReader.#stepNameChars
-      ? `${name.slice(0, PipelineInputReader.#stepNameChars - 1)}…`
-      : name;
+    return PipelineInputReader.clip(line ?? run.trim(), PipelineInputReader.#stepNameChars);
+  }
+
+  static #show(value: unknown) {
+    let text: string;
+    try {
+      text = JSON.stringify(value) ?? String(value);
+    } catch {
+      text = typeof value === "bigint" ? `${value}n` : Object.prototype.toString.call(value);
+    }
+    return PipelineInputReader.clip(text, PipelineInputReader.#shownChars);
   }
 
   #keys(raw: JsonObject, path: string, keys: readonly string[]) {
     let ok = true;
     for (const key of Object.keys(raw)) {
-      if (keys.includes(key)) continue;
+      if (raw[key] === undefined || keys.includes(key)) continue;
       ok = false;
       if (PipelineInputReader.#futureKeys.includes(key))
         this.#report("pipeline.schema.unsupported", `\`${key}\` is not supported in schemaVersion 1`, `${path}.${key}`);
@@ -729,7 +717,11 @@ export class PipelineInputReader {
 
   #oneOf<T extends string>(value: unknown, path: string, options: readonly T[]): T | null {
     if (typeof value === "string" && (options as readonly string[]).includes(value)) return value as T;
-    this.#report("pipeline.schema.invalid", `${JSON.stringify(value)} is not one of ${options.join(", ")}`, path);
+    this.#report(
+      "pipeline.schema.invalid",
+      `${PipelineInputReader.#show(value)} is not one of ${options.join(", ")}`,
+      path,
+    );
     return null;
   }
 

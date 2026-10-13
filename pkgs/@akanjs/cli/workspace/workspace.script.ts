@@ -95,8 +95,12 @@ export class WorkspaceScript extends script("workspace", [
   }
   async machineKeygen(workspace: Workspace, out: string) {
     const { file, publicKey } = await this.workspaceRunner.machineKeygen(workspace, out);
+    const access =
+      process.platform === "win32"
+        ? "; Windows gives it the permissions of its folder, so keep it in one only you can read"
+        : " (mode 600)";
     Logger.rawLog(
-      `Wrote the private key to ${file} (mode 600). Set it as AKAN_MACHINE_PRIVATE_KEY on the server that issues machine tokens; nothing else needs it.`,
+      `Wrote the private key to ${file}${access}. Set it as AKAN_MACHINE_PRIVATE_KEY on the server that issues machine tokens; nothing else needs it.`,
     );
     Logger.rawLog(`A server that only verifies them takes the public key:\nAKAN_MACHINE_PUBLIC_KEY=${publicKey}`);
   }

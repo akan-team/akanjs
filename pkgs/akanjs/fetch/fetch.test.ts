@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { DataList, getEnv, Int } from "akanjs/base";
+import { Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
 import { Logger, websocketBinaryFrameContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
+  buildEndpoint,
   type DatabaseSignal,
   type EndpointCls,
   type EndpointInfo,
+  HttpExecutionContext,
   isExceptionLike,
   type SerializedArg,
   type SerializedSignal,
@@ -531,6 +533,51 @@ describe("HttpClient", () => {
     }
   });
 
+  test("quotes a multipart string bound for anything but a String or ID, so the server's JSON parse gives it back", async () => {
+    const info = buildEndpoint
+      .mutation(Boolean, { fileUpload: true })
+      .body("file", [Upload])
+      .body("payload", Any)
+      .body("list", Any)
+      .body("label", String)
+      .body("ownerId", ID)
+      .body("count", Int)
+      .body("tags", [String]);
+    const sent = new Map<string, unknown>([
+      ["file", [new File(["x"], "x.txt")]],
+      ["payload", "42"],
+      ["list", "[1]"],
+      ["label", "123"],
+      ["ownerId", "64a0000000000000000000a1"],
+      ["count", 3],
+      ["tags", ["1", "x"]],
+    ]);
+    const form = HttpClient.makeBody(
+      [
+        arg("body", "payload", { refName: "Any" }),
+        arg("body", "list", { refName: "Any" }),
+        arg("body", "label"),
+        arg("body", "ownerId", { refName: "ID" }),
+        arg("body", "count", { refName: "Int" }),
+        arg("body", "tags", { arrDepth: 1 }),
+      ],
+      [arg("body", "file", { refName: "Upload", arrDepth: 1 })],
+      sent,
+    ) as FormData;
+    const request = {
+      url: "http://localhost/api/upload",
+      params: {},
+      body: {},
+      headers: new Headers({ "content-type": "multipart/form-data; boundary=x" }),
+      formData: async () => form,
+    } as unknown as Bun.BunRequest;
+
+    const [files, ...values] = await new HttpExecutionContext(request).getArgs(info);
+
+    expect((files as File[]).map((file) => file.name)).toEqual(["x.txt"]);
+    expect(values).toEqual(["42", "[1]", "123", "64a0000000000000000000a1", 3, ["1", "x"]]);
+  });
+
   test("retries a restart, an unreachable server and a 429, and a mutation under one minted Idempotency-Key", async () => {
     setMockFetch();
     const fast = { min: 1, jitter: 0 };
@@ -568,8 +615,61 @@ describe("HttpClient", () => {
     expect(HttpClient.retryWait(limited, 1, { min: 10, jitter: 0 })).toBe(2_000);
     const restarting = Object.assign(new Error("restarting"), { error: "base.error.serverUnavailable" });
     expect(HttpClient.retryWait(restarting, 2, { min: 100, jitter: 0 })).toBe(200);
+    expect(HttpClient.retryWait(restarting, 1, { min: undefined, jitter: 0 })).toBe(500);
     expect(HttpClient.retryWait(restarting, 3, { attempts: 3 })).toBeNull();
     expect(HttpClient.retryWait(new Error("caller aborted"), 1, {})).toBeNull();
+  });
+
+  test("spends one deadline across every try and wait, and gives up on a wait that would outlast it", async () => {
+    const client = new HttpClient("http://127.0.0.1:1");
+    const signals = setHangingFetch();
+    const timedOut = await client.get("/slow", { timeout: 30, retry: { min: 1, jitter: 0 } }).catch((error) => error);
+    expect((timedOut as RestoredError).statusCode).toBe(408);
+    expect(signals).toHaveLength(1);
+
+    setMockFetch();
+    rawResponses.push(new Response("Too Many Requests", { status: 429, headers: { "retry-after": "60" } }));
+    const limited = await client.get("/limited", { retry: { min: 1, jitter: 0 } }).catch((error) => error);
+    expect(limited).toMatchObject({ statusCode: 429, data: { seconds: 60 } });
+    expect(fetchCalls).toHaveLength(1);
+  });
+
+  test("retries a gateway's own JSON 503 and a Retry-After of 0 at once, but not an error the app keyed", async () => {
+    setMockFetch();
+    const fast = { min: 1, jitter: 0 };
+    const client = new HttpClient("https://api.example", { ErrorCls: TestErr });
+    rawResponses.push(
+      Response.json({ message: "failure to get a peer from the ring-balancer" }, { status: 503 }),
+      new Response("Too Many Requests", { status: 429, headers: { "retry-after": "0" } }),
+      Response.json({ ok: true }),
+    );
+    expect(await client.get<{ ok: boolean }>("/items", { retry: fast })).toEqual({ ok: true });
+    expect(fetchCalls).toHaveLength(3);
+
+    rawResponses.push(Response.json({ message: "no peer" }, { status: 503 }));
+    const unkeyed = (await client.get("/items").catch((error) => error)) as TestErr;
+    expect(unkeyed.message).toBe("base.error.serverUnavailable");
+    expect(unkeyed).toMatchObject({ statusCode: 503, data: { status: 503 }, details: '{"message":"no peer"}' });
+
+    fetchCalls.length = 0;
+    rawResponses.push(Response.json({ error: "thing.error.maintenance", statusCode: 503 }, { status: 503 }));
+    const keyed = (await client.get("/items", { retry: fast }).catch((error) => error)) as TestErr;
+    expect(keyed.message).toBe("thing.error.maintenance");
+    expect(fetchCalls).toHaveLength(1);
+  });
+
+  test("mints an Idempotency-Key where crypto.randomUUID is missing, as on a dev server reached over plain http", async () => {
+    setMockFetch();
+    const insecure = crypto as unknown as { randomUUID?: unknown };
+    Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true, writable: true });
+    try {
+      await new HttpClient("http://192.168.0.10:8080").post("/ack", { id: "c1" }, { retry: { min: 1 } });
+    } finally {
+      delete insecure.randomUUID;
+    }
+    const key = new Headers(fetchCalls[0]?.init?.headers as HeadersInit).get("Idempotency-Key");
+    expect(key ?? "").toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(typeof crypto.randomUUID).toBe("function");
   });
 
   test("calls fetch with expected methods, headers, and bodies", async () => {
@@ -725,14 +825,17 @@ describe("HttpClient", () => {
     setMockFetch();
     rawResponses.push(new Response("Too Many Requests", { status: 429, headers: { "retry-after": "30" } }));
     rawResponses.push(new Response("Too Many Requests", { status: 429 }));
+    rawResponses.push(new Response("Too Many Requests", { status: 429, headers: { "retry-after": "0" } }));
     const client = new HttpClient("https://api.example", { ErrorCls: TestErr });
 
     const named = (await client.get("/items").catch((error: unknown) => error)) as TestErr;
     const unnamed = (await client.get("/items").catch((error: unknown) => error)) as TestErr;
+    const immediate = (await client.get("/items").catch((error: unknown) => error)) as TestErr;
 
     expect(named.message).toBe("base.error.tooManyRequests");
     expect(named).toMatchObject({ statusCode: 429, data: { status: 429, seconds: 30 } });
     expect(unnamed).toMatchObject({ statusCode: 429, data: { status: 429, seconds: 60 } });
+    expect(immediate).toMatchObject({ statusCode: 429, data: { status: 429, seconds: 0 } });
   });
 
   test("caps the transport error detail so a page body never becomes the message", async () => {
@@ -1025,6 +1128,88 @@ describe("FetchClient over a bridge", () => {
     } finally {
       FetchClient.setBridge(null);
     }
+  });
+
+  test("hands the bridge each call's budget in the HTTP order: the call's, the endpoint's, then the client's", async () => {
+    const budgets: unknown[] = [];
+    FetchClient.setBridge({
+      call: async ({ timeout }) => {
+        budgets.push(timeout);
+        return "ok";
+      },
+    });
+    try {
+      const signal: SerializedSignal = {
+        endpoint: {
+          provisionThing: { type: "mutation", args: [], returns: { refName: "String" }, timeout: 90_000 },
+          readThing: { type: "query", args: [], returns: { refName: "String" } },
+        },
+      };
+      const client = new FetchClient("https://api.example", {}, { service: signal });
+      await client.handler.provisionThing();
+      await client.handler.provisionThing({ timeout: false });
+      await client.handler.readThing();
+      client.setTimeout(45_000);
+      await client.handler.readThing();
+      expect(budgets).toEqual([90_000, false, undefined, 45_000]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
+  test("leaves a clone aimed at another server off the bridge, which reaches only the server behind the view", async () => {
+    setMockFetch();
+    jsonResponses.push("direct");
+    const bridged: string[] = [];
+    FetchClient.setBridge({
+      call: async ({ key }) => {
+        bridged.push(key);
+        return "bridged";
+      },
+    });
+    try {
+      type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<unknown> };
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+      const cloud = client.clone({ origin: "https://cloud.example", connect: false }) as unknown as Getter;
+      const sameServer = client.clone({ jwt: "same", connect: false }) as unknown as Getter;
+
+      expect(await cloud.getThing("1234567890abcdef12345678", [], null)).toBe("direct");
+      expect(await sameServer.getThing("1234567890abcdef12345678", [], null)).toBe("bridged");
+      expect(bridged).toEqual(["getThing"]);
+      expect(fetchCalls.map((call) => call.url)).toEqual(["https://cloud.example/custom/1234567890abcdef12345678"]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
+  test("refuses a file upload in a bridged view before it builds or sends anything", async () => {
+    setMockFetch();
+    const uploadSignal: SerializedSignal = {
+      endpoint: {
+        addFiles: {
+          type: "mutation",
+          fileUpload: true,
+          args: [
+            arg("body", "files", { refName: "Upload", arrDepth: 1 }),
+            arg("body", "metas"),
+            arg("body", "type"),
+            arg("body", "parentId", { refName: "ID", nullable: true }),
+          ],
+          returns: { refName: "String" },
+        },
+      },
+    };
+    const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal, file: uploadSignal });
+    const upload = () => client.handler.addFetchTestItemFiles([new File(["x"], "x.txt")]) as Promise<unknown>;
+    FetchClient.setBridge({ call: async () => "bridged" });
+    try {
+      await expect(upload()).rejects.toThrow("MCP App view");
+      expect(fetchCalls).toEqual([]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+    await upload();
+    expect(fetchCalls.map((call) => call.url)).toEqual(["https://api.example/addFiles"]);
   });
 
   test("restores a refusal the bridge carried as the app's own error", async () => {
@@ -1346,13 +1531,45 @@ describe("FetchClient HTTP generation", () => {
     setFakeWebSocket();
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
 
-    client.clone({ origin: "https://edge.example" });
+    const cloud = client.clone({ origin: "https://edge.example" });
+    cloud.clone({ jwt: "per-request" });
     expect(FakeWebSocket.instances.map((ws) => ws.url)).toEqual([]);
 
     client.clone({ origin: "https://edge.example", connect: true });
     client.clone({ jwt: "same-origin" });
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(FakeWebSocket.instances[0]?.url.startsWith("wss://edge.example")).toBe(true);
+  });
+
+  test("a clone keeps its parent's socket options, retry and budget unless it names its own", async () => {
+    setFakeWebSocket();
+    setMockFetch();
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<unknown> };
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const cloud = client.clone({
+      origin: "https://cloud.example",
+      connect: false,
+      retry: { min: 1, jitter: 0 },
+      ws: { headers: { "x-edge-version": "3" }, tls: { ca: "edge-ca" } },
+    });
+    cloud.setTimeout(12_345);
+
+    const perRequest = cloud.clone({ jwt: "per-request", connect: true });
+    expect(FakeWebSocket.instances[0]?.options).toEqual({
+      headers: { "x-edge-version": "3", authorization: "Bearer per-request" },
+      tls: { ca: "edge-ca" },
+    });
+    expect(perRequest.instance.http.timeout).toBe(12_345);
+    rawResponses.push(new Response("down", { status: 503 }), Response.json("recovered"));
+    expect(await (perRequest as unknown as Getter).getThing("1234567890abcdef12345678", [], null)).toBe("recovered");
+    expect(fetchCalls).toHaveLength(2);
+
+    fetchCalls.length = 0;
+    const once = cloud.clone({ jwt: "once", connect: false, retry: false }) as unknown as Getter;
+    rawResponses.push(new Response("down", { status: 503 }));
+    await expect(once.getThing("1234567890abcdef12345678", [], null)).rejects.toMatchObject({ statusCode: 503 });
+    expect(fetchCalls).toHaveLength(1);
+    perRequest.disconnect();
   });
 
   test("clone with a different origin does not share the request-query cache with the original", async () => {
@@ -1875,6 +2092,108 @@ describe("WsClient", () => {
     expect(() => client.connect()).not.toThrow();
     expect(errors).toEqual([expect.stringContaining("app://localhost:80/api/ws")]);
     expect(client.connected).toBe(false);
+    expect(client.state).toBe("closed");
+    client.destroy();
+  });
+
+  test("counts a socket its constructor refuses as a failed attempt, retried and then given up on", async () => {
+    const states: string[] = [];
+    const client = new WsClient("app://localhost:80/api/ws").configure({
+      reconnect: { min: 1, jitter: 0, maxAttempts: 1 },
+      onStateChange: (state) => states.push(state),
+    });
+    client.logger.error = (() => undefined) as typeof client.logger.error;
+    client.connect();
+    await waitUntil(() => client.state === "gaveUp");
+    expect(states).toEqual(["connecting", "closed", "connecting", "closed", "gaveUp"]);
+
+    // A hook that reconnects on close would otherwise call the throwing constructor again from inside its own catch.
+    const hooked: WsClient = new WsClient("app://localhost:80/api/ws").configure({
+      reconnect: false,
+      onStateChange: (state) => {
+        if (state === "closed") hooked.connect();
+      },
+    });
+    hooked.logger.error = (() => undefined) as typeof hooked.logger.error;
+    expect(() => hooked.connect()).not.toThrow();
+    expect(hooked.state).toBe("gaveUp");
+  });
+
+  test("counts a socket dropped right after the upgrade as a failed attempt, and one that stayed up as a recovery", async () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 1, jitter: 0, maxAttempts: 1 } });
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    setSystemTime(new Date(Date.now() + WsClient.stableMs));
+    FakeWebSocket.instances[0].close();
+    await waitUntil(() => FakeWebSocket.instances.length > 1);
+
+    FakeWebSocket.instances[1].open();
+    FakeWebSocket.instances[1].close();
+    await waitUntil(() => client.state === "gaveUp");
+    expect(client.state).toBe("gaveUp");
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  test("keeps the socket a state hook opens on close, instead of orphaning it for a reconnect of its own", async () => {
+    for (const reconnect of [false, { min: 1, jitter: 0 }] as const) {
+      setFakeWebSocket();
+      let reconnecting = true;
+      const client: WsClient = new WsClient("ws://example/ws").configure({
+        reconnect,
+        onStateChange: (state) => {
+          if (state === "closed" && reconnecting) client.connect();
+        },
+      });
+      client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+      client.connect();
+      FakeWebSocket.instances[0].open();
+      FakeWebSocket.instances[0].close();
+      await new Promise((resolve) => originalSetTimeout(resolve, 20));
+
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      const second = FakeWebSocket.instances[1];
+      second.open();
+      expect(client.state).toBe("open");
+      expect(JSON.parse(second.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+      client.emit("send", ["hello"]);
+      expect(JSON.parse(second.sent.at(-1) ?? "{}")).toEqual({ key: "send", data: ["hello"] });
+      reconnecting = false;
+      client.destroy();
+    }
+  });
+
+  test("reconnects as soon as the tab is back online or in view, instead of sitting out the backoff", () => {
+    setFakeWebSocket();
+    const browser = globalThis as { window?: unknown; document?: unknown };
+    const tab = new EventTarget();
+    const page = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    browser.window = tab;
+    browser.document = page;
+    try {
+      const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 60_000, jitter: 0 } });
+      client.connect();
+      FakeWebSocket.instances[0].open();
+      FakeWebSocket.instances[0].close();
+      expect(FakeWebSocket.instances).toHaveLength(1);
+
+      tab.dispatchEvent(new Event("online"));
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      FakeWebSocket.instances[1].close();
+      page.visibilityState = "hidden";
+      page.dispatchEvent(new Event("visibilitychange"));
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      page.visibilityState = "visible";
+      page.dispatchEvent(new Event("visibilitychange"));
+      expect(FakeWebSocket.instances).toHaveLength(3);
+
+      client.destroy();
+      tab.dispatchEvent(new Event("online"));
+      expect(FakeWebSocket.instances).toHaveLength(3);
+    } finally {
+      delete browser.window;
+      delete browser.document;
+    }
   });
 
   test("warns when realtime APIs are used and nothing ever connects", async () => {
@@ -2217,6 +2536,9 @@ describe("WsClient", () => {
       });
 
       expect(lines.at(-1) ?? "").toContain("WebSocket message process failed chatRoom.error.notMember");
+
+      FakeWebSocket.instances[0].receive("null");
+      expect(lines.at(-1) ?? "").toContain("Unknown WebSocket frame null");
     } finally {
       removeSink();
     }

@@ -76,6 +76,33 @@ describe("PipelineDryRun", () => {
     );
   });
 
+  test("a phase of one stage still names its app", () => {
+    const result = PipelineCompiler.compile({
+      context: { ...context, apps: ["web"] },
+      workspaceApps: ["web"],
+      workspace: {
+        file: "akan.config.ts",
+        sha256: sha,
+        pipeline: { after: [{ name: "E2E", matrix: "apps", sh: "bun run e2e" }] },
+      },
+      apps: new Map([["web", { file: "apps/web/akan.config.ts", sha256: sha, pipeline: null }]]),
+      akanVersion: "3.0.3",
+    });
+    expect(PipelineDryRun.render(result)).toBe(
+      [
+        "plan v1 · branch develop · env develop · trigger push · apps web",
+        "from akan.config.ts, apps/web/akan.config.ts (default)",
+        "",
+        "prepare  (executor)          checkout · env · install · plan",
+        "build    build       Build   web  action build",
+        "package  docker      Docker  web  action docker",
+        "deploy   deploy      Deploy  → web (one at a time)",
+        "finish   e2e         E2E     web  bun run e2e",
+        "finish   (executor)          cleanup",
+      ].join("\n"),
+    );
+  });
+
   test("a failed plan prints its diagnostics", () => {
     const rendered = PipelineDryRun.render({
       ok: false,

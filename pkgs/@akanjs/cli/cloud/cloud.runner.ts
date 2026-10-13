@@ -1,6 +1,7 @@
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import {
   type AppBinaryDistribution,
   CloudApi,
@@ -13,7 +14,7 @@ import {
 } from "@akanjs/devkit/cloud";
 import { type App, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
+import { type MobilePlatform, NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
@@ -521,7 +522,7 @@ export class CloudRunner extends runner("cloud") {
   }
 
   /** A secret's project: the workspace's own, or a subspace's, each its own project with its own secrets. */
-  async secretProject(workspace: Workspace, subspace: string | null) {
+  async secretProject(workspace: Workspace, subspace: string | null, appName?: string) {
     if (!subspace) {
       const workspaceId = workspace.getWorkspaceId({ allowEmpty: true });
       if (!workspaceId)
@@ -533,6 +534,10 @@ export class CloudRunner extends runner("cloud") {
     const [declaration] = config.select([subspace]);
     if (!declaration?.workspaceId)
       throw new Error(`Subspace "${subspace}" declares no workspaceId in ${SubspaceConfig.source}.`);
+    if (appName && !declaration.apps.includes(appName))
+      throw new Error(
+        `Subspace "${subspace}" declares no app ${appName} in ${SubspaceConfig.source}; it serves ${declaration.apps.join(", ")}.`,
+      );
     return declaration.workspaceId;
   }
 
@@ -542,7 +547,7 @@ export class CloudRunner extends runner("cloud") {
       ? await Bun.file(file).text()
       : process.stdin.isTTY
         ? await password({ message: `Value of ${name} (hidden; it can never be read back)`, mask: "*" })
-        : await Bun.stdin.text();
+        : await CloudRunner.#readStdin(name);
     const value = raw.replace(/\r?\n$/, "");
     if (!value) throw new Error(`The value of ${name} is empty.`);
     const bytes = new TextEncoder().encode(value).length;
@@ -551,13 +556,18 @@ export class CloudRunner extends runner("cloud") {
     return value;
   }
 
+  static async #readStdin(name: string) {
+    process.stderr.write(`Reading the value of ${name} from stdin until it closes (or pass --file <path>).\n`);
+    return await Bun.stdin.text();
+  }
+
   async uploadSecret(
     cloudApi: CloudApi,
     devProjectId: string,
     { name, branch, value }: { name: string; branch: string | null; value: string },
   ) {
-    CloudRunner.#assertSecretName(name);
-    CloudRunner.#assertSecretBranch(branch);
+    CloudRunner.assertSecretName(name);
+    CloudRunner.assertSecretBranch(branch);
     const saved = await cloudApi
       .uploadSecret(devProjectId, { scope: branch ?? "*", name, value })
       .catch((error: unknown) => {
@@ -571,7 +581,7 @@ export class CloudRunner extends runner("cloud") {
   }
 
   async listSecrets(cloudApi: CloudApi, devProjectId: string, branch: string | null) {
-    CloudRunner.#assertSecretBranch(branch);
+    CloudRunner.assertSecretBranch(branch);
     const listed = await cloudApi.listSecrets(devProjectId).catch((error: unknown) => {
       throw CloudRunner.#refusal(error, "the secrets are listed for a project member", {
         unavailable: CloudRunner.#secretsUnavailable,
@@ -586,8 +596,8 @@ export class CloudRunner extends runner("cloud") {
     devProjectId: string,
     { name, branch }: { name: string; branch: string | null },
   ) {
-    CloudRunner.#assertSecretName(name);
-    CloudRunner.#assertSecretBranch(branch);
+    CloudRunner.assertSecretName(name);
+    CloudRunner.assertSecretBranch(branch);
     const removed = await cloudApi
       .removeSecret(devProjectId, { scope: branch ?? "*", name })
       .catch((error: unknown) => {
@@ -604,8 +614,8 @@ export class CloudRunner extends runner("cloud") {
 
   static readonly #packRecords = ["manifest.template.json", "bundle.json", "pack.json", "compat.json"];
 
-  /** The pack as the tgz akasys takes: the files its manifest template lists, and the records beside them. */
-  static async #tarPack(pack: NativeUpdatePack) {
+  /** The pack as the tgz Akan Cloud takes: the files its manifest template lists, and the records beside them. */
+  static async #withArchive<T>(pack: NativeUpdatePack, use: (archive: string) => Promise<T>): Promise<T> {
     const templateFile = Bun.file(path.join(pack.out, "manifest.template.json"));
     if (!(await templateFile.exists()))
       throw new Error(`${pack.out} holds no manifest.template.json: give the folder \`akan pack-update\` wrote.`);
@@ -620,21 +630,51 @@ export class CloudRunner extends runner("cloud") {
       ...CloudRunner.#packRecords.filter((_, idx) => present[idx]),
       ...[...hashes].map((hash) => `files/${hash as string}`),
     ];
-    const base = path.join(os.tmpdir(), `akan-pack-${pack.app}-${pack.target}-${pack.platform}-${process.pid}`);
-    //? files/ keeps every earlier pack's files (content-addressed), so the folder itself is not the pack; a name file,
-    //? not argv, because a Windows command line holds 32 KiB.
-    await Bun.write(`${base}.list`, entries.map((entry) => `./${entry}\n`).join(""));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "akan-pack-"));
     try {
-      const tar = Bun.spawn(["tar", "-czf", `${base}.tgz`, "-C", pack.out, "-T", `${base}.list`], {
+      //? files/ keeps every earlier pack's files (content-addressed), so the folder itself is not the pack; the names
+      //? go on stdin, not argv, because a Windows command line holds 32 KiB.
+      // A relative archive name, so GNU tar never reads a Windows drive letter (`C:\…`) as a remote `host:file` spec.
+      const tar = Bun.spawn(["tar", "-czf", "pack.tgz", "-C", pack.out, "-T", "-"], {
+        cwd: dir,
+        stdin: new Blob([entries.map((entry) => `./${entry}\n`).join("")]),
         stdout: "ignore",
         stderr: "pipe",
       });
-      if ((await tar.exited) !== 0)
-        throw new Error(`tar of ${pack.out} failed: ${(await new Response(tar.stderr).text()).trim()}`);
+      const [code, stderr] = await Promise.all([tar.exited, new Response(tar.stderr).text()]);
+      if (code !== 0) throw new Error(`tar of ${pack.out} failed: ${stderr.trim()}`);
+      return await use(path.join(dir, "pack.tgz"));
     } finally {
-      await rm(`${base}.list`, { force: true });
+      await rm(dir, { recursive: true, force: true });
     }
-    return `${base}.tgz`;
+  }
+
+  /** A pack `akan pack-update` wrote, refused unless it is this app's and agrees with every flag given beside it. */
+  async readPack(
+    app: App,
+    dir: string,
+    {
+      platform,
+      target,
+      env,
+      allowLocalRelease,
+    }: { platform: MobilePlatform | null; target: string | null; env: NativeEnv | null; allowLocalRelease: boolean },
+  ) {
+    const pack = await NativeApp.readPack(dir);
+    const what = `The pack in ${pack.out} is ${pack.app} ${pack.target} ${pack.platform} --env ${pack.env}`;
+    if (pack.app !== app.name) throw new Error(`${what}, not ${app.name}'s.`);
+    if (platform && platform !== pack.platform) throw new Error(`${what}, not ${platform}.`);
+    if (env && env !== pack.env) throw new Error(`${what}, not --env ${env}.`);
+    if (target) {
+      const targets = (await resolveMobileTargets(app, target)).map(({ name }) => name);
+      if (targets.length !== 1 || targets[0] !== pack.target)
+        throw new Error(`${what}, not --target ${target} (${targets.join(", ")}).`);
+    }
+    if (pack.env === "local" && !allowLocalRelease)
+      throw new Error(
+        `${what}, and a local pack is blocked. Pass --allow-local-release only for explicit local release testing.`,
+      );
+    return pack;
   }
 
   async pushUpdate(
@@ -643,9 +683,8 @@ export class CloudRunner extends runner("cloud") {
     pack: NativeUpdatePack,
     { channel, notes }: { channel: string | null; notes: string | null },
   ) {
-    const archive = await CloudRunner.#tarPack(pack);
     const target = channel ?? pack.channel;
-    try {
+    return await CloudRunner.#withArchive(pack, async (archive) => {
       const release = await new UpdatePackUpload(cloudApi, devProjectId)
         .send(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel: target, notes })
         .catch((error: unknown) => {
@@ -664,9 +703,7 @@ export class CloudRunner extends runner("cloud") {
           `Staged ${label} (${pack.files} files, native API ${pack.nativeApi}). Publish it from the project's release screen.`,
         );
       return release;
-    } finally {
-      await rm(archive, { force: true });
-    }
+    });
   }
 
   //? The store build first, then a pack of the same commit: a server that registers the binary checks the pack runs in it.
@@ -675,27 +712,34 @@ export class CloudRunner extends runner("cloud") {
     devProjectId: string,
     app: App,
     pack: NativeUpdatePack,
-    { distribution, env }: { distribution: AppBinaryDistribution; env: string },
+    { distribution, env }: { distribution: AppBinaryDistribution; env: NativeEnv },
   ) {
     const [mobileTarget] = await resolveMobileTargets(app, pack.target);
     if (!mobileTarget) throw new Error(`Native target '${pack.target}' was not found.`);
     const bundlePath = path.join(new NativeApp(app, mobileTarget).outDir(pack.platform), "bundle.json");
     const bundleFile = Bun.file(bundlePath);
-    if (!(await bundleFile.exists()))
-      throw new Error(
-        `No store build at ${bundlePath}: run \`akan release-${pack.platform} ${app.name} --target ${pack.target} --env ${env}\` first.`,
-      );
-    const bundle = (await bundleFile.json()) as { nativeApi?: { hash?: string }; updates?: { channel?: string } };
+    const rebuild = `akan release-${pack.platform} ${app.name} --target ${pack.target} --env ${env}`;
+    if (!(await bundleFile.exists())) throw new Error(`No store build at ${bundlePath}: run \`${rebuild}\` first.`);
+    const bundle = (await bundleFile.json()) as { web?: { hash?: string }; updates?: { channel?: string } };
     if (!bundle.updates)
       throw new Error(`The store build at ${bundlePath} takes no updates: give the target native.updates.`);
-    if (bundle.nativeApi?.hash !== pack.nativeApi)
+    //? Every native build of the target rewrites this file, so a debug or another env's build replaces the release's.
+    if (bundle.web?.hash !== pack.webHash)
       throw new Error(
-        `The store build at ${bundlePath} provides native API ${bundle.nativeApi?.hash}, and this commit's pack needs ${pack.nativeApi}: build the store binary from this commit.`,
+        `The store build at ${bundlePath} is not this commit's --env ${env} build: its web bundle differs from the pack's. Run \`${rebuild}\`, then register that build.`,
       );
-    const archive = await CloudRunner.#tarPack(pack);
-    const channel = bundle.updates.channel ?? pack.channel;
+    const compat = await NativeApp.compareBundles(app.cwdPath, bundlePath, path.join(pack.out, "bundle.json"));
+    if (!compat.compatible)
+      throw new Error(
+        `The store build at ${bundlePath} differs from this commit's pack:\n- ${compat.problems.join("\n- ")}\nRun \`${rebuild}\`, then register that build.`,
+      );
+    if (bundle.updates.channel !== pack.channel)
+      throw new Error(
+        `The store build at ${bundlePath} reads updates channel ${bundle.updates.channel}, and this commit's --env ${env} pack is for ${pack.channel}. Run \`${rebuild}\`, then register that build.`,
+      );
+    const { channel } = pack;
     const upload = new UpdatePackUpload(cloudApi, devProjectId);
-    try {
+    return await CloudRunner.#withArchive(pack, async (archive) => {
       const binary = await upload
         .stage(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel, notes: null })
         .then((packUploadId) =>
@@ -717,21 +761,18 @@ export class CloudRunner extends runner("cloud") {
         `Registered ${pack.app} ${pack.target} ${pack.platform} (${distribution}): binary ${binary.id}, native API ${pack.nativeApi}.`,
       );
       return binary;
-    } finally {
-      await rm(archive, { force: true });
-    }
+    });
   }
 
   static formatSecrets(secrets: PipelineSecretListing[]) {
     if (!secrets.length) return "No pipeline secrets.";
     const rows = [...secrets]
       .sort((a, b) => a.name.localeCompare(b.name) || a.scope.localeCompare(b.scope))
-      .map((secret) => [
-        secret.name,
-        secret.scope === "*" ? "every branch" : secret.scope,
-        secret.updatedAt,
-        secret.updatedBy,
-      ]);
+      .map((secret) =>
+        [secret.name, secret.scope === "*" ? "every branch" : secret.scope, secret.updatedAt, secret.updatedBy].map(
+          (cell) => String(cell ?? "-"),
+        ),
+      );
     const header = ["NAME", "SCOPE", "UPDATED", "BY"];
     const widths = header.map((title, column) =>
       Math.max(title.length, ...rows.map((row) => row[column]?.length ?? 0)),
@@ -747,16 +788,17 @@ export class CloudRunner extends runner("cloud") {
   }
 
   static readonly #secretBytes = 64 * 1024;
-  //? The branches akasys deploys (its BranchType): a secret scoped to any other is refused by the server.
+  //? The branches Akan Cloud deploys (its BranchType): a secret scoped to any other is refused by the server.
   static readonly #secretBranches = ["debug", "develop", "main"];
-  static readonly #secretsUnavailable = "The server is not configured for pipeline secrets yet.";
+  static readonly #secretsUnavailable = "The server is not configured for pipeline secrets yet";
+  static readonly #errKey = /"error"\s*:\s*"([\w$-]+\.error\.[\w$-]+)"/;
 
-  static #assertSecretName(name: string) {
+  static assertSecretName(name: string) {
     const problem = PipelineNames.secretNameError(name);
     if (problem) throw new Error(problem);
   }
 
-  static #assertSecretBranch(branch: string | null) {
+  static assertSecretBranch(branch: string | null) {
     if (branch !== null && !CloudRunner.#secretBranches.includes(branch))
       throw new Error(`--branch ${branch} is not a deployed branch: ${CloudRunner.#secretBranches.join(", ")}.`);
   }
@@ -771,7 +813,10 @@ export class CloudRunner extends runner("cloud") {
       const key = /"error"\s*:\s*"([^"]+)"/.exec(message)?.[1];
       return new Error(`The project refused the request${key ? `: ${key}` : ""}.`);
     }
-    if (status === 503 && unavailable) return new Error(unavailable);
+    //? A proxy, or the gateway with no replica ready, answers 503 too; only the server's own names a domain Err key.
+    const serverKey = CloudRunner.#errKey.exec(message)?.[1];
+    if (status === 503 && unavailable && serverKey && serverKey !== "base.error.serverUnavailable")
+      return new Error(`${unavailable}: ${serverKey}.`);
     return error;
   }
 

@@ -5,7 +5,6 @@ export type { SubspaceConfigInput, SubspaceDeclaration };
 
 // No branch field: the workspace's current branch is used, so every subspace on it holds the same akanjs and libs.
 export class SubspaceConfig {
-  /** Where the declaration lives, as error messages name it. */
   static readonly source = "subspace in the workspace root akan.config.ts";
   static readonly defaultPushableBranches = ["main", "develop", "debug"];
 

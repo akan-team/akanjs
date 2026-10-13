@@ -257,9 +257,10 @@ const config: AppConfig = {
   Intel Macs are not a target, so `--arch x64` on macOS is refused.
 - **A release is signed only with `--sign` and notarized only with `--notarize`** (`build-desktop`,
   `publish-update`); the environment names the identity and never decides to use it, so a shell exporting a Developer
-  ID signs and uploads nothing unasked. Before either, the server the app carries is searched for every secret value
-  of the workspace's server env files and refused with the paths, and one line names the identity and the service
-  the app goes to.
+  ID signs and uploads nothing unasked. Every release build and every `publish-update` of a target that carries a
+  server, signed or not, first searches that server for every secret value of the workspace's server env files and
+  refuses with the paths; an env file it cannot evaluate stops the release too, and a debug build is not searched.
+  One line then names the identity and the service the app goes to.
 - **A macOS release for download is signed with a Developer ID and notarized.**
   `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);
@@ -280,12 +281,15 @@ const config: AppConfig = {
   key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
   them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
   app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
-  into `updates/`: upload that folder to `url`, the manifests last, or let `--upload s3://<bucket>/<prefix>` do it
-  (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket holds is skipped). A phone reads only
-  `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its own fixes.
+  into `updates/`: upload that release's files to `url` and its manifest last, or let
+  `--upload s3://<bucket>/<prefix>` do it (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket
+  holds is skipped), which sends that release alone, and nothing when it is missing or fails a check. Never upload the
+  folder whole: a phone's is where `pack-update` writes by default, and its `pack.json` holds this machine's paths.
+  A phone reads only `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its
+  own fixes.
   `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
   `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
-  an akasys project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
+  the Akan Cloud project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
   release that hangs is rolled back while the app runs, and `report: { url }` has a phone post what became of each
   release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
   opens the web inspector of a release build for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
@@ -307,10 +311,11 @@ const config: AppConfig = {
   their page paints, so a dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in
   Apps & features and its executable's company (the app name when unset, never Bun's own).
 - **A third-party page shown first-party** — a scoreboard, a menu board — is the `external-view` plugin, listed in
-  `native.plugins`: a webview over the window with a browser profile of its own, held to the origins it was opened
-  for, with an init script, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is
-  rebuilt, by itself) / `consoleMessage` events. Every method on Windows; macOS 14+ lacks `sendKey`, `setMuted` and
-  `capture`.
+  `native.plugins`: a webview over the window with a browser profile of its own, its top level held to the origins it
+  was opened for while its frames load web content from anywhere, with an init script that runs in the top document
+  only, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is rebuilt, by itself;
+  the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
+  again) / `consoleMessage` events. Every method on Windows; macOS 14+ lacks `sendKey`, `setMuted` and `capture`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
@@ -416,10 +421,14 @@ in those alone, and `modules: ["@edge"]` (or `AKAN_MODULES=@edge`) names every m
 inject, cascade to and hold a relation to. `desktop: { server: { profile: "edge", modules: ["@edge"] } }` builds the
 carried server that way: `env/env.server.<env>.edge.ts` is bundled in place of `env/env.server.<env>.ts`, which never
 enters it, and the build evaluates the profile file with no app env and refuses one whose secret-named keys hold a
-value — a `process.env.X ?? "literal"` counts as the literal. Each lib's env defaults (`env.server.testing.ts`) are
+value — a `process.env.X ?? "literal"` counts as the literal. Signing, encryption, master and session keys, `pwd`, a
+`…dsn` and a connection string are secret-named, and a URL holding a password or a secret-named query parameter is a
+secret under any key. The profile may spread `libEnv`, and the lib defaults it reaches are checked as the bundle
+carries them; a profile that imports the file it replaces is refused. Each lib's env defaults (`env.server.testing.ts`) are
 swapped the same way: for the lib's `env/env.server.testing.edge.ts`, held to the same check, or for the defaults with
-every secret-named value left out, which the build names in a warning. `akan build <app> --profile edge` does the
-same for an image. A module listing only edge does not mount under `akan start` (local): list `local` too to develop
+every secret-named value left out, which the build names in a warning — and a default a JSON snapshot cannot carry (a
+function, Map, Set, Date, class instance, bigint or non-finite number) is refused unless the lib has its profile file.
+`akan build <app> --profile edge` does the same for an image. A module listing only edge does not mount under `akan start` (local): list `local` too to develop
 it there.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `"file-picker"` in
@@ -556,7 +565,7 @@ const config: AppConfig = { assets: { pruneFonts: false } }; // emergency valve,
 
 Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`, and `ota` after them when asked. **An app's own stages go in
 `apps/<app>/akan.config.ts` under `pipeline`; stages around every app go in the workspace root's
-`akan.config.ts`**, typed `WorkspaceConfig` (`before`, `after`, `post`, `env`, `timeout`). Both are `import type`
+`akan.config.ts`**, typed `WorkspaceConfig`, under its own `pipeline` (`before`, `after`, `post`, `env`, `timeout`). Both are `import type`
 objects (or `(ctx) => …`), and `akan pipeline dry-run | validate | plan` turns them into the plan Akan Cloud runs —
 locally, running nothing.
 

@@ -70,7 +70,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
 
 Chain Stages
 

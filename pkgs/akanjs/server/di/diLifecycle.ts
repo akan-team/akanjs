@@ -277,11 +277,15 @@ export class DiLifecycle {
       changed = false;
       candidates.forEach(({ refName, module }) => {
         if (disabledReasons.has(refName)) return;
-        for (const dependencyRefName of getModuleDependencyRefNames(module)) {
+        const reached = [
+          ...[...getModuleDependencyRefNames(module)].map((target) => ["depends on", target] as const),
+          ...[...getModuleRelationRefNames(module)].map((target) => ["relates to", target] as const),
+        ];
+        for (const [link, dependencyRefName] of reached) {
           if (dependencyRefName === refName) continue;
           const dependencyReason = disabledReasons.get(dependencyRefName);
           if (!dependencyReason) continue;
-          disabledReasons.set(refName, `depends on disabled module "${dependencyRefName}"`);
+          disabledReasons.set(refName, `${link} disabled module "${dependencyRefName}"`);
           if (excludedClosure.has(dependencyRefName)) excludedClosure.add(refName);
           changed = true;
           break;

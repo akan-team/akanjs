@@ -427,4 +427,20 @@ describe("Oauth Signal", () => {
     // The browser session that did the disconnecting is untouched.
     await expect(owner.fetch.listOAuthConnections()).resolves.toBeDefined();
   });
+
+  it("leaves disconnecting an app and deciding a consent to a person, never an agent's token", async () => {
+    const fresh = await grant();
+    const [connection] = (await connections(fresh.access_token)).filter((c) => c.isCurrent);
+    expect(connection).toBeDefined();
+    const byAgent = await fetch(`${base}${getApiPrefix()}/revokeOAuthConnection/${connection.sessionId}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${fresh.access_token}` },
+    });
+    expect(byAgent.ok).toBe(false);
+    expect((await connections(owner.accessToken.jwt)).some((c) => c.sessionId === connection.sessionId)).toBe(true);
+    const requestId = requestIdOf(await authorize(owner.accessToken.jwt));
+    expect((await decide("approveOAuthConsent", requestId, fresh.access_token)).status).not.toBe(302);
+    expect((await decide("denyOAuthConsent", requestId, fresh.access_token)).status).not.toBe(302);
+    expect((await decide("approveOAuthConsent", requestId, owner.accessToken.jwt)).status).toBe(302);
+  });
 });

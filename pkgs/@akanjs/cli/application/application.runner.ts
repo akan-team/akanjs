@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
@@ -62,7 +63,7 @@ export interface MobileSignOptions {
 export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOptions {
   /** The manifest to publish to; default the target's updates.channel, else the backend env it is built for. */
   channel?: string;
-  /** s3://<bucket>/<prefix> the target's updates folder goes to once it is published. */
+  /** s3://<bucket>/<prefix> the release goes to once it is published: its files, then its manifest. */
   upload?: string;
   /** Desktop: the CPU of the apps the release is for, which names its feed folder (`<os>-<arch>`). */
   arch?: "arm64" | "x64";
@@ -477,8 +478,12 @@ try {
     const [mobileTarget] = targets;
     if (!mobileTarget || targets.length > 1)
       throw new Error("pack-update packs one native target at a time; pass --target <name>.");
+    const nativeApp = new NativeApp(app, mobileTarget, env);
+    //? Before the web build: a pack failing anywhere leaves push-update --pack no record of the previous one to ship.
+    const dir = path.resolve(out ?? path.join(nativeApp.updatesDir, platform));
+    await Promise.all(["pack.json", "compat.json"].map((name) => rm(path.join(dir, name), { force: true })));
     await this.#buildMobileCsr(app, env);
-    const { pack } = await new NativeApp(app, mobileTarget, env).packUpdate(platform, { out });
+    const { pack } = await nativeApp.packUpdate(platform, { out });
     app.logger.info(
       `packed ${mobileTarget.name} ${platform} for channel '${pack.channel}' to ${pack.out}: ${pack.files} files, ${(pack.size / 1024).toFixed(0)} KiB, native API ${pack.nativeApi}`,
     );
@@ -562,10 +567,12 @@ try {
         `${app.name}/${mobileTarget.name} ${published.bundle}: ${published.dir}/${published.channel}.json, ${published.files} files, ${Math.round(published.size / 1024)} KiB`,
       );
       if (!uploader) {
-        app.log(`Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last.`);
+        app.log(
+          `Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last, without pack-update's records (pack.json, compat.json, manifest.template.json, bundle.json); --upload s3://… sends just this release.`,
+        );
         continue;
       }
-      const { uploaded, skipped } = await uploader.upload(nativeApp.updatesDir);
+      const { uploaded, skipped } = await uploader.upload(nativeApp.updatesDir, published);
       app.log(
         `Uploaded ${uploaded} file(s) to ${upload}, the manifests last; ${skipped} the bucket already held. Installed apps read ${mobileTarget.config.updates?.url}.`,
       );
@@ -611,7 +618,7 @@ try {
     agree("omit different packages", ({ omit }) => omit.join(", "));
     agree("name different env profiles", ({ profile }) => profile ?? "");
     agree("mount different modules", ({ modules }) => modules.join(", "));
-    agree("set a different env", ({ env }) => (env ? JSON.stringify(env) : ""));
+    agree("set a different env", ({ env }) => (env ? JSON.stringify(env, Object.keys(env).sort()) : ""));
     agree("restart differently", ({ restart }) => String(restart ?? ""));
     agree("watch it differently", ({ watchdog }) => (watchdog ? JSON.stringify(watchdog) : ""));
     return first;

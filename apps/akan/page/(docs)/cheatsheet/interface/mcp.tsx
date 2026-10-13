@@ -137,8 +137,8 @@ export default page().render(() => {
     {
       when: l.trans({ en: "It is the generated `light<Model>` read", ko: "생성된 `light<Model>` 조회다" }),
       why: l.trans({
-        en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead.",
-        ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다.",
+        en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; a screen drawn in the chat still calls it, under its guards.",
+        ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다. 채팅 안에 뜬 화면은 가드 아래에서 여전히 부를 수 있습니다.",
       }),
     },
     {
@@ -270,8 +270,8 @@ export default page().render(() => {
       default: "false",
       tags: ["AKAN_MCP_READONLY", "AKAN_PUBLIC_MCP_READONLY"],
       desc: l.trans({
-        en: "Publishes queries only, whatever the guards allow; the env turns it on only on `true` or `1`.",
-        ko: "가드가 무엇을 허용하든 query만 게시합니다. env는 `true`나 `1`일 때만 켭니다.",
+        en: "Publishes queries only, whatever the guards allow, and turns MCP Apps off; the env turns it on only on `true` or `1`.",
+        ko: "가드가 무엇을 허용하든 query만 게시하고, MCP Apps를 끕니다. env는 `true`나 `1`일 때만 켭니다.",
       }),
     },
     {
@@ -381,18 +381,18 @@ export default page().render(() => {
       default: "true",
       tags: ["AKAN_MCP_APPS"],
       desc: l.trans({
-        en: "Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps.",
-        ko: "`.prompt()` 페이지를 툴로도 게시하고, MCP Apps를 그리는 클라이언트는 그 화면을 채팅 안에 띄웁니다.",
+        en: "Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps. A read-only deployment has none: no page tools, views or app-only tools.",
+        ko: "`.prompt()` 페이지를 툴로도 게시하고, MCP Apps를 그리는 클라이언트는 그 화면을 채팅 안에 띄웁니다. 읽기 전용 배포에는 페이지 툴, 화면, 앱 전용 툴이 모두 없습니다.",
       }),
     },
     {
       key: "modern",
       type: "boolean",
-      default: "true unless apps render",
+      default: "true unless a page shows a view",
       tags: ["AKAN_MCP_MODERN"],
       desc: l.trans({
-        en: "Offer the `2026-07-28` revision; withheld while views render, as claude.ai draws one only after `initialize`.",
-        ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 화면을 그려서, 화면을 그리는 동안에는 빼 둡니다.",
+        en: "Offer the `2026-07-28` revision; withheld while a `.prompt()` page may show as a view, until the RSC worker lists none, as claude.ai draws one only after `initialize`.",
+        ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 화면을 그리므로, `.prompt()` 페이지가 화면으로 뜰 수 있는 동안에는 빼 두고, RSC worker가 그런 페이지가 없다고 하면 제공합니다.",
       }),
     },
     {
@@ -749,14 +749,33 @@ export default page().render(() => {
         <>
           <strong>The same page is a tool, and can be the screen itself.</strong> Claude Code reads the briefing and a
           link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a{" "}
-          <code>Person</code> act stays on the web.
+          <code>Person</code> act stays on the web. The tool declares <code>readOnlyHint: false</code>, since running
+          the page makes its own <code>fetch.*</code> calls, mutations included.
         </>
       ),
       ko: (
         <>
           <strong>같은 페이지가 툴이 되고, 화면 자체로도 뜹니다.</strong> Claude Code는 브리핑과 링크를 받고,
           claude.ai·ChatGPT·VS Code는 채팅 안에 페이지를 그립니다. 거기서 누르는 동작은 에이전트 토큰으로 실행되므로{" "}
-          <code>Person</code> 행위는 웹에서 합니다.
+          <code>Person</code> 행위는 웹에서 합니다. 페이지를 실행하면 mutation을 포함한 그 페이지의 <code>fetch.*</code>{" "}
+          호출이 일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>A client that renders views is known by a signed session.</strong> A legacy client that declares the
+          MCP Apps extension at <code>initialize</code> is issued{" "}
+          <code>{"Mcp-Session-Id: ui.<nonce>.<signature>"}</code>, signed by the app; an id it did not sign is served as
+          a client without views.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>화면을 그리는 클라이언트는 서명된 세션으로 알아봅니다.</strong> <code>initialize</code>에서 MCP Apps
+          확장을 선언한 legacy 클라이언트는 앱이 서명한 <code>{"Mcp-Session-Id: ui.<nonce>.<signature>"}</code>를 받고,
+          앱이 서명하지 않은 id는 화면이 없는 클라이언트로 대합니다.
         </>
       ),
     }),

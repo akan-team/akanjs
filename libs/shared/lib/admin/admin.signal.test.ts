@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import type { Me } from "@libs/shared/common";
 import type { Account } from "akanjs/fetch";
 import { sample } from "akanjs/test";
 import * as adminSpec from "./admin.signal.spec";
@@ -47,7 +48,7 @@ describe("Admin Signal", () => {
 
     it("can signout admin", async () => {
       // 1. Admin 로그인
-      const decodedAdminJwt = decodeJwtPayload<(Account & { exp?: number; tokenType?: string }) | null>(
+      const decodedAdminJwt = decodeJwtPayload<(Account<{ me?: Me }> & { exp?: number; tokenType?: string }) | null>(
         adminAgent.accessToken.jwt,
       );
       expect(decodedAdminJwt?.me).toBeTruthy();

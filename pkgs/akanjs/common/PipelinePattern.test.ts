@@ -15,6 +15,24 @@ describe("PipelinePattern", () => {
     expect(PipelinePattern.matches("**/*.md", "docs/a/b.md")).toBe(true);
     expect(PipelinePattern.matches("apps/**/test.ts", "apps/test.ts")).toBe(true);
     expect(PipelinePattern.matches("apps/**/test.ts", "apps/web/lib/test.ts")).toBe(true);
+    expect(PipelinePattern.matches("apps/**/test.ts", "apps/webtest.ts")).toBe(false);
+  });
+
+  test("a trailing `/**` also matches the bare prefix, and nothing that only starts with it", () => {
+    expect(PipelinePattern.matches("release/**", "release")).toBe(true);
+    expect(PipelinePattern.matches("release/**", "release/")).toBe(true);
+    expect(PipelinePattern.matches("release/**", "releases/1.0")).toBe(false);
+    expect(PipelinePattern.matches("**", "")).toBe(true);
+    expect(PipelinePattern.matches("**", "apps/web/x.ts")).toBe(true);
+    expect(PipelinePattern.matches("*", "")).toBe(true);
+  });
+
+  test("a pattern of many stars costs its length per character, never backtracking", () => {
+    const started = performance.now();
+    expect(PipelinePattern.matches("*a*a*a*a*a*a*a*a*a*a*a*a*b", "a".repeat(40))).toBe(false);
+    expect(PipelinePattern.matchesAny(["**a**a**a**a**a**a**a**a**b"], [`${"a/".repeat(2048)}a`])).toBe(false);
+    expect(PipelinePattern.matches("*a*a*a*a*a*a*a*a*a*a*a*a*b", `${"a".repeat(40)}b`)).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   test("`?` is one character but `/`", () => {

@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import type { Self } from "@libs/shared/common";
 import * as userSpec from "@libs/shared/lib/user/user.signal.spec";
 import type { Account } from "akanjs/fetch";
 import { getOrSetupSignalTestFetch, sample } from "akanjs/test";
@@ -26,7 +27,9 @@ describe("User Signal", () => {
     });
 
     it("can refresh user jwt with refresh token rotation", async () => {
-      const decodedJwt = decodeJwtPayload<Account & { exp?: number; tokenType?: string }>(userAgent.accessToken.jwt);
+      const decodedJwt = decodeJwtPayload<Account<{ self?: Self }> & { exp?: number; tokenType?: string }>(
+        userAgent.accessToken.jwt,
+      );
       expect(decodedJwt.self).toBeTruthy();
       expect(decodedJwt.exp).toBeTruthy();
       expect(decodedJwt.tokenType).toBe("access");

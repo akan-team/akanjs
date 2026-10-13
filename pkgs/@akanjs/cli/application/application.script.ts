@@ -162,8 +162,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       throw new Error(
         `akan typecheck takes an app or a library; ${exec.name} is a package, checked by its own tsconfig.`,
       );
-    if (exec instanceof LibExecutor) await this.libraryScript.syncLibrary(exec);
-    else await exec.scanSync({ write });
+    if (exec instanceof AppExecutor) await exec.scanSync({ write });
+    else if (write) await this.libraryScript.syncLibrary(exec);
+    else await exec.scan({ write: false });
     const spinner = exec.spinning(`Typechecking ${exec.name}${tests ? " with its tests" : ""}...`);
     try {
       if (exec instanceof LibExecutor)

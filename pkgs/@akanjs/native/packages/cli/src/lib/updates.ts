@@ -17,6 +17,7 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
+import { isChannelName, RESERVED_CHANNELS } from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
@@ -137,6 +138,7 @@ export function webManifest(release: {
   sequence: number;
   bundle: string;
   files: UpdateFile[];
+  revokeKeys?: string[];
 }): UpdateManifest {
   return {
     schema: 2,
@@ -150,20 +152,16 @@ export function webManifest(release: {
     runtimeVersion: runtimeVersion(),
     version: release.app.version,
     files: release.files,
+    ...(release.revokeKeys?.length ? { revokeKeys: release.revokeKeys } : {}),
   };
 }
 
-/** A channel is a file name in the release folder and a string an app's config compares: lowercase, no separators. */
-const CHANNEL_NAME = /^[a-z0-9][a-z0-9._-]{0,40}$/;
-/** These would land on what an unsigned phone update (packUpdate) writes to the same folder, or on its `files/`. */
-const RESERVED_CHANNELS = ["bundle", "manifest.template", "compat", "pack", "files", "app"];
-
 /** Refuses a channel no app could be configured for: it would be written but never taken. */
 export function assertChannel(channel: string): void {
-  if (!CHANNEL_NAME.test(channel))
-    throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
+  if (isChannelName(channel)) return;
   if (RESERVED_CHANNELS.includes(channel))
     throw new CliError(`channel "${channel}" is a name the update folder already uses: name another`);
+  throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
 }
 
 export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig | null {
@@ -177,10 +175,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   if (typeof r.url !== "string" || !/^https?:\/\/[^/?#]+[^?#]*$/.test(r.url))
     problems.push("updates.url must be an http(s) URL without a query or fragment");
   const publicKeys = updatePublicKeys(r, problems);
-  if (
-    r.channel !== undefined &&
-    (typeof r.channel !== "string" || !CHANNEL_NAME.test(r.channel) || RESERVED_CHANNELS.includes(r.channel))
-  )
+  if (r.channel !== undefined && (typeof r.channel !== "string" || !isChannelName(r.channel)))
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
@@ -206,7 +201,7 @@ function updateReportUrl(raw: unknown, problems: string[]): string | null {
     problems.push("updates.report must be { url } with an http(s) URL");
     return null;
   }
-  return url.replace(/\/+$/, "");
+  return url;
 }
 
 /** `publicKeys` (1–3, no repeats) or the one-key `publicKey`, never both. */
@@ -291,6 +286,11 @@ export function sealManifest(bytes: Uint8Array, keyPath: string, publicKeys: rea
   };
 }
 
+/** The largest manifest an envelope may hold: the shells refuse a bigger one (AkanNativeUpdateEnvelope.open). */
+const MAX_MANIFEST = 1 << 20;
+/** Base64 as Swift's Data(base64Encoded:) takes it: the standard alphabet, padded, no whitespace. */
+const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 /**
  * The manifest bytes of an envelope, verified as a phone verifies it against `publicKeys` (minus `revoked`). What it
  * then decides (revocation, sequence) is AkanNativeKernel.updateDecision, kernel.ts updateDecision.
@@ -300,19 +300,24 @@ export function openEnvelope(
   publicKeys: readonly string[],
   revoked: readonly string[] = [],
 ): { manifest: Uint8Array; keyId: string } {
-  let envelope: Partial<UpdateEnvelope>;
+  let envelope: unknown;
   try {
-    envelope = JSON.parse(text) as Partial<UpdateEnvelope>;
+    envelope = JSON.parse(text);
   } catch {
     throw new CliError("the update envelope is not JSON");
   }
-  const { manifest, keyId, signature } = envelope;
+  const { manifest, keyId, signature } = (
+    envelope && typeof envelope === "object" && !Array.isArray(envelope) ? envelope : {}
+  ) as Partial<UpdateEnvelope>;
   if (typeof manifest !== "string" || typeof keyId !== "string" || typeof signature !== "string")
     throw new CliError("the update envelope needs manifest, keyId and signature");
   const publicKey = publicKeys.find((key) => keyIdOf(key) === keyId);
   if (!publicKey || revoked.includes(keyId))
     throw new CliError(`the update envelope is signed by key ${keyId}, which is not trusted`);
+  if (!STRICT_BASE64.test(manifest) || !STRICT_BASE64.test(signature))
+    throw new CliError("the update envelope's manifest or signature is not padded standard base64");
   const bytes = Buffer.from(manifest, "base64");
+  if (bytes.length > MAX_MANIFEST) throw new CliError("the update envelope's manifest is larger than 1 MiB");
   if (!verifyManifest(bytes, signature, publicKey))
     throw new CliError("the update envelope's signature does not verify");
   return { manifest: new Uint8Array(bytes), keyId };

@@ -1,5 +1,7 @@
 import {
   Backoff,
+  type BackoffPolicy,
+  isRecord,
   Logger,
   type WebsocketHeartbeatAckData,
   websocketAuthContract,
@@ -17,12 +19,7 @@ import type {
 import { websocketRoomContract } from "../../common/websocketContract";
 import { type ErrorConstructor, restoreRemoteError } from "./remoteError";
 
-export interface WsClientReconnectOptions {
-  /** The first wait in ms; each attempt in a row doubles it. */
-  min?: number;
-  max?: number;
-  /** The share of each wait drawn at random, 0 to 1, so clients one deploy dropped together come back apart. */
-  jitter?: number;
+export interface WsClientReconnectOptions extends BackoffPolicy {
   /** Attempts in a row before the client gives up; unset, it never does. */
   maxAttempts?: number;
 }
@@ -70,12 +67,15 @@ export class WsClient {
   static makeRoomId(key: string, args: unknown[]) {
     return websocketRoomContract.idOf(key, args);
   }
+  static readonly stableMs = 5_000;
 
   readonly logger = new Logger("WsClient");
   readonly url: string;
   #ws: WebSocket | null = null;
+  #opening = false;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #reconnectAttempts = 0;
+  #watchingWake = false;
   #roomSubscribeMap = new Map<string, SubscribeOption>();
   /**
    * Server room id → the id subscribed under: a live room's id carries internal args the client cannot know, so the
@@ -152,20 +152,16 @@ export class WsClient {
   }
 
   #connect() {
-    if (this.#destroyed) return;
-
-    //? The constructor throws only for a URL no retry can fix (a scheme or port the browser refuses), and thrown from
-    //? ClientBridge's effect it unmounts the whole React root; so it is logged, and the page runs without a socket.
+    if (this.#destroyed || this.#opening) return;
+    this.#cancelReconnect();
     this.#setState("connecting");
-    try {
-      this.#ws = this.#open();
-    } catch (error) {
-      this.logger.error(`Cannot open a WebSocket to ${this.url}: ${error instanceof Error ? error.message : error}`);
-      return;
-    }
+    const ws = this.#tryOpen();
+    if (!ws) return;
+    this.#ws = ws;
+    let openedAt = 0;
     this.#ws.binaryType = "arraybuffer";
     this.#ws.onopen = (e) => {
-      this.#reconnectAttempts = 0;
+      openedAt = Date.now();
       this.connected = true;
       this.logger.debug(`WebSocket connected`);
       this.#setState("open");
@@ -201,8 +197,13 @@ export class WsClient {
           else this.logger.warn("Unknown binary WebSocket frame");
           return;
         }
-        const parsed = JSON.parse(e.data) as { error?: unknown; key?: string } & WebsocketResData;
-        if (parsed?.error) {
+        const frame: unknown = JSON.parse(e.data);
+        if (!isRecord(frame)) {
+          this.logger.warn(`Unknown WebSocket frame ${e.data.slice(0, 200)}`);
+          return;
+        }
+        const parsed = frame as { error?: unknown; key?: string } & WebsocketResData;
+        if (parsed.error) {
           const error = restoreRemoteError(parsed, 500, this.ErrorCls);
           this.#options.onError?.(error, parsed.key);
           throw error;
@@ -256,12 +257,38 @@ export class WsClient {
       this.logger.verbose(`WebSocket error ${errMsg}`);
     };
     this.#ws.onclose = (event) => {
+      if (this.#ws !== ws) return;
       this.logger.debug(`WebSocket closed: ${event.code} ${event.reason}`);
+      this.#ws = null;
       this.connected = false;
       this.#stopHeartbeat();
-      if (!this.#destroyed) this.#setState("closed");
-      this.#scheduleReconnect();
+      //? Only a socket that stayed up ends the streak: a gateway that upgrades and drops at once is another failure.
+      if (openedAt && Date.now() - openedAt >= WsClient.stableMs) this.#reconnectAttempts = 0;
+      if (!this.#destroyed) this.#closed();
     };
+  }
+
+  //? The constructor throws only for what no instant retry fixes (a refused scheme or port, a malformed header), and
+  //? thrown from ClientBridge's effect it unmounts the whole React root; so it is logged, as a failed attempt.
+  #tryOpen(): WebSocket | null {
+    this.#opening = true;
+    try {
+      return this.#open();
+    } catch (error) {
+      this.logger.error(`Cannot open a WebSocket to ${this.url}: ${error instanceof Error ? error.message : error}`);
+      this.#closed();
+      return null;
+    } finally {
+      this.#opening = false;
+    }
+  }
+
+  //? The state hook may reconnect, destroy or give up meanwhile, and a reconnect it starts while an open is failing
+  //? (`#opening`) is left to this backoff: a synchronous retry of the same constructor would recurse.
+  #closed() {
+    this.#setState("closed");
+    if (this.#destroyed || this.#ws || this.#reconnectTimer || this.#state !== "closed") return;
+    this.#scheduleReconnect();
   }
 
   #startHeartbeat() {
@@ -291,8 +318,6 @@ export class WsClient {
   }
 
   #scheduleReconnect() {
-    if (this.#destroyed || !this.#ws) return;
-    this.#ws = null;
     const { reconnect } = this.#options;
     this.#reconnectAttempts += 1;
     if (reconnect === false || this.#reconnectAttempts > (reconnect?.maxAttempts ?? Number.POSITIVE_INFINITY)) {
@@ -308,6 +333,30 @@ export class WsClient {
     }, interval);
     // A pending reconnect would otherwise hold a server-side runtime open past its last use.
     this.#reconnectTimer.unref?.();
+    this.#watchWake(true);
+  }
+
+  #cancelReconnect() {
+    if (this.#reconnectTimer) clearTimeout(this.#reconnectTimer);
+    this.#reconnectTimer = null;
+    this.#watchWake(false);
+  }
+
+  //? A tab back online or back in view would otherwise sit out the rest of a backoff that reaches 30 s.
+  readonly #wake = () => {
+    if (this.#reconnectTimer && document.visibilityState !== "hidden") this.#connect();
+  };
+
+  #watchWake(watch: boolean) {
+    if (this.#watchingWake === watch || typeof window === "undefined" || typeof document === "undefined") return;
+    this.#watchingWake = watch;
+    if (watch) {
+      window.addEventListener("online", this.#wake);
+      document.addEventListener("visibilitychange", this.#wake);
+    } else {
+      window.removeEventListener("online", this.#wake);
+      document.removeEventListener("visibilitychange", this.#wake);
+    }
   }
 
   //? Bun takes headers and TLS on a WebSocket; a browser's constructor takes neither.
@@ -362,16 +411,14 @@ export class WsClient {
     this.#destroyed = true;
     this.#connectRequested = false;
     this.#stopHeartbeat();
-    if (this.#reconnectTimer) {
-      clearTimeout(this.#reconnectTimer);
-      this.#reconnectTimer = null;
-    }
+    this.#cancelReconnect();
     for (const timer of this.#unconnectedWarnTimers.values()) clearTimeout(timer);
     this.#unconnectedWarnTimers.clear();
     this.#outbox = [];
     this.#roomAliasMap.clear();
     this.#ws?.close();
     this.#ws = null;
+    this.connected = false;
     this.#setState("closed");
   }
 

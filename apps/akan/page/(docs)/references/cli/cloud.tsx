@@ -158,7 +158,8 @@ export default page().render(() => {
           <strong>
             <code>--host</code> points at another cloud.
           </strong>{" "}
-          Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands.
+          Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands.{" "}
+          <code>{"cloud: { host }"}</code> in the root <code>akan.config.ts</code> makes one the default.
         </>
       ),
       ko: (
@@ -166,7 +167,8 @@ export default page().render(() => {
           <strong>
             <code>--host</code>로 다른 클라우드를 가리킵니다.
           </strong>{" "}
-          Akan Cloud와 통신하는 명령은 모두 이 옵션을 받으므로, 직접 운영하는 클라우드도 같은 명령으로 씁니다.
+          Akan Cloud와 통신하는 명령은 모두 이 옵션을 받으므로, 직접 운영하는 클라우드도 같은 명령으로 씁니다. 루트{" "}
+          <code>akan.config.ts</code>의 <code>{"cloud: { host }"}</code>가 기본값을 정합니다.
         </>
       ),
     }),
@@ -174,13 +176,32 @@ export default page().render(() => {
       en: (
         <>
           <strong>One sign-in per host, per machine.</strong> The session lives in <code>~/.akan/config.json</code>, so
-          every workspace on this machine shares it.
+          every workspace on this machine shares it. <code>--host</code> and <code>cloud.host</code> are both read as
+          the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port
+          still names the same session.
         </>
       ),
       ko: (
         <>
           <strong>로그인은 컴퓨터마다, 호스트마다 하나입니다.</strong> 세션은 <code>~/.akan/config.json</code>에
-          저장되므로 이 컴퓨터의 모든 워크스페이스가 함께 씁니다.
+          저장되므로 이 컴퓨터의 모든 워크스페이스가 함께 씁니다. <code>--host</code>와 <code>cloud.host</code>는 모두
+          끝의 슬래시를 뗀 URL의 origin과 경로로 읽으므로, 끝의 슬래시나 대문자 호스트, 기본 포트가 붙어도 같은
+          세션입니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>Without a terminal, a missing argument is an error.</strong> When stdin is piped or closed, as in CI,
+          a missing argument or option is not asked for: the command fails at once with an error that says which is
+          missing.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>터미널이 없으면 빠진 인자는 오류입니다.</strong> CI처럼 stdin이 파이프로 이어졌거나 닫혀 있으면 빠진
+          인자나 옵션을 묻지 않고, 무엇이 빠졌는지 알리는 오류로 바로 멈춥니다.
         </>
       ),
     }),
@@ -208,18 +229,26 @@ export default page().render(() => {
   const hostOption: ReferenceRow = {
     name: "--host",
     type: "String",
-    defaultValue: "https://cloud.akanjs.com",
+    defaultValue: l.trans({ en: "cloud.host, else Akan Cloud", ko: "cloud.host, 없으면 Akan Cloud" }),
     enumOrFlag: "-",
     desc: l.trans({
-      en: "Akan Cloud to use; `http://localhost:8283` in the framework repo (`USE_AKANJS_PKGS=true`).",
-      ko: "사용할 Akan Cloud 주소로, 프레임워크 저장소(`USE_AKANJS_PKGS=true`)에서는 `http://localhost:8283`입니다.",
+      en: "The cloud to use. Left out, `cloud.host` of the root `akan.config.ts`, else `https://cloud.akanjs.com` (`http://localhost:8283` in the framework repo, `USE_AKANJS_PKGS=true`).",
+      ko: "사용할 클라우드입니다. 생략하면 루트 `akan.config.ts`의 `cloud.host`, 없으면 `https://cloud.akanjs.com`입니다(프레임워크 저장소(`USE_AKANJS_PKGS=true`)에서는 `http://localhost:8283`).",
     }),
   };
   const envHostOption: ReferenceRow = {
     ...hostOption,
     desc: l.trans({
-      en: "Akan Cloud to use when `AKAN_WORKSPACE_ID` is set; ignored for an SCP server.",
-      ko: "`AKAN_WORKSPACE_ID`가 있을 때 쓸 Akan Cloud 주소로, SCP 서버를 쓸 때는 무시합니다.",
+      en: "The cloud to use when `AKAN_WORKSPACE_ID` is set, chosen as for `login`; ignored for an SCP server.",
+      ko: "`AKAN_WORKSPACE_ID`가 있을 때 쓸 클라우드이며 `login`과 같은 방식으로 정합니다. SCP 서버를 쓸 때는 무시합니다.",
+    }),
+  };
+  const subspaceOption: ReferenceRow = {
+    name: "--subspace",
+    type: "String",
+    desc: l.trans({
+      en: "A subspace of the root `akan.config.ts`: the project its `workspaceId` names. Left out, the project `AKAN_WORKSPACE_ID` names.",
+      ko: "루트 `akan.config.ts`의 subspace입니다. 그 `workspaceId`가 가리키는 프로젝트를 씁니다. 생략하면 `AKAN_WORKSPACE_ID`가 가리키는 프로젝트입니다.",
     }),
   };
   const envStoreNote: ReferenceRow = {
@@ -453,10 +482,11 @@ akan upload-env --host https://cloud.example.com`,
     },
     {
       name: "upload-secret",
-      signature: "akan upload-secret <name> [--branch <debug|develop|main>] [--file <path>] [--host <host>]",
+      signature:
+        "akan upload-secret <name> [--branch <debug|develop|main>] [--file <path>] [--subspace <name>] [--host <host>]",
       desc: l.trans({
-        en: "Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names.\nThe value is write-only: no command shows it again, so keep the original where you keep other credentials.",
-        ko: "`AKAN_WORKSPACE_ID`가 가리키는 프로젝트의 파이프라인 step이 쓸 시크릿을 이름을 붙여 저장합니다.\n값은 쓰기 전용이라 어떤 명령으로도 다시 볼 수 없으니, 원본은 다른 자격 증명과 같은 곳에 보관합니다.",
+        en: "Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names, or a subspace's with `--subspace`.\nThe value is write-only: no command shows it again, so keep the original where you keep other credentials.",
+        ko: "`AKAN_WORKSPACE_ID`가 가리키는 프로젝트, `--subspace`를 주면 그 subspace의 프로젝트에서 파이프라인 step이 쓸 시크릿을 이름을 붙여 저장합니다.\n값은 쓰기 전용이라 어떤 명령으로도 다시 볼 수 없으니, 원본은 다른 자격 증명과 같은 곳에 보관합니다.",
       }),
       args: [
         {
@@ -488,6 +518,7 @@ akan upload-env --host https://cloud.example.com`,
             ko: "stdin이나 숨김 입력 대신 이 파일에서 값을 읽습니다.",
           }),
         },
+        subspaceOption,
         hostOption,
       ],
       notes: [
@@ -496,6 +527,20 @@ akan upload-env --host https://cloud.example.com`,
           desc: l.trans({
             en: "From `--file`, piped stdin or a hidden prompt; never an argument, which shell history keeps.",
             ko: "`--file`, 파이프로 넘긴 stdin, 숨김 입력 중 하나로 받습니다. 셸 기록에 남는 인자로는 받지 않습니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "stdin", ko: "stdin" }),
+          desc: l.trans({
+            en: "Reading stdin, it prints one line to stderr saying so, never the value. With stdin piped, a missing `<name>` is an error rather than a prompt, so the pipe is never taken for the name.",
+            ko: "stdin에서 읽을 때는 그렇다는 한 줄을 stderr에 쓰고, 값은 쓰지 않습니다. stdin이 파이프로 이어져 있으면 빠진 `<name>`을 묻지 않고 오류로 멈추므로, 파이프로 넘긴 값을 이름으로 받는 일이 없습니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "order", ko: "순서" }),
+          desc: l.trans({
+            en: "The name and `--branch` are checked before the value is read or sign-in starts.",
+            ko: "이름과 `--branch`는 값을 읽거나 로그인하기 전에 검사합니다.",
           }),
         },
         {
@@ -526,7 +571,7 @@ printf %s "$NPM_TOKEN" | akan upload-secret NPM_TOKEN`,
     },
     {
       name: "list-secrets",
-      signature: "akan list-secrets [--branch <debug|develop|main>] [--host <host>]",
+      signature: "akan list-secrets [--branch <debug|develop|main>] [--subspace <name>] [--host <host>]",
       desc: l.trans({
         en: "List the project's pipeline secrets with their scope and who set each one last.\nValues are never shown.",
         ko: "프로젝트의 파이프라인 시크릿을 범위, 마지막으로 바꾼 사람과 함께 나열합니다.\n값은 보여 주지 않습니다.",
@@ -541,14 +586,15 @@ printf %s "$NPM_TOKEN" | akan upload-secret NPM_TOKEN`,
             ko: "그 브랜치의 빌드가 쓰는 것만 보여 줍니다. 그 브랜치 전용 값과 모든 브랜치용 값입니다.",
           }),
         },
+        subspaceOption,
         hostOption,
       ],
       notes: [
         {
           name: l.trans({ en: "columns", ko: "열" }),
           desc: l.trans({
-            en: "`NAME`, `SCOPE` (`every branch` or a branch), `UPDATED` and `BY`.",
-            ko: "`NAME`, `SCOPE`(`every branch` 또는 브랜치 이름), `UPDATED`, `BY`입니다.",
+            en: "`NAME`, `SCOPE` (`every branch` or a branch), `UPDATED` and `BY`; a cell the project does not know, such as an unknown last writer, shows `-`.",
+            ko: "`NAME`, `SCOPE`(`every branch` 또는 브랜치 이름), `UPDATED`, `BY`입니다. 마지막으로 바꾼 사람처럼 프로젝트가 모르는 칸은 `-`로 보여 줍니다.",
           }),
         },
       ],
@@ -557,7 +603,7 @@ akan list-secrets --branch main`,
     },
     {
       name: "remove-secret",
-      signature: "akan remove-secret <name> [--branch <debug|develop|main>] [--host <host>]",
+      signature: "akan remove-secret <name> [--branch <debug|develop|main>] [--subspace <name>] [--host <host>]",
       desc: l.trans({
         en: "Remove a pipeline secret from the project.\nBuilds that start afterwards no longer receive it.",
         ko: "프로젝트에서 파이프라인 시크릿을 지웁니다.\n지운 뒤에 시작하는 빌드는 그 값을 받지 않습니다.",
@@ -581,6 +627,7 @@ akan list-secrets --branch main`,
             ko: "그 브랜치 전용 값을 지웁니다. 없으면 모든 브랜치용 값을 지웁니다.",
           }),
         },
+        subspaceOption,
         hostOption,
       ],
       notes: [
@@ -688,13 +735,15 @@ akan remove-secret DEPLOY_KEY --branch main`,
               en: (
                 <>
                   <strong>They belong to a project.</strong> The root <code>.env</code>'s <code>AKAN_WORKSPACE_ID</code>{" "}
-                  names it, and only its members signed in with <code>akan login</code> may change or list them.
+                  names it, or <code>--subspace</code> a subspace's <code>workspaceId</code>, and only its members
+                  signed in with <code>akan login</code> may change or list them.
                 </>
               ),
               ko: (
                 <>
                   <strong>시크릿은 프로젝트에 속합니다.</strong> 루트 <code>.env</code>의 <code>AKAN_WORKSPACE_ID</code>
-                  가 프로젝트를 정하고, <code>akan login</code>으로 로그인한 그 프로젝트 멤버만 바꾸거나 볼 수 있습니다.
+                  가, <code>--subspace</code>를 주면 그 subspace의 <code>workspaceId</code>가 프로젝트를 정하고,{" "}
+                  <code>akan login</code>으로 로그인한 그 프로젝트 멤버만 바꾸거나 볼 수 있습니다.
                 </>
               ),
             })}

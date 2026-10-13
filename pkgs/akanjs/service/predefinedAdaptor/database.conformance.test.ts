@@ -262,6 +262,18 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(synced).toMatchObject({ title: "synced", score: 3 });
     });
 
+    test("upsertById keeps the stored createdAt when the record names none, and answers the one stored", async () => {
+      const id = "64a0000000000000000000a2";
+      const createdAt = dayjs("2026-07-01T09:00:00Z");
+      await store.upsertById({ id, title: "first", createdAt, updatedAt: createdAt }, { preserveTimestamps: true });
+      const backfilled = await store.upsertById({ id, title: "backfilled" }, { preserveTimestamps: true });
+      const synced = await store.upsertById({ id, title: "synced" });
+      const [row] = await store.find({ id });
+      expect(row?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(backfilled.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(synced.createdAt.valueOf()).toBe(createdAt.valueOf());
+    });
+
     test("[DI-1] a nested set creates the parents it needs", async () => {
       const { id } = await store.create({ title: "nested" });
       await store.updateOneByQuery({ id }, { "meta.a.b": 1 });

@@ -13,8 +13,9 @@ const targetOption = {
   ask: "Select native target",
   enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
 };
+const envChoices = ["debug", "develop", "main", "local"] as const;
 const envOption = {
-  enum: ["debug", "develop", "main", "local"],
+  enum: envChoices,
   desc: "backend environment",
   default: "main",
 } as const;
@@ -104,21 +105,36 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       await this.cloudScript.update(workspace, tag, { registryUrl: resolveRegistryUrl(registry) });
     }),
   pushUpdate: target({
-    desc: "Pack an over-the-air update of a phone's web bundle and upload it to the akasys project, which signs and publishes it",
+    desc: "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it; exits 2 when the pack needs a new store build or the project rejects it",
   })
     .with(App)
-    .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
-    .option("target", String, targetOption)
-    .option("env", String, envOption)
+    .option("platform", String, {
+      enum: ["ios", "android"],
+      desc: "the app it updates (with --pack, default: the pack's)",
+      nullable: true,
+    })
+    .option("target", String, {
+      desc: "native target name, a key of native.targets (default: the only one; with --pack, the pack's)",
+      nullable: true,
+    })
+    .option("env", String, {
+      enum: envChoices,
+      desc: "backend environment (default: main; with --pack, the pack's)",
+      nullable: true,
+    })
     .option("channel", String, { desc: "the channel (default: the target's updates.channel)", nullable: true })
     .option("notes", String, { desc: "release notes shown in the project", nullable: true })
     .option("subspace", String, { desc: "the subspace whose project gets it", nullable: true })
     .option("host", String, hostOption)
     .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow packing with --env local", default: false })
+    .option("allowLocalRelease", Boolean, {
+      flag: "l",
+      desc: "allow packing, or uploading a pack made, with --env local",
+      default: false,
+    })
     .option("pack", String, {
       flag: "d",
-      desc: "a folder `akan pack-update` wrote, uploaded instead of packing",
+      desc: "a folder `akan pack-update` wrote, uploaded instead of packing; --platform, --target and --env must match it",
       nullable: true,
     })
     .with(Workspace)
@@ -138,7 +154,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
         workspace,
       ) {
         await this.cloudScript.pushUpdate(workspace, app, {
-          platform: platform as "ios" | "android",
+          platform,
           target,
           env,
           channel,
@@ -152,7 +168,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       },
     ),
   registerBinary: target({
-    desc: "Register the store build of a phone app with the akasys project, with a pack of the same commit as its embedded bundle",
+    desc: "Register the store build of a phone app with the Akan Cloud project, with a pack of the same commit as its embedded bundle",
   })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the store build to register" })
@@ -170,8 +186,8 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(
       async function (app, platform, distribution, target, env, subspace, host, write, allowLocalRelease, workspace) {
         await this.cloudScript.registerBinary(workspace, app, {
-          platform: platform as "ios" | "android",
-          distribution: distribution as "appStore",
+          platform,
+          distribution,
           target,
           env,
           subspace,
@@ -182,7 +198,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       },
     ),
   uploadSecret: target({
-    desc: "Upload a named pipeline secret to the akasys project; write-only, it can never be read back",
+    desc: "Upload a named pipeline secret to the Akan Cloud project; write-only, it can never be read back",
   })
     .arg("name", String, { desc: "secret name, e.g. DISCORD_WEBHOOK" })
     .option("branch", String, {
@@ -202,7 +218,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(async function (name, branch, file, subspace, host, workspace) {
       await this.cloudScript.uploadSecret(workspace, { name, branch, file, subspace, host });
     }),
-  listSecrets: target({ desc: "List the pipeline secrets of the akasys project: names and scopes, never values" })
+  listSecrets: target({ desc: "List the pipeline secrets of the Akan Cloud project: names and scopes, never values" })
     .option("branch", String, {
       desc: "only the secrets builds of this branch use: debug, develop or main",
       nullable: true,
@@ -216,7 +232,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(async function (branch, subspace, host, workspace) {
       await this.cloudScript.listSecrets(workspace, { branch, subspace, host });
     }),
-  removeSecret: target({ desc: "Remove a named pipeline secret from the akasys project" })
+  removeSecret: target({ desc: "Remove a named pipeline secret from the Akan Cloud project" })
     .arg("name", String, { desc: "secret name" })
     .option("branch", String, {
       desc: "the branch override to remove: debug, develop or main (default: the every-branch value)",

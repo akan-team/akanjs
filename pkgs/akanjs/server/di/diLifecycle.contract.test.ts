@@ -3,12 +3,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseModes, resetEnvCache } from "akanjs/base";
+import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
+import { by, type DatabaseCls, DatabaseRegistry, from, into } from "akanjs/document";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
+import { Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
 import { serverSignal } from "../../signal/serverSignal";
-import { ServiceSignal } from "../../signal/signalRegistry";
-import { AkanLib, type AkanLibProps, type ServiceModule } from "../akanLib";
+import { DatabaseSignal, ServiceSignal } from "../../signal/signalRegistry";
+import { slice } from "../../signal/slice";
+import { AkanLib, type AkanLibProps, type DatabaseModule, type ServiceModule } from "../akanLib";
 import { AkanOption } from "../akanOption";
 import { AkanResponse, HostBasePathWebProxy, LocaleWebProxy, type WebProxy } from "../proxy";
 import {
@@ -42,6 +46,59 @@ const serviceModule = (Service: Parameters<typeof ServiceModel.from>[0]): Servic
   class Internal extends internal(service, () => ({})) {}
   class Signal extends serverSignal(Endpoint, Internal) {}
   return { service, signal: new ServiceSignal(Internal, Endpoint, Signal) };
+};
+
+const RelationTargetInput = via((f) => ({ url: f(String) }));
+const RelationTargetObject = via(RelationTargetInput, () => ({}));
+const RelationTargetLight = via(RelationTargetObject, ["url"] as const, () => ({}));
+const RelationTargetFull = via(RelationTargetObject, RelationTargetLight, () => ({}));
+const RelationTargetInsight = via(RelationTargetFull, () => ({}));
+const relationTargetConstant = ConstantRegistry.buildModel(
+  "diRelationTarget",
+  RelationTargetInput,
+  RelationTargetObject,
+  RelationTargetFull,
+  RelationTargetLight,
+  RelationTargetInsight,
+  { RelationTargetInput, RelationTargetObject, RelationTargetFull, RelationTargetLight, RelationTargetInsight },
+);
+
+const RelationHolderInput = via((f) => ({ label: f(String), screenshot: f(RelationTargetFull).optional() }));
+const RelationHolderObject = via(RelationHolderInput, () => ({}));
+const RelationHolderLight = via(RelationHolderObject, ["label"] as const, () => ({}));
+const RelationHolderFull = via(RelationHolderObject, RelationHolderLight, () => ({}));
+const RelationHolderInsight = via(RelationHolderFull, () => ({}));
+const relationHolderConstant = ConstantRegistry.buildModel(
+  "diRelationHolder",
+  RelationHolderInput,
+  RelationHolderObject,
+  RelationHolderFull,
+  RelationHolderLight,
+  RelationHolderInsight,
+  { RelationHolderInput, RelationHolderObject, RelationHolderFull, RelationHolderLight, RelationHolderInsight },
+);
+
+const databaseModuleOf = (constant: ConstantModel, option: { operationMode?: string[] } = {}): DatabaseModule => {
+  const { refName, input, full, insight } = constant;
+  class Filter extends from(full, () => ({ query: {}, sort: {} })) {}
+  class Doc extends by(full) {}
+  class Model extends into(Doc, Filter, constant, () => ({})) {}
+  const database = DatabaseRegistry.buildModel(
+    refName,
+    input as unknown as DatabaseCls<InstanceType<typeof input>>,
+    Doc,
+    Model,
+    constant.object,
+    insight as unknown as Parameters<typeof DatabaseRegistry.buildModel>[5],
+    Filter,
+  );
+  class Service extends serve(database, option, () => ({})) {}
+  const service = ServiceModel.fromModel(Service, constant, database);
+  class Internal extends internal(service, () => ({})) {}
+  class Endpoint extends endpoint(service, () => ({})) {}
+  class Slice extends slice(service, { guards: { root: Public, get: Public, cru: Public } }, () => ({})) {}
+  class Signal extends serverSignal(Endpoint, Internal) {}
+  return { constant, database, service, signal: new DatabaseSignal(Internal, Endpoint, Slice, Signal) };
 };
 
 describe("DiLifecycle declaration-to-runtime contract", () => {
@@ -438,6 +495,27 @@ describe("DiLifecycle module selection", () => {
     expect(() => new DiLifecycle({ env: {}, modules: ["@kiosk"] }, buildModeLib())).toThrow(
       '[DI:modules] "@kiosk" names no module',
     );
+  });
+
+  test("drops a module whose relation target its operation mode keeps out, and mounts it where the target runs", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+    const lib = libOf("relationModeTest", new AkanOption(), {
+      databases: [
+        databaseModuleOf(relationTargetConstant, { operationMode: ["edge"] }),
+        databaseModuleOf(relationHolderConstant),
+      ],
+    });
+
+    await inOperationMode("cloud", async () => {
+      const lifecycle = new DiLifecycle({ env: {} }, lib);
+      expect(lifecycle.modules.database.has("diRelationHolder")).toBe(false);
+      expect(lifecycle.disabledModules.get("diRelationHolder")).toBe('relates to disabled module "diRelationTarget"');
+    });
+    await inOperationMode("edge", async () => {
+      const lifecycle = new DiLifecycle({ env: {} }, lib);
+      expect(lifecycle.modules.database.has("diRelationHolder")).toBe(true);
+      expect(lifecycle.modules.database.has("diRelationTarget")).toBe(true);
+    });
   });
 
   test("refuses a disabled module name no lib registered", async () => {

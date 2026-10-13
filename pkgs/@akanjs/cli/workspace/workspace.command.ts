@@ -84,7 +84,9 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
   machineKeygen: target({
     desc: "Make an Ed25519 key for machine tokens: write the private key to a file, print the public key",
   })
-    .arg("out", String, { desc: "file the private key is written to (mode 600); an existing one is refused" })
+    .arg("out", String, {
+      desc: "file the private key is written to (mode 600; on Windows, its folder's permissions); an existing one is refused",
+    })
     .with(Workspace)
     .exec(async function (out, workspace) {
       await this.workspaceScript.machineKeygen(workspace, out);

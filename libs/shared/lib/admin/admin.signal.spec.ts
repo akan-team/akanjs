@@ -39,7 +39,9 @@ export const getAdminAgentWithInitialize = async <Fetch = SharedFetch>(): Promis
   const adminFetch = fetch.clone({ jwt: accessToken.jwt }) as SharedFetch;
 
   // 4. Admin 정보 요청
-  admin = await adminFetch.me();
+  const me = await adminFetch.me();
+  if (!me) throw new Error("me answered null for a signed-in admin");
+  admin = me;
   expect(admin.accountId).toEqual(adminInput.accountId);
 
   return { admin, fetch: adminFetch as Fetch, accessToken, adminInput, password };
@@ -84,7 +86,9 @@ export const getAdminAgentFromSuperAdmin = async <Fetch = SharedFetch>(
   const adminFetch = fetch.clone({ jwt: accessToken.jwt }) as SharedFetch;
 
   // 4. Admin 정보 요청
-  admin = await adminFetch.me();
+  const me = await adminFetch.me();
+  if (!me) throw new Error("me answered null for a signed-in admin");
+  admin = me;
   expect(admin.accountId).toEqual(adminInput.accountId);
 
   return { admin, fetch: adminFetch as Fetch, accessToken, adminInput, password };

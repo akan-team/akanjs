@@ -189,6 +189,19 @@ for (const kind of kinds) {
       expect(third - second).toBeGreaterThanOrEqual(190);
     });
 
+    test("a failing job whose backoff names no type waits its delay before the next attempt", async () => {
+      const queue = await open(await backend());
+      const attempts: number[] = [];
+      queue.registerProcessWorker("mail", async () => {
+        attempts.push(Date.now());
+        throw new Error("try again");
+      });
+      await queue.registerProcessQueue("mail", ["untyped"], { attempts: 2, backoff: { delay: 100 } });
+      await until(() => attempts.length === 2, 5_000);
+      const [first = 0, second = 0] = attempts;
+      expect(second - first).toBeGreaterThanOrEqual(90);
+    });
+
     test.skipIf(onBull)("a job whose worker stopped answering is picked up once its lease runs out", async () => {
       const location = await backend();
       const stuck = await open(location, { leaseMs: 100 });

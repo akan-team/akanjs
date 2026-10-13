@@ -1,4 +1,4 @@
-import { Account, Every } from "@libs/shared/srvkit";
+import { Account, Every, Person } from "@libs/shared/srvkit";
 import { Any } from "akanjs/base";
 import { endpoint, Ip, internal, Public, Req } from "akanjs/signal";
 
@@ -81,7 +81,8 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.listConnections(account);
     }),
 
-  revokeOAuthConnection: mutation(Boolean, { guards: [Every], mcp: false })
+  // `Person` too: an MCP App view relays its calls on the agent's token, and cutting a connector stays a person's act.
+  revokeOAuthConnection: mutation(Boolean, { guards: [Every, Person], mcp: false })
     .param("sessionId", String)
     .with(Account)
     .exec(async function (sessionId, account) {
@@ -97,7 +98,7 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
 
   // Both answer a plain browser form post with the redirect the client is waiting for, so the consent page needs no
   // script: the cookie session authenticates it and `CrossSiteGuard` holds the post to this origin.
-  approveOAuthConsent: mutation(Any, { guards: [Every], mcp: false })
+  approveOAuthConsent: mutation(Any, { guards: [Every, Person], mcp: false })
     .param("requestId", String)
     .with(Req)
     .with(Account)
@@ -105,7 +106,7 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.decide(requestId, account, true, req.headers.get("user-agent") ?? undefined);
     }),
 
-  denyOAuthConsent: mutation(Any, { guards: [Every], mcp: false })
+  denyOAuthConsent: mutation(Any, { guards: [Every, Person], mcp: false })
     .param("requestId", String)
     .with(Account)
     .exec(async function (requestId, account) {

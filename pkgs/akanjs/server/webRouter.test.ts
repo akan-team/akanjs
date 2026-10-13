@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
@@ -622,6 +625,50 @@ describe("WebRouter firebase messaging service worker", () => {
     const routeKeys = await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => Object.keys(renderEnvRoutes));
 
     expect(routeKeys).not.toContain("/firebase-messaging-sw.js");
+  });
+});
+
+describe("WebRouter public files and the web manifest", () => {
+  test("lets any origin read a font from public/, as an MCP view's CORS-mode font fetch needs, and nothing else", async () => {
+    const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-public-"));
+    fs.mkdirSync(path.join(appDir, "public", "fonts"), { recursive: true });
+    fs.writeFileSync(path.join(appDir, "public", "fonts", "brand.woff2"), "wOF2");
+    fs.writeFileSync(path.join(appDir, "public", "logo.png"), "png");
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const font = await fullSsr(new Request("https://example.test/fonts/brand.woff2"));
+          const image = await fullSsr(new Request("https://example.test/logo.png"));
+
+          expect(font.status).toBe(200);
+          expect(font.headers.get("Access-Control-Allow-Origin")).toBe("*");
+          expect(image.status).toBe(200);
+          expect(image.headers.get("Access-Control-Allow-Origin")).toBeNull();
+        },
+        { appDir },
+      );
+    } finally {
+      fs.rmSync(appDir, { recursive: true, force: true });
+    }
+  });
+
+  test("answers 503 for the web manifest while the RSC worker cannot, and the manifest once it can", async () => {
+    const requestManifest = async (webManifest: () => Promise<unknown>) =>
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => await fullSsr(new Request("https://example.test/manifest.webmanifest")),
+        { worker: Object.assign(createFakeRscWorker(), { webManifest }) },
+      );
+
+    const unavailable = await requestManifest(async () => {
+      throw new Error("rsc worker is stopped");
+    });
+    const served = await requestManifest(async () => ({ name: "Fixture" }));
+
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.get("Cache-Control")).toBe("no-store");
+    expect(served.status).toBe(200);
+    expect(served.headers.get("Content-Type")).toContain("application/manifest+json");
+    await expect(served.json()).resolves.toEqual({ name: "Fixture" });
   });
 });
 

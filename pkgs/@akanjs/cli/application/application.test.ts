@@ -125,6 +125,12 @@ describe("ApplicationCommand", () => {
     expect(optionNames("releaseIos")).toEqual(expect.arrayContaining(["team", "adHoc"]));
   });
 
+  test("typecheck picks an app or a library as sync does, and never offers a package", () => {
+    const targetsOf = (key: string) => getArgMetas(ApplicationCommand, key)[2].map((meta) => meta.type);
+    expect(targetsOf("typecheck")).toEqual(["Sys"]);
+    expect(targetsOf("typecheck")).toEqual(targetsOf("sync"));
+  });
+
   test("no command gives two options the same short flag", () => {
     for (const { key } of getTargetMetas(ApplicationCommand)) {
       const flags = getArgMetas(ApplicationCommand, key)[1].map(
@@ -335,6 +341,40 @@ describe("ApplicationScript", () => {
       "spinner.succeed",
       "runner.test",
     ]);
+  });
+
+  test("typecheck syncs an app or a library first, and with --write false writes neither", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = Object.setPrototypeOf(
+      createFakeExecutor("app", { type: "app" }, recorder),
+      AppExecutor.prototype,
+    ) as AppExecutor;
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("lib", { type: "lib" }, recorder),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    script.libraryScript.syncLibrary = async (target: unknown) => {
+      recorder.record("syncLibrary", target);
+      return undefined as never;
+    };
+    script.applicationRunner.typecheck = async () => recorder.record("runner.typecheck");
+    script.applicationRunner.typecheckLibrary = async () => recorder.record("runner.typecheckLibrary");
+
+    await script.typecheck(lib, { write: false });
+    await script.typecheck(lib, { write: true });
+    await script.typecheck(app, { write: false });
+
+    expect(recorder.names().filter((name) => name !== "spinner.succeed" && !name.endsWith(".spinning"))).toEqual([
+      "lib.scan",
+      "runner.typecheckLibrary",
+      "syncLibrary",
+      "runner.typecheckLibrary",
+      "app.scanSync",
+      "runner.typecheck",
+    ]);
+    expect(recorder.calls).toContainEqual({ name: "lib.scan", args: [{ write: false }] });
+    expect(recorder.calls).toContainEqual({ name: "app.scanSync", args: [{ write: false }] });
   });
 
   test("blocks local Android release without explicit opt-in", async () => {
@@ -848,6 +888,18 @@ describe("ApplicationRunner mobile", () => {
     expect(() =>
       ApplicationRunner.carriedServer([carrying("a", { modules: ["@edge"] }), carrying("b", true)], "macos"),
     ).toThrow("mount different modules (a: @edge; b: none)");
+  });
+
+  test("the targets that carry one build's server agree on an env whatever order its keys are written in", () => {
+    const carrying = (name: string, env: Record<string, string>) => ({
+      name,
+      config: { ...target(name), desktop: { server: { env } } },
+    });
+    const sameEnv = [carrying("a", { SITE: "north", LANE: "2" }), carrying("b", { LANE: "2", SITE: "north" })];
+    expect(ApplicationRunner.carriedServer(sameEnv, "macos").env).toEqual({ SITE: "north", LANE: "2" });
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { SITE: "north" }), carrying("b", { SITE: "south" })], "macos"),
+    ).toThrow('set a different env (a: {"SITE":"north"}; b: {"SITE":"south"})');
   });
 
   test("a dev build runs one target at a time", async () => {

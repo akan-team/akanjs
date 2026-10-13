@@ -243,7 +243,7 @@ describe("AkanQualityScanner layout rules", () => {
 
     const warnings = rulesOf(await new AkanQualityScanner().scan(root), "akan.layout.lib-facet-file");
 
-    expect(warnings.map((warning) => warning.file).sort()).toEqual([
+    expect(warnings.map((warning) => warning.file ?? "").sort((a, b) => a.localeCompare(b))).toEqual([
       "libs/demo/lib/helper.ts",
       "libs/demo/lib/user.signal.test.ts",
     ]);
@@ -302,7 +302,7 @@ describe("bang comments in browser-reachable files", () => {
       "apps/demo/ui/Last.tsx": "export const Last = () => null;\n//! left behind\n",
     });
 
-    expect(warnings.map((warning) => `${warning.file}:${warning.line}`).sort()).toEqual([
+    expect(warnings.map((warning) => `${warning.file}:${warning.line}`).sort((a, b) => a.localeCompare(b))).toEqual([
       "apps/demo/ui/First.tsx:1",
       "apps/demo/ui/Last.tsx:2",
     ]);
@@ -350,6 +350,8 @@ describe("bang comments in browser-reachable files", () => {
     ];
     const warnings = await bangWarningsIn(Object.fromEntries(files.map((file) => [file, body])));
 
-    expect(warnings.map((warning) => warning.file).sort()).toEqual([...files].sort());
+    expect(warnings.map((warning) => warning.file ?? "").sort((a, b) => a.localeCompare(b))).toEqual(
+      [...files].sort((a, b) => a.localeCompare(b)),
+    );
   });
 });

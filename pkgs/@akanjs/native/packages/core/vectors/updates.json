@@ -25,7 +25,7 @@
     [["a1a1a1a1a1a1a1a1"], [], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "take:100:", "a ring of one"]
   ],
   "urls": [
-    ["https://asset.akamir.com/ota/inst1/pathA", "ios", "main", "0123456789abcdef", "https://asset.akamir.com/ota/inst1/pathA/ios/main/0123456789abcdef.json"],
+    ["https://updates.example.com/ota/inst1/pathA", "ios", "main", "0123456789abcdef", "https://updates.example.com/ota/inst1/pathA/ios/main/0123456789abcdef.json"],
     ["http://10.0.2.2:8790", "android", "pilot", "fedcba9876543210", "http://10.0.2.2:8790/android/pilot/fedcba9876543210.json"]
   ]
 }

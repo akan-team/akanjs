@@ -25,6 +25,7 @@ import {
 } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-server-dom-webpack/server.node";
+import { RouteHead } from "../client/route/RouteHead";
 import { ViewportMeta } from "../client/viewportMeta";
 import { toManifestJson, webManifestHref } from "../client/webManifest";
 import type { PagePromptRunInput } from "../signal/mcp/pagePrompt";
@@ -1303,11 +1304,13 @@ export class RscRenderer {
         <head key="head">
           <meta key="charset" charSet="utf-8" />
           {this.#renderViewport(viewport)}
-          {manifestLink}
           <meta key="robots" name="robots" content="noindex" />
-          {routeHeadSnapshot
-            ? renderAkanHeadSnapshot(routeHeadSnapshot)
-            : (routeHead.node ?? this.#renderDefaultHead())}
+          {RouteHead.mergeNodes([
+            manifestLink,
+            routeHeadSnapshot
+              ? renderAkanHeadSnapshot(routeHeadSnapshot)
+              : (routeHead.node ?? this.#renderDefaultHead()),
+          ])}
           {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
           {this.#renderStylesheet(pathname)}
         </head>
@@ -1336,6 +1339,8 @@ export class RscRenderer {
     const rootTheme = rootThemes.find((theme) => theme !== undefined);
     if (rootTheme) setRequestTheme(rootTheme);
     const viewport = await RscRenderer.#rootViewport(pathRoute.renderRootLayouts);
+    //? The result cache keys on the theme cookie, so this color is never replayed to a visitor on another theme.
+    const themeColorTheme = untrackedCookies().get("theme")?.value ?? rootTheme;
     const manifestLink = await this.#renderManifestLink(url, pathRoute.renderRootLayouts);
     const routeHead = await RouteElementComposer.resolveHeadWithSnapshot({
       pathRoute,
@@ -1355,11 +1360,13 @@ export class RscRenderer {
       <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
-          {this.#renderViewport(viewport, rootTheme)}
-          {manifestLink}
-          {routeHeadSnapshot
-            ? renderAkanHeadSnapshot(routeHeadSnapshot)
-            : (routeHead.node ?? this.#renderDefaultHead())}
+          {this.#renderViewport(viewport, themeColorTheme)}
+          {RouteHead.mergeNodes([
+            manifestLink,
+            routeHeadSnapshot
+              ? renderAkanHeadSnapshot(routeHeadSnapshot)
+              : (routeHead.node ?? this.#renderDefaultHead()),
+          ])}
           {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
           {this.#renderStylesheet(url.pathname)}
         </head>

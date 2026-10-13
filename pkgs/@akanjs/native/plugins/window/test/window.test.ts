@@ -6,7 +6,14 @@ import { installMockHost, type MockHost } from "../../../packages/core/src/testi
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
 import { createLifecycle } from "../../../packages/desktop/src/lifecycle.ts";
 import desktop, { displayOf, placement } from "../src/desktop.ts";
-import { appWindow, createWindow, getAllWindows, getCurrentWindow, onCloseRequested } from "../src/index.ts";
+import {
+  appWindow,
+  createWindow,
+  getAllWindows,
+  getCurrentWindow,
+  onCloseRequested,
+  windowHandle,
+} from "../src/index.ts";
 
 let host: MockHost | null = null;
 afterEach(() => {
@@ -64,6 +71,7 @@ describe("window desktop implementation", () => {
       error: { code: "INVALID_ARGS" },
     });
     expect(await call("setTitle", { title: 3 })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+    expect(await call("setMinSize", { width: 640 })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
   });
 
   test("places the window on a display by id or index, in that display's own logical or physical pixels", () => {
@@ -294,6 +302,28 @@ describe("windows (SH-6)", () => {
     host.emit("window", "destroyed", { id: 2 });
     host.emit("window", "destroyed", { id: 2 }); // once
     expect(gone).toBe(1);
+  });
+
+  test("a handle's setMinSize passes on what it is given: one size alone is refused, never taken as no minimum", async () => {
+    const calls: unknown[] = [];
+    host = installMockHost({
+      platform: "macos",
+      plugins: {
+        window: {
+          methods: {
+            setMinSize: (args: unknown) => {
+              calls.push(args);
+              return { title: "t" };
+            },
+          },
+        },
+      },
+    });
+    const handle = windowHandle(2);
+    await handle.setMinSize(640);
+    await handle.setMinSize();
+    await handle.setMinSize(640, 128);
+    expect(calls).toEqual([{ width: 640, window: 2 }, { window: 2 }, { width: 640, height: 128, window: 2 }]);
   });
 
   test("one window where the host cannot open more", async () => {

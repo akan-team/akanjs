@@ -136,7 +136,7 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
         identity.kind === "distribution" ? "distribution" : identity.kind === "development" ? "development" : "adhoc";
       if (identity.kind !== "distribution" && !ctx.dev)
         log.warn(
-          "not signed with a Developer ID: Gatekeeper blocks this app once it is downloaded to another Mac (set AKAN_NATIVE_MACOS_IDENTITY or AKAN_NATIVE_MACOS_CERTIFICATE)",
+          "not signed with a Developer ID: Gatekeeper blocks this app once it is downloaded to another Mac (pass --sign with AKAN_NATIVE_MACOS_IDENTITY or AKAN_NATIVE_MACOS_CERTIFICATE set)",
         );
 
       const notarization = ctx.macos?.notarize;
@@ -149,7 +149,7 @@ export async function buildMacos(ctx: BuildContext): Promise<string> {
         await assessGatekeeper(appPath, "execute");
       } else if (identity.kind === "distribution" && !ctx.dev)
         log.warn(
-          "signed with a Developer ID but not notarized: Gatekeeper still blocks a downloaded copy (set AKAN_NATIVE_MACOS_NOTARY_KEY, _KEY_ID and _ISSUER)",
+          "signed with a Developer ID but not notarized: Gatekeeper still blocks a downloaded copy (pass --notarize with AKAN_NATIVE_MACOS_NOTARY_PROFILE, or AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID, set)",
         );
 
       if (ctx.macos?.dmg) {

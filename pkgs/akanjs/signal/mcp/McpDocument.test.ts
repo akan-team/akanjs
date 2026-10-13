@@ -188,6 +188,19 @@ describe("McpDocument", () => {
     expect(new McpDocument(signal()).appTools).toEqual([]);
   });
 
+  test("with MCP Apps, lets a view read a relation's light shape under the get's guards, and no model", () => {
+    const doc = new McpDocument(signal(), { apps: true });
+    expect(names(doc)).not.toContain("lightMcpPost");
+    expect(doc.appTools.map((tool) => tool.name)).toContain("lightMcpPost");
+    expect(doc.findTool("lightMcpPost")?.endpoint.guards).toEqual(doc.findTool("mcpPost")?.endpoint.guards);
+    expect(doc.appOnly.find(({ key }) => key === "lightMcpPost")?.reason).toContain("`mcpPost`");
+    expect(doc.appOnly.find(({ key }) => key === "requestMcpPostCode")?.reason).toContain("`mcp: false`");
+    expect(doc.resourceTemplates.map(({ name }) => name)).not.toContain("lightMcpPost");
+    const personOnly = signal();
+    personOnly.mcpPost.agents = { get: false };
+    expect(new McpDocument(personOnly, { apps: true }).appTools.map((tool) => tool.name)).not.toContain("lightMcpPost");
+  });
+
   test("keeps out what a person-only guard protects, at every altitude, and says which guards did it", () => {
     const doc = new McpDocument(signal());
     const refusals = Object.fromEntries(doc.refusals.map(({ key, reason }) => [key, reason]));

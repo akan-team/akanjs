@@ -976,7 +976,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
 
 Chain Stages
 
@@ -2016,7 +2016,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
 - Check and Build
 
-  - typecheck: Typecheck the app.
+  - typecheck: Typecheck an app or a library, its tests included.
 
   - test: Run the tests of an app, library or package.
 
@@ -2103,11 +2103,11 @@ Does not connect
 
 **Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and `.env`.
 
-**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands.
+**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands. `cloud: { host }` in the root `akan.config.ts` makes one the default.
 
-**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it.
+**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it. `--host` and `cloud.host` are both read as the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port still names the same session.
 
-Where Env Values Are Kept
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing.
 
 ## Code CLI
 
@@ -5979,7 +5979,7 @@ Desktop Release
 
 - AKAN_NATIVE_MACOS_CERTIFICATE + _PASSWORD: A .p12 file and its password. The build imports it into a keychain of its own and deletes it afterwards: the CI way.
 
-- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id). Turns on notarization and stapling.
+- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id): the credentials `--notarize` submits and staples with.
 
 - AKAN_NATIVE_MACOS_NOTARY_PROFILE: Instead of the key: a profile `xcrun notarytool store-credentials` saved in the keychain.
 
@@ -5991,7 +5991,7 @@ Desktop Release
 
 - AKAN_NATIVE_WINDOWS_TIMESTAMP_URL: The RFC 3161 timestamp server. Default http://timestamp.digicert.com.
 
-A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs from the environment, packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
+A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs with `--sign` and notarizes with `--notarize`, using the identity the environment names; the environment alone signs nothing. It packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
 
 A desktop app is built on its own OS: a Mac builds the macOS app, a Windows PC the Windows one. The CI recipe below runs one job per OS instead of cross-compiling.
 

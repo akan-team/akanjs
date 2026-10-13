@@ -19,4 +19,19 @@ describe("QueueBackoff", () => {
     expect(BullQueue.cappedBackoff(2, "akan:exponential:1000:5000")).toBe(2_000);
     expect(BullQueue.cappedBackoff(2, "custom")).toBe(0);
   });
+
+  test("bullmq waits the job's own delay for a backoff that names no type, or one it has no builtin for", () => {
+    expect(BullQueue.cappedBackoff(3, undefined, undefined, { opts: { backoff: { delay: 5_000 } } })).toBe(5_000);
+    expect(BullQueue.cappedBackoff(3, "linear", undefined, { opts: { backoff: { type: "linear", delay: 300 } } })).toBe(
+      300,
+    );
+  });
+
+  test("bullmq dead-letters a job it failed for good before its last attempt, and no job it will retry", () => {
+    const job = { id: "1", name: "mail", data: [], opts: { attempts: 3 } };
+    expect(BullQueue.failedForGood({ ...job, attemptsMade: 1, finishedOn: Date.now() })).toBe(true);
+    expect(BullQueue.failedForGood({ ...job, attemptsMade: 1, finishedOn: null })).toBe(false);
+    expect(BullQueue.failedForGood({ ...job, attemptsMade: 3 })).toBe(true);
+    expect(BullQueue.failedForGood({ ...job, attemptsMade: 1, opts: {} })).toBe(true);
+  });
 });

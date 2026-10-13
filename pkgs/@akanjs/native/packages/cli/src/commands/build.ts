@@ -93,8 +93,10 @@ export async function buildFromArgs(
     notarize: args.flags.notarize === true,
   });
   if (distribution.notice) log.warn(distribution.notice);
-  else if (distribution.unused.length && (platform === "macos" || platform === "windows"))
-    log.info(dim(`${distribution.unused.join(", ")} set: this build is not signed without --sign`));
+  else if (distribution.unused.length && profile === "release" && (platform === "macos" || platform === "windows"))
+    log.warn(
+      `${distribution.unused.join(", ")} set, but the env never signs alone: pass --sign to sign this build with it`,
+    );
   const ctx = await prepare(project, platform, {
     mode: stringFlag(args, "mode") ?? defaults.mode,
     profile,

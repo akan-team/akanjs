@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
@@ -11,6 +11,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import { Logger } from "akanjs/common";
 import { WorkspaceCommand } from "./workspace.command";
 import { defaultMaxDiagnostics, WorkspaceRunner } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
@@ -228,6 +229,28 @@ describe("WorkspaceScript", () => {
     expect(
       recorder.calls.filter((call) => call.name === "lint").map((call) => (call.args[0] as { name: string }).name),
     ).toEqual(["app", "lib", "pkg"]);
+  });
+
+  test("machine-keygen prints only the public key, and claims mode 600 only where the mode holds", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    script.workspaceRunner.machineKeygen = async () => ({ file: "/keys/cloud.pem", publicKey: "PUBLIC-KEY" });
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    const keygenOn = async (os: NodeJS.Platform) => {
+      Object.defineProperty(process, "platform", { value: os });
+      printed.mockClear();
+      await script.machineKeygen({} as never, "keys/cloud.pem");
+      return printed.mock.calls.map(([line]) => String(line)).join("\n");
+    };
+    try {
+      expect(await keygenOn("linux")).toContain("Wrote the private key to /keys/cloud.pem (mode 600).");
+      const windows = await keygenOn("win32");
+      expect(windows).not.toContain("mode 600");
+      expect(windows).toContain("Windows gives it the permissions of its folder");
+      expect(windows).toContain("AKAN_MACHINE_PUBLIC_KEY=PUBLIC-KEY");
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
   });
 
   test("delegates agent rule generation to the workspace runner", async () => {

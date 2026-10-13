@@ -17,6 +17,8 @@ import { createPrivateKey, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateRawSync } from "node:zlib";
+import { readZip } from "../../packages/cli/src/lib/apk.ts";
 import { androidTools } from "../../packages/cli/src/platforms/android.ts";
 
 const platform = process.argv[2] as "ios" | "android";
@@ -28,6 +30,7 @@ const keyPath = { online: join(scratch, "online.key"), spare: join(scratch, "spa
 const out = join(scratch, "updates");
 const appId = "com.akanjs.sample";
 const step = (text: string) => console.info(`\n== ${text}`);
+const QUICK = { timeout: 60_000 };
 
 function run(args: string[], key: keyof typeof keyPath = "online"): string {
   const p = Bun.spawnSync([...cli, ...args], {
@@ -35,9 +38,11 @@ function run(args: string[], key: keyof typeof keyPath = "online"): string {
     env: { ...process.env, AKAN_NATIVE_UPDATE_KEY: keyPath[key] },
     stdout: "pipe",
     stderr: "pipe",
+    timeout: 1_200_000,
   });
   const text = p.stdout.toString() + p.stderr.toString();
-  if (p.exitCode !== 0) throw new Error(`akan-native ${args.join(" ")} failed:\n${text}`);
+  if (p.exitCode !== 0)
+    throw new Error(`akan-native ${args.join(" ")} ${p.exitedDueToTimeout ? "timed out" : "failed"}:\n${text}`);
   return text;
 }
 
@@ -67,13 +72,16 @@ async function probe(until: RegExp, mode = "apply", timeoutMs = 90_000): Promise
           stderr: "pipe",
         })
       : await (async () => {
-          Bun.spawnSync([...adb, "logcat", "-c"]);
+          Bun.spawnSync([...adb, "logcat", "-c"], QUICK);
           const extra = JSON.stringify({ PUBLIC_UPDATE_PROBE: mode });
-          Bun.spawnSync([
-            ...adb,
-            "shell",
-            `am start -S -W -n ${appId}/com.akanjs.runtime.AkanNativeActivity --es akanNativeEnv '${extra}'`,
-          ]);
+          Bun.spawnSync(
+            [
+              ...adb,
+              "shell",
+              `am start -S -W -n ${appId}/com.akanjs.runtime.AkanNativeActivity --es akanNativeEnv '${extra}'`,
+            ],
+            QUICK,
+          );
           return Bun.spawn(
             [...adb, "logcat", "-v", "brief", "AkanNative:V", "AkanNativeConsole:V", "AkanNativeUpdates:V", "*:S"],
             {
@@ -115,20 +123,23 @@ async function probe(until: RegExp, mode = "apply", timeoutMs = 90_000): Promise
     return lines;
   } finally {
     proc.kill();
-    if (platform === "ios") Bun.spawnSync(["xcrun", "simctl", "terminate", "booted", appId]);
-    else Bun.spawnSync([...adb, "shell", "am", "force-stop", appId]);
+    if (platform === "ios") Bun.spawnSync(["xcrun", "simctl", "terminate", "booted", appId], QUICK);
+    else Bun.spawnSync([...adb, "shell", "am", "force-stop", appId], QUICK);
     await Bun.sleep(1000);
   }
 }
 
 function deviceState(): { revokedKeys?: string[]; current?: { bundle: string; keyId: string } } {
   if (platform === "ios") {
-    const data = Bun.spawnSync(["xcrun", "simctl", "get_app_container", "booted", appId, "data"])
+    const data = Bun.spawnSync(["xcrun", "simctl", "get_app_container", "booted", appId, "data"], QUICK)
       .stdout.toString()
       .trim();
     return JSON.parse(readFileSync(join(data, "Library/Application Support/akan-native-updates/state.json"), "utf8"));
   }
-  const text = Bun.spawnSync([...adb, "shell", "run-as", appId, "cat", "no_backup/akan-native-updates/state.json"]);
+  const text = Bun.spawnSync(
+    [...adb, "shell", "run-as", appId, "cat", "no_backup/akan-native-updates/state.json"],
+    QUICK,
+  );
   return JSON.parse(text.stdout.toString());
 }
 
@@ -185,15 +196,15 @@ try {
   );
 
   step(`build, boot and install on the ${platform === "ios" ? "simulator" : "emulator"}`);
-  if (platform === "ios") Bun.spawnSync(["xcrun", "simctl", "uninstall", "booted", appId]);
-  else Bun.spawnSync([...adb, "uninstall", appId]);
+  if (platform === "ios") Bun.spawnSync(["xcrun", "simctl", "uninstall", "booted", appId], QUICK);
+  else Bun.spawnSync([...adb, "uninstall", appId], QUICK);
   const first = Bun.spawn([...cli, "run", platform, "--headless"], { cwd: sample, stdout: "pipe", stderr: "pipe" });
   const started = Date.now();
   for (;;) {
     const installed =
       platform === "ios"
-        ? Bun.spawnSync(["xcrun", "simctl", "get_app_container", "booted", appId, "app"]).exitCode === 0
-        : Bun.spawnSync([...adb, "shell", "pm", "path", appId])
+        ? Bun.spawnSync(["xcrun", "simctl", "get_app_container", "booted", appId, "app"], QUICK).exitCode === 0
+        : Bun.spawnSync([...adb, "shell", "pm", "path", appId], QUICK)
             .stdout.toString()
             .includes("package:");
     if (installed) break;
@@ -203,22 +214,23 @@ try {
   await Bun.sleep(5000);
   first.kill();
   const built = join(sample, ".akan", "native", "build", platform);
+  const apkEntry = (name: string) => {
+    const apk = join(built, readdirSync(built).find((n) => n.endsWith(".apk")) ?? "");
+    const entry = readZip(new Uint8Array(readFileSync(apk))).find((e) => e.name === name);
+    if (!entry) throw new Error(`${apk} holds no ${name}`);
+    return Buffer.from(entry.method === 8 ? inflateRawSync(entry.data) : entry.data).toString();
+  };
   const updatesJson =
     platform === "ios"
       ? readFileSync(join(built, "sample.app", "updates.json"), "utf8")
-      : Bun.spawnSync([
-          "unzip",
-          "-p",
-          join(built, readdirSync(built).find((n) => n.endsWith(".apk")) ?? ""),
-          "assets/akan-native/updates.json",
-        ]).stdout.toString();
+      : apkEntry("assets/akan-native/updates.json");
   const installed = JSON.parse(updatesJson) as { embeddedSequence: number; nativeApi: string; publicKeys: string[] };
   console.info(
     `  installed: native API ${installed.nativeApi}, embeddedSequence ${installed.embeddedSequence}, keys ${installed.publicKeys.map(keyIdOf).join(", ")}`,
   );
   if (platform === "android") {
-    Bun.spawnSync([...adb, "reverse", "tcp:8790", "tcp:8790"]);
-    Bun.spawnSync([...adb, "reverse", "tcp:8791", "tcp:8791"]);
+    Bun.spawnSync([...adb, "reverse", "tcp:8790", "tcp:8790"], QUICK);
+    Bun.spawnSync([...adb, "reverse", "tcp:8791", "tcp:8791"], QUICK);
   }
 
   await Bun.sleep(2100);
@@ -266,10 +278,13 @@ try {
     throw new Error(`the current bundle is not the spare key's: ${JSON.stringify(state)}`);
 
   step("release B, signed by the revoked online key, is refused");
-  await Bun.sleep(1100);
-  run(["update", "publish", platform, "--out", out, "--debug"]);
-  const releaseB = JSON.parse(
-    Buffer.from(JSON.parse(readFileSync(envelopePath, "utf8")).manifest, "base64").toString(),
+  //? Written here: `update publish` refuses to sign with a key its channel's releases revoke.
+  const bundleB = `${releaseA.sequence + 1}-revoked`;
+  writeEnvelope(
+    { ...releaseA, sequence: releaseA.sequence + 1, bundle: bundleB },
+    keyPath.online,
+    online,
+    installed.nativeApi,
   );
   const b = await probe(/check-failed .*not signed by a key/);
   if (b.some((line) => /downloaded/.test(line))) throw new Error("B was downloaded");
@@ -294,7 +309,7 @@ try {
     ["downloaded", bundleR, null],
     ["applied", bundleR, null],
     ["confirmed", bundleR, null],
-    ["failed", releaseB.bundle, "signature"],
+    ["failed", bundleB, "signature"],
     ["downloaded", releaseH.bundle, null],
     ["applied", releaseH.bundle, null],
     ["rolledBack", releaseH.bundle, "hang"],
@@ -330,8 +345,8 @@ try {
   server?.kill();
   writeFileSync(configPath, original);
   if (platform === "android") {
-    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8790"]);
-    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8791"]);
+    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8790"], QUICK);
+    Bun.spawnSync([...adb, "reverse", "--remove", "tcp:8791"], QUICK);
   }
   rmSync(scratch, { recursive: true, force: true });
 }

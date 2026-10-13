@@ -1,6 +1,6 @@
 // Desktop: external views live in the shell (native/desktop/src/external.rs). Trusted keys and the capture go
 // through the view's Chrome DevTools Protocol on WebView2, which the shell reaches as `externalView.cdp`.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
@@ -56,6 +56,8 @@ export function consoleLevel(value: unknown): ExternalViewConsoleLevel | null {
 
 const shell = (ctx: DesktopContext, op: string, args: Record<string, unknown>) => ctx.shell(`externalView.${op}`, args);
 
+const captureDir = (ctx: DesktopContext) => join(tmpdir(), ctx.app.id, "external-view");
+
 /** The engine's own text, which the shell sends on as a string: JSON, or not, as the engine had it. */
 function parsed(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -107,7 +109,7 @@ export function virtualKey(code: string): number {
     Backslash: 220,
     Backquote: 192,
   };
-  const known = named[code];
+  const known = Object.hasOwn(named, code) ? named[code] : undefined;
   if (known === undefined) throw new AkanNativeError("INVALID_ARGS", `code ${code} is not a key sendKey knows`);
   return known;
 }
@@ -188,9 +190,15 @@ export function createConsoleCap(now: () => number = Date.now) {
 export function createDesktopExternalView() {
   /** The console level each view was opened with: the shell sends every message, and this filters them. */
   const levels = new Map<string, ExternalViewConsoleLevel>();
+  /** Each view's last capture, deleted by its next one: a kiosk captured around the clock keeps one file per view. */
+  const captures = new Map<string, string>();
 
   return defineDesktopPlugin<ExternalViewApi, ExternalViewEvents>({
     id: "external-view",
+    setup(ctx) {
+      // Captures of an earlier session are no longer reachable (their FileRefs are gone).
+      rmSync(captureDir(ctx), { recursive: true, force: true });
+    },
     methods: {
       async open(args, ctx) {
         const view = id(args);
@@ -245,12 +253,13 @@ export function createDesktopExternalView() {
         const code = text(args, "code");
         const vk = virtualKey(code);
         const base = { key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
-        //? keyDown carrying `text` makes Chrome fire keypress and input too, as a real printable key does.
-        const typed = key.length === 1 ? { text: key, unmodifiedText: key } : {};
+        //? keyDown carrying `text` makes Chrome fire keypress and input too, as a real printable key does; Enter's is
+        //? "\r", without which a form does not submit and a focused button does not click.
+        const typed = key.length === 1 ? key : key === "Enter" ? "\r" : "";
         await shell(ctx, "cdp", {
           view,
           method: "Input.dispatchKeyEvent",
-          params: { type: "keyDown", ...base, ...typed },
+          params: { type: "keyDown", ...base, ...(typed ? { text: typed, unmodifiedText: typed } : {}) },
         });
         await shell(ctx, "cdp", { view, method: "Input.dispatchKeyEvent", params: { type: "keyUp", ...base } });
       },
@@ -266,11 +275,14 @@ export function createDesktopExternalView() {
           await shell(ctx, "cdp", { view, method: "Page.captureScreenshot", params: { format: "png" } }),
         ) as { data?: string } | null;
         if (!shot?.data) throw new AkanNativeError("INTERNAL", "the view answered no screenshot");
-        const dir = join(tmpdir(), "akan-native-external-view");
+        const dir = captureDir(ctx);
         mkdirSync(dir, { recursive: true });
         const file = join(dir, `${view}-${Date.now()}.png`);
         const bytes = Buffer.from(shot.data, "base64");
         await Bun.write(file, bytes);
+        const previous = captures.get(view);
+        captures.set(view, file);
+        if (previous && previous !== file) rmSync(previous, { force: true });
         //? A PNG's IHDR, always at the same place: its width and height without decoding the image.
         const size = bytes.length >= 24 ? { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) } : {};
         return { ...ctx.registerFile(file, "image/png"), ...size };

@@ -200,6 +200,13 @@ const nativeFields = [
     ko: "실행할 때 가운데에 보이는 PNG이거나, 시작 화면의 이미지, 색, 숨기는 시점입니다.",
   },
   {
+    key: "backgroundColor",
+    type: "string | { light, dark }",
+    default: "white / black",
+    en: "What a window and an external view show before their page paints, and the splash's default color.",
+    ko: "창과 external view가 페이지를 그리기 전에 보이는 색이며, splash의 기본 색입니다.",
+  },
+  {
     key: "permissions",
     type: "camera | contacts | location | push | speech",
     default: "[]",
@@ -240,8 +247,8 @@ const nativeFields = [
   {
     key: "updates.publicKeys",
     type: "string[]",
-    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it.",
-    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기합니다.",
+    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.",
+    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기하고, 데스크톱 앱은 첫 키만 믿습니다. 키가 하나면 publicKey로 쓰며, 둘을 함께 쓰지는 않습니다.",
   },
   {
     key: "updates.channel",
@@ -351,10 +358,48 @@ const nativeFields = [
   },
   {
     key: "desktop.server",
-    type: "boolean | { omit?: string[] }",
+    type: "boolean | { omit?, profile?, modules?, env?, restart?, watchdog? }",
     default: "false",
-    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.",
-    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다. omit은 이미지에만 필요한 패키지와, 그것만 끌어오는 패키지를 뺍니다.",
+    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. The object form carries it with some changes, the keys below.",
+    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다. 객체로 주면 아래 키대로 바꿔서 싣습니다.",
+  },
+  {
+    key: "desktop.server.omit",
+    type: "string[]",
+    en: "Packages only the image needs, left out with what only they pull in; the server's own bundle must not import them.",
+    ko: "이미지에만 필요한 패키지이며, 그것만 끌어오는 패키지와 함께 뺍니다. 서버 번들 자체가 이 패키지를 import하면 안 됩니다.",
+  },
+  {
+    key: "desktop.server.profile",
+    type: "string",
+    en: "Bundles env/env.server.<env>.<profile>.ts in place of the environment's own file; the build refuses one holding a secret-named value.",
+    ko: "환경 자신의 파일 대신 env/env.server.<env>.<profile>.ts를 번들합니다. 비밀 이름의 값이 든 파일은 빌드가 거부합니다.",
+  },
+  {
+    key: "desktop.server.modules",
+    type: "string[]",
+    en: "What the server mounts, as AKAN_MODULES: module names, or @edge for every module whose serve() lists edge.",
+    ko: "서버가 마운트할 것이며 AKAN_MODULES로 전달됩니다. 모듈 이름이나, serve()에 edge를 적은 모든 모듈을 뜻하는 @edge를 씁니다.",
+  },
+  {
+    key: "desktop.server.env",
+    type: "Record<string, string>",
+    en: "Variables the server starts with over the image's, readable by anyone on the computer; secret-named ones and the stage's own are refused.",
+    ko: "이미지의 값보다 우선해 서버가 시작할 때 받는 환경 변수이며, 그 컴퓨터의 누구나 읽을 수 있습니다. 비밀 이름의 변수와 stage가 정하는 변수는 거부합니다.",
+  },
+  {
+    key: "desktop.server.restart",
+    type: '"forever" | number',
+    default: "5",
+    en: 'Crashes in a row before the app gives up on its server; "forever" for a screen nobody attends.',
+    ko: '앱이 서버를 포기하기 전까지 연달아 허용하는 크래시 횟수입니다. 아무도 지켜보지 않는 화면이면 "forever"를 씁니다.',
+  },
+  {
+    key: "desktop.server.watchdog",
+    type: "boolean | { intervalMs?, failures? }",
+    default: "false",
+    en: "Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.",
+    ko: "intervalMs(10000)마다 서버의 health route에 묻고, failures(3)번 답이 없으면 서버를 다시 띄웁니다.",
   },
   {
     key: "desktop.recovery",
@@ -365,9 +410,9 @@ const nativeFields = [
   },
   {
     key: "desktop.window",
-    type: "{ fullscreen?, skipTaskbar? }",
-    en: "Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.",
-    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux) 엽니다.",
+    type: "{ fullscreen?, skipTaskbar?, frameless? }",
+    en: "Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).",
+    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux), 또는 제목 표시줄과 테두리 없이(frameless) 엽니다.",
   },
   {
     key: "desktop.screenCapture",
@@ -375,6 +420,20 @@ const nativeFields = [
     default: '"picker"',
     en: '"auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.',
     ko: '"auto"(Windows)는 선택 창 없이 첫 화면을 공유합니다. 카메라를 요청하는 앱에서는 켜지 않습니다.',
+  },
+  {
+    key: "desktop.webview2",
+    type: '"bootstrapper" | "standalone"',
+    default: '"bootstrapper"',
+    en: 'Windows setup: "bootstrapper" downloads the WebView2 Runtime where none is installed; "standalone" carries the whole runtime (~200 MB) for a PC offline at install.',
+    ko: 'Windows 설치 프로그램입니다. "bootstrapper"는 WebView2 Runtime이 없는 PC에서 내려받고, "standalone"은 설치 때 오프라인인 PC를 위해 런타임 전체(약 200 MB)를 싣습니다.',
+  },
+  {
+    key: "desktop.publisher",
+    type: "string",
+    default: "the app name",
+    en: "Windows: who publishes the app, as the installed app's Publisher and its executable's company name.",
+    ko: "Windows에서 앱을 배포하는 주체이며, 설치된 앱의 게시자와 실행 파일의 회사 이름으로 쓰입니다.",
   },
   {
     key: "targets",
@@ -560,9 +619,16 @@ const stageKeys = [
   {
     key: "retry",
     type: "number | { attempts, delay? }",
-    tags: ["shell", "use"],
-    en: "Total attempts; on a shell stage, for each step without a `retry` of its own.",
-    ko: "총 시도 횟수입니다. 셸 stage에서는 자기 `retry`가 없는 step마다 적용합니다.",
+    tags: ["shell"],
+    en: "Total attempts for each step without a `retry` of its own, with an optional `delay` between them.",
+    ko: "자기 `retry`가 없는 step마다 적용하는 총 시도 횟수이며, 시도 사이의 `delay`를 줄 수 있습니다.",
+  },
+  {
+    key: "retry",
+    type: "number",
+    tags: ["use"],
+    en: "Total attempts of the action; a number only, with no `delay`.",
+    ko: "액션의 총 시도 횟수입니다. 숫자만 받고 `delay`는 없습니다.",
   },
   {
     key: "allowFailure",

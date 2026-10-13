@@ -15,7 +15,7 @@ export const pages: PagesContext = {
     head: (
       <>
         <title>fixture-root-title</title>
-        <link rel="manifest" href="/fixture.webmanifest" />
+        <link rel="icon" href="/fixture.ico" />
       </>
     ),
   }),
@@ -23,5 +23,10 @@ export const pages: PagesContext = {
     default: page()
       .head(<title>fixture-page-title</title>)
       .render(() => <p>viewport body</p>),
+  }),
+  "./own-manifest.tsx": async () => ({
+    default: page()
+      .head(<link rel="manifest" href="/fixture.webmanifest" />)
+      .render(() => <p>own manifest body</p>),
   }),
 };

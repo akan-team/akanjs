@@ -9,6 +9,30 @@ process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
 
 const shellOf = (html: string, basePaths: string[] = []) => new McpApps({ basePaths, read: async () => html });
 
+const viewOf = async (origin: string) => {
+  const read = await shellOf("<head></head>").read("ui://probe/app", origin);
+  const script = /<script>([\s\S]*)<\/script>/.exec(read?.text ?? "")?.[1] ?? "";
+  class Element {
+    tagName = "IMG";
+    readonly attributes = new Map<string, string>();
+    setAttribute(name: string, value: string) {
+      this.attributes.set(name, value);
+    }
+    getAttribute(name: string) {
+      return this.attributes.get(name) ?? null;
+    }
+  }
+  class MutationObserver {
+    observe() {}
+  }
+  const document: { baseURI: string; documentElement: object; cookie?: string } = {
+    baseURI: "about:srcdoc",
+    documentElement: {},
+  };
+  new Function("window", "document", "Element", "MutationObserver", script)({}, document, Element, MutationObserver);
+  return { document, image: new Element() };
+};
+
 describe("McpApps", () => {
   test("reads the UI capability only where the extension declares its mime type", () => {
     const ui = (mimeTypes: unknown) => ({ extensions: { "io.modelcontextprotocol/ui": { mimeTypes } } });
@@ -55,6 +79,50 @@ describe("McpApps", () => {
     const read = await shellOf("<head></head>").read("ui://probe/app", "javascript:alert(1)");
     expect(read?.text).toStartWith("<head><script>");
     expect(read?._meta).toEqual({ ui: { prefersBorder: false } });
+  });
+
+  test("opens no origin whose host would carry a quote out of the base attribute, a `%22` included", async () => {
+    for (const origin of ['https://evil.test"target="_top', "https://evil.test%22target=%22_top"]) {
+      const read = await shellOf("<head><style>.a{background:url(/a.png)}</style></head>").read(
+        "ui://probe/app",
+        origin,
+      );
+      expect(read?.text).not.toContain("evil.test");
+      expect(read?._meta).toEqual({ ui: { prefersBorder: false } });
+    }
+    for (const origin of ["https://app.example.com:8443", "http://[::1]:3000", "http://xn--bcher-kva.de"]) {
+      const read = await shellOf("<head></head>").read("ui://probe/app", origin);
+      expect(read?.text).toStartWith(`<head><base href="${origin}/"><script>`);
+    }
+  });
+
+  test("points only a srcset's own URLs at the origin, leaving a comma inside one whole", async () => {
+    const { image } = await viewOf("https://app.example.com");
+    image.setAttribute("srcset", "data:image/png;base64,AAAA 1x, /b.png?w=1,2 2x,/c.png 3x");
+    expect(image.getAttribute("srcset")).toBe(
+      "data:image/png;base64,AAAA 1x, https://app.example.com/b.png?w=1,2 2x,https://app.example.com/c.png 3x",
+    );
+  });
+
+  test("forgets a cookie the page expires by Max-Age as by Expires, Max-Age first", async () => {
+    const { document } = await viewOf("https://app.example.com");
+    document.cookie = "a=1; path=/";
+    document.cookie = "b=2";
+    document.cookie = "c=3";
+    document.cookie = "a=; Max-Age=0; path=/";
+    document.cookie = "b=; expires=Thu, 01 Jan 1970 00:00:00 UTC";
+    document.cookie = "c=4; Max-Age=60; expires=Thu, 01 Jan 1970 00:00:00 UTC";
+    expect(document.cookie).toBe("c=4");
+  });
+
+  test("never tells a host a page tool only reads: the run makes the page's own calls", () => {
+    const tool = shellOf("<head></head>").toolOf({
+      name: "brief",
+      description: "",
+      arguments: [],
+      pattern: "/:lang/x",
+    });
+    expect(tool.annotations).toEqual({ readOnlyHint: false, openWorldHint: false });
   });
 
   test("addresses a basePath's screens under the root's own, so no basePath name reaches the root", async () => {

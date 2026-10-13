@@ -22,7 +22,7 @@ Desktop Release
 
 - AKAN_NATIVE_MACOS_CERTIFICATE + _PASSWORD: A .p12 file and its password. The build imports it into a keychain of its own and deletes it afterwards: the CI way.
 
-- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id). Turns on notarization and stapling.
+- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id): the credentials `--notarize` submits and staples with.
 
 - AKAN_NATIVE_MACOS_NOTARY_PROFILE: Instead of the key: a profile `xcrun notarytool store-credentials` saved in the keychain.
 
@@ -34,17 +34,17 @@ Desktop Release
 
 - AKAN_NATIVE_WINDOWS_TIMESTAMP_URL: The RFC 3161 timestamp server. Default http://timestamp.digicert.com.
 
-A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs from the environment, packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
+A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs with `--sign` and notarizes with `--notarize`, using the identity the environment names; the environment alone signs nothing. It packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
 
 A desktop app is built on its own OS: a Mac builds the macOS app, a Windows PC the Windows one. The CI recipe below runs one job per OS instead of cross-compiling.
 
 Signing
 
-A Developer ID Application certificate signs every Mach-O file inside out — the server's native addons and `bin` included — with the hardened runtime and a secure timestamp. The executable gets Bun's JIT entitlements, and the camera's or microphone's when a usage text asks for them; `native.desktop.entitlements` adds the app's own. Notarization then submits the app, staples the ticket and checks it with `spctl`.
+With `--sign`, a Developer ID Application certificate signs every Mach-O file inside out — the server's native addons and `bin` included — with the hardened runtime and a secure timestamp. The executable gets Bun's JIT entitlements, and the camera's or microphone's when a usage text asks for them; `native.desktop.entitlements` adds the app's own. `--notarize` then submits the app, staples the ticket and checks it with `spctl`.
 
-Authenticode signs every PE file of the app — the executable, its DLL, the server's addons and `bin` — SHA-256 with an RFC 3161 timestamp, and verifies them. signtool comes from the Windows SDK (`AKAN_NATIVE_SIGNTOOL` names another).
+With `--sign`, Authenticode signs every PE file of the app — the executable, its DLL, the server's addons and `bin` — SHA-256 with an RFC 3161 timestamp, and verifies them. signtool comes from the Windows SDK (`AKAN_NATIVE_SIGNTOOL` names another).
 
-`akan publish-update` signs with the same settings: the updater checks the installed app's signature, so a release signed differently is refused.
+An update release must be signed the same way: the updater checks the installed app's signature, so a signed installed app accepts only a release `akan publish-update --sign` signed with the same identity.
 
 Installers And CPU
 
@@ -71,7 +71,8 @@ Replace myapp with the app's name and give the env its server configuration as t
 ### Terminal
 
 ```bash
-akan build-desktop myapp --env main --installer true
+akan build-desktop myapp --env main --installer true --sign true --notarize true   # macOS
+akan build-desktop myapp --env main --installer true --sign true                   # Windows
 ```
 
 ### .github/workflows/desktop-release.yml
@@ -132,13 +133,24 @@ jobs:
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\certificate.pfx", [Convert]::FromBase64String($env:CERTIFICATE_PFX))
           "AKAN_NATIVE_WINDOWS_CERTIFICATE=$env:RUNNER_TEMP\certificate.pfx" >> $env:GITHUB_ENV
 
-      - name: Build, sign and pack
+      - name: Build, sign and pack (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         env:
           AKAN_NATIVE_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           AKAN_NATIVE_MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           AKAN_NATIVE_MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
+        run: akan build-desktop myapp --env main --installer true --arch ${{ matrix.arch }} --sign true --notarize true
+
+      - name: Build, sign and pack (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
           AKAN_NATIVE_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: akan build-desktop myapp --env main --installer true --arch ${{ matrix.arch }} --sign true
+
+      - name: Build and pack (Linux)
+        if: runner.os == 'Linux'
         run: akan build-desktop myapp --env main --installer true --arch ${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4

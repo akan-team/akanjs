@@ -199,7 +199,7 @@ export class RouteTreeBuilder {
               renderPage: route.renderPage,
               renderRootLayouts: layer.pageRenderRootLayouts,
               renderLayouts: layer.pageRenderLayouts,
-              resolveHead: RouteTreeBuilder.#composeHeadResolvers(route.renderPage.resolveHead, pageHead),
+              resolveHead: RouteTreeBuilder.#composePageHead(route.renderPage.resolveHead, pageHead),
               pageState: route.pageState ?? defaultPageState,
             },
           ]
@@ -350,5 +350,13 @@ export class RouteTreeBuilder {
     const chain = resolvers.filter((resolver): resolver is ResolveHead => Boolean(resolver));
     if (chain.length <= 1) return chain[0];
     return async (props) => RouteHead.merge(await Promise.all(chain.toReversed().map((resolver) => resolver(props))));
+  }
+
+  static #composePageHead(page: ResolveHead | undefined, layouts: ResolveHead | undefined): ResolveHead | undefined {
+    if (!layouts) return page;
+    return async (props) => {
+      const [layoutHead, pageHead] = await Promise.all([layouts(props), page?.(props)]);
+      return RouteHead.mergePage(layoutHead, pageHead);
+    };
   }
 }

@@ -33,6 +33,8 @@ mod camera;
 #[cfg(target_os = "macos")]
 mod js_panels;
 #[cfg(target_os = "macos")]
+mod page_cursor;
+#[cfg(target_os = "macos")]
 mod panels;
 mod dialog_args;
 mod accelerator;
@@ -534,12 +536,26 @@ pub unsafe extern "C" fn akan_native_last_error(buf: *mut u8, cap: usize) -> usi
   text.len()
 }
 
+/// akan_native_init(1): a dev build. The shell's test hooks and the WebView2 debugging port need it, never shell.devtools,
+/// which a release build may carry: one variable in its environment would then open a port any local program drives.
+static DEV_BUILD: AtomicBool = AtomicBool::new(false);
+
+fn dev_build() -> bool {
+  DEV_BUILD.load(Ordering::Acquire)
+}
+
+/// A test hook's variable, read by a dev build only.
+fn dev_env(name: &str) -> Option<String> {
+  dev_build().then(|| std::env::var(name).ok()).flatten()
+}
+
 /// Called by main.ts before it starts the plugin host Worker, so no other akan-native thread runs yet.
 /// Release builds (`dev` 0) drop the engines' debugging variables: a WEBVIEW2_* or WEBKIT_* setting
 /// in the user's environment would open a debugger port or switch off WebKit's sandbox, and
 /// SSLKEYLOGFILE would log TLS keys (Tauri CEF #15995). The debug port is never taken from argv.
 #[no_mangle]
 pub extern "C" fn akan_native_init(dev: u8) -> i32 {
+  DEV_BUILD.store(dev != 0, Ordering::Release);
   if dev == 0 {
     let dropped: Vec<String> = std::env::vars_os()
       .filter_map(|(k, _)| k.into_string().ok())
@@ -1220,6 +1236,70 @@ fn monitor_at(target: &EventLoopWindowTarget<UserEvent>, x: f64, y: f64) -> Opti
   })
 }
 
+/// window.placeOnDisplay: `(x, y, width, height)` in the display's device pixels from its corner, filled by a decorated
+/// window's frame (title bar included) or by a frameless window's content. Returns the minimum size, lowered to fit.
+fn place_on_display(window: &tao::window::Window, webview: &WebView, monitor: &tao::monitor::MonitorHandle, (x, y, w, h): (f64, f64, f64, f64), min_size: (f64, f64)) -> (f64, f64) {
+  let scale = monitor.scale_factor();
+  let lowered = |size: LogicalSize<f64>| (min_size.0.min(size.width), min_size.1.min(size.height));
+  //? AppKit and GTK lay every display out in logical units; tao's physical ones are each display's own (and a window's).
+  #[cfg(not(target_os = "windows"))]
+  let min = {
+    let origin = monitor.position().to_logical::<f64>(scale);
+    #[cfg(target_os = "macos")]
+    let deco = if window.is_decorated() {
+      let (frame, content) = (window.outer_size().to_logical::<f64>(window.scale_factor()), inner_size(window, Some(webview)));
+      ((frame.width - content.width).max(0.0).round(), (frame.height - content.height).max(0.0).round())
+    } else {
+      (0.0, 0.0)
+    };
+    #[cfg(target_os = "linux")]
+    let deco = {
+      let _ = webview;
+      (0.0, 0.0)
+    };
+    let size = LogicalSize::new((w / scale - deco.0).max(1.0), (h / scale - deco.1).max(1.0));
+    let min = lowered(size);
+    window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
+    //? AppKit keeps a borderless window's bottom edge where its size changes (a titled one's top): the size goes first.
+    window.set_inner_size(size);
+    window.set_outer_position(tao::dpi::LogicalPosition::new(origin.x + x / scale, origin.y + y / scale));
+    min
+  };
+  #[cfg(target_os = "windows")]
+  let min = {
+    use tao::dpi::{PhysicalPosition, PhysicalSize};
+    let _ = webview;
+    let origin = monitor.position();
+    let corner = PhysicalPosition::new(origin.x + x as i32, origin.y + y as i32);
+    let decorated = window.is_decorated();
+    let mut size = PhysicalSize::new(w as u32, h as u32);
+    //? Off while placing: a minimum in logical pixels would clamp the size at the scale of the display the window leaves.
+    window.set_min_inner_size(None::<LogicalSize<f64>>);
+    //? Windows rescales a window that comes onto a display of another scale to keep its logical size (WM_DPICHANGED),
+    //? on the move or on the resize that leaves it there: a second pass sets the size again at that display's scale.
+    for _ in 0..2 {
+      window.set_outer_position(corner);
+      let (frame, content) = (window.outer_size(), window.inner_size());
+      let deco = if decorated { (frame.width.saturating_sub(content.width), frame.height.saturating_sub(content.height)) } else { (0, 0) };
+      size = PhysicalSize::new((w as u32).saturating_sub(deco.0).max(1), (h as u32).saturating_sub(deco.1).max(1));
+      window.set_inner_size(size);
+      //? tao keeps an invisible shadow inset (about 8 px) around a frameless window's content: the content fills the bounds.
+      let inset = match (window.inner_position(), window.outer_position()) {
+        (Ok(content), Ok(frame)) if !decorated => (content.x - frame.x, content.y - frame.y),
+        _ => (0, 0),
+      };
+      window.set_outer_position(PhysicalPosition::new(corner.x - inset.0, corner.y - inset.1));
+      if window.inner_size() == size {
+        break;
+      }
+    }
+    let min = lowered(size.to_logical::<f64>(scale));
+    window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
+    min
+  };
+  min
+}
+
 /// desktop.recovery "reload": how long to wait before loading a page again after `streak` ends in a
 /// row. The first end reloads at once; then 1 s, doubling to a minute.
 fn recovery_wait(streak: u32) -> Option<std::time::Duration> {
@@ -1411,7 +1491,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   // `akan-native test` (dev builds only): WebKit suspends a page whose window is covered by other apps
   // (visibilityState "hidden"), which stalled the self-test at the first sheet whenever the test
   // window opened behind the user's work. WRY sets WKPreferences.inactiveSchedulingPolicy (macOS 14+).
-  if shell.devtools && std::env::var_os("AKAN_NATIVE_TEST_NO_THROTTLING").is_some() {
+  if dev_env("AKAN_NATIVE_TEST_NO_THROTTLING").is_some() {
     builder = builder.with_background_throttling(wry::BackgroundThrottlingPolicy::Disabled);
   }
   if register_scheme {
@@ -1428,7 +1508,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     // Dev builds: AKAN_NATIVE_WEBVIEW2_DEBUG_PORT opens the Chrome DevTools Protocol on that port, for
     // test automation. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS does not apply: wry passes arguments of
     // its own, repeated here because these replace them (wry webview2/mod.rs, with autoplay on).
-    let port = std::env::var("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").ok().filter(|_| shell.devtools).and_then(|p| p.parse::<u16>().ok());
+    let port = dev_env("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").and_then(|p| p.parse::<u16>().ok());
     // desktop.screenCapture "auto": getDisplayMedia answers with the first screen, no picker, no user gesture. Not
     // --auto-select-desktop-capture-source: it matches the picker's title, which follows the UI language (verified).
     let capture = shell.screen_capture_auto.then(|| "--use-fake-ui-for-media-stream".to_string());
@@ -1667,7 +1747,7 @@ impl Windows {
       return Err("the last window cannot be destroyed; hide it or quit".into());
     }
     let win = self.map.remove(&id).unwrap();
-    self.external.close_window(id);
+    self.external.close_window(id, &win.webview);
     self.ids.remove(&win.window.id());
     self.focus.retain(|&f| f != id);
     drop_pending(id);
@@ -1688,14 +1768,12 @@ impl Windows {
 
   fn external_recover(&mut self, view: &str) {
     let Some(win) = self.external.window_of(view).and_then(|w| self.map.get(&w)) else { return };
-    let inner = inner_size(&win.window, Some(&win.webview));
     let background = self.shell.colors.of(&win.window);
-    if let Err(e) = self.external.recover(view, &win.window, inner, &self.external_data, self.shell.devtools, background) {
+    if let Err(e) = self.external.recover(view, &win.window, &win.webview, &self.external_data, self.shell.devtools, background) {
       log!("external view {view}: could not load it again: {e}");
     }
   }
 
-  /// A view's window and that window's content size, for its bounds.
   fn external_host(&self, cmd: &json::V) -> Result<(u32, &Win), String> {
     let id = match window_arg(cmd)? {
       Some(id) => id,
@@ -1711,7 +1789,7 @@ impl Windows {
     match op {
       "externalView.list" => Ok(self.external.list()),
       "externalView.open" => {
-        let (window, win) = self.external_host(cmd)?;
+        let (window, _) = self.external_host(cmd)?;
         let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?.to_string();
         let allow: Vec<String> = cmd
           .get("allowOrigins")
@@ -1734,18 +1812,22 @@ impl Windows {
           autoplay: cmd.get("autoplay").and_then(|v| v.as_bool()).unwrap_or(true),
           console: cmd.get("console").and_then(|v| v.as_bool()).unwrap_or(false),
         };
-        let inner = inner_size(&win.window, Some(&win.webview));
         let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
         let win = &self.map[&window];
         let hidden = win.cursor_hidden;
         let background = self.shell.colors.of(&win.window);
-        let answer = self.external.open(&win.window, inner, &data, devtools, background, opts)?;
+        let answer = self.external.open(&win.window, &win.webview, &data, devtools, background, opts)?;
         if hidden {
           self.external.set_cursor_hidden(window, true);
         }
         Ok(answer)
       }
-      "externalView.close" => self.external.close(&view()?),
+      "externalView.close" => {
+        let id = view()?;
+        let window = self.external.get(&id)?.window;
+        let win = self.map.get(&window).ok_or_else(|| format!("no window {window}"))?;
+        self.external.close(&id, &win.webview)
+      }
       "externalView.navigate" => {
         let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?;
         self.external.navigate(&view()?, url)
@@ -1805,7 +1887,7 @@ impl Windows {
       }
       "window.destroy" => return self.destroy(window_arg(&cmd)?.ok_or("window is required")?),
       // Dev builds: the idle wake budget counters (the self-test's K-idle check).
-      "debug.stats" if self.shell.devtools => return Ok(stats_json()),
+      "debug.stats" if dev_build() => return Ok(stats_json()),
       _ => {}
     }
     // App-wide ops, not a window's: menu, tray, global shortcut, dock, screen and volume plugins
@@ -1835,7 +1917,7 @@ impl Windows {
     };
     let win = self.map.get(&id).ok_or_else(|| format!("no window {id}"))?;
     // Dev builds (the self-test): end the window's web content process, as a crash would (N2).
-    if op == "webview.crashForTest" && self.shell.devtools {
+    if op == "webview.crashForTest" && dev_build() {
       #[cfg(target_os = "macos")]
       unsafe {
         use objc2::{msg_send, runtime::AnyObject, sel};
@@ -1909,33 +1991,17 @@ impl Windows {
     }
     if op == "window.placeOnDisplay" {
       let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
-      let monitor = monitor_at(target, num("atX")?, num("atY")?).ok_or("NOT_FOUND: no display is there now")?;
+      let monitors: Vec<tao::monitor::MonitorHandle> = target.available_monitors().collect();
+      let rects: Vec<placement::Rect> = monitors.iter().map(logical_rect).collect();
+      let at = placement::display_at(&rects, num("atX")?, num("atY")?);
+      let monitor = at.and_then(|i| monitors.into_iter().nth(i)).ok_or("NOT_FOUND: no display is there now")?;
       if cmd.get("fullscreen").and_then(|v| v.as_bool()) == Some(true) {
         win.window.set_fullscreen(Some(tao::window::Fullscreen::Borderless(Some(monitor))));
         return Ok(window_state(&win.window, Some(&win.webview)));
       }
-      let (x, y, w, h) = (num("x")?.round(), num("y")?.round(), num("width")?.round(), num("height")?.round());
-      if !(w >= 1.0 && h >= 1.0) {
-        return Err("width and height must be positive".into());
-      }
+      let bounds = placement::device_bounds(num("x")?, num("y")?, num("width")?, num("height")?)?;
       win.window.set_fullscreen(None);
-      let scale = monitor.scale_factor();
-      let min = (win.min_size.0.min(w / scale), win.min_size.1.min(h / scale));
-      win.window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
-      //? AppKit lays every display out in points, while tao's physical position is that display's points × its own scale.
-      #[cfg(target_os = "macos")]
-      {
-        let origin = monitor.position().to_logical::<f64>(scale);
-        win.window.set_outer_position(tao::dpi::LogicalPosition::new(origin.x + x / scale, origin.y + y / scale));
-        win.window.set_inner_size(LogicalSize::new(w / scale, h / scale));
-      }
-      #[cfg(not(target_os = "macos"))]
-      {
-        let origin = monitor.position();
-        win.window.set_outer_position(tao::dpi::PhysicalPosition::new(origin.x + x as i32, origin.y + y as i32));
-        //? Second: arriving on a display of another scale, Windows resizes the window to keep its logical size (WM_DPICHANGED).
-        win.window.set_inner_size(tao::dpi::PhysicalSize::new(w as u32, h as u32));
-      }
+      let min = place_on_display(&win.window, &win.webview, &monitor, bounds, win.min_size);
       let state = window_state(&win.window, Some(&win.webview));
       self.map.get_mut(&id).expect("looked up above").min_size = min;
       return Ok(state);
@@ -1954,6 +2020,8 @@ impl Windows {
     let state = window_op(&win.window, Some(&win.webview), &cmd, op, win.min_size)?;
     if op == "window.setCursorVisible" {
       let hidden = cmd.get("value").and_then(|v| v.as_bool()) == Some(false);
+      #[cfg(target_os = "macos")]
+      page_cursor::set_hidden(&win.webview, hidden);
       self.map.get_mut(&id).expect("looked up above").cursor_hidden = hidden;
       self.external.set_cursor_hidden(id, hidden);
     }
@@ -2082,7 +2150,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
       .data_dir
       .clone()
       .unwrap_or_else(|| std::env::temp_dir().join(format!("{}-webview", cfg.app_id)))
-      .join("external-views"),
+      .join("ev"),
   };
   let main = WindowOptions {
     path: cfg.start_path.clone(),
@@ -2149,6 +2217,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
             windows.external.fit(id, logical);
             push_event(&format!(r#"{{"type":"window","event":"resized","window":{id},"width":{},"height":{}}}"#, logical.width, logical.height));
           }
+          WindowEvent::ScaleFactorChanged { .. } => windows.external.fit(id, inner_size(&win.window, Some(&win.webview))),
           WindowEvent::Moved(position) => {
             let logical = position.to_logical::<f64>(win.window.scale_factor());
             push_event(&format!(r#"{{"type":"window","event":"moved","window":{id},"x":{},"y":{}}}"#, logical.x, logical.y));
@@ -2547,5 +2616,17 @@ mod recovery_tests {
     assert!(super::parse_config(&format!(r#"{{{base},"recovery":"always"}}"#)).is_err());
     assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"auto"}}"#)).unwrap().screen_capture_auto);
     assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"any"}}"#)).is_err());
+  }
+}
+
+#[cfg(test)]
+mod dev_build_tests {
+  #[test]
+  fn a_shell_not_told_it_is_a_dev_build_reads_no_test_hook_variable() {
+    assert!(!super::dev_build());
+    assert!(std::env::var_os("PATH").is_some());
+    assert_eq!(super::dev_env("PATH"), None);
+    // Its callers pass shell.devtools, which a release build may carry.
+    assert!(crate::dialog_args::TestAnswers::get(true).is_none());
   }
 }

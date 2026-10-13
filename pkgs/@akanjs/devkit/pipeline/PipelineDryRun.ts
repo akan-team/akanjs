@@ -6,7 +6,7 @@ import type {
   PipelinePlanStage,
 } from "akanjs/common";
 
-/** A plan as a person reads it: one line per phase in run order, the executor's own work included. Runs nothing. */
+/** A plan as a person reads it: one line per phase in run order, the executor's own work included. */
 export class PipelineDryRun {
   static render(result: PipelinePlanResult) {
     const lines = result.ok ? PipelineDryRun.#plan(result.plan) : ["no plan: the definition has errors"];
@@ -61,7 +61,7 @@ export class PipelineDryRun {
       const command = stage?.steps
         .map((step) => (step.kind === "sh" ? step.name : `action ${step.action}`))
         .join(" · ");
-      return [labels[0], command].filter((part) => part && part !== stage?.name).join("  ");
+      return [labels[0], command].filter((part) => part && part !== phase.name).join("  ");
     }
     return `‖ ${labels.join(" · ")}`;
   }

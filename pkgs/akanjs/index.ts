@@ -142,7 +142,7 @@ export interface AkanNativeUpdatesConfig {
    * desktop app trusts the first.
    */
   publicKeys?: string[];
-  /** The one-key form of `publicKeys`. */
+  /** The one-key form of `publicKeys`, never beside it: a target overriding native.updates' keys keeps its form. */
   publicKey?: string;
   /**
    * The manifest the app follows, e.g. a "pilot" target's "pilot". Default: the backend env the app is built for
@@ -582,7 +582,6 @@ export interface AppPipelineInput {
 export interface PipelineContext {
   readonly branch: string;
   readonly env: string;
-  /** Apps this run builds. */
   readonly apps: readonly string[];
   /** Every app in this checkout: a subspace sees its slice only. */
   readonly workspaceApps: readonly string[];
@@ -614,7 +613,6 @@ export interface PipelineParallelStageInput extends PipelineStageBase {
   name: string;
   parallel: readonly PipelineShellStageInput[];
   maxParallel?: number;
-  /** Cancel the other branches when one fails. */
   failFast?: boolean;
   env?: Record<string, string>;
   secrets?: readonly string[];
@@ -681,13 +679,13 @@ export interface SubspaceConfigInput {
   subspaces: SubspaceDeclaration[];
 }
 
-/** The workspace root's `akan.config.ts`. It never reaches a subspace, and app or lib settings are refused in it. */
-/** The cloud a workspace's CLI talks to when a command names no `--host`: a self-hosted akasys, say. */
+/** The cloud a workspace's CLI talks to when a command names no `--host`: a self-hosted control plane, say. */
 export interface WorkspaceCloudConfig {
   /** The cloud's origin, e.g. `https://cloud.example.com`. Default: Akan Cloud. */
   host?: string;
 }
 
+/** The workspace root's `akan.config.ts`. It never reaches a subspace, and app or lib settings are refused in it. */
 export interface WorkspaceConfig {
   subspace?: SubspaceConfigInput;
   pipeline?: WorkspacePipelineConfig;

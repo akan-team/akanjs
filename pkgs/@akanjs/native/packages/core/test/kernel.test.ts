@@ -11,7 +11,9 @@ import {
   fileMime,
   fileRefSandboxed,
   idValid,
+  isChannelName,
   isHostPath,
+  isUpdateKeyId,
   parseRange,
   RetainedEvents,
   route,
@@ -182,5 +184,43 @@ describe("updates vectors", () => {
   );
   test.each(updates.urls)("%s %s %s %s → %s", (url, platform, channel, nativeApi, expected) => {
     expect(updateManifestUrl(url, platform, channel, nativeApi)).toBe(expected);
+  });
+});
+
+// What the publisher writes and a desktop app's setChannel() takes: one rule, so no device waits on a channel nobody
+// can publish to.
+describe("update names", () => {
+  test.each([
+    ["production", true],
+    ["pilot", true],
+    ["beta-2", true],
+    ["v1.2", true],
+    ["a_b", true],
+    ["x".repeat(41), true],
+    ["x".repeat(42), false],
+    ["Pilot", false],
+    ["", false],
+    [".hidden", false],
+    ["-x", false],
+    ["../stable", false],
+    ["a/b", false],
+    ["a\\b", false],
+    ["bundle", false],
+    ["manifest.template", false],
+    ["compat", false],
+    ["pack", false],
+    ["files", false],
+    ["app", false],
+  ] as const)("channel %j: %p", (name, valid) => {
+    expect(isChannelName(name)).toBe(valid);
+  });
+  test.each([
+    ["4bb06f8e4e3a7715", true],
+    ["4BB06F8E4E3A7715", false],
+    ["4bb06f8e4e3a771", false],
+    ["4bb06f8e4e3a77150", false],
+    ["4bb06f8e4e3a771g", false],
+  ] as const)("keyId %j: %p", (keyId, valid) => {
+    expect(isUpdateKeyId(keyId)).toBe(valid);
   });
 });

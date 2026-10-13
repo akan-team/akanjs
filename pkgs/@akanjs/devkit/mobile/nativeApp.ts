@@ -343,8 +343,9 @@ export class NativeApp {
     });
   }
 
-  //* Only what the command asked for is signed or uploaded; a signed app's server is searched for the workspace's
-  //* secret values first, and the one line naming the identity and the service comes right before the build.
+  //* Only what the command asked for is signed or uploaded. A release's server is searched for the workspace's secret
+  //* values first, signed or not: an unsigned app is handed out too, and an update is published to every install. The
+  //* one line naming the identity and the service comes right before the build.
   async #distribution(
     api: NativeBuildApiModule,
     platform: NativePlatform,
@@ -353,20 +354,24 @@ export class NativeApp {
     server: DesktopServerBundle | undefined,
   ) {
     const distribution = api.requestedDistribution(platform, profile, request);
+    if (server && profile === "release") await this.#assertServerClean(server);
     if (!distribution.notice) {
       if (distribution.unused.length && (platform === "macos" || platform === "windows"))
         this.app.logger.info(`${distribution.unused.join(", ")} set: this build is not signed without --sign.`);
       return distribution;
     }
-    if (server) {
-      const unread = await new ServerBundleSecrets(this.app.workspace.workspaceRoot, this.app.cwdPath).assertClean(
-        server.dir,
-      );
-      if (unread.length)
-        this.app.logger.warn(`Not searched for secrets, as they could not be evaluated: ${unread.join(", ")}.`);
-    }
     this.app.logger.warn(distribution.notice);
     return distribution;
+  }
+
+  async #assertServerClean(server: DesktopServerBundle) {
+    const unread = await new ServerBundleSecrets(this.app.workspace.workspaceRoot, this.app.cwdPath).assertClean(
+      server.dir,
+    );
+    if (unread.length)
+      throw new Error(
+        `The server this app carries was not searched for the secret values of ${unread.join(", ")}, which could not be evaluated with no app env set, so the release stops here.`,
+      );
   }
 
   /**

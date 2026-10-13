@@ -73,6 +73,7 @@ export class McpDispatcher {
   // refusal (it names the guard structure) or a crash, which the HTTP path generalizes too.
   static #restorable(error: unknown, status: number | undefined) {
     if (!status || status >= 500 || status === 401 || status === 403 || error instanceof NoDocumentError) return null;
+    if (isExceptionLike(error)) return error.toJSON();
     const data = (error as { data?: unknown }).data;
     return {
       error: error instanceof Error ? error.message : String(error),

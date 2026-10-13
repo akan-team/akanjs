@@ -27,16 +27,17 @@ interface McpAppSnapshotRecord {
 // own CSR shell. Without a shell (an api-only build, `web: { csr: false }`) the tool answers the briefing alone.
 export class McpApps {
   static readonly scheme = "ui://";
-  static readonly sessionPrefix = "ui.";
   // Read by `McpAppBridge` on the view side; `_meta` is the one part of a result no host hands to the model.
   static readonly snapshotKey = "akanjs/snapshot";
   // A basePath sits under the root's own segment, so no basePath name can address the root's screens.
   static readonly rootSegment = "app";
   static readonly #tokenClaims = new Set(["iss", "aud", "exp", "nbf", "iat", "jti", "client_id", "scope"]);
+  static readonly #hostname = /^(?:[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.?|\[[0-9a-f:.]+\])$/;
   // Runs before the bundle. A `srcdoc` view throws on any cookie or storage access, and a proxy-origin view would share
   // one storage with every other app the host renders there, so the view keeps both in memory, like a native shell.
   // A host may block the `<base>` despite `baseUriDomains` (Claude does), so a root-relative asset — a stored file's
-  // `/api/...` URL — is pointed at the app's origin wherever it is written, before the browser fetches it.
+  // `/api/...` URL — is pointed at the app's origin wherever it is written, before the browser fetches it. A srcset URL
+  // may hold commas (a `data:` URL does), so candidates part where the HTML parser parts them, not at every comma.
   static readonly #runtime = `
 (() => {
   const memoryStorage = () => {
@@ -61,7 +62,15 @@ export class McpApps {
       const at = pair.indexOf("=");
       if (at < 0) return;
       const name = pair.slice(0, at).trim();
-      const expired = attrs.some((attr) => /^\\s*expires=/i.test(attr) && Date.parse(attr.split("=")[1]) < Date.now());
+      const attrOf = (key) => {
+        const found = attrs.find((attr) => attr.trim().toLowerCase().startsWith(key + "="));
+        return found === undefined ? undefined : found.slice(found.indexOf("=") + 1).trim();
+      };
+      const maxAge = attrOf("max-age");
+      const expires = attrOf("expires");
+      const expired = maxAge !== undefined && /^-?\\d+$/.test(maxAge)
+        ? Number(maxAge) <= 0
+        : expires !== undefined && Date.parse(expires) < Date.now();
       if (expired) jar.delete(name);
       else jar.set(name, pair.slice(at + 1).trim());
     },
@@ -73,7 +82,7 @@ export class McpApps {
     if (typeof value !== "string") return value;
     if (name === "src" || name === "poster" || (name === "href" && el.tagName === "LINK")) return absolute(value);
     if (name !== "srcset") return value;
-    return value.split(",").map((part) => part.trim().replace(/^\\S+/, absolute)).join(", ");
+    return value.replace(/(^|,)(\\s*)([^\\s,](?:\\S*[^\\s,])?)/g, (_, comma, space, url) => comma + space + absolute(url));
   };
   const setAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (name, value) {
@@ -138,7 +147,8 @@ export class McpApps {
         ...(required.length ? { required } : {}),
         additionalProperties: false,
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      // Not read-only: the page run makes the page's own `fetch.*` calls under the caller's token, mutations included.
+      annotations: { readOnlyHint: false, openWorldHint: false },
       ...(this.#shell ? { _meta: this.#toolMetaOf(this.uriOf(this.#basePathOf(entry.pattern))) } : {}),
     };
   }
@@ -241,12 +251,13 @@ export class McpApps {
     return records.flatMap(({ key, args, value }) => (value === undefined ? [] : [{ key, args, value }]));
   }
 
-  // Security: the origin comes from `x-forwarded-host` unless a resource is pinned; it is written into markup only
-  // once `URL` has reduced it to scheme, host and port.
+  // Security: the origin comes from `x-forwarded-host` unless a resource is pinned, and `URL` keeps a `"` (even a
+  // `%22`) in a host. It reaches markup and the CSP only when its host is plain DNS or IP characters.
   static #originOf(origin: string) {
     try {
       const parsed = new URL(origin);
-      return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.origin : null;
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+      return McpApps.#hostname.test(parsed.hostname) ? parsed.origin : null;
     } catch {
       return null;
     }
@@ -256,7 +267,7 @@ export class McpApps {
   // host's sandbox origin.
   static #absoluteCss(html: string, origin: string) {
     return html.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (block) =>
-      block.replace(/url\((["']?)\/(?!\/)/g, `url($1${origin}/`),
+      block.replace(/url\((["']?)\/(?!\/)/g, (_url, quote: string) => `url(${quote}${origin}/`),
     );
   }
 

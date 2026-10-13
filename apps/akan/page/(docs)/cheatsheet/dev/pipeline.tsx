@@ -479,7 +479,9 @@ akan list-secrets`}
           title="Terminal"
           code={`akan pipeline dry-run --branch main
 # plan v1 · branch main · env main · trigger manual · apps api, web
+# from akan.config.ts, apps/api/akan.config.ts (default), apps/web/akan.config.ts
 #
+# prepare  (executor)                 checkout · env · install · plan
 # prepare  lint          Lint         bun run lint
 # build    build         Build        ‖ api · web
 # verify   after-build   After build  web:Test  bun run akan test web
@@ -487,6 +489,7 @@ akan list-secrets`}
 # deploy   deploy        Deploy       → api, web (one at a time)
 # finish   e2e           E2E          ‖ api (may fail) · web (may fail)
 # finish   post.failure               Notify
+# finish   (executor)                 cleanup
 #
 # secrets required: DISCORD_WEBHOOK`}
         />

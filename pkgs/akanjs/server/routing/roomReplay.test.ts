@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { SolidPubSub, WebSocketRedisAdaptor, type WebsocketAdaptor } from "akanjs/service";
 import { RoomReplay } from "./roomReplay";
 
 const pub = (roomId: string, n: number) => ({ type: "pub" as const, roomId, data: { n } });
+
+const until = async (condition: () => boolean, timeoutMs = 5_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting for the socket");
+    await Bun.sleep(2);
+  }
+};
 
 describe("RoomReplay", () => {
   test("numbers a watched room's frames from 1 and leaves an unwatched room's alone", () => {
@@ -17,9 +26,9 @@ describe("RoomReplay", () => {
   test("hands back what followed a cursor, and a gap when it cannot vouch for all of it", () => {
     const replay = new RoomReplay({ vouches: true, depth: 3 });
     replay.watch("room");
-    for (const n of [1, 2, 3, 4, 5]) replay.frameOf(pub("room", n), true);
     const cursor = replay.cursor("room");
     if (!cursor) throw new Error("watched room has no cursor");
+    for (const n of [1, 2, 3, 4, 5]) replay.frameOf(pub("room", n), true);
     expect(replay.since("room", { epoch: cursor.epoch, seq: 3 })?.map((frame) => JSON.parse(frame).seq)).toEqual([
       4, 5,
     ]);
@@ -28,6 +37,20 @@ describe("RoomReplay", () => {
     expect(replay.since("room", { epoch: "another", seq: 3 })).toBeNull();
     expect(replay.since("room", { epoch: cursor.epoch, seq: 9 })).toBeNull();
     expect(new RoomReplay({ vouches: false }).since("room", { epoch: cursor.epoch, seq: 3 })).toBeNull();
+  });
+
+  test("replays nothing published before the subscribe a cursor was handed to, whatever seq it names", () => {
+    const replay = new RoomReplay({ vouches: true });
+    replay.watch("room");
+    for (const n of [1, 2, 3]) replay.frameOf(pub("room", n), true);
+    const late = replay.cursor("room");
+    if (!late) throw new Error("watched room has no cursor");
+    expect(replay.since("room", { epoch: late.epoch, seq: 0 })).toBeNull();
+    expect(replay.since("room", { epoch: late.epoch, seq: 3 })).toEqual([]);
+    const [processId, generation, , mac] = late.epoch.split(".");
+    expect(replay.since("room", { epoch: [processId, generation, "0", mac].join("."), seq: 0 })).toBeNull();
+    replay.watch("other");
+    expect(replay.since("other", { epoch: late.epoch, seq: 0 })).toBeNull();
   });
 
   test("forgets a room nobody watched for retainMs, and numbers it afresh under a new epoch", () => {
@@ -39,6 +62,55 @@ describe("RoomReplay", () => {
     replay.watch("room", 2_001);
     expect(replay.cursor("room")).toMatchObject({ seq: 0 });
     expect(replay.cursor("room")?.epoch).not.toBe(before?.epoch);
+  });
+
+  test("counts a room's retention from its last subscriber leaving, however long it sat quiet before", () => {
+    const replay = new RoomReplay({ vouches: true, retainMs: 1_000 });
+    replay.watch("room", 0);
+    replay.left("room", 5_000);
+    expect(JSON.parse(replay.frameOf(pub("room", 1), false, 5_500))).toMatchObject({ seq: 1 });
+  });
+
+  test("drops an idle room once its retention ran out, with no publish to it to notice", () => {
+    const replay = new RoomReplay({ vouches: true, retainMs: 1_000 });
+    replay.watch("idle", 0);
+    replay.frameOf(pub("idle", 1), true, 1);
+    replay.left("idle", 2);
+    replay.watch("busy", 5_000);
+    expect(replay.cursor("idle")).toBeNull();
+    expect(replay.cursor("busy")).not.toBeNull();
+  });
+
+  test("never drops a room a socket here still subscribes to, so its numbering never restarts under it", () => {
+    const held = new Set(["held"]);
+    const replay = new RoomReplay({ vouches: true, rooms: 2, subscribed: (roomId) => held.has(roomId) });
+    replay.watch("held", 0);
+    for (const n of [1, 2, 3]) replay.frameOf(pub("held", n), true, n);
+    for (const roomId of ["a", "b", "c"]) replay.watch(roomId, 10);
+    expect(replay.cursor("a")).toBeNull();
+    expect(replay.cursor("b")).toBeNull();
+    replay.watch("held", 20);
+    expect(JSON.parse(replay.frameOf(pub("held", 4), true, 21))).toMatchObject({ seq: 4 });
+  });
+
+  test("vouches for no cursor taken before a frame that went out unnumbered", () => {
+    const replay = new RoomReplay({ vouches: true });
+    replay.watch("room");
+    const cursor = replay.cursor("room");
+    if (!cursor) throw new Error("watched room has no cursor");
+    replay.frameOf(pub("room", 1), true);
+    replay.unnumbered("room");
+    replay.frameOf(pub("room", 2), true);
+    expect(replay.since("room", { epoch: cursor.epoch, seq: 1 })).toBeNull();
+    expect(replay.since("room", { epoch: cursor.epoch, seq: 2 })).toEqual([]);
+  });
+
+  test("vouches only as a lone process on the in-process adaptor", () => {
+    const solid = Object.create(SolidPubSub.prototype) as WebsocketAdaptor;
+    const redis = Object.create(WebSocketRedisAdaptor.prototype) as WebsocketAdaptor;
+    expect(RoomReplay.vouchesFor(solid, true)).toBe(true);
+    expect(RoomReplay.vouchesFor(solid, false)).toBe(false);
+    expect(RoomReplay.vouchesFor(redis, true)).toBe(false);
   });
 });
 
@@ -79,16 +151,12 @@ describe("RoomReplay over a real socket", () => {
         },
       },
     });
+    const roomId = "commandOfPc-pc-7";
     const publish = (n: number) =>
-      server.publish(
-        "commandOfPc-pc-7",
-        replay.frameOf(
-          { type: "pub", roomId: "commandOfPc-pc-7", data: { n } },
-          server.subscriberCount("commandOfPc-pc-7") > 0,
-        ),
-      );
+      server.publish(roomId, replay.frameOf({ type: "pub", roomId, data: { n } }, server.subscriberCount(roomId) > 0));
 
-    const client = new WsClient(`ws://localhost:${server.port}/`).configure({ reconnect: { min: 20, jitter: 0 } });
+    //? Long enough that the publishes below land while the client is away, never after it resubscribed.
+    const client = new WsClient(`ws://localhost:${server.port}/`).configure({ reconnect: { min: 300, jitter: 0 } });
     const received: unknown[] = [];
     let resyncs = 0;
     client.subscribe({
@@ -101,17 +169,17 @@ describe("RoomReplay over a real socket", () => {
     });
     client.connect();
     try {
-      await Bun.sleep(50);
+      await until(() => server.subscriberCount(roomId) > 0);
       publish(1);
       publish(2);
-      await Bun.sleep(30);
+      await until(() => received.length === 2);
       for (const ws of sockets) ws.close();
-      await Bun.sleep(5);
+      await until(() => server.subscriberCount(roomId) === 0);
       publish(3);
       publish(4);
-      await Bun.sleep(150);
+      await until(() => received.length === 4);
       publish(5);
-      await Bun.sleep(30);
+      await until(() => received.length === 5);
       expect(received).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }, { n: 5 }]);
       expect(resyncs).toBe(0);
     } finally {

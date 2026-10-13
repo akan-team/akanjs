@@ -70,6 +70,15 @@ describe("PipelineDefinition", () => {
     );
   });
 
+  test("the workspace's apps are in code-point order, whatever the machine's locale", async () => {
+    await withWorkspace(
+      { "apps/api/akan.config.ts": "export default {};\n", "apps/Web/akan.config.ts": "export default {};\n" },
+      async (workspace) => {
+        expect((await PipelineDefinition.load(workspace, [])).workspaceApps).toEqual(["Web", "api"]);
+      },
+    );
+  });
+
   test("a config that cannot load is an error naming the file, never a silent default", async () => {
     await withWorkspace(
       {

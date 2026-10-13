@@ -20,7 +20,8 @@ class FakeAkasys {
   readonly commits: string[] = [];
   readonly registrations: Record<string, string>[] = [];
   putStatuses: number[] = [];
-  commitAnswers: (number | [number, string])[] = [];
+  stallPuts: boolean = false;
+  commitAnswers: (number | [number, string] | Response)[] = [];
   release: Record<string, unknown> = { id: "release-1", status: "published", problems: [] };
   requestRefusal: Response | null = null;
 
@@ -38,6 +39,7 @@ class FakeAkasys {
     this.commits.length = 0;
     this.registrations.length = 0;
     this.putStatuses = [];
+    this.stallPuts = false;
     this.commitAnswers = [];
     this.requestRefusal = null;
   }
@@ -61,6 +63,7 @@ class FakeAkasys {
         headers: Object.fromEntries(request.headers),
         body: new Uint8Array(await request.arrayBuffer()),
       });
+      if (this.stallPuts) return await new Promise<Response>(() => undefined);
       return new Response(null, { status: this.putStatuses.shift() ?? 200 });
     }
     if (url.pathname === "/api/commitUpdateUpload/project-1") {
@@ -85,6 +88,7 @@ class FakeAkasys {
   #answer() {
     const answer = this.commitAnswers.shift();
     if (!answer) return null;
+    if (answer instanceof Response) return answer;
     const [status, key] = typeof answer === "number" ? [answer, "release.error.uploadCommitInProgress"] : answer;
     return Response.json({ error: key }, { status });
   }
@@ -190,6 +194,34 @@ describe("UpdatePackUpload", () => {
     const limited = { putRetryMs: 1, commitRetryMs: 10, cutOffWindowMs: 10_000, commitLimitMs: 35 };
     await expect(new UpdatePackUpload(api, "project-1", limited).send(archive, fields)).rejects.toThrow("409");
     expect(akasys.commits.length).toBeLessThan(6);
+  });
+
+  test("gives up a stalled PUT after a time its size sets, and tries it again as a dropped one", async () => {
+    const archive = await archiveOf("pack");
+    akasys.stallPuts = true;
+
+    await expect(
+      new UpdatePackUpload(api, "project-1", { ...quick, putTimeoutMs: 50 }).send(archive, fields),
+    ).rejects.toThrow("no response");
+    expect(akasys.puts).toHaveLength(4);
+    expect(akasys.commits).toEqual([]);
+  });
+
+  test("asks again past a gateway's 503, but not past one the server answers with its own refusal", async () => {
+    const archive = await archiveOf("pack");
+    akasys.commitAnswers = [
+      new Response("No healthy federation child is ready", { status: 503 }),
+      [503, "base.error.serverUnavailable"],
+    ];
+    await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
+    expect(akasys.commits).toEqual(["upload-1", "upload-1", "upload-1"]);
+
+    akasys.reset();
+    akasys.commitAnswers = [[503, "release.error.signingUnavailable"]];
+    await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow(
+      "release.error.signingUnavailable",
+    );
+    expect(akasys.commits).toEqual(["upload-1"]);
   });
 
   test("tells a server without staged uploads apart from one whose 404 is a refusal", async () => {

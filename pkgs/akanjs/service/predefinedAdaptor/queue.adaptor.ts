@@ -12,16 +12,18 @@ interface BullEmitter {
 interface QueueLike extends BullEmitter {
   add(name: string, args: unknown[], options?: AkanJobOptions): Promise<unknown>;
 }
+type BullJob = AkanJob & { finishedOn?: number | null };
 type WorkerLike = AkanWorker &
-  BullEmitter & { on(event: "failed", listener: (job: AkanJob | undefined, error: Error) => void): unknown };
+  BullEmitter & { on(event: "failed", listener: (job: BullJob | undefined, error: Error) => void): unknown };
 interface BullOptions {
   connection: Redis | RedisOptions;
   prefix: string;
 }
+type BackoffStrategy = (attemptsMade: number, type?: string, error?: Error, job?: Pick<AkanJob, "opts">) => number;
 type WorkerConstructor = new (
   name: string,
   handler: (job: AkanJob) => Promise<unknown>,
-  options: BullOptions & { settings?: { backoffStrategy?: (attemptsMade: number, type?: string) => number } },
+  options: BullOptions & { settings?: { backoffStrategy?: BackoffStrategy } },
 ) => WorkerLike;
 type QueueConstructor = new (
   name: string,
@@ -34,7 +36,7 @@ type BullmqModule = {
 const bullmqPackage = "bullmq";
 
 export interface ProcessWorkerOptions {
-  /** After the job's last attempt failed. */
+  /** Once the job failed for good: its last attempt, or a failure bullmq does not retry. */
   onFailed?: (job: AkanJob, error: unknown) => Promise<void> | void;
 }
 
@@ -104,9 +106,8 @@ export class BullQueue
       settings: { backoffStrategy: BullQueue.cappedBackoff },
     });
     worker.on("error", (error) => this.logger.warn(`Worker ${key} error: ${error.message}`));
-    //? bullmq counts the attempt that just failed before it emits, so the last one reads attemptsMade === attempts.
     worker.on("failed", (job, error) => {
-      if (!onFailed || !job || job.attemptsMade < Math.max(1, Number(job.opts?.attempts ?? 1))) return;
+      if (!onFailed || !job || !BullQueue.failedForGood(job)) return;
       Promise.resolve(onFailed(job, error)).catch((hookError: unknown) =>
         this.logger.warn(`onFailed of ${key} threw: ${hookError instanceof Error ? hookError.message : hookError}`),
       );
@@ -118,16 +119,23 @@ export class BullQueue
     const job = await this.getQueue(key).add(key, args, BullQueue.#withCappedBackoff(jobOptions));
     return job as unknown as AkanJob;
   }
-  //* bullmq hands a custom strategy only the backoff's type, so a cap travels in it: `akan:<type>:<delay>:<maxDelay>`.
+  //* bullmq runs its builtin strategy for its own types, blind to `maxDelay`, so a cap travels under a type of ours:
+  //* `akan:<type>:<delay>:<maxDelay>`.
   static #withCappedBackoff(jobOptions?: AkanJobOptions): AkanJobOptions | undefined {
     const backoff = jobOptions?.backoff;
     if (!jobOptions || typeof backoff !== "object" || backoff.maxDelay === undefined) return jobOptions;
     const type = `akan:${backoff.type ?? "fixed"}:${Number(backoff.delay ?? 0)}:${Number(backoff.maxDelay)}`;
     return { ...jobOptions, backoff: { type, delay: Number(backoff.delay ?? 0) } };
   }
-  static cappedBackoff(attemptsMade: number, type?: string): number {
+  //* bullmq asks this for every type it has no builtin for, an untyped `{ delay }` included.
+  static cappedBackoff(attemptsMade: number, type?: string, _error?: Error, job?: Pick<AkanJob, "opts">): number {
     const [prefix, base, delay, maxDelay] = (type ?? "").split(":");
-    if (prefix !== "akan") return 0;
+    if (prefix !== "akan") return QueueBackoff.delayOf(job?.opts?.backoff, attemptsMade);
     return QueueBackoff.delayOf({ type: base, delay: Number(delay), maxDelay: Number(maxDelay) }, attemptsMade);
+  }
+  //? bullmq stamps `finishedOn` only on a job it fails instead of retrying (an UnrecoverableError, a stall past its
+  //? limit), and counts the failed attempt before it emits, so the last attempt reads attemptsMade === attempts.
+  static failedForGood(job: BullJob): boolean {
+    return !!job.finishedOn || job.attemptsMade >= Math.max(1, Number(job.opts?.attempts ?? 1));
   }
 }

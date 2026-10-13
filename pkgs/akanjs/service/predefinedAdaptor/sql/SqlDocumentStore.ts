@@ -259,23 +259,24 @@ export class SqlDocumentStore {
   async upsertById(data: DocumentRecord & { id: string }, { preserveTimestamps = false }: UpsertByIdOptions = {}) {
     if (!isDocumentId(data.id)) throw new Error(`Invalid ID value: ${data.id}`);
     const now = dayjs();
-    const doc = this.hydrate(
-      this.prepareDocument({
-        ...data,
-        createdAt: preserveTimestamps ? (data.createdAt ?? now) : now,
-        updatedAt: preserveTimestamps ? (data.updatedAt ?? now) : now,
-      }),
-    );
-    const row = this.toRow(doc);
-    const kept = preserveTimestamps ? `"createdAt" = excluded."createdAt", ` : "";
-    await this.owner
+    const keepsCreatedAt = preserveTimestamps && data.createdAt != null;
+    const prepared = this.prepareDocument({
+      ...data,
+      createdAt: keepsCreatedAt ? data.createdAt : now,
+      updatedAt: preserveTimestamps ? (data.updatedAt ?? now) : now,
+    });
+    const row = this.toRow(prepared);
+    const kept = keepsCreatedAt ? `"createdAt" = excluded."createdAt", ` : "";
+    const stored = await this.owner
       .getConnection()
       .prepare(
         `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})
-           ON CONFLICT("id") DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"`,
+           ON CONFLICT("id") DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"
+           RETURNING "createdAt"`,
       )
-      .run(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
-    return this.#withStoredRow(doc, row);
+      .get<{ createdAt: number | string }>(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
+    const createdAt = Number(stored?.createdAt ?? row.createdAt);
+    return this.#withStoredRow(this.hydrate({ ...prepared, createdAt: dayjs(createdAt) }), { ...row, createdAt });
   }
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {

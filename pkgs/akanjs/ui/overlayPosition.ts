@@ -173,11 +173,15 @@ export const useAnchoredPosition = ({
     if (!opened) return;
     window.addEventListener("scroll", measure, true);
     window.addEventListener("resize", measure);
+    const panel = panelRef.current;
+    const observer = panel ? new ResizeObserver(measure) : null;
+    if (panel && observer) observer.observe(panel);
     return () => {
       window.removeEventListener("scroll", measure, true);
       window.removeEventListener("resize", measure);
+      observer?.disconnect();
     };
-  }, [opened, measure]);
+  }, [opened, measure, panelRef]);
 
   return position;
 };

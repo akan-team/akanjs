@@ -45,11 +45,13 @@ const schemes = sampleConfig.deepLinks?.schemes ?? [];
 const localData = join(process.env.LOCALAPPDATA ?? "", id);
 const nextVersion = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
 
-function powershell(command: string): string {
+function powershell(command: string, timeoutMs = 60_000): string {
   const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
     stdout: "pipe",
     stderr: "pipe",
+    timeout: timeoutMs,
   });
+  if (p.exitedDueToTimeout) throw new Error(`PowerShell did not answer within ${timeoutMs / 1000} s: ${command}`);
   return p.stdout.toString().trim();
 }
 

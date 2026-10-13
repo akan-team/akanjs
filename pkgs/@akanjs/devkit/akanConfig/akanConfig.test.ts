@@ -518,10 +518,14 @@ describe("AkanAppConfig", () => {
       watchdog: { intervalMs: 10_000, failures: 5 },
     });
     expect(() => resolve({ env: { SLACK_WEBHOOK_URL: "https://hooks" } })).toThrow("SLACK_WEBHOOK_URL");
-    expect(() => resolve({ env: { AKAN_MODULES: "@edge" } })).toThrow("the carried server's stage owns");
+    for (const key of ["AKAN_MODULES", "AKAN_MCP", "AKAN_SHUTDOWN_TIMEOUT_MS"])
+      expect(() => resolve({ env: { [key]: "1" } })).toThrow(`sets ${key}, which the carried server's stage owns`);
     expect(() => resolve({ env: { PORT: 1 } })).toThrow("must be an object of strings");
     expect(() => resolve({ restart: 0 })).toThrow('must be "forever" or a count');
-    expect(() => resolve({ watchdog: { intervalMs: -1 } })).toThrow("watchdog in apps/");
+    for (const watchdog of [{ intervalMs: -1 }, null, 5, [], { interval: 5_000 }])
+      expect(() => resolve({ watchdog })).toThrow(
+        "native.desktop.server.watchdog in apps/portal/akan.config.ts must be",
+      );
   });
 
   test("an app without basePaths has one target, default, with no basePath and the section's settings", () => {
@@ -628,6 +632,30 @@ describe("AkanAppConfig", () => {
     expect(
       () => new AkanAppConfig(app, [], packageJson, { native: { updates: { channel: "pilot" } } }, baseDevEnv),
     ).toThrow("native.updates in apps/portal/akan.config.ts has no url or publicKeys.");
+  });
+
+  test("refuses updates holding both publicKey and publicKeys, a target's own key beside the section's list included", () => {
+    const url = "https://releases.example.com/portal";
+    const resolve = (native: object) =>
+      new AkanAppConfig(app, [], packageJson, { native } as never, baseDevEnv).native.targets;
+
+    expect(() =>
+      resolve({
+        updates: { url, publicKeys: ["a="] },
+        targets: { store: {}, pilot: { updates: { publicKey: "p=" } } },
+      }),
+    ).toThrow(
+      "native.targets.pilot.updates in apps/portal/akan.config.ts has both publicKey and publicKeys, native.updates merged in",
+    );
+    expect(() => resolve({ updates: { url, publicKey: "a=", publicKeys: ["b="] } })).toThrow(
+      "native.updates in apps/portal/akan.config.ts has both publicKey and publicKeys: give one.",
+    );
+    expect(
+      resolve({
+        updates: { url, publicKeys: ["a="] },
+        targets: { store: {}, pilot: { updates: { publicKeys: ["p="] } } },
+      }).pilot.updates,
+    ).toEqual({ url, publicKeys: ["p="] });
   });
 
   test("merges the desktop settings field by field, the target winning", () => {
@@ -949,7 +977,7 @@ describe("pipeline and workspace keys in app and lib configs", () => {
       "export default { subspace: { subspaces: [] } };\n",
       "export default {};\n",
     );
-    expect(loading).rejects.toThrow("a workspace setting");
+    await expect(loading).rejects.toThrow("a workspace setting");
   });
 
   test("a lib takes neither a pipeline nor a subspace", async () => {
@@ -957,11 +985,29 @@ describe("pipeline and workspace keys in app and lib configs", () => {
     try {
       const lib = { name: "extlib", cwdPath: root } as never;
       fs.writeFileSync(path.join(root, "akan.config.ts"), "export default { pipeline: { stages: [] } };\n");
-      expect(AkanLibConfig.from(lib)).rejects.toThrow("which a lib does not take");
+      await expect(AkanLibConfig.from(lib)).rejects.toThrow("which a lib does not take");
       fs.writeFileSync(path.join(root, "akan.config.ts"), "export default { subspace: { subspaces: [] } };\n");
-      expect(AkanLibConfig.from(lib, { bustImportCache: true })).rejects.toThrow("a workspace setting");
+      await expect(AkanLibConfig.from(lib, { bustImportCache: true })).rejects.toThrow("a workspace setting");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("a lib's refused key fails the app's load instead of skipping the lib and its docker steps", async () => {
+    const loading = loadExtAppConfig(
+      "akan-config-lib-refused-",
+      "export default {};\n",
+      "export default { docker: { preRuns: ['apt-get install -y ffmpeg'] }, pipeline: { stages: [] } };\n",
+    );
+    await expect(loading).rejects.toThrow("libs/extlib/akan.config.ts declares `pipeline`, which a lib does not take");
+  });
+
+  test("a lib config that fails to load is still skipped with a warning, the app loading without it", async () => {
+    const config = await loadExtAppConfig(
+      "akan-config-lib-broken-",
+      "export default { externalLibs: ['shiki'] };\n",
+      'throw new Error("half-written");\nexport default {};\n',
+    );
+    expect(config.externalLibs).toEqual(["shiki"]);
   });
 });

@@ -5,9 +5,9 @@ import { definePlugin, type FileRef } from "../../../packages/core/src/index.ts"
  * webview of its own laid over the window's page, which cannot draw over it — hide the view to show the page.
  *
  * Nothing of the app reaches the view: no bridge, no init script of the app, no app scheme. It keeps its own browser
- * profile (cookies, storage, cache), so `clearData` never touches the app's, and it navigates only to `allowOrigins`;
- * popups, downloads and device permissions are refused. Listing the plugin in `native.plugins` is what lets an app
- * open one.
+ * profile (cookies, storage, cache), so `clearData` never touches the app's, and its top level navigates only to
+ * `allowOrigins` (its frames load http, https, data, blob and about URLs from anywhere); popups, downloads and device
+ * permissions are refused. Listing the plugin in `native.plugins` is what lets an app open one.
  *
  * Windows has every method. macOS (14 or later, for its separate profile) has all but `sendKey`, `setMuted` and
  * `capture`, and sends no `loadFailed` or `consoleMessage`. Linux, iOS and Android: UNSUPPORTED.
@@ -24,8 +24,12 @@ export interface ExternalViewOpenOptions {
   allowOrigins: string[];
   /** Logical pixels in the window's content area; "fill" (default) follows the window's size. */
   bounds?: ExternalViewBounds;
-  /** Runs at the start of every top document, before the page's own scripts; read what it keeps with `evaluate`. */
+  /**
+   * Runs at the start of every top document, never in its frames, before the page's own scripts; read what it keeps
+   * with `evaluate`. It may not declare `__akanTopOnly`, and an empty one registers nothing.
+   */
   initScript?: string;
+  /** Windows only: macOS refuses `true` as UNSUPPORTED. */
   muted?: boolean;
   /** Media plays with sound without a gesture first (default true): nobody taps a signage screen. */
   autoplay?: boolean;
@@ -45,7 +49,11 @@ export interface ExternalViewState {
 }
 
 export interface ExternalViewApi {
-  /** Opens the view, or brings an open one with this id to these options (a page that mounts again finds it). */
+  /**
+   * Opens the view, or brings an open one with this id to these options (a page that mounts again finds it). Another
+   * `initScript` builds the view again and loads its page anew, as does another `console` on Windows and another
+   * `autoplay` on macOS; Windows refuses another `autoplay` as UNSUPPORTED, before anything is built.
+   */
   open(args: ExternalViewOpenOptions): Promise<ExternalViewState>;
   /** Rejects NOT_ALLOWED for a URL on none of its `allowOrigins`. */
   navigate(args: { id: string; url: string }): Promise<void>;
@@ -54,7 +62,11 @@ export interface ExternalViewApi {
   list(): Promise<ExternalViewState[]>;
   setVisible(args: { id: string; visible: boolean }): Promise<void>;
   setBounds(args: { id: string; bounds: ExternalViewBounds }): Promise<void>;
-  /** The script's completion value; a promise is not awaited. An exception answers `null`: catch it in the script. */
+  /**
+   * The script's completion value as JSON has it (a Date as its ISO string, a lone surrogate as U+FFFD), and `null`
+   * for undefined, NaN, a cycle or an exception: catch it in the script. macOS answers `null` past 128 levels of
+   * nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off.
+   */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;
   /** A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Windows only. */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
@@ -62,7 +74,7 @@ export interface ExternalViewApi {
   setMuted(args: { id: string; muted: boolean }): Promise<void>;
   /** Clears the view's cookies, storage and cache; the app's own stay. */
   clearData(args: { id: string }): Promise<void>;
-  /** A PNG of the view's content, not of the screen. Windows only. */
+  /** A PNG of the view's content (not the screen), kept until its next capture or the next launch. Windows only. */
   capture(args: { id: string }): Promise<FileRef & { width?: number; height?: number }>;
 }
 
@@ -74,7 +86,11 @@ export interface ExternalViewEvents {
    * `unknown`). Windows only.
    */
   loadFailed: { id: string; url: string; errorCode: string };
-  /** Its web process ended; the view loads its page again by itself, sooner the first times. */
+  /**
+   * Its web process ended (`reason`: `crashed`, `unresponsive` or `browserExited` on Windows, `terminated` on macOS);
+   * the view loads its page again by itself, sooner the first times, and an end while that waits is not reported
+   * again. `rebuildFailed`: after its browser exited the view could not be built again, and is closed; open it again.
+   */
   gone: { id: string; reason: string; restarts: number };
   /** `dropped`: messages left out before this one, past the rate cap. Windows only. */
   consoleMessage: {

@@ -63,7 +63,7 @@ class IncrementalBuilder {
   #autoImportSync: AutoImportSync;
   #watcher: HmrWatcher | null = null;
   #generation = 0;
-  #shellGeneration: number | null = null;
+  #shellKey: string | null = null;
   #discoveredThrough = 0;
   #csrActive = IncrementalBuilder.#csrArmedByEnv();
   #csrBundler: CsrDevBundler;
@@ -908,19 +908,21 @@ class IncrementalBuilder {
     await armed;
   }
 
-  // Asked on every view read and rebuilt only when a save moved the generation, instead of armed per save: a restarted
-  // builder has no last build to trust, and so rebuilds once on the next read.
+  // Asked on every view read and rebuilt only when a save moved the generation or the css it inlines, instead of armed
+  // per save: a restarted builder has no last build to trust, and so rebuilds once on the next read.
   async #buildShell(msg: BuilderCsrReq): Promise<void> {
     await this.#workQueue.enqueue("build-shell", async (): Promise<void> => {
       const generation = this.#generation;
+      //? A save moves the generation before its css compile lands, so a shell built in between holds the old css.
+      const shellKey = `${generation}:${JSON.stringify(this.#artifact.cssAssets)}`;
       let error: string | undefined;
-      if (this.#shellGeneration !== generation)
+      if (this.#shellKey !== shellKey)
         try {
           const result = await this.#batchRunner.run(
             await this.#batchRequest({ generation, needs: ["shell"], changedFiles: [] }),
           );
           error = result.errors.shell;
-          if (!error) this.#shellGeneration = generation;
+          if (!error) this.#shellKey = shellKey;
         } catch (err) {
           error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
         }

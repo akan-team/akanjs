@@ -25,6 +25,7 @@ import {
   pipelineActions,
   pipelineMilestones,
   pipelineOtaPlatforms,
+  pipelinePlanLimits,
   pipelinePlanVersion,
 } from "akanjs/common";
 import {
@@ -59,7 +60,6 @@ export interface PipelineCompileInput {
   akanVersion: string;
   /** Function forms run against a sample context (`validate`), which is said once per file. */
   sampled?: boolean;
-  /** What loading the files already found. */
   diagnostics?: readonly PipelineDiagnostic[];
 }
 
@@ -87,7 +87,6 @@ interface StageOptions {
   timeoutSeconds?: number | null;
 }
 
-/** Composes the workspace's and each app's rules into one plan for one run. */
 export class PipelineCompiler {
   static readonly #slotAfter = {
     build: "after-build",
@@ -112,6 +111,8 @@ export class PipelineCompiler {
   static readonly #reservedPhaseId =
     /^(?:build|docker|deploy|ota|(?:before-build|after-build|after-docker|after-deploy|after-ota)(?:-\d+)?)$/;
   static readonly #actionStepNames = { build: "akan build", docker: "image", deploy: "deploy", ota: "ota" } as const;
+  //? PipelinePlanSchema reads at most 1024 characters of a skip reason.
+  static readonly #reasonChars = 1024;
 
   static compile(input: PipelineCompileInput): PipelinePlanResult {
     return new PipelineCompiler(input).#compile();
@@ -168,7 +169,19 @@ export class PipelineCompiler {
       this.#error(message.includes("at most") ? "pipeline.limit.exceeded" : "pipeline.internal", message, null, null);
       return this.#failed();
     }
-    return { ok: true, plan, diagnostics: this.#diagnostics };
+    const result: PipelinePlanResult = { ok: true, plan, diagnostics: this.#diagnostics };
+    //? Sized as `akan pipeline plan --out` writes it, since that text is what an executor's parseText bounds.
+    const bytes = new TextEncoder().encode(`${JSON.stringify(result, null, 2)}\n`).length;
+    if (bytes > pipelinePlanLimits.planBytes) {
+      this.#error(
+        "pipeline.limit.exceeded",
+        `the plan is ${bytes} bytes as written, and an executor reads at most ${pipelinePlanLimits.planBytes}`,
+        null,
+        null,
+      );
+      return this.#failed();
+    }
+    return result;
   }
 
   #checkContext() {
@@ -184,11 +197,11 @@ export class PipelineCompiler {
 
   #readWorkspace(context: PipelineContext): PipelineWorkspaceRule | null {
     const source = this.#input.workspace;
-    if (!source?.pipeline) return null;
-    const value = this.#evaluate(source.pipeline, context, source.file);
-    if (value === undefined) return null;
+    if (source?.pipeline == null) return null;
+    const evaluated = this.#evaluate(source.pipeline, context, source.file);
+    if (!evaluated) return null;
     const reader = new PipelineInputReader(source.file);
-    const rule = reader.workspace(value);
+    const rule = reader.workspace(evaluated.value);
     this.#diagnostics.push(...reader.diagnostics);
     return rule;
   }
@@ -197,34 +210,60 @@ export class PipelineCompiler {
     const source = this.#input.apps.get(app);
     if (!source) return null;
     const appContext: AppPipelineContext = { ...context, app };
-    const value = source.pipeline ? this.#evaluate(source.pipeline, appContext, source.file) : defaultAppPipeline;
-    if (value === undefined) return null;
+    const evaluated =
+      source.pipeline == null
+        ? { value: defaultAppPipeline }
+        : this.#evaluate(source.pipeline, appContext, source.file);
+    if (!evaluated) return null;
     const reader = new PipelineInputReader(source.file);
-    const rule = reader.app(value);
+    const rule = reader.app(evaluated.value);
     this.#diagnostics.push(...reader.diagnostics);
     return rule ? this.#lane(app, rule, source.file) : null;
   }
 
-  #evaluate<C>(config: unknown, context: C, file: string): unknown {
-    if (typeof config !== "function") return config;
-    if (this.#input.sampled)
-      this.#warning(
-        "pipeline.function.sampled",
-        "a function form was checked against one sample context; other branches, triggers or apps may differ",
-        file,
-        "pipeline",
-      );
-    try {
-      return (config as (context: C) => unknown)(context);
-    } catch (error) {
-      this.#error(
-        "pipeline.load.failed",
-        `the pipeline function threw: ${error instanceof Error ? error.message : String(error)}`,
-        file,
-        "pipeline",
-      );
-      return undefined;
+  #evaluate<C>(config: unknown, context: C, file: string): { value: unknown } | null {
+    let value = config;
+    if (typeof config === "function") {
+      if (this.#input.sampled)
+        this.#warning(
+          "pipeline.function.sampled",
+          "a function form was checked against one sample context; other branches, triggers or apps may differ",
+          file,
+          "pipeline",
+        );
+      try {
+        value = (config as (context: C) => unknown)(context);
+      } catch (error) {
+        this.#error(
+          "pipeline.load.failed",
+          `the pipeline function threw: ${error instanceof Error ? error.message : String(error)}`,
+          file,
+          "pipeline",
+        );
+        return null;
+      }
+      if (value === undefined) {
+        this.#error(
+          "pipeline.schema.invalid",
+          "the pipeline function returned nothing for this run: return a pipeline on every path",
+          file,
+          "pipeline",
+        );
+        return null;
+      }
     }
+    if (typeof (value as PromiseLike<unknown> | null)?.then === "function") {
+      //? Handled so a rejection cannot end the CLI before it writes the envelope.
+      void Promise.resolve(value).catch(() => undefined);
+      this.#error(
+        "pipeline.schema.invalid",
+        "is a Promise, which the planner cannot wait for: return the pipeline itself, not from an async function",
+        file,
+        "pipeline",
+      );
+      return null;
+    }
+    return { value };
   }
 
   #lane(app: string, rule: PipelineAppRule, file: string): AppLane {
@@ -552,7 +591,9 @@ export class PipelineCompiler {
         maxParallel: stage.maxParallel,
         failFast: false,
         timeoutSeconds: stage.timeoutSeconds,
-        stages: apps.map((app) => this.#shellStage(copy, { id: `${stage.id}:${app}`, name: app, app, milestone, env })),
+        stages: apps.map((app) =>
+          this.#shellStage(copy, { id: `${stage.id}.apps.${app}`, name: app, app, milestone, env }),
+        ),
       },
     ];
   }
@@ -603,10 +644,11 @@ export class PipelineCompiler {
 
   #skipOf(when: PipelineWhenRule): PipelineSkip | null {
     const { branch, trigger } = this.#input.context;
+    const skip = (reason: string) => ({ reason: PipelineInputReader.clip(reason, PipelineCompiler.#reasonChars) });
     if (when.branch && !PipelinePattern.matches(when.branch, branch))
-      return { reason: `branch "${branch}" does not match ${when.branch.map((glob) => `"${glob}"`).join(", ")}` };
+      return skip(`branch "${branch}" does not match ${when.branch.map((glob) => `"${glob}"`).join(", ")}`);
     if (when.trigger && !when.trigger.includes(trigger))
-      return { reason: `trigger "${trigger}" is not ${when.trigger.map((name) => `"${name}"`).join(" or ")}` };
+      return skip(`trigger "${trigger}" is not ${when.trigger.map((name) => `"${name}"`).join(" or ")}`);
     return null;
   }
 
@@ -615,7 +657,7 @@ export class PipelineCompiler {
     const sourceOf = (source: PipelineSourceFile<unknown>): PipelinePlanSource => ({
       file: source.file,
       sha256: source.sha256,
-      declared: source.pipeline !== null,
+      declared: source.pipeline != null,
     });
     return {
       workspace: workspace ? sourceOf(workspace) : null,

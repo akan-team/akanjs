@@ -7,7 +7,7 @@ import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.
 import { bold, CliError, dim, log } from "../lib/log.ts";
 import { desktopArch } from "../lib/prepare.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
-import { assertServerOfChannel, assertSigningKey, publishRelease } from "../lib/publish.ts";
+import { assertServerOfChannel, assertSigningKey, channelRevocations, publishRelease } from "../lib/publish.ts";
 import { assertChannel, type DesktopArch, generateUpdateKey, updateKeyPath } from "../lib/updates.ts";
 import { BOOLEAN_FLAGS, buildFromArgs } from "./build.ts";
 
@@ -43,13 +43,15 @@ async function publish(args: ParsedArgs): Promise<number> {
   if (requested !== undefined) assertChannel(requested);
   const project = await loadProject(findAppDir(stringFlag(args, "app") ?? process.cwd()));
   assertSigningKey(project.config, platform);
+  const planned = requested ?? project.config.updates?.channel ?? "production";
   assertServerOfChannel(
     project.config,
     platform,
     outDir(args, project.appDir),
-    requested ?? project.config.updates?.channel ?? "production",
+    planned,
     desktopArch(platform, stringFlag(args, "arch") as DesktopArch | undefined),
   );
+  channelRevocations(project.config, platform, outDir(args, project.appDir), planned);
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
     { mode: "production", profile: "release" },
@@ -62,6 +64,11 @@ async function publish(args: ParsedArgs): Promise<number> {
   log.ok(
     `published ${bold(manifest.bundle)} to ${relative(process.cwd(), file) || file} ${dim(`(${manifest.files.length} files, ${(size / 1024).toFixed(0)} KiB${manifest.nativeApi ? `, native API ${manifest.nativeApi}` : ""})`)}`,
   );
+  if (manifest.revokeKeys) log.info(dim(`revokes ${manifest.revokeKeys.join(", ")}, as the channel's releases did`));
+  if (platform === "macos" && ctx.signedAs !== "distribution" && ctx.signedAs !== "development")
+    log.warn("this release is not signed by a team: an installed app signed by one refuses it (pass --sign)");
+  if (platform === "windows" && ctx.signedAs !== "distribution")
+    log.warn("this release is not Authenticode-signed: an installed app that is refuses it (pass --sign)");
   log.info(
     dim(
       `Upload ${relative(process.cwd(), join(dir, ".."))} to ${config.updates?.url} (or try it with \`akan-native update serve\`).`,

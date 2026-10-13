@@ -1,4 +1,4 @@
-import { dlopen, FFIType } from "bun:ffi";
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { closeSync, existsSync, mkdtempSync, openSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -9,7 +9,16 @@ import type { DesktopContext } from "../../../packages/desktop/src/plugin.ts";
 import manifest from "../native-plugin.json";
 import { createDesktopSingleInstance } from "../src/desktop.ts";
 import type { SecondInstance } from "../src/index.ts";
-import { type Claim, claim, decodeMessage, encodeMessage, lockFile, socketPath } from "../src/socket.ts";
+import {
+  type Claim,
+  claim,
+  decodeMessage,
+  encodeMessage,
+  lockFile,
+  sidText,
+  socketPath,
+  tokenSid,
+} from "../src/socket.ts";
 
 let dir = "";
 const open: Claim[] = [];
@@ -44,6 +53,37 @@ describe("single-instance socket", () => {
     expect(
       socketPath("com.akanjs.sample", { USERDOMAIN: "WORKGROUP", USERNAME: "kim" }, "win32", "C:\\Users\\Kim"),
     ).toBe(pipe);
+  });
+
+  test("Windows: the pipe is the token's account, read as its SID, so no environment variable moves it", () => {
+    // S-1-5-21-1004336348-1177238915-682003330-512: revision, 5 sub-authorities, big-endian authority 5, then LE.
+    const sid = Buffer.alloc(28);
+    sid.writeUInt8(1, 0);
+    sid.writeUInt8(5, 1);
+    sid.writeUIntBE(5, 2, 6);
+    for (const [i, sub] of [21, 1004336348, 1177238915, 682003330, 512].entries()) sid.writeUInt32LE(sub, 8 + 4 * i);
+    expect(sidText(sid)).toBe("S-1-5-21-1004336348-1177238915-682003330-512");
+    expect(sidText(sid.subarray(0, 20))).toBeNull();
+    expect(sidText(Buffer.from([2, 0, 0, 0, 0, 0, 0, 5]))).toBeNull();
+    expect(sidText(new Uint8Array())).toBeNull();
+    const account = "S-1-5-21-1004336348-1177238915-682003330-1001";
+    expect(socketPath("com.akanjs.sample", { USERPROFILE: "D:\\elsewhere" }, "win32", account)).toBe(
+      socketPath("com.akanjs.sample", { USERPROFILE: "C:\\Users\\kim" }, "win32", account),
+    );
+    if (process.platform === "win32") expect(tokenSid()).toMatch(/^S-1-\d+(-\d+)+$/);
+    else expect(tokenSid()).toBeNull();
+  });
+
+  test("Windows: the SID is read where TOKEN_USER's pointer says, in the buffer the call wrote", () => {
+    // As GetTokenInformation does: the buffer's address taken first, then the bytes written there, nothing read back.
+    const written = (info: Uint8Array) => {
+      const address = BigInt(ptr(info));
+      info.set(new Uint8Array(new BigUint64Array([address + 24n]).buffer));
+      info.set([1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0], 24);
+      return true;
+    };
+    expect(tokenSid(written)).toBe("S-1-5-18");
+    expect(tokenSid(() => false)).toBeNull();
   });
 
   test("messages: round trip; anything else is rejected", () => {

@@ -53,8 +53,8 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
 - **`{ timeout: <ms> }` in an endpoint's signal option is the whole configuration surface**, and it reaches both
   ends of the call. Server side, the `Timeout` middleware races the handler against it and answers
   `base.error.gatewayTimeout` (504) once it is spent. Client side, `FetchSerializer` ships the value on the
-  serialized endpoint and `fetch.<endpoint>()` uses it as that request's `AbortSignal.timeout` budget, so the
-  browser does not abandon a call the server is still allowed to be working on.
+  serialized endpoint and `fetch.<endpoint>()` uses it as that call's deadline — every retry of the call and every
+  wait between them included — so the browser does not abandon a call the server is still allowed to be working on.
 - **The middleware is registered by default and has no default of its own.** An endpoint that declares no
   `timeout` is passed straight through — a default here would put a deadline on every endpoint in the app that
   nobody asked for, which is why the middleware used to be opt-in and, being opt-in, made the declared value
@@ -107,9 +107,9 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   checked after the middlewares and before the guards, keyed by `accountKey(account)`; a caller it names nothing
   for — an anonymous one — is counted by address. Leaving a pubsub room is never counted.
 - **The answer is 429 `base.error.tooManyRequests` with `data: { seconds }`** and a `Retry-After` header; a WS
-  call gets the same payload as its error frame, and the HTTP client restores a proxy's own non-JSON 429 under the
-  same key (seconds from its `Retry-After`, else 60). The first refusal per endpoint per process is warned once;
-  later ones log at `debug`, so a flood does not become a log flood.
+  call gets the same payload as its error frame, and the HTTP client restores a proxy's own 429 — a page, or JSON
+  naming no error key of ours — under the same key (seconds from its `Retry-After`, `0` included, else 60). The first
+  refusal per endpoint per process is warned once; later ones log at `debug`, so a flood does not become a log flood.
 - **Keys and addresses.** The address is `context.getClientIp()` — the trusted-proxy answer, never a raw header
   from an untrusted peer. Callers whose address is unknown share one `unknown` budget (fail closed), and the first
   such call is warned about, since it usually means the proxy in front records no `X-Real-IP`/`X-Forwarded-For`

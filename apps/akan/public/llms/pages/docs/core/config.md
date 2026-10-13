@@ -182,6 +182,8 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - splash (string | { image?, backgroundColor?, autoHide?, timeout? }): A PNG shown centered at launch, or the launch screen's image, color and when it hides.
 
+- backgroundColor (string | { light, dark }, default white / black): What a window and an external view show before their page paints, and the splash's default color.
+
 - permissions (camera | contacts | location | push | speech, default []): Native permission hints; each activates the matching plugin's native configuration.
 
 - plugins (string[], default []): Runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder.
@@ -194,7 +196,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
-- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it.
+- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 
@@ -230,13 +232,29 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - android.files (Record<string, string>): Files copied into the app, keyed res/<type>/<file> or assets/<path>; the value is app-relative.
 
-- desktop.server (boolean | { omit?: string[] }, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.
+- desktop.server (boolean | { omit?, profile?, modules?, env?, restart?, watchdog? }, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. The object form carries it with some changes, the keys below.
+
+- desktop.server.omit (string[]): Packages only the image needs, left out with what only they pull in; the server's own bundle must not import them.
+
+- desktop.server.profile (string): Bundles env/env.server.<env>.<profile>.ts in place of the environment's own file; the build refuses one holding a secret-named value.
+
+- desktop.server.modules (string[]): What the server mounts, as AKAN_MODULES: module names, or @edge for every module whose serve() lists edge.
+
+- desktop.server.env (Record<string, string>): Variables the server starts with over the image's, readable by anyone on the computer; secret-named ones and the stage's own are refused.
+
+- desktop.server.restart ("forever" | number, default 5): Crashes in a row before the app gives up on its server; "forever" for a screen nobody attends.
+
+- desktop.server.watchdog (boolean | { intervalMs?, failures? }, default false): Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.
 
 - desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.
 
-- desktop.window ({ fullscreen?, skipTaskbar? }): Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.
+- desktop.window ({ fullscreen?, skipTaskbar?, frameless? }): Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).
 
 - desktop.screenCapture ("picker" | "auto", default "picker"): "auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.
+
+- desktop.webview2 ("bootstrapper" | "standalone", default "bootstrapper"): Windows setup: "bootstrapper" downloads the WebView2 Runtime where none is installed; "standalone" carries the whole runtime (~200 MB) for a PC offline at install.
+
+- desktop.publisher (string, default the app name): Windows: who publishes the app, as the installed app's Publisher and its executable's company name.
 
 - targets (Record<string, AkanNativeSettings>, default { default: {} }): Several native apps from one Akan app; each takes the fields above, without targets.
 
@@ -338,7 +356,9 @@ A stage is a built-in action (`use`) or a shell stage (`name` with `sh` or `step
 
 - timeout (PipelineDuration, shell, use): Time limit for the whole stage: seconds, or `30s`, `10m`, `2h`.
 
-- retry (number | { attempts, delay? }, shell, use): Total attempts; on a shell stage, for each step without a `retry` of its own.
+- retry (number | { attempts, delay? }, shell): Total attempts for each step without a `retry` of its own, with an optional `delay` between them.
+
+- retry (number, use): Total attempts of the action; a number only, with no `delay`.
 
 - allowFailure (boolean, default false, shell, use): A failure of this stage does not fail the build.
 

@@ -2,7 +2,7 @@
 import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
-import { type AgenticSurface, type ToolCallResult, ToolRunner } from "use-agentic";
+import { type AgenticSurface, type ToolApprovalRequest, type ToolCallResult, ToolRunner } from "use-agentic";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge, McpAppTool, McpToolResultLike } from "./McpAppBridge";
 
@@ -27,8 +27,7 @@ export class McpAppAgent {
     this.#bridge = bridge;
     this.#surface = surface;
     this.#runner = new ToolRunner(surface, {
-      approve: (request, signal) =>
-        approvals.ask(request, AbortSignal.any([signal, AbortSignal.timeout(McpAppAgent.approvalMs)])),
+      approve: (request, signal) => McpAppAgent.#ask(approvals, request, signal),
       settle: () => ScreenSettle.wait(),
       activity: (event) => AgentVisual.on(event),
     });
@@ -85,7 +84,9 @@ export class McpAppAgent {
 
   context(): string {
     const { guides } = this.#surface.snapshot();
-    const url = typeof document === "undefined" ? csrLocation.href : new URL(csrLocation.href, document.baseURI).href;
+    //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
+    const base = globalThis.__AKAN_EMBED__?.origin ?? (typeof document === "undefined" ? undefined : document.baseURI);
+    const url = base ? new URL(csrLocation.href, base).href : csrLocation.href;
     const text = [
       `The user has this screen of the app open in the chat: ${url}`,
       ...(this.#bridge.toolsListed
@@ -121,6 +122,21 @@ export class McpAppAgent {
       this.#context = "";
       Logger.warn(`The host did not take this view's context: ${error instanceof Error ? error.message : error}`);
     });
+  }
+
+  //? By hand: `AbortSignal.any` needs Safari 17.4, and an older iOS host webview would fail every confirmation.
+  static async #ask(approvals: McpAppApprovals, request: ToolApprovalRequest, signal: AbortSignal) {
+    const ended = new AbortController();
+    const end = () => ended.abort();
+    const timer = setTimeout(end, McpAppAgent.approvalMs);
+    signal.addEventListener("abort", end, { once: true });
+    if (signal.aborted) end();
+    try {
+      return await approvals.ask(request, ended.signal);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", end);
+    }
   }
 
   static #signatureOf(tools: McpAppTool[]) {

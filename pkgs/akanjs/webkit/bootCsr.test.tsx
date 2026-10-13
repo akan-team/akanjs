@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { insetBreakpoints } from "../client/frameConfig";
 import { csrClientBase } from "./hookHarness.fixture";
 
 const originalWindow = globalThis.window;
@@ -55,6 +56,7 @@ beforeAll(() => {
     // `akanjs/store` reads the auth token to scope a form draft, so the barrel links this even here.
     getAuthToken: () => undefined,
     getExplicitPageConfigKeys: () => ({}),
+    insetBreakpoints,
     normalizeDeepLinkHref: (href: string) => href,
     getPathInfo: (requestUrl: string, lang: string, prefix: string) => {
       const [urlWithoutHash, hash = ""] = requestUrl.split("#");
@@ -137,6 +139,8 @@ const installWindow = ({
   } as unknown as Document;
   const window = {
     document,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
     location: {
       href,
       origin: url.origin,

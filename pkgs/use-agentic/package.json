@@ -1,6 +1,7 @@
 {
   "name": "use-agentic",
   "version": "0.2.0",
+  "private": true,
   "description": "Bind an in-page AI agent to what a React app is already doing — state, actions, and screen scopes become the agent's tools and context.",
   "sourceType": "module",
   "type": "module",

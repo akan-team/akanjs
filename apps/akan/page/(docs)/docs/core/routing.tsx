@@ -406,8 +406,8 @@ export default page()
         />
         <Docs.Alert type="info">
           {l.trans({
-            en: "Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.",
-            ko: "head는 root부터 아래로 병합됩니다. 더 깊은 .head()는 <title>, name이나 property가 같은 meta, canonical·manifest·icon link를 덮어쓰고 나머지는 그대로 둡니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param()과 .prompt()의 이름은 문자열 리터럴로 씁니다.",
+            en: "Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.",
+            ko: "head는 root부터 아래로 병합됩니다. 더 깊은 .head()는 <title>, name이나 property가 같은 meta, canonical·manifest·icon link를 덮어쓰고 나머지는 그대로 둡니다. canonical link와 og:url은 URL 하나를 가리키므로, 페이지는 레이아웃의 것을 물려받지 않고 자기 .head()에 적은 것만 씁니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param()과 .prompt()의 이름은 문자열 리터럴로 씁니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>

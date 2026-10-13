@@ -59,8 +59,8 @@ export interface SubspacePlan {
   name: string;
   repo: string;
   branch: string;
-  /** Why a push from this branch would be refused, or null when it may push. */
   branchRefusal: string | null;
+  workspaceRefusal: string | null;
   apps: string[];
   /** Each library the slice carries, with the apps whose closure pulls it in. */
   libs: { name: string; apps: string[] }[];
@@ -72,7 +72,6 @@ export interface SubspacePlan {
   /** Workspace-root entries never pushed: the subspace keeps its own copy, if it has one. */
   subspaceOwnedRootEntries: string[];
   prunedDependencies: string[];
-  /** Why the workspace's bun.lock would make a push refuse, or null. */
   lockProblem: string | null;
   warnings: string[];
 }
@@ -106,6 +105,10 @@ export class Subspace {
    * deploys the workspace — and a subspace's own survive every push.
    */
   static readonly subspaceOwnedRootEntries = ["akan.config.ts", "Jenkinsfile"];
+  //* The declaration file before `akan.config.ts`: it names every customer's repo, so a push removes any copy of it.
+  static readonly retiredConfigFile = "akan.subspace.ts";
+  static readonly #retiredConfigRefusal =
+    `${Subspace.retiredConfigFile} is no longer read: move it under \`subspace\` in akan.config.ts and delete it`;
   static readonly syncSubjectPrefix = "chore(subspace): sync from ";
   /** Workspace members, which are replaced wholesale rather than overlaid. */
   static readonly memberDirs = ["apps", "libs"];
@@ -200,6 +203,7 @@ export class Subspace {
 
   /** What a push from `branch` would ship, worked out from this checkout alone: no fetch, no remote, no clone. */
   async plan(branch: string): Promise<SubspacePlan> {
+    const workspaceRefusal = await this.#workspaceRefusal();
     const { plans, libs } = await this.slice();
     const rootFiles = plans[0]?.rootFiles ?? [];
     const present = new Set(rootFiles.map((file) => file.split("/")[0] ?? file));
@@ -223,6 +227,7 @@ export class Subspace {
       repo: this.#declaration.repo,
       branch,
       branchRefusal,
+      workspaceRefusal,
       apps: [...this.#declaration.apps],
       libs: libs.map((lib) => ({
         name: lib,
@@ -232,16 +237,27 @@ export class Subspace {
         plans.reduce((sum, plan) => sum + plan.appFiles.length, 0) +
         [...libFiles.values()].reduce((sum, files) => sum + files.length, 0),
       rootEntries: [...present]
-        .filter((entry) => !excludedTops.has(entry) && !owned.includes(entry))
+        .filter((entry) => !excludedTops.has(entry) && !owned.includes(entry) && entry !== Subspace.retiredConfigFile)
         .sort((a, b) => a.localeCompare(b)),
       excludedRootEntries: excluded,
       subspaceOwnedRootEntries: owned.filter((entry) => present.has(entry)),
       prunedDependencies: pruned,
-      lockProblem: rootFiles.includes("bun.lock")
-        ? await this.#loopbackRegistryLock(this.#workspace.workspaceRoot)
-        : null,
+      lockProblem: await this.#headLockProblem(),
       warnings: [...new Set([...plans.flatMap((plan) => plan.warnings), ...warnings])],
     };
+  }
+
+  static planBlockers(plan: SubspacePlan) {
+    return [plan.branchRefusal, plan.workspaceRefusal, plan.lockProblem].filter((reason): reason is string => !!reason);
+  }
+
+  async #retiredConfigLeft() {
+    return await FileSys.fileExists(path.join(this.#workspace.workspaceRoot, Subspace.retiredConfigFile));
+  }
+
+  async #workspaceRefusal() {
+    if (await this.#retiredConfigLeft()) return Subspace.#retiredConfigRefusal;
+    return (await this.#workspace.hasChanges()) ? "workspace working tree is dirty" : null;
   }
 
   #isSubspaceOwned(file: string) {
@@ -454,7 +470,7 @@ export class Subspace {
     await this.#restoreRootEntries(heldRootEntries);
     await this.#restoreSubspaceOwned(held);
 
-    for (const entry of this.#config.exclude)
+    for (const entry of [Subspace.retiredConfigFile, ...this.#config.exclude])
       if (!Subspace.subspaceOwnedRootEntries.includes(entry))
         await rm(path.join(this.#clonePath, entry), { recursive: true, force: true });
 
@@ -584,13 +600,21 @@ export class Subspace {
   }
 
   // A lock written against a local registry (verdaccio) resolves on this machine alone: every install of it fails.
-  async #loopbackRegistryLock(root = this.#clonePath) {
-    const lockPath = path.join(root, "bun.lock");
-    if (!(await FileSys.fileExists(lockPath))) return null;
-    const registry = (await FileSys.readText(lockPath)).match(Subspace.#loopbackRegistry)?.[0];
+  static #loopbackRegistryProblem(lock: string | null) {
+    const registry = lock?.match(Subspace.#loopbackRegistry)?.[0];
     return registry
       ? `bun.lock resolves packages from ${registry}, a registry only this machine reaches; reinstall from a public registry and commit that lock first`
       : null;
+  }
+
+  async #headLockProblem() {
+    return Subspace.#loopbackRegistryProblem(await this.#git(["show", "HEAD:bun.lock"]).catch(() => null));
+  }
+
+  async #cloneLockProblem() {
+    const lockPath = path.join(this.#clonePath, "bun.lock");
+    if (!(await FileSys.fileExists(lockPath))) return null;
+    return Subspace.#loopbackRegistryProblem(await FileSys.readText(lockPath));
   }
 
   // Refuses rather than throws, so one failing subspace does not abort the rest; the env is explicit so the child
@@ -608,8 +632,8 @@ export class Subspace {
 
   async push(branch: string, { verify = true }: { verify?: boolean } = {}): Promise<SubspacePushResult> {
     this.#config.assertPushable(branch);
-    if (await this.#workspace.hasChanges())
-      return { name: this.name, outcome: "refused", reason: "workspace working tree is dirty", changedFiles: 0 };
+    const refusal = (await this.#workspaceRefusal()) ?? (await this.#headLockProblem());
+    if (refusal) return { name: this.name, outcome: "refused", reason: refusal, changedFiles: 0 };
     if (!(await this.fetch(branch)))
       return { name: this.name, outcome: "refused", reason: `subspace has no branch "${branch}"`, changedFiles: 0 };
 
@@ -631,7 +655,8 @@ export class Subspace {
       const failure = await this.#verify(clone);
       if (failure) return { name: this.name, outcome: "refused", reason: failure, changedFiles };
     }
-    const lockProblem = await this.#loopbackRegistryLock();
+    //? Rechecked on the clone: the verifying `bun install` may resolve packages from this machine's registry into it.
+    const lockProblem = await this.#cloneLockProblem();
     if (lockProblem) return { name: this.name, outcome: "refused", reason: lockProblem, changedFiles };
     await this.#writeAnchorFile(branch);
     await clone.spawn("git", ["add", "-A"]);
@@ -659,6 +684,7 @@ export class Subspace {
   }
 
   async pull(branch: string, { adoptLibs = false }: { adoptLibs?: boolean } = {}): Promise<SubspacePullResult> {
+    if (await this.#retiredConfigLeft()) throw new Error(Subspace.#retiredConfigRefusal);
     if (!(await this.fetch(branch))) throw new Error(`Subspace "${this.name}" has no branch "${branch}"`);
     const anchor = await this.anchor(branch);
     if (!anchor.commit)
@@ -820,7 +846,7 @@ export function formatSubspaceDiff(result: SubspaceDiffResult) {
 
 export function formatSubspacePlan(plan: SubspacePlan) {
   const list = (entries: string[]) => (entries.length ? entries.join(", ") : "(none)");
-  const blockers = [plan.branchRefusal, plan.lockProblem].filter((reason): reason is string => !!reason);
+  const blockers = Subspace.planBlockers(plan);
   const sections = [
     `Akan Subspace Plan — ${plan.name} (${plan.branch})`,
     `repo: ${plan.repo}`,

@@ -289,7 +289,7 @@ describe("the Windows installer script", () => {
   });
 
   test("stops a running copy by its path and installs WebView2 only when missing", () => {
-    expect(script.match(/stop-app\.ps1" "\$INSTDIR"/g)).toHaveLength(2);
+    expect(script.match(/stop-app\.ps1" "\$INSTDIR"/g)).toHaveLength(3);
     expect(script).toContain("{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}");
     expect(script).toContain(`ExecWait '"$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" /silent /install' $1`);
     expect(script).toContain('!define MUI_ICON "C:\\build\\gen\\app.ico"');
@@ -324,9 +324,36 @@ describe("the Windows installer script", () => {
 
   test("a stop script that hangs is ended after a minute and counts as a stop that failed", () => {
     const stops = script.split("\n").filter((line) => line.includes('stop-app.ps1" "$INSTDIR"'));
-    expect(stops).toHaveLength(2);
-    for (const line of stops) expect(line).toStartWith("  nsExec::Exec /TIMEOUT=60000 'powershell.exe");
+    expect(stops).toHaveLength(3);
+    for (const line of stops) expect(line.trimStart()).toStartWith("nsExec::Exec /TIMEOUT=60000 'powershell.exe");
     expect(install).toContain("Pop $0\n  ${If} $0 == 0\n    StrCpy $AppStopped 1");
+  });
+
+  test("the setup moves the app's folder aside in the stop's pass that finds nothing running", () => {
+    const decide = install.indexOf(
+      'StrCpy $AppInFolder 0\n  ${If} ${FileExists} "$INSTDIR\\${EXE}"\n    StrCpy $AppInFolder 1',
+    );
+    const moving = install.indexOf(`stop-app.ps1" "$INSTDIR" -MoveTo "$INSTDIR.setup-old"'`);
+    expect(decide).toBeGreaterThan(-1);
+    expect(moving).toBeGreaterThan(decide);
+    expect(uninstall).not.toContain("-MoveTo");
+    expect(install.slice(moving)).toContain(
+      '${If} $AppInFolder == 1\n    ; Still in place when the script could not list the processes, or something kept the folder in use.\n    ${IfNot} ${FileExists} "$INSTDIR.setup-old\\${EXE}"\n      !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"',
+    );
+    const idle = STOP_SCRIPT.slice(
+      STOP_SCRIPT.indexOf("if ($left.Count -eq 0)"),
+      STOP_SCRIPT.indexOf("$left | ForEach-Object"),
+    );
+    expect(STOP_SCRIPT).toStartWith("param([string]$Dir, [string]$Exe = '', [string]$MoveTo = '')");
+    expect(idle).toContain("if ($MoveTo) {\n      try { [IO.Directory]::Move($Dir, $MoveTo); exit 0 } catch { }");
+  });
+
+  test("a check that fails after the stop moved the folder aside puts the app back first", () => {
+    expect(section("!macro CheckStaged", "!macroend")).toContain("!insertmacro PutBack\n    !insertmacro Fail");
+    expect(section("!macro PutBack", "!macroend")).toContain(
+      '${If} $AppInFolder == 1\n  ${AndIf} ${FileExists} "$INSTDIR.setup-old\\${EXE}"\n    !insertmacro RenameRetry "$INSTDIR.setup-old" "$INSTDIR"\n    ${If} $R2 != "done"\n      !insertmacro Fail',
+    );
+    expect(script.indexOf("!macro PutBack")).toBeGreaterThan(script.indexOf("!macro RenameRetry"));
   });
 
   test("a setup run with /S shows no verification window: the CRC check is off", () => {

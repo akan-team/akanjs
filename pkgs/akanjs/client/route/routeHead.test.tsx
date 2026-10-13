@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
+import type { ResolvedHead } from "../csrTypes";
 import { RouteHead } from "./RouteHead";
 
 const html = async (node: ReactNode) => await new Response(await renderToReadableStream(node)).text();
@@ -70,5 +71,91 @@ describe("RouteHead", () => {
         ],
       },
     });
+  });
+
+  test("a JSX level beside a snapshot level reaches the snapshot the shell renders", () => {
+    const leaf: ResolvedHead = {
+      node: <title>Leaf</title>,
+      headSnapshot: { version: 1, nodes: [{ tag: "title", text: "Leaf" }] },
+    };
+    const merged = RouteHead.merge([
+      <>
+        <title>Root</title>
+        <link rel="icon" href="/root.ico" sizes="32x32" />
+        <meta name="theme-color" content="#fff" media={undefined} />
+      </>,
+      leaf,
+    ]);
+
+    expect(merged).toMatchObject({
+      headSnapshot: {
+        nodes: [
+          { tag: "link", attrs: { rel: "icon", href: "/root.ico", sizes: "32x32" } },
+          { tag: "meta", attrs: { name: "theme-color", content: "#fff" } },
+          { tag: "title", text: "Leaf" },
+        ],
+      },
+    });
+  });
+
+  test("a tag no snapshot can carry keeps the merged node, so nothing vanishes from the shell", async () => {
+    const leaf: ResolvedHead = {
+      node: <title>Leaf</title>,
+      headSnapshot: { version: 1, nodes: [{ tag: "title", text: "Leaf" }] },
+    };
+    const merged = RouteHead.merge([
+      <script key="ld" type="application/ld+json">
+        {"{}"}
+      </script>,
+      leaf,
+    ]);
+
+    expect(merged).not.toHaveProperty("headSnapshot");
+    const text = await html(merged as ReactNode);
+    expect(text).toContain("application/ld+json");
+    expect(text).toContain("Leaf</title>");
+  });
+
+  test("a page names its own URL: a layout's canonical and og:url never reach it", async () => {
+    const layouts = (
+      <>
+        <title>Root</title>
+        <link rel="canonical" href="https://example.com" />
+        <meta property="og:url" content="https://example.com" />
+        <meta property="og:title" content="Root" />
+      </>
+    );
+
+    const untitled = await html(RouteHead.mergePage(layouts, undefined) as ReactNode);
+    const titled = await html(RouteHead.mergePage(layouts, <title>Leaf</title>) as ReactNode);
+    const own = await html(
+      RouteHead.mergePage(layouts, <link rel="canonical" href="https://example.com/leaf" />) as ReactNode,
+    );
+
+    for (const text of [untitled, titled]) {
+      expect(text).not.toContain("canonical");
+      expect(text).not.toContain("og:url");
+      expect(text).toContain('content="Root"');
+    }
+    expect(titled).toContain("Leaf</title>");
+    expect(own).toContain('href="https://example.com/leaf"');
+    expect(own.match(/canonical/g)).toHaveLength(1);
+    const only = <title>Only</title>;
+    expect(RouteHead.mergePage(only, undefined)).toBe(only);
+    expect(
+      RouteHead.mergePage(
+        {
+          node: null,
+          headSnapshot: {
+            version: 1,
+            nodes: [
+              { tag: "link", attrs: { rel: "canonical", href: "https://example.com" } },
+              { tag: "title", text: "Root" },
+            ],
+          },
+        },
+        undefined,
+      ),
+    ).toEqual({ node: null, headSnapshot: { version: 1, nodes: [{ tag: "title", text: "Root" }] } });
   });
 });

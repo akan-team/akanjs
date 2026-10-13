@@ -1109,8 +1109,8 @@ export const WaypointRow = ({ waypointId, name }: WaypointRowProps) => {
     {
       name: "useScreenActions",
       desc: l.trans({
-        en: "The current screen's published tools that take no required argument: what a ⌘K command palette can offer, and exactly what the agent can do on this screen.",
-        ko: "현재 화면이 공개한 툴 중 필수 인자가 없는 것들입니다. ⌘K 명령 팔레트가 보여 줄 수 있는 목록이며, 이 화면에서 에이전트가 할 수 있는 일과 정확히 같습니다.",
+        en: "The current screen's published tools that take no required argument: what a ⌘K command palette can offer, the same actions the agent can take on this screen. A card tool, which asks the user, is left out.",
+        ko: "현재 화면이 공개한 툴 중 필수 인자가 없는 것들입니다. ⌘K 명령 팔레트가 보여 줄 수 있는 목록이며, 이 화면에서 에이전트가 할 수 있는 동작과 같습니다. 사용자에게 묻는 카드 툴은 뺍니다.",
       }),
       props: [
         {
@@ -1127,6 +1127,14 @@ export const WaypointRow = ({ waypointId, name }: WaypointRowProps) => {
           desc: l.trans({
             en: "Each action's tool name and `.desc()`, as the agent sees them.",
             ko: "각 동작의 툴 이름과 `.desc()`이며, 에이전트가 보는 그대로입니다.",
+          }),
+        },
+        {
+          name: "label",
+          type: "string | undefined",
+          desc: l.trans({
+            en: "The tool's `label` (`st.tool(name, { label })`, an `l()` result): what to show a person, in their language. It is never sent to the model.",
+            ko: "툴의 `label`입니다(`st.tool(name, { label })`, `l()` 결과). 사용자에게 그 사람의 언어로 보여 줄 이름이며, 모델에는 보내지 않습니다.",
           }),
         },
         {
@@ -1181,7 +1189,7 @@ export const CommandList = () => {
             onConfirm={() => void action.run()}
           >
             <button type="button" className={button}>
-              {action.name}
+              {action.label ?? action.name}
             </button>
           </Popconfirm>
         ) : (
@@ -1191,7 +1199,7 @@ export const CommandList = () => {
             className={button}
             onClick={() => void action.run()}
           >
-            {action.name}
+            {action.label ?? action.name}
           </button>
         ),
       )}
