@@ -1,8 +1,10 @@
 import { Binary, FIELD_META } from "akanjs/base";
 import { plainFieldsOf, readAuthToken } from "akanjs/common";
-import { Err } from "akanjs/dictionary";
+import { Err, type ErrPayload } from "akanjs/dictionary";
 import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
 import dayjs from "dayjs";
+import { isExceptionLike } from "./exception";
+import { SignalFailure } from "./SignalFailure";
 import type { SignalContext } from "./signalContext";
 
 interface AccountClaims {
@@ -14,10 +16,13 @@ interface AccountClaims {
   machine?: { kind?: unknown; id?: unknown } | null;
 }
 
+type KeptAnswer = { answer: unknown } | { failure: ErrPayload };
+
 //* A mutation sent again under the same `Idempotency-Key` — a retry after a lost answer, an outbox draining twice —
-//* runs once: a repeat answers the first run's result, and 409 while that run is still going. Like `EndpointCache` it
-//* runs after the guards, keeps the handler's result (masked per call afterwards), and is keyed to the caller and the
-//* call's arguments, so one caller's key never hands another its answer.
+//* runs once: a repeat answers the first run's response, and 409 while that run is still going. It runs after the
+//* guards and is keyed to the caller and the call's arguments, so one caller's key never hands another its answer.
+//* What it keeps is that answer as it went out — resolved, masked and serialized — never the handler's result, so no
+//* hidden or secret field reaches the cache and a repeat is the first response byte for byte.
 export class EndpointIdempotency {
   static readonly header = "idempotency-key";
   static readonly keepMs = 24 * 60 * 60_000;
@@ -25,8 +30,15 @@ export class EndpointIdempotency {
   static readonly #topic = "idempotency";
   static readonly #tag = "\u0000akan";
 
-  static async through(context: SignalContext, run: () => Promise<unknown>) {
-    if (context.endpointInfo.type !== "mutation" || context.transport !== "http") return await run();
+  /** A Response when the call is kept or replayed; otherwise the handler's own result, which the caller answers. */
+  static async through(
+    context: SignalContext,
+    run: () => Promise<unknown>,
+    answer: (result: unknown) => Promise<unknown>,
+  ) {
+    //? An MCP call's headers are its JSON-RPC envelope's, and its context answers a value where this replays a Response.
+    if (context.endpointInfo.type !== "mutation" || context.transport !== "http" || context.origin !== "http")
+      return await run();
     const { req } = context.getHttpContext();
     const idempotencyKey = req.headers.get(EndpointIdempotency.header)?.trim();
     if (!idempotencyKey || idempotencyKey.length > 256) return await run();
@@ -45,7 +57,7 @@ export class EndpointIdempotency {
       return await run();
     }
     if (!claimed) return await EndpointIdempotency.#replay(context, cache, key);
-    return await EndpointIdempotency.#runHolding(context, cache, key, owner, run);
+    return await EndpointIdempotency.#runHolding(context, cache, key, owner, { run, answer });
   }
 
   //? An unreadable entry answers 409 rather than running: the key is known to be taken, and the client retries a 409.
@@ -56,9 +68,10 @@ export class EndpointIdempotency {
     } catch (error) {
       context.adaptor.logger.warn(`Idempotency read failed for ${context.key}: ${String(error)}`);
     }
-    const entry = EndpointIdempotency.#decode(stored);
-    if (entry) return entry.result;
-    throw new Err.Conflict("base.error.idempotencyInFlight");
+    const kept = EndpointIdempotency.#decode(stored);
+    if (!kept) throw new Err.Conflict("base.error.idempotencyInFlight");
+    if ("failure" in kept) throw Err.fromJSON(kept.failure);
+    return context.getHttpContext().res.json(kept.answer);
   }
 
   static async #release(cache: CacheAdaptor, key: string, owner: string) {
@@ -75,7 +88,7 @@ export class EndpointIdempotency {
     cache: CacheAdaptor,
     key: string,
     owner: string,
-    run: () => Promise<unknown>,
+    { run, answer }: { run: () => Promise<unknown>; answer: (result: unknown) => Promise<unknown> },
   ) {
     const renew = async () => {
       try {
@@ -93,23 +106,40 @@ export class EndpointIdempotency {
       await EndpointIdempotency.#release(cache, key, owner);
       throw error;
     }
+    //? A Response carries headers no stored body replays — a session's Set-Cookie among them — so a repeat runs again.
+    if (result instanceof Response) {
+      clearInterval(renewal);
+      await EndpointIdempotency.#release(cache, key, owner);
+      return result;
+    }
+    let wire: unknown;
+    try {
+      wire = await answer(result);
+    } catch (error) {
+      clearInterval(renewal);
+      //? The handler ran and its writes stand, so a repeat answers this failure instead of running them again.
+      await EndpointIdempotency.#keep(context, cache, key, owner, { failure: EndpointIdempotency.#failureOf(error) });
+      throw error;
+    }
     clearInterval(renewal);
-    await EndpointIdempotency.#keep(context, cache, key, owner, result);
-    return result;
+    await EndpointIdempotency.#keep(context, cache, key, owner, { answer: wire ?? null });
+    return context.getHttpContext().res.json(wire);
   }
 
-  //? A Response carries headers no stored body replays — a session's Set-Cookie among them — so a repeat runs again.
-  static async #keep(context: SignalContext, cache: CacheAdaptor, key: string, owner: string, result: unknown) {
-    if (result instanceof Response) return await EndpointIdempotency.#release(cache, key, owner);
+  static async #keep(context: SignalContext, cache: CacheAdaptor, key: string, owner: string, kept: KeptAnswer) {
     try {
-      const entry = EndpointIdempotency.#encode({ result: result ?? null });
-      await cache.set(EndpointIdempotency.#topic, key, entry, {
+      await cache.set(EndpointIdempotency.#topic, key, JSON.stringify(kept), {
         expireAt: dayjs().add(EndpointIdempotency.keepMs, "millisecond"),
       });
     } catch (error) {
       context.adaptor.logger.warn(`Idempotency write failed for ${context.key}: ${String(error)}`);
       await EndpointIdempotency.#release(cache, key, owner);
     }
+  }
+
+  //? As the caller read it: a domain error with its key and data, anything else as the generalized 500.
+  static #failureOf(error: unknown): ErrPayload {
+    return isExceptionLike(error) ? (error.toJSON() as ErrPayload) : { error: SignalFailure.message, statusCode: 500 };
   }
 
   static #callerOf(context: SignalContext, req: Request & { cookies?: Bun.CookieMap }) {
@@ -139,23 +169,23 @@ export class EndpointIdempotency {
   }
 
   static #encode(value: unknown) {
-    return JSON.stringify(EndpointIdempotency.#toStored(value));
+    return JSON.stringify(EndpointIdempotency.#toDigested(value));
   }
 
-  //? JSON spells a Map `{}`, bytes an index map, and a document's toJSON flattens its Maps: none of it replays.
-  static #toStored(value: unknown): unknown {
+  //? JSON spells a Map `{}` and bytes an index map, so two calls that differ only there would share one digest.
+  static #toDigested(value: unknown): unknown {
     const tag = EndpointIdempotency.#tag;
     if (value instanceof Map)
-      return { [tag]: "map", entries: [...value].map(([key, item]) => [key, EndpointIdempotency.#toStored(item)]) };
+      return { [tag]: "map", entries: [...value].map(([key, item]) => [key, EndpointIdempotency.#toDigested(item)]) };
     if (ArrayBuffer.isView(value))
       return {
         [tag]: "bytes",
         base64: Binary.serializeValue(new Uint8Array(value.buffer, value.byteOffset, value.byteLength)),
       };
-    if (Array.isArray(value)) return value.map((item) => EndpointIdempotency.#toStored(item));
+    if (Array.isArray(value)) return value.map((item) => EndpointIdempotency.#toDigested(item));
     if (!EndpointIdempotency.#isRecord(value)) return value;
     return Object.fromEntries(
-      Object.entries(plainFieldsOf(value)).map(([key, item]) => [key, EndpointIdempotency.#toStored(item)]),
+      Object.entries(plainFieldsOf(value)).map(([key, item]) => [key, EndpointIdempotency.#toDigested(item)]),
     );
   }
 
@@ -167,17 +197,15 @@ export class EndpointIdempotency {
     return typeof modelCls === "function" && FIELD_META in modelCls;
   }
 
-  static #decode(stored: unknown): { result: unknown } | null {
+  static #decode(stored: unknown): KeptAnswer | null {
     if (typeof stored !== "string" || !stored.startsWith("{")) return null;
-    const entry = JSON.parse(stored, EndpointIdempotency.#revive) as { result?: unknown };
-    return "result" in entry ? { result: entry.result } : null;
-  }
-
-  static #revive(_key: string, value: unknown) {
-    if (!value || typeof value !== "object" || !(EndpointIdempotency.#tag in value)) return value;
-    const { [EndpointIdempotency.#tag]: kind, entries, base64 } = value as Record<string, unknown>;
-    if (kind === "map") return new Map(entries as [string, unknown][]);
-    if (kind === "bytes" && typeof base64 === "string") return Binary.parseValue(base64);
-    return value;
+    let kept: { answer?: unknown; failure?: ErrPayload };
+    try {
+      kept = JSON.parse(stored) as { answer?: unknown; failure?: ErrPayload };
+    } catch {
+      return null;
+    }
+    if ("answer" in kept) return { answer: kept.answer };
+    return typeof kept.failure?.error === "string" ? { failure: kept.failure } : null;
   }
 }
