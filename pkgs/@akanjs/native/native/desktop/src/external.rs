@@ -8,14 +8,14 @@
 use std::{
   cell::{Cell, RefCell},
   collections::HashMap,
-  path::{Path, PathBuf},
+  path::Path,
   rc::Rc,
   sync::{Arc, Mutex},
   time::{Duration, Instant},
 };
 
 use tao::dpi::{LogicalPosition, LogicalSize};
-use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, Rect, WebView, WebViewBuilder, RGBA};
+use wry::{Rect, WebView, RGBA};
 
 use crate::{json, push_event, send, UserEvent};
 
@@ -512,11 +512,12 @@ fn build(
   #[cfg(target_os = "linux")]
   {
     let _ = (window, inner, data_root, devtools, background, opts);
-    return Err("UNSUPPORTED: external views are not on Linux yet".into());
+    Err("UNSUPPORTED: external views are not on Linux yet".into())
   }
   #[cfg(not(target_os = "linux"))]
   {
-    let data: PathBuf = data_root.join(folder(&opts.view));
+    use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, WebViewBuilder};
+    let data = data_root.join(folder(&opts.view));
     let mut context = wry::WebContext::new(Some(data));
     let allow = Rc::new(RefCell::new(opts.allow.clone()));
     let live = Rc::new(Cell::new(true));
