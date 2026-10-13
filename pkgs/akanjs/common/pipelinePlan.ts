@@ -106,10 +106,6 @@ export const pipelinePlanLimits = {
   retryDelaySeconds: 3600,
 } as const;
 
-export const pipelineIdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
-export const pipelineSecretNamePattern = /^[A-Z][A-Z0-9_]{0,63}$/;
-export const pipelineEnvNamePattern = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
-
 /** The planner's context flags echoed, never reordered or defaulted when given; `--apps` is split and trimmed. */
 export interface PipelinePlanContext {
   branch: string;
