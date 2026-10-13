@@ -206,7 +206,7 @@ export class Subspace {
     const workspaceRefusal = await this.#workspaceRefusal();
     const { plans, libs } = await this.slice();
     const rootFiles = plans[0]?.rootFiles ?? [];
-    const present = new Set(rootFiles.map((file) => file.split("/")[0] ?? file));
+    const present = new Set(SlicePlanner.rootEntriesOf(rootFiles));
     const owned = Subspace.subspaceOwnedRootEntries;
     const excluded = this.#config.exclude.filter((entry) => !owned.includes(entry));
     const excludedTops = new Set(excluded.map((entry) => entry.replace(/\/+$/, "")));
