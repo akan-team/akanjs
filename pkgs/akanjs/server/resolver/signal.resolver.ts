@@ -581,15 +581,19 @@ export class SignalResolver {
     const doc = sliceCls?.srv.db?.doc as { [FIELD_META]?: QueryFieldMap } | undefined;
     return doc?.[FIELD_META] ?? {};
   }
+  //? A call still running when its socket closes finishes after `handleWsClose`, which ran every cleanup it knew of.
+  static #closedWs = new WeakSet<Bun.ServerWebSocket<unknown>>();
   static #liveWsPubsubRoomCtx = new WeakMap<
     Bun.ServerWebSocket<unknown>,
     Map<string, SignalContext<WebSocketExecutionContext>>
   >();
   // A message context is dropped once it answers, so one that registered `ws.on(...)` is kept here or never runs it.
   static #liveWsMessageCtx = new WeakMap<Bun.ServerWebSocket<unknown>, Set<SignalContext<WebSocketExecutionContext>>>();
-  static #retainWsContext(ws: Bun.ServerWebSocket<unknown>, context: SignalContext<WebSocketExecutionContext>) {
+  static async #retainWsContext(ws: Bun.ServerWebSocket<unknown>, context: SignalContext<WebSocketExecutionContext>) {
     const wsCtx = context.getWebSocketContext();
     if (!wsCtx.onDisconnect.size && !wsCtx.onUnsubscribe.size) return;
+    if (SignalResolver.#closedWs.has(ws))
+      return await SignalResolver.#runLifecycleHandlers([context], ["unsubscribe", "disconnect"]);
     const contexts = SignalResolver.#liveWsMessageCtx.get(ws) ?? new Set<SignalContext<WebSocketExecutionContext>>();
     contexts.add(context);
     SignalResolver.#liveWsMessageCtx.set(ws, contexts);
@@ -723,6 +727,15 @@ export class SignalResolver {
                 if (liveOption) SignalResolver.#assertNotPaused(key, liveOption, endpointInfo, context);
                 const query = await context.exec();
                 const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
+                //? Its rooms were already left, so a room joined now would stay joined for good.
+                if (SignalResolver.#closedWs.has(ws)) {
+                  await SignalResolver.#runLifecycleHandlers(
+                    [context as SignalContext<WebSocketExecutionContext>],
+                    ["unsubscribe", "disconnect"],
+                  );
+                  const unsubscribed: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe: false };
+                  return unsubscribed;
+                }
                 const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
                 if (liveOption && !roomCtxMap.has(roomId))
                   live.syncHub.join({
@@ -782,7 +795,7 @@ export class SignalResolver {
                 { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
               ).init();
               const result = (await context.exec()) as object | object[];
-              SignalResolver.#retainWsContext(ws, context as SignalContext<WebSocketExecutionContext>);
+              await SignalResolver.#retainWsContext(ws, context as SignalContext<WebSocketExecutionContext>);
               const messageData: WebsocketMessageData = { type: "msg", key, data: result };
               return messageData;
             });
@@ -873,6 +886,7 @@ export class SignalResolver {
   }
 
   static async handleWsClose(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry, live?: LiveRegistry) {
+    SignalResolver.#closedWs.add(ws);
     const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
     const contexts = [...(roomCtxMap?.values() ?? []), ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? [])];
     await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
