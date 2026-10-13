@@ -1,6 +1,7 @@
-import { type KeyObject, verify } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import { bearerTokenOf } from "akanjs/common";
 import { Ed25519Key } from "../ed25519Key";
+import { EdDsaJwt } from "../edDsaJwt";
 
 export interface OpsTokenClaims {
   aud: string;
@@ -43,25 +44,11 @@ export class OpsTokenVerifier {
   }
 
   verify(token: string, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
-    const parts = token.split(".");
-    if (parts.length !== 3) return { ok: false, reason: "malformed token" };
-    const [headerPart = "", payloadPart = "", signaturePart = ""] = parts;
-    const header = OpsTokenVerifier.#decodeJson(headerPart);
-    if (header?.alg !== "EdDSA") return { ok: false, reason: "alg must be EdDSA" };
-    const signed = verify(
-      null,
-      Buffer.from(`${headerPart}.${payloadPart}`),
-      this.#key,
-      Buffer.from(signaturePart, "base64url"),
-    );
-    if (!signed) return { ok: false, reason: "bad signature" };
-    const claims = OpsTokenVerifier.#decodeJson(payloadPart);
-    if (!claims) return { ok: false, reason: "malformed claims" };
-    const { aud, exp, iat, jti } = claims;
+    const verdict = EdDsaJwt.verify(token, this.#key, { audience: this.audience });
+    if (!verdict.ok) return verdict;
+    const { exp, iat, jti } = verdict.claims;
     if (typeof exp !== "number" || typeof iat !== "number" || typeof jti !== "string" || !jti)
       return { ok: false, reason: "exp, iat and jti are required" };
-    const audiences = Array.isArray(aud) ? aud : [aud];
-    if (!audiences.includes(this.audience)) return { ok: false, reason: "audience mismatch" };
     if (exp <= nowSec) return { ok: false, reason: "expired" };
     if (iat > nowSec + OpsTokenVerifier.clockSkewSec) return { ok: false, reason: "issued in the future" };
     if (exp - iat > OpsTokenVerifier.maxLifetimeSec) return { ok: false, reason: "lifetime exceeds 300s" };
@@ -76,14 +63,5 @@ export class OpsTokenVerifier {
     if (this.#seen.size >= OpsTokenVerifier.maxRememberedJti) return false;
     this.#seen.set(jti, exp);
     return true;
-  }
-
-  static #decodeJson(part: string): Record<string, unknown> | null {
-    try {
-      const value = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as unknown;
-      return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-    } catch {
-      return null;
-    }
   }
 }

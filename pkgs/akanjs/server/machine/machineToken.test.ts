@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { resetEnvCache } from "akanjs/base";
 import { Machine, type SignalContext } from "akanjs/signal";
 import { Ed25519Key } from "../ed25519Key";
+import { EdDsaJwt } from "../edDsaJwt";
 import { MachineAccount } from "./machineAccount";
 import { MachineToken } from "./machineToken";
 
@@ -78,6 +79,18 @@ describe("MachineToken", () => {
     expect(MachineToken.isMachineToken(staff)).toBe(false);
     expect(MachineToken.fromAuthorization(`Bearer ${staff}`)).toBeNull();
     expect(MachineToken.verify(staff)).toEqual({ ok: false, reason: "not an EdDSA akan-machine+jwt" });
+  });
+
+  test("refuses an EdDSA token its own key signed under another typ, which no session reads as a machine's", () => {
+    const privateKey = Ed25519Key.parsePrivate(keys.privatePem, "AKAN_MACHINE_PRIVATE_KEY");
+    const claims = { aud: "dcms/main", sub: "pc-7", kind: "courtPc", ver: 3 };
+    const plain = EdDsaJwt.sign(claims, privateKey, { typ: "JWT" });
+    expect(MachineToken.verify(plain)).toEqual({ ok: false, reason: "not an EdDSA akan-machine+jwt" });
+    expect(MachineToken.fromAuthorization(`Bearer ${plain}`)).toBeNull();
+    const listed = EdDsaJwt.sign({ ...claims, aud: ["dcms/debug", "dcms/main"] }, privateKey, {
+      typ: MachineToken.type,
+    });
+    expect(MachineToken.verify(listed)).toEqual({ ok: true, identity: courtPc });
   });
 
   test("reads the bearer as every other gate does: one word after the scheme, in any case", () => {
