@@ -495,7 +495,7 @@ try {
     }
     //* Exit 2, not a thrown 1: a CI tells "this needs a new store build" apart from a pack that broke.
     app.logger.error(
-      `This bundle needs a new store build; the one ${against} came from provides another native API:\n- ${pack.compat.problems.join("\n- ")}`,
+      `This bundle needs a new store build; it differs from the one ${against} came from:\n- ${pack.compat.problems.join("\n- ")}`,
     );
     process.exitCode = 2;
     return pack;
