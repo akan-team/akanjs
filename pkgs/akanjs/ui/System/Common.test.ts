@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createManifestDataUrl, toManifestJson } from "./Common";
+import { toManifestJson } from "akanjs/client";
+import { createManifestDataUrl } from "./Common";
 
 describe("manifest helpers", () => {
   test("converts author-facing camelCase keys to manifest snake_case", () => {
