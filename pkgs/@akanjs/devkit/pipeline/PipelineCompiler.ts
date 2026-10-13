@@ -28,17 +28,17 @@ import {
   pipelinePlanLimits,
   pipelinePlanVersion,
 } from "akanjs/common";
-import {
-  type PipelineActionStageRule,
-  type PipelineAppRule,
-  PipelineInputReader,
-  type PipelinePostRule,
-  type PipelineShellStageRule,
-  type PipelineStepRule,
-  type PipelineWhenRule,
-  type PipelineWorkspaceRule,
-  type PipelineWorkspaceStageRule,
-} from "./PipelineInputReader";
+import { PipelineInputReader } from "./PipelineInputReader";
+import type {
+  PipelineActionStageRule,
+  PipelineAppRule,
+  PipelinePostRule,
+  PipelineShellStageRule,
+  PipelineStepRule,
+  PipelineWhenRule,
+  PipelineWorkspaceRule,
+  PipelineWorkspaceStageRule,
+} from "./PipelineRules";
 
 export interface PipelineSourceFile<T> {
   /** Relative to the workspace root, with `/`. */
