@@ -68,7 +68,7 @@ export class SubspaceConfig {
   assertPushable(branch: string) {
     if (this.pushableBranches.includes(branch)) return;
     throw new Error(
-      `Branch "${branch}" is not pushable. ${SubspaceConfig.source} allows: ${this.pushableBranches.join(", ")}`,
+      `Branch "${branch}" is not pushable. \`subspace.pushableBranches\` in the workspace root akan.config.ts allows: ${this.pushableBranches.join(", ")}`,
     );
   }
 }
