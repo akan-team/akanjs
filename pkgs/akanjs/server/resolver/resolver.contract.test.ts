@@ -1264,6 +1264,50 @@ describe("SignalResolver declaration contracts", () => {
     expect(cleaned).toEqual([]);
   });
 
+  test("runs the cleanup of a subscribe or a message whose socket closed while its handler ran", async () => {
+    const cleaned: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    class LateEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      lateRoom: builder
+        .pubsub(ServerResolverTestLight, { guards: [Public] })
+        .room("roomId", ID)
+        .with(Ws)
+        .exec(async (roomId, ws) => {
+          ws.on("disconnect", () => {
+            cleaned.push(`room:${roomId as string}`);
+          });
+          await held;
+        }),
+      lateMessage: builder
+        .message(String, { guards: [Public] })
+        .msg("text", String)
+        .with(Ws)
+        .exec(async (text, ws) => {
+          ws.on("disconnect", () => {
+            cleaned.push(`message:${text as string}`);
+          });
+          await held;
+          return `ok:${text as string}`;
+        }),
+    })) {}
+    const { registry, websocket } = withFakeWebsocket();
+    const resolved = resolveWith(LateEndpoint, new LateEndpoint(), { registry });
+
+    const ws = makeWs();
+    const subscribing = resolved.wsRoutes?.lateRoom?.(ws, [validId], "subscribe");
+    const messaging = resolved.wsRoutes?.lateMessage?.(ws, ["chat"], "message");
+    await SignalResolver.handleWsClose(ws, registry);
+    expect(cleaned).toEqual([]);
+    release();
+    await Promise.all([subscribing, messaging]);
+    expect(cleaned.sort()).toEqual(["message:chat", `room:${validId}`]);
+    expect(ws.subscribed).toEqual([]);
+    expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
+  });
+
   test("runs a cleanup registered for both endings once when the socket closes subscribed", async () => {
     const cleaned: string[] = [];
     class SharedCleanupEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
@@ -1472,6 +1516,27 @@ describe("SignalResolver declaration contracts", () => {
       "serverResolverTestItemLiveInCategory-news",
       "serverResolverTestItemLiveInCategory-sports",
     ]);
+  });
+
+  test("joins no room for a subscribe still running when its socket closes", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { registry, live, route, websocket } = resolveLiveCategoryRoute({
+      queryInCategory: async (category) => {
+        await held;
+        return { category };
+      },
+    });
+    const ws = makeWs();
+    const subscribing = route(ws, ["news"], "subscribe");
+    await SignalResolver.handleWsClose(ws, registry, live);
+    release();
+    expect(await subscribing).toMatchObject({ type: "sub", subscribe: false });
+    expect(live.syncHub.roomIds()).toEqual([]);
+    expect(ws.subscribed).toEqual([]);
+    expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
   });
 
   test("lets a live room go when a socket that subscribed to it twice closes", async () => {
@@ -2014,7 +2079,11 @@ const withFakeWebsocket = () => {
   return { registry, websocket };
 };
 
-const resolveLiveCategoryRoute = () => {
+const resolveLiveCategoryRoute = ({
+  queryInCategory = (category: string): unknown => ({ category }),
+}: {
+  queryInCategory?: (category: string) => unknown;
+} = {}) => {
   class LiveCategorySlice extends slice(
     serverResolverTestServiceModel,
     { guards: { root: Public, get: Public, cru: Public } },
@@ -2029,8 +2098,8 @@ const resolveLiveCategoryRoute = () => {
   ) {}
   const SliceEndpoint = SignalResolver.resolveSlice(LiveCategorySlice);
   const sliceEndpoint = new SliceEndpoint() as InstanceType<typeof SliceEndpoint> & Record<string, unknown>;
-  sliceEndpoint.serverResolverTestItemService = { queryInCategory: (category: string) => ({ category }) };
-  const { registry } = withFakeWebsocket();
+  sliceEndpoint.serverResolverTestItemService = { queryInCategory };
+  const { registry, websocket } = withFakeWebsocket();
   const live = getDefaultLiveRegistry();
   live.sliceCls.set(LiveCategorySlice.baseName, LiveCategorySlice as never);
   live.service.set("serverResolverTestItem", {
@@ -2040,7 +2109,7 @@ const resolveLiveCategoryRoute = () => {
   SignalResolver.registerLiveSync(LiveCategorySlice, { registry, live });
   const route = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live }).wsRoutes
     .serverResolverTestItemLiveInCategory;
-  return { registry, live, route };
+  return { registry, live, route, websocket };
 };
 
 const resolveWith = (
