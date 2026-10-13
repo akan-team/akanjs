@@ -199,15 +199,15 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
   const boot = makeNativeBoot(ctx, "ios");
   writeFileSync(join(appPath, "boot.json"), JSON.stringify(boot));
   if (config.updates)
-    writePhoneUpdates(
-      join(appPath, "updates.json"),
-      ctx.outDir,
-      config.updates,
-      config.app,
-      "ios",
-      boot.nativeApi,
-      ctx.dev,
-    );
+    writePhoneUpdates({
+      updatesJson: join(appPath, "updates.json"),
+      outDir: ctx.outDir,
+      updates: config.updates,
+      app: config.app,
+      platform: "ios",
+      nativeApi: boot.nativeApi,
+      dev: ctx.dev,
+    });
   writeFileSync(join(appPath, "env.runtime.json"), JSON.stringify(ctx.env, null, 2));
   writeFileSync(
     join(appPath, "shell.json"),

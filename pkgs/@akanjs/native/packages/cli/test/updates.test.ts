@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AkanNativeConfig } from "../src/config.ts";
+import { readBundleInfo } from "../src/lib/compat.ts";
 import type { BuildContext } from "../src/lib/prepare.ts";
 import { projectFromConfig } from "../src/lib/project.ts";
 import { assertSigningKey, channelRevocations, nextSequence, publishRelease } from "../src/lib/publish.ts";
@@ -228,34 +229,39 @@ describe("updates config (UP-1, UP-2)", () => {
   test("a phone build's bundle.json names the report address a registering server checks", () => {
     const out = mkdtempSync(join(tmpdir(), "akan-phone-updates-"));
     try {
-      writeFileSync(join(out, "bundle.json"), JSON.stringify({ app: { id: "dev.x" } }));
+      const bundle = {
+        schema: 1,
+        app: { id: "dev.x", version: "1", build: 1 },
+        nativeApi: { hash: "abc", inputs: {} },
+        web: { hash: "w", files: 1 },
+      };
+      writeFileSync(join(out, "bundle.json"), JSON.stringify(bundle));
       const key = Buffer.alloc(32, 7).toString("base64");
       const updates = { url: "https://u", publicKeys: [key], channel: "main", readyTimeout: 20_000 };
-      writePhoneUpdates(
-        join(out, "updates.json"),
-        out,
-        { ...updates, reportUrl: "https://r/p" },
-        { id: "dev.x", version: "1" },
-        "android",
-        "abc",
-        false,
-      );
-      expect(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).updates).toMatchObject({
-        reportUrl: "https://r/p",
+      const write = (reportUrl: string | null) =>
+        writePhoneUpdates({
+          updatesJson: join(out, "updates.json"),
+          outDir: out,
+          updates: { ...updates, reportUrl },
+          app: { id: "dev.x", version: "1" },
+          platform: "android",
+          nativeApi: "abc",
+          dev: false,
+        });
+      write("https://r/p");
+      const written = readBundleInfo(join(out, "bundle.json"));
+      expect(written).toMatchObject({
+        ...bundle,
+        updates: { protocol: 2, keyIds: [keyIdOf(key)], reportUrl: "https://r/p" },
       });
       expect(JSON.parse(readFileSync(join(out, "updates.json"), "utf8")).reportUrl).toBe("https://r/p");
 
-      writePhoneUpdates(
-        join(out, "updates.json"),
-        out,
-        { ...updates, reportUrl: null },
-        { id: "dev.x", version: "1" },
-        "android",
-        "abc",
-        false,
-      );
-      expect(JSON.parse(readFileSync(join(out, "bundle.json"), "utf8")).updates.reportUrl).toBeUndefined();
+      write(null);
+      expect(readBundleInfo(join(out, "bundle.json")).updates?.reportUrl).toBeUndefined();
       expect(JSON.parse(readFileSync(join(out, "updates.json"), "utf8")).reportUrl).toBeUndefined();
+
+      writeFileSync(join(out, "bundle.json"), JSON.stringify({ app: { id: "dev.x" } }));
+      expect(() => write(null)).toThrow("is not an akan-native bundle.json");
     } finally {
       rmSync(out, { recursive: true, force: true });
     }
