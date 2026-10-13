@@ -620,14 +620,20 @@ describe("pipeline secrets", () => {
 });
 
 describe("OTA uploads", () => {
-  test("push-update sends the pack folder as one tgz with the target's channel, and leaves no archive behind", async () => {
+  test("push-update sends the files the pack lists as one tgz with the target's channel, and leaves no archive behind", async () => {
     const os = await import("node:os");
     const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
     const out = mkdtempSync(path.join(os.tmpdir(), "akan-pack-test-"));
     mkdirSync(path.join(out, "files"));
     writeFileSync(path.join(out, "files", "a".repeat(64)), "<html></html>");
-    for (const name of ["manifest.template.json", "bundle.json", "pack.json"])
-      writeFileSync(path.join(out, name), "{}");
+    writeFileSync(path.join(out, "files", "b".repeat(64)), "an earlier pack's file");
+    writeFileSync(path.join(out, "notes.txt"), "not part of the pack");
+    const listed = { path: "index.html", sha256: "a".repeat(64), size: 13 };
+    writeFileSync(
+      path.join(out, "manifest.template.json"),
+      JSON.stringify({ files: [listed, { ...listed, path: "a" }] }),
+    );
+    for (const name of ["bundle.json", "pack.json"]) writeFileSync(path.join(out, name), "{}");
     const pack = {
       schema: 1 as const,
       app: "lu",
@@ -686,16 +692,15 @@ describe("OTA uploads", () => {
       const copy = path.join(out, "..", `${path.basename(out)}-sent.tgz`);
       await Bun.write(copy, stored[0] ?? new Uint8Array());
       const entries = Bun.spawnSync(["tar", "-tzf", copy]).stdout.toString().split(/\r?\n/).filter(Boolean);
-      expect(entries).toEqual(
-        expect.arrayContaining([
-          "./bundle.json",
-          "./manifest.template.json",
-          "./pack.json",
-          `./files/${"a".repeat(64)}`,
-        ]),
-      );
+      expect(entries.sort()).toEqual([
+        "./bundle.json",
+        `./files/${"a".repeat(64)}`,
+        "./manifest.template.json",
+        "./pack.json",
+      ]);
       expect(announced[0]?.size).toBe(stored[0]?.byteLength);
-      expect(existsSync(path.join(os.tmpdir(), `akan-pack-lu-default-android-${process.pid}.tgz`))).toBe(false);
+      for (const suffix of ["tgz", "list"])
+        expect(existsSync(path.join(os.tmpdir(), `akan-pack-lu-default-android-${process.pid}.${suffix}`))).toBe(false);
 
       const exitCode = process.exitCode;
       const rejected = { id: "release-2", status: "rejected", problems: ["deepLinks differ from the app's"] };
@@ -713,6 +718,14 @@ describe("OTA uploads", () => {
       await expect(
         new CloudRunner().pushUpdate(refused, "project-1", pack, { channel: "pilot", notes: null }),
       ).rejects.toThrow("run `akan login`");
+
+      writeFileSync(
+        path.join(out, "manifest.template.json"),
+        JSON.stringify({ files: [{ ...listed, sha256: "../pack.json" }] }),
+      );
+      await expect(
+        new CloudRunner().pushUpdate(apiAnswering(published), "project-1", pack, { channel: null, notes: null }),
+      ).rejects.toThrow("not 64 hex digits");
     } finally {
       storage.stop(true);
     }

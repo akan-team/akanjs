@@ -262,6 +262,6 @@ describe("a pack read back from its folder", () => {
     const refused = path.join(root, "refused");
     const compat = { against: "store/bundle.json", compatible: false, problems: ["deepLinks differ"] };
     await writeText(path.join(refused, "pack.json"), JSON.stringify({ ...pack, compat }));
-    await expect(NativeApp.readPack(refused)).rejects.toThrow("needs a new store build: deepLinks differ");
+    expect((await NativeApp.readPack(refused)).compat).toEqual(compat);
   });
 });

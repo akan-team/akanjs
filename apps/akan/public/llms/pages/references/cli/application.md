@@ -494,7 +494,7 @@ Pack an update as `pack-update` does and upload it to the akasys project, which 
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
-- --pack (String): A folder `pack-update` already wrote, uploaded as it is instead of packing again.
+- --pack (String): A folder `pack-update` already wrote, uploaded as it is instead of packing again. A pack its `--against` check refused exits 2 without uploading.
 
 `akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>]`
 

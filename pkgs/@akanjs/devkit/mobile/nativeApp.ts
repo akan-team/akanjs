@@ -467,15 +467,13 @@ export class NativeApp {
     await Bun.write(path.join(pack.out, "pack.json"), `${JSON.stringify(pack, null, 2)}\n`);
   }
 
-  /** A pack `packUpdate` wrote, read back from its folder wherever it was moved; one `--against` refused is not taken. */
+  /** A pack `packUpdate` wrote, read back from its folder wherever it was moved. */
   static async readPack(dir: string): Promise<NativeUpdatePack> {
     const file = Bun.file(path.join(dir, "pack.json"));
     if (!(await file.exists()))
       throw new Error(`${dir} holds no pack.json: give the folder \`akan pack-update\` wrote.`);
     const pack = (await file.json()) as NativeUpdatePack;
     if (pack.schema !== 1) throw new Error(`${dir}/pack.json is schema ${pack.schema}, and this akan reads schema 1.`);
-    if (pack.compat && !pack.compat.compatible)
-      throw new Error(`The pack in ${dir} needs a new store build: ${pack.compat.problems.join("; ")}`);
     return { ...pack, out: path.resolve(dir) };
   }
 
