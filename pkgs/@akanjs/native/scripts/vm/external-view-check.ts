@@ -7,7 +7,7 @@
 // this process, and through the app page's bridge checks that a view
 // 1. opens over the window, runs its init script before the page's own, and answers evaluate,
 // 2. sends load events, and loadFailed for a server that does not answer,
-// 3. refuses a navigation off its origins, from the app and from its own page,
+// 3. refuses a navigation off its origins, from the app and from its own page, and a frame's mailto: link,
 // 4. passes warn and error console messages with their source and line, and not a log,
 // 5. takes a trusted key press, and captures its own content,
 // 6. keeps storage of its own, which clearData clears,
@@ -288,6 +288,11 @@ try {
   await inView(`location.href = "https://example.com/"; "sent"`);
   await Bun.sleep(1500);
   if ((await inView("location.origin")) !== origin) throw new Error("the page left its origins");
+  await inView(`const mail = document.createElement("iframe"); mail.src = "mailto:board@example.com";
+    document.body.append(mail); "sent"`);
+  await until("a frame's mailto: refused", async () =>
+    lines.some((line) => line.includes("refused a frame navigation to mailto:board@example.com")),
+  );
 
   step("4. warn and error reach the app with source and line, a log does not");
   const consoleSeen = await until("warn and error", async () => {
