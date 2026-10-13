@@ -132,6 +132,7 @@ export { pathGet, pathGetLoose, pathSet, toPathSegments } from "./objectPath";
 export { PipelineNames } from "./PipelineNames";
 export { PipelinePattern } from "./PipelinePattern";
 export { PipelinePlanSchema } from "./PipelinePlanSchema";
+export { type PipelineValueProblem, PipelineValueReader } from "./PipelineValueReader";
 export { formatPhone, isPhoneNumber } from "./phone";
 export {
   type PipelineActionName,

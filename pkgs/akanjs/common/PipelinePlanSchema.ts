@@ -1,5 +1,6 @@
 import { PipelineNames } from "./PipelineNames";
 import { PipelinePattern } from "./PipelinePattern";
+import { type PipelineValueProblem, PipelineValueReader } from "./PipelineValueReader";
 import {
   type PipelineActionName,
   type PipelineDiagnostic,
@@ -33,7 +34,6 @@ export class PipelinePlanSchema {
   static readonly #stepIdPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/;
   static readonly #sha256Pattern = /^[0-9a-f]{64}$/;
   static readonly #idChars = 256;
-  static readonly #textChars = 1024;
   static readonly #maxSeconds = 86_400;
   static readonly #shellKeys = Object.keys({
     id: true,
@@ -89,13 +89,16 @@ export class PipelinePlanSchema {
   #apps = new Set<string>();
   #stageCount = 0;
   #stepCount = 0;
+  readonly #read = new PipelineValueReader<never>("plan", (path, problem) =>
+    this.#fail(path, PipelinePlanSchema.#reason(problem)),
+  );
 
   #result(value: unknown): PipelinePlanResult {
-    const result = this.#object(value, "result", ["ok", "plan", "diagnostics"]);
-    const ok = this.#boolean(result.ok, "result.ok");
-    const diagnostics = this.#array(result.diagnostics, "result.diagnostics").map((item, idx) =>
-      this.#diagnostic(item, `result.diagnostics[${idx}]`),
-    );
+    const result = this.#read.object(value, "result", ["ok", "plan", "diagnostics"]);
+    const ok = this.#read.boolean(result.ok, "result.ok");
+    const diagnostics = this.#read
+      .list(result.diagnostics, "result.diagnostics")
+      .map((item, idx) => this.#diagnostic(item, `result.diagnostics[${idx}]`));
     if (ok) return { ok, plan: this.#plan(result.plan, "result.plan"), diagnostics };
     if (result.plan !== null) this.#fail("result.plan", "must be null when ok is false");
     if (!diagnostics.some((diagnostic) => diagnostic.severity === "error"))
@@ -104,18 +107,18 @@ export class PipelinePlanSchema {
   }
 
   #diagnostic(value: unknown, path: string): PipelineDiagnostic {
-    const diagnostic = this.#object(value, path, ["severity", "code", "message", "file", "path"]);
+    const diagnostic = this.#read.object(value, path, ["severity", "code", "message", "file", "path"]);
     return {
-      severity: this.#oneOf(diagnostic.severity, `${path}.severity`, ["error", "warning"] as const),
-      code: this.#string(diagnostic.code, `${path}.code`),
-      message: this.#string(diagnostic.message, `${path}.message`, pipelinePlanLimits.shBytes),
-      file: this.#nullable(diagnostic.file, (file) => this.#string(file, `${path}.file`)),
-      path: this.#nullable(diagnostic.path, (where) => this.#string(where, `${path}.path`)),
+      severity: this.#read.oneOf(diagnostic.severity, `${path}.severity`, ["error", "warning"] as const),
+      code: this.#read.string(diagnostic.code, `${path}.code`),
+      message: this.#read.string(diagnostic.message, `${path}.message`, pipelinePlanLimits.shBytes),
+      file: this.#nullable(diagnostic.file, (file) => this.#read.string(file, `${path}.file`)),
+      path: this.#nullable(diagnostic.path, (where) => this.#read.string(where, `${path}.path`)),
     };
   }
 
   #plan(value: unknown, path: string): PipelinePlan {
-    const plan = this.#object(value, path, [
+    const plan = this.#read.object(value, path, [
       "schemaVersion",
       "sources",
       "planner",
@@ -140,11 +143,12 @@ export class PipelinePlanSchema {
       appOrder.some((app) => !this.#apps.has(app))
     )
       this.#fail(`${path}.appOrder`, "must order exactly the apps of context.apps");
-    const planner = this.#object(plan.planner, `${path}.planner`, ["akanVersion"]);
+    const planner = this.#read.object(plan.planner, `${path}.planner`, ["akanVersion"]);
     const sources = this.#sources(plan.sources, `${path}.sources`);
-    const phases = this.#array(plan.phases, `${path}.phases`, pipelinePlanLimits.phases).map((phase, idx) =>
-      this.#phase(phase, `${path}.phases[${idx}]`),
-    );
+    const phaseList = this.#read.list(plan.phases, `${path}.phases`);
+    if (phaseList.length > pipelinePlanLimits.phases)
+      this.#fail(`${path}.phases`, `holds at most ${pipelinePlanLimits.phases} items`);
+    const phases = phaseList.map((phase, idx) => this.#phase(phase, `${path}.phases[${idx}]`));
     const post = this.#post(plan.post, `${path}.post`);
     const requiredSecrets = this.#secretList(plan.requiredSecrets, `${path}.requiredSecrets`);
     if (
@@ -155,7 +159,7 @@ export class PipelinePlanSchema {
     return {
       schemaVersion: pipelinePlanVersion,
       sources,
-      planner: { akanVersion: this.#string(planner.akanVersion, `${path}.planner.akanVersion`) },
+      planner: { akanVersion: this.#read.string(planner.akanVersion, `${path}.planner.akanVersion`) },
       context,
       appOrder,
       timeoutSeconds: this.#seconds(plan.timeoutSeconds, `${path}.timeoutSeconds`),
@@ -166,8 +170,8 @@ export class PipelinePlanSchema {
   }
 
   #sources(value: unknown, path: string): PipelinePlan["sources"] {
-    const sources = this.#object(value, path, ["workspace", "apps"]);
-    const apps = this.#object(sources.apps, `${path}.apps`);
+    const sources = this.#read.object(value, path, ["workspace", "apps"]);
+    const apps = this.#read.object(sources.apps, `${path}.apps`);
     return {
       workspace: this.#nullable(sources.workspace, (source) => this.#source(source, `${path}.workspace`)),
       apps: Object.fromEntries(
@@ -177,32 +181,32 @@ export class PipelinePlanSchema {
   }
 
   #source(value: unknown, path: string): PipelinePlanSource {
-    const source = this.#object(value, path, ["file", "sha256", "declared"]);
-    const sha256 = this.#string(source.sha256, `${path}.sha256`);
+    const source = this.#read.object(value, path, ["file", "sha256", "declared"]);
+    const sha256 = this.#read.string(source.sha256, `${path}.sha256`);
     if (!PipelinePlanSchema.#sha256Pattern.test(sha256)) this.#fail(`${path}.sha256`, "must be a lowercase sha256");
     return {
-      file: this.#string(source.file, `${path}.file`),
+      file: this.#read.string(source.file, `${path}.file`),
       sha256,
-      declared: this.#boolean(source.declared, `${path}.declared`),
+      declared: this.#read.boolean(source.declared, `${path}.declared`),
     };
   }
 
   #context(value: unknown, path: string): PipelinePlanContext {
-    const context = this.#object(value, path, ["branch", "env", "apps", "trigger", "buildNum", "commit"]);
+    const context = this.#read.object(value, path, ["branch", "env", "apps", "trigger", "buildNum", "commit"]);
     const apps = this.#stringList(context.apps, `${path}.apps`);
     if (new Set(apps).size !== apps.length) this.#fail(`${path}.apps`, "lists an app twice");
     return {
-      branch: this.#string(context.branch, `${path}.branch`),
-      env: this.#string(context.env, `${path}.env`),
+      branch: this.#read.string(context.branch, `${path}.branch`),
+      env: this.#read.string(context.env, `${path}.env`),
       apps,
-      trigger: this.#oneOf(context.trigger, `${path}.trigger`, pipelineTriggers),
-      buildNum: this.#int(context.buildNum, `${path}.buildNum`, 0),
-      commit: this.#nullable(context.commit, (commit) => this.#string(commit, `${path}.commit`)),
+      trigger: this.#read.oneOf(context.trigger, `${path}.trigger`, pipelineTriggers),
+      buildNum: this.#read.int(context.buildNum, `${path}.buildNum`, 0),
+      commit: this.#nullable(context.commit, (commit) => this.#read.string(commit, `${path}.commit`)),
     };
   }
 
   #phase(value: unknown, path: string): PipelinePlanPhase {
-    const phase = this.#object(value, path, [
+    const phase = this.#read.object(value, path, [
       "id",
       "name",
       "description",
@@ -215,40 +219,42 @@ export class PipelinePlanSchema {
       "timeoutSeconds",
       "stages",
     ]);
-    const id = this.#string(phase.id, `${path}.id`);
+    const id = this.#read.string(phase.id, `${path}.id`);
     const idError = PipelineNames.idError(id);
     if (idError) this.#fail(`${path}.id`, idError);
     if (this.#phaseIds.has(id)) this.#fail(`${path}.id`, `"${id}" is the id of another phase`);
     this.#phaseIds.add(id);
-    const slot = this.#oneOf(phase.slot, `${path}.slot`, pipelinePlanSlots);
-    const action = this.#nullable(phase.action, (name) => this.#oneOf(name, `${path}.action`, pipelineActionNames));
-    const order = this.#oneOf(phase.order, `${path}.order`, ["parallel", "sequential"] as const);
+    const slot = this.#read.oneOf(phase.slot, `${path}.slot`, pipelinePlanSlots);
+    const action = this.#nullable(phase.action, (name) =>
+      this.#read.oneOf(name, `${path}.action`, pipelineActionNames),
+    );
+    const order = this.#read.oneOf(phase.order, `${path}.order`, ["parallel", "sequential"] as const);
     if (action && slot !== action) this.#fail(`${path}.slot`, `a ${action} phase sits in the "${action}" slot`);
     if (!action && (pipelineActionNames as readonly string[]).includes(slot))
       this.#fail(`${path}.slot`, `the "${slot}" slot holds the ${slot} action phase only`);
     if (action === "deploy" && order !== "sequential")
       this.#fail(`${path}.order`, "a deploy phase runs its apps one at a time");
-    const stages = this.#array(phase.stages, `${path}.stages`).map((stage, idx) =>
-      this.#stage(stage, `${path}.stages[${idx}]`, action),
-    );
+    const stages = this.#read
+      .list(phase.stages, `${path}.stages`)
+      .map((stage, idx) => this.#stage(stage, `${path}.stages[${idx}]`, action));
     if (!stages.length) this.#fail(`${path}.stages`, "a phase holds at least one stage");
     return {
       id,
-      name: this.#string(phase.name, `${path}.name`, pipelinePlanLimits.nameChars),
+      name: this.#read.string(phase.name, `${path}.name`, pipelinePlanLimits.nameChars),
       description: this.#description(phase.description, `${path}.description`),
       slot,
-      milestone: this.#oneOf(phase.milestone, `${path}.milestone`, pipelineMilestones),
+      milestone: this.#read.oneOf(phase.milestone, `${path}.milestone`, pipelineMilestones),
       action,
       order,
-      maxParallel: this.#nullable(phase.maxParallel, (limit) => this.#int(limit, `${path}.maxParallel`, 1)),
-      failFast: this.#boolean(phase.failFast, `${path}.failFast`),
+      maxParallel: this.#nullable(phase.maxParallel, (limit) => this.#read.int(limit, `${path}.maxParallel`, 1)),
+      failFast: this.#read.boolean(phase.failFast, `${path}.failFast`),
       timeoutSeconds: this.#seconds(phase.timeoutSeconds, `${path}.timeoutSeconds`),
       stages,
     };
   }
 
   #stage(value: unknown, path: string, action: PipelineActionName | null): PipelinePlanStage {
-    const stage = this.#object(value, path, [
+    const stage = this.#read.object(value, path, [
       "id",
       "name",
       "description",
@@ -263,15 +269,15 @@ export class PipelinePlanSchema {
     this.#stageCount += 1;
     if (this.#stageCount > pipelinePlanLimits.stages)
       this.#fail(path, `a plan holds at most ${pipelinePlanLimits.stages} stages`);
-    const id = this.#string(stage.id, `${path}.id`, PipelinePlanSchema.#idChars);
+    const id = this.#read.string(stage.id, `${path}.id`, PipelinePlanSchema.#idChars);
     if (!PipelinePlanSchema.#stageIdPattern.test(id)) this.#fail(`${path}.id`, `"${id}" is not a stage id`);
     if (this.#stageIds.has(id)) this.#fail(`${path}.id`, `"${id}" is the id of another stage`);
     this.#stageIds.add(id);
-    const app = this.#nullable(stage.app, (name) => this.#string(name, `${path}.app`));
+    const app = this.#nullable(stage.app, (name) => this.#read.string(name, `${path}.app`));
     if (app !== null && !this.#apps.has(app)) this.#fail(`${path}.app`, `"${app}" is not in context.apps`);
-    const steps = this.#array(stage.steps, `${path}.steps`).map((step, idx) =>
-      this.#step(step, `${path}.steps[${idx}]`),
-    );
+    const steps = this.#read
+      .list(stage.steps, `${path}.steps`)
+      .map((step, idx) => this.#step(step, `${path}.steps[${idx}]`));
     if (!steps.length) this.#fail(`${path}.steps`, "a stage holds at least one step");
     if (action) {
       const [step] = steps;
@@ -281,27 +287,27 @@ export class PipelinePlanSchema {
       this.#fail(`${path}.steps`, "an action runs in its own action phase only");
     return {
       id,
-      name: this.#string(stage.name, `${path}.name`, pipelinePlanLimits.nameChars),
+      name: this.#read.string(stage.name, `${path}.name`, pipelinePlanLimits.nameChars),
       description: this.#description(stage.description, `${path}.description`),
       app,
-      milestone: this.#oneOf(stage.milestone, `${path}.milestone`, pipelineMilestones),
+      milestone: this.#read.oneOf(stage.milestone, `${path}.milestone`, pipelineMilestones),
       skip: this.#nullable(stage.skip, (skip) => {
-        const reason = this.#object(skip, `${path}.skip`, ["reason"]).reason;
-        return { reason: this.#string(reason, `${path}.skip.reason`) };
+        const reason = this.#read.object(skip, `${path}.skip`, ["reason"]).reason;
+        return { reason: this.#read.string(reason, `${path}.skip.reason`) };
       }),
       runtimeWhen: this.#nullable(stage.runtimeWhen, (when) => {
-        const changed = this.#object(when, `${path}.runtimeWhen`, ["changed"]).changed;
+        const changed = this.#read.object(when, `${path}.runtimeWhen`, ["changed"]).changed;
         return { changed: this.#patterns(changed, `${path}.runtimeWhen.changed`) };
       }),
-      allowFailure: this.#boolean(stage.allowFailure, `${path}.allowFailure`),
+      allowFailure: this.#read.boolean(stage.allowFailure, `${path}.allowFailure`),
       timeoutSeconds: this.#seconds(stage.timeoutSeconds, `${path}.timeoutSeconds`),
       steps,
     };
   }
 
   #step(value: unknown, path: string): PipelinePlanStep {
-    const kind = this.#oneOf(this.#object(value, path).kind, `${path}.kind`, ["sh", "action"] as const);
-    const step = this.#object(
+    const kind = this.#read.oneOf(this.#read.object(value, path).kind, `${path}.kind`, ["sh", "action"] as const);
+    const step = this.#read.object(
       value,
       path,
       kind === "sh" ? PipelinePlanSchema.#shellKeys : PipelinePlanSchema.#actionKeys,
@@ -309,16 +315,16 @@ export class PipelinePlanSchema {
     this.#stepCount += 1;
     if (this.#stepCount > pipelinePlanLimits.steps)
       this.#fail(path, `a plan holds at most ${pipelinePlanLimits.steps} steps`);
-    const id = this.#string(step.id, `${path}.id`, PipelinePlanSchema.#idChars);
+    const id = this.#read.string(step.id, `${path}.id`, PipelinePlanSchema.#idChars);
     if (!PipelinePlanSchema.#stepIdPattern.test(id)) this.#fail(`${path}.id`, `"${id}" is not a step id`);
     if (this.#stepIds.has(id)) this.#fail(`${path}.id`, `"${id}" is the id of another step`);
     this.#stepIds.add(id);
     const base = {
       id,
-      name: this.#string(step.name, `${path}.name`, pipelinePlanLimits.nameChars),
+      name: this.#read.string(step.name, `${path}.name`, pipelinePlanLimits.nameChars),
       timeoutSeconds: this.#seconds(step.timeoutSeconds, `${path}.timeoutSeconds`),
       retry: this.#nullable(step.retry, (retry) => this.#retry(retry, `${path}.retry`)),
-      allowFailure: this.#boolean(step.allowFailure, `${path}.allowFailure`),
+      allowFailure: this.#read.boolean(step.allowFailure, `${path}.allowFailure`),
     };
     return kind === "sh" ? this.#shell(step, path, base) : this.#action(step, path, base);
   }
@@ -328,23 +334,23 @@ export class PipelinePlanSchema {
     path: string,
     base: Omit<PipelinePlanShellStep, "kind" | "run" | "cwd" | "env" | "secrets" | "skipExitCodes">,
   ): PipelinePlanShellStep {
-    const run = this.#string(step.run, `${path}.run`, Number.POSITIVE_INFINITY);
+    const run = this.#read.string(step.run, `${path}.run`, Number.POSITIVE_INFINITY);
     if (new TextEncoder().encode(run).length > pipelinePlanLimits.shBytes)
       this.#fail(`${path}.run`, `a script is at most ${pipelinePlanLimits.shBytes} bytes`);
-    const cwd = this.#string(step.cwd, `${path}.cwd`);
+    const cwd = this.#read.string(step.cwd, `${path}.cwd`);
     if (cwd.startsWith("/") || cwd.startsWith("~") || cwd.includes("\\") || cwd.split("/").includes(".."))
       this.#fail(`${path}.cwd`, `"${cwd}" is not a path inside the workspace`);
-    const env = this.#object(step.env, `${path}.env`);
+    const env = this.#read.object(step.env, `${path}.env`);
     for (const [name, envValue] of Object.entries(env)) {
       const nameError = PipelineNames.envNameError(name);
       if (nameError) this.#fail(`${path}.env`, nameError);
-      this.#string(envValue, `${path}.env.${name}`, pipelinePlanLimits.shBytes, { allowEmpty: true });
+      this.#read.string(envValue, `${path}.env.${name}`, pipelinePlanLimits.shBytes, { allowEmpty: true });
     }
     const secrets = this.#secretList(step.secrets, `${path}.secrets`);
     for (const name of secrets) this.#stepSecrets.add(name);
-    const skipExitCodes = this.#array(step.skipExitCodes, `${path}.skipExitCodes`).map((code, idx) =>
-      this.#int(code, `${path}.skipExitCodes[${idx}]`, 1, 255),
-    );
+    const skipExitCodes = this.#read
+      .list(step.skipExitCodes, `${path}.skipExitCodes`)
+      .map((code, idx) => this.#read.int(code, `${path}.skipExitCodes[${idx}]`, 1, 255));
     if (new Set(skipExitCodes).size !== skipExitCodes.length) this.#fail(`${path}.skipExitCodes`, "lists a code twice");
     return { ...base, kind: "sh", run, cwd, env: env as Record<string, string>, secrets, skipExitCodes };
   }
@@ -354,22 +360,28 @@ export class PipelinePlanSchema {
     path: string,
     base: Omit<PipelinePlanActionStep, "kind" | "action" | "actionVersion" | "with">,
   ): PipelinePlanActionStep {
-    const action = this.#oneOf(step.action, `${path}.action`, pipelineActionNames);
+    const action = this.#read.oneOf(step.action, `${path}.action`, pipelineActionNames);
     if (step.actionVersion !== pipelineActions[action].version)
       this.#fail(`${path}.actionVersion`, `${JSON.stringify(step.actionVersion)} is not a version of ${action}`);
     const actionVersion = pipelineActions[action].version;
     if (action === "ota")
       return { ...base, kind: "action", action, actionVersion, with: this.#otaWith(step.with, path) };
-    const app = this.#object(step.with, `${path}.with`, ["app"]).app;
-    return { ...base, kind: "action", action, actionVersion, with: { app: this.#string(app, `${path}.with.app`) } };
+    const app = this.#read.object(step.with, `${path}.with`, ["app"]).app;
+    return {
+      ...base,
+      kind: "action",
+      action,
+      actionVersion,
+      with: { app: this.#read.string(app, `${path}.with.app`) },
+    };
   }
 
   #otaWith(value: unknown, path: string): PipelinePlanOtaStep["with"] {
-    const raw = this.#object(value, `${path}.with`, ["app", "targets", "platforms"]);
+    const raw = this.#read.object(value, `${path}.with`, ["app", "targets", "platforms"]);
     const targets = this.#stringList(raw.targets, `${path}.with.targets`);
-    const platforms = this.#array(raw.platforms, `${path}.with.platforms`).map((platform, idx) =>
-      this.#oneOf(platform, `${path}.with.platforms[${idx}]`, pipelineOtaPlatforms),
-    );
+    const platforms = this.#read
+      .list(raw.platforms, `${path}.with.platforms`)
+      .map((platform, idx) => this.#read.oneOf(platform, `${path}.with.platforms[${idx}]`, pipelineOtaPlatforms));
     for (const [key, list] of [
       ["targets", targets],
       ["platforms", platforms],
@@ -377,13 +389,13 @@ export class PipelinePlanSchema {
       if (!list.length) this.#fail(`${path}.with.${key}`, "may not be empty");
       if (new Set(list).size !== list.length) this.#fail(`${path}.with.${key}`, "lists one twice");
     }
-    return { app: this.#string(raw.app, `${path}.with.app`), targets, platforms };
+    return { app: this.#read.string(raw.app, `${path}.with.app`), targets, platforms };
   }
 
   #post(value: unknown, path: string): PipelinePlanPost {
-    const post = this.#object(value, path, ["success", "failure", "canceled", "always"]);
+    const post = this.#read.object(value, path, ["success", "failure", "canceled", "always"]);
     const steps = (result: keyof PipelinePlanPost) =>
-      this.#array(post[result], `${path}.${result}`).map((step, idx) => {
+      this.#read.list(post[result], `${path}.${result}`).map((step, idx) => {
         const parsed = this.#step(step, `${path}.${result}[${idx}]`);
         if (parsed.kind !== "sh") this.#fail(`${path}.${result}[${idx}]`, "a post step is a shell step");
         return parsed;
@@ -397,10 +409,10 @@ export class PipelinePlanSchema {
   }
 
   #retry(value: unknown, path: string): PipelinePlanRetry {
-    const retry = this.#object(value, path, ["attempts", "delaySeconds"]);
+    const retry = this.#read.object(value, path, ["attempts", "delaySeconds"]);
     return {
-      attempts: this.#int(retry.attempts, `${path}.attempts`, 1, pipelinePlanLimits.retryAttempts),
-      delaySeconds: this.#int(retry.delaySeconds, `${path}.delaySeconds`, 0, pipelinePlanLimits.retryDelaySeconds),
+      attempts: this.#read.int(retry.attempts, `${path}.attempts`, 1, pipelinePlanLimits.retryAttempts),
+      delaySeconds: this.#read.int(retry.delaySeconds, `${path}.delaySeconds`, 0, pipelinePlanLimits.retryDelaySeconds),
     };
   }
 
@@ -422,69 +434,49 @@ export class PipelinePlanSchema {
   }
 
   #stringList(value: unknown, path: string) {
-    return this.#array(value, path).map((item, idx) => this.#string(item, `${path}[${idx}]`));
+    return this.#read.list(value, path).map((item, idx) => this.#read.string(item, `${path}[${idx}]`));
   }
 
   #description(value: unknown, path: string) {
-    return this.#nullable(value, (text) => this.#string(text, path, pipelinePlanLimits.descriptionChars));
+    return this.#nullable(value, (text) => this.#read.string(text, path, pipelinePlanLimits.descriptionChars));
   }
 
   #seconds(value: unknown, path: string) {
-    return this.#nullable(value, (seconds) => this.#int(seconds, path, 1, PipelinePlanSchema.#maxSeconds));
+    return this.#nullable(value, (seconds) => this.#read.int(seconds, path, 1, PipelinePlanSchema.#maxSeconds));
   }
 
   #nullable<T>(value: unknown, parse: (value: unknown) => T): T | null {
     return value === null ? null : parse(value);
   }
 
-  #object(value: unknown, path: string, keys?: readonly string[]): JsonObject {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) this.#fail(path, "must be an object");
-    const object = value as JsonObject;
-    if (!keys) return object;
-    for (const key of Object.keys(object)) if (!keys.includes(key)) this.#fail(path, `"${key}" is not a known key`);
-    for (const key of keys) if (!(key in object)) this.#fail(path, `"${key}" is missing`);
-    return object;
-  }
-
-  #array(value: unknown, path: string, max = Number.POSITIVE_INFINITY): unknown[] {
-    if (!Array.isArray(value)) this.#fail(path, "must be an array");
-    const items = value as unknown[];
-    if (items.length > max) this.#fail(path, `holds at most ${max} items`);
-    return items;
-  }
-
-  #string(
-    value: unknown,
-    path: string,
-    max: number = PipelinePlanSchema.#textChars,
-    { allowEmpty = false }: { allowEmpty?: boolean } = {},
-  ): string {
-    if (typeof value !== "string") this.#fail(path, "must be a string");
-    const text = value as string;
-    if (!allowEmpty && !text) this.#fail(path, "may not be empty");
-    if (text.length > max) this.#fail(path, `is longer than ${max} characters`);
-    return text;
-  }
-
-  #boolean(value: unknown, path: string): boolean {
-    if (typeof value !== "boolean") this.#fail(path, "must be a boolean");
-    return value as boolean;
-  }
-
-  #int(value: unknown, path: string, min: number, max = Number.MAX_SAFE_INTEGER): number {
-    if (typeof value !== "number" || !Number.isInteger(value)) this.#fail(path, "must be an integer");
-    const number = value as number;
-    if (number < min || number > max) this.#fail(path, `must be between ${min} and ${max}`);
-    return number;
-  }
-
-  #oneOf<T extends string>(value: unknown, path: string, options: readonly T[]): T {
-    if (typeof value !== "string" || !(options as readonly string[]).includes(value))
-      this.#fail(path, `${JSON.stringify(value)} is not one of ${options.join(", ")}`);
-    return value as T;
-  }
-
   #fail(path: string, reason: string): never {
     throw new Error(`pipeline plan ${path}: ${reason}`);
+  }
+
+  static #reason(problem: PipelineValueProblem): string {
+    switch (problem.kind) {
+      case "object":
+        return "must be an object";
+      case "unknownKey":
+        return `"${problem.key}" is not a known key`;
+      case "missingKey":
+        return `"${problem.key}" is missing`;
+      case "list":
+        return "must be an array";
+      case "string":
+        return "must be a string";
+      case "empty":
+        return "may not be empty";
+      case "length":
+        return `is longer than ${problem.max} characters`;
+      case "boolean":
+        return "must be a boolean";
+      case "int":
+        return "must be an integer";
+      case "range":
+        return `must be between ${problem.min} and ${problem.max}`;
+      case "oneOf":
+        return `${JSON.stringify(problem.value)} is not one of ${problem.options.join(", ")}`;
+    }
   }
 }
