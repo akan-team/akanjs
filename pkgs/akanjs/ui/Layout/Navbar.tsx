@@ -1,5 +1,4 @@
 "use client";
-import { getEnv } from "akanjs/base";
 import {
   cn,
   DEFAULT_TOP_INSET,
@@ -13,8 +12,7 @@ import { type ReactNode, useLayoutEffect } from "react";
 import { BiChevronLeft, BiX } from "react-icons/bi";
 
 import { Link } from "../Link";
-import { Portal } from "../Portal";
-import { FrameSlotFallback } from "./FrameSlotFallback";
+import { FrameSlotPortal } from "./FrameSlotPortal";
 
 export interface NavbarProps {
   className?: string;
@@ -52,7 +50,6 @@ export const Navbar = ({
   const shownBack = isViewStart ? false : back;
   const BackIcon = closeIconTransitions.has(pathRoute?.pageState.transition ?? "none") ? BiX : BiChevronLeft;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   useLayoutEffect(() => {
     if (!path) return;
     debugFrame("navbar.mount", { path, height });
@@ -68,7 +65,6 @@ export const Navbar = ({
       height,
     });
   }, [registerFrameSlot, height, path, isHidden]);
-  if (isHidden) return null;
   const bar = (
     <div className={cn("flex size-full items-center gap-2 px-5", shownBack && "pl-14", className)}>
       {left ? <div className="flex shrink-0 items-center gap-1">{left}</div> : null}
@@ -87,17 +83,8 @@ export const Navbar = ({
     );
   return (
     <>
-      <Portal id={`topInsetContent${suffix}`} fallback={<FrameSlotFallback slot="topInset">{bar}</FrameSlotFallback>}>
-        {bar}
-      </Portal>
-      {shownBack ? (
-        <Portal
-          id={`topLeftActionContent${suffix}`}
-          fallback={<FrameSlotFallback slot="topLeftAction">{backButton}</FrameSlotFallback>}
-        >
-          {backButton}
-        </Portal>
-      ) : null}
+      <FrameSlotPortal slot="topInset">{bar}</FrameSlotPortal>
+      {shownBack ? <FrameSlotPortal slot="topLeftAction">{backButton}</FrameSlotPortal> : null}
     </>
   );
 };

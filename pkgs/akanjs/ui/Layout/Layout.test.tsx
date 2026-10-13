@@ -58,15 +58,16 @@ describe("Layout chrome on the server", () => {
     expect(html).toContain("<p>sticky</p>");
   });
 
-  test("once mounted, the chrome moves into the frame's slot and leaves no fallback behind", () => {
+  test("once mounted, the chrome moves into the frame's slot, empties its server box, and leaves with it", () => {
     const slot = document.createElement("div");
     slot.id = "topInsetContent";
     document.body.appendChild(slot);
     const { container, unmount } = mount(<Layout.Navbar title="Ticket" />);
 
     expect(slot.textContent).toBe("Ticket");
-    expect(container.querySelector("[data-akan-frame-fallback]")).toBeNull();
+    expect(container.querySelector("[data-akan-frame-fallback]")?.childElementCount).toBe(0);
     unmount();
+    expect(slot.textContent).toBe("");
     slot.remove();
   });
 });
