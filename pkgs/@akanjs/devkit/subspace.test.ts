@@ -3,14 +3,9 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
-import {
-  formatSubspaceDiff,
-  formatSubspacePlan,
-  formatSubspacePushResults,
-  formatSubspaceStatuses,
-  Subspace,
-} from "./subspace";
+import { Subspace } from "./subspace";
 import { SubspaceConfig } from "./subspaceConfig";
+import { SubspaceReport } from "./subspaceReport";
 import { isolateEnv, tempDirs, writeText as write } from "./testHelpers";
 
 //? Each case drives several real git clones and pushes; on a 4-core Windows VM that alone lands at 2-5s.
@@ -353,7 +348,7 @@ describe("Subspace push", () => {
   });
 
   test("reports a refusal's whole reason, indented, instead of one truncated line", () => {
-    const report = formatSubspacePushResults([
+    const report = SubspaceReport.pushResults([
       { name: "acme", outcome: "refused", reason: "verification failed\nexit code: 1", changedFiles: 12 },
       { name: "beta", outcome: "pushed", commit: "abc1234", changedFiles: 3 },
     ]);
@@ -375,7 +370,7 @@ describe("Subspace status", () => {
     expect(status.driftedLibs).toEqual([]);
     expect(status.anchor.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(status.anchor.incoming).toEqual([]);
-    expect(formatSubspaceStatuses([status])).toContain("up to date, no customer commits");
+    expect(SubspaceReport.statuses([status])).toContain("up to date, no customer commits");
   });
 
   test("names the drifted library and counts the customer commits", async () => {
@@ -392,7 +387,7 @@ describe("Subspace status", () => {
 
     expect(status.driftedLibs).toEqual(["sdrift-kit"]);
     expect(status.anchor.incoming.map((commit) => commit.subject)).toEqual(["lib hack"]);
-    expect(formatSubspaceStatuses([status])).toContain("DRIFTED LIBS: sdrift-kit");
+    expect(SubspaceReport.statuses([status])).toContain("DRIFTED LIBS: sdrift-kit");
   });
 
   test("reports a subspace with no such branch instead of creating one", async () => {
@@ -400,7 +395,7 @@ describe("Subspace status", () => {
     const status = await subspace.status("main");
 
     expect(status.hasBranch).toBe(false);
-    expect(formatSubspaceStatuses([status])).toContain("no such branch");
+    expect(SubspaceReport.statuses([status])).toContain("no such branch");
   });
 });
 
@@ -423,7 +418,7 @@ describe("Subspace diff", () => {
     //? Direction: the workspace would restore `helper = 1` and delete the file the subspace added.
     expect(result.libs.patch).toContain("-export const helper = 99;");
     expect(result.libs.patch).toContain("+export const helper = 1;");
-    expect(formatSubspaceDiff(result)).toContain("LIBRARY changes (1)");
+    expect(SubspaceReport.diff(result)).toContain("LIBRARY changes (1)");
   });
 
   test("is empty right after a push", async () => {
@@ -433,7 +428,7 @@ describe("Subspace diff", () => {
     const result = await subspace.diff("develop");
     expect(result.app.files).toEqual([]);
     expect(result.libs.files).toEqual([]);
-    expect(formatSubspaceDiff(result)).toContain("identical to the workspace");
+    expect(SubspaceReport.diff(result)).toContain("identical to the workspace");
   });
 });
 
@@ -576,7 +571,7 @@ describe("Subspace.plan", () => {
     expect(plan.files).toBeGreaterThan(0);
     expect((await git(wsRoot, ["remote"])).trim()).toBe("");
     expect(await FileSys.dirExists(clonePath)).toBe(false);
-    expect(formatSubspacePlan(plan)).toContain("Nothing here would make a push refuse.");
+    expect(SubspaceReport.plan(plan)).toContain("Nothing here would make a push refuse.");
   });
 
   test("names what a push would refuse: a branch it may not push and a loopback-registry lock", async () => {
@@ -591,7 +586,7 @@ describe("Subspace.plan", () => {
     expect(plan.branchRefusal).toContain('Branch "main" is not pushable');
     expect(plan.branchRefusal).toContain("`subspace.pushableBranches`");
     expect(plan.lockProblem).toContain("http://127.0.0.1:4873");
-    expect(formatSubspacePlan(plan)).toContain("A push would be refused:");
+    expect(SubspaceReport.plan(plan)).toContain("A push would be refused:");
   });
 
   test("names a dirty tree as a blocker, as push refuses one, and judges HEAD's lock, the one a push ships", async () => {
@@ -609,7 +604,7 @@ describe("Subspace.plan", () => {
     expect(plan.workspaceRefusal).toBe("workspace working tree is dirty");
     expect(plan.lockProblem).toBeNull();
     expect(Subspace.planBlockers(plan)).toEqual(["workspace working tree is dirty"]);
-    expect(formatSubspacePlan(plan)).toContain("  - workspace working tree is dirty");
+    expect(SubspaceReport.plan(plan)).toContain("  - workspace working tree is dirty");
   });
 
   test("names a leftover akan.subspace.ts as a blocker and never as an entry a push ships", async () => {

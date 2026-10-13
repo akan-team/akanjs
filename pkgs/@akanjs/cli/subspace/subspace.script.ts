@@ -1,14 +1,7 @@
 import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
-import {
-  formatSubspaceDiff,
-  formatSubspaceEnvUpload,
-  formatSubspacePlan,
-  formatSubspacePullResult,
-  formatSubspacePushResults,
-  formatSubspaceStatuses,
-  Subspace,
-} from "@akanjs/devkit/subspace";
+import { Subspace } from "@akanjs/devkit/subspace";
+import { SubspaceReport } from "@akanjs/devkit/subspaceReport";
 import { Logger } from "akanjs/common";
 import { type SubspaceAction, SubspaceRunner } from "./subspace.runner";
 
@@ -22,7 +15,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const statuses = await this.subspaceRunner.status(workspace, names);
     const drifted = statuses.filter((status) => status.driftedLibs.length).length;
     spinner.succeed(`Checked ${statuses.length} subspace(s) (${drifted} with library drift)`);
-    Logger.rawLog(format === "json" ? JSON.stringify(statuses, null, 2) : formatSubspaceStatuses(statuses));
+    Logger.rawLog(format === "json" ? JSON.stringify(statuses, null, 2) : SubspaceReport.statuses(statuses));
   }
 
   async push(
@@ -34,7 +27,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const results = await this.subspaceRunner.push(workspace, names, { verify });
     const pushed = results.filter((result) => result.outcome === "pushed").length;
     spinner.succeed(`Pushed ${pushed} of ${results.length} subspace(s)`);
-    Logger.rawLog(format === "json" ? JSON.stringify(results, null, 2) : formatSubspacePushResults(results));
+    Logger.rawLog(format === "json" ? JSON.stringify(results, null, 2) : SubspaceReport.pushResults(results));
     if (results.some((result) => result.outcome === "refused")) process.exitCode = 1;
   }
 
@@ -42,7 +35,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const spinner = workspace.spinning(`Planning ${name}...`);
     const plan = await this.subspaceRunner.plan(workspace, name);
     spinner.succeed(`${plan.apps.length} app(s), ${plan.libs.length} librar(ies), ${plan.files} file(s)`);
-    Logger.rawLog(format === "json" ? JSON.stringify(plan, null, 2) : formatSubspacePlan(plan));
+    Logger.rawLog(format === "json" ? JSON.stringify(plan, null, 2) : SubspaceReport.plan(plan));
     if (Subspace.planBlockers(plan).length) process.exitCode = 1;
   }
 
@@ -51,7 +44,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const result = await this.subspaceRunner.diff(workspace, name, filter);
     const total = result.app.files.length + result.libs.files.length;
     spinner.succeed(`${total} file(s) differ (${result.libs.files.length} in shared libraries)`);
-    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : formatSubspaceDiff(result));
+    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : SubspaceReport.diff(result));
   }
 
   // No spinner: the confirmation and the first upload's device login both draw over one.
@@ -64,7 +57,7 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
       host: await GlobalConfig.hostFor(workspace, host),
       force,
     });
-    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : formatSubspaceEnvUpload(result));
+    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : SubspaceReport.envUpload(result));
   }
 
   async pull(
@@ -75,6 +68,6 @@ export class SubspaceScript extends script("subspace", [SubspaceRunner]) {
     const spinner = workspace.spinning(`Pulling customer commits from ${name}...`);
     const result = await this.subspaceRunner.pull(workspace, name, { adoptLibs });
     spinner.succeed(`${result.incoming.length} customer commit(s), ${result.applied.length} file(s) applied`);
-    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : formatSubspacePullResult(result));
+    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : SubspaceReport.pullResult(result));
   }
 }
