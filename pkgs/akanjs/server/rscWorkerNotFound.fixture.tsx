@@ -1,5 +1,5 @@
 import { ID } from "akanjs/base";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
 import { untrackedCookies, untrackedHeaders } from "../fetch";
@@ -7,6 +7,11 @@ import type { PagesContext } from "./routeTreeBuilder";
 
 const requestTag = () =>
   `theme=${untrackedCookies().get("theme")?.value ?? "-"} base=${untrackedHeaders().get("x-base-path") ?? "-"}`;
+
+const StreamedTag = async () => {
+  await Bun.sleep(300);
+  return <p>{`streamed ${requestTag()}`}</p>;
+};
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
@@ -19,6 +24,19 @@ export const pages: PagesContext = {
       await Bun.sleep(1000);
       return <p>{`slow ${tag}`}</p>;
     }),
+  }),
+  "./afterawait/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(300);
+      return <p>{`after ${requestTag()}`}</p>;
+    }),
+  }),
+  "./streamed/_index.tsx": async () => ({
+    default: page().render(() => (
+      <Suspense fallback={<i>streaming</i>}>
+        <StreamedTag />
+      </Suspense>
+    )),
   }),
   "./nfprobesync/_index.tsx": async () => ({ default: page().render(() => router.notFound()) }),
   "./nfprobe/_index.tsx": async () => ({

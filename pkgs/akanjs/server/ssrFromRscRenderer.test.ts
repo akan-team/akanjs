@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
+import { createRequestStore, getRequestStore, headers } from "../fetch/requestStorage";
 import {
   createInlineRscScript,
   createSoftRedirectScript,
@@ -10,6 +12,7 @@ import {
   sanitizeFlightForClientStream,
   sanitizeFlightForSsrStream,
 } from "./ssrFromRscRenderer";
+import { renderOverlappingVisitors } from "./ssrRequestScope.fixture";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -569,4 +572,48 @@ describe("SsrFromRscRenderer.renderDocument", () => {
     expect(html).not.toContain("<p>Loading</p>");
     expect(html).toContain("<h1>Indexed headline</h1>");
   });
+});
+
+describe("SsrFromRscRenderer request scope", () => {
+  const expectOwnRequest = ({ alice, bob }: { alice: string[]; bob: string[] }) => {
+    expect(alice).toEqual(["alice who=alice", "alice-use who=alice"]);
+    expect(bob).toEqual(["bob who=bob", "bob-use who=bob"]);
+  };
+
+  test("renders a boundary resumed after the shell under its own request while another render is in flight", async () => {
+    expectOwnRequest(await renderOverlappingVisitors());
+  });
+
+  test("leaves a read outside every request scope with no request while a render streams", async () => {
+    const request = new Request("http://localhost/en/alice", {
+      headers: { authorization: "Bearer alice", cookie: "who=alice" },
+    });
+    const html = textStream([{ text: "<html><head></head><body>" }, { text: "</body></html>", delayMs: 50 }]);
+    const streamed = new Response(
+      interleaveRscScriptsWithHtml(html, byteStream([]), { requestStore: createRequestStore(request) }),
+    ).text();
+    await sleep(10);
+
+    expect(getRequestStore()).toBeUndefined();
+    expect(headers().get("authorization")).toBeUndefined();
+    await streamed;
+  });
+
+  test("keeps each request under React's production builds, where Flight wakes Fizz from its stream handler", async () => {
+    const proc = Bun.spawn(["bun", "--no-env-file", path.join(import.meta.dir, "ssrRequestScope.fixture.ts")], {
+      cwd: import.meta.dir,
+      env: { ...process.env, NODE_ENV: "production" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode ? stderr : "").toBe("");
+    expect(exitCode).toBe(0);
+    expectOwnRequest(JSON.parse(stdout));
+  }, 20_000);
 });

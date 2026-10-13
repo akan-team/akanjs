@@ -95,3 +95,22 @@ describe("RscWorker fallback document request scope", () => {
     });
   }, 20_000);
 });
+
+describe("RscWorker render request scope", () => {
+  test("reads each render's own request after an await and inside a streamed boundary", async () => {
+    await withNotFoundWorker(async (render) => {
+      for (const [route, text] of [
+        ["afterawait", "after"],
+        ["streamed", "streamed"],
+      ] as const) {
+        const ant = render(`http://localhost/en/${route}`, { cookie: "theme=ant", "x-base-path": "ant" });
+        await Bun.sleep(100);
+        const bee = render(`http://localhost/en/${route}`, { cookie: "theme=bee", "x-base-path": "bee" });
+        const [antRendered, beeRendered] = await Promise.all([ant, bee]);
+
+        expect(antRendered.body).toContain(`${text} theme=ant base=ant`);
+        expect(beeRendered.body).toContain(`${text} theme=bee base=bee`);
+      }
+    });
+  }, 20_000);
+});
