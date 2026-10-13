@@ -683,7 +683,7 @@ fn window_state_with(window: &tao::window::Window, webview: Option<&WebView>, re
 
 /// One window's shell op: everything but the ops on the set of windows (Windows::shell).
 fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json::V, op: &str, min: (f64, f64)) -> Result<String, String> {
-  let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
+  let logical = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number")).and_then(|v| placement::logical(k, v));
   let flag = |k: &str| cmd.get(k).and_then(|v| v.as_bool()).ok_or_else(|| format!("{k} must be a boolean"));
   let mut req = Requested::default();
   match op {
@@ -694,7 +694,7 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
       req.title = Some(title);
     }
     "window.setSize" => {
-      let (w, h) = (num("width")?, num("height")?);
+      let (w, h) = (logical("width")?, logical("height")?);
       if !(w >= 1.0 && h >= 1.0) {
         return Err("width and height must be positive".into());
       }
@@ -702,7 +702,7 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
       req.size = Some((w.max(min.0), h.max(min.1)));
     }
     "window.setPosition" => {
-      let (x, y) = (num("x")?, num("y")?);
+      let (x, y) = (logical("x")?, logical("y")?);
       window.set_outer_position(tao::dpi::LogicalPosition::new(x, y));
       req.position = Some((x, y));
     }
@@ -1637,13 +1637,28 @@ fn window_arg(cmd: &json::V) -> Result<Option<u32>, String> {
   }
 }
 
+/// Two logical numbers a window op takes together (`width` and `height`, `x` and `y`): both, or neither.
+fn logical_pair(cmd: &json::V, a: &str, b: &str) -> Result<Option<(f64, f64)>, String> {
+  match (cmd.get(a), cmd.get(b)) {
+    (None, None) => Ok(None),
+    (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
+      (Some(x), Some(y)) => Ok(Some((placement::logical(a, x)?, placement::logical(b, y)?))),
+      _ => Err(format!("{a} and {b} must be numbers")),
+    },
+    _ => Err(format!("give both {a} and {b}")),
+  }
+}
+
 /// An external view's `bounds`: "fill" (left out too), or `{ x, y, width, height }` in logical pixels.
 fn external_bounds(cmd: &json::V) -> Result<external::Bounds, String> {
   match cmd.get("bounds") {
     None => Ok(external::Bounds::Fill),
     Some(v) if v.as_str() == Some("fill") => Ok(external::Bounds::Fill),
     Some(v) => {
-      let num = |k: &str| v.get(k).and_then(|n| n.as_f64()).filter(|n| n.is_finite()).ok_or_else(|| format!("bounds.{k} must be a number"));
+      let num = |k: &str| {
+        let name = format!("bounds.{k}");
+        v.get(k).and_then(|n| n.as_f64()).ok_or_else(|| format!("{name} must be a number")).and_then(|n| placement::logical(&name, n))
+      };
       let (x, y, width, height) = (num("x")?, num("y")?, num("width")?, num("height")?);
       if !(width > 0.0 && height > 0.0) {
         return Err("bounds.width and bounds.height must be positive".into());
@@ -1697,17 +1712,7 @@ impl Windows {
   }
 
   fn create(&mut self, target: &EventLoopWindowTarget<UserEvent>, cmd: &json::V) -> Result<String, String> {
-    let pair = |a: &str, b: &str| -> Result<Option<(f64, f64)>, String> {
-      match (cmd.get(a), cmd.get(b)) {
-        (None, None) => Ok(None),
-        (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
-          (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x, y))),
-          _ => Err(format!("{a} and {b} must be numbers")),
-        },
-        _ => Err(format!("give both {a} and {b}")),
-      }
-    };
-    let size = pair("width", "height")?;
+    let size = logical_pair(cmd, "width", "height")?;
     if size.is_some_and(|(w, h)| !(w >= 1.0 && h >= 1.0)) {
       return Err("width and height must be positive".into());
     }
@@ -1720,7 +1725,7 @@ impl Windows {
       Some(v) => v.as_bool().ok_or("frameless must be a boolean")?,
     };
     // Without a position, cascade from the focused window like AppKit does for new documents.
-    let position = match pair("x", "y")? {
+    let position = match logical_pair(cmd, "x", "y")? {
       Some(p) => Some(p),
       None => self.focus.iter().rev().find_map(|id| self.map.get(id)).and_then(|w| {
         let scale = w.window.scale_factor();
@@ -2007,10 +2012,10 @@ impl Windows {
       return Ok(state);
     }
     if op == "window.setMinSize" {
-      let min = match (cmd.get("width").and_then(|v| v.as_f64()), cmd.get("height").and_then(|v| v.as_f64())) {
-        (Some(w), Some(h)) if w >= 1.0 && h >= 1.0 => (w, h),
-        (None, None) => (1.0, 1.0),
-        _ => return Err("width and height must be positive, or both left out for no minimum".into()),
+      let min = match logical_pair(&cmd, "width", "height")? {
+        Some((w, h)) if w >= 1.0 && h >= 1.0 => (w, h),
+        None => (1.0, 1.0),
+        Some(_) => return Err("width and height must be positive, or both left out for no minimum".into()),
       };
       win.window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
       let state = window_state(&win.window, Some(&win.webview));
@@ -2533,7 +2538,24 @@ mod range_tests {
 
 #[cfg(test)]
 mod window_arg_tests {
-  use super::{app_path, json, parse_config, window_arg};
+  use super::{app_path, external, external_bounds, json, logical_pair, parse_config, window_arg};
+
+  #[test]
+  fn sizes_and_positions_come_in_pairs_and_in_range() {
+    let pair = |s: &str| logical_pair(&json::parse(s).unwrap(), "width", "height");
+    assert_eq!(pair(r#"{}"#), Ok(None));
+    assert_eq!(pair(r#"{"width":640,"height":128.5}"#), Ok(Some((640.0, 128.5))));
+    assert_eq!(pair(r#"{"width":640}"#), Err("give both width and height".into()));
+    for bad in [r#"{"width":"640","height":128}"#, r#"{"width":1e7,"height":128}"#, r#"{"width":640,"height":-3e9}"#, r#"{"width":1e999,"height":1}"#] {
+      assert!(pair(bad).is_err(), "{bad}");
+    }
+    let bounds = |s: &str| external_bounds(&json::parse(s).unwrap());
+    assert_eq!(bounds(r#"{"bounds":"fill"}"#), Ok(external::Bounds::Fill));
+    assert_eq!(bounds(r#"{"bounds":{"x":-20,"y":0,"width":30.5,"height":10}}"#), Ok(external::Bounds::At { x: -20.0, y: 0.0, width: 30.5, height: 10.0 }));
+    for bad in [r#"{"bounds":{"x":0,"y":0,"width":3e9,"height":10}}"#, r#"{"bounds":{"x":-2e9,"y":0,"width":30,"height":10}}"#, r#"{"bounds":{"x":0,"y":0,"width":0,"height":10}}"#] {
+      assert!(bounds(bad).is_err(), "{bad}");
+    }
+  }
 
   #[test]
   fn window_ids() {

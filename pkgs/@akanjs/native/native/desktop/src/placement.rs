@@ -46,19 +46,29 @@ pub fn display_at(displays: &[Rect], x: f64, y: f64) -> Option<usize> {
   displays.iter().position(centred).or_else(|| displays.iter().position(holds))
 }
 
-/// Device pixels window.placeOnDisplay accepts from a display's corner: a display's origin plus them stays far inside
-/// the i32 tao and Win32 place windows in.
-const DEVICE_LIMIT: f64 = 1_000_000.0;
+/// Pixels a window op takes, device or logical: scaled by any display's factor and added to its origin, a value this
+/// size stays far inside the i32 tao and Win32 place windows in.
+const LIMIT: f64 = 1_000_000.0;
 
+/// window.placeOnDisplay's bounds, device pixels from the display's corner.
 pub fn device_bounds(x: f64, y: f64, width: f64, height: f64) -> Result<(f64, f64, f64, f64), String> {
   let [x, y, width, height] = [x, y, width, height].map(f64::round);
   if !(width >= 1.0 && height >= 1.0) {
     return Err("width and height must be positive".into());
   }
-  if ![x, y, width, height].iter().all(|v| v.abs() <= DEVICE_LIMIT) {
-    return Err(format!("bounds must stay within {DEVICE_LIMIT} device pixels of the display's corner"));
+  if ![x, y, width, height].iter().all(|v| v.abs() <= LIMIT) {
+    return Err(format!("bounds must stay within {LIMIT} device pixels of the display's corner"));
   }
   Ok((x, y, width, height))
+}
+
+/// One logical size or position of a window or an external view, `name` as its op calls it.
+pub fn logical(name: &str, value: f64) -> Result<f64, String> {
+  if value.is_finite() && value.abs() <= LIMIT {
+    Ok(value)
+  } else {
+    Err(format!("{name} must be a number between -{LIMIT} and {LIMIT}"))
+  }
 }
 
 #[cfg(test)]
@@ -135,6 +145,15 @@ mod tests {
     assert!(device_bounds(0.0, 0.0, 640.0, -1.0).is_err());
     for (x, y, w, h) in [(3e9, 0.0, 640.0, 128.0), (0.0, -2_147_483_648.0, 640.0, 128.0), (0.0, 0.0, 5e9, 128.0), (0.0, 0.0, 640.0, f64::INFINITY), (f64::NAN, 0.0, 640.0, 128.0)] {
       assert!(device_bounds(x, y, w, h).is_err(), "{x} {y} {w} {h}");
+    }
+  }
+
+  #[test]
+  fn logical_sizes_and_positions_never_leave_i32_at_any_scale() {
+    assert_eq!(logical("x", -1e6), Ok(-1e6));
+    assert_eq!(logical("width", 640.5), Ok(640.5));
+    for value in [1e6 + 1.0, -3e9, 2_147_483_648.0, f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+      assert_eq!(logical("height", value), Err("height must be a number between -1000000 and 1000000".into()), "{value}");
     }
   }
 }
