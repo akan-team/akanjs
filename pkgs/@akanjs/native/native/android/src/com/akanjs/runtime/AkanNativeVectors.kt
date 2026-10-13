@@ -131,8 +131,8 @@ object AkanNativeVectors {
             fun strings(v: Any?) = (v as List<*>).map { it as String }
             val running = (c[7] as List<*>?)?.let { (it[0] as Number).toDouble() to it[1] as String }
             val got = AkanNativeKernel.updateDecision(
-                strings(c[0]), strings(c[1]), c[2] as String, strings(c[3]), c[4] as Boolean,
-                (c[5] as Number).toDouble(), (c[6] as Number).toDouble(), running,
+                ring = strings(c[0]), revoked = strings(c[1]), signer = c[2] as String, revokeKeys = strings(c[3]), resetSequence = c[4] as Boolean,
+                sequence = (c[5] as Number).toDouble(), embedded = (c[6] as Number).toDouble(), running = running,
             )
             check(got.wire == c[8]) { "update decision ${c[9]}: ${got.wire}" }
         }

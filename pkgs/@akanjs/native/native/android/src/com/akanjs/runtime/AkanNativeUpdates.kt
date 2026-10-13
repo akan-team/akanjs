@@ -62,7 +62,7 @@ class AkanNativeUpdateState(
                 current = AkanNativeUpdateEntry.from(o.opt("current")),
                 pending = AkanNativeUpdateEntry.from(o.opt("pending")),
                 trial = AkanNativeUpdateEntry.from(o.opt("trial")),
-                failed = MutableList(failed?.length() ?: 0) { failed!!.optString(it) }.filter(AkanNativeUpdates::isBundleId).toMutableList(),
+                failed = MutableList(failed?.length() ?: 0) { failed?.optString(it).orEmpty() }.filter(AkanNativeUpdates::isBundleId).toMutableList(),
                 rolledBack = o.optString("rolledBack").ifEmpty { null },
                 revokedKeys = MutableList(revoked?.length() ?: 0) { revoked?.optString(it).orEmpty() }.filter(AkanNativeKernel::isUpdateKeyId).toMutableList(),
             )
@@ -354,6 +354,7 @@ object AkanNativeUpdates {
 
     /** Keys a verified manifest revoked: no bundle they signed is served again, from the next launch on. */
     fun revoke(keyIds: List<String>) {
+        if (keyIds.isEmpty()) return
         val state = readState()
         val added = keyIds.filter { it !in state.revokedKeys }
         if (added.isEmpty()) return

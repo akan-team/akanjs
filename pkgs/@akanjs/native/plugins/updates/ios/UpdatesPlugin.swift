@@ -25,8 +25,27 @@ final class UpdatesPlugin: UpdatesPluginSpec {
     struct Failure: Error {
         let code: AkanNativeErrorCode
         let message: String
-        /// The reason a failed download is reported under (AkanNativeUpdateReports), nil when it is not reported.
+        /// The reason a failed release is reported under (AkanNativeUpdateReports), nil when it is not reported.
         var report: AkanNativeUpdateReason? = nil
+        /// The release it reports; for a refused envelope, what its manifest claims, read without trusting it.
+        var bundle: String? = nil
+        var sequence: Double? = nil
+    }
+
+    /// The state a call decides against, read once. The envelope is opened against the same revocations, so the
+    /// decision never meets a signer the binary does not trust or has revoked.
+    @MainActor
+    struct Snapshot {
+        let revoked: [String]
+        let failed: [String]
+        let running: (sequence: Double, keyId: String)?
+
+        init() {
+            let state = AkanNativeUpdates.readState()
+            revoked = state.revokedKeys
+            failed = state.failed
+            running = AkanNativeUpdates.active.map { (sequence: $0.sequence, keyId: $0.keyId) }
+        }
     }
 
     struct ReleaseFile: Sendable {
@@ -70,10 +89,13 @@ final class UpdatesPlugin: UpdatesPluginSpec {
 
     func check(_ reply: AkanNativeReply<UpdatesUpdateCheck>) {
         guard let config = configured(reply) else { return }
+        let snapshot = Snapshot()
         Task {
             do {
-                let release = try await Self.fetchRelease(config)
-                let available = try isNewer(release, config)
+                let release = try await Self.fetchRelease(config, snapshot)
+                let (available, revoke) = try Self.decide(release, config, snapshot)
+                //? A stale release's revocations bind too: an install whose own bundle is newer only ever checks.
+                AkanNativeUpdates.revoke(revoke)
                 reply.resolve(UpdatesUpdateCheck(
                     available: available,
                     bundle: release.bundle,
@@ -82,6 +104,7 @@ final class UpdatesPlugin: UpdatesPluginSpec {
                     downloadSize: available ? Double(release.files.filter { localCopy($0) == nil }.reduce(0) { $0 + $1.size }) : nil
                 ))
             } catch let f as Failure {
+                Self.record(f)
                 reply.reject(f.code, f.message)
             } catch {
                 reply.reject(.internalError, "update check failed: \(error.localizedDescription)")
@@ -93,16 +116,20 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         guard let config = configured(reply) else { return }
         guard !downloading else { return reply.reject(.cancelled, "a download is already running") }
         downloading = true
+        let snapshot = Snapshot()
         // The download stops when its call does (the page gave up on it, or the page is gone):
         // URLSession's async calls end with the task's cancellation.
         let task = Task {
             defer { downloading = false }
             do {
-                let release = try await Self.fetchRelease(config)
-                guard try isNewer(release, config) else { throw Failure(code: .notFound, message: "no newer release for this app (native API \(config.nativeApi))") }
+                let release = try await Self.fetchRelease(config, snapshot)
+                let (available, revoke) = try Self.decide(release, config, snapshot)
+                AkanNativeUpdates.revoke(revoke)
+                guard available else { throw Failure(code: .notFound, message: "no newer release for this app (native API \(config.nativeApi))") }
                 if AkanNativeUpdates.readState().pending?.bundle != release.bundle { try await install(release, config) }
                 reply.resolve(UpdatesDownloadResult(bundle: release.bundle))
             } catch let f as Failure {
+                Self.record(f)
                 reply.reject(f.code, f.message)
             } catch {
                 reply.reject(.internalError, "update download failed: \(error.localizedDescription)")
@@ -133,26 +160,29 @@ final class UpdatesPlugin: UpdatesPluginSpec {
 
     // MARK: releases
 
-    /// Newer than what runs (and than the app's own bundle), not rolled back before. A manifest's revocations are
-    /// recorded whether or not its release is newer: the key behind a bad release must stop counting either way.
-    private func isNewer(_ release: Release, _ config: AkanNativeUpdateConfig) throws -> Bool {
-        let state = AkanNativeUpdates.readState()
+    /// Whether a verified release is newer than what runs (and than the app's own bundle) and was not rolled back
+    /// before, and the keys its manifest newly revokes, which bind whether or not it is newer.
+    private static func decide(_ release: Release, _ config: AkanNativeUpdateConfig, _ snapshot: Snapshot) throws -> (available: Bool, revoke: [String]) {
         let decision = AkanNativeKernel.updateDecision(
-            ring: config.ring, revoked: state.revokedKeys, signer: release.keyId, revokeKeys: release.revokeKeys,
+            ring: config.ring, revoked: snapshot.revoked, signer: release.keyId, revokeKeys: release.revokeKeys,
             resetSequence: release.resetSequence, sequence: release.sequence, embedded: config.embeddedSequence,
-            running: AkanNativeUpdates.active.map { (sequence: $0.sequence, keyId: $0.keyId) }
+            running: snapshot.running
         )
-        switch decision.kind {
-        case .take, .stale:
-            if !decision.revoke.isEmpty { AkanNativeUpdates.revoke(decision.revoke) }
-            return decision.kind == .take && !state.failed.contains(release.bundle)
-        case .untrusted, .revoked:
-            AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: .signature)
-            throw Failure(code: .internalError, message: "the release is signed by key \(release.keyId), which this app does not trust")
-        case .selfRevoke, .revokeLater:
-            AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: .manifest)
-            throw Failure(code: .internalError, message: "invalid release manifest: key \(release.keyId) may not revoke \(release.revokeKeys.joined(separator: ", "))")
+        //? Never untrusted or revoked: the envelope was opened against the same ring and revocations.
+        guard decision.kind == .take || decision.kind == .stale else {
+            throw Failure(
+                code: .internalError,
+                message: "invalid release manifest: key \(release.keyId) may not revoke \(release.revokeKeys.joined(separator: ", "))",
+                report: .manifest, bundle: release.bundle, sequence: release.sequence
+            )
         }
+        return (decision.kind == .take && !snapshot.failed.contains(release.bundle), decision.revoke)
+    }
+
+    /// A refused or failed release goes into the update reports under its reason.
+    private static func record(_ failure: Failure) {
+        guard let reason = failure.report else { return }
+        AkanNativeUpdateReports.record(.failed, bundle: failure.bundle, sequence: failure.sequence, reason: reason)
     }
 
     private static func request(_ url: URL) -> URLRequest {
@@ -208,31 +238,30 @@ final class UpdatesPlugin: UpdatesPluginSpec {
 
     private static func base(_ config: AkanNativeUpdateConfig) -> String { "\(config.url)/\(config.platform)" }
 
-    private static func fetchRelease(_ config: AkanNativeUpdateConfig) async throws -> Release {
+    private static func fetchRelease(_ config: AkanNativeUpdateConfig, _ snapshot: Snapshot) async throws -> Release {
         let address = AkanNativeKernel.updateManifestURL(config.url, platform: config.platform, channel: config.channel, nativeApi: config.nativeApi)
         guard let url = URL(string: address) else { throw Failure(code: .internalError, message: "bad updates.url \(config.url)") }
         //? A 1 MiB manifest is 1.4 MiB in base64.
         let data = try await fetch(url, limit: 3 << 19)
-        guard let envelope = AkanNativeUpdateEnvelope.open(data, config, revoked: AkanNativeUpdates.readState().revokedKeys) else {
-            reportRefused(data, .signature)
-            throw Failure(code: .internalError, message: "the release is not signed by a key of updates.publicKeys this app still trusts")
+        guard let envelope = AkanNativeUpdateEnvelope.open(data, config, revoked: snapshot.revoked) else {
+            throw refused(data, .signature, "the release is not signed by a key of updates.publicKeys this app still trusts")
         }
         do {
             return try parse(envelope, data, config)
-        } catch {
-            reportRefused(data, .manifest)
-            throw error
+        } catch let failure as Failure {
+            throw refused(data, .manifest, failure.message)
         }
     }
 
-    /// The release a refused envelope names, read without trusting it and only to say which release failed: a forged
-    /// name can at worst count against a release the server already published for this app.
-    private static func reportRefused(_ raw: Data, _ reason: AkanNativeUpdateReason) {
+    /// The failure of a refused envelope, naming the release it claims, read without trusting it and only to say which
+    /// release failed: a forged name can at worst count against a release the server already published for this app.
+    private static func refused(_ raw: Data, _ reason: AkanNativeUpdateReason, _ message: String) -> Failure {
         let envelope = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any]
         let manifest = (envelope?["manifest"] as? String).flatMap { Data(base64Encoded: $0) }
             .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
-        AkanNativeUpdateReports.record(
-            .failed, bundle: manifest?["bundle"] as? String, sequence: (manifest?["sequence"] as? NSNumber)?.doubleValue, reason: reason
+        return Failure(
+            code: .internalError, message: message, report: reason,
+            bundle: manifest?["bundle"] as? String, sequence: (manifest?["sequence"] as? NSNumber)?.doubleValue
         )
     }
 
@@ -292,15 +321,19 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         return localHashes[key] == file.sha256 ? candidate : nil
     }
 
-    /// Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure is reported
-    /// under its reason, and an error that is neither a download's nor a cancellation is the disk's.
+    /// Downloads into bundles/<bundle>.partial, verifies each file, then renames and stages it. A failure names the
+    /// release, and an error that is neither a download's nor a cancellation is the disk's.
     private func install(_ release: Release, _ config: AkanNativeUpdateConfig) async throws {
         do {
             try await place(release, config)
+        } catch let failure as Failure {
+            throw Failure(code: failure.code, message: failure.message, report: failure.report, bundle: release.bundle, sequence: release.sequence)
         } catch {
-            let reason = (error as? Failure).map(\.report) ?? (Self.cancelled(error) ? nil : .disk)
-            if let reason { AkanNativeUpdateReports.record(.failed, bundle: release.bundle, sequence: release.sequence, reason: reason) }
-            throw error
+            if Self.cancelled(error) { throw error }
+            throw Failure(
+                code: .internalError, message: "update download failed: \(error.localizedDescription)", report: .disk,
+                bundle: release.bundle, sequence: release.sequence
+            )
         }
     }
 
