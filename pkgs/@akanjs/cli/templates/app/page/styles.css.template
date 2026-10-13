@@ -317,3 +317,11 @@
     margin-block: -0.15em;
   }
 }
+
+/* A descendant with a surface of its own covers the clipped sugar, so the transparent color it inherits would leave
+   it blank. It takes the primary color back; layered under utilities, a text-* class of its own still wins. */
+@layer base {
+  .text-primary:not(svg, [class*="bg-"], [class*="jelly"], [class*="glass"], [class*="-current"]) [class*="bg-"]:not([class*="bg-clip"]) {
+    color: var(--primary);
+  }
+}

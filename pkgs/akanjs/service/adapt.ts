@@ -13,7 +13,8 @@ export type AdaptorCls<Methods = any, InjectMap extends Record<string, InjectInf
   { readonly [INJECT_META]: InjectMap; readonly refName: string }
 >;
 
-export function adapt<Name extends string>(name: Name): AdaptorCls;
+// biome-ignore lint/complexity/noBannedTypes: `{}` keeps `Adaptor` on a subclass, which an `any` base instance erases.
+export function adapt<Name extends string>(name: Name): AdaptorCls<{}>;
 
 export function adapt<Name extends string, Injection extends InjectBuilder<"use" | "env" | "memory" | "plug">>(
   name: Name,

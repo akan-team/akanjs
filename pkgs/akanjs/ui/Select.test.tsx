@@ -1,5 +1,6 @@
 import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
+import { enumOf } from "akanjs/base";
 import { act, type ReactNode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToReadableStream } from "react-dom/server.browser";
@@ -11,7 +12,13 @@ beforeAll(async () => {
   setTestEnv("selecttest");
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({
-    usePage: () => ({ path: "/", lang: "en", l: Object.assign((key: string) => key, { _: (key: string) => key }) }),
+    usePage: () => ({
+      path: "/",
+      lang: "en",
+      l: Object.assign((key: string) => key, {
+        _: (key: string) => (key === "selectTestShade.warm" ? "Warm Tone" : key),
+      }),
+    }),
     fetch: { sortKeyMap: new Map() },
   } as never);
   ({ Select } = await import("./Select"));
@@ -154,6 +161,15 @@ describe("Select options", () => {
   test("still reads a bare value list", async () => {
     const { unmount } = await hydrate(field());
     expect(rowsOf().map((el) => el.textContent)).toEqual(["a", "b"]);
+    unmount();
+  });
+
+  test("names an enum's values through its dictionary, and keeps a value it does not name", async () => {
+    class Shade extends enumOf("selectTestShade", ["warm", "cool"] as const) {}
+    const { unmount } = await hydrate(
+      <Select<"warm" | "cool"> value="warm" options={Shade} onChange={() => undefined} />,
+    );
+    expect(rowsOf().map((el) => el.textContent)).toEqual(["Warm Tone", "cool"]);
     unmount();
   });
 });

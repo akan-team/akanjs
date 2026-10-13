@@ -5,8 +5,7 @@ interface Dict {
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict = {}) {
   return `
-export type AppClientEnv = {
-  // apply public envs here
-};
+// Replace with the public env keys this app reads, e.g. { google?: { mapKey: string } }.
+export type AppClientEnv = Record<never, never>;
   `;
 }

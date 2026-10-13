@@ -97,14 +97,19 @@ const DefaultSelect = <
   renderSelected,
 }: SelectProps<T, Multiple, Searchable, Option>) => {
   useFieldTool(onChange, { disabled });
-  const { l } = usePage();
+  const { l, lang } = usePage();
   const [isOpen, setIsOpen] = useState(false);
   const labeledOptions: LabelOption<T>[] = useMemo(() => {
-    if (isEnum(options as Cls))
-      return (options as EnumInstance<string, T>).values.map((v) => ({
-        label: typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v),
-        value: v,
-      }));
+    if (isEnum(options as Cls)) {
+      const { refName, values } = options as EnumInstance<string, T>;
+      return values.map((v) => {
+        if (typeof v === "object") return { label: JSON.stringify(v), value: v };
+        const key = `${refName}.${String(v)}`;
+        const label = l._(key);
+        // A value its dictionary does not name comes back as the dotted key, which reads worse than the value.
+        return { label: label === key ? String(v) : label, value: v };
+      });
+    }
     const list = options as (T | LabelOption<T>)[];
     const first = list[0];
     // Keyed, not truthy: a `{ label: "-", value: null }` row is still a pair, and T is never an object.
@@ -112,7 +117,7 @@ const DefaultSelect = <
     return isLabeled
       ? (list as LabelOption<T>[])
       : (list as T[]).map((v) => ({ label: v as string | boolean | number, value: v }));
-  }, [options]);
+  }, [options, lang]);
 
   const [searchText, setSearchText] = useState("");
   const portal = useOverlayPortal();

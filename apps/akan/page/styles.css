@@ -728,6 +728,14 @@ html:has([data-akanjs-notice]) {
   }
 }
 
+/* 제 배경을 가진 자손은 오려 낸 설탕 결을 덮으므로, 물려받은 투명 글자색 그대로면 빈 상자가 된다. primary 색을
+   돌려주되 utilities 아래 층에 두어 자손이 직접 쓴 text-* 클래스가 이긴다. */
+@layer base {
+  .text-primary:not(svg, [class*="bg-"], [class*="jelly"], [class*="glass"], [class*="-current"]) [class*="bg-"]:not([class*="bg-clip"]) {
+    color: var(--primary);
+  }
+}
+
 /* 문서·블로그 표면 — 문서 셸, 코드 패널, 콜아웃. 배경과 토큰은 위 블록들이 소유하므로 여기서는 표면만 만든다. */
 @utility studio-lift {
   box-shadow:

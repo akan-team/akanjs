@@ -1,5 +1,5 @@
 "use client";
-import { usePage } from "akanjs/client";
+import { fetch, usePage } from "akanjs/client";
 import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -104,6 +104,10 @@ export default function ViewEditModal({
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modelFormId = storeSel<string, { id: string }>((state) => state[names.modelForm].id);
+  // A verb the slice's guards close is never mounted on the client, so its button would only fail.
+  const servedFetch = fetch as unknown as { [key: string]: unknown };
+  const canUpdate = typeof servedFetch[`update${ModelName}`] === "function";
+  const canRemove = typeof servedFetch[`remove${ModelName}`] === "function";
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return <></>;
@@ -125,7 +129,7 @@ export default function ViewEditModal({
       title={
         <div className="flex w-full items-center justify-between">
           <Title />
-          {menu === false
+          {menu === false || (menu === undefined && !canRemove)
             ? null
             : (menu ?? (
                 <Dropdown
@@ -151,14 +155,16 @@ export default function ViewEditModal({
       }
       action={
         modelModal === "view" ? (
-          <EditAction
-            modelName={modelName}
-            label={editLabel ?? l("base.edit")}
-            closeView={closeView}
-            onAct={() => {
-              if (model) storeDo[names.editModel](model.id);
-            }}
-          />
+          canUpdate ? (
+            <EditAction
+              modelName={modelName}
+              label={editLabel ?? l("base.edit")}
+              closeView={closeView}
+              onAct={() => {
+                if (model) storeDo[names.editModel](model.id);
+              }}
+            />
+          ) : null
         ) : (
           <SaveAction
             modelName={modelName}
