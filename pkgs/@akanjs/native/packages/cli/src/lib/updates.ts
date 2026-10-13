@@ -17,7 +17,7 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
-import { isChannelName, RESERVED_CHANNELS } from "../../../core/src/kernel.ts";
+import { checkUpdateEnvelope, isChannelName, isStrictBase64, RESERVED_CHANNELS } from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
@@ -211,7 +211,9 @@ function updatePublicKeys(r: Record<string, unknown>, problems: string[]): strin
     return null;
   }
   const keys = r.publicKeys ?? (r.publicKey === undefined ? undefined : [r.publicKey]);
-  const isKey = (key: unknown) => typeof key === "string" && Buffer.from(key, "base64").length === 32;
+  //? Strict, as iOS decodes it: a key Node and Android would take beside it leaves the iOS binary with no updates.
+  const isKey = (key: unknown) =>
+    typeof key === "string" && isStrictBase64(key) && Buffer.from(key, "base64").length === 32;
   if (!Array.isArray(keys) || keys.length < 1 || keys.length > 3 || !keys.every(isKey)) {
     problems.push(
       "updates.publicKeys must be 1 to 3 base64 Ed25519 public keys (akan-native update keygen), or publicKey one",
@@ -286,14 +288,9 @@ export function sealManifest(bytes: Uint8Array, keyPath: string, publicKeys: rea
   };
 }
 
-/** The largest manifest an envelope may hold: the shells refuse a bigger one (AkanNativeUpdateEnvelope.open). */
-const MAX_MANIFEST = 1 << 20;
-/** Base64 as Swift's Data(base64Encoded:) takes it: the standard alphabet, padded, no whitespace. */
-const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
 /**
- * The manifest bytes of an envelope, verified as a phone verifies it against `publicKeys` (minus `revoked`). What it
- * then decides (revocation, sequence) is AkanNativeKernel.updateDecision, kernel.ts updateDecision.
+ * The manifest bytes of an envelope, verified as a phone verifies it against `publicKeys` (minus `revoked`):
+ * kernel.ts checkUpdateEnvelope. What it then decides (revocation, sequence) is kernel.ts updateDecision.
  */
 export function openEnvelope(
   text: string,
@@ -311,27 +308,34 @@ export function openEnvelope(
   ) as Partial<UpdateEnvelope>;
   if (typeof manifest !== "string" || typeof keyId !== "string" || typeof signature !== "string")
     throw new CliError("the update envelope needs manifest, keyId and signature");
-  const publicKey = publicKeys.find((key) => keyIdOf(key) === keyId);
-  if (!publicKey || revoked.includes(keyId))
-    throw new CliError(`the update envelope is signed by key ${keyId}, which is not trusted`);
-  if (!STRICT_BASE64.test(manifest) || !STRICT_BASE64.test(signature))
-    throw new CliError("the update envelope's manifest or signature is not padded standard base64");
-  const bytes = Buffer.from(manifest, "base64");
-  if (bytes.length > MAX_MANIFEST) throw new CliError("the update envelope's manifest is larger than 1 MiB");
-  if (!verifyManifest(bytes, signature, publicKey))
-    throw new CliError("the update envelope's signature does not verify");
-  return { manifest: new Uint8Array(bytes), keyId };
+  const keys = new Map(publicKeys.map((key) => [keyIdOf(key), key]));
+  const opened = checkUpdateEnvelope({ manifest, keyId, signature }, [...keys.keys()], revoked, (bytes, sig, id) => {
+    const key = keys.get(id);
+    return key !== undefined && verifySignature(bytes, sig, key);
+  });
+  switch (opened.verdict) {
+    case "open":
+      return { manifest: opened.manifest, keyId };
+    case "untrusted":
+    case "revoked":
+      throw new CliError(`the update envelope is signed by key ${keyId}, which is not trusted`);
+    case "encoding":
+      throw new CliError("the update envelope's manifest or signature is not padded standard base64");
+    case "too-large":
+      throw new CliError("the update envelope's manifest is larger than 1 MiB");
+    case "signature":
+      throw new CliError("the update envelope's signature does not verify");
+  }
 }
 
 /** Verifies like the apps do: raw public key, base64 signature over the exact manifest bytes. */
 export function verifyManifest(bytes: Uint8Array, signature: string, publicKey: string): boolean {
+  return verifySignature(bytes, Buffer.from(signature, "base64"), publicKey);
+}
+
+function verifySignature(bytes: Uint8Array, signature: Uint8Array, publicKey: string): boolean {
   const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey, "base64")]);
-  return verify(
-    null,
-    bytes,
-    createPublicKey({ key: spki, format: "der", type: "spki" }),
-    Buffer.from(signature, "base64"),
-  );
+  return verify(null, bytes, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
 }
 
 export const sha256 = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex");

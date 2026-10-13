@@ -6,6 +6,7 @@ import { ID_BUNDLE, ID_DOCUMENT, ID_FILE_REF, ID_NAME } from "../src/contract.ts
 import {
   admitDocument,
   assetMime,
+  checkUpdateEnvelope,
   decideNavigation,
   declares,
   fileMime,
@@ -13,6 +14,7 @@ import {
   idValid,
   isChannelName,
   isHostPath,
+  isStrictBase64,
   isUpdateKeyId,
   parseRange,
   RetainedEvents,
@@ -159,12 +161,14 @@ const updates = (await load("updates")) as {
   keyIds: [string, string][];
   decisions: [string[], string[], string, string[], boolean, number, number, [number, string] | null, string, string][];
   urls: [string, string, string, string, string][];
+  envelopeKeys: string[];
+  envelopes: [string | [string, number, string], string, string, string[], string, string][];
 };
+const keyIdOf = (key: string) =>
+  createHash("sha256").update(Buffer.from(key, "base64")).digest().subarray(0, 8).toString("hex");
 describe("updates vectors", () => {
   test.each(updates.keyIds)("keyId of %s is %s", (publicKey, keyId) => {
-    expect(createHash("sha256").update(Buffer.from(publicKey, "base64")).digest().subarray(0, 8).toString("hex")).toBe(
-      keyId,
-    );
+    expect(keyIdOf(publicKey)).toBe(keyId);
   });
   test.each(updates.decisions)(
     "%#: %j %j signer %s revokes %j reset %p seq %d over %d running %j → %s (%s)",
@@ -184,6 +188,24 @@ describe("updates vectors", () => {
   );
   test.each(updates.urls)("%s %s %s %s → %s", (url, platform, channel, nativeApi, expected) => {
     expect(updateManifestUrl(url, platform, channel, nativeApi)).toBe(expected);
+  });
+  const keys = new Map(updates.envelopeKeys.map((key) => [keyIdOf(key), key]));
+  const verify = (manifest: Uint8Array, signature: Uint8Array, keyId: string) => {
+    const key = keys.get(keyId);
+    if (!key) return false;
+    const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(key, "base64")]);
+    return cryptoVerify(null, manifest, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
+  };
+  test.each(updates.envelopes)("%#: envelope → %s (%s)", (field, keyId, signature, revoked, expected) => {
+    const manifest = typeof field === "string" ? field : field[0].repeat(field[1]) + field[2];
+    const opened = checkUpdateEnvelope({ manifest, keyId, signature }, [...keys.keys()], revoked, verify);
+    expect(opened.verdict).toBe(expected as typeof opened.verdict);
+    if (opened.verdict === "open") expect(opened.manifest).toEqual(new Uint8Array(Buffer.from(manifest, "base64")));
+  });
+  test("strict base64 is what iOS decodes, and nothing Android or Java would take beside it", () => {
+    for (const s of ["", "YQ==", "YWI=", "YWJj", "+/+/"]) expect(isStrictBase64(s)).toBe(true);
+    for (const s of ["YQ", "YQ=", "YQ===", "Y\nQ==", " YQ==", "YQ== ", "=YQ=", "Y=Q=", "-_-_", "YWJ\u00e9"])
+      expect(isStrictBase64(s)).toBe(false);
   });
 });
 

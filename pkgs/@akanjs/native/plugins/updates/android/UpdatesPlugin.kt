@@ -243,7 +243,7 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
      */
     private fun reportRefused(raw: ByteArray, reason: String) {
         val manifest = try {
-            JSONObject(String(android.util.Base64.decode(JSONObject(String(raw)).getString("manifest"), android.util.Base64.DEFAULT)))
+            AkanNativeKernel.strictBase64(JSONObject(String(raw)).getString("manifest"))?.let { JSONObject(String(it)) }
         } catch (e: Exception) {
             null
         }

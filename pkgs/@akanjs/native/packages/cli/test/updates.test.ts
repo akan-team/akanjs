@@ -93,6 +93,9 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(check({ publicKeys: keys }).problems[0]).toContain("1 to 3");
     expect(check({ publicKeys: [] }).problems[0]).toContain("1 to 3");
     expect(check({ publicKeys: [keys[0], keys[0]] }).problems).toEqual(["updates.publicKeys lists a key twice"]);
+    //? Node decodes these to the same 32 bytes; iOS decodes neither and would run with no updates at all.
+    for (const loose of [keys[0]?.replace(/=$/, ""), `${keys[0]?.slice(0, 20)}\n${keys[0]?.slice(20)}`])
+      expect(check({ publicKeys: [loose] }).problems[0]).toContain("1 to 3");
     expect(check({ publicKey: keys[0], publicKeys: [keys[0]] }).problems).toEqual([
       "updates takes publicKey or publicKeys, not both",
     ]);
@@ -149,6 +152,28 @@ describe("updates config (UP-1, UP-2)", () => {
       expect(openEnvelope(JSON.stringify(sealManifest(fits, keyPath, ring)), ring).manifest.length).toBe(1 << 20);
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("an envelope opens as the shared vectors say the shells open it", async () => {
+    const { envelopeKeys, envelopes } = (await Bun.file(
+      new URL("../../core/vectors/updates.json", import.meta.url),
+    ).json()) as {
+      envelopeKeys: string[];
+      envelopes: [string | [string, number, string], string, string, string[], string, string][];
+    };
+    const refusals: Record<string, string> = {
+      untrusted: "which is not trusted",
+      revoked: "which is not trusted",
+      encoding: "not padded standard base64",
+      "too-large": "larger than 1 MiB",
+      signature: "does not verify",
+    };
+    for (const [field, keyId, signature, revoked, verdict] of envelopes) {
+      const manifest = typeof field === "string" ? field : field[0].repeat(field[1]) + field[2];
+      const text = JSON.stringify({ manifest, keyId, signature });
+      if (verdict === "open") expect(openEnvelope(text, envelopeKeys, revoked).keyId).toBe(keyId);
+      else expect(() => openEnvelope(text, envelopeKeys, revoked)).toThrow(refusals[verdict]);
     }
   });
 

@@ -45,6 +45,11 @@ struct AkanNativeUpdateDecision: Equatable {
     }
 }
 
+/// kernel.ts EnvelopeVerdict: whether a phone takes an envelope's manifest, or why not.
+enum AkanNativeEnvelopeVerdict: String {
+    case open, untrusted, revoked, encoding, tooLarge = "too-large", signature
+}
+
 /// kernel.ts RetainedEvents: events that can come before the page listens (links, taps; C2). A live
 /// event goes to every listener; one that no listener accepted is kept when `retain` (at most
 /// maxRetainedEvents) and replayed, in order, to the next listener, once. A listener returns false
@@ -359,5 +364,31 @@ enum AkanNativeKernel {
 
     static func isUpdateKeyId(_ s: String) -> Bool {
         s.count == 16 && s.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
+    /// kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes.
+    static let maxUpdateManifest = 1 << 20
+
+    /// kernel.ts isStrictBase64: the standard alphabet, padded, no whitespace.
+    static func isStrictBase64(_ s: String) -> Bool {
+        let bytes = Array(s.utf8)
+        guard bytes.count % 4 == 0 else { return false }
+        let pad = bytes.last == 61 ? (bytes.count > 1 && bytes[bytes.count - 2] == 61 ? 2 : 1) : 0
+        return bytes.dropLast(pad).allSatisfy { (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 43 || $0 == 47 }
+    }
+
+    /// kernel.ts checkUpdateEnvelope: in this order, a signer of `ring` not `revoked`, both fields in strict base64, a
+    /// manifest of at most maxUpdateManifest bytes, and `verify` (Ed25519 by the signer's key) over the decoded bytes.
+    static func checkUpdateEnvelope(
+        manifest: String, keyId: String, signature: String, ring: [String], revoked: [String],
+        verify: (_ manifest: Data, _ signature: Data, _ keyId: String) -> Bool
+    ) -> (verdict: AkanNativeEnvelopeVerdict, manifest: Data?) {
+        guard ring.contains(keyId) else { return (.untrusted, nil) }
+        if revoked.contains(keyId) { return (.revoked, nil) }
+        guard isStrictBase64(manifest), isStrictBase64(signature) else { return (.encoding, nil) }
+        let pad = manifest.hasSuffix("==") ? 2 : manifest.hasSuffix("=") ? 1 : 0
+        guard manifest.utf8.count / 4 * 3 - pad <= maxUpdateManifest else { return (.tooLarge, nil) }
+        guard let bytes = Data(base64Encoded: manifest), let signed = Data(base64Encoded: signature) else { return (.encoding, nil) }
+        return verify(bytes, signed, keyId) ? (.open, bytes) : (.signature, nil)
     }
 }

@@ -127,15 +127,17 @@ struct AkanNativeUpdateEnvelope {
     let manifest: Data
     let keyId: String
 
-    /// nil: not an envelope, or signed by a key this binary does not trust or has revoked.
+    /// nil: not an envelope, or one AkanNativeKernel.checkUpdateEnvelope refuses.
     static func open(_ data: Data, _ config: AkanNativeUpdateConfig, revoked: [String]) -> AkanNativeUpdateEnvelope? {
-        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let keyId = o["keyId"] as? String, AkanNativeKernel.isUpdateKeyId(keyId), !revoked.contains(keyId),
-              let raw = config.key(keyId), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: raw),
-              let manifest = (o["manifest"] as? String).flatMap({ Data(base64Encoded: $0) }), manifest.count <= 1 << 20,
-              let signature = (o["signature"] as? String).flatMap({ Data(base64Encoded: $0) }),
-              key.isValidSignature(signature, for: manifest) else { return nil }
-        return AkanNativeUpdateEnvelope(manifest: manifest, keyId: keyId)
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let manifest = o["manifest"] as? String,
+              let keyId = o["keyId"] as? String, let signature = o["signature"] as? String else { return nil }
+        let checked = AkanNativeKernel.checkUpdateEnvelope(
+            manifest: manifest, keyId: keyId, signature: signature, ring: config.ring, revoked: revoked
+        ) { manifest, signature, keyId in
+            guard let raw = config.key(keyId), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: raw) else { return false }
+            return key.isValidSignature(signature, for: manifest)
+        }
+        return checked.manifest.map { AkanNativeUpdateEnvelope(manifest: $0, keyId: keyId) }
     }
 }
 

@@ -140,6 +140,15 @@ object AkanNativeVectors {
             val got = AkanNativeKernel.updateManifestUrl(c[0] as String, c[1] as String, c[2] as String, c[3] as String)
             check(got == c[4]) { "update url $got" }
         }
+        val envelopeKeys = (updates["envelopeKeys"] as? List<*>).orEmpty().map { java.util.Base64.getDecoder().decode(it as String) }
+        val ring = envelopeKeys.map(AkanNativeKernel::updateKeyId)
+        for (c in rows(updates, "envelopes")) {
+            val manifest = (c[0] as? List<*>)?.let { (it[0] as String).repeat((it[1] as Number).toInt()) + it[2] as String } ?: c[0] as String
+            val got = AkanNativeKernel.checkUpdateEnvelope(
+                manifest = manifest, keyId = c[1] as String, signature = c[2] as String, ring = ring, revoked = (c[3] as List<*>).map { it as String },
+            ) { bytes, signature, keyId -> ring.indexOf(keyId).let { it >= 0 && AkanNativeEd25519.verify(bytes, signature, envelopeKeys[it]) } }
+            check(got.verdict.wire == c[4]) { "update envelope ${c[5]}: ${got.verdict.wire}" }
+        }
 
         // A missing or truncated file must not pass as fewer checks.
         for ((name, count) in AkanNativeVectorData.counts) if ((ran[name] ?: 0) != count) failures.add("$name: ${ran[name] ?: 0} of $count checks ran")
