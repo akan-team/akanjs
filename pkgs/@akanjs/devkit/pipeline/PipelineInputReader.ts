@@ -225,7 +225,7 @@ export class PipelineInputReader {
       named: name !== null,
       description: this.#description(raw.description, `${path}.description`),
       milestone: this.#milestone(raw.milestone, `${path}.milestone`),
-      when: this.#when(raw.when, `${path}.when`, false),
+      when: this.#when(raw.when, `${path}.when`),
       timeoutSeconds: this.#duration(raw.timeout, `${path}.timeout`),
       allowFailure: this.#boolean(raw.allowFailure, `${path}.allowFailure`),
       retry: attempts === null ? null : { attempts, delaySeconds: 0 },
@@ -257,7 +257,7 @@ export class PipelineInputReader {
 
   #shellStage(raw: JsonObject, path: string): PipelineShellStageRule | null {
     if (!this.#keys(raw, path, PipelineInputReader.#shellKeys)) return null;
-    const head = this.#stageHead(raw, path, false);
+    const head = this.#stageHead(raw, path);
     if (!head) return null;
     const steps = this.#stageSteps(raw, path);
     return steps ? { kind: "sh", ...head, steps } : null;
@@ -273,7 +273,7 @@ export class PipelineInputReader {
       );
       return null;
     }
-    const head = this.#stageHead(raw, path, true);
+    const head = this.#stageHead(raw, path, { allowApp: true });
     if (!head) return null;
     const steps = this.#stageSteps(raw, path);
     if (!steps) return null;
@@ -283,7 +283,7 @@ export class PipelineInputReader {
   #parallelStage(raw: JsonObject, path: string): PipelineParallelStageRule | null {
     const keys = [...PipelineInputReader.#stageKeys, "parallel", "maxParallel", "failFast", "env", "secrets"];
     if (!this.#keys(raw, path, keys)) return null;
-    const head = this.#stageHead(raw, path, false);
+    const head = this.#stageHead(raw, path);
     if (!head) return null;
     const env = this.#env(raw.env, `${path}.env`);
     const secrets = this.#secrets(raw.secrets, `${path}.secrets`);
@@ -331,7 +331,7 @@ export class PipelineInputReader {
     };
   }
 
-  #stageHead(raw: JsonObject, path: string, allowApp: boolean) {
+  #stageHead(raw: JsonObject, path: string, { allowApp = false }: { allowApp?: boolean } = {}) {
     const name = this.#text(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
     if (name === null) return null;
     const id = raw.id === undefined ? this.#slugId(name, `${path}.name`) : this.#id(raw.id, `${path}.id`);
@@ -341,7 +341,7 @@ export class PipelineInputReader {
       name,
       description: this.#description(raw.description, `${path}.description`),
       milestone: this.#milestone(raw.milestone, `${path}.milestone`),
-      when: this.#when(raw.when, `${path}.when`, allowApp),
+      when: this.#when(raw.when, `${path}.when`, { allowApp }),
       timeoutSeconds: this.#duration(raw.timeout, `${path}.timeout`),
       allowFailure: this.#boolean(raw.allowFailure, `${path}.allowFailure`),
       path,
@@ -446,7 +446,7 @@ export class PipelineInputReader {
     };
   }
 
-  #when(value: unknown, path: string, allowApp: boolean): PipelineWhenRule {
+  #when(value: unknown, path: string, { allowApp = false }: { allowApp?: boolean } = {}): PipelineWhenRule {
     const none: PipelineWhenRule = { branch: null, trigger: null, changed: null, app: null };
     if (value === undefined) return none;
     const raw = this.#object(value, path);
