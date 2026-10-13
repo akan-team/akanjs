@@ -14,7 +14,6 @@ import {
   getRequestFrameState,
   getRequestPolicy,
   getRequestTheme,
-  pushRequestFallback,
   requestStorage,
   setRequestFrameState,
   setRequestTheme,
@@ -729,7 +728,7 @@ export class RscRenderer {
         return;
       }
       const { url: fallbackUrl, match: fallbackMatch, request: fallbackRequest } = activeRoute;
-      //? The render's request scope ended with its throw; outside one, a request read hits another render's request.
+      //? The render's request scope ended with its throw; outside one, a request read sees no request at all.
       const inRequestScope = (send: () => Promise<boolean>) =>
         fallbackRequest ? this.#runInRequestScope(fallbackRequest, send) : send();
       const trySendFallback = async (kind: "not-found" | "error") =>
@@ -1211,13 +1210,8 @@ export class RscRenderer {
     return this.#runInRequestScope(request, () => runTraced(SignalTrace.create(routeId, "page", "page"), fn));
   }
 
-  // Bun's ALS is empty while the Flight stream pumps, so a request fallback stays pushed until the render settles;
-  // the fallback stack is global and last-push-wins, so concurrent renders can shadow each other.
   #runInRequestScope<T>(request: Request, fn: () => Promise<T>): Promise<T> {
-    const cleanup = pushRequestFallback(request);
-    const run = () => Promise.resolve(fn()).finally(() => cleanup());
-    if (requestStorage) return Promise.resolve(requestStorage.run(request, run));
-    return run();
+    return requestStorage ? requestStorage.run(request, fn) : fn();
   }
 
   async #renderFallbackDocument({
