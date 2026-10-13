@@ -194,7 +194,7 @@ export class Any extends PrimitiveScalar {
 }
 PrimitiveRegistry.register(Any);
 
-type NodeBuffer = Uint8Array & { toString(encoding: string): string };
+type NodeBuffer = Uint8Array<ArrayBuffer> & { toString(encoding: string): string };
 interface BufferCtor {
   from(buffer: ArrayBufferLike, byteOffset: number, length: number): NodeBuffer;
   from(text: string, encoding: string): NodeBuffer;
@@ -212,13 +212,13 @@ export class Binary extends PrimitiveScalar {
     return value instanceof Uint8Array || typeof value === "string";
   }
   static override parseValue(input: Uint8Array | string): Uint8Array {
-    return typeof input === "string" ? Binary.#fromBase64(input) : input;
+    return typeof input === "string" ? Binary.fromBase64(input) : input;
   }
   static override serializeValue(value: Uint8Array | string): string {
-    return typeof value === "string" ? value : Binary.#toBase64(value);
+    return typeof value === "string" ? value : Binary.toBase64(value);
   }
 
-  static #toBase64(bytes: Uint8Array): string {
+  static toBase64(bytes: Uint8Array): string {
     const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
     if (buffer) return buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
     let binary = "";
@@ -226,7 +226,7 @@ export class Binary extends PrimitiveScalar {
       binary += String.fromCharCode(...bytes.subarray(idx, idx + 0x8000));
     return btoa(binary);
   }
-  static #fromBase64(text: string): Uint8Array {
+  static fromBase64(text: string): Uint8Array<ArrayBuffer> {
     const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
     if (buffer) return buffer.from(text, "base64");
     const binary = atob(text);

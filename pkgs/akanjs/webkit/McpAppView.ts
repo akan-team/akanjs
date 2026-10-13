@@ -1,4 +1,5 @@
 "use client";
+import { Binary } from "akanjs/base";
 import { router, setCookie } from "akanjs/client";
 import { Logger, parseAkanI18nEnv } from "akanjs/common";
 import { st } from "akanjs/store";
@@ -230,7 +231,7 @@ export class McpAppView {
         resource: {
           uri: `file:///${encodeURIComponent(name)}`,
           mimeType: blob.type || "application/octet-stream",
-          blob: McpAppView.#base64(bytes),
+          blob: Binary.toBase64(bytes),
         },
       };
     }
@@ -258,16 +259,8 @@ export class McpAppView {
     const match = /^data:([^,]*?)(;base64)?,(.*)$/s.exec(href);
     if (!match) return null;
     const [, type = "", base64, body = ""] = match;
-    const bytes = base64
-      ? Uint8Array.from(atob(body), (char) => char.charCodeAt(0))
-      : new TextEncoder().encode(decodeURIComponent(body));
+    const bytes = base64 ? Binary.fromBase64(body) : new TextEncoder().encode(decodeURIComponent(body));
     return new Blob([bytes], { type: type.split(";")[0] });
-  }
-
-  static #base64(bytes: Uint8Array) {
-    let binary = "";
-    for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-    return btoa(binary);
   }
 
   //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
