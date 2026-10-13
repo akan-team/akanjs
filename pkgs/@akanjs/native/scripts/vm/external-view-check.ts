@@ -12,7 +12,7 @@
 // 5. takes a trusted key press, and captures its own content,
 // 6. keeps storage of its own, which clearData clears,
 // 7. loads again when its renderer ends, counting restarts, and is built again when its browser process ends,
-// 8. keeps the window's hidden pointer hidden over it,
+// 8. keeps the window's hidden pointer hidden over it and its cross-site frame, and shows it in both again,
 // 9. shows the app's backgroundColor, not white, until its page paints,
 // and that the window goes onto a display at an exact size in physical pixels, below the default minimum, and the
 // executable names the app as its company when no publisher is set.
@@ -33,6 +33,11 @@ const step = (text: string) => console.info(`\n== ${text}`);
 
 const BOARD = `<!doctype html><title>board</title><body style="margin:0;background:#123">
 <script>
+addEventListener("message", (e) => { if (typeof e.data?.cursorNone === "boolean") window.__frame = e.data; });
+const frame = document.createElement("iframe");
+frame.src = "http://localhost:" + location.port + "/frame";
+frame.style = "width:40px;height:40px;border:0";
+document.body.append(frame);
 window.__keys = [];
 addEventListener("keydown", (e) => window.__keys.push(e.key + ":" + e.isTrusted));
 window.__seen = Number(localStorage.getItem("seen") || 0) + 1;
@@ -40,6 +45,10 @@ localStorage.setItem("seen", String(window.__seen));
 console.log("tick");
 console.warn("slow frame", 120);
 setTimeout(() => { throw new Error("boom"); }, 50);
+</script></body>`;
+const FRAME = `<!doctype html><title>frame</title><body style="margin:0">
+<script>
+setInterval(() => parent.postMessage({ cursorNone: document.getElementById("__akan_cursor_none") !== null }, "*"), 200);
 </script></body>`;
 const BACKGROUND = "204060";
 const SLOW = `<!doctype html><title>slow</title><body style="margin:0;background:#00aa00"></body>`;
@@ -49,6 +58,7 @@ const server = Bun.serve({
   fetch: async (req) => {
     const { pathname } = new URL(req.url);
     if (pathname === "/board") return new Response(BOARD, { headers: { "content-type": "text/html" } });
+    if (pathname === "/frame") return new Response(FRAME, { headers: { "content-type": "text/html" } });
     if (pathname === "/slow") {
       await Bun.sleep(5_000);
       return new Response(SLOW, { headers: { "content-type": "text/html" } });
@@ -329,7 +339,17 @@ try {
 
   step("8. the window's hidden pointer stays hidden over the view, through reloads and a rebuild, until shown");
   const cursorNone = 'document.getElementById("__akan_cursor_none") !== null';
+  const frameCursorNone = "window.__frame?.cursorNone";
   if ((await inView(cursorNone)) !== true) throw new Error("the pointer shows over the view");
+  await until("the pointer hidden over its cross-site frame", async () => (await inView(frameCursorNone)) === true);
+  await ok("window", "setCursorVisible", { value: true });
+  await until("the pointer shown over the view", async () => (await inView(cursorNone)) === false);
+  await until(
+    "the pointer shown over its frame, without a reload",
+    async () => (await inView(frameCursorNone)) === false,
+  );
+  await ok("window", "setCursorVisible", { value: false });
+  await until("the pointer hidden over its frame again", async () => (await inView(frameCursorNone)) === true);
   await ok("window", "setCursorVisible", { value: true });
   await ok("external-view", "reload", { id: "board" });
   await until("the board reloaded", async () => (await inView("document.title")) === "board");

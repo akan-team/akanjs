@@ -570,7 +570,7 @@ fn build(
     if opts.muted {
       platform::set_muted(&webview, true)?;
     }
-    Ok(View {
+    let view = View {
       webview,
       _context: context,
       window: opts.window,
@@ -590,7 +590,9 @@ fn build(
       console: opts.console,
       cursor_hidden: false,
       cursor: platform::Cursor::default(),
-    })
+    };
+    platform::track_frames(&view.webview, &opts.view, &view.cursor);
+    Ok(view)
   }
 }
 
@@ -603,8 +605,9 @@ mod platform {
 
   use webview2_com::{
     take_pwstr, AddScriptToExecuteOnDocumentCreatedCompletedHandler, CallDevToolsProtocolMethodCompletedHandler,
-    DevToolsProtocolEventReceivedEventHandler, Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler,
-    ProcessFailedEventHandler,
+    DevToolsProtocolEventReceivedEventHandler, ExecuteScriptCompletedHandler, FrameChildFrameCreatedEventHandler,
+    FrameCreatedEventHandler, FrameDOMContentLoadedEventHandler, FrameDestroyedEventHandler,
+    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, ProcessFailedEventHandler,
   };
   use windows::core::{Interface, BOOL, HSTRING, PWSTR};
   use windows::Win32::UI::WindowsAndMessaging::{GetParent, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
@@ -616,11 +619,14 @@ mod platform {
   const HIDE: &str = r#"(()=>{const id="__akan_cursor_none";const add=()=>{if(document.getElementById(id))return;const s=document.createElement("style");s.id=id;s.textContent="*,*::before,*::after{cursor:none!important}";(document.head||document.documentElement).appendChild(s);};if(document.documentElement)add();else document.addEventListener("DOMContentLoaded",add,{once:true});})();"#;
   const SHOW: &str = r#"document.getElementById("__akan_cursor_none")?.remove();"#;
 
-  /// The script WebView2 runs in each new document while the pointer is hidden, by the id it was registered under.
+  /// The script WebView2 runs in each new document while the pointer is hidden, by the id it was registered under, and
+  /// the page's frames alive now, by the number each was given when it was created.
   #[derive(Default)]
   pub(crate) struct CursorScript {
     id: Option<String>,
     wanted: bool,
+    frames: Vec<(u64, ICoreWebView2Frame2)>,
+    created: u64,
   }
 
   pub(crate) type Cursor = Rc<RefCell<CursorScript>>;
@@ -639,10 +645,16 @@ mod platform {
   }
 
   //? The view's own browser process draws its pointer, so the window's hidden one returns over it; a style in each of
-  //? its documents (iframes included) hides it there, registered while hidden and removed when shown again.
+  //? its documents (iframes included) hides it there, registered while hidden and removed when shown again. A document
+  //? loaded already gets it or loses it at once: ExecuteScript reaches the top one only, so each live frame is run too.
   pub(super) fn set_cursor_hidden(webview: &WebView, hidden: bool, cursor: &Cursor) {
     let core = webview.webview();
-    let _ = webview.evaluate_script(if hidden { HIDE } else { SHOW });
+    let script = if hidden { HIDE } else { SHOW };
+    let _ = webview.evaluate_script(script);
+    let frames: Vec<ICoreWebView2Frame2> = cursor.borrow().frames.iter().map(|(_, frame)| frame.clone()).collect();
+    for frame in &frames {
+      run(frame, script);
+    }
     let mut state = cursor.borrow_mut();
     state.wanted = hidden;
     if !hidden {
@@ -669,6 +681,71 @@ mod platform {
       Ok(())
     }));
     let _ = unsafe { core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(HIDE), &handler) };
+  }
+
+  fn run(frame: &ICoreWebView2Frame2, script: &str) {
+    let done = ExecuteScriptCompletedHandler::create(Box::new(|_, _| Ok(())));
+    let _ = unsafe { frame.ExecuteScript(&HSTRING::from(script), &done) };
+  }
+
+  //? ICoreWebView2_4 names the frames of the top document; ICoreWebView2Frame7, on runtimes that have it, a frame's own.
+  pub(super) fn track_frames(webview: &WebView, view: &str, cursor: &Cursor) {
+    let tracked = Rc::downgrade(cursor);
+    let created = FrameCreatedEventHandler::create(Box::new(move |_, args| {
+      if let (Some(args), Some(cursor)) = (args, tracked.upgrade()) {
+        adopt(&cursor, unsafe { args.Frame()? });
+      }
+      Ok(())
+    }));
+    let mut token = 0;
+    let added = webview.webview().cast::<ICoreWebView2_4>().and_then(|core| unsafe { core.add_FrameCreated(&created, &mut token) });
+    if let Err(e) = added {
+      log!("external view {view}: its frames keep the pointer they loaded with: {e}");
+    }
+  }
+
+  //? Its handlers hold the state weakly: the state's frame list holds the frame, and the frame its handlers.
+  fn adopt(cursor: &Cursor, frame: ICoreWebView2Frame) {
+    let Ok(document) = frame.cast::<ICoreWebView2Frame2>() else { return };
+    let Ok(mut state) = cursor.try_borrow_mut() else { return };
+    state.created += 1;
+    let number = state.created;
+    state.frames.push((number, document.clone()));
+    let hidden = state.wanted;
+    drop(state);
+    if hidden {
+      run(&document, HIDE);
+    }
+    let mut token = 0;
+    let tracked = Rc::downgrade(cursor);
+    let destroyed = FrameDestroyedEventHandler::create(Box::new(move |_, _| {
+      if let Some(cursor) = tracked.upgrade() {
+        if let Ok(mut state) = cursor.try_borrow_mut() {
+          state.frames.retain(|(n, _)| *n != number);
+        }
+      }
+      Ok(())
+    }));
+    let _ = unsafe { frame.add_Destroyed(&destroyed, &mut token) };
+    let tracked = Rc::downgrade(cursor);
+    let loaded = FrameDOMContentLoadedEventHandler::create(Box::new(move |sender, _| {
+      let hidden = tracked.upgrade().is_some_and(|cursor| cursor.try_borrow().is_ok_and(|state| state.wanted));
+      if let Some(document) = sender.filter(|_| hidden).and_then(|frame| frame.cast::<ICoreWebView2Frame2>().ok()) {
+        run(&document, HIDE);
+      }
+      Ok(())
+    }));
+    let _ = unsafe { document.add_DOMContentLoaded(&loaded, &mut token) };
+    if let Ok(parent) = frame.cast::<ICoreWebView2Frame7>() {
+      let tracked = Rc::downgrade(cursor);
+      let child = FrameChildFrameCreatedEventHandler::create(Box::new(move |_, args| {
+        if let (Some(args), Some(cursor)) = (args, tracked.upgrade()) {
+          adopt(&cursor, unsafe { args.Frame()? });
+        }
+        Ok(())
+      }));
+      let _ = unsafe { parent.add_FrameCreated(&child, &mut token) };
+    }
   }
 
   pub(super) fn set_muted(webview: &WebView, muted: bool) -> Result<(), String> {
@@ -817,6 +894,9 @@ mod platform {
   pub(super) fn reclaim(_page: &WebView) {}
 
   pub(super) fn set_cursor_hidden(_webview: &WebView, _hidden: bool, _cursor: &Cursor) {}
+
+  #[cfg_attr(target_os = "linux", allow(dead_code))]
+  pub(super) fn track_frames(_webview: &WebView, _view: &str, _cursor: &Cursor) {}
 
   pub(super) fn set_muted(_webview: &WebView, _muted: bool) -> Result<(), String> {
     Err(NO_MUTE.into())
