@@ -48,6 +48,17 @@ describe("OpsTokenVerifier", () => {
     });
   });
 
+  test("accepts its audience among a list's, and asks a control plane's token for no typ", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    expect(verifier.verify(mint(claims({ aud: ["puffinplace/main/edge-2", "puffinplace/main/edge-3"] })), now).ok).toBe(
+      true,
+    );
+    const head = `${b64({ alg: "EdDSA" })}.${b64(claims())}`;
+    expect(verifier.verify(`${head}.${sign(null, Buffer.from(head), privateKey).toString("base64url")}`, now).ok).toBe(
+      true,
+    );
+  });
+
   test("refuses another key's signature and a non-EdDSA header", () => {
     const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
     const other = generateKeyPairSync("ed25519").privateKey;

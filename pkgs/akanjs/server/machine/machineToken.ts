@@ -1,8 +1,9 @@
-import { createPublicKey, type KeyObject, sign, verify } from "node:crypto";
+import { createPublicKey, type KeyObject } from "node:crypto";
 import { getEnv } from "akanjs/base";
 import { bearerTokenOf, Logger } from "akanjs/common";
 import type { MachineIdentity } from "akanjs/signal";
 import { Ed25519Key } from "../ed25519Key";
+import { EdDsaJwt } from "../edDsaJwt";
 
 export interface MachineTokenIssueOptions {
   /** None by default: a machine's token lapses only when its version is bumped. */
@@ -70,38 +71,21 @@ export class MachineToken {
       iat,
       ...(expiry ? { exp: Math.floor(expiry.getTime() / 1000) } : {}),
     };
-    const signed = `${MachineToken.#encode({ alg: "EdDSA", typ: MachineToken.type })}.${MachineToken.#encode(claims)}`;
-    return `${signed}.${sign(null, Buffer.from(signed), privateKey).toString("base64url")}`;
+    return EdDsaJwt.sign(claims, privateKey, { typ: MachineToken.type });
   }
 
   /** By its header alone, so a staff session's bearer is told apart without a verification. */
   static isMachineToken(token: string) {
-    const [headerPart = ""] = token.split(".");
-    return MachineToken.#decode(headerPart)?.typ === MachineToken.type;
+    return EdDsaJwt.headerOf(token)?.typ === MachineToken.type;
   }
 
   static verify(token: string, nowSec = Math.floor(Date.now() / 1000)): MachineTokenVerdict {
-    const parts = token.split(".");
-    if (parts.length !== 3) return { ok: false, reason: "malformed token" };
-    const [headerPart = "", payloadPart = "", signaturePart = ""] = parts;
-    const header = MachineToken.#decode(headerPart);
-    if (header?.alg !== "EdDSA" || header.typ !== MachineToken.type)
-      return { ok: false, reason: `not an EdDSA ${MachineToken.type}` };
     const { publicKey } = MachineToken.#keyPair();
     if (!publicKey)
       return { ok: false, reason: "no AKAN_MACHINE_PUBLIC_KEY or AKAN_MACHINE_PRIVATE_KEY to verify with" };
-    const signed = verify(
-      null,
-      Buffer.from(`${headerPart}.${payloadPart}`),
-      publicKey,
-      Buffer.from(signaturePart, "base64url"),
-    );
-    if (!signed) return { ok: false, reason: "bad signature" };
-    const claims = MachineToken.#decode(payloadPart);
-    if (!claims) return { ok: false, reason: "malformed claims" };
-    const { aud, sub, kind, ver, exp } = claims;
-    const audiences = Array.isArray(aud) ? aud : [aud];
-    if (!audiences.includes(MachineToken.audience())) return { ok: false, reason: "audience mismatch" };
+    const verdict = EdDsaJwt.verify(token, publicKey, { typ: MachineToken.type, audience: MachineToken.audience() });
+    if (!verdict.ok) return verdict;
+    const { sub, kind, ver, exp } = verdict.claims;
     if (exp !== undefined && (typeof exp !== "number" || exp <= nowSec)) return { ok: false, reason: "expired" };
     const identity = { kind, id: sub, version: ver } as MachineIdentity;
     if (!MachineToken.#isIdentity(identity)) return { ok: false, reason: "sub, kind and ver are required" };
@@ -137,18 +121,5 @@ export class MachineToken {
   static #assertIdentity(identity: MachineIdentity) {
     if (!MachineToken.#isIdentity(identity))
       throw new Error("A machine identity is { kind, id } as non-empty strings and version as an integer from 0");
-  }
-
-  static #encode(value: object) {
-    return Buffer.from(JSON.stringify(value)).toString("base64url");
-  }
-
-  static #decode(part: string): Record<string, unknown> | null {
-    try {
-      const value = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as unknown;
-      return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-    } catch {
-      return null;
-    }
   }
 }
