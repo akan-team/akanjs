@@ -12,7 +12,6 @@ package com.akanjs.runtime
 
 import android.content.Context
 import android.util.AtomicFile
-import android.util.Base64
 import android.util.Log
 import java.io.File
 import java.io.IOException
@@ -100,11 +99,7 @@ class AkanNativeUpdateConfig(
             }
             val listed = o.optJSONArray("publicKeys")
             val encoded = if (listed != null) List(listed.length()) { listed.optString(it) } else listOfNotNull(o.optString("publicKey").ifEmpty { null })
-            val raw = try {
-                encoded.map { Base64.decode(it, Base64.DEFAULT) }
-            } catch (e: IllegalArgumentException) {
-                return null
-            }
+            val raw = encoded.map { AkanNativeKernel.strictBase64(it) ?: return null }
             if (raw.isEmpty() || raw.any { it.size != 32 } || o.optString("url").isEmpty() || o.optString("nativeApi").isEmpty()) return null
             return AkanNativeUpdateConfig(
                 app = o.optString("app"),
@@ -126,16 +121,14 @@ class AkanNativeUpdateConfig(
 /** A `<channel>/<nativeApi>.json` envelope, checked as far as its signature: what the manifest says is read after. */
 class AkanNativeUpdateEnvelope(val manifest: ByteArray, val keyId: String) {
     companion object {
-        /** null: not an envelope, or signed by a key this binary does not trust or has revoked. */
+        /** null: not an envelope, or one AkanNativeKernel.checkUpdateEnvelope refuses. */
         fun open(data: ByteArray, config: AkanNativeUpdateConfig, revoked: List<String>): AkanNativeUpdateEnvelope? = try {
             val o = JSONObject(String(data))
             val keyId = o.getString("keyId")
-            val key = config.key(keyId)
-            val manifest = Base64.decode(o.getString("manifest"), Base64.DEFAULT)
-            val signature = Base64.decode(o.getString("signature"), Base64.DEFAULT)
-            if (!AkanNativeKernel.isUpdateKeyId(keyId) || keyId in revoked || key == null || manifest.size > (1 shl 20) ||
-                !AkanNativeUpdates.signed(manifest, signature, key)) null
-            else AkanNativeUpdateEnvelope(manifest, keyId)
+            val checked = AkanNativeKernel.checkUpdateEnvelope(
+                manifest = o.getString("manifest"), keyId = keyId, signature = o.getString("signature"), ring = config.ring, revoked = revoked,
+            ) { manifest, signature, signer -> config.key(signer)?.let { AkanNativeUpdates.signed(manifest, signature, it) } ?: false }
+            checked.manifest?.let { AkanNativeUpdateEnvelope(it, keyId) }
         } catch (e: Exception) {
             null
         }

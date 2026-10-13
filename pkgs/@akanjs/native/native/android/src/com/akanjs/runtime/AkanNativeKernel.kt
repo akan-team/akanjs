@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
+import java.util.Base64
 
 /*
  * Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
@@ -28,6 +29,14 @@ data class AkanNativeUpdateDecision(val kind: Kind, val baseline: Double = 0.0, 
 
     val wire: String get() = if (kind == Kind.TAKE || kind == Kind.STALE) "${kind.wire}:${baseline.toLong()}:${revoke.joinToString(",")}" else kind.wire
 }
+
+/** kernel.ts EnvelopeVerdict: whether a phone takes an envelope's manifest, or why not. */
+enum class AkanNativeEnvelopeVerdict(val wire: String) {
+    OPEN("open"), UNTRUSTED("untrusted"), REVOKED("revoked"), ENCODING("encoding"), TOO_LARGE("too-large"), SIGNATURE("signature")
+}
+
+/** An envelope's verdict, and its manifest bytes when it is [AkanNativeEnvelopeVerdict.OPEN]. */
+class AkanNativeEnvelopeCheck(val verdict: AkanNativeEnvelopeVerdict, val manifest: ByteArray? = null)
 
 sealed class AkanNativeRangeAnswer {
     object Whole : AkanNativeRangeAnswer()
@@ -358,4 +367,42 @@ object AkanNativeKernel {
         MessageDigest.getInstance("SHA-256").digest(publicKey).take(8).joinToString("") { "%02x".format(it) }
 
     fun isUpdateKeyId(s: String): Boolean = s.length == 16 && s.all { it in '0'..'9' || it in 'a'..'f' }
+
+    /** kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes. */
+    const val MAX_UPDATE_MANIFEST = 1 shl 20
+
+    /**
+     * kernel.ts isStrictBase64: the standard alphabet, padded, no whitespace. android.util.Base64 also takes line
+     * breaks and java.util.Base64 a missing padding, which iOS refuses.
+     */
+    fun isStrictBase64(s: String): Boolean {
+        if (s.length % 4 != 0) return false
+        val pad = if (s.endsWith("==")) 2 else if (s.endsWith("=")) 1 else 0
+        for (i in 0 until s.length - pad) {
+            val c = s[i]
+            if (c !in 'A'..'Z' && c !in 'a'..'z' && c !in '0'..'9' && c != '+' && c != '/') return false
+        }
+        return true
+    }
+
+    /** The bytes of strict base64, null for anything else. */
+    fun strictBase64(s: String): ByteArray? = if (isStrictBase64(s)) Base64.getDecoder().decode(s) else null
+
+    /**
+     * kernel.ts checkUpdateEnvelope: in this order, a signer of [ring] not [revoked], both fields in strict base64, a
+     * manifest of at most MAX_UPDATE_MANIFEST bytes, and [verify] (Ed25519 by the signer's key) over the decoded bytes.
+     */
+    fun checkUpdateEnvelope(
+        manifest: String, keyId: String, signature: String, ring: List<String>, revoked: List<String>,
+        verify: (manifest: ByteArray, signature: ByteArray, keyId: String) -> Boolean,
+    ): AkanNativeEnvelopeCheck {
+        if (keyId !in ring) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.UNTRUSTED)
+        if (keyId in revoked) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.REVOKED)
+        if (!isStrictBase64(manifest) || !isStrictBase64(signature)) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.ENCODING)
+        val pad = if (manifest.endsWith("==")) 2 else if (manifest.endsWith("=")) 1 else 0
+        if (manifest.length / 4 * 3 - pad > MAX_UPDATE_MANIFEST) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.TOO_LARGE)
+        val bytes = Base64.getDecoder().decode(manifest)
+        return if (verify(bytes, Base64.getDecoder().decode(signature), keyId)) AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.OPEN, bytes)
+        else AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.SIGNATURE)
+    }
 }

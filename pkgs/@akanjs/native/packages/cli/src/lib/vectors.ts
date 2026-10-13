@@ -40,7 +40,7 @@ export function vectorCounts(): Record<string, number> {
     acl: (v.acl.cases as { checks: unknown[] }[]).reduce((sum, c) => sum + 1 + c.checks.length, 0),
     retained: n(v.retained.cases),
     ed25519: n(v.ed25519.cases),
-    updates: n(v.updates.keyIds) + n(v.updates.decisions) + n(v.updates.urls),
+    updates: n(v.updates.keyIds) + n(v.updates.decisions) + n(v.updates.urls) + n(v.updates.envelopes),
   };
 }
 

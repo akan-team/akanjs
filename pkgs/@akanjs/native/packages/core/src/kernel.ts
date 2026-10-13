@@ -353,6 +353,50 @@ export const updateManifestUrl = (url: string, platform: string, channel: string
 /** An envelope's signer or a revokeKeys entry: the first 8 bytes of the raw public key's SHA-256, in hex. */
 export const isUpdateKeyId = (s: string) => /^[0-9a-f]{16}$/.test(s);
 
+/** The largest manifest an envelope may carry, in bytes. */
+export const MAX_UPDATE_MANIFEST = 1 << 20;
+
+const isBase64Char = (c: number) =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 43 || c === 47;
+
+/**
+ * Base64 as iOS's Data(base64Encoded:) takes it: the standard alphabet, padded, no whitespace. Android's and Java's
+ * decoders also take line breaks or a missing padding, so every host checks this first, or one envelope would reach
+ * one platform and not the other.
+ */
+export function isStrictBase64(s: string): boolean {
+  if (s.length % 4 !== 0) return false;
+  const pad = s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0;
+  for (let i = 0; i < s.length - pad; i++) if (!isBase64Char(s.charCodeAt(i))) return false;
+  return true;
+}
+
+const base64Size = (s: string) => (s.length / 4) * 3 - (s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0);
+
+const fromBase64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+export type EnvelopeVerdict = "open" | "untrusted" | "revoked" | "encoding" | "too-large" | "signature";
+
+/**
+ * Whether a phone takes the manifest bytes of an envelope's three fields (vectors/updates.json `envelopes`), checked in
+ * this order by every host: a signer of `ring` (the binary's keyIds) it has not revoked, both fields in strict base64, a
+ * manifest of at most MAX_UPDATE_MANIFEST bytes, then `verify` (Ed25519 by the signer's key) over the decoded bytes.
+ */
+export function checkUpdateEnvelope(
+  envelope: { manifest: string; keyId: string; signature: string },
+  ring: readonly string[],
+  revoked: readonly string[],
+  verify: (manifest: Uint8Array, signature: Uint8Array, keyId: string) => boolean,
+): { verdict: "open"; manifest: Uint8Array } | { verdict: Exclude<EnvelopeVerdict, "open"> } {
+  const { manifest, keyId, signature } = envelope;
+  if (!ring.includes(keyId)) return { verdict: "untrusted" };
+  if (revoked.includes(keyId)) return { verdict: "revoked" };
+  if (!isStrictBase64(manifest) || !isStrictBase64(signature)) return { verdict: "encoding" };
+  if (base64Size(manifest) > MAX_UPDATE_MANIFEST) return { verdict: "too-large" };
+  const bytes = fromBase64(manifest);
+  return verify(bytes, fromBase64(signature), keyId) ? { verdict: "open", manifest: bytes } : { verdict: "signature" };
+}
+
 /** Names the update folder already uses: what packUpdate writes beside the channels, and the folders of the files. */
 export const RESERVED_CHANNELS: readonly string[] = ["bundle", "manifest.template", "compat", "pack", "files", "app"];
 

@@ -158,6 +158,19 @@ enum AkanNativeVectors {
             let got = AkanNativeKernel.updateManifestURL(c[0] as! String, platform: c[1] as! String, channel: c[2] as! String, nativeApi: c[3] as! String)
             check(got == c[4] as? String, "update url \(got)")
         }
+        let envelopeKeys = (updates["envelopeKeys"] as? [String] ?? []).compactMap { Data(base64Encoded: $0) }
+        let ring = envelopeKeys.map(AkanNativeKernel.updateKeyId)
+        for c in rows(updates, "envelopes") {
+            let large = c[0] as? [Any]
+            let manifest = large.map { String(repeating: $0[0] as! String, count: ($0[1] as! NSNumber).intValue) + ($0[2] as! String) } ?? c[0] as! String
+            let got = AkanNativeKernel.checkUpdateEnvelope(
+                manifest: manifest, keyId: c[1] as! String, signature: c[2] as! String, ring: ring, revoked: c[3] as! [String]
+            ) { bytes, signature, keyId in
+                guard let i = ring.firstIndex(of: keyId), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: envelopeKeys[i]) else { return false }
+                return key.isValidSignature(signature, for: bytes)
+            }
+            check(got.verdict.rawValue == c[4] as? String, "update envelope \(c[5]): \(got.verdict.rawValue)")
+        }
 
         // A missing or truncated file must not pass as fewer checks.
         for (name, count) in AkanNativeVectorData.counts where ran[name, default: 0] != count {
