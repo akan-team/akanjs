@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bu
 import type { FetchBridgeCall, RestoredError } from "akanjs/fetch";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
+import { McpAppFetchBridge } from "./McpAppFetchBridge";
 
 process.env.AKAN_PUBLIC_APP_NAME = "test";
 process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
@@ -153,7 +154,7 @@ describe("McpAppBridge", () => {
       ((await asked.catch((error: unknown) => error)) as RestoredError).toJSON?.();
     const unanswered = keyOf(fetchBridge.call(call({ refName: "String" })));
     const lateId = lastRequest("tools/call")?.id;
-    jest.advanceTimersByTime(McpAppBridge.callTimeoutMs);
+    jest.advanceTimersByTime(McpAppFetchBridge.callTimeoutMs);
     expect(await unanswered).toEqual({ error: "base.error.gatewayTimeout", statusCode: 408, data: { status: 408 } });
     fromHost({ id: lateId, result: { _meta: { [MCP_APP_META.value]: "too late" } } });
 
@@ -162,7 +163,7 @@ describe("McpAppBridge", () => {
     expect((await short)?.error).toBe("base.error.gatewayTimeout");
 
     const unbounded = fetchBridge.call(Object.assign(call({ refName: "String" }), { timeout: false }));
-    jest.advanceTimersByTime(McpAppBridge.callTimeoutMs * 10);
+    jest.advanceTimersByTime(McpAppFetchBridge.callTimeoutMs * 10);
     fromHost({ id: lastRequest("tools/call")?.id, result: { _meta: { [MCP_APP_META.value]: "slow but sure" } } });
     expect(await unbounded).toBe("slow but sure");
   });
