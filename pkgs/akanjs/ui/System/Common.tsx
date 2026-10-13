@@ -44,8 +44,6 @@ export const Common = () => {
   return null;
 };
 
-export { toManifestJson };
-
 /** An SSR document links the URL its server answers, where `start_url`, `scope` and icons resolve; a CSR bundle,
  *  which no server serves in a native shell, carries the manifest inline. */
 export function ManifestLink({ manifest, basePath }: { manifest?: WebAppManifest; basePath?: string | null }) {
@@ -132,18 +130,4 @@ export function getFrameCssVars(pageState: PageState, { cssResolved }: { cssReso
     vars[`--akan-bottom-inset-visibility-${name}`] = visibility(bottom[name]);
   }
   return vars;
-}
-
-/** Copies the current page's frame onto `<html>`, so a layer portalled to `<body>` (the agent launcher) can read it. */
-export class FrameRootVars {
-  static #mirrored = new Set<string>();
-
-  static mirror(vars: AkanFrameCssVars, responsive: boolean) {
-    const root = document.documentElement;
-    const names = Object.keys(vars).filter((name) => name.startsWith("--akan-"));
-    for (const name of FrameRootVars.#mirrored) if (!names.includes(name)) root.style.removeProperty(name);
-    for (const name of names) root.style.setProperty(name, String(vars[name as AkanFrameCssVarName]));
-    FrameRootVars.#mirrored = new Set(names);
-    root.toggleAttribute("data-akan-frame-responsive", responsive);
-  }
 }

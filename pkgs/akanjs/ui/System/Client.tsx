@@ -45,8 +45,9 @@ import {
   useState,
 } from "react";
 import { AgentActivity } from "use-agentic";
+import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { animated } from "../animated";
-import { FrameRootVars, getFrameCssVars, isResponsiveFrame } from "./Common";
+import { getFrameCssVars, isResponsiveFrame } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
 
