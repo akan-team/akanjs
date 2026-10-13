@@ -167,6 +167,28 @@ pub fn install(webview: &wry::WebView) {
   }
 }
 
+/// WebView2 hands a URL of a scheme another program registered to that program, after a prompt of its own, however the
+/// page asked for it: an external view's page, and every page of an app nobody attends, hands none.
+#[cfg(target_os = "windows")]
+pub fn refuse_launches(webview: &wry::WebView, label: &str) {
+  use webview2_com::{take_pwstr, LaunchingExternalUriSchemeEventHandler, Microsoft::Web::WebView2::Win32::ICoreWebView2_18};
+  use windows::core::{Interface, PWSTR};
+  use wry::WebViewExtWindows;
+  let refusing = label.to_string();
+  let handler = LaunchingExternalUriSchemeEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    let mut uri = PWSTR::null();
+    unsafe { args.Uri(&mut uri)? };
+    log!("{refusing}: refused to hand {} to another program", shown(&take_pwstr(uri)));
+    unsafe { args.SetCancel(true) }
+  }));
+  let mut token = 0;
+  let added = webview.webview().cast::<ICoreWebView2_18>().and_then(|core| unsafe { core.add_LaunchingExternalUriScheme(&handler, &mut token) });
+  if let Err(e) = added {
+    log!("{label}: WebView2's own prompt still asks before a page opens another program: {e}");
+  }
+}
+
 #[cfg(target_os = "macos")]
 pub mod mac {
   use std::cell::Cell;

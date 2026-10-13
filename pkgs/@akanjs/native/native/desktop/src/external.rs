@@ -2,8 +2,8 @@
 //! window, as signage needs it. Nothing of the app reaches it: no init script, no IPC, no app scheme. It runs
 //! in a browser profile of its own (a data folder on Windows, a data store on macOS 14+), so its storage is
 //! neither the app's nor cleared with it, and its top level navigates only to the origins it was opened for
-//! (frames load web content from anywhere); popups, downloads and device permissions are refused. Its web
-//! process ending reloads it (UserEvent::ExternalGone).
+//! (frames load web content from anywhere); popups, downloads, device permissions and a link another program
+//! would open are refused. Its web process ending reloads it (UserEvent::ExternalGone).
 
 use std::{
   cell::{Cell, RefCell},
@@ -127,7 +127,8 @@ fn admits(allow: &[String], url: &str, sub_frame: bool) -> bool {
   }
 }
 
-/// Frames load web content from anywhere, as WebView2 lets them: wry asks the handler about the top level only there.
+/// Frames load web content from anywhere. WebView2 asks wry's handler about the top level only: platform::guard_frames
+/// checks its frames.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 fn navigation_handler(view: String, allow: Rc<RefCell<Vec<String>>>) -> impl Fn(String) -> bool {
   move |url| {
@@ -564,6 +565,8 @@ fn build(
     }
     let webview = builder.build_as_child(window).map_err(|e| format!("external view: {e}"))?;
     platform::watch(&webview, &opts.view, opts.window, opts.console);
+    #[cfg(target_os = "windows")]
+    platform::guard_frames(&webview, &opts.view);
     // Release builds: no Print, Save as or Inspect in its right-click menu either.
     #[cfg(target_os = "windows")]
     crate::page_menu::install(devtools, &webview);
@@ -607,7 +610,8 @@ mod platform {
     take_pwstr, AddScriptToExecuteOnDocumentCreatedCompletedHandler, CallDevToolsProtocolMethodCompletedHandler,
     DevToolsProtocolEventReceivedEventHandler, ExecuteScriptCompletedHandler, FrameChildFrameCreatedEventHandler,
     FrameCreatedEventHandler, FrameDOMContentLoadedEventHandler, FrameDestroyedEventHandler,
-    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, ProcessFailedEventHandler,
+    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler, NavigationStartingEventHandler,
+    ProcessFailedEventHandler,
   };
   use windows::core::{Interface, BOOL, HSTRING, PWSTR};
   use windows::Win32::UI::WindowsAndMessaging::{GetParent, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
@@ -746,6 +750,28 @@ mod platform {
       }));
       let _ = unsafe { parent.add_FrameCreated(&child, &mut token) };
     }
+  }
+
+  //? wry asks the navigation handler about the top level only here, so a frame's navigation is checked on its own: a
+  //? scheme another program registered would otherwise reach WebView2's launch prompt.
+  pub(super) fn guard_frames(webview: &WebView, view: &str) {
+    let refusing = view.to_string();
+    let starting = NavigationStartingEventHandler::create(Box::new(move |_, args| {
+      let Some(args) = args else { return Ok(()) };
+      let mut uri = PWSTR::null();
+      unsafe { args.Uri(&mut uri)? };
+      let uri = take_pwstr(uri);
+      if !super::admits(&[], &uri, true) {
+        log!("external view {refusing}: refused a frame navigation to {}", crate::navigation::shown(&uri));
+        unsafe { args.SetCancel(true)? };
+      }
+      Ok(())
+    }));
+    let mut token = 0;
+    if let Err(e) = unsafe { webview.webview().add_FrameNavigationStarting(&starting, &mut token) } {
+      log!("external view {view}: its frames' navigations are not checked: {e}");
+    }
+    crate::navigation::refuse_launches(webview, &format!("external view {view}"));
   }
 
   pub(super) fn set_muted(webview: &WebView, muted: bool) -> Result<(), String> {

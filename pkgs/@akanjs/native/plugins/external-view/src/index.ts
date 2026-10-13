@@ -6,8 +6,9 @@ import { definePlugin, type FileRef } from "../../../packages/core/src/index.ts"
  *
  * Nothing of the app reaches the view: no bridge, no init script of the app, no app scheme. It keeps its own browser
  * profile (cookies, storage, cache), so `clearData` never touches the app's, and its top level navigates only to
- * `allowOrigins` (its frames load http, https, data, blob and about URLs from anywhere); popups, downloads and device
- * permissions are refused. Listing the plugin in `native.plugins` is what lets an app open one.
+ * `allowOrigins` (its frames load http, https, data, blob and about URLs from anywhere); popups, downloads, device
+ * permissions and links another program would open (`mailto:`, a custom scheme) are refused. Listing the plugin in
+ * `native.plugins` is what lets an app open one.
  *
  * Windows has every method. macOS (14 or later, for its separate profile) has all but `sendKey`, `setMuted` and
  * `capture`, and sends no `loadFailed` or `consoleMessage`. Linux, iOS and Android: UNSUPPORTED.
