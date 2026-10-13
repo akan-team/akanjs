@@ -759,6 +759,7 @@ describe("AkanApp", () => {
   test("serves immutable artifacts with the asset security headers WebRouter sends", async () => {
     const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-asset-headers-");
     await Bun.write(path.join(root, ".akan/artifact/client/app.js"), "export const x = 1;\n");
+    await Bun.write(path.join(root, ".akan/artifact/fonts/brand.woff2"), "font-bytes");
     await writeOkChild(serverPath, "from-child");
 
     await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
@@ -767,6 +768,11 @@ describe("AkanApp", () => {
       expect(await res.text()).toContain("export const x = 1;");
       expect(res.headers.get("x-content-type-options")).toBe("nosniff");
       expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
+      const font = await fetch(`http://127.0.0.1:${port}/_akan/fonts/brand.woff2`);
+      expect(await font.text()).toBe("font-bytes");
+      expect(font.headers.get("access-control-allow-origin")).toBe("*");
+      expect(font.headers.get("x-content-type-options")).toBe("nosniff");
     });
   }, 20_000);
 

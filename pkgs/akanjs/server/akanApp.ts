@@ -8,6 +8,7 @@ import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
+import { type AssetHeaderOptions, assetHeaders } from "./assetHeaders";
 import { compressResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
@@ -989,18 +990,8 @@ export class AkanApp {
     }
   }
 
-  // A font is always fetched in CORS mode, so a page with another origin (an MCP view has none) needs `anyOrigin`.
-  async #fileResponse(
-    req: Request,
-    filePath: string,
-    options: { contentType: string; cacheControl?: string; anyOrigin?: boolean },
-  ): Promise<Response> {
-    const headers = new Headers({ "Content-Type": options.contentType });
-    if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
-    if (options.anyOrigin) headers.set("Access-Control-Allow-Origin", "*");
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    return await encodedFileResponse(req, filePath, options.contentType, headers);
+  async #fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
+    return await encodedFileResponse(req, filePath, options.contentType, assetHeaders(options));
   }
 
   #pickFederationChild() {
