@@ -1,11 +1,11 @@
-import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { AppExecutor, Executor, WorkspaceExecutor } from "./executors";
+import { AppExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { LibSource } from "./libSource";
-import { type SlicePlan, SlicePlanner } from "./slicePlanner";
+import { SlicePlanner } from "./slicePlanner";
+import { SubspaceClone } from "./subspaceClone";
 import type { SubspaceConfig, SubspaceDeclaration } from "./subspaceConfig";
-import type { PackageJson } from "./types";
 
 export interface SubspaceIncomingCommit {
   sha: string;
@@ -99,23 +99,10 @@ export interface SubspacePullResult {
 // Push is a squashed snapshot, so no workspace history (or other customer's commit message) reaches a subspace;
 // pull diffs against the last push received, so it is exactly the customer's own work.
 export class Subspace {
-  static readonly anchorFile = "akan.subspace.json";
-  /**
-   * The workspace's own never reach a subspace — its root config names every other customer's repo, its Jenkinsfile
-   * deploys the workspace — and a subspace's own survive every push.
-   */
-  static readonly subspaceOwnedRootEntries = ["akan.config.ts", "Jenkinsfile"];
   //* The declaration file before `akan.config.ts`: it names every customer's repo, so a push removes any copy of it.
   static readonly retiredConfigFile = "akan.subspace.ts";
   static readonly #retiredConfigRefusal =
     `${Subspace.retiredConfigFile} is no longer read: move it under \`subspace\` in akan.config.ts and delete it`;
-  static readonly syncSubjectPrefix = "chore(subspace): sync from ";
-  /** Workspace members, which are replaced wholesale rather than overlaid. */
-  static readonly memberDirs = ["apps", "libs"];
-  /** Subspace-owned in both directions: env values belong to the repo that deploys, not to the workspace. */
-  static readonly subspaceOwnedDirs = ["env"];
-  static readonly secretsMarkers = ["# akan:secrets (managed by akan.config.ts — do not edit)", "# akan:secrets:end"];
-  static readonly holdDir = ".akan-subspace-hold";
   static readonly #loopbackRegistry = /https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(?::\d+)?/;
 
   #workspace: WorkspaceExecutor;
@@ -140,16 +127,9 @@ export class Subspace {
   get #remote() {
     return `subspace-${this.#declaration.name}`;
   }
-  get #clonePath() {
-    return path.join(this.#workspace.workspaceRoot, ".akan/subspace", this.#declaration.name);
-  }
 
   async #git(args: string[]) {
     return await this.#workspace.spawn("git", args);
-  }
-
-  async #cloneGit(args: string[]) {
-    return await this.#workspace.spawn("git", ["-C", this.#clonePath, ...args]);
   }
 
   async branch() {
@@ -176,7 +156,7 @@ export class Subspace {
   //* Located by the one file only a push writes: unlike a tag or a recorded sha, it cannot drift out of the history.
   async anchor(branch: string): Promise<SubspaceAnchor> {
     const ref = `${this.#remote}/${branch}`;
-    const commit = (await this.#git(["log", "-1", "--format=%H", ref, "--", Subspace.anchorFile])).trim();
+    const commit = (await this.#git(["log", "-1", "--format=%H", ref, "--", SubspaceClone.anchorFile])).trim();
     if (!commit) return { commit: null, incoming: [] };
     const log = await this.#git(["log", "--format=%H%x09%an%x09%s", `${commit}..${ref}`]);
     const incoming = log
@@ -207,7 +187,7 @@ export class Subspace {
     const { plans, libs } = await this.slice();
     const rootFiles = plans[0]?.rootFiles ?? [];
     const present = new Set(SlicePlanner.rootEntriesOf(rootFiles));
-    const owned = Subspace.subspaceOwnedRootEntries;
+    const owned = SubspaceClone.subspaceOwnedRootEntries;
     const excluded = this.#config.exclude.filter((entry) => !owned.includes(entry));
     const excludedTops = new Set(excluded.map((entry) => entry.replace(/\/+$/, "")));
     const libFiles = new Map(plans.flatMap((plan) => Object.entries(plan.libFiles)));
@@ -260,12 +240,6 @@ export class Subspace {
     return (await this.#workspace.hasChanges()) ? "workspace working tree is dirty" : null;
   }
 
-  #isSubspaceOwned(file: string) {
-    const segments = file.split("/");
-    if (!Subspace.memberDirs.includes(segments[0] ?? "")) return false;
-    return Subspace.subspaceOwnedDirs.includes(segments[2] ?? "");
-  }
-
   // A library manifest always differs by the `akan.source` stamp a push writes, so it is compared without that key.
   #isStamped(file: string) {
     return /^libs\/[^/]+\/package\.json$/.test(file);
@@ -290,7 +264,7 @@ export class Subspace {
   async #changedSliceFiles(ref: string, diffArgs: string[]) {
     const files = (await this.#git(["diff", "--name-only", ...diffArgs]))
       .split("\n")
-      .filter((file) => !!file.trim() && !this.#isSubspaceOwned(file));
+      .filter((file) => !!file.trim() && !SubspaceClone.isSubspaceOwned(file));
     const kept = await Promise.all(
       files.map(async (file) => (this.#isStamped(file) ? await this.#differsBeyondStamp(ref, file) : true)),
     );
@@ -308,272 +282,6 @@ export class Subspace {
     const behindPaths = await this.#changedSliceFiles(ref, ["HEAD", ref, "--", ...paths]);
     const driftedLibs = libs.filter((lib) => behindPaths.some((file) => file.startsWith(`libs/${lib}/`)));
     return { name: this.name, branch, hasBranch, anchor, behindPaths, driftedLibs };
-  }
-
-  async #ensureClone(branch: string) {
-    if (!(await FileSys.dirExists(path.join(this.#clonePath, ".git")))) {
-      await rm(this.#clonePath, { recursive: true, force: true });
-      await mkdir(path.dirname(this.#clonePath), { recursive: true });
-      await this.#workspace.spawn("git", ["clone", "--quiet", this.#declaration.repo, this.#clonePath]);
-    }
-    const clone = new Executor(`subspace-${this.name}`, this.#clonePath);
-    await clone.spawn("git", ["fetch", "--quiet", "origin", branch]);
-    await clone.spawn("git", ["checkout", "--quiet", "-f", "-B", branch, `origin/${branch}`]);
-    await clone.spawn("git", ["clean", "-qfd"]);
-    return clone;
-  }
-
-  /** Moves the subspace's env trees aside, so replacing the members cannot take them with it. */
-  async #holdSubspaceOwned() {
-    const held: { from: string; to: string }[] = [];
-    const holdRoot = path.join(this.#clonePath, Subspace.holdDir);
-    await rm(holdRoot, { recursive: true, force: true });
-    for (const member of Subspace.memberDirs) {
-      const memberRoot = path.join(this.#clonePath, member);
-      if (!(await FileSys.dirExists(memberRoot))) continue;
-      for (const name of await readdir(memberRoot)) {
-        for (const owned of Subspace.subspaceOwnedDirs) {
-          const from = path.join(memberRoot, name, owned);
-          if (!(await FileSys.dirExists(from))) continue;
-          const to = path.join(holdRoot, member, name, owned);
-          await mkdir(path.dirname(to), { recursive: true });
-          await rename(from, to);
-          held.push({ from, to });
-        }
-      }
-    }
-    return held;
-  }
-
-  // The workspace owns the tracked env switch files; the per-environment values it gitignores belong to the subspace.
-  async #restoreSubspaceOwned(held: { from: string; to: string }[]) {
-    for (const { from, to } of held) await Subspace.#copyMissing(to, from);
-    await rm(path.join(this.#clonePath, Subspace.holdDir), { recursive: true, force: true });
-  }
-
-  //* A root entry last written by a sync commit is a copy an earlier push left there, the parent's Jenkinsfile among them:
-  //* it goes. Any other is the subspace's own and is held through the extraction.
-  async #holdRootEntries() {
-    const holdRoot = path.join(this.#clonePath, Subspace.holdDir, "root");
-    const held: string[] = [];
-    for (const entry of Subspace.subspaceOwnedRootEntries) {
-      const from = path.join(this.#clonePath, entry);
-      if (!(await FileSys.entryExists(from))) continue;
-      if (await this.#isPushedCopy(entry)) continue;
-      await mkdir(holdRoot, { recursive: true });
-      await rename(from, path.join(holdRoot, entry));
-      held.push(entry);
-    }
-    return held;
-  }
-
-  async #restoreRootEntries(held: string[]) {
-    const holdRoot = path.join(this.#clonePath, Subspace.holdDir, "root");
-    for (const entry of Subspace.subspaceOwnedRootEntries) {
-      const target = path.join(this.#clonePath, entry);
-      await rm(target, { recursive: true, force: true });
-      if (held.includes(entry)) await rename(path.join(holdRoot, entry), target);
-    }
-  }
-
-  async #isPushedCopy(entry: string) {
-    const subject = await this.#cloneGit(["log", "-1", "--format=%s", "--", entry]).catch(() => "");
-    return subject.trim().startsWith(Subspace.syncSubjectPrefix);
-  }
-
-  static async #copyMissing(from: string, to: string) {
-    await mkdir(to, { recursive: true });
-    for (const entry of await readdir(from, { withFileTypes: true })) {
-      const source = path.join(from, entry.name);
-      const target = path.join(to, entry.name);
-      if (entry.isDirectory()) await Subspace.#copyMissing(source, target);
-      else if (!(await FileSys.entryExists(target))) await rename(source, target);
-    }
-  }
-
-  // `git archive` emits only tracked files, so generated barrels, lib symlinks, env values and secrets never enter.
-  async #extract(paths: string[], excludes: string[] = []) {
-    // Relative, because GNU tar reads a drive-letter archive name (`C:\…`) as `host:path` on a remote host.
-    const archivePath = path.relative(this.#workspace.workspaceRoot, `${this.#clonePath}.tar`);
-    await this.#workspace.spawn("git", ["archive", "-o", archivePath, "HEAD", "--", ...paths]);
-    try {
-      await this.#workspace.spawn("tar", [
-        "-x",
-        "-f",
-        archivePath,
-        "-C",
-        this.#clonePath,
-        ...excludes.map((entry) => `--exclude=${entry}`),
-      ]);
-    } finally {
-      await rm(path.join(this.#workspace.workspaceRoot, archivePath), { force: true });
-    }
-  }
-
-  // An allowlist, not a filter, so no secret can reach a customer's clone; `AKAN_PUBLIC_*` ships in every bundle anyway.
-  #localEnv() {
-    const { serveDomain } = WorkspaceExecutor.getBaseDevEnv();
-    return {
-      AKAN_WORKSPACE_ID: "local",
-      AKAN_PUBLIC_REPO_NAME: this.name,
-      AKAN_PUBLIC_SERVE_DOMAIN: serveDomain,
-      AKAN_PUBLIC_ENV: "local",
-      AKAN_PUBLIC_OPERATION_MODE: "local",
-      AKAN_PUBLIC_LOG_LEVEL: "warn",
-    };
-  }
-
-  // The CLI needs a `.env` to recognise a workspace root and none arrives with the slice. Excluded through
-  // `.git/info/exclude`, not the copied `.gitignore`, so it can never be committed to the customer's repo.
-  async #writeLocalEnv() {
-    const excludePath = path.join(this.#clonePath, ".git/info/exclude");
-    const exclude = (await FileSys.fileExists(excludePath)) ? await FileSys.readText(excludePath) : "";
-    if (!exclude.split("\n").includes("/.env")) {
-      await mkdir(path.dirname(excludePath), { recursive: true });
-      await FileSys.writeText(excludePath, exclude.trim() ? `${exclude.replace(/\n*$/, "\n")}/.env\n` : "/.env\n");
-    }
-    const envPath = path.join(this.#clonePath, ".env");
-    if (await FileSys.fileExists(envPath)) return;
-    const lines = Object.entries(this.#localEnv()).map(([key, value]) => `${key}=${value}`);
-    await FileSys.writeText(envPath, `${lines.join("\n")}\n`);
-  }
-
-  // The root manifest is the union of every app's dependencies, so it is rebuilt from this subspace's slices.
-  async #rewriteManifest(plans: SlicePlan[]) {
-    const manifestPath = path.join(this.#clonePath, "package.json");
-    if (!(await FileSys.fileExists(manifestPath))) return [];
-    const rootPackageJson = (await FileSys.readJson(manifestPath)) as PackageJson;
-    const { packageJson, pruned, warnings } = await SlicePlanner.pruneDependencies(
-      this.#workspace,
-      rootPackageJson,
-      plans.flatMap((plan) => plan.requiredDependencies),
-    );
-    for (const warning of warnings) this.#workspace.logger.warn(warning);
-    await FileSys.writeJson(manifestPath, {
-      ...packageJson,
-      name: this.name,
-      description: `${this.name} workspace`,
-    });
-    return pruned;
-  }
-
-  async #applySlice(clone: Executor, branch: string) {
-    const { libs, paths, plans } = await this.slice();
-    const held = await this.#holdSubspaceOwned();
-    const heldRootEntries = await this.#holdRootEntries();
-    for (const member of Subspace.memberDirs)
-      await rm(path.join(this.#clonePath, member), { recursive: true, force: true });
-
-    //* Overlaid, never reconciled: a subspace owns its deployment, so a root entry the workspace lacks is left alone.
-    await this.#extract(["."], ["apps/*", "libs/*", "pkgs/*"]);
-    await this.#extract(paths);
-    await this.#restoreRootEntries(heldRootEntries);
-    await this.#restoreSubspaceOwned(held);
-
-    for (const entry of [Subspace.retiredConfigFile, ...this.#config.exclude])
-      if (!Subspace.subspaceOwnedRootEntries.includes(entry))
-        await rm(path.join(this.#clonePath, entry), { recursive: true, force: true });
-
-    await this.#rewriteGitignore();
-    const pruned = await this.#rewriteManifest(plans);
-    await this.#rewriteWorkspaceSection(libs);
-    await this.#writeLocalEnv();
-    for (const lib of libs) await this.#stampLib(clone, lib, branch);
-    return { libs, pruned };
-  }
-
-  // `akan:secrets` names every workspace app, so it is filtered; `bun.lock` is un-ignored because a subspace commits it.
-  async #rewriteGitignore() {
-    const gitignorePath = path.join(this.#clonePath, ".gitignore");
-    if (!(await FileSys.fileExists(gitignorePath))) return;
-    const [begin = "", end = ""] = Subspace.secretsMarkers;
-    // `git archive` checks text out as CRLF under Windows Git's default `core.autocrlf=true`.
-    const lines = (await FileSys.readText(gitignorePath)).split(/\r?\n/);
-    const beginIdx = lines.indexOf(begin);
-    const endIdx = lines.indexOf(end);
-    const filtered =
-      beginIdx >= 0 && endIdx > beginIdx
-        ? [
-            ...lines.slice(0, beginIdx + 1),
-            ...lines
-              .slice(beginIdx + 1, endIdx)
-              .filter((line) => this.#declaration.apps.some((app) => line.startsWith(`apps/${app}/`))),
-            ...lines.slice(endIdx),
-          ]
-        : lines;
-    await FileSys.writeText(gitignorePath, filtered.filter((line) => line.trim() !== "**/bun.lock").join("\n"));
-  }
-
-  /** The generated `## Workspace` block names every app and library in the workspace. */
-  async #rewriteWorkspaceSection(libs: string[]) {
-    const replacements = [
-      [/^- Repo: .*$/m, `- Repo: ${this.name}`],
-      [/^- Apps: .*$/m, `- Apps: ${this.#declaration.apps.join(", ")}`],
-      [/^- Libraries: .*$/m, `- Libraries: ${libs.length ? libs.join(", ") : "(none)"}`],
-    ] as const;
-    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
-      const filePath = path.join(this.#clonePath, file);
-      if (!(await FileSys.fileExists(filePath))) continue;
-      const content = await FileSys.readText(filePath);
-      const rewritten = replacements.reduce((text, [pattern, value]) => text.replace(pattern, value), content);
-      if (rewritten !== content) await FileSys.writeText(filePath, rewritten);
-    }
-  }
-
-  // Not through `LibSource`, which addresses a library by its position in the workspace. The hash skips `env/` and
-  // the stamp itself.
-  async #stampLib(clone: Executor, lib: string, branch: string) {
-    const manifestPath = path.join(this.#clonePath, "libs", lib, "package.json");
-    if (!(await FileSys.fileExists(manifestPath))) return;
-    const origin = `${this.#workspace.repoName}#${branch}`;
-    const sha = await this.headSha();
-    const [hash, previous] = await Promise.all([this.#hashLib(clone, lib), this.#committedStamp(clone, lib)]);
-    const manifest = (await FileSys.readJson(manifestPath)) as Record<string, unknown>;
-    const akan = (manifest[LibSource.manifestKey] ?? {}) as Record<string, unknown>;
-    //* The extraction overwrote the manifest, so the previous stamp comes from the clone's HEAD. It is kept whole while
-    //* the library's content is unchanged — matching the workspace sha too would rewrite every manifest, and push,
-    //* after any unrelated workspace commit.
-    const unchanged = previous?.origin === origin && previous.hash === hash;
-    const source = unchanged ? previous : { origin, sha, hash, syncedAt: new Date().toISOString() };
-    manifest[LibSource.manifestKey] = { ...akan, source };
-    await FileSys.writeJson(manifestPath, manifest);
-  }
-
-  async #committedStamp(clone: Executor, lib: string) {
-    try {
-      const committed = await clone.spawn("git", ["show", `HEAD:libs/${lib}/package.json`]);
-      const manifest = JSON.parse(committed) as Record<string, unknown>;
-      const akan = (manifest[LibSource.manifestKey] ?? {}) as Record<string, unknown>;
-      return akan.source as { origin: string; sha: string; hash: string; syncedAt: string } | undefined;
-    } catch {
-      //? First push: the library is not in the subspace's history yet.
-      return undefined;
-    }
-  }
-
-  async #hashLib(clone: Executor, lib: string) {
-    const listed = await clone.spawn("git", [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      `libs/${lib}`,
-    ]);
-    const candidates = listed
-      .split("\0")
-      .filter((file) => !!file && !this.#isSubspaceOwned(file))
-      .sort();
-    //* The index still lists files the workspace deleted since the last push (only the push's `git add -A`
-    //* reconciles it), and opening one throws.
-    const present = await Promise.all(
-      candidates.map(async (file) => await FileSys.entryExists(path.join(this.#clonePath, file))),
-    );
-    const files = candidates.filter((_, index) => present[index]);
-    return await LibSource.hashFiles(files, `libs/${lib}/package.json`, (file) =>
-      FileSys.readText(path.join(this.#clonePath, file)),
-    );
   }
 
   /** Direction is subspace → workspace, so the patch reads as what a push would apply rather than its inverse. */
@@ -611,25 +319,6 @@ export class Subspace {
     return Subspace.#loopbackRegistryProblem(await this.#git(["show", "HEAD:bun.lock"]).catch(() => null));
   }
 
-  async #cloneLockProblem() {
-    const lockPath = path.join(this.#clonePath, "bun.lock");
-    if (!(await FileSys.fileExists(lockPath))) return null;
-    return Subspace.#loopbackRegistryProblem(await FileSys.readText(lockPath));
-  }
-
-  // Refuses rather than throws, so one failing subspace does not abort the rest; the env is explicit so the child
-  // sees the clone's values, not the workspace's.
-  async #verify(clone: Executor) {
-    const env = { ...process.env, ...this.#localEnv() };
-    try {
-      await clone.spawn("bun", ["install"], { env });
-      for (const app of this.#declaration.apps) await clone.spawn("bunx", ["akan", "sync", app], { env });
-      return null;
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
-  }
-
   async push(branch: string, { verify = true }: { verify?: boolean } = {}): Promise<SubspacePushResult> {
     this.#config.assertPushable(branch);
     const refusal = (await this.#workspaceRefusal()) ?? (await this.#headLockProblem());
@@ -637,11 +326,15 @@ export class Subspace {
     if (!(await this.fetch(branch)))
       return { name: this.name, outcome: "refused", reason: `subspace has no branch "${branch}"`, changedFiles: 0 };
 
-    const clone = await this.#ensureClone(branch);
-    const { pruned } = await this.#applySlice(clone, branch);
+    const clone = await SubspaceClone.open(this.#workspace, this.#declaration, branch);
+    const { pruned } = await clone.applySlice(await this.slice(), {
+      branch,
+      sha: await this.headSha(),
+      remove: [Subspace.retiredConfigFile, ...this.#config.exclude],
+    });
 
-    const dirty = (await clone.spawn("git", ["status", "--porcelain"])).trim();
-    if (!dirty)
+    const changedFiles = await clone.changedFiles();
+    if (!changedFiles)
       return {
         name: this.name,
         outcome: "skipped",
@@ -650,37 +343,20 @@ export class Subspace {
         prunedDependencies: pruned,
       };
 
-    const changedFiles = dirty.split("\n").length;
     if (verify) {
-      const failure = await this.#verify(clone);
+      const failure = await clone.verify();
       if (failure) return { name: this.name, outcome: "refused", reason: failure, changedFiles };
     }
     //? Rechecked on the clone: the verifying `bun install` may resolve packages from this machine's registry into it.
-    const lockProblem = await this.#cloneLockProblem();
+    const lockProblem = Subspace.#loopbackRegistryProblem(await clone.lock());
     if (lockProblem) return { name: this.name, outcome: "refused", reason: lockProblem, changedFiles };
-    await this.#writeAnchorFile(branch);
-    await clone.spawn("git", ["add", "-A"]);
-    const message = `${Subspace.syncSubjectPrefix}${this.#workspace.repoName}@${await this.headSha()}`;
-    await clone.spawn("git", ["commit", "--quiet", "-m", message]);
-    //* Never force: a diverged subspace holds customer commits, and `pull` is how those come back.
-    await clone.spawn("git", ["push", "--quiet", "origin", branch]);
     return {
       name: this.name,
       outcome: "pushed",
-      commit: (await clone.spawn("git", ["rev-parse", "--short", "HEAD"])).trim(),
+      commit: await clone.commit(branch, await this.headSha()),
       changedFiles,
       prunedDependencies: pruned,
     };
-  }
-
-  async #writeAnchorFile(branch: string) {
-    await FileSys.writeJson(path.join(this.#clonePath, Subspace.anchorFile), {
-      workspace: this.#workspace.repoName,
-      hubSha: await this.headSha(),
-      branch,
-      apps: this.#declaration.apps,
-      syncedAt: new Date().toISOString(),
-    });
   }
 
   async pull(branch: string, { adoptLibs = false }: { adoptLibs?: boolean } = {}): Promise<SubspacePullResult> {
@@ -688,16 +364,16 @@ export class Subspace {
     if (!(await this.fetch(branch))) throw new Error(`Subspace "${this.name}" has no branch "${branch}"`);
     const anchor = await this.anchor(branch);
     if (!anchor.commit)
-      throw new Error(`Subspace "${this.name}" carries no ${Subspace.anchorFile} — it has never received a push`);
+      throw new Error(`Subspace "${this.name}" carries no ${SubspaceClone.anchorFile} — it has never received a push`);
     if (!anchor.incoming.length) return { name: this.name, applied: [], libPatch: null, ignored: [], incoming: [] };
 
     const range = `${anchor.commit}..${this.#remote}/${branch}`;
     const changed = (await this.#git(["diff", "--name-only", range])).split("\n").filter((file) => !!file.trim());
     const appPrefixes = this.#declaration.apps.map((app) => `apps/${app}/`);
     const appFiles = changed.filter(
-      (file) => appPrefixes.some((prefix) => file.startsWith(prefix)) && !this.#isSubspaceOwned(file),
+      (file) => appPrefixes.some((prefix) => file.startsWith(prefix)) && !SubspaceClone.isSubspaceOwned(file),
     );
-    const libFiles = changed.filter((file) => file.startsWith("libs/") && !this.#isSubspaceOwned(file));
+    const libFiles = changed.filter((file) => file.startsWith("libs/") && !SubspaceClone.isSubspaceOwned(file));
     const ignored = changed.filter((file) => !appFiles.includes(file) && !libFiles.includes(file));
 
     const applied = adoptLibs ? [...appFiles, ...libFiles] : appFiles;
