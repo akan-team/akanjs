@@ -1,6 +1,13 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
+import {
+  cn,
+  DEFAULT_BOTTOM_INSET,
+  debugFrame,
+  type FrameSlotRegistration,
+  useInHiddenLayout,
+  usePathCtx,
+} from "akanjs/client";
 import { type ReactNode, useLayoutEffect, useState } from "react";
 
 import { Portal } from "../Portal";
@@ -33,6 +40,7 @@ export const BottomInset = ({
   //? State, not a ref: the content moves from its server fallback into the slot, and the observer must follow it.
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const pathCtx = usePathCtx();
+  const isHidden = useInHiddenLayout();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
@@ -61,7 +69,7 @@ export const BottomInset = ({
     return () => debugFrame("bottomInset.unmount", { path, frameSource });
   }, [path, keyboardSticky, contentAnchor, frameRole, frameScope, frameSource]);
   useLayoutEffect(() => {
-    if (!path) return;
+    if (!path || isHidden) return;
     const height = useDeclaredHeight ? resolvedEstimatedHeight : (measuredHeight ?? readContentHeight());
     return registerFrameSlot({
       type: "bottomInset",
@@ -84,6 +92,7 @@ export const BottomInset = ({
     frameCache,
     path,
     useDeclaredHeight,
+    isHidden,
   ]);
   useLayoutEffect(() => {
     const element = contentElement;
@@ -102,6 +111,7 @@ export const BottomInset = ({
     observer.observe(element);
     return () => observer.disconnect();
   }, [contentElement]);
+  if (isHidden) return null;
 
   const content = (
     <div

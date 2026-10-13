@@ -485,7 +485,13 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
             location={location}
             prefix={prefix}
           >
-            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
+            <RenderLayer
+              renders={renders}
+              index={0}
+              params={location.params}
+              searchParams={location.searchParams}
+              isEmbedded={Boolean(globalThis.__AKAN_EMBED__)}
+            />
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,

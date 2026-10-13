@@ -1,6 +1,14 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, DEFAULT_TOP_INSET, debugFrame, type TransitionType, usePathCtx } from "akanjs/client";
+import {
+  cn,
+  DEFAULT_TOP_INSET,
+  debugFrame,
+  type TransitionType,
+  useCsr,
+  useInHiddenLayout,
+  usePathCtx,
+} from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 import { BiChevronLeft, BiX } from "react-icons/bi";
 
@@ -34,8 +42,14 @@ export const Navbar = ({
   right,
 }: NavbarProps) => {
   const pathCtx = usePathCtx();
+  const { history } = useCsr();
+  const isHidden = useInHiddenLayout();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathRoute?.path;
+  const entryId = pathCtx.location?.entryId;
+  //? A view opens on the screen its tool named; a back from there would leave it for one nobody asked for.
+  const isViewStart = !!globalThis.__AKAN_EMBED__ && !!entryId && history.current?.locations[0]?.entryId === entryId;
+  const shownBack = isViewStart ? false : back;
   const BackIcon = closeIconTransitions.has(pathRoute?.pageState.transition ?? "none") ? BiX : BiChevronLeft;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
   const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
@@ -45,7 +59,7 @@ export const Navbar = ({
     return () => debugFrame("navbar.unmount", { path, height });
   }, [path, height]);
   useLayoutEffect(() => {
-    if (!path) return;
+    if (!path || isHidden) return;
     return registerFrameSlot({
       type: "topInset",
       scope: "page",
@@ -53,9 +67,10 @@ export const Navbar = ({
       estimatedHeight: height ?? DEFAULT_TOP_INSET,
       height,
     });
-  }, [registerFrameSlot, height, path]);
+  }, [registerFrameSlot, height, path, isHidden]);
+  if (isHidden) return null;
   const bar = (
-    <div className={cn("flex size-full items-center gap-2 px-5", back && "pl-14", className)}>
+    <div className={cn("flex size-full items-center gap-2 px-5", shownBack && "pl-14", className)}>
       {left ? <div className="flex shrink-0 items-center gap-1">{left}</div> : null}
       {title ? <div className="min-w-0 flex-1 truncate font-semibold text-base">{title}</div> : null}
       {children}
@@ -63,19 +78,19 @@ export const Navbar = ({
     </div>
   );
   const backButton =
-    back === true ? (
+    shownBack === true ? (
       <Link.Back className="text-4xl" fallback={backFallback}>
         <BackIcon />
       </Link.Back>
     ) : (
-      back
+      shownBack
     );
   return (
     <>
       <Portal id={`topInsetContent${suffix}`} fallback={<FrameSlotFallback slot="topInset">{bar}</FrameSlotFallback>}>
         {bar}
       </Portal>
-      {back ? (
+      {shownBack ? (
         <Portal
           id={`topLeftActionContent${suffix}`}
           fallback={<FrameSlotFallback slot="topLeftAction">{backButton}</FrameSlotFallback>}

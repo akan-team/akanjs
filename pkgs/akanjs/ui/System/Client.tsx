@@ -189,6 +189,7 @@ export const ClientPathWrapper = ({
           searchParams,
           search,
           pathRoute,
+          ...(location?.entryId ? { entryId: location.entryId } : {}),
         },
         prefix,
         gestureEnabled,

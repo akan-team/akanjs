@@ -79,4 +79,25 @@ describe("AgentActivity", () => {
     expect(surface.snapshot().scopes).toEqual([]);
     app.unmount();
   });
+
+  test("an inactive subtree that keeps its guides still says them, and stops when the activity above it does", () => {
+    const surface = new AgenticSurface();
+    const tree = (pageActive: boolean) => (
+      <AgentProvider surface={surface}>
+        <AgentActivity active={pageActive}>
+          <AgentActivity active={false} keepGuides>
+            <Page name="Chrome" />
+          </AgentActivity>
+        </AgentActivity>
+      </AgentProvider>
+    );
+    const app = mount(tree(true));
+    const snapshot = surface.snapshot();
+    expect(snapshot.tools).toEqual([]);
+    expect(snapshot.resources).toEqual([]);
+    expect(snapshot.guides).toEqual(["Chrome rules."]);
+    app.render(tree(false));
+    expect(surface.snapshot().guides).toEqual([]);
+    app.unmount();
+  });
 });

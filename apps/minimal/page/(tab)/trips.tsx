@@ -7,6 +7,7 @@ const pageConfig = { topInset: 72 };
 
 export default page()
   .config(pageConfig)
+  .prompt("showTrips", "Show the trips coming up, starting with the next one.")
   .render(() => (
     <Screen className="px-5 pb-28">
       <Layout.TopInset className={cn(appNavClass, "flex items-center px-5")} estimatedHeight={pageConfig.topInset}>

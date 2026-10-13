@@ -842,9 +842,11 @@ it.
 - **The same page is a tool too, and an MCP Apps host renders it.** A `.prompt()` page answers `tools/call` with
   that briefing plus its web URL, and a host that declares the `io.modelcontextprotocol/ui` extension (claude.ai,
   ChatGPT, VS Code) shows the screen itself in the chat — the CSR bundle in a sandboxed iframe whose every call the
-  host relays under the agent's token. An endpoint kept off the shelf only by `mcp: false` stays callable by that
-  view and is listed to no model; a `Person` act is still refused there. `option.setMcp({ apps: false })` keeps
-  pages prompts only, and a page named like an endpoint stays one (boot warns).
+  host relays under the agent's token. It shows the page alone: every layout above it still runs (guards, providers,
+  `<Agent.Guide>`) and draws nothing, unless it draws no page, as a gate does. Nothing is written for the view. An
+  endpoint kept off the shelf only by `mcp: false` stays callable by that view and is listed to no model; a `Person`
+  act is still refused there. `option.setMcp({ apps: false })` keeps pages prompts only, and a page named like an
+  endpoint stays one (boot warns).
 
 Full contract — configuration, wire behaviour, resource URIs, OAuth metadata, protocol revisions, and
 `McpProgress.report`: `get_guideline` with `mcpRule`, or `akan guideline show mcpRule`.

@@ -364,6 +364,10 @@ export const usePathCtx = () => {
   return contextValues;
 };
 
+/** Inside a layout's own markup that an MCP view hides while the page is drawn on its own: frame chrome draws nothing. */
+export const hiddenLayoutContext = sharedContext<boolean>("hiddenLayout", false);
+export const useInHiddenLayout = () => useContext(hiddenLayoutContext);
+
 //? `prev` is shown under the current page for a swipe back; `hidden` is parked, its effects stopped.
 export type PageActivity = "current" | "prev" | "pending" | "hidden";
 export interface PageActivityState {

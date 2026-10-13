@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, DEFAULT_TOP_INSET, debugFrame, usePathCtx } from "akanjs/client";
+import { cn, DEFAULT_TOP_INSET, debugFrame, useInHiddenLayout, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 
 import { Portal } from "../Portal";
@@ -14,6 +14,7 @@ export interface TopInsetProps {
 
 export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_INSET }: TopInsetProps) => {
   const pathCtx = usePathCtx();
+  const isHidden = useInHiddenLayout();
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
   const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
@@ -24,14 +25,15 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
     return () => debugFrame("topInset.unmount", { path, estimatedHeight });
   }, [path, estimatedHeight]);
   useLayoutEffect(() => {
-    if (!path) return;
+    if (!path || isHidden) return;
     return registerFrameSlot({
       type: "topInset",
       scope: "page",
       source: "topInset",
       estimatedHeight,
     });
-  }, [registerFrameSlot, estimatedHeight, path]);
+  }, [registerFrameSlot, estimatedHeight, path, isHidden]);
+  if (isHidden) return null;
 
   const content = (
     <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={cn("size-full", className)}>
@@ -52,6 +54,8 @@ export interface TopLeftActionProps {
 
 export const TopLeftAction = ({ className, children }: TopLeftActionProps) => {
   const pathCtx = usePathCtx();
+  const isHidden = useInHiddenLayout();
+  if (isHidden) return null;
   const path = pathCtx.location?.pathRoute?.path;
   const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   const content = <div className={className}>{children}</div>;

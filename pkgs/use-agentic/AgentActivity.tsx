@@ -4,6 +4,8 @@ import { GateContext, SurfaceContext, useAgentGate, useSurface } from "./surface
 
 export interface AgentActivityProps {
   active: boolean;
+  /** Guidance stays published while inactive: the subtree is off screen, but what it says about the route holds. */
+  keepGuides?: boolean;
   children: ReactNode;
 }
 
@@ -12,11 +14,11 @@ export interface AgentActivityProps {
  * it, like the page under the one on screen. Registrations stay in place, so turning it back on re-publishes them
  * without a remount. A registry that lives outside the surface reads the same gate through `useAgentGate()`.
  */
-export const AgentActivity = ({ active, children }: AgentActivityProps) => {
+export const AgentActivity = ({ active, keepGuides = false, children }: AgentActivityProps) => {
   const surface = useSurface();
   const parent = useAgentGate();
   const gate = useMemo(() => surface.gate(active, parent), [surface, parent]);
-  const gated = useMemo(() => surface.gated(gate), [surface, gate]);
+  const gated = useMemo(() => surface.gated(gate, keepGuides ? parent : gate), [surface, gate, parent, keepGuides]);
   useLayoutEffect(() => gate.set(active), [gate, active]);
   return (
     <SurfaceContext.Provider value={gated}>
