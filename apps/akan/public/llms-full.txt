@@ -1148,8 +1148,9 @@ Headings:
 - Create icecream order module
 - Define Constant
 - Fill dictionary
+- Allow orders in signal
 - Make template file
-- Update unit file
+- Update unit and view files
 - Expose to page
 
 Practice
@@ -4587,7 +4588,7 @@ Let's understand the new schema additions:
 
 An enum defining how the customer wants their order - for here, take out, or delivery
 
-Customer's phone number with validation using isPhoneNumber for pickup notifications
+Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
 
 Updated to include serveType for display in order lists and dashboards
 
@@ -4617,7 +4618,7 @@ The ice cream shop is so successful that delivery orders are flooding in! Now we
 
 In this tutorial, you'll learn how to:
 
-Define relationships between models using embedded references
+Define relationships between models with Light model references
 
 Trigger side effects when related data is created
 
@@ -4629,7 +4630,7 @@ First, let's create the Delivery module using the CLI. This module will connect 
 
 Define Relationship
 
-Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - this creates an embedded reference that stores the essential order data directly in the delivery document.
+Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - the delivery stores each order's id, and reading a delivery hands the orders back as LightIcecreamOrder.
 
 Let's understand the key relationship pattern:
 
@@ -4695,7 +4696,7 @@ Declare Adapter
 
 First, let's start by connecting an external API or module like an alert. You can connect an api that sends messages or emails, but in this tutorial, we'll create an api that simply prints to the console and connect it.
 
-Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder as follows.
+Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder with adapt(). An adapter gets its own logger as this.logger.
 
 Why use the adapter pattern? By injecting external dependencies as adapters rather than directly importing them in services, you gain several benefits:
 
@@ -4730,7 +4731,7 @@ Dashboard Slice
 
 First, let's declare a slice for the real-time dashboard to show to customers. You can display the waiting orders and the orders being picked up by querying them separately.
 
-inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. When the slice is declared, the state and actions of the store are automatically created.
+inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. Each init() names its own guards, and the dashboard is public. When the slice is declared, the state and actions of the store are automatically created.
 
 Just like labeling different shelves in an ice cream shop - "Ready for pickup", "Being made" - we need to give proper names to our slices in the dictionary. This ensures the UI displays meaningful labels and the slice functions are properly documented.
 
@@ -4775,6 +4776,8 @@ When a customer places an order, it starts as "active". Staff can begin processi
 
 While an order is being prepared, it's in "processing" status. Once ready, staff can mark it as "served".
 
+Once the customer has picked up the order, staff closes it as "finished".
+
 Only active orders can be canceled. Once processing begins, cancellation is no longer allowed.
 
 Business Rules
@@ -4783,9 +4786,7 @@ Only active orders can be processed or canceled
 
 Only processing orders can be served
 
-Served and canceled orders are final states
-
-Implement Document Business Logic
+Only served orders can be finished
 
 ## Show Details
 
@@ -4795,7 +4796,7 @@ Priority: P1
 
 Headings:
 - Show Details
-- Add View/Edit Modal
+- Add View Modal
 - Add View Button to Unit Cards
 - Design Detail View
 - Test Your Implementation
@@ -4815,11 +4816,11 @@ The actual content inside the modal, showing all the order information in an org
 
 This separation allows each component to have a single responsibility: the wrapper handles clicking, the modal handles the popup behavior, and the view handles the display formatting.
 
-Add View/Edit Modal
+Add View Modal
 
-Now let's add a View/Edit modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
+Now let's add a view modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
 
-This code creates a modal system that handles the display and editing of orders. Let's examine what each part does:
+This code renders each order as a card with its own view modal. Let's examine what each part does:
 
 Load.Units Component
 

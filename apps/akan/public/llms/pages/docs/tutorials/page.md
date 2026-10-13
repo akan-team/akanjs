@@ -29,7 +29,7 @@ Let's understand the new schema additions:
 
 An enum defining how the customer wants their order - for here, take out, or delivery
 
-Customer's phone number with validation using isPhoneNumber for pickup notifications
+Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
 
 Updated to include serveType for display in order lists and dashboards
 
@@ -75,9 +75,9 @@ Let's understand the key components of this order form page:
 
 The page declares the query key it reads with .search("serveType", cnst.ServeType), so .render() receives serveType already typed as the enum's union — a value outside the enum is dropped, the way an absent one is. We use it to pre-fill the order form with the customer's choice from the landing page.
 
-The Load.Edit component handles form state management, validation, and submission. It connects to the slice for data persistence and automatically navigates to the success page on submit.
+The Load.Edit component handles form state management, validation, and submission. It connects to the slice for data persistence, and with type="form" it renders the form inline with its own submit button.
 
-Setting onCancel to "back" enables the cancel button to navigate back to the previous page. This provides an easy way for customers to change their mind.
+Once the order is created, onSubmit moves the customer to the success page. A path string navigates there; a function receives the created order instead.
 
 Now let's style the Template component for the kiosk experience. Each section is wrapped in a card with icons:
 
@@ -89,16 +89,16 @@ Allows selecting multiple options (toppings) with visual feedback
 
 Phone number input with formatting and validation built-in
 
-In the next tutorial, we'll explore how to use Scalar for computed values and aggregations. This will allow you to display dynamic information like order totals, wait times, and statistics in real-time.
+In the next tutorial, we'll use a Scalar - a value object embedded in a model - to track ice cream stock, so the shop knows when it is about to run out.
 
 ## Code Examples
 
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.constant.ts
 
 ```ts
+import { enumOf, Int } from "akanjs/base";
 import { isPhoneNumber } from "akanjs/common"; // [!code ++]
-import { enumOf, Int } from "akanjs/base"; // [!code collapse:3]
-import { via } from "akanjs/constant";
+import { via } from "akanjs/constant"; // [!code collapse:2]
 
 export class ServeType extends enumOf("serveType", ["forHere", "takeOut", "delivery"] as const) {} // [!code ++]
 // [!code collapse:21]
@@ -124,7 +124,7 @@ export class Topping extends enumOf("topping", [
 
 export class IcecreamOrderInput extends via((field) => ({
   serveType: field(ServeType, { default: "forHere" }), // [!code ++:2]
-  phone: field(String, { validate: isPhoneNumber }).optional(),
+  phone: field.hidden(String, { validate: isPhoneNumber }).optional(),
   size: field(Int, { min: 50, max: 200 }),
   toppings: field([Topping]),
 })) {}
@@ -135,8 +135,9 @@ export class IcecreamOrderObject extends via(IcecreamOrderInput, (field) => ({
 
 export class LightIcecreamOrder extends via(
   IcecreamOrderObject,
-  ["serveType", "phone", "size", "toppings", "status"] as const, // [!code ++]
-  (resolve) => ({})
+  ["size", "toppings", "status"] as const, // [!code --]
+  ["serveType", "size", "toppings", "status"] as const, // [!code ++]
+  (resolve) => ({}),
 ) {}
 // [!code collapse:4]
 export class IcecreamOrder extends via(IcecreamOrderObject, LightIcecreamOrder, (resolve) => ({})) {}
@@ -147,18 +148,22 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.dictionary.ts
 
 ```ts
-import { modelDictionary } from "akanjs/dictionary"; // [!code collapse:4]
-
-import type { IcecreamOrder, IcecreamOrderInsight, IcecreamOrderStatus, Topping } from "./icecreamOrder.constant";
+import { modelDictionary } from "akanjs/dictionary";
+import type {
+  IcecreamOrder,
+  IcecreamOrderInsight,
+  IcecreamOrderStatus,
+  ServeType, // [!code ++]
+  Topping,
+} from "./icecreamOrder.constant";
 import type { IcecreamOrderEndpoint, IcecreamOrderSlice } from "./icecreamOrder.signal";
-import type { ServeType } from "./icecreamOrder.constant"; // [!code ++]
 
 export const dictionary = modelDictionary(["en", "ko"])
   .of((t) => // [!code collapse:6]
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     serveType: t(["Serve Type", "서빙 타입"]).desc(["Serve type of the icecream order", "아이스크림 주문의 서빙 타입"]), // [!code ++:2]
@@ -228,8 +233,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     onlyActiveCanBeCanceled: ["Only active orders can be canceled", "활성 상태의 주문만 취소할 수 있습니다"],
   })
   .translate({
-    pickup: ["Pickup", "픽업"],
-    waiting: ["Waiting", "대기"],
+    waiting: ["Waiting", "대기중"],
+    pickup: ["Pickup", "픽업가능"],
   });
 ```
 
@@ -237,8 +242,8 @@ export const dictionary = modelDictionary(["en", "ko"])
 
 ```ts
 "use client"; // [!code collapse:4]
-import { Field, Layout } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
+import { Field, Layout } from "akanjs/ui";
 
 interface GeneralProps {
   className?: string;
@@ -285,9 +290,9 @@ export const General = ({ className, showServeType = true }: GeneralProps) => { 
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:7]
-import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:7]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 interface CardProps extends ModelProps<"icecreamOrder", cnst.LightIcecreamOrder> {
   showControls?: boolean;
@@ -297,14 +302,14 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
           <span // [!code ++:10]
             className={cn(
-              "ml-2 rounded px-2 py-1 text-xs font-semibold uppercase",
+              "ml-2 rounded px-2 py-1 font-semibold text-xs uppercase",
               icecreamOrder.serveType === "forHere" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.serveType === "takeOut" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.serveType === "delivery" && "border border-info/40 bg-info text-info-foreground",
@@ -314,12 +319,12 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
           </span>
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -332,7 +337,7 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
         </div>
       </div>
       {showControls ? ( // [!code collapse:16]
-        <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+        <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
           <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
             <button className={buttonRecipe({ variant: "primary" })}>
               <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -355,9 +360,9 @@ export const Card = ({ icecreamOrder, showControls = true }: CardProps) => {
 ### apps/koyo/page/icecreamOrder.tsx
 
 ```ts
-import { Link } from "akanjs/ui";
 import { usePage } from "@apps/koyo/client";
 import { page } from "akanjs/client";
+import { Link } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -379,10 +384,8 @@ export default page().render(() => {
       </div>
       <div className="w-full max-w-4xl space-y-8 text-center">
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-background via-muted to-border text-7xl font-bold text-primary duration-1000 md:text-8xl">
-            Koyo
-          </h1>
-          <p className="text-2xl font-light text-primary delay-150 duration-1000 md:text-3xl">
+          <h1 className="font-bold text-7xl text-primary duration-1000 md:text-8xl">Koyo</h1>
+          <p className="font-light text-2xl text-primary delay-150 duration-1000 md:text-3xl">
             {l.trans({ en: "Korean Yogurt Ice Cream", ko: "한국 요거트 아이스크림" })}
           </p>
           <div className="flex items-center justify-center gap-2 text-lg text-primary delay-300 duration-1000">
@@ -394,14 +397,14 @@ export default page().render(() => {
         <div className="flex flex-col items-center gap-4 pt-8 delay-500 duration-1000 sm:flex-row sm:justify-center">
           <Link
             href="/icecreamOrder/new?serveType=forHere"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 font-semibold text-2xl text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🍽️</span>
             {l.trans({ en: "For Here", ko: "매장 식사" })}
           </Link>
           <Link
             href="/icecreamOrder/new?serveType=takeOut"
-            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-border bg-muted px-10 py-6 font-semibold text-2xl text-primary shadow-2xl transition-all duration-300 hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95 sm:w-auto"
           >
             <span className="text-4xl">🛍️</span>
             {l.trans({ en: "Take Out", ko: "포장 주문" })}
@@ -416,9 +419,9 @@ export default page().render(() => {
 ### apps/koyo/page/icecreamOrder/success.tsx
 
 ```ts
-import { Link } from "akanjs/ui";
 import { usePage } from "@apps/koyo/client";
 import { page } from "akanjs/client";
+import { Link } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -431,7 +434,7 @@ export default page().render(() => {
           </div>
         </div>
         <div className="space-y-4">
-          <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
+          <h1 className="font-bold text-5xl text-primary md:text-6xl">
             {l.trans({ en: "Order Placed!", ko: "주문 완료!" })}
           </h1>
         </div>
@@ -454,7 +457,7 @@ export default page().render(() => {
         <div className="pt-4">
           <Link
             href="/icecreamOrder"
-            className="inline-flex items-center justify-center gap-3 rounded-full border border-border bg-muted px-12 py-6 text-2xl font-semibold text-primary shadow-2xl transition-all hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95"
+            className="inline-flex items-center justify-center gap-3 rounded-full border border-border bg-muted px-12 py-6 font-semibold text-2xl text-primary shadow-2xl transition-all hover:scale-105 hover:bg-muted hover:shadow-md active:scale-95"
           >
             <span className="text-4xl">🏠</span>
             {l.trans({ en: "Place New Order", ko: "새 주문하기" })}
@@ -469,9 +472,9 @@ export default page().render(() => {
 ### apps/koyo/page/icecreamOrder/new.tsx
 
 ```ts
-import { Load } from "akanjs/ui";
 import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 import { page } from "akanjs/client";
+import { Load } from "akanjs/ui";
 
 export default page()
   .search("serveType", cnst.ServeType, { desc: "How the order is served: forHere, takeOut or delivery." })
@@ -486,10 +489,10 @@ export default page()
             <div className="flex justify-center">
               <span className="text-8xl">🍦</span>
             </div>
-            <h1 className="bg-linear-to-r from-background via-muted to-border text-5xl font-bold text-primary md:text-6xl">
+            <h1 className="font-bold text-5xl text-primary md:text-6xl">
               {l("base.createModel", { model: l("icecreamOrder.modelName") })}
             </h1>
-            <p className="text-xl font-light text-primary">
+            <p className="font-light text-primary text-xl">
               {l.trans({ en: "Customize your perfect treat", ko: "나만의 완벽한 디저트를 만들어보세요" })}
             </p>
           </div>
@@ -498,7 +501,6 @@ export default page()
             slice={fetch.slice.icecreamOrderInPublic}
             edit={icecreamOrderForm}
             type="form"
-            onCancel="back"
             onSubmit="/icecreamOrder/success"
           >
             <IcecreamOrder.Template.General showServeType={false} />
@@ -513,9 +515,9 @@ export default page()
 
 ```ts
 "use client";
-import { cn } from "akanjs/client"; // [!code ++]
-import { Field, Layout } from "akanjs/ui"; // [!code collapse:8]
 import { cnst, st, usePage } from "@apps/koyo/client";
+import { cn } from "akanjs/client"; // [!code ++]
+import { Field, Layout } from "akanjs/ui"; // [!code collapse:7]
 
 interface GeneralProps {
   className?: string;
@@ -532,7 +534,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🍦</span>
-              <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.serveType")}</h2>
+              <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.serveType")}</h2>
             </div>
             <Field.ToggleSelect
               items={cnst.ServeType}
@@ -546,7 +548,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📏</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.size")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.size")}</h2>
           </div>
           <Field.ToggleSelect
             items={[50, 100, 200].map((size) => ({ label: `${size}cc`, value: size }))}
@@ -559,7 +561,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">🍓</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.toppings")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.toppings")}</h2>
           </div>
           <Field.MultiToggleSelect
             items={cnst.Topping}
@@ -572,7 +574,7 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📱</span>
-            <h2 className="text-2xl font-semibold text-primary">{l("icecreamOrder.phone")}</h2>
+            <h2 className="font-semibold text-2xl text-primary">{l("icecreamOrder.phone")}</h2>
           </div>
           <Field.Phone
             placeholder="010-0000-0000"

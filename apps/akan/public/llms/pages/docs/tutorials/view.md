@@ -9,7 +9,7 @@
 ## Headings
 
 - Show Details (#show-details)
-- Add View/Edit Modal (#view-wrapper)
+- Add View Modal (#view-wrapper)
 - Add View Button to Unit Cards (#button-on-unit)
 - Design Detail View (#design-detail-view)
 - Test Your Implementation (#test-implementation)
@@ -31,21 +31,21 @@ The actual content inside the modal, showing all the order information in an org
 
 This separation allows each component to have a single responsibility: the wrapper handles clicking, the modal handles the popup behavior, and the view handles the display formatting.
 
-Add View/Edit Modal
+Add View Modal
 
-Now let's add a View/Edit modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
+Now let's add a view modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
 
-This code creates a modal system that handles the display and editing of orders. Let's examine what each part does:
+This code renders each order as a card with its own view modal. Let's examine what each part does:
 
 Load.Units Component
 
 Renders every order as a Unit card in a list, each showing basic order information
 
-Model.ViewEditModal
+Model.ViewModal
 
-Creates the modal popup that appears when customers click to view details. It automatically loads order data and displays it in a structured format
+The modal popup for one order, opened when its View button is clicked. The id prop tells it which order it belongs to, and it loads that order's data automatically
 
-The ViewEditModal component handles opening, closing, data loading, and content display automatically. You specify what content to show, and it manages the technical implementation. This approach allows you to add detailed views throughout your application with minimal code.
+The ViewModal component handles opening, closing, data loading, and content display automatically. Model.ViewEditModal adds Edit and Remove for the verbs a signal opens; ours opens only creation, so ViewModal is all we need.
 
 Add View Button to Unit Cards
 
@@ -57,7 +57,7 @@ This wraps our button and handles the click functionality to show the detailed v
 
 We pass the slice and modelId so the modal knows which order to display details for
 
-The button uses the buttonRecipe primary variant and lg size for consistent styling across the app
+The button uses the buttonRecipe primary variant for consistent styling across the app
 
 Design Detail View
 
@@ -83,7 +83,7 @@ Let's test the detailed view implementation. Navigate to your ice cream order pa
 
 Testing Steps:
 
-Navigate to http://localhost:8282/icecreamOrder
+Navigate to http://localhost:8282
 
 Create a new ice cream order if you don't have any
 
@@ -104,11 +104,11 @@ In the next tutorial, we'll add status management functionality that allows shop
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx
 
 ```ts
-"use client"; // [!code collapse:3]
+"use client"; // [!code collapse:5]
+import { type cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
-import { cnst, fetch, IcecreamOrder } from "@apps/koyo/client";
-import { DefaultOf } from "akanjs/constant";
 import { Load, Model } from "akanjs/ui";
+import { Fragment } from "react";
 
 interface CardProps {
   className?: string;
@@ -117,25 +117,23 @@ interface CardProps {
 }
 export const Card = ({ className, init, slice = fetch.slice.icecreamOrder }: CardProps) => {
   return (
-    <>
-      <Load.Units
-        className={className}
-        init={init}
-        renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
-          <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} />
-        )}
-      />
-      <Model.ViewEditModal
-        slice={slice}
-        renderTitle={(icecreamOrder: DefaultOf<cnst.IcecreamOrder>) =>
-          `IcecreamOrder - ${icecreamOrder.id ? icecreamOrder.id : "New"}`
-        }
-        renderView={(icecreamOrder: cnst.IcecreamOrder) => (
-          <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
-        )}
-        renderTemplate={() => <IcecreamOrder.Template.General />}
-      />
-    </>
+    <Load.Units
+      className={className}
+      init={init}
+      renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
+        <Fragment key={icecreamOrder.id}>
+          <IcecreamOrder.Unit.Card icecreamOrder={icecreamOrder} />
+          <Model.ViewModal
+            id={icecreamOrder.id}
+            slice={slice}
+            renderTitle={(icecreamOrder: cnst.IcecreamOrder) => `IcecreamOrder - ${icecreamOrder.id}`}
+            renderView={(icecreamOrder: cnst.IcecreamOrder) => (
+              <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
+            )}
+          />
+        </Fragment>
+      )}
+    />
   );
 };
 
@@ -156,28 +154,28 @@ export const View = ({ view }: ViewProps) => {
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:2]
-import { cnst, fetch, usePage } from "@apps/koyo/client";
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code ++]
+import { type cnst, fetch, usePage } from "@apps/koyo/client"; // [!code collapse:2]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui"; // [!code ++]
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span> // [!code ++]
         </div>
         <div className="mt-4 flex items-center gap-2"> // [!code collapse:17]
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -189,7 +187,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4"> // [!code ++:7]
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4"> // [!code ++:7]
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
           <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -204,8 +202,8 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
 
 ```ts
-import { cn } from "akanjs/client"; // [!code collapse:8]
-import { cnst, usePage } from "@apps/koyo/client";
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:8]
+import { cn } from "akanjs/client";
 
 interface GeneralProps {
   className?: string;
@@ -217,9 +215,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   return (
     <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4">
-        <span className="text-3xl font-extrabold text-primary">🍦</span>
-        <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="ml-auto text-xs text-foreground/50">#{icecreamOrder.id}</span>
+        <span className="font-extrabold text-3xl text-primary">🍦</span>
+        <span className="font-bold text-2xl">{l("icecreamOrder.modelName")}</span>
+        <span className="ml-auto text-foreground/50 text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
         <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
@@ -227,14 +225,12 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
-            <span className="italic text-foreground/70">
-              {l.trans({ en: "No toppings", ko: "토핑 없음" })}
-            </span>
+            <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
           ) : (
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 font-medium text-primary text-xs"
               >
                 {l(`topping.${topping}`)}
               </span>
@@ -245,7 +241,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
         <div>
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              "inline-block rounded-full px-2 py-1 font-semibold text-xs",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",

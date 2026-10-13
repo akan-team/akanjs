@@ -60,7 +60,7 @@ prompt
 
 - Page (page/**)
 
-  - page().prompt(): A screen: a slash command for the user, a tool for the model, and drawn in the chat where the client renders MCP Apps.
+  - page().prompt(): A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.
 
 Published as
 
