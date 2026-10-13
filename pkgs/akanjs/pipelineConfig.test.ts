@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { type AppConfig, type AppConfigInput, defaultAppPipeline, type LibConfig, type WorkspaceConfig } from "./index";
+import type { AppConfig, AppConfigInput, LibConfig, WorkspaceConfig } from "./index";
+import * as akanjs from "./index";
+import { defaultAppPipeline } from "./pipelineConfig";
 
 const appConfig: AppConfigInput = {
   externalLibs: ["shiki"],
@@ -106,6 +108,7 @@ const libPipeline: LibConfig = {
 describe("pipeline config types", () => {
   test("an app without a pipeline runs build, docker and deploy", () => {
     expect(defaultAppPipeline).toEqual({ stages: [{ use: "build" }, { use: "docker" }, { use: "deploy" }] });
+    expect(akanjs.defaultAppPipeline).toBe(defaultAppPipeline);
   });
 
   test("both function forms are plain data producers", () => {
