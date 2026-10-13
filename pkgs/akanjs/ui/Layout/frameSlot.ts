@@ -27,6 +27,13 @@ export const frameSlotStyles: { [slot in FrameSlotName]: CSSProperties } = {
   keyboardInset: keyboard,
 } as const;
 
+export const frameSlotContainerClassNames: { [slot in FrameSlotName]: string } = {
+  topInset: "fixed inset-x-0 isolate overflow-hidden bg-background",
+  topLeftAction: "fixed left-0 isolate flex aspect-1 items-center justify-center overflow-hidden",
+  bottomInset: "pointer-events-none fixed inset-x-0 isolate overflow-hidden",
+  keyboardInset: "pointer-events-none fixed inset-x-0 isolate overflow-hidden",
+} as const;
+
 export const frameSlotContentClassNames: { [slot in FrameSlotName]: string } = {
   topInset: "relative isolate size-full",
   topLeftAction: "isolate flex size-full items-center justify-center",
