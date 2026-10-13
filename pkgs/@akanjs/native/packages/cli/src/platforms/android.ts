@@ -496,15 +496,15 @@ export async function buildAndroid(ctx: BuildContext): Promise<string> {
   const boot = makeNativeBoot(ctx, "android");
   writeFileSync(join(assets, "akan-native", "boot.json"), JSON.stringify(boot));
   if (config.updates)
-    writePhoneUpdates(
-      join(assets, "akan-native", "updates.json"),
-      ctx.outDir,
-      config.updates,
-      config.app,
-      "android",
-      boot.nativeApi,
-      ctx.dev,
-    );
+    writePhoneUpdates({
+      updatesJson: join(assets, "akan-native", "updates.json"),
+      outDir: ctx.outDir,
+      updates: config.updates,
+      app: config.app,
+      platform: "android",
+      nativeApi: boot.nativeApi,
+      dev: ctx.dev,
+    });
   writeFileSync(join(assets, "akan-native", "env.runtime.json"), JSON.stringify(ctx.env, null, 2));
   writeFileSync(
     join(assets, "akan-native", "shell.json"),

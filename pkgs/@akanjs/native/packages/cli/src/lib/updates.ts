@@ -19,6 +19,7 @@ import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
 import { checkUpdateEnvelope, isChannelName, isStrictBase64, RESERVED_CHANNELS } from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
+import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
 
@@ -376,21 +377,31 @@ export function updatesResource(
  * updates.json of a phone build, and the same facts in the build's bundle.json: a signer that registers the store build
  * checks the binary reads its URL and keys, and takes `embeddedSequence` as the floor every release must pass.
  */
-export function writePhoneUpdates(
-  path: string,
-  outDir: string,
-  updates: UpdatesConfig,
-  app: { id: string; version: string },
-  platform: "ios" | "android",
-  nativeApi: string | undefined,
-  dev: boolean,
-): void {
+export function writePhoneUpdates({
+  updatesJson,
+  outDir,
+  updates,
+  app,
+  platform,
+  nativeApi,
+  dev,
+}: {
+  /** Where the binary reads updates.json. */
+  updatesJson: string;
+  /** The build folder, whose bundle.json records them too. */
+  outDir: string;
+  updates: UpdatesConfig;
+  app: { id: string; version: string };
+  platform: "ios" | "android";
+  nativeApi: string | undefined;
+  dev: boolean;
+}): void {
   const embeddedSequence = Math.floor(Date.now() / 1000);
-  writeFileSync(path, updatesResource(updates, app, platform, nativeApi, dev, embeddedSequence));
-  const bundlePath = join(outDir, "bundle.json");
+  writeFileSync(updatesJson, updatesResource(updates, app, platform, nativeApi, dev, embeddedSequence));
+  const bundlePath = join(outDir, BUNDLE_FILE);
   if (!existsSync(bundlePath)) return;
-  const bundle = JSON.parse(readFileSync(bundlePath, "utf8")) as Record<string, unknown>;
-  bundle.updates = {
+  const info = readBundleInfo(bundlePath);
+  info.updates = {
     protocol: 2,
     url: updates.url,
     channel: updates.channel,
@@ -398,5 +409,5 @@ export function writePhoneUpdates(
     embeddedSequence,
     ...(updates.reportUrl ? { reportUrl: updates.reportUrl } : {}),
   };
-  writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+  writeFileSync(bundlePath, `${JSON.stringify(info, null, 2)}\n`);
 }

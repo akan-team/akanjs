@@ -67,6 +67,9 @@ export {
   updateDecision,
   updateReportOutcome,
 } from "../../core/src/kernel.ts";
+/** A build's bundle.json, and the manifest and envelope of a release, as a signer or server reads them. */
+export type { BundleInfo, NativeApi } from "./lib/compat.ts";
+export type { UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.ts";
 /**
  * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
  * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.
