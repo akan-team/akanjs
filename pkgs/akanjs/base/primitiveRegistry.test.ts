@@ -178,6 +178,21 @@ describe("Binary", () => {
     expect(parsed[299_999]).toBe(bytes[299_999]);
   });
 
+  test("codes the same base64 without a Buffer, as a browser bundle has none", () => {
+    const bytes = new Uint8Array(70_000);
+    for (let idx = 0; idx < bytes.length; idx += 1) bytes[idx] = (idx * 7) % 256;
+    const encoded = Binary.toBase64(bytes);
+    const holder = globalThis as { Buffer?: unknown };
+    const buffer = holder.Buffer;
+    holder.Buffer = undefined;
+    try {
+      expect(Binary.toBase64(bytes)).toBe(encoded);
+      expect(Binary.fromBase64(encoded)).toEqual(bytes);
+    } finally {
+      holder.Buffer = buffer;
+    }
+  });
+
   test("reads a view that does not start at its buffer origin", () => {
     const view = new Uint8Array([9, 9, 1, 2, 3]).subarray(2);
     expect(Binary._serialize(view)).toBe(Binary._serialize(new Uint8Array([1, 2, 3])));
