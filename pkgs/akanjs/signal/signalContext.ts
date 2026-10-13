@@ -300,13 +300,25 @@ export class SignalContext<
       }
       const handle = async () => await this.endpointInfo.execFn?.call(this.adaptor, ...this.args, ...this.internalArgs);
       const traced = this.trace ? () => traceSpan("handler", handle) : handle;
-      return await EndpointIdempotency.through(this, () => EndpointCache.through(this, traced));
+      return await EndpointIdempotency.through(
+        this,
+        () => EndpointCache.through(this, traced),
+        async (result) => {
+          const resolved = await this.#resolve(result);
+          return await traceSpan("serialize", async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo));
+        },
+      );
     };
     const next = this.#withMiddleware(coreExec);
     const result = this.trace ? await traceSpan("execChain", () => next()) : await next();
     // A pubsub's return is not sent; a live slice's exec returns the resolved query its room is routed by.
     if (this.endpointInfo.type === "pubsub") return result;
     if (result instanceof Response) return result;
+    const resolved = await this.#resolve(result);
+    if (!this.trace) return this.ctx.makeResponse(resolved, this.endpointInfo);
+    return await traceSpan("serialize", async () => this.ctx.makeResponse(resolved, this.endpointInfo));
+  }
+  async #resolve(result: unknown) {
     const resolveOption = {
       signalContext: this,
       returnRef: this.endpointInfo.returns.returnRef,
@@ -314,12 +326,10 @@ export class SignalContext<
       registry: this.#registry,
       live: this.#live,
     };
-    if (!this.trace) {
-      const resolved = await SignalContext.resolveReturn(result, resolveOption);
-      return this.ctx.makeResponse(this.#settle(resolved), this.endpointInfo);
-    }
-    const resolved = await traceSpan("resolveReturn", () => SignalContext.resolveReturn(result, resolveOption));
-    return await traceSpan("serialize", async () => this.ctx.makeResponse(this.#settle(resolved), this.endpointInfo));
+    const resolved = this.trace
+      ? await traceSpan("resolveReturn", () => SignalContext.resolveReturn(result, resolveOption))
+      : await SignalContext.resolveReturn(result, resolveOption);
+    return this.#settle(resolved);
   }
   #settle(resolved: unknown) {
     this.#refuseBytesThroughAny(resolved);
@@ -827,16 +837,18 @@ export class HttpExecutionContext<Appended = unknown> {
   }
   makeResponse(result: unknown, endpointInfo: EndpointInfo) {
     if (result instanceof Response) return result;
+    return this.res.json(HttpExecutionContext.wireOf(result, endpointInfo));
+  }
+  static wireOf(result: unknown, endpointInfo: EndpointInfo): unknown {
     if (endpointInfo.returns.arrDepth === 0 && PrimitiveRegistry.has(endpointInfo.returns.returnRef as Cls)) {
       // A JSON body carries Binary as base64, which the client's `Binary` parser turns back into bytes.
       if (endpointInfo.returns.returnRef === Binary && result instanceof Uint8Array)
-        return this.res.json(Binary.serializeValue(result));
-      return this.res.json(result);
+        return Binary.serializeValue(result);
+      return result;
     }
-    const value = serialize(endpointInfo.returns.returnRef, endpointInfo.returns.arrDepth, result, "object", {
+    return serialize(endpointInfo.returns.returnRef, endpointInfo.returns.arrDepth, result, "object", {
       nullable: endpointInfo.returns.nullable,
     });
-    return this.res.json(value);
   }
 }
 

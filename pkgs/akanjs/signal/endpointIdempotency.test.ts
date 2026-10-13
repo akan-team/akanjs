@@ -1,11 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { Binary, type Dayjs, Int } from "akanjs/base";
+import { Binary, type Dayjs, dayjs, INTERNAL_META, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { adapt, CacheAdaptorRole, getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
+import { Err } from "akanjs/dictionary";
+import {
+  adapt,
+  CacheAdaptorRole,
+  getDefaultInjectRegistry,
+  getDefaultLiveRegistry,
+  type LiveRegistry,
+} from "akanjs/service";
 import { buildEndpoint, type EndpointInfo } from "./endpointInfo";
 import { Public } from "./guards";
+import type { Internal } from "./internal";
+import { buildInternal } from "./internalInfo";
 import { type MiddlewareCls, middleware } from "./middleware";
 import { SignalContext } from "./signalContext";
+import type { TraceOrigin } from "./trace";
 
 Object.assign(process.env, {
   AKAN_PUBLIC_APP_NAME: "idempotencyTest",
@@ -27,6 +37,66 @@ class IdempotencyTestTallyDocument extends IdempotencyTestTally {
   }
 }
 
+const IdempotencyTestAccountInput = via((f) => ({
+  name: f(String),
+  joinedAt: f(Date),
+}));
+const IdempotencyTestAccountObject = via(IdempotencyTestAccountInput, (f) => ({
+  passwordHash: f.hidden(String),
+  apiToken: f.secret(String),
+}));
+const IdempotencyTestAccountLight = via(IdempotencyTestAccountObject, ["name"] as const, () => ({}));
+class IdempotencyTestAccount extends via(IdempotencyTestAccountObject, IdempotencyTestAccountLight, (resolve) => ({
+  memberSince: resolve(String),
+})) {
+  greeting() {
+    return `Hello ${this.name}`;
+  }
+}
+const IdempotencyTestAccountInsight = via(IdempotencyTestAccount, () => ({}));
+ConstantRegistry.buildModel(
+  "idempotencyTestAccount",
+  IdempotencyTestAccountInput,
+  IdempotencyTestAccountObject,
+  IdempotencyTestAccount,
+  IdempotencyTestAccountLight,
+  IdempotencyTestAccountInsight,
+  {
+    IdempotencyTestAccountInput,
+    IdempotencyTestAccountObject,
+    IdempotencyTestAccount,
+    IdempotencyTestAccountLight,
+    IdempotencyTestAccountInsight,
+  },
+);
+
+// A resolveField reaching for its parent's methods and Dayjs fields, which only a model instance has.
+class IdempotencyTestAccountInternal {
+  static [INTERNAL_META] = {
+    memberSince: buildInternal.resolveField(String).exec((parent) => {
+      const account = parent as IdempotencyTestAccount;
+      if (account.name === "gone")
+        throw new Err.NotFound("base.error.relationNotFound", {
+          model: "idempotencyTestAccount",
+          field: "memberSince",
+        });
+      return `${account.greeting()}, member since ${account.joinedAt.format("YYYY-MM-DD")}`;
+    }),
+  };
+}
+
+const accountLive = getDefaultLiveRegistry();
+accountLive.internal.set("idempotencyTestAccountInternal", new IdempotencyTestAccountInternal() as unknown as Internal);
+
+const accountOf = (name: string) =>
+  new IdempotencyTestAccount().set({
+    id: "507f1f77bcf86cd799439011",
+    name,
+    joinedAt: dayjs("2026-01-02T03:04:05.000Z"),
+    passwordHash: "hash-that-must-stay-home",
+    apiToken: "token-that-must-stay-home",
+  }) as never;
+
 class ExpiringCache {
   readonly #entries = new Map<string, { value: string; expiresAt: number | null }>();
   readonly failing: boolean;
@@ -35,6 +105,9 @@ class ExpiringCache {
   }
   get size() {
     return this.#entries.size;
+  }
+  get values() {
+    return [...this.#entries.values()].map(({ value }) => value);
   }
   #live(topic: string, key: string) {
     const entry = this.#entries.get(`${topic}:${key}`);
@@ -104,11 +177,15 @@ const callWith = async (
     body = {},
     cookies = {},
     middlewareMap = new Map(),
+    live = getDefaultLiveRegistry(),
+    origin,
   }: {
     headers?: Record<string, string>;
     body?: Record<string, unknown>;
     cookies?: Record<string, string>;
     middlewareMap?: Map<string, MiddlewareCls>;
+    live?: LiveRegistry;
+    origin?: TraceOrigin;
   } = {},
 ) => {
   const registry = getDefaultInjectRegistry();
@@ -119,8 +196,9 @@ const callWith = async (
       adaptor,
       registry,
       env: {} as never,
-      live: getDefaultLiveRegistry(),
+      live,
       middleware: middlewareMap,
+      origin,
     });
     await context.init();
     return (await context.exec()) as Response;
@@ -292,5 +370,71 @@ describe("EndpointIdempotency", () => {
     expect(await pay(100)).toBe("run-1:100");
     expect(await pay(900)).toBe("run-2:900");
     expect(await pay(100)).toBe("run-1:100");
+  });
+
+  test("keeps the answer as it went out: no hidden or secret value in the cache, and the repeat is the same bytes", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(IdempotencyTestAccount, { guards: [Public] }).exec(() => {
+      runs++;
+      return accountOf(`account-${runs}`);
+    });
+    const cache = new ExpiringCache();
+
+    const first = await callWith(info, cache, { headers: device, live: accountLive });
+    const repeat = await callWith(info, cache, { headers: device, live: accountLive });
+    const [firstText, repeatText] = [await first.text(), await repeat.text()];
+    expect([first.status, repeat.status]).toEqual([200, 200]);
+    expect(repeatText).toBe(firstText);
+    expect(repeat.headers.get("content-type")).toBe(first.headers.get("content-type"));
+    expect(JSON.parse(firstText)).toMatchObject({
+      name: "account-1",
+      passwordHash: null,
+      apiToken: null,
+      memberSince: "Hello account-1, member since 2026-01-02",
+    });
+    expect(runs).toBe(1);
+    expect(cache.values).toHaveLength(1);
+    expect(cache.values.join()).not.toContain("hash-that-must-stay-home");
+    expect(cache.values.join()).not.toContain("token-that-must-stay-home");
+  });
+
+  test("answers a repeat without re-resolving, so a resolveField reading its parent's methods and dates holds", async () => {
+    const info = buildEndpoint
+      .mutation(IdempotencyTestAccount, { guards: [Public] })
+      .exec(() => accountOf("account-1"));
+    const cache = new ExpiringCache();
+
+    await callWith(info, cache, { headers: device, live: accountLive });
+    const repeat = await callWith(info, cache, { headers: device, live: accountLive });
+    expect(repeat.status).toBe(200);
+    expect(await repeat.json()).toMatchObject({ memberSince: "Hello account-1, member since 2026-01-02" });
+  });
+
+  test("answers a repeat with the failure the first run answered after its handler ran, without running it again", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(IdempotencyTestAccount, { guards: [Public] }).exec(() => {
+      runs++;
+      return accountOf("gone");
+    });
+    const cache = new ExpiringCache();
+
+    const first = await callWith(info, cache, { headers: device, live: accountLive });
+    const repeat = await callWith(info, cache, { headers: device, live: accountLive });
+    const failure = { error: "base.error.relationNotFound", data: { model: "idempotencyTestAccount" } };
+    expect([first.status, repeat.status]).toEqual([404, 404]);
+    expect(await first.json()).toMatchObject(failure);
+    expect(await repeat.json()).toMatchObject(failure);
+    expect(runs).toBe(1);
+  });
+
+  test("never deduplicates a call through MCP, whose headers belong to the JSON-RPC request", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(String, { guards: [Public] }).exec(() => `run-${++runs}`);
+    const cache = new ExpiringCache();
+
+    await callWith(info, cache, { headers: device, origin: "mcp" });
+    await callWith(info, cache, { headers: device, origin: "mcp" });
+    expect(runs).toBe(2);
+    expect(cache.size).toBe(0);
   });
 });
