@@ -115,6 +115,15 @@ describe("McpApps", () => {
     expect(document.cookie).toBe("c=4");
   });
 
+  test("hands a view the bearer's own claims without the token's, and nothing from a header carrying no bearer", () => {
+    const claims = { self: { id: "u1" }, aud: "https://app.example.com/mcp", exp: 4102444800, client_id: "agent" };
+    const token = `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
+    const req = (authorization: string) => new Request("https://app.example.com/mcp", { headers: { authorization } });
+    expect(McpApps.accountOf(req(`Bearer ${token}`))).toEqual({ self: { id: "u1" } });
+    for (const authorization of [token, `Bearer ${token} x`, `Bearer\t${token}`, "Bearer opaque"])
+      expect(McpApps.accountOf(req(authorization))).toBeNull();
+  });
+
   test("never tells a host a page tool only reads: the run makes the page's own calls", () => {
     const tool = shellOf("<head></head>").toolOf({
       name: "brief",

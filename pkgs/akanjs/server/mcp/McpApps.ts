@@ -1,4 +1,5 @@
 import { getEnv } from "akanjs/base";
+import { bearerTokenOf, decodeJwtPayload } from "akanjs/common";
 import type { PromptContent, PromptMessage } from "../../signal/mcp/Msg";
 import {
   MCP_APP_META,
@@ -218,11 +219,10 @@ export class McpApps {
   // The claims a browser tab reads off its own token to decide what it shows, so a guarded layout renders in the view
   // instead of sending it to sign in. Security: the token itself never leaves; the guards judge every relayed call.
   static accountOf(req: Request): Record<string, unknown> | null {
-    const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-    const payload = token?.split(".")[1];
-    if (!payload) return null;
+    const token = bearerTokenOf(req.headers.get("authorization"));
+    if (!token) return null;
     try {
-      const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+      const claims = decodeJwtPayload<Record<string, unknown>>(token);
       return Object.fromEntries(Object.entries(claims).filter(([key]) => !McpApps.#tokenClaims.has(key)));
     } catch {
       return null;

@@ -80,6 +80,13 @@ describe("MachineToken", () => {
     expect(MachineToken.verify(staff)).toEqual({ ok: false, reason: "not an EdDSA akan-machine+jwt" });
   });
 
+  test("reads the bearer as every other gate does: one word after the scheme, in any case", () => {
+    const token = MachineToken.issue(courtPc);
+    expect(MachineToken.fromAuthorization(`bearer  ${token}`)).toEqual(courtPc);
+    for (const authorization of [`Bearer\t${token}`, `Bearer ${token} x`, token, null, undefined])
+      expect(MachineToken.fromAuthorization(authorization)).toBeNull();
+  });
+
   test("refuses an identity without kind, id or a whole version", () => {
     expect(() => MachineToken.issue({ kind: "", id: "pc-7", version: 1 })).toThrow("A machine identity is");
     expect(() => MachineToken.issue({ kind: "courtPc", id: "pc-7", version: 1.5 })).toThrow("A machine identity is");

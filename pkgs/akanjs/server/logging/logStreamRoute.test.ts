@@ -70,6 +70,29 @@ describe("LogStreamRoute gate", () => {
     expect(route.handle(request("", { authorization: "Bearer tOk" })).status).toBe(401);
     expect(route.handle(request()).status).toBe(503);
   });
+
+  test("reads the bearer as every other gate does: one word after the scheme, in any case and spacing", () => {
+    const route = new LogStreamRoute(() => null, "tok");
+    expect(route.handle(request("", { authorization: "bearer   tok" })).status).toBe(503);
+    for (const authorization of ["Bearer tok extra", "Bearer\ttok", "Bearer tok\tx"])
+      expect(route.handle(request("", { authorization })).status).toBe(401);
+  });
+
+  test("stays off for a configured token holding whitespace, and never logs the token", () => {
+    const previous = process.env.AKAN_LOG_STREAM_TOKEN;
+    const messages: string[] = [];
+    const removeSink = Logger.addSink((entry) => void messages.push(entry.message));
+    process.env.AKAN_LOG_STREAM_TOKEN = "correct horse battery";
+    try {
+      expect(LogStreamRoute.fromEnv(() => null)).toBeNull();
+      expect(messages.some((message) => message.includes("AKAN_LOG_STREAM_TOKEN"))).toBe(true);
+      expect(messages.some((message) => message.includes("horse"))).toBe(false);
+    } finally {
+      removeSink();
+      if (previous === undefined) delete process.env.AKAN_LOG_STREAM_TOKEN;
+      else process.env.AKAN_LOG_STREAM_TOKEN = previous;
+    }
+  });
 });
 
 describe("LogStreamRoute stream", () => {
