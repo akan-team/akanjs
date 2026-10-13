@@ -82,6 +82,40 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+describe("shell calls", () => {
+  test("an op an engine answers fails with TIMEOUT past its deadline, others wait, and a late answer is dropped", async () => {
+    const { createShellCalls, SHELL_DEADLINES } = await import("../src/host.ts");
+    expect(Object.keys(SHELL_DEADLINES).sort()).toEqual(["externalView.cdp", "externalView.evaluate"]);
+    const sent: { id: number; op: string }[] = [];
+    const calls = createShellCalls((id, json) => void sent.push({ id, op: JSON.parse(json).op }), {
+      "externalView.evaluate": 20,
+    });
+    const evaluate = calls.call("externalView.evaluate", { view: "board", script: "1" });
+    const alert = calls.call("alert.show", { message: "Saved" });
+    expect(await evaluate.then(null, (error: { code?: string }) => error.code)).toBe("TIMEOUT");
+    calls.answer(1, true, "late", undefined);
+    await Bun.sleep(30);
+    calls.answer(2, true, "ok", undefined);
+    expect(await alert).toBe("ok");
+    expect(sent).toEqual([
+      { id: 1, op: "externalView.evaluate" },
+      { id: 2, op: "alert.show" },
+    ]);
+  });
+
+  test("an answer within the deadline settles the call once, a refusal with its own code", async () => {
+    const { createShellCalls } = await import("../src/host.ts");
+    const calls = createShellCalls(() => {}, { "externalView.cdp": 20 });
+    const shot = calls.call("externalView.cdp", { view: "board", method: "Page.captureScreenshot" });
+    const gone = calls.call("externalView.cdp", { view: "gone", method: "Page.captureScreenshot" });
+    calls.answer(1, true, '{"data":""}', undefined);
+    calls.answer(2, false, undefined, "NOT_FOUND: no external view gone");
+    expect(await shot).toBe('{"data":""}');
+    expect(await gone.then(null, (error: { code?: string }) => error.code)).toBe("NOT_FOUND");
+    await Bun.sleep(30);
+  });
+});
+
 describe.skipIf(process.platform === "win32")("the plugin host", () => {
   test("a server alert raised before the shell runs waits for the shell's first frame, not for a deep link", async () => {
     // Linux: the cold start's deep link writes a desktop entry under the home folder.
