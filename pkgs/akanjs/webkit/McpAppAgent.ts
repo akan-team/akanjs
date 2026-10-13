@@ -3,8 +3,9 @@ import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
 import { type AgenticSurface, type ToolApprovalRequest, type ToolCallResult, ToolRunner } from "use-agentic";
+import type { McpTool, McpToolResult } from "../signal/mcp/mcpProtocol";
 import { McpAppApprovals } from "./McpAppApprovals";
-import type { McpAppBridge, McpAppTool, McpToolResultLike } from "./McpAppBridge";
+import type { McpAppBridge } from "./McpAppBridge";
 
 // The host's model drives the screen on display through the surface the in-page agent reads — `st.tool`, the form
 // setters, the built-ins — so a screen published to one agent is published to the other with nothing declared twice.
@@ -50,7 +51,7 @@ export class McpAppAgent {
   }
 
   // A card tool is answered by a person in a chat, and the host's chat is not one this view can draw into.
-  tools(): McpAppTool[] {
+  tools(): McpTool[] {
     return this.#surface.snapshot().tools.flatMap((published) => {
       const entry = this.#surface.tool(published.name);
       if (!entry || entry.card) return [];
@@ -72,7 +73,7 @@ export class McpAppAgent {
     });
   }
 
-  async call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<McpToolResultLike> {
+  async call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<McpToolResult> {
     if (this.#running++ === 0) AgentVisual.turn(true);
     try {
       return McpAppAgent.#resultOf(await this.#runner.run({ id: `mcp-app-${++this.#seq}`, name, args }, signal));
@@ -139,11 +140,11 @@ export class McpAppAgent {
     }
   }
 
-  static #signatureOf(tools: McpAppTool[]) {
+  static #signatureOf(tools: McpTool[]) {
     return JSON.stringify(tools);
   }
 
-  static #resultOf({ result, changes, error }: ToolCallResult): McpToolResultLike {
+  static #resultOf({ result, changes, error }: ToolCallResult): McpToolResult {
     if (error !== undefined) return { content: [{ type: "text", text: error }], isError: true };
     const text = changes?.length
       ? JSON.stringify({ ...(result !== undefined ? { result } : {}), changes })

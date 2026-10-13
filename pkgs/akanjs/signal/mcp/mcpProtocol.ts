@@ -21,6 +21,22 @@ export const MCP_UI_MIME_TYPE = "text/html;profile=mcp-app";
 //? Deprecated flat spelling of `_meta.ui.resourceUri`; the official SDK still writes both, and some hosts read only it.
 export const MCP_UI_LEGACY_RESOURCE_URI = "ui/resourceUri";
 
+// This framework's own wire between its server and the view it renders: `_meta` is the one part of a result no host
+// hands to the model.
+export const MCP_APP_META = {
+  snapshot: "akanjs/snapshot",
+  account: "akanjs/account",
+  view: "akanjs/view",
+  value: "akanjs/value",
+  error: "akanjs/error",
+} as const;
+
+export interface McpAppSnapshotRecord {
+  key: string;
+  args: Record<string, unknown>;
+  value: unknown;
+}
+
 // `-32020`..`-32099` is reserved by the spec; `-32021` is left out because this server requires no client capability.
 // `-32002` (resource not found) is retired in the modern revision: an unknown resource is `invalidParams`.
 export const McpErrorCode = {
@@ -42,6 +58,15 @@ export interface McpJsonRpcRequest {
   method?: string;
   params?: Record<string, unknown>;
 }
+
+export interface McpJsonRpcResponse {
+  jsonrpc: "2.0";
+  id: string | number | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+export type McpJsonRpcMessage = McpJsonRpcRequest & Partial<McpJsonRpcResponse>;
 
 export interface McpToolAnnotations {
   readOnlyHint?: boolean;
