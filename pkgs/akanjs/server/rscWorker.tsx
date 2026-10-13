@@ -330,8 +330,7 @@ export class RscRenderer {
   async #webManifest(basePath: string | null): Promise<unknown> {
     const pathname = `/${this.#i18n.defaultLocale}${basePath ? `/${basePath}` : ""}`;
     const rootLayouts = RouteTreeBuilder.matchFallback(pathname, this.#fallbackRoutes)?.fallbackRoute.renderRootLayouts;
-    const manifests = await Promise.all((rootLayouts ?? []).map((render) => render.getLayoutManifest?.()));
-    const manifest = manifests.find((entry) => entry !== undefined);
+    const manifest = await RscRenderer.#firstRootValue(rootLayouts ?? [], (render) => render.getLayoutManifest?.());
     return manifest ? toManifestJson(manifest) : null;
   }
 
@@ -1288,7 +1287,9 @@ export class RscRenderer {
       digest,
     });
     if (!body) return null;
-    const viewport = await RscRenderer.#rootViewport(route.renderRootLayouts);
+    const viewport = await RscRenderer.#firstRootValue(route.renderRootLayouts, (render) =>
+      render.getLayoutViewport?.(),
+    );
     const manifestLink = await this.#renderManifestLink(url, route.renderRootLayouts);
     const routeHead =
       "resolveHead" in route
@@ -1335,13 +1336,13 @@ export class RscRenderer {
     setRequestFrameState(pathRoute.pageState);
     await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
     //? The provider names the theme only as it renders, which can be after the HTML shell and its data-theme are out.
-    const rootThemes = await Promise.all(pathRoute.renderRootLayouts.map((render) => render.getLayoutTheme?.()));
-    const rootTheme = rootThemes.find((theme) => theme !== undefined);
+    const rootLayouts = pathRoute.renderRootLayouts;
+    const rootTheme = await RscRenderer.#firstRootValue(rootLayouts, (render) => render.getLayoutTheme?.());
     if (rootTheme) setRequestTheme(rootTheme);
-    const viewport = await RscRenderer.#rootViewport(pathRoute.renderRootLayouts);
+    const viewport = await RscRenderer.#firstRootValue(rootLayouts, (render) => render.getLayoutViewport?.());
     //? The result cache keys on the theme cookie, so this color is never replayed to a visitor on another theme.
     const themeColorTheme = untrackedCookies().get("theme")?.value ?? rootTheme;
-    const manifestLink = await this.#renderManifestLink(url, pathRoute.renderRootLayouts);
+    const manifestLink = await this.#renderManifestLink(url, rootLayouts);
     const routeHead = await RouteElementComposer.resolveHeadWithSnapshot({
       pathRoute,
       params: match.params,
@@ -1455,9 +1456,12 @@ export class RscRenderer {
     });
   }
 
-  static async #rootViewport(renderRootLayouts: RouteRender[]): Promise<RouteViewport | undefined> {
-    const viewports = await Promise.all(renderRootLayouts.map((render) => render.getLayoutViewport?.()));
-    return viewports.find((viewport) => viewport !== undefined);
+  static async #firstRootValue<T>(
+    renderRootLayouts: RouteRender[],
+    read: (render: RouteRender) => T | Promise<T | undefined> | undefined,
+  ): Promise<T | undefined> {
+    const values = await Promise.all(renderRootLayouts.map(read));
+    return values.find((value) => value !== undefined);
   }
 
   #renderViewport(viewport: RouteViewport | undefined, theme?: string): ReactNode {
@@ -1473,8 +1477,8 @@ export class RscRenderer {
 
   //? In the shell's own head: a link streamed with the body lands in <body>, where Chromium never reads a manifest.
   async #renderManifestLink(url: URL, renderRootLayouts: RouteRender[]): Promise<ReactNode> {
-    const manifests = await Promise.all(renderRootLayouts.map((render) => render.getLayoutManifest?.()));
-    if (!manifests.some((manifest) => manifest !== undefined)) return null;
+    const manifest = await RscRenderer.#firstRootValue(renderRootLayouts, (render) => render.getLayoutManifest?.());
+    if (manifest === undefined) return null;
     //? The basePath the URL shows; one a host maps to (x-base-path) is not in the path, and the server reads it there.
     const basePath = getBasePathFromPathname(url.pathname, { basePaths: this.#basePaths, i18n: this.#i18n });
     return <link key="manifest" rel="manifest" href={webManifestHref(basePath)} />;

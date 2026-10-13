@@ -8,8 +8,6 @@ import type {
   Route,
   RouteModule,
   RouteRender,
-  RouteViewport,
-  WebAppManifest,
 } from "akanjs/client";
 import {
   assertUniqueRoutePatterns,
@@ -313,21 +311,13 @@ export class RouteTreeBuilder {
       routeRender.getPageConfig = pageConfigOf;
       routeRender.getRouteDefinition = async () => (await loadModule()).definition;
     } else {
+      const layoutModule = async () => (await loadModule()).module as LayoutModule;
       routeRender.getLayoutPageConfig = pageConfigOf;
-      routeRender.getLayoutTheme = async () => {
-        const { module: mod } = await loadModule();
-        return "theme" in mod ? (mod.theme as string | undefined) : undefined;
-      };
-      routeRender.getLayoutViewport = async () => {
-        const { module: mod } = await loadModule();
-        return "viewport" in mod ? (mod.viewport as RouteViewport | undefined) : undefined;
-      };
-      routeRender.getLayoutManifest = async () => {
-        const { module: mod } = await loadModule();
-        return "manifest" in mod ? (mod.manifest as WebAppManifest | undefined) : undefined;
-      };
-      routeRender.resolveNotFound = async () => syncFallbacks((await loadModule()).module as LayoutModule).NotFound;
-      routeRender.resolveError = async () => syncFallbacks((await loadModule()).module as LayoutModule).Error;
+      routeRender.getLayoutTheme = async () => (await layoutModule()).theme;
+      routeRender.getLayoutViewport = async () => (await layoutModule()).viewport;
+      routeRender.getLayoutManifest = async () => (await layoutModule()).manifest;
+      routeRender.resolveNotFound = async () => syncFallbacks(await layoutModule()).NotFound;
+      routeRender.resolveError = async () => syncFallbacks(await layoutModule()).Error;
     }
     return routeRender;
   }
