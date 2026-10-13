@@ -204,35 +204,37 @@ object AkanNativeUpdates {
 
     fun bundleDirectory(bundle: String): File = File(File(directory, "bundles"), bundle)
 
-    private val stateFile get() = AtomicFile(File(directory, "state.json"))
+    fun readState(): AkanNativeUpdateState = readJson("state.json")?.let(AkanNativeUpdateState::from) ?: AkanNativeUpdateState()
 
-    fun readState(): AkanNativeUpdateState = try {
-        AkanNativeUpdateState.from(JSONObject(String(stateFile.readFully())))
+    /** false: not written (a full disk): a trial that is not on record must not run, since nothing would roll it back. */
+    fun writeState(state: AkanNativeUpdateState): Boolean = writeJson("state.json", state.toJson())
+
+    fun readJson(name: String): JSONObject? = try {
+        JSONObject(String(AtomicFile(File(directory, name)).readFully()))
     } catch (e: Exception) {
-        AkanNativeUpdateState()
+        null
     }
 
     /**
-     * AtomicFile: a new file, synced, then renamed over the old one, so a crash or power loss never
-     * leaves half a state file. false: not written (a full disk): a trial that is not on record
-     * must not run, since nothing would roll it back.
+     * AtomicFile: a new file, synced, then renamed over the old one, so a crash or power loss never leaves half a file
+     * of the updates folder. false: not written.
      */
-    fun writeState(state: AkanNativeUpdateState): Boolean {
+    fun writeJson(name: String, o: JSONObject): Boolean {
         directory.mkdirs()
-        val file = stateFile
+        val file = AtomicFile(File(directory, name))
         val out = try {
             file.startWrite()
         } catch (e: IOException) {
-            Log.w(TAG, "cannot write state.json: $e")
+            Log.w(TAG, "cannot write $name: $e")
             return false
         }
         return try {
-            out.write(state.toJson().toString().toByteArray())
+            out.write(o.toString().toByteArray())
             file.finishWrite(out)
             true
         } catch (e: IOException) {
             file.failWrite(out)
-            Log.w(TAG, "cannot write state.json: $e")
+            Log.w(TAG, "cannot write $name: $e")
             false
         }
     }
@@ -251,10 +253,10 @@ object AkanNativeUpdates {
         File(bundleDirectory(entry.bundle), "index.html").isFile && verified(entry, config, revoked)
 
     /** Drops an entry this launch cannot serve, reporting [event] (reason verify) when its files were the reason. */
-    private fun drop(entry: AkanNativeUpdateEntry?, config: AkanNativeUpdateConfig, revoked: List<String>, event: String): AkanNativeUpdateEntry? {
+    private fun drop(entry: AkanNativeUpdateEntry?, config: AkanNativeUpdateConfig, revoked: List<String>, event: AkanNativeUpdateEvent): AkanNativeUpdateEntry? {
         if (entry == null || !takes(entry, config, revoked)) return null
         if (intact(entry, config, revoked)) return entry
-        AkanNativeUpdateReports.record(event, entry, "verify")
+        AkanNativeUpdateReports.record(event, entry, AkanNativeUpdateReason.VERIFY)
         return null
     }
 
@@ -262,16 +264,16 @@ object AkanNativeUpdates {
     fun launch(): File? {
         val config = config ?: return null
         val state = readState()
-        state.current = drop(state.current, config, state.revokedKeys, "rolledBack")
-        state.pending = drop(state.pending, config, state.revokedKeys, "failed")
-        state.trial = drop(state.trial, config, state.revokedKeys, "rolledBack")
+        state.current = drop(state.current, config, state.revokedKeys, AkanNativeUpdateEvent.ROLLED_BACK)
+        state.pending = drop(state.pending, config, state.revokedKeys, AkanNativeUpdateEvent.FAILED)
+        state.trial = drop(state.trial, config, state.revokedKeys, AkanNativeUpdateEvent.ROLLED_BACK)
         state.trial?.let {
             // Launched again without notifyReady(): the trial crashed or hung.
             state.failed.add(it.bundle)
             state.rolledBack = it.bundle
             state.trial = null
             Log.w(TAG, "bundle ${it.bundle} did not confirm; rolled back")
-            AkanNativeUpdateReports.record("rolledBack", it, "relaunch")
+            AkanNativeUpdateReports.record(AkanNativeUpdateEvent.ROLLED_BACK, it, AkanNativeUpdateReason.RELAUNCH)
         }
         state.pending?.let {
             if (!state.failed.contains(it.bundle)) {
@@ -281,7 +283,7 @@ object AkanNativeUpdates {
         }
         // Not on record: the pending bundle waits for a launch that can record it.
         if (!writeState(state)) state.trial = null
-        state.trial?.let { AkanNativeUpdateReports.record("applied", it) }
+        state.trial?.let { AkanNativeUpdateReports.record(AkanNativeUpdateEvent.APPLIED, it) }
         active = state.trial ?: state.current
         onTrial = state.trial != null
         return active?.let { bundleDirectory(it.bundle) }
@@ -292,7 +294,7 @@ object AkanNativeUpdates {
         val state = readState()
         state.pending = entry
         state.failed.remove(entry.bundle)
-        if (writeState(state)) AkanNativeUpdateReports.record("downloaded", entry)
+        if (writeState(state)) AkanNativeUpdateReports.record(AkanNativeUpdateEvent.DOWNLOADED, entry)
     }
 
     /** apply(): makes the pending bundle the trial now; returns its folder for the reload. */
@@ -305,7 +307,7 @@ object AkanNativeUpdates {
         if (!writeState(state)) return null
         active = pending
         onTrial = true
-        AkanNativeUpdateReports.record("applied", pending)
+        AkanNativeUpdateReports.record(AkanNativeUpdateEvent.APPLIED, pending)
         return bundleDirectory(pending.bundle)
     }
 
@@ -320,7 +322,7 @@ object AkanNativeUpdates {
         state.rolledBack = null
         writeState(state)
         onTrial = false
-        AkanNativeUpdateReports.record("confirmed", trial)
+        AkanNativeUpdateReports.record(AkanNativeUpdateEvent.CONFIRMED, trial)
         prune(listOfNotNull(state.current?.bundle, state.pending?.bundle))
     }
 
@@ -336,7 +338,7 @@ object AkanNativeUpdates {
         state.failed.add(trial.bundle)
         state.rolledBack = trial.bundle
         writeState(state)
-        val report = AkanNativeUpdateReports.record("rolledBack", trial, "timeout")
+        val report = AkanNativeUpdateReports.record(AkanNativeUpdateEvent.ROLLED_BACK, trial, AkanNativeUpdateReason.TIMEOUT)
         onTrial = false
         val config = config
         active = if (config != null && usable(state.current, config, state.revokedKeys)) state.current else null

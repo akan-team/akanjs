@@ -1,5 +1,5 @@
 {
-  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL]. envelopeKeys: the binary's updates.publicKeys for the envelopes, the public keys of RFC 8032 §7.1 TEST 1 and 2 (TEST 3 signs as a stranger), so the rows can be signed again. envelopes: [the manifest field, or [a base64 group, how many times it repeats, the base64 after them] for a large one, keyId, signature, keyIds state.json has revoked, the verdict, why] for an envelope's three fields; the verdict is open | untrusted | revoked | encoding | too-large | signature, checked in that order.",
+  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL]. envelopeKeys: the binary's updates.publicKeys for the envelopes, the public keys of RFC 8032 §7.1 TEST 1 and 2 (TEST 3 signs as a stranger), so the rows can be signed again. envelopes: [the manifest field, or [a base64 group, how many times it repeats, the base64 after them] for a large one, keyId, signature, keyIds state.json has revoked, the verdict, why] for an envelope's three fields; the verdict is open | untrusted | revoked | encoding | too-large | signature, checked in that order. limits: kernel.ts MAX_REVOKE_KEYS, MAX_UPDATE_MANIFEST, UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH. reports (what a phone posts to updates.report.url): events and reasons, the vocabulary in order; outcomes: [HTTP status, 0 for no answer, what it does to the batch: sent | dropped | kept]; retryAfter: [the header or null, now in seconds, when the batch may go again or null, why]; waits: [retryAt or null, now, whether a send waits]; keys: [event, bundle, reason or null, the key an event is kept once by]; times: [milliseconds since the epoch, the event's at].",
   "keyIds": [
     ["BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=", "4bb06f8e4e3a7715"],
     ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "21fe31dfa154a261"],
@@ -47,5 +47,74 @@
     ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Ch==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "open", "bits under the padding that are not zero decode to the same bytes everywhere"],
     [["ICAg", 349525, "IA=="], "21fe31dfa154a261", "IUchV4XAdHEn1ESSH0DbXfYOVQ78Gm93eQKV4hWfxn4kNXEh+9faU3vWv9dUsBk45qT7V3NsmIcNK1ZznqqhBA==", [], "open", "a manifest of exactly 1 MiB"],
     [["ICAg", 349525, "ICA="], "21fe31dfa154a261", "e9fDKQYlS4lwXSSd65/MSvo5VUkY+7vniYsnzY7styt5OkZsN/c+CZFBNXSohjGM1YyLZcmcoNjoNhcrNwQOAg==", [], "too-large", "one byte over 1 MiB, signed all the same"]
-  ]
+  ],
+  "limits": {
+    "revokeKeys": 16,
+    "manifestBytes": 1048576,
+    "reportEvents": 100,
+    "reportBatch": 20
+  },
+  "reports": {
+    "events": ["downloaded", "applied", "confirmed", "rolledBack", "failed"],
+    "reasons": ["timeout", "relaunch", "hang", "verify", "download", "disk", "signature", "manifest"],
+    "outcomes": [
+      [200, "sent"],
+      [201, "sent"],
+      [204, "sent"],
+      [299, "sent"],
+      [0, "kept"],
+      [100, "kept"],
+      [301, "kept"],
+      [304, "kept"],
+      [400, "dropped"],
+      [401, "kept"],
+      [403, "kept"],
+      [404, "kept"],
+      [408, "kept"],
+      [413, "dropped"],
+      [422, "dropped"],
+      [429, "kept"],
+      [500, "kept"],
+      [502, "kept"],
+      [503, "kept"]
+    ],
+    "retryAfter": [
+      ["120", 1000, 1120, "delay-seconds"],
+      ["0", 1000, 1000, "go at once"],
+      [" 30\t", 1000, 1030, "spaces and tabs around it"],
+      [null, 1000, null, "no header"],
+      ["", 1000, null, "an empty header"],
+      ["-5", 1000, null, "a sign is not delay-seconds"],
+      ["+5", 1000, null, "a sign is not delay-seconds"],
+      ["1.5", 1000, null, "a fraction is not delay-seconds"],
+      ["1e3", 1000, null, "an exponent is not delay-seconds"],
+      ["0x10", 1000, null, "hexadecimal is not delay-seconds"],
+      ["12a", 1000, null, "trailing letters"],
+      ["NaN", 1000, null, "not a number"],
+      ["Infinity", 1000, null, "not a number"],
+      ["Wed, 21 Oct 2026 07:28:00 GMT", 1000, null, "an HTTP date is not read"],
+      ["10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 1000, null, "past what a double holds"]
+    ],
+    "waits": [
+      [null, 1000, false],
+      [1500, 1000, true],
+      [1000, 1000, false],
+      [900, 1000, false],
+      [87399, 1000, true],
+      [87400, 1000, false]
+    ],
+    "keys": [
+      ["failed", "1760000000-abcdef12", "signature", "failed|1760000000-abcdef12|signature"],
+      ["applied", "1760000000-abcdef12", null, "applied|1760000000-abcdef12|"],
+      ["rolledBack", "b", "hang", "rolledBack|b|hang"]
+    ],
+    "times": [
+      [0, "1970-01-01T00:00:00.000Z"],
+      [1760428800000, "2025-10-14T08:00:00.000Z"],
+      [1760428800007, "2025-10-14T08:00:00.007Z"],
+      [1760428859999, "2025-10-14T08:00:59.999Z"],
+      [951782400123, "2000-02-29T00:00:00.123Z"],
+      [4102444799999, "2099-12-31T23:59:59.999Z"]
+    ]
+  }
 }

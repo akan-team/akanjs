@@ -161,27 +161,35 @@ enum AkanNativeUpdates {
     }
 
     static func readState() -> AkanNativeUpdateState {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent("state.json")),
-              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return AkanNativeUpdateState() }
-        return AkanNativeUpdateState(o)
+        AkanNativeUpdateState(readJson("state.json") ?? [:])
     }
 
-    /// Atomic replace (write + rename), so a crash never leaves half a state file. false: not
-    /// written (a full disk): a trial that is not on record must not run, since nothing would roll
-    /// it back.
+    /// false: not written (a full disk): a trial that is not on record must not run, since nothing would roll it back.
     @discardableResult
     static func writeState(_ state: AkanNativeUpdateState) -> Bool {
+        writeJson("state.json", state.json)
+    }
+
+    static func readJson(_ name: String) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// Atomic replace (write + rename) of a file of the updates folder, so a crash never leaves half of it. false: not
+    /// written.
+    @discardableResult
+    static func writeJson(_ name: String, _ object: [String: Any]) -> Bool {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var url = directory
         var values = URLResourceValues()
         values.isExcludedFromBackup = true // downloadable again; not the user's data
         try? url.setResourceValues(values)
-        guard let data = try? JSONSerialization.data(withJSONObject: state.json, options: [.sortedKeys]) else { return false }
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return false }
         do {
-            try data.write(to: directory.appendingPathComponent("state.json"), options: .atomic)
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
             return true
         } catch {
-            NSLog("[akan-native] updates: cannot write state.json: %@", error.localizedDescription)
+            NSLog("[akan-native] updates: cannot write %@: %@", name, error.localizedDescription)
             return false
         }
     }
@@ -204,11 +212,11 @@ enum AkanNativeUpdates {
     }
 
     /// Drops an entry this launch cannot serve, reporting `event` (reason verify) when its files were the reason.
-    private static func drop(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String], _ event: String) -> AkanNativeUpdateEntry? {
+    private static func drop(_ entry: AkanNativeUpdateEntry?, _ config: AkanNativeUpdateConfig, revoked: [String], _ event: AkanNativeUpdateEvent) -> AkanNativeUpdateEntry? {
         guard let entry else { return nil }
         guard takes(entry, config, revoked: revoked) else { return nil }
         if intact(entry, config, revoked: revoked) { return entry }
-        AkanNativeUpdateReports.record(event, entry, reason: "verify")
+        AkanNativeUpdateReports.record(event, entry, reason: .verify)
         return nil
     }
 
@@ -234,16 +242,16 @@ enum AkanNativeUpdates {
     static func launch() -> URL? {
         guard let config else { return nil }
         var state = readState()
-        state.current = drop(state.current, config, revoked: state.revokedKeys, "rolledBack")
-        state.pending = drop(state.pending, config, revoked: state.revokedKeys, "failed")
-        state.trial = drop(state.trial, config, revoked: state.revokedKeys, "rolledBack")
+        state.current = drop(state.current, config, revoked: state.revokedKeys, .rolledBack)
+        state.pending = drop(state.pending, config, revoked: state.revokedKeys, .failed)
+        state.trial = drop(state.trial, config, revoked: state.revokedKeys, .rolledBack)
         if let trial = state.trial {
             // Launched again without notifyReady(): the trial crashed or hung.
             state.failed.append(trial.bundle)
             state.rolledBack = trial.bundle
             state.trial = nil
             NSLog("[akan-native] updates: bundle %@ did not confirm; rolled back", trial.bundle)
-            AkanNativeUpdateReports.record("rolledBack", trial, reason: "relaunch")
+            AkanNativeUpdateReports.record(.rolledBack, trial, reason: .relaunch)
         }
         if var pending = state.pending, !state.failed.contains(pending.bundle) {
             pending.attempts = 1
@@ -253,7 +261,7 @@ enum AkanNativeUpdates {
         if !writeState(state), state.trial != nil {
             state.trial = nil // not on record: the pending bundle waits for a launch that can record it
         }
-        if let trial = state.trial { AkanNativeUpdateReports.record("applied", trial) }
+        if let trial = state.trial { AkanNativeUpdateReports.record(.applied, trial) }
         active = state.trial ?? state.current
         onTrial = state.trial != nil
         AkanNativeUpdateReports.start()
@@ -265,7 +273,7 @@ enum AkanNativeUpdates {
         var state = readState()
         state.pending = entry
         state.failed.removeAll { $0 == entry.bundle }
-        if writeState(state) { AkanNativeUpdateReports.record("downloaded", entry) }
+        if writeState(state) { AkanNativeUpdateReports.record(.downloaded, entry) }
     }
 
     /// apply(): makes the pending bundle the trial now; returns its folder for the reload.
@@ -279,7 +287,7 @@ enum AkanNativeUpdates {
         guard writeState(state) else { return nil }
         active = pending
         onTrial = true
-        AkanNativeUpdateReports.record("applied", pending)
+        AkanNativeUpdateReports.record(.applied, pending)
         return bundleDirectory(pending.bundle)
     }
 
@@ -293,7 +301,7 @@ enum AkanNativeUpdates {
         state.rolledBack = nil
         writeState(state)
         onTrial = false
-        AkanNativeUpdateReports.record("confirmed", trial)
+        AkanNativeUpdateReports.record(.confirmed, trial)
         prune(keep: [state.current?.bundle, state.pending?.bundle].compactMap { $0 })
     }
 
@@ -306,7 +314,7 @@ enum AkanNativeUpdates {
         state.failed.append(trial.bundle)
         state.rolledBack = trial.bundle
         writeState(state)
-        let report = AkanNativeUpdateReports.record("rolledBack", trial, reason: "timeout")
+        let report = AkanNativeUpdateReports.record(.rolledBack, trial, reason: .timeout)
         onTrial = false
         active = config.flatMap { usable(state.current, $0, revoked: state.revokedKeys) ? state.current : nil }
         NSLog("[akan-native] updates: bundle %@ did not call notifyReady() in time; rolled back", trial.bundle)

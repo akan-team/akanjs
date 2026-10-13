@@ -16,12 +16,25 @@ import {
   isHostPath,
   isStrictBase64,
   isUpdateKeyId,
+  MAX_REVOKE_KEYS,
+  MAX_UPDATE_MANIFEST,
   parseRange,
   RetainedEvents,
   route,
+  UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_EVENTS,
+  UPDATE_REPORT_LIMIT,
+  UPDATE_REPORT_REASONS,
+  type UpdateReportEvent,
+  type UpdateReportReason,
   updateDecision,
   updateDecisionWire,
   updateManifestUrl,
+  updateReportKey,
+  updateReportOutcome,
+  updateReportRetryAt,
+  updateReportTime,
+  updateReportWaits,
 } from "../src/kernel.ts";
 import { validateRequest } from "../src/protocol.ts";
 
@@ -163,6 +176,16 @@ const updates = (await load("updates")) as {
   urls: [string, string, string, string, string][];
   envelopeKeys: string[];
   envelopes: [string | [string, number, string], string, string, string[], string, string][];
+  limits: { revokeKeys: number; manifestBytes: number; reportEvents: number; reportBatch: number };
+  reports: {
+    events: string[];
+    reasons: string[];
+    outcomes: [number, string][];
+    retryAfter: [string | null, number, number | null, string][];
+    waits: [number | null, number, boolean][];
+    keys: [UpdateReportEvent, string, UpdateReportReason | null, string][];
+    times: [number, string][];
+  };
 };
 const keyIdOf = (key: string) =>
   createHash("sha256").update(Buffer.from(key, "base64")).digest().subarray(0, 8).toString("hex");
@@ -201,6 +224,34 @@ describe("updates vectors", () => {
     const opened = checkUpdateEnvelope({ manifest, keyId, signature }, [...keys.keys()], revoked, verify);
     expect(opened.verdict).toBe(expected as typeof opened.verdict);
     if (opened.verdict === "open") expect(opened.manifest).toEqual(new Uint8Array(Buffer.from(manifest, "base64")));
+  });
+  test("limits", () => {
+    expect({
+      revokeKeys: MAX_REVOKE_KEYS,
+      manifestBytes: MAX_UPDATE_MANIFEST,
+      reportEvents: UPDATE_REPORT_LIMIT,
+      reportBatch: UPDATE_REPORT_BATCH,
+    }).toEqual(updates.limits);
+  });
+  const { reports } = updates;
+  test("report vocabulary", () => {
+    expect(reports.events).toEqual([...UPDATE_REPORT_EVENTS]);
+    expect(reports.reasons).toEqual([...UPDATE_REPORT_REASONS]);
+  });
+  test.each(reports.outcomes)("an answer of %d → %s", (status, expected) => {
+    expect(updateReportOutcome(status)).toBe(expected as ReturnType<typeof updateReportOutcome>);
+  });
+  test.each(reports.retryAfter)("Retry-After %j at %d → %p (%s)", (header, now, expected) => {
+    expect(updateReportRetryAt(header, now)).toBe(expected);
+  });
+  test.each(reports.waits)("retryAt %p at %d waits: %p", (retryAt, now, expected) => {
+    expect(updateReportWaits(retryAt, now)).toBe(expected);
+  });
+  test.each(reports.keys)("%s %s %p → %s", (event, bundle, reason, expected) => {
+    expect(updateReportKey(event, bundle, reason)).toBe(expected);
+  });
+  test.each(reports.times)("%d → %s", (ms, expected) => {
+    expect(updateReportTime(ms)).toBe(expected);
   });
   test("strict base64 is what iOS decodes, and nothing Android or Java would take beside it", () => {
     for (const s of ["", "YQ==", "YWI=", "YWJj", "+/+/"]) expect(isStrictBase64(s)).toBe(true);

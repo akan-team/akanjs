@@ -149,6 +149,34 @@ object AkanNativeVectors {
             ) { bytes, signature, keyId -> ring.indexOf(keyId).let { it >= 0 && AkanNativeEd25519.verify(bytes, signature, envelopeKeys[it]) } }
             check(got.verdict.wire == c[4]) { "update envelope ${c[5]}: ${got.verdict.wire}" }
         }
+        val limits = updates["limits"] as? Map<*, *>
+        val expectedLimits = listOf("revokeKeys", "manifestBytes", "reportEvents", "reportBatch").map { (limits?.get(it) as? Number)?.toInt() }
+        val ownLimits = listOf(AkanNativeKernel.MAX_REVOKE_KEYS, AkanNativeKernel.MAX_UPDATE_MANIFEST, AkanNativeKernel.UPDATE_REPORT_LIMIT, AkanNativeKernel.UPDATE_REPORT_BATCH)
+        check(ownLimits == expectedLimits) { "update limits: $ownLimits" }
+
+        // What a phone posts to updates.report.url (AkanNativeUpdateReports).
+        val reports = updates["reports"] as? Map<*, *>
+        check(AkanNativeUpdateEvent.entries.map { it.wire } == reports?.get("events")) { "report events" }
+        check(AkanNativeUpdateReason.entries.map { it.wire } == reports?.get("reasons")) { "report reasons" }
+        for (c in rows(reports, "outcomes")) {
+            val got = AkanNativeKernel.updateReportOutcome((c[0] as Number).toInt())
+            check(got.wire == c[1]) { "report outcome ${c[0]}: ${got.wire}" }
+        }
+        for (c in rows(reports, "retryAfter")) {
+            val got = AkanNativeKernel.updateReportRetryAt(c[0] as String?, (c[1] as Number).toDouble())
+            check(got == (c[2] as Number?)?.toDouble()) { "report Retry-After ${c[3]}: $got" }
+        }
+        for (c in rows(reports, "waits")) {
+            check(AkanNativeKernel.updateReportWaits((c[0] as Number?)?.toDouble(), (c[1] as Number).toDouble()) == c[2]) { "report waits $c" }
+        }
+        for (c in rows(reports, "keys")) {
+            val event = AkanNativeUpdateEvent.of(c[0])
+            check(event != null && AkanNativeKernel.updateReportKey(event, c[1] as String, AkanNativeUpdateReason.of(c[2])) == c[3]) { "report key $c" }
+        }
+        for (c in rows(reports, "times")) {
+            val got = AkanNativeKernel.updateReportTime((c[0] as Number).toLong())
+            check(got == c[1]) { "report time ${c[0]}: $got" }
+        }
 
         // A missing or truncated file must not pass as fewer checks.
         for ((name, count) in AkanNativeVectorData.counts) if ((ran[name] ?: 0) != count) failures.add("$name: ${ran[name] ?: 0} of $count checks ran")

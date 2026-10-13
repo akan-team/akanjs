@@ -50,6 +50,21 @@ enum AkanNativeEnvelopeVerdict: String {
     case open, untrusted, revoked, encoding, tooLarge = "too-large", signature
 }
 
+/// kernel.ts UpdateReportEvent: what became of a release on a phone (updates.report.url).
+enum AkanNativeUpdateEvent: String, CaseIterable, Sendable {
+    case downloaded, applied, confirmed, rolledBack, failed
+}
+
+/// kernel.ts UpdateReportReason.
+enum AkanNativeUpdateReason: String, CaseIterable, Sendable {
+    case timeout, relaunch, hang, verify, download, disk, signature, manifest
+}
+
+/// kernel.ts UpdateReportOutcome: what the answer to a report request does to its batch.
+enum AkanNativeReportOutcome: String {
+    case sent, dropped, kept
+}
+
 /// kernel.ts RetainedEvents: events that can come before the page listens (links, taps; C2). A live
 /// event goes to every listener; one that no listener accepted is kept when `retain` (at most
 /// maxRetainedEvents) and replayed, in order, to the next listener, once. A listener returns false
@@ -366,6 +381,9 @@ enum AkanNativeKernel {
         s.count == 16 && s.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
     }
 
+    /// kernel.ts MAX_REVOKE_KEYS: the most keys a manifest may revoke.
+    static let maxRevokeKeys = 16
+
     /// kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes.
     static let maxUpdateManifest = 1 << 20
 
@@ -390,5 +408,44 @@ enum AkanNativeKernel {
         guard manifest.utf8.count / 4 * 3 - pad <= maxUpdateManifest else { return (.tooLarge, nil) }
         guard let bytes = Data(base64Encoded: manifest), let signed = Data(base64Encoded: signature) else { return (.encoding, nil) }
         return verify(bytes, signed, keyId) ? (.open, bytes) : (.signature, nil)
+    }
+
+    /// kernel.ts UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH: the events kept waiting, and those one request carries.
+    static let updateReportLimit = 100
+    static let updateReportBatch = 20
+
+    /// kernel.ts updateReportKey: an event is kept once per release and reason.
+    static func updateReportKey(_ event: AkanNativeUpdateEvent, bundle: String, reason: AkanNativeUpdateReason?) -> String {
+        "\(event.rawValue)|\(bundle)|\(reason?.rawValue ?? "")"
+    }
+
+    /// kernel.ts updateReportOutcome: a 2xx sends the batch, a 400, 413 or 422 drops it, anything else keeps it.
+    static func updateReportOutcome(_ status: Int) -> AkanNativeReportOutcome {
+        if (200..<300).contains(status) { return .sent }
+        return [400, 413, 422].contains(status) ? .dropped : .kept
+    }
+
+    /// kernel.ts updateReportRetryAt: `now` plus a Retry-After of delay-seconds (digits only), else nil.
+    static func updateReportRetryAt(_ retryAfter: String?, now: Double) -> Double? {
+        guard let value = retryAfter?.trimmingCharacters(in: CharacterSet(charactersIn: " \t")), !value.isEmpty,
+              value.utf8.allSatisfy({ (48...57).contains($0) }), let seconds = Double(value), seconds.isFinite else { return nil }
+        return now + seconds
+    }
+
+    /// kernel.ts updateReportWaits: a wait of more than a day is a clock that moved, so it ends.
+    static func updateReportWaits(_ retryAt: Double?, now: Double) -> Bool {
+        guard let retryAt else { return false }
+        return retryAt > now && retryAt < now + 86_400
+    }
+
+    /// kernel.ts updateReportTime: UTC, always three fraction digits.
+    static func updateReportTime(_ ms: Int64) -> String {
+        var seconds = time_t(ms / 1000)
+        var parts = tm()
+        gmtime_r(&seconds, &parts)
+        return String(
+            format: "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday,
+            parts.tm_hour, parts.tm_min, parts.tm_sec, Int32(ms % 1000)
+        )
     }
 }

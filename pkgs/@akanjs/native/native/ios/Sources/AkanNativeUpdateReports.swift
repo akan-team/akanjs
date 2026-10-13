@@ -1,28 +1,23 @@
 // What became of each web bundle release, posted to updates.report.url so whoever publishes sees apply and
 // rollback rates; a rollback is decided before any page script runs, so only the shell can tell. The Android twin is
-// native/android/.../AkanNativeUpdateReports.kt, same file and wire format.
+// native/android/.../AkanNativeUpdateReports.kt, same file and wire format; the contract (events, reasons, what an
+// answer does, Retry-After, the caps) is AkanNativeKernel's, checked against vectors/updates.json `reports`.
 //
 // akan-native-updates/report.json: { installId, nextId, events: [{ id, event, bundle, sequence, reason, at }], retryAt?,
 // seen: [key] }. Beside state.json, so backups skip it, but reset() rewrites state.json only: the installId (random,
-// not a device identifier) and the id counter live as long as the install, and an id is never used twice.
-// Sent when the first window opens and on each return to the foreground: oldest first, 20 to a request, one request at
-// a time. A 2xx removes the batch; a 400, 413 or 422 drops it, since the same body would be refused forever; any other
-// answer, or none, keeps it for the next time (after Retry-After). At most 100 wait, the oldest dropped first.
+// not a device identifier) and the id counter live as long as the install, and an id is never used twice. Read once,
+// at the first use, and written whenever it changes.
+// Sent when the first window opens and on each return to the foreground: oldest first, a batch to a request, one
+// request at a time.
 #if AKAN_NATIVE_UPDATES
 import Foundation
 import UIKit
 
 @MainActor
 enum AkanNativeUpdateReports {
-    private static let limit = 100
-    private static let batch = 20
     private static var sending = false
     private static var observing = false
-    private static let timestamp: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    private static var loaded: Report?
 
     private struct Report {
         var installId: String
@@ -32,44 +27,42 @@ enum AkanNativeUpdateReports {
         var seen: [String]
     }
 
-    private static var file: URL { AkanNativeUpdates.directory.appendingPathComponent("report.json") }
-
-    /// downloaded, applied, confirmed, rolledBack (timeout, relaunch, hang, verify) or failed (download, verify, disk,
-    /// signature, manifest). Nothing is kept when the build names no report URL.
+    /// Nothing is kept when the build names no report URL.
     @discardableResult
-    static func record(_ event: String, bundle: String?, sequence: Double?, reason: String? = nil) -> Int? {
+    static func record(_ event: AkanNativeUpdateEvent, bundle: String?, sequence: Double?, reason: AkanNativeUpdateReason? = nil) -> Int? {
         guard AkanNativeUpdates.config?.reportUrl != nil, let bundle, AkanNativeKernel.isBundleId(bundle) else { return nil }
-        var report = read()
-        //? A check runs at every launch: the same failure of the same release is one event, not one per launch.
-        let key = "\(event)|\(bundle)|\(reason ?? "")"
+        var report = load()
+        let key = AkanNativeKernel.updateReportKey(event, bundle: bundle, reason: reason)
         guard !report.seen.contains(key) else { return nil }
-        report.seen = Array((report.seen + [key]).suffix(limit))
+        report.seen = Array((report.seen + [key]).suffix(AkanNativeKernel.updateReportLimit))
         let sequence = sequence.flatMap { $0.isFinite ? $0 : nil }
         let number: Any = sequence.map { $0.rounded() == $0 && abs($0) < 9e15 ? NSNumber(value: Int64($0)) : NSNumber(value: $0) } ?? NSNull()
         let id = report.nextId
         report.events.append([
-            "id": id, "event": event, "bundle": bundle, "sequence": number, "reason": reason ?? NSNull(),
-            "at": timestamp.string(from: Date()),
+            "id": id, "event": event.rawValue, "bundle": bundle, "sequence": number, "reason": reason?.rawValue ?? NSNull(),
+            "at": AkanNativeKernel.updateReportTime(Int64((Date().timeIntervalSince1970 * 1000).rounded(.down))),
         ])
-        report.events = Array(report.events.suffix(limit))
+        report.events = Array(report.events.suffix(AkanNativeKernel.updateReportLimit))
         report.nextId += 1
-        write(report)
+        save(report)
         return id
     }
 
     @discardableResult
-    static func record(_ event: String, _ entry: AkanNativeUpdateEntry, reason: String? = nil) -> Int? {
+    static func record(_ event: AkanNativeUpdateEvent, _ entry: AkanNativeUpdateEntry, reason: AkanNativeUpdateReason? = nil) -> Int? {
         record(event, bundle: entry.bundle, sequence: entry.sequence, reason: reason)
     }
 
-    static func amend(_ id: Int, reason: String) {
-        var report = read()
+    static func amend(_ id: Int, reason: AkanNativeUpdateReason) {
+        var report = load()
         guard let index = report.events.firstIndex(where: { ($0["id"] as? NSNumber)?.intValue == id }),
-              let event = report.events[index]["event"] as? String, let bundle = report.events[index]["bundle"] as? String else { return }
-        let key = "\(event)|\(bundle)|\(report.events[index]["reason"] as? String ?? "")"
-        report.events[index]["reason"] = reason
-        report.seen = report.seen.map { $0 == key ? "\(event)|\(bundle)|\(reason)" : $0 }
-        write(report)
+              let event = (report.events[index]["event"] as? String).flatMap(AkanNativeUpdateEvent.init(rawValue:)),
+              let bundle = report.events[index]["bundle"] as? String else { return }
+        let previous = (report.events[index]["reason"] as? String).flatMap(AkanNativeUpdateReason.init(rawValue:))
+        let key = AkanNativeKernel.updateReportKey(event, bundle: bundle, reason: previous)
+        report.events[index]["reason"] = reason.rawValue
+        report.seen = report.seen.map { $0 == key ? AkanNativeKernel.updateReportKey(event, bundle: bundle, reason: reason) : $0 }
+        save(report)
     }
 
     static func start() {
@@ -84,11 +77,9 @@ enum AkanNativeUpdateReports {
 
     static func flush() {
         guard !sending, let config = AkanNativeUpdates.config, let address = config.reportUrl, let url = URL(string: address) else { return }
-        let report = read()
-        let now = Date().timeIntervalSince1970
-        //? A Retry-After more than a day out is a clock that moved, not the server's wish.
-        if let retryAt = report.retryAt, retryAt > now, retryAt < now + 86_400 { return }
-        let events = Array(report.events.prefix(batch))
+        let report = load()
+        if AkanNativeKernel.updateReportWaits(report.retryAt, now: Date().timeIntervalSince1970) { return }
+        let events = Array(report.events.prefix(AkanNativeKernel.updateReportBatch))
         guard !events.isEmpty else { return }
         let body: [String: Any] = [
             "app": config.app, "platform": config.platform, "channel": config.channel, "installId": report.installId,
@@ -110,20 +101,30 @@ enum AkanNativeUpdateReports {
     }
 
     private static func settle(_ ids: Set<Int>, status: Int, retryAfter: String?) {
-        var report = read()
-        guard (200..<300).contains(status) || [400, 413, 422].contains(status) else {
-            report.retryAt = retryAfter.flatMap(Double.init).flatMap { $0.isFinite && $0 >= 0 ? Date().timeIntervalSince1970 + $0 : nil }
-            write(report)
-            return
+        var report = load()
+        switch AkanNativeKernel.updateReportOutcome(status) {
+        case .kept:
+            let retryAt = AkanNativeKernel.updateReportRetryAt(retryAfter, now: Date().timeIntervalSince1970)
+            guard retryAt != report.retryAt else { return }
+            report.retryAt = retryAt
+            save(report)
+        case .sent, .dropped:
+            report.events.removeAll { ids.contains(($0["id"] as? NSNumber)?.intValue ?? -1) }
+            report.retryAt = nil
+            save(report)
+            flush()
         }
-        report.events.removeAll { ids.contains(($0["id"] as? NSNumber)?.intValue ?? -1) }
-        report.retryAt = nil
-        write(report)
-        flush()
+    }
+
+    private static func load() -> Report {
+        if let loaded { return loaded }
+        let report = read()
+        loaded = report
+        return report
     }
 
     private static func read() -> Report {
-        let o = (try? Data(contentsOf: file)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let o = AkanNativeUpdates.readJson("report.json") ?? [:]
         guard let installId = o["installId"] as? String, installId.count == 32, installId.allSatisfy(\.isHexDigit) else {
             return Report(installId: newInstallId(), nextId: 0, events: [], retryAt: nil, seen: [])
         }
@@ -136,21 +137,12 @@ enum AkanNativeUpdateReports {
         )
     }
 
-    private static func write(_ report: Report) {
+    private static func save(_ report: Report) {
+        loaded = report
         var o: [String: Any] = ["installId": report.installId, "nextId": report.nextId, "events": report.events, "seen": report.seen]
         //? JSONSerialization raises on a NaN or an infinity, an exception try? does not catch.
         if let retryAt = report.retryAt, retryAt.isFinite { o["retryAt"] = retryAt }
-        guard let data = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) else { return }
-        try? FileManager.default.createDirectory(at: AkanNativeUpdates.directory, withIntermediateDirectories: true)
-        var directory = AkanNativeUpdates.directory
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        try? directory.setResourceValues(values)
-        do {
-            try data.write(to: file, options: .atomic)
-        } catch {
-            NSLog("[akan-native] updates: cannot write report.json: %@", error.localizedDescription)
-        }
+        AkanNativeUpdates.writeJson("report.json", o)
     }
 
     private static func newInstallId() -> String {

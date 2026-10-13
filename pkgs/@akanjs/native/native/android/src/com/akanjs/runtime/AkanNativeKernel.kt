@@ -4,7 +4,11 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Base64
+import java.util.Locale
 
 /*
  * Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
@@ -37,6 +41,27 @@ enum class AkanNativeEnvelopeVerdict(val wire: String) {
 
 /** An envelope's verdict, and its manifest bytes when it is [AkanNativeEnvelopeVerdict.OPEN]. */
 class AkanNativeEnvelopeCheck(val verdict: AkanNativeEnvelopeVerdict, val manifest: ByteArray? = null)
+
+/** kernel.ts UpdateReportEvent: what became of a release on a phone (updates.report.url). */
+enum class AkanNativeUpdateEvent(val wire: String) {
+    DOWNLOADED("downloaded"), APPLIED("applied"), CONFIRMED("confirmed"), ROLLED_BACK("rolledBack"), FAILED("failed");
+
+    companion object {
+        fun of(wire: Any?): AkanNativeUpdateEvent? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** kernel.ts UpdateReportReason. */
+enum class AkanNativeUpdateReason(val wire: String) {
+    TIMEOUT("timeout"), RELAUNCH("relaunch"), HANG("hang"), VERIFY("verify"), DOWNLOAD("download"), DISK("disk"), SIGNATURE("signature"), MANIFEST("manifest");
+
+    companion object {
+        fun of(wire: Any?): AkanNativeUpdateReason? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** kernel.ts UpdateReportOutcome: what the answer to a report request does to its batch. */
+enum class AkanNativeReportOutcome(val wire: String) { SENT("sent"), DROPPED("dropped"), KEPT("kept") }
 
 sealed class AkanNativeRangeAnswer {
     object Whole : AkanNativeRangeAnswer()
@@ -368,6 +393,9 @@ object AkanNativeKernel {
 
     fun isUpdateKeyId(s: String): Boolean = s.length == 16 && s.all { it in '0'..'9' || it in 'a'..'f' }
 
+    /** kernel.ts MAX_REVOKE_KEYS: the most keys a manifest may revoke. */
+    const val MAX_REVOKE_KEYS = 16
+
     /** kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes. */
     const val MAX_UPDATE_MANIFEST = 1 shl 20
 
@@ -405,4 +433,33 @@ object AkanNativeKernel {
         return if (verify(bytes, Base64.getDecoder().decode(signature), keyId)) AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.OPEN, bytes)
         else AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.SIGNATURE)
     }
+
+    /** kernel.ts UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH: the events kept waiting, and those one request carries. */
+    const val UPDATE_REPORT_LIMIT = 100
+    const val UPDATE_REPORT_BATCH = 20
+
+    /** kernel.ts updateReportKey: an event is kept once per release and reason. */
+    fun updateReportKey(event: AkanNativeUpdateEvent, bundle: String, reason: AkanNativeUpdateReason?): String = "${event.wire}|$bundle|${reason?.wire ?: ""}"
+
+    /** kernel.ts updateReportOutcome: a 2xx sends the batch, a 400, 413 or 422 drops it, anything else keeps it. */
+    fun updateReportOutcome(status: Int): AkanNativeReportOutcome = when (status) {
+        in 200..299 -> AkanNativeReportOutcome.SENT
+        400, 413, 422 -> AkanNativeReportOutcome.DROPPED
+        else -> AkanNativeReportOutcome.KEPT
+    }
+
+    /** kernel.ts updateReportRetryAt: [now] plus a Retry-After of delay-seconds (digits only), else null. */
+    fun updateReportRetryAt(retryAfter: String?, now: Double): Double? {
+        val value = retryAfter?.trim(' ', '\t') ?: return null
+        if (value.isEmpty() || !value.all { it in '0'..'9' }) return null
+        return value.toDouble().takeIf { it.isFinite() }?.let { now + it }
+    }
+
+    /** kernel.ts updateReportWaits: a wait of more than a day is a clock that moved, so it ends. */
+    fun updateReportWaits(retryAt: Double?, now: Double): Boolean = retryAt != null && retryAt > now && retryAt < now + 86_400
+
+    private val reportTime = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
+
+    /** kernel.ts updateReportTime: UTC, always three fraction digits (Instant.toString() leaves out a fraction of zero). */
+    fun updateReportTime(ms: Long): String = reportTime.format(Instant.ofEpochMilli(ms))
 }
