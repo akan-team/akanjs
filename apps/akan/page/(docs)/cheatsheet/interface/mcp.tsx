@@ -97,8 +97,8 @@ export default page().render(() => {
         {
           name: "page().prompt()",
           desc: l.trans({
-            en: "A screen: a slash command for the user, a tool for the model, and drawn in the chat where the client renders MCP Apps.",
-            ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 툴이 되고, MCP Apps를 그리는 클라이언트에선 채팅 안에 그대로 뜹니다.",
+            en: "A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.",
+            ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 툴이 되고, MCP Apps 클라이언트에선 레이아웃 없이 페이지만 채팅에 뜹니다.",
           }),
           marks: { tool: true, resource: false, prompt: true },
         },

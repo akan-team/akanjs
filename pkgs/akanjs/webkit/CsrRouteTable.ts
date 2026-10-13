@@ -190,7 +190,8 @@ export class CsrRouteTable {
     ): PathRoute[] => {
       const layer = RouteLayering.of(route, parent);
       const { path, pathSegments } = layer;
-      const currentLayoutConfig = route.renderLayout && route.layoutPageConfig ? route.layoutPageConfig : null;
+      const currentLayoutConfig =
+        route.renderLayout && route.layoutPageConfig ? CsrRouteTable.#layoutConfigOf(route.layoutPageConfig) : null;
       const pageConfigChain = [...parentPageConfigChain, ...(currentLayoutConfig ? [currentLayoutConfig] : [])];
       const pageRenderConfigChain =
         route.pageIncludesOwnLayout === false && route.renderLayout ? parentPageConfigChain : pageConfigChain;
@@ -248,6 +249,14 @@ export class CsrRouteTable {
 
   static #keysOf(context: CsrRouteContext) {
     return Object.keys(context).sort();
+  }
+
+  //? An MCP view hides a layout's own markup, so the room it reserves for its chrome would be an empty band; the
+  //? insets follow what the page itself puts on screen instead.
+  static #layoutConfigOf(config: PageConfig): PageConfig {
+    if (!globalThis.__AKAN_EMBED__) return config;
+    const { topInset: _top, bottomInset: _bottom, ...rest } = config;
+    return rest;
   }
 
   static #paramNamesOf(pattern: string) {

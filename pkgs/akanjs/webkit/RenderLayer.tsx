@@ -3,6 +3,7 @@ import { debugFrame, RouteDefinition, type RouteRender, router, usePathCtx } fro
 import { isThenable, Logger } from "akanjs/common";
 import { createContext, createElement, memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { CsrFrameDump } from "./csrFrameDump";
+import { EmbeddedLayout, LayoutOutlet } from "./EmbeddedLayout";
 import { RenderFailure } from "./RenderFailure";
 import { useFetch } from "./useFetch";
 import { usePageActivity } from "./usePageActivity";
@@ -30,15 +31,28 @@ interface RenderLayerProps {
   params: Record<string, string>;
   searchParams: Record<string, string | string[]>;
   leaf?: ReactNode;
+  /** A page in an MCP view: every layout above it runs, and only the page is shown. */
+  isEmbedded?: boolean;
 }
-export const RenderLayer = memo(({ renders, index, params, searchParams, leaf = null }: RenderLayerProps) => {
+export const RenderLayer = memo((props: RenderLayerProps) => {
+  const { renders, index, params, searchParams, leaf = null, isEmbedded = false } = props;
   const isLast = index >= renders.length - 1;
-  const children = isLast ? (
+  const below = isLast ? (
     leaf
   ) : (
-    <RenderLayer renders={renders} index={index + 1} params={params} searchParams={searchParams} leaf={leaf} />
+    <RenderLayer
+      renders={renders}
+      index={index + 1}
+      params={params}
+      searchParams={searchParams}
+      leaf={leaf}
+      isEmbedded={isEmbedded}
+    />
   );
   const routeRender = renders[index];
+  const isEmbeddedLayout = isEmbedded && routeRender?.kind === "layout";
+  const children = isEmbeddedLayout ? <LayoutOutlet>{below}</LayoutOutlet> : below;
+  const frame = (drawn: ReactNode) => (isEmbeddedLayout ? <EmbeddedLayout>{drawn}</EmbeddedLayout> : drawn);
   const isAsyncRender = isAsyncRouteRender(routeRender);
   const renderedRef = useRef<RenderedRoute | null>(null);
   const [, setFailures] = useState(0);
@@ -109,7 +123,8 @@ export const RenderLayer = memo(({ renders, index, params, searchParams, leaf = 
     };
   }, [record]);
   if (!routeRender) return null;
-  if (!isAsyncRender) return createElement(routeRender.render as never, { children, params, searchParams } as never);
+  if (!isAsyncRender)
+    return frame(createElement(routeRender.render as never, { children, params, searchParams } as never));
   const failure = renderedRef.current?.failure;
   if (failure)
     return (
@@ -122,7 +137,7 @@ export const RenderLayer = memo(({ renders, index, params, searchParams, leaf = 
       />
     );
   if (!value) return <>{composeLoadingFallback(renders.slice(index), params)}</>;
-  return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
+  return frame(<layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>);
 });
 
 //? useFetch drops a rejection, so a render that throws would leave its layer blank with nothing in the console.

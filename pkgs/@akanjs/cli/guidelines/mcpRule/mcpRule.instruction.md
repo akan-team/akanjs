@@ -379,6 +379,11 @@ call is relayed by the host as `tools/call` under the host's token. Nothing is d
 - **The capability is read per request.** A legacy client declares it once at `initialize` and is issued an
   `Mcp-Session-Id` (`ui.<uuid>`) that stores nothing, since its id is the capability; with `modern: true` a modern
   request carries it in `_meta`. A client that declares nothing is issued no session, exactly as before.
+- **The view is the page, not the app around it.** Each layout above it still runs — guards, providers,
+  `<Agent.Guide>` — but what it draws around `{children}` is hidden, with its frame chrome (`Layout.Navbar`,
+  `TopInset`, `BottomInset`, `BottomTab`), the `topInset` / `bottomInset` it reserves and the tools its controls
+  publish. A layout that draws no page, like a gate, is the screen then and is shown. The screen the view opened on
+  has no back button: there is nothing behind it.
 - **The view has no network.** `connect-src` stays closed; the app's own origin is opened for what a page loads by
   URL — fonts (served with `Access-Control-Allow-Origin: *`) and stored images — and every root-relative URL the
   page writes is pointed at it, since a host may block the document's `<base>` (Claude does).
