@@ -7,6 +7,8 @@ import {
   PipelinePattern,
   type PipelinePlanRetry,
   type PipelineTrigger,
+  type PipelineValueProblem,
+  PipelineValueReader,
   pipelineActionNames,
   pipelineMilestones,
   pipelineOtaPlatforms,
@@ -120,13 +122,17 @@ export class PipelineInputReader {
 
   readonly diagnostics: PipelineDiagnostic[] = [];
   readonly #file: string;
+  readonly #read = new PipelineValueReader<null>("config", (path, ...problems) => {
+    for (const problem of problems) this.#problem(path, problem);
+    return null;
+  });
 
   constructor(file: string) {
     this.#file = file;
   }
 
   workspace(value: unknown): PipelineWorkspaceRule | null {
-    const input = this.#object(value, "pipeline", ["schemaVersion", "env", "timeout", "before", "after", "post"]);
+    const input = this.#read.object(value, "pipeline", ["schemaVersion", "env", "timeout", "before", "after", "post"]);
     if (!input) return null;
     this.#schemaVersion(input.schemaVersion, "pipeline.schemaVersion");
     const ids = new Set<string>();
@@ -146,7 +152,7 @@ export class PipelineInputReader {
   }
 
   app(value: unknown): PipelineAppRule | null {
-    const input = this.#object(value, "pipeline", ["schemaVersion", "stages", "env", "after"]);
+    const input = this.#read.object(value, "pipeline", ["schemaVersion", "stages", "env", "after"]);
     if (!input) return null;
     this.#schemaVersion(input.schemaVersion, "pipeline.schemaVersion");
     if (input.stages === undefined) this.#report("pipeline.schema.invalid", "lists no `stages`", "pipeline");
@@ -164,7 +170,7 @@ export class PipelineInputReader {
   }
 
   #workspaceStage(value: unknown, path: string): PipelineWorkspaceStageRule | null {
-    const raw = this.#object(value, path);
+    const raw = this.#read.object(value, path);
     if (!raw) return null;
     if (this.#declares(raw, "use")) {
       this.#report(
@@ -180,7 +186,7 @@ export class PipelineInputReader {
   }
 
   #appStage(value: unknown, path: string): PipelineAppStageRule | null {
-    const raw = this.#object(value, path);
+    const raw = this.#read.object(value, path);
     if (!raw) return null;
     const workspaceKey = this.#declares(raw, "parallel") ? "parallel" : this.#declares(raw, "matrix") ? "matrix" : null;
     if (workspaceKey) {
@@ -202,7 +208,7 @@ export class PipelineInputReader {
 
   #actionStage(raw: JsonObject, path: string): PipelineActionStageRule | null {
     if (
-      !this.#keys(raw, path, [
+      !this.#read.keys(raw, path, [
         "use",
         ...PipelineInputReader.#stageKeys,
         "retry",
@@ -210,13 +216,14 @@ export class PipelineInputReader {
       ])
     )
       return null;
-    const action = this.#oneOf(raw.use, `${path}.use`, pipelineActionNames);
+    const action = this.#read.oneOf(raw.use, `${path}.use`, pipelineActionNames);
     if (!action) return null;
-    const name = raw.name === undefined ? null : this.#text(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
+    const name =
+      raw.name === undefined ? null : this.#read.string(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
     const id = raw.id === undefined ? action : this.#id(raw.id, `${path}.id`);
     if (!id) return null;
     const attempts =
-      raw.retry === undefined ? null : this.#int(raw.retry, `${path}.retry`, 1, pipelinePlanLimits.retryAttempts);
+      raw.retry === undefined ? null : this.#read.int(raw.retry, `${path}.retry`, 1, pipelinePlanLimits.retryAttempts);
     return {
       kind: "action",
       action,
@@ -238,7 +245,7 @@ export class PipelineInputReader {
           ? null
           : this.#nonEmptySet(
               this.#list(raw.platforms, `${path}.platforms`).flatMap((platform, idx) => {
-                const parsed = this.#oneOf(platform, `${path}.platforms[${idx}]`, pipelineOtaPlatforms);
+                const parsed = this.#read.oneOf(platform, `${path}.platforms[${idx}]`, pipelineOtaPlatforms);
                 return parsed ? [parsed] : [];
               }),
               `${path}.platforms`,
@@ -256,7 +263,7 @@ export class PipelineInputReader {
   }
 
   #shellStage(raw: JsonObject, path: string): PipelineShellStageRule | null {
-    if (!this.#keys(raw, path, PipelineInputReader.#shellKeys)) return null;
+    if (!this.#read.keys(raw, path, PipelineInputReader.#shellKeys)) return null;
     const head = this.#stageHead(raw, path);
     if (!head) return null;
     const steps = this.#stageSteps(raw, path);
@@ -264,7 +271,7 @@ export class PipelineInputReader {
   }
 
   #matrixStage(raw: JsonObject, path: string): PipelineMatrixStageRule | null {
-    if (!this.#keys(raw, path, [...PipelineInputReader.#shellKeys, "matrix", "maxParallel"])) return null;
+    if (!this.#read.keys(raw, path, [...PipelineInputReader.#shellKeys, "matrix", "maxParallel"])) return null;
     if (raw.matrix !== "apps") {
       this.#report(
         "pipeline.schema.invalid",
@@ -282,7 +289,7 @@ export class PipelineInputReader {
 
   #parallelStage(raw: JsonObject, path: string): PipelineParallelStageRule | null {
     const keys = [...PipelineInputReader.#stageKeys, "parallel", "maxParallel", "failFast", "env", "secrets"];
-    if (!this.#keys(raw, path, keys)) return null;
+    if (!this.#read.keys(raw, path, keys)) return null;
     const head = this.#stageHead(raw, path);
     if (!head) return null;
     const env = this.#env(raw.env, `${path}.env`);
@@ -290,7 +297,7 @@ export class PipelineInputReader {
     const ids = new Set<string>();
     const branches = this.#list(raw.parallel, `${path}.parallel`).flatMap((branch, idx) => {
       const branchPath = `${path}.parallel[${idx}]`;
-      const branchRaw = this.#object(branch, branchPath);
+      const branchRaw = this.#read.object(branch, branchPath);
       if (!branchRaw) return [];
       if ((["use", "parallel", "matrix"] as const).some((key) => this.#declares(branchRaw, key))) {
         this.#report("pipeline.schema.invalid", "a parallel branch is a shell stage", branchPath);
@@ -332,7 +339,7 @@ export class PipelineInputReader {
   }
 
   #stageHead(raw: JsonObject, path: string, { allowApp = false }: { allowApp?: boolean } = {}) {
-    const name = this.#text(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
+    const name = this.#read.string(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
     if (name === null) return null;
     const id = raw.id === undefined ? this.#slugId(name, `${path}.name`) : this.#id(raw.id, `${path}.id`);
     if (!id) return null;
@@ -380,11 +387,11 @@ export class PipelineInputReader {
   }
 
   #step(value: unknown, path: string, idx: number): PipelineStepRule | null {
-    const raw = typeof value === "string" ? { sh: value } : this.#object(value, path);
+    const raw = typeof value === "string" ? { sh: value } : this.#read.object(value, path);
     if (!raw) return null;
     const keys = ["sh", "id", "name", "cwd", "env", "secrets", "timeout", "retry", "allowFailure", "skipExitCodes"];
-    if (!this.#keys(raw, path, keys)) return null;
-    const run = this.#text(raw.sh, typeof value === "string" ? path : `${path}.sh`, Number.POSITIVE_INFINITY);
+    if (!this.#read.keys(raw, path, keys)) return null;
+    const run = this.#read.string(raw.sh, typeof value === "string" ? path : `${path}.sh`, Number.POSITIVE_INFINITY);
     if (run === null) return null;
     if (new TextEncoder().encode(run).length > pipelinePlanLimits.shBytes) {
       this.#report("pipeline.limit.exceeded", `a script is at most ${pipelinePlanLimits.shBytes} bytes`, path);
@@ -393,7 +400,7 @@ export class PipelineInputReader {
     const name =
       raw.name === undefined
         ? PipelineInputReader.#nameOf(run)
-        : this.#text(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
+        : this.#read.string(raw.name, `${path}.name`, pipelinePlanLimits.nameChars);
     if (name === null) return null;
     const localId =
       raw.id !== undefined
@@ -419,7 +426,7 @@ export class PipelineInputReader {
   #post(value: unknown, path: string): PipelinePostRule {
     const empty: PipelinePostRule = { success: [], failure: [], canceled: [], always: [] };
     if (value === undefined) return empty;
-    const raw = this.#object(value, path);
+    const raw = this.#read.object(value, path);
     if (!raw) return empty;
     for (const key of Object.keys(raw))
       if (!PipelineInputReader.#postResults.includes(key))
@@ -449,7 +456,7 @@ export class PipelineInputReader {
   #when(value: unknown, path: string, { allowApp = false }: { allowApp?: boolean } = {}): PipelineWhenRule {
     const none: PipelineWhenRule = { branch: null, trigger: null, changed: null, app: null };
     if (value === undefined) return none;
-    const raw = this.#object(value, path);
+    const raw = this.#read.object(value, path);
     if (!raw) return none;
     for (const key of Object.keys(raw)) {
       if (["branch", "trigger", "changed"].includes(key) || (allowApp && key === "app")) continue;
@@ -466,7 +473,7 @@ export class PipelineInputReader {
         ? null
         : (typeof raw.trigger === "string" ? [raw.trigger] : this.#list(raw.trigger, `${path}.trigger`)).flatMap(
             (trigger, idx) => {
-              const parsed = this.#oneOf(trigger, `${path}.trigger[${idx}]`, pipelineTriggers);
+              const parsed = this.#read.oneOf(trigger, `${path}.trigger[${idx}]`, pipelineTriggers);
               return parsed ? [parsed] : [];
             },
           );
@@ -502,7 +509,7 @@ export class PipelineInputReader {
 
   #env(value: unknown, path: string): Record<string, string> {
     if (value === undefined) return {};
-    const raw = this.#object(value, path);
+    const raw = this.#read.object(value, path);
     if (!raw) return {};
     const env: Record<string, string> = {};
     for (const [name, entry] of Object.entries(raw)) {
@@ -533,7 +540,7 @@ export class PipelineInputReader {
 
   #cwd(value: unknown, path: string) {
     if (value === undefined) return ".";
-    const cwd = this.#text(value, path, 1024);
+    const cwd = this.#read.string(value, path, 1024);
     if (cwd === null) return ".";
     if (cwd.startsWith("/") || cwd.startsWith("~") || cwd.includes("\\") || cwd.split("/").includes("..")) {
       this.#report("pipeline.cwd.outside", `"${cwd}" is not a path inside the workspace`, path);
@@ -545,7 +552,7 @@ export class PipelineInputReader {
   #exitCodes(value: unknown, path: string): number[] {
     if (value === undefined) return [];
     const codes = this.#list(value, path).flatMap((code, idx) => {
-      const parsed = this.#int(code, `${path}[${idx}]`, 1, 255);
+      const parsed = this.#read.int(code, `${path}[${idx}]`, 1, 255);
       return parsed === null ? [] : [parsed];
     });
     return [...new Set(codes)];
@@ -554,12 +561,12 @@ export class PipelineInputReader {
   #retry(value: unknown, path: string): PipelinePlanRetry | null {
     if (value === undefined) return null;
     if (typeof value === "number") {
-      const attempts = this.#int(value, path, 1, pipelinePlanLimits.retryAttempts);
+      const attempts = this.#read.int(value, path, 1, pipelinePlanLimits.retryAttempts);
       return attempts === null ? null : { attempts, delaySeconds: 0 };
     }
-    const raw = this.#object(value, path);
-    if (!raw || !this.#keys(raw, path, ["attempts", "delay"])) return null;
-    const attempts = this.#int(raw.attempts, `${path}.attempts`, 1, pipelinePlanLimits.retryAttempts);
+    const raw = this.#read.object(value, path);
+    if (!raw || !this.#read.keys(raw, path, ["attempts", "delay"])) return null;
+    const attempts = this.#read.int(raw.attempts, `${path}.attempts`, 1, pipelinePlanLimits.retryAttempts);
     const delaySeconds = this.#duration(raw.delay, `${path}.delay`, {
       min: 0,
       max: pipelinePlanLimits.retryDelaySeconds,
@@ -588,19 +595,19 @@ export class PipelineInputReader {
   }
 
   #maxParallel(value: unknown, path: string) {
-    return value === undefined ? null : this.#int(value, path, 1, pipelinePlanLimits.stages);
+    return value === undefined ? null : this.#read.int(value, path, 1, pipelinePlanLimits.stages);
   }
 
   #milestone(value: unknown, path: string) {
-    return value === undefined ? null : this.#oneOf(value, path, pipelineMilestones);
+    return value === undefined ? null : this.#read.oneOf(value, path, pipelineMilestones);
   }
 
   #description(value: unknown, path: string) {
-    return value === undefined ? null : this.#text(value, path, pipelinePlanLimits.descriptionChars);
+    return value === undefined ? null : this.#read.string(value, path, pipelinePlanLimits.descriptionChars);
   }
 
   #id(value: unknown, path: string) {
-    const id = this.#text(value, path, 64);
+    const id = this.#read.string(value, path, 64);
     if (id === null) return null;
     const problem = PipelineNames.idError(id);
     if (problem) {
@@ -651,78 +658,59 @@ export class PipelineInputReader {
     return PipelineInputReader.clip(text, PipelineInputReader.#shownChars);
   }
 
-  #keys(raw: JsonObject, path: string, keys: readonly string[]) {
-    let ok = true;
-    for (const key of Object.keys(raw)) {
-      if (raw[key] === undefined || keys.includes(key)) continue;
-      ok = false;
-      if (PipelineInputReader.#futureKeys.includes(key))
-        this.#report("pipeline.schema.unsupported", `\`${key}\` is not supported in schemaVersion 1`, `${path}.${key}`);
-      else
-        this.#report("pipeline.schema.unknownKey", `"${key}" is not a key here: ${keys.join(", ")}`, `${path}.${key}`);
-    }
-    return ok;
-  }
-
-  #object(value: unknown, path: string, keys?: readonly string[]): JsonObject | null {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      this.#report("pipeline.schema.invalid", "must be an object", path);
-      return null;
-    }
-    const raw = value as JsonObject;
-    if (keys && !this.#keys(raw, path, keys)) return null;
-    return raw;
-  }
-
   #list(value: unknown, path: string): unknown[] {
-    if (value === undefined) return [];
-    if (!Array.isArray(value)) {
-      this.#report("pipeline.schema.invalid", "must be a list", path);
-      return [];
-    }
-    return value;
+    return value === undefined ? [] : (this.#read.list(value, path) ?? []);
   }
 
   #strings(value: unknown, path: string): string[] {
     return this.#list(value, path).flatMap((item, idx) => {
-      const text = this.#text(item, `${path}[${idx}]`, 1024);
+      const text = this.#read.string(item, `${path}[${idx}]`);
       return text === null ? [] : [text];
     });
   }
 
-  #text(value: unknown, path: string, max: number) {
-    if (typeof value !== "string" || !value.trim()) {
-      this.#report("pipeline.schema.invalid", "must be a non-empty string", path);
-      return null;
-    }
-    if (value.length > max) {
-      this.#report("pipeline.schema.invalid", `is longer than ${max} characters`, path);
-      return null;
-    }
-    return value;
-  }
-
   #boolean(value: unknown, path: string) {
-    if (value === undefined) return false;
-    if (typeof value === "boolean") return value;
-    this.#report("pipeline.schema.invalid", "must be true or false", path);
-    return false;
+    return value === undefined ? false : (this.#read.boolean(value, path) ?? false);
   }
 
-  #int(value: unknown, path: string, min: number, max: number) {
-    if (typeof value === "number" && Number.isInteger(value) && value >= min && value <= max) return value;
-    this.#report("pipeline.schema.invalid", `must be a whole number between ${min} and ${max}`, path);
-    return null;
+  #problem(path: string, problem: PipelineValueProblem) {
+    if (problem.kind !== "unknownKey")
+      this.#report("pipeline.schema.invalid", PipelineInputReader.#reason(problem), path);
+    else if (PipelineInputReader.#futureKeys.includes(problem.key))
+      this.#report(
+        "pipeline.schema.unsupported",
+        `\`${problem.key}\` is not supported in schemaVersion 1`,
+        `${path}.${problem.key}`,
+      );
+    else
+      this.#report(
+        "pipeline.schema.unknownKey",
+        `"${problem.key}" is not a key here: ${problem.keys.join(", ")}`,
+        `${path}.${problem.key}`,
+      );
   }
 
-  #oneOf<T extends string>(value: unknown, path: string, options: readonly T[]): T | null {
-    if (typeof value === "string" && (options as readonly string[]).includes(value)) return value as T;
-    this.#report(
-      "pipeline.schema.invalid",
-      `${PipelineInputReader.#show(value)} is not one of ${options.join(", ")}`,
-      path,
-    );
-    return null;
+  static #reason(problem: Exclude<PipelineValueProblem, { kind: "unknownKey" }>): string {
+    switch (problem.kind) {
+      case "object":
+        return "must be an object";
+      case "missingKey":
+        return `"${problem.key}" is missing`;
+      case "list":
+        return "must be a list";
+      case "string":
+      case "empty":
+        return "must be a non-empty string";
+      case "length":
+        return `is longer than ${problem.max} characters`;
+      case "boolean":
+        return "must be true or false";
+      case "int":
+      case "range":
+        return `must be a whole number between ${problem.min} and ${problem.max}`;
+      case "oneOf":
+        return `${PipelineInputReader.#show(problem.value)} is not one of ${problem.options.join(", ")}`;
+    }
   }
 
   #report(code: string, message: string, path: string) {
