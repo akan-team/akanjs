@@ -67,6 +67,8 @@ export class SolidQueue
   }))
   implements QueueAdaptor
 {
+  /** What jobs are scheduled and claimed by; a test swaps in a clock it moves itself. */
+  now = () => Date.now();
   #db!: Database;
   #workers = new Map<string, SolidWorker>();
   #claimStmt!: Statement;
@@ -145,7 +147,7 @@ export class SolidQueue
   }
 
   async registerProcessQueue(key: string, args: unknown[], jobOptions: AkanJobOptions = {}): Promise<AkanJob> {
-    const now = Date.now();
+    const now = this.now();
     const id = Bun.randomUUIDv7();
     const runAt = now + Number(jobOptions.delay ?? 0);
     const maxAttempts = Math.max(1, Number(jobOptions.attempts ?? 1));
@@ -167,7 +169,7 @@ export class SolidQueue
   }
 
   claimJob(name: string): AkanJob | null {
-    const now = Date.now();
+    const now = this.now();
     this.#db.run("BEGIN IMMEDIATE");
     try {
       const row = this.#claimStmt.get(this.queueName, name, now, now) as JobRow | null;
@@ -208,7 +210,7 @@ export class SolidQueue
            SET "status" = ?, "runAt" = ?, "lockedBy" = NULL, "lockedUntil" = NULL, "lastError" = ?, "updatedAt" = ?
            WHERE "id" = ?`,
         )
-        .run(failed ? "failed" : "pending", Date.now() + delay, message, Date.now(), job.id);
+        .run(failed ? "failed" : "pending", this.now() + delay, message, this.now(), job.id);
       if (!failed) return;
       this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
       this.#settle(job, "failed", job.opts?.removeOnFail ?? false);
@@ -231,7 +233,7 @@ export class SolidQueue
         .query(
           `UPDATE "_akan_solid_jobs" SET "status" = 'completed', "lockedBy" = NULL, "lockedUntil" = NULL, "updatedAt" = ? WHERE "id" = ?`,
         )
-        .run(Date.now(), job.id);
+        .run(this.now(), job.id);
     if (typeof remove !== "number") return;
     this.#db
       .query(
@@ -245,7 +247,7 @@ export class SolidQueue
 
   //* Batched and yielding: an old queue may hold millions of completed rows, and bun:sqlite deletes synchronously.
   async #cleanup() {
-    const expiredFailedAt = Date.now() - this.config.queueFailedRetentionMs;
+    const expiredFailedAt = this.now() - this.config.queueFailedRetentionMs;
     for (let batch = 0; batch < 10 && !this.#closed; batch++) {
       const { changes } = this.#db
         .query(
