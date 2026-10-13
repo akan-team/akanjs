@@ -28,7 +28,9 @@ describe("Layout chrome on the server", () => {
     expect(html).toContain('data-akan-frame-fallback="topInset"');
     //? Below the safe area, moved down by the keyboard's pan on iOS, and clipped when its inset is 0 at a breakpoint.
     expect(html).toContain("top:calc(var(--akan-top-safe-area) + var(--akan-viewport-offset-top, 0px))");
-    expect(html).toContain('data-akan-frame-fallback="topInset" class="fixed inset-x-0 z-10 isolate overflow-hidden');
+    expect(html).toContain(
+      'data-akan-frame-fallback="topInset" class="fixed inset-x-0 isolate overflow-hidden bg-background z-10',
+    );
     expect(html).toContain(">Ticket</div>");
     expect(html).toContain("<i>L</i>");
     expect(html).toContain("<b>R</b>");

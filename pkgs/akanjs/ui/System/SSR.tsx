@@ -22,7 +22,7 @@ import {
   type ViewTransitionProps,
 } from "react";
 import { FontCss } from "../fontCss";
-import { frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
+import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
 import { Load } from "../Load";
 import { ClientBridge, ClientInner, ClientPathWrapper, ClientSsrBridge, ClientWrapper } from "./Client";
 import { getFrameCssVars, isResponsiveFrame, type ProviderProps } from "./Common";
@@ -245,7 +245,7 @@ const SSRWrapper = ({
             key="top-inset"
             id="topInsetContainer"
             className={cn(
-              "fixed inset-x-0 top-0 isolate overflow-hidden bg-background",
+              frameSlotContainerClassNames.topInset,
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
@@ -257,7 +257,7 @@ const SSRWrapper = ({
             key="top-left-action"
             id="topLeftActionContainer"
             className={cn(
-              "fixed top-0 left-0 isolate flex aspect-1 items-center justify-center overflow-hidden",
+              frameSlotContainerClassNames.topLeftAction,
               layoutStyle === "mobile" && "left-[max(0px,calc(50%_-_300px))]",
             )}
             style={frameSlotStyles.topLeftAction}
@@ -268,7 +268,7 @@ const SSRWrapper = ({
             key="bottom-inset"
             id="bottomInsetContainer"
             className={cn(
-              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
+              frameSlotContainerClassNames.bottomInset,
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
@@ -280,7 +280,7 @@ const SSRWrapper = ({
             key="keyboard-inset"
             id="keyboardInsetContainer"
             className={cn(
-              "pointer-events-none fixed inset-x-0 bottom-0 isolate overflow-hidden",
+              frameSlotContainerClassNames.keyboardInset,
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
             )}
