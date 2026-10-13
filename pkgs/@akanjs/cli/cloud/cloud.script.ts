@@ -139,7 +139,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     if (pack.compat && !pack.compat.compatible) {
       //* Exit 2 as pack-update's own verdict does, so a CI reads "needs a new store build" the same from both commands.
       Logger.error(
-        `The pack in ${pack.out} needs a new store build; the one ${pack.compat.against} came from provides another native API:\n- ${pack.compat.problems.join("\n- ")}`,
+        `The pack in ${pack.out} needs a new store build; it differs from the one ${pack.compat.against} came from:\n- ${pack.compat.problems.join("\n- ")}`,
       );
       process.exitCode = 2;
       return null;
