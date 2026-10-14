@@ -32,7 +32,7 @@ const workspaceConfig: WorkspaceConfig = {
       },
     ],
     after: [{ name: "E2E", matrix: "apps", sh: "bun run e2e $AKAN_CI_APP", when: { app: ["*", "!edge"] } }],
-    post: ctx.workspaceApps.includes("akasys")
+    post: ctx.workspaceApps.includes("console")
       ? { failure: [{ sh: "./notify.sh", secrets: ["DISCORD_WEBHOOK"] }] }
       : {},
   }),

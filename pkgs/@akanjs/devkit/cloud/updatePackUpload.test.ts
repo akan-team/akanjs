@@ -13,7 +13,7 @@ interface Put {
   body: Uint8Array;
 }
 
-class FakeAkasys {
+class FakeCloudHost {
   readonly server: ReturnType<typeof Bun.serve>;
   readonly requests: Record<string, unknown>[] = [];
   readonly puts: Put[] = [];
@@ -96,9 +96,9 @@ class FakeAkasys {
 }
 
 const makeDir = tempDirs("akan-update-upload-");
-const akasys = new FakeAkasys();
+const cloudHost = new FakeCloudHost();
 const api = new CloudApi({} as Workspace, {
-  host: akasys.host,
+  host: cloudHost.host,
   auth: { accessToken: { jwt: "jwt-1", refreshToken: null, expiresAt: null } },
 });
 const fields = { appName: "lu", target: "default", platform: "android" as const, channel: "develop", notes: null };
@@ -110,8 +110,8 @@ const archiveOf = async (bytes: string) => {
   return archive;
 };
 
-beforeEach(() => akasys.reset());
-afterAll(() => akasys.server.stop(true));
+beforeEach(() => cloudHost.reset());
+afterAll(() => cloudHost.server.stop(true));
 
 describe("UpdatePackUpload", () => {
   test("announces the archive's size and digest, PUTs it with nothing but its content type, then commits", async () => {
@@ -120,7 +120,7 @@ describe("UpdatePackUpload", () => {
     const release = await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
 
     expect(release).toEqual({ id: "release-1", status: "published", problems: [], uploadId: "upload-1" });
-    expect(akasys.requests).toEqual([
+    expect(cloudHost.requests).toEqual([
       {
         ...fields,
         size: 10,
@@ -128,126 +128,129 @@ describe("UpdatePackUpload", () => {
         authorization: "Bearer jwt-1",
       },
     ]);
-    const [put] = akasys.puts;
+    const [put] = cloudHost.puts;
     expect(new TextDecoder().decode(put?.body)).toBe("pack bytes");
     expect(put?.headers["content-type"]).toBe("application/gzip");
     expect(put?.headers["content-length"]).toBe("10");
     expect(put?.headers.authorization).toBeUndefined();
     expect(Object.keys(put?.headers ?? {}).filter((name) => name.startsWith("x-amz-"))).toEqual([]);
-    expect(akasys.commits).toEqual(["upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1"]);
   });
 
   test("takes one fresh ticket when storage answers 403, and gives up on the second without naming the URL", async () => {
     const archive = await archiveOf("pack");
-    akasys.putStatuses = [403];
+    cloudHost.putStatuses = [403];
 
     await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
-    expect(akasys.puts.map(({ uploadId }) => uploadId)).toEqual(["upload-1", "upload-2"]);
-    expect(akasys.commits).toEqual(["upload-2"]);
+    expect(cloudHost.puts.map(({ uploadId }) => uploadId)).toEqual(["upload-1", "upload-2"]);
+    expect(cloudHost.commits).toEqual(["upload-2"]);
 
-    akasys.reset();
-    akasys.putStatuses = [403, 403];
+    cloudHost.reset();
+    cloudHost.putStatuses = [403, 403];
     const refusal = await new UpdatePackUpload(api, "project-1", quick).send(archive, fields).catch((e: Error) => e);
     expect(String(refusal)).toContain("HTTP 403");
     expect(String(refusal)).not.toContain("secret-signature");
-    expect(akasys.commits).toEqual([]);
+    expect(cloudHost.commits).toEqual([]);
   });
 
   test("retries a PUT the way curl --retry does, and stops at a refusal that is not transient", async () => {
     const archive = await archiveOf("pack");
-    akasys.putStatuses = [503, 502];
+    cloudHost.putStatuses = [503, 502];
     await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
-    expect(akasys.puts.map(({ uploadId }) => uploadId)).toEqual(["upload-1", "upload-1", "upload-1"]);
+    expect(cloudHost.puts.map(({ uploadId }) => uploadId)).toEqual(["upload-1", "upload-1", "upload-1"]);
 
-    akasys.reset();
-    akasys.putStatuses = [400];
+    cloudHost.reset();
+    cloudHost.putStatuses = [400];
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("HTTP 400");
-    expect(akasys.puts).toHaveLength(1);
+    expect(cloudHost.puts).toHaveLength(1);
   });
 
   test("asks again with the same id while the commit is cut off or still running, but not past a real answer", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [524, 409, 502];
+    cloudHost.commitAnswers = [524, 409, 502];
     await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
-    expect(akasys.commits).toEqual(["upload-1", "upload-1", "upload-1", "upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1", "upload-1", "upload-1", "upload-1"]);
 
-    akasys.reset();
-    akasys.commitAnswers = [404];
+    cloudHost.reset();
+    cloudHost.commitAnswers = [404];
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("404");
-    expect(akasys.commits).toEqual(["upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1"]);
 
-    akasys.reset();
-    akasys.commitAnswers = Array.from({ length: 100 }, () => 524);
+    cloudHost.reset();
+    cloudHost.commitAnswers = Array.from({ length: 100 }, () => 524);
     const cutOff = { putRetryMs: 1, commitRetryMs: 10, cutOffWindowMs: 35, commitLimitMs: 10_000 };
     await expect(new UpdatePackUpload(api, "project-1", cutOff).send(archive, fields)).rejects.toThrow("524");
-    expect(akasys.commits.length).toBeLessThan(6);
+    expect(cloudHost.commits.length).toBeLessThan(6);
   });
 
   test("keeps waiting on a live claim past the cut-off window, up to the overall limit", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [...Array.from({ length: 6 }, () => 409), 524, ...Array.from({ length: 6 }, () => 409)];
+    cloudHost.commitAnswers = [...Array.from({ length: 6 }, () => 409), 524, ...Array.from({ length: 6 }, () => 409)];
     const timing = { putRetryMs: 1, commitRetryMs: 10, cutOffWindowMs: 25, commitLimitMs: 10_000 };
     await new UpdatePackUpload(api, "project-1", timing).send(archive, fields);
-    expect(akasys.commits).toHaveLength(14);
+    expect(cloudHost.commits).toHaveLength(14);
 
-    akasys.reset();
-    akasys.commitAnswers = Array.from({ length: 100 }, () => 409);
+    cloudHost.reset();
+    cloudHost.commitAnswers = Array.from({ length: 100 }, () => 409);
     const limited = { putRetryMs: 1, commitRetryMs: 10, cutOffWindowMs: 10_000, commitLimitMs: 35 };
     await expect(new UpdatePackUpload(api, "project-1", limited).send(archive, fields)).rejects.toThrow("409");
-    expect(akasys.commits.length).toBeLessThan(6);
+    expect(cloudHost.commits.length).toBeLessThan(6);
   });
 
   test("gives up a stalled PUT after a time its size sets, and tries it again as a dropped one", async () => {
     const archive = await archiveOf("pack");
-    akasys.stallPuts = true;
+    cloudHost.stallPuts = true;
 
     await expect(
       new UpdatePackUpload(api, "project-1", { ...quick, putTimeoutMs: 50 }).send(archive, fields),
     ).rejects.toThrow("no response");
-    expect(akasys.puts).toHaveLength(4);
-    expect(akasys.commits).toEqual([]);
+    expect(cloudHost.puts).toHaveLength(4);
+    expect(cloudHost.commits).toEqual([]);
   });
 
   test("asks again past a gateway's 503, but not past one the server answers with its own refusal", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [
+    cloudHost.commitAnswers = [
       new Response("No healthy federation child is ready", { status: 503 }),
       [503, "base.error.serverUnavailable"],
     ];
     await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
-    expect(akasys.commits).toEqual(["upload-1", "upload-1", "upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1", "upload-1", "upload-1"]);
 
-    akasys.reset();
-    akasys.commitAnswers = [[503, "release.error.signingUnavailable"]];
+    cloudHost.reset();
+    cloudHost.commitAnswers = [[503, "release.error.signingUnavailable"]];
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow(
       "release.error.signingUnavailable",
     );
-    expect(akasys.commits).toEqual(["upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1"]);
   });
 
   test("tells a server without staged uploads apart from one whose 404 is a refusal", async () => {
     const archive = await archiveOf("pack");
-    akasys.requestRefusal = new Response("Not Found", { status: 404 });
+    cloudHost.requestRefusal = new Response("Not Found", { status: 404 });
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow(
       "does not take direct pack uploads yet",
     );
 
-    akasys.requestRefusal = Response.json({ error: "devProject.error.appNotFound", statusCode: 404 }, { status: 404 });
+    cloudHost.requestRefusal = Response.json(
+      { error: "devProject.error.appNotFound", statusCode: 404 },
+      { status: 404 },
+    );
     const refusal = await new UpdatePackUpload(api, "project-1", quick).send(archive, fields).catch((e: Error) => e);
     expect(String(refusal)).toContain("devProject.error.appNotFound");
-    expect(akasys.puts).toEqual([]);
+    expect(cloudHost.puts).toEqual([]);
   });
 
   test("stops at once on a 409 that is not a commit in progress: the upload is already used", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [[409, "release.error.uploadEmbedded"]];
+    cloudHost.commitAnswers = [[409, "release.error.uploadEmbedded"]];
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("uploadEmbedded");
-    expect(akasys.commits).toHaveLength(1);
+    expect(cloudHost.commits).toHaveLength(1);
   });
 
   test("stages a binary's pack and registers it by upload id, asking again while the server is still at it", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [524, 409];
+    cloudHost.commitAnswers = [524, 409];
     const upload = new UpdatePackUpload(api, "project-1", quick);
     const binary = await upload.stage(archive, fields).then((packUploadId) =>
       upload.settle(() =>
@@ -263,9 +266,9 @@ describe("UpdatePackUpload", () => {
     );
 
     expect(binary).toEqual({ id: "binary-1" });
-    expect(akasys.commits).toEqual([]);
-    expect(akasys.registrations).toHaveLength(3);
-    expect(akasys.registrations[2]).toEqual({
+    expect(cloudHost.commits).toEqual([]);
+    expect(cloudHost.registrations).toHaveLength(3);
+    expect(cloudHost.registrations[2]).toEqual({
       appName: "lu",
       target: "default",
       distribution: "playTesting",
@@ -277,26 +280,26 @@ describe("UpdatePackUpload", () => {
 
   test("waits as long as storage's Retry-After asks before trying a PUT again", async () => {
     const archive = await archiveOf("pack");
-    akasys.putStatuses = [new Response(null, { status: 429, headers: { "Retry-After": "1" } })];
+    cloudHost.putStatuses = [new Response(null, { status: 429, headers: { "Retry-After": "1" } })];
     const startedAt = performance.now();
 
     await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
 
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(950);
-    expect(akasys.puts).toHaveLength(2);
+    expect(cloudHost.puts).toHaveLength(2);
   });
 
   test("never asks again sooner than the server's Retry-After, nor past the limit it would wait to", async () => {
     const archive = await archiveOf("pack");
-    akasys.commitAnswers = [new Response("busy", { status: 503, headers: { "Retry-After": "120" } })];
+    cloudHost.commitAnswers = [new Response("busy", { status: 503, headers: { "Retry-After": "120" } })];
 
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("503");
-    expect(akasys.commits).toEqual(["upload-1"]);
+    expect(cloudHost.commits).toEqual(["upload-1"]);
   });
 
   test("refuses an empty archive before asking for a ticket", async () => {
     const archive = await archiveOf("");
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("0 bytes");
-    expect(akasys.requests).toEqual([]);
+    expect(cloudHost.requests).toEqual([]);
   });
 });
