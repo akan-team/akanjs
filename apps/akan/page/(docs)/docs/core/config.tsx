@@ -789,6 +789,16 @@ const workspaceCloudKeys = [
   },
 ];
 
+const workspaceSubspaceKeys = [
+  {
+    key: "subspace.pushableBranches",
+    type: "string[]",
+    default: "main, develop, debug",
+    en: "Branches akan subspace push mirrors from; another is refused, so a feature branch never reaches a mirrored repo.",
+    ko: "akan subspace push가 미러링하는 브랜치입니다. 다른 브랜치는 거부하므로 기능 브랜치가 미러 저장소로 가지 않습니다.",
+  },
+];
+
 const workspaceStageKinds = [
   {
     shape: "{ name, sh | steps }",
@@ -1829,15 +1839,16 @@ export default config;`}
               en: (
                 <span>
                   The <code>akan.config.ts</code> at the workspace root holds what spans every app: stages around all of
-                  them, the steps that close a build, and the cloud the CLI talks to. It is typed{" "}
-                  <code>WorkspaceConfig</code>, and app or library settings stay in their own files.
+                  them, the steps that close a build, the cloud the CLI talks to, and the repositories it mirrors apps
+                  to (<code>subspace</code>). It is typed <code>WorkspaceConfig</code>, and app or library settings stay
+                  in their own files.
                 </span>
               ),
               ko: (
                 <span>
                   워크스페이스 루트의 <code>akan.config.ts</code>에는 모든 앱에 걸치는 설정, 곧 모든 앱의 앞뒤에 실행할
-                  stage, 빌드를 마무리할 step, CLI가 연결할 클라우드를 둡니다. 타입은 <code>WorkspaceConfig</code>이고,
-                  앱과 라이브러리 설정은 각자의 파일에 둡니다.
+                  stage, 빌드를 마무리할 step, CLI가 연결할 클라우드, 앱을 미러링할 저장소(<code>subspace</code>)를
+                  둡니다. 타입은 <code>WorkspaceConfig</code>이고, 앱과 라이브러리 설정은 각자의 파일에 둡니다.
                 </span>
               ),
             })}
@@ -1904,6 +1915,14 @@ export default config;`}
 
         <Docs.OptionTable
           items={workspaceCloudKeys.map(({ key, type, default: fallback, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
+        <Docs.OptionTable
+          items={workspaceSubspaceKeys.map(({ key, type, default: fallback, en, ko }) => ({
             key,
             type,
             default: fallback,
