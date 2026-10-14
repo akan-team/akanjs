@@ -411,8 +411,8 @@ const nativeFields = [
     key: "desktop.recovery",
     type: '"errorPage" | "reload"',
     default: '"errorPage"',
-    en: '"reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.',
-    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄웁니다. "errorPage"는 오류 화면을 보여 줍니다.',
+    en: '"reload" reloads a crashed page every time, relaunches the app and opens no dialog, download or link for a page; "errorPage" shows an error page.',
+    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄우며, 페이지가 대화상자·다운로드·링크를 열지 못하게 합니다. "errorPage"는 오류 화면을 보여 줍니다.',
   },
   {
     key: "desktop.window",

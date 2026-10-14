@@ -248,7 +248,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - desktop.server.watchdog (boolean | { intervalMs?, failures? }, default false): Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.
 
-- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.
+- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time, relaunches the app and opens no dialog, download or link for a page; "errorPage" shows an error page.
 
 - desktop.window ({ fullscreen?, skipTaskbar?, frameless? }): Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).
 
