@@ -443,7 +443,8 @@ export class RscRenderer {
     const activeRoute: {
       url: URL | null;
       match: { pathRoute: PathRoute; params: Record<string, string> } | null;
-    } = { url: null, match: null };
+      request: Request | null;
+    } = { url: null, match: null, request: null };
     try {
       const request = new Request(url, { method, headers });
       const urlObj = new URL(url);
@@ -451,6 +452,7 @@ export class RscRenderer {
       const routeId = match?.pathRoute.path ?? "__not_found__";
       await this.#runWithRequest(request, routeId, async () => {
         activeRoute.url = urlObj;
+        activeRoute.request = request;
         this.#stats.lastRenderedPath = urlObj.pathname;
         activeRoute.match = match;
         updateRequestPolicy({ routeId });
@@ -726,32 +728,39 @@ export class RscRenderer {
         });
         return;
       }
-      const { url: fallbackUrl, match: fallbackMatch } = activeRoute;
+      const { url: fallbackUrl, match: fallbackMatch, request: fallbackRequest } = activeRoute;
+      //? The render's request scope ended with its throw; outside one, a request read hits another render's request.
+      const inRequestScope = (send: () => Promise<boolean>) =>
+        fallbackRequest ? this.#runInRequestScope(fallbackRequest, send) : send();
       const trySendFallback = async (kind: "not-found" | "error") =>
         !!fallbackUrl &&
         !!fallbackMatch &&
-        (await this.#trySendFallbackRender({
-          requestId,
-          kind,
-          route: fallbackMatch.pathRoute,
-          params: fallbackMatch.params,
-          searchParams: RouteTreeBuilder.parseSearchParams(fallbackUrl.search),
-          pathname: fallbackUrl.pathname,
-          url: fallbackUrl,
-          error: kind === "error" ? error : undefined,
-          clientManifest: msg.clientManifest ?? this.#clientManifest,
-        }));
+        (await inRequestScope(() =>
+          this.#trySendFallbackRender({
+            requestId,
+            kind,
+            route: fallbackMatch.pathRoute,
+            params: fallbackMatch.params,
+            searchParams: RouteTreeBuilder.parseSearchParams(fallbackUrl.search),
+            pathname: fallbackUrl.pathname,
+            url: fallbackUrl,
+            error: kind === "error" ? error : undefined,
+            clientManifest: msg.clientManifest ?? this.#clientManifest,
+          }),
+        ));
       if (isAkanNotFoundError(error)) {
         this.#stats.lastRenderKind = "not-found";
         this.#logger.verbose(`render[${requestId}] not-found`);
         if (await trySendFallback("not-found")) return;
         if (
           fallbackUrl &&
-          (await this.#trySendSystemNotFoundRender({
-            requestId,
-            url: fallbackUrl,
-            clientManifest: msg.clientManifest ?? this.#clientManifest,
-          }))
+          (await inRequestScope(() =>
+            this.#trySendSystemNotFoundRender({
+              requestId,
+              url: fallbackUrl,
+              clientManifest: msg.clientManifest ?? this.#clientManifest,
+            }),
+          ))
         ) {
           return;
         }
@@ -1199,13 +1208,16 @@ export class RscRenderer {
   }
 
   #runWithRequest<T>(request: Request, routeId: string, fn: () => Promise<T>): Promise<T> {
-    // Bun's ALS is empty while the Flight stream pumps, so a request fallback stays pushed until the render settles;
-    // the fallback stack is global and last-push-wins, so concurrent renders can shadow each other.
+    return this.#runInRequestScope(request, () => runTraced(SignalTrace.create(routeId, "page", "page"), fn));
+  }
+
+  // Bun's ALS is empty while the Flight stream pumps, so a request fallback stays pushed until the render settles;
+  // the fallback stack is global and last-push-wins, so concurrent renders can shadow each other.
+  #runInRequestScope<T>(request: Request, fn: () => Promise<T>): Promise<T> {
     const cleanup = pushRequestFallback(request);
     const run = () => Promise.resolve(fn()).finally(() => cleanup());
-    const traced = () => runTraced(SignalTrace.create(routeId, "page", "page"), run);
-    if (requestStorage) return Promise.resolve(requestStorage.run(request, traced));
-    return traced();
+    if (requestStorage) return Promise.resolve(requestStorage.run(request, run));
+    return run();
   }
 
   async #renderFallbackDocument({
