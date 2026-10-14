@@ -1287,6 +1287,7 @@ Headings:
 - Float
 - Any
 - Binary
+- ImageResult
 - Upload
 - dayjs / Dayjs
 - enumOf
@@ -1307,6 +1308,8 @@ Export
 - Any: An open value Akan does not check. You name its shape with a type argument.
 
 - Binary: Raw bytes in a signal argument or return.
+
+- ImageResult: A picture a signal returns: JSON over HTTP, an image block over MCP.
 
 - Upload: A file in the body of the upload mutation.
 
@@ -1340,6 +1343,8 @@ Signal return — query() mutation()
 
   - Binary: Keep stored bytes in a `File` model.
 
+  - ImageResult: A picture for an agent to see.
+
   - Upload: Only in the body of a `fileUpload: true` mutation.
 
 - JavaScript globals, no import
@@ -1349,10 +1354,6 @@ Signal return — query() mutation()
   - Boolean: Text such as "true", "false", "1" and "0" is read as a boolean.
 
   - Date: The value is a `Dayjs`, not a JavaScript `Date`.
-
-Can be used
-
-Not used here
 
 ## akanjs/client
 
