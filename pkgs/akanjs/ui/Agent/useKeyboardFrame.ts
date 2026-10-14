@@ -1,4 +1,5 @@
 "use client";
+import { breakpointQuery } from "akanjs/client";
 import { useVisualViewportFrame } from "akanjs/webkit";
 import type { CSSProperties } from "react";
 
@@ -7,7 +8,7 @@ import type { CSSProperties } from "react";
 export const useKeyboardFrame = (): CSSProperties | undefined => {
   const { keyboardHeight, height, offsetTop } = useVisualViewportFrame();
   if (typeof window === "undefined") return undefined;
-  if (window.matchMedia("(width < 40rem)").matches)
+  if (window.matchMedia(breakpointQuery("sm", { below: true })).matches)
     return height < window.innerHeight ? { top: offsetTop, bottom: "auto", height } : undefined;
   return keyboardHeight ? { paddingBottom: keyboardHeight } : undefined;
 };

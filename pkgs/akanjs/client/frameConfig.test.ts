@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
+  breakpointQuery,
   getExplicitPageConfigKeys,
   insetAt,
+  insetBreakpoints,
   insetsByBreakpoint,
   mergePageConfigs,
   resolvePageState,
@@ -224,5 +227,25 @@ describe("responsive insets and the web safe area", () => {
     expect(
       resolvePageState({ ...web, platform: "ios", configChain: [{ safeArea: true }] }).safeAreaEnv,
     ).toBeUndefined();
+  });
+});
+
+describe("breakpoints", () => {
+  test("queries the width a Tailwind variant matches from, or the widths below it", () => {
+    expect(breakpointQuery("md")).toBe("(width >= 48rem)");
+    expect(breakpointQuery("sm", { below: true })).toBe("(width < 40rem)");
+  });
+
+  test("ui/styles.css switches a responsive frame's insets at exactly these widths, in this order", () => {
+    const css = readFileSync(new URL("../ui/styles.css", import.meta.url), "utf8");
+    const switches = [
+      ...css.matchAll(
+        /@media \(width >= (\d+)rem\) \{\s*\[data-akan-frame-responsive\] \{\s*--akan-top-inset: var\(--akan-top-inset-([\w-]+)\);/g,
+      ),
+    ];
+
+    expect(switches.map(([, rem, name]) => [name, Number(rem)])).toEqual(
+      insetBreakpoints.map(([name, rem]) => [name, rem]),
+    );
   });
 });

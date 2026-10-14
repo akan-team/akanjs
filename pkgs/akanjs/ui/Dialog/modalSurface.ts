@@ -1,3 +1,5 @@
+import { breakpointQuery } from "akanjs/client";
+
 /** How the modal shows on a phone: a centred dialog, a full-screen sheet, or a sheet below `md` and a dialog above. */
 export type ModalPresentation = "dialog" | "sheet" | "auto";
 /** Where the modal sits from `md` up: centred, or a full-height sheet on the right edge. */
@@ -64,7 +66,7 @@ export const modalSurfaceOf = (presentation: ModalPresentation, placement: Modal
 /** Whether a drag down dismisses: only while the modal is drawn as a sheet at the current width. */
 export const isSheetNow = (presentation: ModalPresentation, placement: ModalPlacement) => {
   if (presentation === "dialog") return false;
-  const wide = typeof window !== "undefined" && window.matchMedia("(min-width: 48rem)").matches;
+  const wide = typeof window !== "undefined" && window.matchMedia(breakpointQuery("md")).matches;
   if (!wide) return true;
   return presentation === "sheet" && placement === "center";
 };

@@ -3,6 +3,7 @@ import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/sr
 import type { PromiseOrObject } from "akanjs/base";
 import { type ForwardRefExoticComponent, type ReactNode, type RefObject, useContext } from "react";
 import type { AnimatedComponent, AnimatedProps, Interpolation, SpringValue } from "react-spring";
+import type { TailwindBreakpoint } from "./frameConfig";
 import type { RouteDefinition } from "./route/RouteDefinition";
 import type { RouterInstance } from "./router";
 import { sharedContext } from "./sharedContext";
@@ -22,14 +23,9 @@ export type PageSafeAreaConfig =
  * `"block"` buffers the whole document, so an error in slow content can still render a clean error page. */
 export type SsrRenderMode = "stream" | "block";
 
-/** Px per Tailwind breakpoint (sm 40rem, md 48rem, lg 64rem, xl 80rem, 2xl 96rem), each from its own width up. */
-export interface ResponsiveInset {
+/** Px per breakpoint of `insetBreakpoints`, each from its own width up, and `base` below the first. */
+export interface ResponsiveInset extends Partial<{ [name in TailwindBreakpoint]: number }> {
   base: number;
-  sm?: number;
-  md?: number;
-  lg?: number;
-  xl?: number;
-  "2xl"?: number;
 }
 export interface PageConfig {
   transition?: TransitionType;
