@@ -457,6 +457,8 @@ export class Executor {
     } else if (staticTemplateFileExtensions.has(path.extname(targetPath).toLowerCase())) {
       const convertedTargetPath = convertPath(targetPath);
       const writePath = this.getPath(convertedTargetPath);
+      if (!overwrite && (await FileSys.fileExists(writePath)))
+        return { filePath: writePath, content: "", written: false };
       const dirname = path.dirname(writePath);
       if (!(await FileSys.dirExists(dirname))) await mkdir(dirname, { recursive: true });
       await copyFile(templatePath, writePath);
