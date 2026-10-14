@@ -422,7 +422,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
       stackBackConfigRef.current = null;
       await transUnit.start(transUnitRange[0], config ? { config } : undefined);
     };
-  }, []);
+  }, [transUnitRange]);
   useEffect(() => unlockPageScroll, [unlockPageScroll]);
   usePlayOnForward(spring, routeState, { duration: 150 });
 
@@ -532,7 +532,7 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
     onBack.current.bottomUp = async () => {
       await transUnit.start(transUnitRange[0], { config: { duration: 220, easing: linearEasing } });
     };
-  }, []);
+  }, [transUnitRange]);
   usePlayOnForward(spring, routeState, { duration: 220, easing: linearEasing });
 
   const pageBind = useDrag(
@@ -1045,7 +1045,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   useEffect(() => {
     debugFrame("csr.mount", { path: resolvedLocation.pathRoute.path, viewport });
     csrLocation.replace({ ...((csrLocation.state as object | null) ?? {}), akanEntryId: getCurrentLocation().entryId });
-    return () => debugFrame("csr.unmount", { lastPath: resolvedLocation.pathRoute.path });
+    return () => debugFrame("csr.unmount", { lastPath: getCurrentLocation().pathRoute.path });
   }, []);
   const getRouter = useCallback((): RouterInstance => {
     const forward =
@@ -1126,8 +1126,17 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       }
     };
     return router;
-  }, [location, runForwardNavigation, broadcastSyncNavigation]);
-  const router = getRouter();
+  }, [location, runForwardNavigation, broadcastSyncNavigation, shouldPrepareFrameTransition]);
+  const liveRouter = getRouter();
+  const latestRouter = useRef(liveRouter);
+  latestRouter.current = liveRouter;
+  //? CSR.Wrapper hands this to `router.init` once, at mount, so each call has to run the latest render's closures.
+  const [router] = useState<RouterInstance>(() => ({
+    push: (href, routeOptions) => latestRouter.current.push(href, routeOptions),
+    replace: (href, routeOptions) => latestRouter.current.replace(href, routeOptions),
+    back: (routeOptions) => latestRouter.current.back(routeOptions),
+    refresh: () => latestRouter.current.refresh(),
+  }));
   useEffect(() => {
     const syncHref = getSyncRouteHref(resolvedLocation);
     if (
