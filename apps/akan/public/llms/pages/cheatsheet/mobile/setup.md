@@ -326,7 +326,7 @@ Displays, windows, volume, global shortcuts, keep-awake and launch at login are 
 
 An app nobody attends
 
-A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone.
+A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone. With `"reload"` its pages also open nothing outside the window: no print or file dialog, no download on Windows, and no link handed to the OS. The app's own `opener` and `file-picker` plugin calls still work, so open what it needs through them.
 
 Updates
 

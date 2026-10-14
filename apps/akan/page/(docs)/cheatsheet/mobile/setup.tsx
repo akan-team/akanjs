@@ -1850,7 +1850,9 @@ const input = await NativeFile.resolve(grant, "read");`}
                   reloads a crashed page and relaunches the app, and <code>desktop.window</code> opens it fullscreen
                   without a taskbar button. <code>desktop.screenCapture: "auto"</code> shares the screen on Windows
                   without the picker, for every media request, so leave it off in an app that uses a camera or a
-                  microphone.
+                  microphone. With <code>"reload"</code> its pages also open nothing outside the window: no print or
+                  file dialog, no download on Windows, and no link handed to the OS. The app's own <code>opener</code>{" "}
+                  and <code>file-picker</code> plugin calls still work, so open what it needs through them.
                 </span>
               ),
               ko: (
@@ -1858,7 +1860,10 @@ const input = await NativeFile.resolve(grant, "read");`}
                   키오스크나 전광판에는 새로고침을 누를 사람이 없습니다. <code>desktop.recovery: "reload"</code>는 멈춘
                   페이지를 다시 불러오고 앱을 다시 띄우며, <code>desktop.window</code>는 창을 전체화면, 작업 표시줄 버튼
                   없이 엽니다. <code>desktop.screenCapture: "auto"</code>는 Windows에서 선택 창 없이 화면을 공유하는데,
-                  모든 미디어 요청에 적용되므로 카메라나 마이크를 쓰는 앱에서는 켜지 않습니다.
+                  모든 미디어 요청에 적용되므로 카메라나 마이크를 쓰는 앱에서는 켜지 않습니다. <code>"reload"</code>
+                  이면 페이지가 창 밖으로 아무것도 열지 못합니다. 인쇄·파일 대화상자, Windows의 다운로드, OS에 넘기는
+                  링크가 모두 막힙니다. 앱이 직접 부르는 <code>opener</code>와 <code>file-picker</code> 플러그인은
+                  그대로 동작하므로, 필요한 것은 그것으로 엽니다.
                 </span>
               ),
             })}
