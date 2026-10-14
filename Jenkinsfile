@@ -206,8 +206,77 @@ pipeline {
                 // versions), plus TEST_LIBS in multiple and cluster mode. A lib test counts only if it passed in
                 // single mode, so what this host lacks for "Lib Suites" does not fail it; red means a mode regressed,
                 // or a fixed defect still carries its `test.failing` marker.
+                //
+                // Gating, and the only place the Postgres compare-and-set race of a conditional updateOne runs:
+                // SQLite serializes its writers, so the local default suite cannot fail it.
                 timeout(time: 30, unit: "MINUTES") {
                     sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && BRANCH=$BRANCH TEST_LIBS=$TEST_LIBS bun run testConformance --libs\""
+                }
+            }
+        }
+        stage("Native Desktop Tests"){
+            steps {
+                // The desktop shell's Rust tests, among them the external view origin allowlist, ran on developer
+                // machines only. On Linux the crate links GTK and WebKitGTK, so a host without their dev packages
+                // skips it. `testNative` exits 3 when the host lacks a toolchain: a skip, never a failure.
+                //
+                // TODO: gate on it, as on "Test", once it has passed on this host in 10 consecutive builds.
+                catchError(buildResult: "UNSTABLE", stageResult: "FAILURE") {
+                    timeout(time: 30, unit: "MINUTES") {
+                        script {
+                            def status = sh(returnStatus: true, script: "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testNative desktop\"")
+                            if (status == 3) {
+                                catchError(buildResult: "SUCCESS", stageResult: "NOT_BUILT") {
+                                    error("Native Desktop Tests skipped: the build host lacks the toolchain; see the [native] line above")
+                                }
+                            } else if (status != 0) {
+                                error("Native Desktop Tests failed")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage("Native Windows Check"){
+            steps {
+                // No other stage compiles the Windows-only Rust, and Windows code that did not compile has gone unnoticed.
+                // `cargo check` needs only the target's standard library (`rustup target add x86_64-pc-windows-msvc`
+                // in the crate's folder), not a Windows host. Non-gating, skipped as above.
+                catchError(buildResult: "UNSTABLE", stageResult: "FAILURE") {
+                    timeout(time: 20, unit: "MINUTES") {
+                        script {
+                            def status = sh(returnStatus: true, script: "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testNative windows\"")
+                            if (status == 3) {
+                                catchError(buildResult: "SUCCESS", stageResult: "NOT_BUILT") {
+                                    error("Native Windows Check skipped: the build host lacks the target; see the [native] line above")
+                                }
+                            } else if (status != 0) {
+                                error("Native Windows Check failed")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage("Native Vectors"){
+            steps {
+                // The Kotlin port of the OTA verifier (envelope signature, key ring, revocation) against the shared
+                // vectors the TypeScript reference passes; it needs a JDK and the Android SDK platform. Swift needs
+                // macOS, so off a Mac its line says skipped and the Swift run stays a manual release step.
+                // Non-gating, skipped as above.
+                catchError(buildResult: "UNSTABLE", stageResult: "FAILURE") {
+                    timeout(time: 20, unit: "MINUTES") {
+                        script {
+                            def status = sh(returnStatus: true, script: "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testNative vectors\"")
+                            if (status == 3) {
+                                catchError(buildResult: "SUCCESS", stageResult: "NOT_BUILT") {
+                                    error("Native Vectors skipped: the build host has no JDK and Android SDK, and is not a Mac; see the [native] lines above")
+                                }
+                            } else if (status != 0) {
+                                error("Native Vectors failed")
+                            }
+                        }
+                    }
                 }
             }
         }
