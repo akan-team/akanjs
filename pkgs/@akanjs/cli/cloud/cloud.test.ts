@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
@@ -7,6 +7,7 @@ import { CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
+import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -1168,4 +1169,69 @@ describe("upload-secret on a piped stdin", () => {
     expect(stdout).toContain("Missing argument 'name': stdin is not a terminal to prompt on");
     expect(code).toBe(1);
   }, 60_000);
+});
+
+describe("runner prompts on a stdin that is not a terminal", () => {
+  const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  beforeEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
+  });
+  afterEach(() => {
+    if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  });
+
+  test("an scp env download names the setting to use instead of asking for a server", async () => {
+    const servers = spyOn(GlobalConfig, "getRemoteEnvServers").mockResolvedValue({});
+    const workspace = createFakeExecutor("workspace", { workspaceRoot: "/repo" });
+
+    await expect(new CloudRunner().downloadEnvByScp(workspace as never)).rejects.toThrow(
+      "stdin is not a terminal to prompt on, so set AKAN_WORKSPACE_ID in the workspace .env to use Akan Cloud",
+    );
+    expect(servers).not.toHaveBeenCalled();
+  });
+
+  test("a Windows platform run with no target configured asks for none", async () => {
+    spyOn(GlobalConfig, "getTestTargets").mockResolvedValue({});
+    const save = spyOn(GlobalConfig, "setTestTargets").mockResolvedValue(undefined as never);
+
+    await expect(
+      new CloudRunner().startPlatformTests({ workspaceRoot: "/repo" } as never, ["windows"], ["akanjs"]),
+    ).rejects.toThrow("No Windows test target is configured: stdin is not a terminal to prompt on");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  test("a platform that did not pass stops the deploy instead of asking to go on without it", async () => {
+    const result = { platform: "windows", policy: "warn", infraError: "unreachable", packages: [] };
+    spyOn(PlatformTestRun, "verdict").mockReturnValue({ blocking: [], warning: [result] } as never);
+    const run = { results: async () => [result], format: () => "", logDir: "/repo/local/platform-tests/1" };
+    const log = spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      new CloudRunner().settlePlatformTests(run as never, {
+        interactive: true,
+        recordStreaks: false,
+        checkDrift: false,
+      }),
+    ).rejects.toThrow("windows did not pass (unreachable) — /repo/local/platform-tests/1: stdin is not a terminal");
+    log.mockRestore();
+  });
+
+  test("publishing asks for no confirmation it cannot get", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ "dist-tags": { rc: "2.1.0-rc.3" } }))) as never;
+    const { root, workspace } = track(await makeCliTempWorkspace());
+    for (const dir of ["pkgs/akanjs", "dist/pkgs/akanjs"])
+      await writeJson(path.join(root, dir, "package.json"), { name: "akanjs", version: "2.1.0-rc.3" });
+    const spawn = spyOn(workspace, "spawn").mockResolvedValue("");
+
+    try {
+      await expect(
+        new CloudRunner().deployAkan(workspace, ["akanjs"], { registryUrl: "http://127.0.0.1:4873/", tag: "rc" }),
+      ).rejects.toThrow("Publishing akanjs@2.1.0-rc.4 asks for a confirmation: stdin is not a terminal to prompt on");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(spawn).not.toHaveBeenCalled();
+  });
 });

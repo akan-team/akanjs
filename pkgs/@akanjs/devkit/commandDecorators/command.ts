@@ -118,10 +118,13 @@ const assertEnumChoice = (argMeta: ArgMeta, value: unknown) => {
 };
 
 // On a piped stdin a prompt takes the pipe as its answer and echoes it: a piped secret printed as the secret's name.
-const assertPromptable = (problem: string, choices: readonly unknown[] = []) => {
+export const assertPromptable = (
+  problem: string,
+  { choices = [], remedy = "pass it on the command line" }: { choices?: readonly unknown[]; remedy?: string } = {},
+) => {
   if (process.stdin.isTTY) return;
   throw new Error(
-    `${problem}: stdin is not a terminal to prompt on, so pass it on the command line${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`,
+    `${problem}: stdin is not a terminal to prompt on, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`,
   );
 };
 
@@ -145,10 +148,7 @@ export const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unkno
       (typeof enumChoices === "function" ? await enumChoices(context) : enumChoices) ?? [],
     );
     if (choices.length === 1) return choices[0]?.value;
-    assertPromptable(
-      `Missing ${argLabelOf(argMeta)}`,
-      choices.map((choice) => choice.value),
-    );
+    assertPromptable(`Missing ${argLabelOf(argMeta)}`, { choices: choices.map((choice) => choice.value) });
     return await select({ message: ask ?? desc ?? `Select the ${name} value`, choices });
   }
   assertPromptable(`Missing ${argLabelOf(argMeta)}`);
@@ -166,10 +166,12 @@ export const getArgumentValue = async (argMeta: ArgMeta, value: string | undefin
   } else if (defaultValue !== undefined) return defaultValue;
   else if (nullable) return null;
   const { enum: enumChoices } = argMeta.argsOption;
-  assertPromptable(
-    `Missing ${argLabelOf(argMeta)}`,
-    enumChoices && typeof enumChoices !== "function" ? normalizeEnumChoices(enumChoices).map(({ value }) => value) : [],
-  );
+  assertPromptable(`Missing ${argLabelOf(argMeta)}`, {
+    choices:
+      enumChoices && typeof enumChoices !== "function"
+        ? normalizeEnumChoices(enumChoices).map(({ value }) => value)
+        : [],
+  });
   return convertArgValue(await input({ message: inputMessageOf(argMeta) }), type ?? "string");
 };
 
@@ -225,7 +227,7 @@ export const getAppsArgumentValue = async (
     return [...new Set(requested)].map((name) => AppExecutor.from(workspace, name));
   }
   if (appNames.length === 1 && appNames[0]) return [AppExecutor.from(workspace, appNames[0])];
-  assertPromptable("Missing apps", [...appNames, "all"]);
+  assertPromptable("Missing apps", { choices: [...appNames, "all"] });
   const remembered = new Set(await AppSelectionMemory.read(workspace.workspaceRoot));
   const picked = await checkbox<string>({
     message: "Select the apps to run (space to toggle, enter to confirm)",
@@ -258,11 +260,9 @@ export const getInternalArgumentValue = async (
     if (found) return found;
     if (!value && argMeta.option?.onlyApp && appNames.length === 1 && appNames[0])
       return AppExecutor.from(workspace, appNames[0]);
-    assertPromptable(problemOf(sysType === "exec" ? "app, lib or pkg" : "app or lib"), [
-      ...appNames,
-      ...libNames,
-      ...pkgChoices,
-    ]);
+    assertPromptable(problemOf(sysType === "exec" ? "app, lib or pkg" : "app or lib"), {
+      choices: [...appNames, ...libNames, ...pkgChoices],
+    });
     const name = await select<string>({
       message: sysType === "exec" ? `Select the App or Lib or Pkg name` : `Select the App or Lib name`,
       choices: [...appNames, ...libNames, ...pkgChoices],
@@ -273,18 +273,18 @@ export const getInternalArgumentValue = async (
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
     if (!value && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
-    assertPromptable(problemOf("app"), appNames);
+    assertPromptable(problemOf("app"), { choices: appNames });
     const appName = await select<string>({ message: `Select the ${sysType} name`, choices: appNames });
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {
     if (value && libNames.includes(value)) return LibExecutor.from(workspace, value);
-    assertPromptable(problemOf("lib"), libNames);
+    assertPromptable(problemOf("lib"), { choices: libNames });
     const libName = await select<string>({ message: `Select the ${sysType} name`, choices: libNames });
     return LibExecutor.from(workspace, libName);
   } else if (sysType === "pkg") {
     const pkgs = await workspace.getPkgs();
     if (value && pkgs.includes(value)) return PkgExecutor.from(workspace, value);
-    assertPromptable(problemOf("pkg"), pkgs);
+    assertPromptable(problemOf("pkg"), { choices: pkgs });
     const pkgName = await select<string>({ message: `Select the ${sysType} name`, choices: pkgs });
     return PkgExecutor.from(workspace, pkgName);
   } else if (sysType === "module") {
