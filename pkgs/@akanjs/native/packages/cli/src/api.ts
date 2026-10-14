@@ -69,6 +69,8 @@ export {
   updateDecision,
   updateReportOutcome,
 } from "../../core/src/kernel.ts";
+/** How a desktop app's launcher keeps the server it carries running: desktop.server's restart and watchdog. */
+export type { ServerPolicy } from "../../desktop/src/server.ts";
 /** A build's bundle.json, and the manifest and envelope of a release, as a signer or server reads them. */
 export type { BundleInfo, NativeApi } from "./lib/compat.ts";
 export type { UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.ts";

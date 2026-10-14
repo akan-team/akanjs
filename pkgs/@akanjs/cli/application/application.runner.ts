@@ -19,6 +19,7 @@ import {
   UpdateUploader,
 } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
+import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import type { InterruptTeardown } from "./interruptTeardown";
@@ -37,13 +38,11 @@ export interface LogsOptions {
   follow?: boolean;
   runtimeDir?: string | null;
 }
-interface CarriedServer {
+interface CarriedServer extends ServerPolicy {
   omit: string[];
   profile?: string;
   modules: string[];
   env?: Record<string, string>;
-  restart?: "forever" | number;
-  watchdog?: { intervalMs: number; failures: number };
 }
 
 export interface MobileTargetOptions {
@@ -617,13 +616,14 @@ try {
       const server = config.desktop?.server;
       if (typeof server !== "object") return { omit: [], modules: [] };
       const { omit = [], modules = [], profile, env, restart, watchdog } = server;
+      const { intervalMs, failures } = typeof watchdog === "object" ? watchdog : {};
       return {
         omit,
         modules,
         ...(profile ? { profile } : {}),
         ...(env ? { env } : {}),
         ...(restart !== undefined ? { restart } : {}),
-        ...(typeof watchdog === "object" ? { watchdog: watchdog as CarriedServer["watchdog"] } : {}),
+        ...(intervalMs && failures ? { watchdog: { intervalMs, failures } } : {}),
       };
     });
     const [first = { omit: [], modules: [] }, ...rest] = servers;
