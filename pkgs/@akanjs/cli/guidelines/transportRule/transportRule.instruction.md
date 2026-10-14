@@ -99,6 +99,20 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   handler: a hung cache backend is bounded by the same deadline as the handler it stands in for. **`Retry` was removed** — an automatic re-run of an endpoint
   whose failure it cannot classify replays whatever the first attempt already did.
 
+## Repeated Mutations
+
+- **A mutation sent again under the same `Idempotency-Key` header runs once.** The key is checked after the
+  resource guards and the internal arguments, and it is scoped to the endpoint, the caller and a digest of the
+  arguments, so one caller's key never hands another caller its answer. A repeat while the first run is still going
+  answers 409 `base.error.idempotencyInFlight`.
+- **A repeat answers the first response as it was sent** — resolved, masked and serialized — for 24 hours. What
+  is kept is that wire form, never the handler's result, so no `hidden` or `secret` field reaches the cache.
+- A handler that throws frees the key, so a repeat runs it again. A failure after the handler returned is kept and
+  replayed instead: the handler's writes stand.
+- **Only an HTTP call is deduplicated.** A signed-out call, one whose handler returns a `Response` (whose headers,
+  such as a session's `Set-Cookie`, cannot be replayed), a websocket call, and a call through MCP all run every
+  time.
+
 ## Rate Limits
 
 - **`{ rateLimit: { calls, windowMs?, by? } }` in an endpoint's signal option** counts calls per caller per window

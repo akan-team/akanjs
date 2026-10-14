@@ -768,8 +768,8 @@ Conventions that hold for both shapes:
   own `{ retry }`) tries again on an unreachable server, a 502/503/504 and a 429 after its Retry-After, backing off
   with jitter until the call's one deadline runs out; a mutation retries under one `Idempotency-Key` it mints, or the
   `idempotencyKey` you name, and the server runs a mutation once per key, caller and arguments, answering a repeat
-  with the first result; a signed-out call, or one whose handler returns a `Response`, runs every time. A 4xx is
-  never retried.
+  with the first response as it was sent; a signed-out call, one whose handler returns a `Response`, and a call
+  through MCP run every time. A 4xx is never retried.
 - `String(err)` and `${err}` read `Err: <key> {…data}`, the data as one line of JSON with secret-named keys masked,
   so a ``logger.warn(`…: ${String(error)}`)`` keeps the exit code or status the `Err` carried.
 - **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(..., { origin })` restores the remote `Err` — the same class, key and `data` — so a hop that rethrows it answers its own caller with that error and the dictionary translates it. Never wrap the catch in a `new Error`, and never re-key it as a `new Err` of your own: both discard what the endpoint chose to say, and a bare `Error` is generalized to `Internal Server Error` on the way out.
