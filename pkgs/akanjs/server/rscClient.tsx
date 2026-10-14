@@ -1,8 +1,9 @@
-import * as React from "react";
 import { createElement, type ReactNode, startTransition, type Usable, use, useLayoutEffect, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
 import type {} from "../client/rscNavigation";
+import { transitionTypes, viewTransitionClassOf } from "../client/transitionTypes";
+import { addTransitionType } from "../client/viewTransition";
 import {
   type AkanHeadSnapshotV1,
   type AkanRouterStateV1,
@@ -214,14 +215,12 @@ function commitHistory(target: string, replace: boolean | undefined) {
   renderedHref = target;
 }
 
-//? React 19.3 added it, and a named import fails the module link on 19.2: there a navigation just swaps.
-const addTransitionType = (React as { addTransitionType?: (type: string) => void }).addTransitionType;
-
 //? The page's `ViewTransition` animates only a transition that names a type, so a route left at "none" just swaps.
 function viewTransitionTypeOf(transition: string | undefined, push: boolean): string | null {
-  if (!transition || transition === "none") return null;
+  const type = transitionTypes.find((candidate) => candidate === transition);
+  if (!type || type === "none") return null;
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return null;
-  return `akan-${transition}-${push ? "push" : "pop"}`;
+  return viewTransitionClassOf(type, push ? "push" : "pop");
 }
 
 /** Writes the entry without asking the server for the page; only a change that keeps the rendered path qualifies. */

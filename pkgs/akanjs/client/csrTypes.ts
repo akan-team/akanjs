@@ -7,9 +7,9 @@ import type { TailwindBreakpoint } from "./frameConfig";
 import type { RouteDefinition } from "./route/RouteDefinition";
 import type { RouterInstance } from "./router";
 import { sharedContext } from "./sharedContext";
+import type { TransitionType } from "./transitionTypes";
 import type { ReactFont } from "./types";
 
-export type TransitionType = "none" | "fade" | "bottomUp" | "stack" | "scaleOut";
 export type PageSafeAreaConfig =
   | boolean
   | "top"
