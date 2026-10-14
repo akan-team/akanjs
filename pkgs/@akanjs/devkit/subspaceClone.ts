@@ -1,5 +1,6 @@
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { toError } from "akanjs/common";
 import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { LibSource } from "./libSource";
@@ -102,7 +103,7 @@ export class SubspaceClone {
       for (const app of this.#declaration.apps) await this.#clone.spawn("bunx", ["akan", "sync", app], { env });
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return toError(error).message;
     }
   }
 

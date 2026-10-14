@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
+import { toError } from "akanjs/common";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
@@ -400,12 +401,9 @@ export class NativeApp {
         ...(resetSequence ? { resetSequence } : {}),
       });
     } catch (error) {
-      throw new Error(
-        `Native target '${this.target.name}': ${error instanceof Error ? error.message : String(error)}`,
-        {
-          cause: error,
-        },
-      );
+      throw new Error(`Native target '${this.target.name}': ${toError(error).message}`, {
+        cause: error,
+      });
     }
   }
 

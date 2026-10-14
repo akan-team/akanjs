@@ -1,6 +1,6 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PipelineDryRun } from "@akanjs/devkit/pipeline";
-import { Logger, type PipelinePlanResult } from "akanjs/common";
+import { Logger, type PipelinePlanResult, toError } from "akanjs/common";
 import { type PipelineFlags, PipelineRunner } from "./pipeline.runner";
 
 export type PipelineAction = "plan" | "validate" | "dry-run";
@@ -32,11 +32,7 @@ export class PipelineScript extends script("pipeline", [PipelineRunner]) {
       result = await this.pipelineRunner.plan(workspace, context, { sampled: action === "validate" });
       if (out) await this.pipelineRunner.writeResult(out, result);
     } catch (error) {
-      Logger.rawLog(
-        `akan pipeline ${action}: ${error instanceof Error ? error.message : String(error)}`,
-        undefined,
-        "error",
-      );
+      Logger.rawLog(`akan pipeline ${action}: ${toError(error).message}`, undefined, "error");
       process.exitCode = 2;
       return;
     }

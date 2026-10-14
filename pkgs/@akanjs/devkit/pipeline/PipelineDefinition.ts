@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { AppPipelineConfig, WorkspacePipelineConfig } from "akanjs";
 import type { PipelineDiagnostic, PipelinePlanContext, PipelinePlanResult } from "akanjs/common";
+import { toError } from "akanjs/common";
 import { AkanAppConfig, AkanWorkspaceConfig } from "../akanConfig";
 import { AppExecutor, type WorkspaceExecutor } from "../executors";
 import { FileSys } from "../fileSys";
@@ -68,7 +69,7 @@ export class PipelineDefinition {
       const targets = await resolveMobileTargets(AppExecutor.from(this.#workspace, app), "all");
       return { targets: targets.map(({ name, config }) => ({ name, updates: !!config.updates })) };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
+      return { error: toError(error).message };
     }
   }
 
@@ -105,7 +106,7 @@ export class PipelineDefinition {
     this.diagnostics.push({
       severity: "error",
       code: "pipeline.load.failed",
-      message: `could not load: ${error instanceof Error ? error.message : String(error)}`,
+      message: `could not load: ${toError(error).message}`,
       file,
       path: null,
     });

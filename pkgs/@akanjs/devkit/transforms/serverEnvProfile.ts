@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { Logger } from "akanjs/common";
+import { Logger, toError } from "akanjs/common";
 
 export interface ServerEnvProfileProps {
   envDir: string;
@@ -256,7 +256,7 @@ export class ServerEnvProfile {
             ({ loader, contents }) => ({ load: requested, loader, contents }),
             (error: unknown) => {
               loadError ??= error;
-              return { load: requested, error: error instanceof Error ? error.message : String(error) };
+              return { load: requested, error: toError(error).message };
             },
           )
           .then((reply) => subprocess.send(reply))

@@ -17,7 +17,7 @@ import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
-import { Logger } from "akanjs/common";
+import { Logger, toError } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
 import {
   ApplicationRunner,
@@ -495,11 +495,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         Logger.rawLog(`${app.name} is shared at ${share.url}`);
       }),
     ).catch((error: unknown) => {
-      Logger.rawLog(
-        `Could not open the tunnel: ${error instanceof Error ? error.message : String(error)}`,
-        undefined,
-        "error",
-      );
+      Logger.rawLog(`Could not open the tunnel: ${toError(error).message}`, undefined, "error");
     });
     return urls;
   }
