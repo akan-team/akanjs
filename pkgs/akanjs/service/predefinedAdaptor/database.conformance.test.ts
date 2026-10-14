@@ -180,6 +180,26 @@ const validIndexNamesOf = async (driver: SqlDriver, table: string) => {
   return rows.map(({ name }) => name);
 };
 
+const backendPidOf = async (driver: SqlDriver) => {
+  const row = await driver.database.getConnection().prepare(`SELECT pg_backend_pid() AS "pid"`).get<{ pid: number }>();
+  return row?.pid ?? 0;
+};
+
+// The second racer queues on the first one's tuple lock rather than on the holder, so waiters are followed transitively.
+const lockWaitersBehind = async (driver: SqlDriver, pid: number, expected: number, timeoutMs = 3000) => {
+  const statement = driver.database
+    .getConnection()
+    .prepare(
+      `WITH RECURSIVE "behind"("pid") AS (SELECT ?::int UNION SELECT a."pid" FROM pg_stat_activity a JOIN "behind" b ON b."pid" = ANY(pg_blocking_pids(a."pid"))) SELECT count(*)::int - 1 AS "count" FROM "behind"`,
+    );
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const waiting = (await statement.get<{ count: number }>(pid))?.count ?? 0;
+    if (waiting >= expected || Date.now() >= deadline) return waiting;
+    await Bun.sleep(10);
+  }
+};
+
 const describeDriver = (kind: SqlDriverKind) => {
   const onPostgres = kind === "postgres";
 
@@ -609,17 +629,21 @@ const describeDriver = (kind: SqlDriverKind) => {
       const released = new Promise<void>((resolve) => {
         release = resolve;
       });
+      let holderPid = 0;
       const holder = driver.database.transaction(async () => {
         await store.updateOneByQuery({ id }, { note: "held" });
+        if (onPostgres) holderPid = await backendPidOf(driver);
         held();
         await released;
       });
       await holding;
       const racers = [0, 1].map(() => store.updateOneByQuery({ id, score: 0 }, { score: 1 }));
-      await Bun.sleep(200);
+      const queued = onPostgres ? await lockWaitersBehind(driver, holderPid, racers.length) : null;
+      if (!onPostgres) await Bun.sleep(200);
       release();
       await holder;
       const counts = (await Promise.all(racers)).map(({ modifiedCount }) => modifiedCount);
+      if (queued !== null) expect(queued).toBe(racers.length);
       expect(counts.sort()).toEqual([0, 1]);
       expect(await store.pickById(id)).toMatchObject({ score: 1, note: "held" });
     });
