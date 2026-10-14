@@ -13,6 +13,7 @@ pub mod clipboard;
 pub mod device;
 pub mod dialogs;
 mod dock;
+pub(crate) mod external;
 mod hotkey;
 pub mod keychain;
 pub mod kiosk;
