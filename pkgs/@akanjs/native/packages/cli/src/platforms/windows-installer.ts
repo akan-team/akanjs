@@ -62,14 +62,15 @@ export interface InstallerInput {
   folder: string;
   /** Its top-level files and folders: what an update or uninstall removes. */
   entries: { name: string; dir: boolean }[];
-  /** Bytes the app folder takes on disk, and bytes the setup unpacks in all (the folder and the WebView2 bootstrapper). */
+  /** Bytes the app folder takes on disk, and bytes the setup unpacks in all (the folder and the WebView2 setup). */
   space: { install: number; unpack: number };
   /** deepLinks.schemes: the uninstaller removes those the app registered for its own executable. */
   schemes: string[];
   icon?: string;
   /** desktop.publisher: the Publisher Apps & features lists, and the setup program's company name. */
   publisher?: string;
-  bootstrapper: string;
+  /** desktop.webview2's setup the installer runs where no WebView2 Runtime is: the bootstrapper or the whole runtime. */
+  webview2Setup: string;
   stopScript: string;
   outFile: string;
   /** A command that signs the uninstaller makensis writes into the setup program, `%1` its path. */
@@ -335,7 +336,7 @@ Function EnsureWebView2
     Return
   \${EndIf}
   DetailPrint "Installing the WebView2 Runtime"
-  File "/oname=$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" "${nsis(input.bootstrapper)}"
+  File "/oname=$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" "${nsis(input.webview2Setup)}"
   ExecWait '"$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" /silent /install' $1
   DetailPrint "WebView2 Runtime setup exited with $1"
   Call WebView2Version
@@ -611,7 +612,7 @@ export function findMakensis(env: Record<string, string | undefined> = process.e
 }
 
 /** The WebView2 setup the installer embeds, downloaded once into the akan-native cache and checked. */
-async function webview2Setup(mode: "bootstrapper" | "standalone", arch: "x64" | "arm64"): Promise<string> {
+async function cachedWebview2Setup(mode: "bootstrapper" | "standalone", arch: "x64" | "arm64"): Promise<string> {
   const [name, url, minBytes] =
     mode === "standalone"
       ? [`MicrosoftEdgeWebView2RuntimeInstaller${arch.toUpperCase()}.exe`, WEBVIEW2_STANDALONE_URLS[arch], 50_000_000]
@@ -683,7 +684,7 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
     log.warn(
       `${deepest} reaches about ${longest} characters under %LOCALAPPDATA%\\Programs while an update unpacks: Windows refuses paths over ${WINDOWS_MAX_PATH} unless long paths are enabled, so the installer or an update fails on such a PC. Shorten app.name or that path.`,
     );
-  const bootstrapper = await webview2Setup(config.desktop.webview2, ctx.arch ?? hostArch());
+  const webview2Setup = await cachedWebview2Setup(config.desktop.webview2, ctx.arch ?? hostArch());
   const size = folderSize(folder);
   writeFileSync(
     script,
@@ -695,11 +696,11 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
       build: config.app.build,
       folder,
       entries: readdirSync(folder).map((name) => ({ name, dir: statSync(join(folder, name)).isDirectory() })),
-      space: { install: size.disk, unpack: size.bytes + statSync(bootstrapper).size },
+      space: { install: size.disk, unpack: size.bytes + statSync(webview2Setup).size },
       schemes: config.deepLinks.schemes,
       ...(existsSync(icon) ? { icon } : {}),
       ...(config.desktop.publisher ? { publisher: config.desktop.publisher } : {}),
-      bootstrapper,
+      webview2Setup,
       stopScript,
       outFile,
       ...(ctx.windows?.signing ? { signUninstaller: uninstallerSigner(gen, `${config.app.name} Uninstall`) } : {}),

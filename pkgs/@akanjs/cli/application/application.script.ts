@@ -148,7 +148,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
-      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet, profile });
+      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet, envProfile: profile });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);
     } catch (error) {
