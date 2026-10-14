@@ -425,7 +425,7 @@ export class CloudRunner extends runner("cloud") {
   async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
     await workspace.mkdir("local");
     const localPath = (await cloudApi.downloadEnv(workspaceId).catch((error: unknown) => {
-      throw CloudRunner.#refusal(error, "downloading its env archive takes the project owner's own `akan login`");
+      throw CloudApi.refusal(error, "downloading its env archive takes the project owner's own `akan login`");
     })) as string;
     // Relative, so GNU tar never reads a Windows drive letter (`C:\…`) as a remote `host:file` spec.
     const relativePath = path.relative(workspace.workspaceRoot, localPath).split(path.sep).join("/");
@@ -435,7 +435,7 @@ export class CloudRunner extends runner("cloud") {
   async uploadEnv(cloudApi: CloudApi, workspaceId: string, filePath: string) {
     const file = new File([Bun.file(filePath)], path.basename(filePath));
     await cloudApi.uploadEnv(workspaceId, file).catch((error: unknown) => {
-      throw CloudRunner.#refusal(error, "an env archive is uploaded by a project member signed in with `akan login`");
+      throw CloudApi.refusal(error, "an env archive is uploaded by a project member signed in with `akan login`");
     });
   }
   async downloadEnvByScp(workspace: Workspace) {
@@ -584,7 +584,7 @@ export class CloudRunner extends runner("cloud") {
     const saved = await cloudApi
       .uploadSecret(devProjectId, { scope: branch ?? "*", name, value })
       .catch((error: unknown) => {
-        throw CloudRunner.#refusal(error, "a secret is written by a project member signed in with `akan login`", {
+        throw CloudApi.refusal(error, "a secret is written by a project member signed in with `akan login`", {
           unavailable: CloudRunner.#secretsUnavailable,
         });
       });
@@ -596,7 +596,7 @@ export class CloudRunner extends runner("cloud") {
   async listSecrets(cloudApi: CloudApi, devProjectId: string, branch: string | null) {
     CloudRunner.assertSecretBranch(branch);
     const listed = await cloudApi.listSecrets(devProjectId).catch((error: unknown) => {
-      throw CloudRunner.#refusal(error, "the secrets are listed for a project member", {
+      throw CloudApi.refusal(error, "the secrets are listed for a project member", {
         unavailable: CloudRunner.#secretsUnavailable,
       });
     });
@@ -614,7 +614,7 @@ export class CloudRunner extends runner("cloud") {
     const removed = await cloudApi
       .removeSecret(devProjectId, { scope: branch ?? "*", name })
       .catch((error: unknown) => {
-        throw CloudRunner.#refusal(error, "a secret is removed by a project member signed in with `akan login`", {
+        throw CloudApi.refusal(error, "a secret is removed by a project member signed in with `akan login`", {
           unavailable: CloudRunner.#secretsUnavailable,
         });
       });
@@ -701,7 +701,7 @@ export class CloudRunner extends runner("cloud") {
       const release = await new UpdatePackUpload(cloudApi, devProjectId)
         .send(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel: target, notes })
         .catch((error: unknown) => {
-          throw CloudRunner.#refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
+          throw CloudApi.refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
         });
       const label = `${pack.app} ${pack.target} ${pack.platform} on channel ${target}: release ${release.id}`;
       if (release.status === "rejected") {
@@ -768,7 +768,7 @@ export class CloudRunner extends runner("cloud") {
           ),
         )
         .catch((error: unknown) => {
-          throw CloudRunner.#refusal(error, "a binary is registered by a project member signed in with `akan login`");
+          throw CloudApi.refusal(error, "a binary is registered by a project member signed in with `akan login`");
         });
       Logger.rawLog(
         `Registered ${pack.app} ${pack.target} ${pack.platform} (${distribution}): binary ${binary.id}, native API ${pack.nativeApi}.`,
@@ -804,7 +804,6 @@ export class CloudRunner extends runner("cloud") {
   //? The branches Akan Cloud deploys (its BranchType): a secret scoped to any other is refused by the server.
   static readonly #secretBranches = ["debug", "develop", "main"];
   static readonly #secretsUnavailable = "The server is not configured for pipeline secrets yet";
-  static readonly #errKey = /"error"\s*:\s*"([\w$-]+\.error\.[\w$-]+)"/;
 
   static assertSecretName(name: string) {
     const problem = PipelineNames.secretNameError(name);
@@ -814,23 +813,6 @@ export class CloudRunner extends runner("cloud") {
   static assertSecretBranch(branch: string | null) {
     if (branch !== null && !CloudRunner.#secretBranches.includes(branch))
       throw new Error(`--branch ${branch} is not a deployed branch: ${CloudRunner.#secretBranches.join(", ")}.`);
-  }
-
-  // The project's guards answer by status: 401 no sign-in it accepts, 403 not allowed, 400 a refused request.
-  static #refusal(error: unknown, who: string, { unavailable }: { unavailable?: string } = {}) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = CloudApi.statusOf(error);
-    if (status === 401) return new Error("The server did not accept your sign-in: run `akan login`, then try again.");
-    if (status === 403) return new Error(`The project refused: ${who}.`);
-    if (status === 400) {
-      const key = /"error"\s*:\s*"([^"]+)"/.exec(message)?.[1];
-      return new Error(`The project refused the request${key ? `: ${key}` : ""}.`);
-    }
-    //? A proxy, or the gateway with no replica ready, answers 503 too; only the server's own names a domain Err key.
-    const serverKey = CloudRunner.#errKey.exec(message)?.[1];
-    if (status === 503 && unavailable && serverKey && serverKey !== "base.error.serverUnavailable")
-      return new Error(`${unavailable}: ${serverKey}.`);
-    return error;
   }
 
   async #syncSecretGitignore(workspace: Workspace, appNames: string[]) {

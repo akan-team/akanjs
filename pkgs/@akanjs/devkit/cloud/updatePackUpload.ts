@@ -1,6 +1,7 @@
 import { Logger, sleep } from "akanjs/common";
 import type { BunFile } from "bun";
-import { CloudApi, type CloudRecord, type UpdateUploadRequest } from "./cloudApi";
+import type { CloudApi, CloudRecord, UpdateUploadRequest } from "./cloudApi";
+import { CloudHttpError } from "./cloudHttpError";
 
 interface UpdatePackUploadOptions {
   putRetryMs?: number;
@@ -18,7 +19,8 @@ export class UpdatePackUpload {
   static readonly #transientPut = new Set([0, 408, 429, 500, 502, 503, 504]);
   //? A stalled PUT never fails on its own, so each try ends once the pack would be through even at this crawl.
   static readonly #putFloorBytesPerSecond = 64 * 1024;
-  static readonly #errKey = /"error"\s*:\s*"([\w$-]+\.error\.[\w$-]+)"/;
+  //? Storage's Retry-After is honoured up to this: past it the presigned URL may lapse, and a fresh one is asked for.
+  static readonly #maxPutRetryAfterMs = 60_000;
   readonly #api: CloudApi;
   readonly #devProjectId: string;
   readonly #putRetryMs: number;
@@ -73,7 +75,7 @@ export class UpdatePackUpload {
   async #request(upload: UpdateUploadRequest) {
     return await this.#api.requestUpdateUpload(this.#devProjectId, upload).catch((error: unknown) => {
       //? A server older than staged uploads has no such route: its 404 is a page, where every refusal is an Err key.
-      if (CloudApi.statusOf(error) === 404 && !UpdatePackUpload.#errKeyOf(error))
+      if (error instanceof CloudHttpError && error.status === 404 && !error.errKey)
         throw new Error(
           "The project's server does not take direct pack uploads yet: update Akan Cloud and try again, or upload the pack from the project's release screen.",
         );
@@ -86,7 +88,7 @@ export class UpdatePackUpload {
   async #put(url: string, contentType: string, file: BunFile) {
     const timeoutMs = this.#putTimeoutMs + Math.ceil((file.size / UpdatePackUpload.#putFloorBytesPerSecond) * 1000);
     for (let retry = 0; ; retry++) {
-      const status = await fetch(url, {
+      const { status, retryAfterMs } = await fetch(url, {
         method: "PUT",
         body: file,
         headers: { "Content-Type": contentType },
@@ -94,11 +96,16 @@ export class UpdatePackUpload {
       })
         .then(async (response) => {
           await response.arrayBuffer().catch(() => undefined);
-          return response.status;
+          return {
+            status: response.status,
+            retryAfterMs: CloudHttpError.retryAfterMs(response.headers.get("retry-after")),
+          };
         })
-        .catch(() => 0);
+        .catch(() => ({ status: 0, retryAfterMs: null }));
       if (retry === 3 || !UpdatePackUpload.#transientPut.has(status)) return status;
-      await sleep(this.#putRetryMs * (retry + 1));
+      await sleep(
+        Math.max(this.#putRetryMs * (retry + 1), Math.min(retryAfterMs ?? 0, UpdatePackUpload.#maxPutRetryAfterMs)),
+      );
     }
   }
 
@@ -120,33 +127,26 @@ export class UpdatePackUpload {
         else if (UpdatePackUpload.#cutOff(error)) cutOffSince ??= now;
         else throw error;
         const deadline = cutOffSince === null ? limit : Math.min(limit, cutOffSince + this.#cutOffWindowMs);
-        if (now + this.#commitRetryMs > deadline) throw error;
-        Logger.rawLog(
-          `The project is still taking the pack; asking again in ${Math.round(this.#commitRetryMs / 1000)}s.`,
-        );
-        await sleep(this.#commitRetryMs);
+        const waitMs = Math.max(this.#commitRetryMs, (error instanceof CloudHttpError && error.retryAfterMs) || 0);
+        if (now + waitMs > deadline) throw error;
+        Logger.rawLog(`The project is still taking the pack; asking again in ${Math.round(waitMs / 1000)}s.`);
+        await sleep(waitMs);
       }
     }
   }
 
   //? Not every 409: an upload already committed or embedded is answered 409 too, and asking again changes nothing.
   static #inProgress(error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return CloudApi.statusOf(error) === 409 && message.includes("uploadCommitInProgress");
+    return (
+      error instanceof CloudHttpError && error.status === 409 && !!error.errKey?.endsWith(".uploadCommitInProgress")
+    );
   }
 
   static #cutOff(error: unknown) {
-    const status = CloudApi.statusOf(error);
-    if (status === null) return !(error instanceof SyntaxError);
+    if (!(error instanceof CloudHttpError)) return !(error instanceof SyntaxError);
+    const { status, errKey } = error;
     //? A gateway with no replica ready answers 503; the server's own 503 names an Err key and is a final refusal.
-    if (status === 503) {
-      const key = UpdatePackUpload.#errKeyOf(error);
-      return key === null || key === "base.error.serverUnavailable";
-    }
+    if (status === 503) return errKey === null || errKey === "base.error.serverUnavailable";
     return status === 502 || status === 504 || (status >= 520 && status <= 527);
-  }
-
-  static #errKeyOf(error: unknown) {
-    return UpdatePackUpload.#errKey.exec(error instanceof Error ? error.message : String(error))?.[1] ?? null;
   }
 }
