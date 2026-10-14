@@ -596,9 +596,9 @@ fn build(
         };
         push_event(&event(&view_id, window_id, &format!(r#""event":"load","state":"{state}","url":{}"#, json::quote(&url))));
       });
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     if crate::unattended() {
-      builder = builder.with_initialization_script_for_main_only(crate::win::kiosk::SCRIPT, false);
+      builder = builder.with_initialization_script_for_main_only(crate::KIOSK_SCRIPT, false);
     }
     if let Some(script) = opts.init_script.as_deref().filter(|s| !s.is_empty()) {
       builder = builder.with_initialization_script_for_main_only(TOP_ONLY, true).with_initialization_script_for_main_only(top_only(script), true);

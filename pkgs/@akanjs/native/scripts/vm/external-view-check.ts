@@ -340,6 +340,12 @@ try {
   if ((await inView('window.print(); "returned"')) !== "returned") throw new Error("the view's print opened a dialog");
   if ((await evaluate('window.print(); "returned"', "the app page's print", 5_000)) !== "returned")
     throw new Error("the app page's print opened a dialog");
+  const blankFramePrint = `{ const frame = document.createElement("iframe"); document.body.append(frame);
+    const native = String(frame.contentWindow.print).includes("[native code]"); frame.contentWindow.print(); frame.remove();
+    native ? "native" : "replaced" }`;
+  if ((await inView(blankFramePrint)) !== "replaced") throw new Error("a frame the view's script made can print");
+  if ((await evaluate(blankFramePrint, "a frame the app page's script made", 5_000)) !== "replaced")
+    throw new Error("a frame the app page's script made can print");
   const shown = dialogs();
   const fileInput = `{ const pick = document.createElement("input"); pick.type = "file"; document.body.append(pick);
     pick.focus(); "ready" }`;

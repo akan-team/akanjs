@@ -554,6 +554,10 @@ fn unattended() -> bool {
   UNATTENDED.load(Ordering::Acquire)
 }
 
+/// Run first in every document of an unattended app's pages, frames included, on Windows and macOS.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const KIOSK_SCRIPT: &str = include_str!("kiosk.js");
+
 /// A test hook's variable, read by a dev build only.
 fn dev_env(name: &str) -> Option<String> {
   dev_build().then(|| std::env::var(name).ok()).flatten()
@@ -1456,13 +1460,15 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   };
   #[cfg(target_os = "windows")]
   let builder = if unattended() {
-    builder.with_initialization_script_for_main_only(win::kiosk::SCRIPT, false).with_download_started_handler(|url, _| {
+    builder.with_initialization_script_for_main_only(KIOSK_SCRIPT, false).with_download_started_handler(|url, _| {
       log!("refused a download of {}: an unattended app's page saves nothing", navigation::shown(&url));
       false
     })
   } else {
     builder
   };
+  #[cfg(target_os = "macos")]
+  let builder = if unattended() { builder.with_initialization_script_for_main_only(KIOSK_SCRIPT, false) } else { builder };
   // SH-4: pages never leave the app origin (navigation.rs). Linux decides in its own signal handlers.
   #[cfg(not(target_os = "linux"))]
   let builder = builder.with_navigation_handler(|url| navigation::allow(&url));
