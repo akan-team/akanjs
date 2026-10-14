@@ -31,6 +31,10 @@ const out = join(scratch, "updates");
 const appId = "com.akanjs.sample";
 const step = (text: string) => console.info(`\n== ${text}`);
 const QUICK = { timeout: 60_000 };
+const onDevice = (command: string[]) => {
+  const p = Bun.spawnSync(command, QUICK);
+  if (p.exitCode !== 0) throw new Error(`${command.join(" ")} failed:\n${p.stdout.toString()}${p.stderr.toString()}`);
+};
 
 function run(args: string[], key: keyof typeof keyPath = "online"): string {
   const p = Bun.spawnSync([...cli, ...args], {
@@ -196,26 +200,36 @@ try {
   );
 
   step(`build, boot and install on the ${platform === "ios" ? "simulator" : "emulator"}`);
-  if (platform === "ios") Bun.spawnSync(["xcrun", "simctl", "uninstall", "booted", appId], QUICK);
-  else Bun.spawnSync([...adb, "uninstall", appId], QUICK);
   const first = Bun.spawn([...cli, "run", platform, "--headless"], { cwd: sample, stdout: "pipe", stderr: "pipe" });
-  const started = Date.now();
-  for (;;) {
-    const installed =
-      platform === "ios"
-        ? Bun.spawnSync(["xcrun", "simctl", "get_app_container", "booted", appId, "app"], QUICK).exitCode === 0
-        : Bun.spawnSync([...adb, "shell", "pm", "path", appId], QUICK)
-            .stdout.toString()
-            .includes("package:");
-    if (installed) break;
-    if (Date.now() - started > 600_000) throw new Error("the app was not installed within 10 minutes");
-    await Bun.sleep(2000);
-  }
-  await Bun.sleep(5000);
+  const firstErr = new Response(first.stderr).text();
+  let firstOut = "";
+  const launched = await Promise.race([
+    (async () => {
+      const decoder = new TextDecoder();
+      for await (const chunk of first.stdout) {
+        firstOut += decoder.decode(chunk, { stream: true });
+        if (new RegExp(`(launched|running) ${appId.replaceAll(".", "\\.")}, logs below`).test(firstOut)) return true;
+      }
+      return false;
+    })(),
+    new Promise<boolean>((done) => setTimeout(done, 600_000, false).unref()),
+  ]);
   first.kill();
+  if (!launched) throw new Error(`akan-native run ${platform} launched no app:\n${firstOut}${await firstErr}`);
   const built = join(sample, ".akan", "native", "build", platform);
+  const apk = platform === "android" ? join(built, readdirSync(built).find((n) => n.endsWith(".apk")) ?? "") : "";
+  //? A fresh install: one over an earlier run's keeps its update state (a rollback, revoked keys, reports), and an
+  //? uninstall before `run` misses the simulator or emulator `run` boots.
+  if (platform === "ios") {
+    Bun.spawnSync(["xcrun", "simctl", "terminate", "booted", appId], QUICK);
+    onDevice(["xcrun", "simctl", "uninstall", "booted", appId]);
+    onDevice(["xcrun", "simctl", "install", "booted", join(built, "sample.app")]);
+  } else {
+    onDevice([...adb, "uninstall", appId]);
+    onDevice([...adb, "install", apk]);
+  }
+  reports.length = 0;
   const apkEntry = (name: string) => {
-    const apk = join(built, readdirSync(built).find((n) => n.endsWith(".apk")) ?? "");
     const entry = readZip(new Uint8Array(readFileSync(apk))).find((e) => e.name === name);
     if (!entry) throw new Error(`${apk} holds no ${name}`);
     return Buffer.from(entry.method === 8 ? inflateRawSync(entry.data) : entry.data).toString();
@@ -242,8 +256,11 @@ try {
   );
   server = Bun.spawn([...cli, "update", "serve", "--out", out], { cwd: sample, stdout: "ignore", stderr: "ignore" });
   await Bun.sleep(1500);
-  const a = await probe(/confirmed \S+ trial=false/);
+  const a = await probe(/confirmed \S+ trial=false|rolled-back/);
+  if (!a.some((line) => /start embedded/.test(line)))
+    throw new Error(`the app did not start from a clean update state: ${a.join(" | ")}`);
   if (!a.some((line) => /check .*"available":true/.test(line))) throw new Error("A was not offered");
+  if (!a.some((line) => /confirmed \S+ trial=false/.test(line))) throw new Error("A was not confirmed");
 
   step("a release for another native API is never read by this binary");
   writeEnvelope(
