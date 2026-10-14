@@ -330,7 +330,7 @@ export class CloudRunner extends runner("cloud") {
     for (const library of akanPkgs) {
       const packageJson = (await workspace.readJson(`pkgs/${library}/package.json`)) as { version: string };
       const newPackageJson = this.#normalizeAkanPackageJson(packageJson, library, nextVersion);
-      await workspace.writeFile(`pkgs/${library}/package.json`, JSON.stringify(newPackageJson, null, 2));
+      await workspace.writeJson(`pkgs/${library}/package.json`, newPackageJson);
       const distPackageJson = (await workspace.readJson(`dist/pkgs/${library}/package.json`)) as {
         version: string;
         dependencies?: Record<string, string>;
