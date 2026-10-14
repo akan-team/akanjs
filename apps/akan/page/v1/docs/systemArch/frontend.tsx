@@ -50,7 +50,7 @@ export default page().render(() => {
           <div className="my-4 space-y-3">
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   1
                 </span>
                 <strong className="text-foreground">Page</strong>
@@ -64,7 +64,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   2
                 </span>
                 <strong className="text-foreground">Component</strong>
@@ -78,7 +78,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   3
                 </span>
                 <strong className="text-foreground">Store</strong>
@@ -92,7 +92,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   4
                 </span>
                 <strong className="text-foreground">Fetch</strong>
@@ -199,9 +199,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
-                  Client
-                </span>
+                <span className="rounded bg-primary px-2 py-1 font-bold text-primary-foreground text-xs">Client</span>
                 <strong className="text-foreground">Edit</strong>
               </div>
               <div className="ml-8 text-foreground/70 text-sm">
@@ -213,9 +211,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
-                  Client
-                </span>
+                <span className="rounded bg-primary px-2 py-1 font-bold text-primary-foreground text-xs">Client</span>
                 <strong className="text-foreground">Util</strong>
               </div>
               <div className="ml-8 text-foreground/70 text-sm">
@@ -227,9 +223,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="rounded bg-primary/70 px-2 py-1 font-bold text-primary-foreground text-xs">
-                  Client
-                </span>
+                <span className="rounded bg-primary px-2 py-1 font-bold text-primary-foreground text-xs">Client</span>
                 <strong className="text-foreground">Zone</strong>
               </div>
               <div className="ml-8 text-foreground/70 text-sm">
@@ -255,7 +249,7 @@ export default page().render(() => {
           </div>
           <div className="my-4 space-y-2">
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-xs">
                 1
               </span>
               <div>
@@ -267,7 +261,7 @@ export default page().render(() => {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-xs">
                 2
               </span>
               <div>
@@ -279,7 +273,7 @@ export default page().render(() => {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-xs">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-xs">
                 3
               </span>
               <div>

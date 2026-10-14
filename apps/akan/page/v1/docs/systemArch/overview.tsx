@@ -108,7 +108,7 @@ export default page().render(() => {
           <div className="my-4 space-y-3">
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   1
                 </span>
                 <strong className="text-foreground">Constant & Scalar</strong>
@@ -122,7 +122,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   2
                 </span>
                 <strong className="text-foreground">Document & Service</strong>
@@ -136,7 +136,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   3
                 </span>
                 <strong className="text-foreground">Signal (API)</strong>
@@ -150,7 +150,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   4
                 </span>
                 <strong className="text-foreground">Store & Components (Zone, View, Unit)</strong>
@@ -164,7 +164,7 @@ export default page().render(() => {
             </div>
             <div className="rounded-lg border border-border bg-muted p-4">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/70 font-bold text-primary-foreground text-sm">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground text-sm">
                   5
                 </span>
                 <strong className="text-foreground">Dictionary & CSS</strong>
@@ -195,9 +195,7 @@ export default page().render(() => {
               {l.trans({ en: "End-to-End Flow", ko: "End-to-End 흐름" })}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
-              <div className="rounded-lg bg-primary/70 px-4 py-2 font-medium text-primary-foreground">
-                UI (Page/Zone)
-              </div>
+              <div className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground">UI (Page/Zone)</div>
               <span className="text-foreground/50">→</span>
               <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Store</div>
               <span className="text-foreground/50">→</span>
@@ -207,7 +205,7 @@ export default page().render(() => {
               <span className="text-foreground/50">→</span>
               <div className="rounded-lg bg-border px-4 py-2 font-medium text-foreground">Document</div>
               <span className="text-foreground/50">→</span>
-              <div className="rounded-lg bg-primary/70 px-4 py-2 font-medium text-primary-foreground">MongoDB</div>
+              <div className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground">MongoDB</div>
             </div>
           </div>
           <div>
