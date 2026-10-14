@@ -927,16 +927,18 @@ export const Avatar = ({ user }: ModelProps<"user", cnst.LightUser>) => {
             {l.trans({
               en: (
                 <span>
-                  Chrome is in the server HTML in its slot's place, so nothing pops in. The route reserves its space
-                  with <code>topInset</code> / <code>bottomInset</code> in <code>.config()</code>; in the app, an inset
-                  the route leaves out takes the height of the chrome it renders.
+                  Chrome is in the server HTML in its slot's place, so nothing pops in, and after hydration that same
+                  DOM moves into the slot: text typed into it, the focus and the caret survive. The route reserves its
+                  space with <code>topInset</code> / <code>bottomInset</code> in <code>.config()</code>; in the app, an
+                  inset the route leaves out takes the height of the chrome it renders.
                 </span>
               ),
               ko: (
                 <span>
-                  chrome은 서버 HTML의 자기 슬롯 자리에 들어 있어 늦게 튀어나오지 않습니다. 자리는 route가{" "}
-                  <code>.config()</code>의 <code>topInset</code> / <code>bottomInset</code>으로 비우고, 앱에서는 route가
-                  적지 않은 inset이 그 route가 그리는 chrome의 높이를 따릅니다.
+                  chrome은 서버 HTML의 자기 슬롯 자리에 들어 있어 늦게 튀어나오지 않고, hydration 뒤에는 그 DOM이 그대로
+                  슬롯으로 옮겨지므로 입력한 글자, 포커스, 커서가 남습니다. 자리는 route가 <code>.config()</code>의{" "}
+                  <code>topInset</code> / <code>bottomInset</code>으로 비우고, 앱에서는 route가 적지 않은 inset이 그
+                  route가 그리는 chrome의 높이를 따릅니다.
                 </span>
               ),
             })}
@@ -1047,8 +1049,8 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    <strong>Anywhere in the tree.</strong> The navbar portals its content into the top inset, so the
-                    page renders it right beside the body.
+                    <strong>Anywhere in the tree.</strong> The navbar moves its content into the top inset, so the page
+                    renders it right beside the body.
                   </span>
                 ),
                 ko: (

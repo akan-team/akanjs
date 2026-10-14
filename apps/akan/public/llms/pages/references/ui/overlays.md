@@ -80,7 +80,7 @@ Related pages
 
 - Override Slots — Swap `Modal`, `Popconfirm`, `Dropdown`, `Tooltip` or `Menu` for one route subtree.
 
-- Core UI — `Layout.Navbar` and the other frame slots that `Portal` fills.
+- Core UI — `Layout.Navbar` and the other frame slots, which `Portal` fills in a CSR build.
 
 - In-Page Agent — How the tools a component publishes let the agent drive the screen.
 
@@ -236,15 +236,15 @@ Related pages
 
   - **`Menu` is not a `Dropdown`.** `Menu` is a navigation structure and `Dropdown` a short-lived action list. They look alike but are not interchangeable: row actions on a list go in a `Dropdown`.
 
-- Portal: Renders `children` into an element the page already has, named by `id`. It is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.
+- Portal: Renders `children` into an element the page already has, named by `id`. In a CSR build it is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.
 
-  - id (string): The host element's `id`. Nothing renders until that element is mounted.
+  - id (string): The host element's `id`, looked up after the first render: nothing renders before then, on the server included.
 
   - children (ReactNode): What is rendered into the host.
 
   - **Fill the frame's slots through their Layout component.** `Layout.Navbar`, `Layout.TopInset`, `Layout.TopLeftAction` and `Layout.BottomInset` pick the right host in a CSR build, and all but `TopLeftAction` reserve the slot's height.
 
-  - **Frame slots are in the first HTML.** During SSR their content is written into the shell instead of appearing after hydration. A host of your own is filled in the browser.
+  - **Frame slots are in the first HTML.** On an SSR page the Layout components draw their chrome into the server HTML without a portal, and after hydration that same DOM moves into the slot, so text typed into it before hydration survives. A host of your own is filled only after hydration.
 
   - **It is not a way out of a clipping parent.** `Modal` already portals to `document.body`, and `Dropdown`, `Popconfirm` and `Select` also place themselves against their trigger.
 

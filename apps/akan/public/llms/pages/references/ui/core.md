@@ -133,7 +133,7 @@ Content containers
 
 Top and bottom chrome
 
-Chrome is in the server HTML in its slot's place, so nothing pops in. The route reserves its space with `topInset` / `bottomInset` in `.config()`; in the app, an inset the route leaves out takes the height of the chrome it renders.
+Chrome is in the server HTML in its slot's place, so nothing pops in, and after hydration that same DOM moves into the slot: text typed into it, the focus and the caret survive. The route reserves its space with `topInset` / `bottomInset` in `.config()`; in the app, an inset the route leaves out takes the height of the chrome it renders.
 
 - Layout.Navbar ({ className?, title?, left?, right?, children?, back?, backFallback?, height? }, default height 48): Fills the top inset. `title` truncates to fill the bar, `right` is pushed to the end, `back` adds a back button.
 
@@ -165,7 +165,7 @@ These four draw over the page and register no height.
 
 A detail page with a back button and an edit link in the navbar:
 
-**Anywhere in the tree.** The navbar portals its content into the top inset, so the page renders it right beside the body.
+**Anywhere in the tree.** The navbar moves its content into the top inset, so the page renders it right beside the body.
 
 **The page stays on the server.** `title`, `right` and `back` are plain props, so the page needs no `"use client"`.
 

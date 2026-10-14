@@ -181,12 +181,12 @@ export default page().render(() => {
       desc: l.trans({
         en: (
           <span>
-            <code>Layout.Navbar</code> and the other frame slots that <code>Portal</code> fills.
+            <code>Layout.Navbar</code> and the other frame slots, which <code>Portal</code> fills in a CSR build.
           </span>
         ),
         ko: (
           <span>
-            <code>Portal</code>이 채우는 <code>Layout.Navbar</code>와 나머지 프레임 슬롯이 있습니다.
+            CSR 빌드에서 <code>Portal</code>이 채우는 <code>Layout.Navbar</code>와 나머지 프레임 슬롯이 있습니다.
           </span>
         ),
       }),
@@ -1120,16 +1120,16 @@ export const AdminSider = ({ selected, onSelect }: AdminSiderProps) => {
     {
       name: "Portal",
       desc: l.trans({
-        en: "Renders `children` into an element the page already has, named by `id`. It is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.",
-        ko: "`children`을 페이지에 이미 있는 요소 안에 그리며, 그 요소는 `id`로 지정합니다. `Layout.Navbar`가 이것으로 동작합니다. 라우트 깊숙한 컴포넌트가 서로를 모른 채 상단 바를 채웁니다.",
+        en: "Renders `children` into an element the page already has, named by `id`. In a CSR build it is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.",
+        ko: "`children`을 페이지에 이미 있는 요소 안에 그리며, 그 요소는 `id`로 지정합니다. CSR 빌드에서는 `Layout.Navbar`가 이것으로 동작합니다. 라우트 깊숙한 컴포넌트가 서로를 모른 채 상단 바를 채웁니다.",
       }),
       props: [
         {
           name: "id",
           type: "string",
           desc: l.trans({
-            en: "The host element's `id`. Nothing renders until that element is mounted.",
-            ko: "호스트 요소의 `id`입니다. 그 요소가 마운트되기 전에는 아무것도 그리지 않습니다.",
+            en: "The host element's `id`, looked up after the first render: nothing renders before then, on the server included.",
+            ko: "호스트 요소의 `id`이며 첫 렌더링 뒤에 찾습니다. 그 전에는 서버에서도 아무것도 그리지 않습니다.",
           }),
         },
         {
@@ -1158,14 +1158,16 @@ export const AdminSider = ({ selected, onSelect }: AdminSiderProps) => {
         l.trans({
           en: (
             <span>
-              <strong>Frame slots are in the first HTML.</strong> During SSR their content is written into the shell
-              instead of appearing after hydration. A host of your own is filled in the browser.
+              <strong>Frame slots are in the first HTML.</strong> On an SSR page the Layout components draw their chrome
+              into the server HTML without a portal, and after hydration that same DOM moves into the slot, so text
+              typed into it before hydration survives. A host of your own is filled only after hydration.
             </span>
           ),
           ko: (
             <span>
-              <strong>프레임 슬롯은 첫 HTML에 들어 있습니다.</strong> SSR 중에 내용을 바로 써 넣으므로 hydration이 끝난
-              뒤에야 나타나는 일이 없습니다. 직접 만든 호스트는 브라우저에서 채워집니다.
+              <strong>프레임 슬롯은 첫 HTML에 들어 있습니다.</strong> SSR 페이지에서는 Layout 컴포넌트가 portal 없이
+              chrome을 서버 HTML에 그리고, hydration 뒤에 그 DOM을 그대로 슬롯으로 옮기므로 hydration 전에 입력한 글자도
+              남습니다. 직접 만든 호스트는 hydration 뒤에야 채워집니다.
             </span>
           ),
         }),
