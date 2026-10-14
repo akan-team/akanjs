@@ -1293,8 +1293,8 @@ akan update-keygen myapp --platform android`,
       signature:
         "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default, and its `pack.json` holds this machine's paths. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하고, 그 `pack.json`에는 이 컴퓨터의 경로가 들어 있기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<channel>.json`과 `.sig`이며 CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<channel>.json`과 `.sig`이며 CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1473,8 +1473,8 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
       signature:
         "akan push-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>]",
       desc: l.trans({
-        en: "Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why.",
-        ko: "`pack-update`처럼 업데이트를 묶거나 `--pack`으로 그 명령이 만든 폴더를 받아 Akan Cloud 프로젝트에 올립니다. 키 보관과 서명, 게시는 그 프로젝트가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 팩에 새 스토어 빌드가 필요하거나 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝납니다.",
+        en: "Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why; any other failure exits 1.",
+        ko: "`pack-update`처럼 업데이트를 묶거나 `--pack`으로 그 명령이 만든 폴더를 받아 Akan Cloud 프로젝트에 올립니다. 키 보관과 서명, 게시는 그 프로젝트가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 팩에 새 스토어 빌드가 필요하거나 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝나며, 그 밖의 실패는 1로 끝납니다.",
       }),
       options: [
         {
@@ -1555,8 +1555,8 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json && 
       signature:
         "akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "After `release-ios` or `release-android`, register that store build with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Refused when the store build is not this commit's `--env` build — its web bundle, native API or update channel differs from the pack's, as when a later native build of the target overwrote `build/<platform>/bundle.json`.",
-        ko: "`release-ios`나 `release-android` 뒤에 그 스토어 빌드를 Akan Cloud 프로젝트에 등록하고, 같은 커밋의 팩을 내장 번들로 함께 올립니다. 스토어 빌드가 이 커밋의 `--env` 빌드가 아니면 거부합니다. 웹 번들, 네이티브 API, 업데이트 채널 중 하나라도 팩과 다른 경우이며, 이후에 그 타깃을 다시 네이티브 빌드해 `build/<platform>/bundle.json`을 덮어쓴 경우가 그렇습니다.",
+        en: "After `release-ios` or `release-android`, register that store build with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Refused when the store build is not this commit's `--env` build — its web bundle, native API or update channel differs from the pack's, as when a later native build of the target overwrote `build/<platform>/bundle.json`. That refusal exits 2; any other failure exits 1.",
+        ko: "`release-ios`나 `release-android` 뒤에 그 스토어 빌드를 Akan Cloud 프로젝트에 등록하고, 같은 커밋의 팩을 내장 번들로 함께 올립니다. 스토어 빌드가 이 커밋의 `--env` 빌드가 아니면 거부합니다. 웹 번들, 네이티브 API, 업데이트 채널 중 하나라도 팩과 다른 경우이며, 이후에 그 타깃을 다시 네이티브 빌드해 `build/<platform>/bundle.json`을 덮어쓴 경우가 그렇습니다. 이 거부는 2로, 그 밖의 실패는 1로 끝납니다.",
       }),
       options: [
         {
@@ -1571,7 +1571,13 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json && 
           enumOrFlag: "appStore | testFlight | playStore | playTesting | direct",
           desc: l.trans({ en: "Where the binary ships.", ko: "바이너리를 내보내는 곳입니다." }),
         },
-        targetOption,
+        {
+          ...targetOption,
+          desc: l.trans({
+            en: "One key of `native.targets` in `akan.config.ts`; `all` is not taken. Asked for when there are several.",
+            ko: "`akan.config.ts`의 `native.targets` 키 하나이며 `all`은 받지 않습니다. 타깃이 여럿이면 물어봅니다.",
+          }),
+        },
         releaseEnvOption,
         cloudSubspaceOption,
         cloudHostOption,

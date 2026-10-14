@@ -253,8 +253,8 @@ const nativeFields = [
   {
     key: "updates.revokedKeys",
     type: "string[]",
-    en: "Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too.",
-    ko: "모든 폰 릴리스가 폐기할 keyId(최대 16개)이며, 여기 두어 새 체크아웃에서 게시한 릴리스도 폐기를 이어 갑니다.",
+    en: "Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.",
+    ko: "모든 폰 릴리스가 폐기할 keyId(최대 16개)이며, 여기 두어 새 체크아웃에서 게시한 릴리스도 폐기를 이어 갑니다. 폰 빌드는 이 키들을 믿지 않습니다.",
   },
   {
     key: "updates.channel",
@@ -411,8 +411,8 @@ const nativeFields = [
     key: "desktop.recovery",
     type: '"errorPage" | "reload"',
     default: '"errorPage"',
-    en: '"reload" reloads a crashed page every time, relaunches the app and opens no dialog, download or link for a page; "errorPage" shows an error page.',
-    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄우며, 페이지가 대화상자·다운로드·링크를 열지 못하게 합니다. "errorPage"는 오류 화면을 보여 줍니다.',
+    en: '"reload" reloads a crashed page every time, relaunches the app and opens no dialog, share sheet, download or link for a page; "errorPage" shows an error page.',
+    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄우며, 페이지가 대화상자·공유 시트·다운로드·링크를 열지 못하게 합니다. "errorPage"는 오류 화면을 보여 줍니다.',
   },
   {
     key: "desktop.window",

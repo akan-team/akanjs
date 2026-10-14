@@ -300,8 +300,8 @@ export default page().render(() => {
     {
       name: "AgentLauncher",
       fallback: "DefaultLauncher",
-      en: "The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge.",
-      ko: "`label`, `hotkey`, 새 메시지 뱃지용 `unread`를 받는 닫힌 상태의 버튼입니다.",
+      en: "The closed-state button, given `label`, `hotkey`, `unread` for a new-message badge, and `style` carrying its layer, which it spreads onto its root as it does `className`.",
+      ko: "`label`, `hotkey`, 새 메시지 뱃지용 `unread`, 그리고 레이어를 담은 `style`을 받는 닫힌 상태의 버튼입니다. `style`은 `className`처럼 루트에 펼쳐 넣습니다.",
     },
     {
       name: "AgentBubble",

@@ -47,6 +47,9 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   change revokes it, `disconnect` when the socket closes while still subscribed — so a room already left runs
   neither again, and cleanup that must happen either way registers for both. From a `message` handler it belongs to
   the socket and runs at close. A handler that throws is logged and never blocks the rest of the teardown.
+- **A subscribe the client leaves before it finishes joins nothing.** When an `unsubscribe` for the room, or the
+  socket's close, arrives while the subscribe is still running, the subscribe answers `subscribe: false` and runs its
+  `unsubscribe` cleanup (and its `disconnect` one when the socket closed) instead of joining the room.
 
 ## Request Deadlines
 
@@ -92,6 +95,11 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
 - **The entry is the handler's result, not the response.** The lookup wraps the handler only, so `resolveReturn`
   still runs per call on the cached value — field masking, `hidden`/`secret` stripping and relation resolution are
   never cached, and a relation still costs its own load. The cache saves the handler, not the serialization.
+- **A hit hands `resolveReturn` an instance of the declared return model**, rebuilt from an entry that keeps its
+  `Map`s, bytes and dates, so a `resolveField` reads the same methods and `Dayjs` values on a hit as on a miss. It is
+  the declared model, not the service's document: a method only the document has is not there on a hit, and a return
+  declared as a `Light` model shows `resolveField` its light fields only. The entry still holds `hidden` and `secret`
+  values for its TTL, as the handler returned them.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
 - The default middleware chain is `Logging → Timeout → <lib middlewares>`, and the call inside it runs an

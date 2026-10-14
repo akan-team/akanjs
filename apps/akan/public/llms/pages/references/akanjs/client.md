@@ -54,6 +54,12 @@ Export
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
+- isMcpView: True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.
+
+- breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
+
+- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
@@ -71,6 +77,8 @@ Method
 - replace(href, { shallow }): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
 
 - back(): Goes back one entry. Browser only.
+
+- postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
 

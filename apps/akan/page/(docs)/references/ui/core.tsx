@@ -179,8 +179,8 @@ export default page().render(() => {
       key: "Link.Back",
       type: "{ className?, children?, fallback? }",
       desc: l.trans({
-        en: "Calls `router.back()` on click. With `fallback`, a button that goes there when there is no history.",
-        ko: "클릭하면 `router.back()`을 호출합니다. `fallback`을 주면 뒤로 갈 기록이 없을 때 그 경로로 가는 버튼이 됩니다.",
+        en: "A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history.",
+        ko: "`router.back()`을 호출하는 `<button>`입니다. `fallback`을 주면 뒤로 갈 기록이 없을 때 그 경로로 갑니다.",
       }),
     },
     {

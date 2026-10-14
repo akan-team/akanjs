@@ -1405,6 +1405,12 @@ Export
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
+- isMcpView: True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.
+
+- breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
+
+- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
@@ -1423,19 +1429,13 @@ Method
 
 - back(): Goes back one entry. Browser only.
 
+- postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
+
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
 
 - refresh(): Renders the current route again. Browser only.
 
 - redirect(href, { method, status }): On the server, answers with a redirect (307 by default). In the browser, navigates.
-
-- notFound(): Shows the nearest layout's .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
-
-- setLang(lang): Switches the locale and stays on the same route. Browser only.
-
-- getPath(): The current route without the locale and basePath. Browser only.
-
-- getPrefixedPath(path): Adds the locale and basePath to a path when the app has a basePath.
 
 ## akanjs/common
 
@@ -1498,6 +1498,8 @@ More in akanjs/common
 
 - bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
 
+- parseSearchParams: A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included. — Example: `parseSearchParams("?tag=&tag=b&q=x"); // { tag: ["", "b"], q: "x" }`
+
 - isThenable: Tells whether a value can be awaited.
 
 - interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`
@@ -1511,8 +1513,6 @@ Akan's leveled logger. A service already has one as `this.logger`, named after i
 A script that logs through an instance, a static call, a structured record and a sink:
 
 **Six levels, lowest first:** `trace`, `verbose`, `debug`, `info`, `warn`, `error`. A line prints at or above the console level, and `error` lines go to stderr.
-
-**The second argument is the context.** `logger.warn("retrying charge", "stripe")` prints `[stripe]` before the message.
 
 ## akanjs/constant
 
@@ -2107,7 +2107,7 @@ Does not connect
 
 **One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it. `--host` and `cloud.host` are both read as the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port still names the same session.
 
-**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing.
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing. A question a command asks while it runs — which script to run, a confirmation, which env server to copy to — fails the same way, naming the option that answers it.
 
 ## Code CLI
 
