@@ -27,7 +27,7 @@ import {
   ViewportMeta,
 } from "akanjs/client";
 import { isNativeApp } from "akanjs/client/native";
-import { Logger } from "akanjs/common";
+import { Logger, parseSearchParams } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import { DraftStore, getBaseSearchParam, st } from "akanjs/store";
@@ -335,16 +335,6 @@ function resolveThemePolicy(theme: AkanTheme): string | null {
   return theme;
 }
 
-function buildSearchParams(entries: Iterable<[string, string]>): Record<string, string | string[]> {
-  const params: Record<string, string | string[]> = {};
-  for (const [key, value] of entries) {
-    const current = params[key];
-    if (current === undefined) params[key] = value;
-    else params[key] = Array.isArray(current) ? [...current, value] : [current, value];
-  }
-  return params;
-}
-
 export const ClientInner = () => {
   const uiOperation = st.use.uiOperation({ agent: false });
   return (
@@ -395,7 +385,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     const syncHref = (href: string) => {
       const url = new URL(href, window.location.origin);
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
-      const searchParams = buildSearchParams(url.searchParams.entries());
+      const searchParams = parseSearchParams(url.search);
       st.set({
         pathname: url.pathname,
         path,
@@ -437,7 +427,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     const sync = () => {
       const { pathname, search, hash } = window.location;
       const { path } = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
-      const searchParams = buildSearchParams(new URLSearchParams(search).entries());
+      const searchParams = parseSearchParams(search);
       st.set({
         pathname: window.location.pathname,
         path,

@@ -9,7 +9,13 @@ import type {
   RouteRender,
   RouteViewport,
 } from "akanjs/client";
-import { type AkanI18nConfig, DEFAULT_AKAN_I18N, getBasePathFromPathname, Logger } from "akanjs/common";
+import {
+  type AkanI18nConfig,
+  DEFAULT_AKAN_I18N,
+  getBasePathFromPathname,
+  Logger,
+  parseSearchParams,
+} from "akanjs/common";
 import {
   type AkanTheme,
   getRequestDynamicUsage,
@@ -500,7 +506,7 @@ export class RscRenderer {
               transition: targetFrame?.pageState.transition,
             })
           : null;
-        const searchParams = RouteTreeBuilder.parseSearchParams(urlObj.search);
+        const searchParams = parseSearchParams(urlObj.search);
         const currentRouterState = readAkanRouterStateRequest(request.headers);
         const partialDecision = targetRouterState
           ? resolveAkanRscPartialDecision({
@@ -768,7 +774,7 @@ export class RscRenderer {
             kind,
             route: fallbackMatch.pathRoute,
             params: fallbackMatch.params,
-            searchParams: RouteTreeBuilder.parseSearchParams(fallbackUrl.search),
+            searchParams: parseSearchParams(fallbackUrl.search),
             pathname: fallbackUrl.pathname,
             url: fallbackUrl,
             error: kind === "error" ? error : undefined,
@@ -1411,7 +1417,7 @@ export class RscRenderer {
           kind: "not-found",
           route: matchedFallback.fallbackRoute,
           params: matchedFallback.params,
-          searchParams: RouteTreeBuilder.parseSearchParams(url.search),
+          searchParams: parseSearchParams(url.search),
           pathname: url.pathname,
           url,
         });

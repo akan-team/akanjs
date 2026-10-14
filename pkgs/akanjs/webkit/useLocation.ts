@@ -1,5 +1,6 @@
 "use client";
 import { csrLocation, type Location, type PathRoute, type RouteGuide } from "akanjs/client";
+import { parseSearchParams } from "akanjs/common";
 import { useCallback, useRef } from "react";
 import { CsrStack } from "./CsrStack";
 
@@ -47,23 +48,12 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
         return params;
       }, {});
     };
-    const getSearchParams = (search: string) => {
-      return [...new URLSearchParams(search).entries()].reduce<{ [key: string]: string | string[] }>(
-        (params, [key, value]) => {
-          params[key] = (
-            params[key] ? [...(Array.isArray(params[key]) ? params[key] : [params[key]]), value] : value
-          ) as string | string[];
-          return params;
-        },
-        {},
-      );
-    };
     const hrefWithoutOrigin = csrLocation.strip(href);
     const [hrefWithoutHash, hash = ""] = hrefWithoutOrigin.split("#");
     const [pathname, search] = hrefWithoutHash.split("?");
     const pathRoute = getPathRoute(pathname);
     const params = getParams(pathname, pathRoute);
-    const searchParams = getSearchParams(search);
+    const searchParams = parseSearchParams(search ?? "");
     return { pathname, search, params, searchParams, pathRoute, hash, href, entryId: CsrStack.nextEntryId() };
   }, []);
   return { getLocation };

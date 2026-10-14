@@ -130,17 +130,6 @@ export class RouteTreeBuilder {
     return candidates[0] ?? null;
   }
 
-  static parseSearchParams(search: string): Record<string, string | string[]> {
-    const result: Record<string, string | string[]> = {};
-    const urlSearchParams = new URLSearchParams(search);
-    for (const [key, value] of urlSearchParams.entries()) {
-      const existing = result[key];
-      if (existing !== undefined) result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
-      else result[key] = value;
-    }
-    return result;
-  }
-
   #addRouteModule(filePath: string, loader: () => Promise<RouteModuleSource>) {
     const parsed = parseRouteModuleKey(filePath);
     if (parsed.kind === "page") this.#pagePatterns.push({ key: filePath, pattern: parsed.pattern });
