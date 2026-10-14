@@ -4,7 +4,7 @@ import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 
-import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import View from "./View";
 
@@ -21,14 +21,10 @@ const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
   return null;
 };
 
-interface ViewModalProps {
+interface ViewModalProps extends ModalSurfaceProps {
   id: string;
   modal?: string;
   modalClassName?: string;
-  /** Passed to the `Modal`: `auto` is a full-screen sheet below `md`. */
-  presentation?: ModalPresentation;
-  /** Passed to the `Modal`: `right` is a side sheet from `md` up. */
-  placement?: ModalPlacement;
   viewClassName?: string;
   slice: SliceMeta;
   renderTitle?: (model: any) => ReactNode | string;

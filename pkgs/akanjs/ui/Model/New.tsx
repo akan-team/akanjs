@@ -2,13 +2,13 @@ import { usePage } from "akanjs/client";
 import type { SliceMeta } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { AiOutlinePlus } from "react-icons/ai";
-import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { buttonRecipe } from "../recipe";
 import type { DraftProp } from "./draftScope";
 import EditModal from "./EditModal";
 import NewWrapper from "./NewWrapper";
 
-interface NewProps<Full = any> {
+interface NewProps<Full = any> extends ModalSurfaceProps {
   trigger?: ReactNode;
   children: ReactNode;
   slice: SliceMeta;
@@ -19,10 +19,6 @@ interface NewProps<Full = any> {
   namespace?: string;
   /** Draft recovery for the form. `false` turns it off; a string names the scope explicitly. */
   draft?: DraftProp;
-  /** Passed to the form's `Modal`: `auto` is a full-screen sheet below `md`. */
-  presentation?: ModalPresentation;
-  /** Passed to the form's `Modal`: `right` is a side sheet from `md` up. */
-  placement?: ModalPlacement;
 }
 
 export default function New({
