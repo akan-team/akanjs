@@ -1,5 +1,8 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import type { UpdateEnvelope, UpdateManifest } from "@akanjs/native/api";
+import { isRecord } from "akanjs/common";
+import { UpdatePackFolder } from "./updatePackFolder";
 
 /** What the uploader needs of an S3 client; Bun.S3Client is one. */
 export interface UpdateBucket {
@@ -20,8 +23,6 @@ export interface PublishedUpdate {
   /** Its manifest's `bundle`, which tells it from the other manifests of the channel there. */
   bundle: string;
 }
-
-type JsonObject = Record<string, unknown>;
 
 //* A manifest names files that must already be there, so they go first and the manifests last, each signature before
 //* its manifest as `publish-update` writes them. A release file never changes once published (its name carries its
@@ -50,18 +51,18 @@ export class UpdateUploader {
   //* APIs, which a later publish from another machine may have replaced.
   static async releaseFiles(updatesDir: string, { dir, channel, bundle }: PublishedUpdate): Promise<string[]> {
     const keyOf = (file: unknown) => UpdateUploader.#keyOf(updatesDir, dir, file);
-    const desktop = await UpdateUploader.#read(path.join(dir, `${channel}.json`));
+    const desktop = await UpdateUploader.#read<UpdateManifest>(path.join(dir, `${channel}.json`));
     if (desktop?.bundle === bundle) {
-      const archive = (desktop.archive as JsonObject | undefined)?.url;
+      const archive = desktop.archive?.url;
       const patches = UpdateUploader.#field(desktop.patches, "url");
       return [archive, ...patches, `${channel}.json.sig`, `${channel}.json`].map(keyOf);
     }
     const names = await readdir(path.join(dir, channel)).catch(() => [] as string[]);
     for (const name of names.filter((name) => name.endsWith(".json"))) {
-      const envelope = await UpdateUploader.#read(path.join(dir, channel, name));
+      const envelope = await UpdateUploader.#read<UpdateEnvelope>(path.join(dir, channel, name));
       const manifest =
         typeof envelope?.manifest === "string"
-          ? UpdateUploader.#parse(Buffer.from(envelope.manifest, "base64").toString("utf8"))
+          ? UpdateUploader.#parse<UpdateManifest>(Buffer.from(envelope.manifest, "base64").toString("utf8"))
           : null;
       if (manifest?.bundle !== bundle) continue;
       const hashes = [...new Set(UpdateUploader.#field(manifest.files, "sha256"))];
@@ -69,7 +70,7 @@ export class UpdateUploader {
         throw new Error(
           `${path.join(dir, channel, name)} lists a file whose sha256 is not 64 hex digits; nothing was uploaded.`,
         );
-      return [...hashes.map((hash) => `files/${hash}`), `${channel}/${name}`].map(keyOf);
+      return [...hashes.map((hash) => `${UpdatePackFolder.filesDir}/${hash}`), `${channel}/${name}`].map(keyOf);
     }
     throw new Error(`${dir} holds no ${channel} manifest of release ${bundle}; nothing was uploaded.`);
   }
@@ -85,20 +86,20 @@ export class UpdateUploader {
   }
 
   static #field(list: unknown, key: string): unknown[] {
-    return Array.isArray(list) ? list.map((item) => (item as JsonObject | null)?.[key]) : [];
+    return Array.isArray(list) ? list.map((item) => (isRecord(item) ? item[key] : undefined)) : [];
   }
 
-  static async #read(file: string) {
+  static async #read<T>(file: string) {
     const text = await Bun.file(file)
       .text()
       .catch(() => "");
-    return UpdateUploader.#parse(text);
+    return UpdateUploader.#parse<T>(text);
   }
 
-  static #parse(text: string): JsonObject | null {
+  static #parse<T>(text: string): Partial<T> | null {
     try {
       const value: unknown = JSON.parse(text);
-      return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : null;
+      return isRecord(value) ? (value as Partial<T>) : null;
     } catch {
       return null;
     }

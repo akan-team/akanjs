@@ -1,9 +1,7 @@
-import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
 import type { App } from "../commandDecorators";
-import { ExitCodeError } from "../commandDecorators/exitCodeError";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
 import type { DesktopServerBundle } from "./desktopServerStage";
@@ -20,6 +18,7 @@ import { NativeConfig } from "./nativeConfig";
 import { NativePluginFolders } from "./nativePluginFolders";
 import { NativeWebDir } from "./nativeWebDir";
 import { ServerBundleSecrets } from "./serverBundleSecrets";
+import { type NativeUpdatePack, UpdatePackFolder } from "./updatePackFolder";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
@@ -56,26 +55,6 @@ export interface NativeDevOptions extends NativeRunOptions {
   /** The akan dev server the gateway proxies. */
   upstream: string;
   lang: string;
-}
-
-/** `<out>/pack.json`: what a signer needs of a pack, read instead of the log. */
-export interface NativeUpdatePack {
-  schema: 1;
-  app: string;
-  target: string;
-  platform: MobilePlatform;
-  env: NativeEnv;
-  channel: string;
-  appId: string;
-  appVersion: string;
-  nativeApi: string;
-  /** bundle.json `web.hash`: the web files as served, the part of a bundle id that names its content. */
-  webHash: string;
-  files: number;
-  size: number;
-  /** The folder it was read from or packed to; pack.json leaves it out. */
-  out: string;
-  compat?: { against: string; compatible: boolean; problems: string[] };
 }
 
 /** One native target of an app on the native runtime (a phone, or this computer as a desktop app): where it builds,
@@ -467,11 +446,10 @@ export class NativeApp {
         `Native target '${this.target.name}' takes no updates: add native.updates: { url, publicKey } to akan.config.ts first.`,
       );
     const dir = path.resolve(out ?? path.join(this.updatesDir, platform));
-    //? A pack that fails must not leave the previous pack's record behind for whoever reads the exit code.
-    await Promise.all(["pack.json", "compat.json"].map((name) => rm(path.join(dir, name), { force: true })));
+    await UpdatePackFolder.clear(dir);
     const packed = await api.packUpdate({ ...this.#task(platform, config), platform, out: dir });
     const channel = config.updates.channel ?? "production";
-    const bundle = (await Bun.file(path.join(packed.out, "bundle.json")).json()) as { web: { hash: string } };
+    const bundle = await UpdatePackFolder.readBundle(path.join(packed.out, UpdatePackFolder.bundleFile));
     const pack: NativeUpdatePack = {
       schema: 1,
       app: this.app.name,
@@ -488,30 +466,6 @@ export class NativeApp {
       out: packed.out,
     };
     return { ...packed, channel, pack };
-  }
-
-  //? Without `out`: the record travels in the pack's archive, and the folder is wherever it is read from.
-  static async writePack({ out, ...record }: NativeUpdatePack) {
-    await Bun.write(path.join(out, "pack.json"), `${JSON.stringify(record, null, 2)}\n`);
-  }
-
-  /** A pack `packUpdate` wrote, read back from its folder wherever it was moved. */
-  static async readPack(dir: string): Promise<NativeUpdatePack> {
-    const file = Bun.file(path.join(dir, "pack.json"));
-    if (!(await file.exists()))
-      throw new Error(`${dir} holds no pack.json: give the folder \`akan pack-update\` wrote.`);
-    const pack = (await file.json()) as NativeUpdatePack;
-    if (pack.schema !== 1) throw new Error(`${dir}/pack.json is schema ${pack.schema}, and this akan reads schema 1.`);
-    return { ...pack, out: path.resolve(dir) };
-  }
-
-  //* Exit 2, not a thrown 1: a CI tells "this needs a new store build" apart from a pack that broke.
-  static storeBuildVerdict({ out, compat }: Pick<NativeUpdatePack, "out" | "compat">, then?: string) {
-    if (!compat || compat.compatible) return null;
-    return new ExitCodeError(
-      `The pack in ${out} needs a new store build; it differs from the one ${compat.against} came from:\n- ${compat.problems.join("\n- ")}${then ? `\n${then}` : ""}`,
-      2,
-    );
   }
 
   static async compareBundles(appDir: string, shipped: string, bundle: string) {

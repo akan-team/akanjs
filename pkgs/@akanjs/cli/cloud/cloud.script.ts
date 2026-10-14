@@ -2,7 +2,7 @@ import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
-import { type MobilePlatform, NativeApp } from "@akanjs/devkit/mobile";
+import { type MobilePlatform, UpdatePackFolder } from "@akanjs/devkit/mobile";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
@@ -131,7 +131,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
     const pack = await this.#packToPush(app, { platform, target, env, write, allowLocalRelease, packDir });
-    const verdict = NativeApp.storeBuildVerdict(pack);
+    const verdict = UpdatePackFolder.storeBuildVerdict(pack);
     if (verdict) throw verdict;
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);

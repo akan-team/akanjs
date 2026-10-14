@@ -1,5 +1,3 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import {
@@ -14,7 +12,13 @@ import {
 } from "@akanjs/devkit/cloud";
 import { type App, assertPromptable, ExitCodeError, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { type MobilePlatform, NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
+import {
+  type MobilePlatform,
+  NativeApp,
+  type NativeUpdatePack,
+  resolveMobileTargets,
+  UpdatePackFolder,
+} from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
@@ -625,43 +629,6 @@ export class CloudRunner extends runner("cloud") {
     );
   }
 
-  static readonly #packRecords = ["manifest.template.json", "bundle.json", "pack.json", "compat.json"];
-
-  /** The pack as the tgz Akan Cloud takes: the files its manifest template lists, and the records beside them. */
-  static async #withArchive<T>(pack: NativeUpdatePack, use: (archive: string) => Promise<T>): Promise<T> {
-    const templateFile = Bun.file(path.join(pack.out, "manifest.template.json"));
-    if (!(await templateFile.exists()))
-      throw new Error(`${pack.out} holds no manifest.template.json: give the folder \`akan pack-update\` wrote.`);
-    const template = (await templateFile.json()) as { files?: { sha256?: unknown }[] };
-    const hashes = new Set((template.files ?? []).map((file) => file.sha256));
-    if (![...hashes].every((hash) => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))
-      throw new Error(`${pack.out}/manifest.template.json lists a file whose sha256 is not 64 hex digits.`);
-    const present = await Promise.all(
-      CloudRunner.#packRecords.map((name) => Bun.file(path.join(pack.out, name)).exists()),
-    );
-    const entries = [
-      ...CloudRunner.#packRecords.filter((_, idx) => present[idx]),
-      ...[...hashes].map((hash) => `files/${hash as string}`),
-    ];
-    const dir = await mkdtemp(path.join(os.tmpdir(), "akan-pack-"));
-    try {
-      //? files/ keeps every earlier pack's files (content-addressed), so the folder itself is not the pack; the names
-      //? go on stdin, not argv, because a Windows command line holds 32 KiB.
-      // A relative archive name, so GNU tar never reads a Windows drive letter (`C:\…`) as a remote `host:file` spec.
-      const tar = Bun.spawn(["tar", "-czf", "pack.tgz", "-C", pack.out, "-T", "-"], {
-        cwd: dir,
-        stdin: new Blob([entries.map((entry) => `./${entry}\n`).join("")]),
-        stdout: "ignore",
-        stderr: "pipe",
-      });
-      const [code, stderr] = await Promise.all([tar.exited, new Response(tar.stderr).text()]);
-      if (code !== 0) throw new Error(`tar of ${pack.out} failed: ${stderr.trim()}`);
-      return await use(path.join(dir, "pack.tgz"));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-
   /** A pack `akan pack-update` wrote, refused unless it is this app's and agrees with every flag given beside it. */
   async readPack(
     app: App,
@@ -673,7 +640,7 @@ export class CloudRunner extends runner("cloud") {
       allowLocalRelease,
     }: { platform: MobilePlatform | null; target: string | null; env: NativeEnv | null; allowLocalRelease: boolean },
   ) {
-    const pack = await NativeApp.readPack(dir);
+    const pack = await UpdatePackFolder.read(dir);
     const what = `The pack in ${pack.out} is ${pack.app} ${pack.target} ${pack.platform} --env ${pack.env}`;
     if (pack.app !== app.name) throw new Error(`${what}, not ${app.name}'s.`);
     if (platform && platform !== pack.platform) throw new Error(`${what}, not ${platform}.`);
@@ -697,7 +664,7 @@ export class CloudRunner extends runner("cloud") {
     { channel, notes }: { channel: string | null; notes: string | null },
   ) {
     const target = channel ?? pack.channel;
-    return await CloudRunner.#withArchive(pack, async (archive) => {
+    return await UpdatePackFolder.withArchive(pack, async (archive) => {
       const release = await new UpdatePackUpload(cloudApi, devProjectId)
         .send(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel: target, notes })
         .catch((error: unknown) => {
@@ -729,20 +696,24 @@ export class CloudRunner extends runner("cloud") {
   ) {
     const [mobileTarget] = await resolveMobileTargets(app, pack.target);
     if (!mobileTarget) throw new Error(`Native target '${pack.target}' was not found.`);
-    const bundlePath = path.join(new NativeApp(app, mobileTarget).outDir(pack.platform), "bundle.json");
+    const bundlePath = path.join(new NativeApp(app, mobileTarget).outDir(pack.platform), UpdatePackFolder.bundleFile);
     const bundleFile = Bun.file(bundlePath);
     const rebuild = `akan release-${pack.platform} ${app.name} --target ${pack.target} --env ${env}`;
     if (!(await bundleFile.exists())) throw new Error(`No store build at ${bundlePath}: run \`${rebuild}\` first.`);
-    const bundle = (await bundleFile.json()) as { web?: { hash?: string }; updates?: { channel?: string } };
+    const bundle = await UpdatePackFolder.readBundle(bundlePath);
     if (!bundle.updates)
       throw new Error(`The store build at ${bundlePath} takes no updates: give the target native.updates.`);
     //? Every native build of the target rewrites this file, so a debug or another env's build replaces the release's.
-    if (bundle.web?.hash !== pack.webHash)
+    if (bundle.web.hash !== pack.webHash)
       throw new Error(
         `The store build at ${bundlePath} is not this commit's --env ${env} build: its web bundle differs from the pack's. Run \`${rebuild}\`, then register that build.`,
       );
-    const compat = await NativeApp.compareBundles(app.cwdPath, bundlePath, path.join(pack.out, "bundle.json"));
-    const verdict = NativeApp.storeBuildVerdict(
+    const compat = await NativeApp.compareBundles(
+      app.cwdPath,
+      bundlePath,
+      path.join(pack.out, UpdatePackFolder.bundleFile),
+    );
+    const verdict = UpdatePackFolder.storeBuildVerdict(
       { out: pack.out, compat: { against: bundlePath, ...compat } },
       `Run \`${rebuild}\`, then register that build.`,
     );
@@ -753,7 +724,7 @@ export class CloudRunner extends runner("cloud") {
       );
     const { channel } = pack;
     const upload = new UpdatePackUpload(cloudApi, devProjectId);
-    return await CloudRunner.#withArchive(pack, async (archive) => {
+    return await UpdatePackFolder.withArchive(pack, async (archive) => {
       const binary = await upload
         .stage(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel, notes: null })
         .then((packUploadId) =>
