@@ -357,6 +357,20 @@ describe("EndpointIdempotency", () => {
     );
   });
 
+  test("reads a credential off the header as the account layer does, so a header it reads no token from is no caller", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(String, { guards: [Public] }).exec(() => `run-${++runs}`);
+    const cache = new ExpiringCache();
+    const callWithHeader = async (authorization: string, cookies: Record<string, string> = {}) =>
+      await (await callWith(info, cache, { headers: { authorization, "idempotency-key": "ack-3" }, cookies })).json();
+
+    expect(await callWithHeader("bearer   tok-z")).toBe("run-1");
+    expect(await callWithHeader("Bearer tok-z")).toBe("run-1");
+    expect(await callWithHeader("tok-z")).toBe("run-2");
+    expect(await callWithHeader("tok-z")).toBe("run-3");
+    expect(await callWithHeader("Bearer tok-z extra", { "jwt:idempotencyTest": "tok-z" })).toBe("run-4");
+  });
+
   test("runs a repeat that carries other arguments under the same key, and replays one with the same", async () => {
     let runs = 0;
     const info = buildEndpoint
