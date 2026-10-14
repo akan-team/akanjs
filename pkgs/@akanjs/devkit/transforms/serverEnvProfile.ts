@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { Logger } from "akanjs/common";
 
 export interface ServerEnvProfileProps {
   envDir: string;
@@ -20,13 +21,6 @@ export interface LibEnvSource extends ServerEnvSource {
 type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
 
 type EvaluatedMessage = { load: string } | { env: string; lossy: string[] } | { failure: string };
-
-//* The logger's redaction pattern plus what a config carries as a credential under another name: a webhook URL, a
-//* cloud access key, a mailer's `pass`, an HMAC, signing or encryption key, a registry's `regcred`, a DSN or connection
-//* string, and blocks that are credentials whole — `iapVerify` (its `apple` is the App Store shared secret) and a
-//* service account. Not every `…Key`: an `enrollKey` names a fleet.
-const secretKey =
-  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|cred|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
 
 //* A server env profile is bundled in place of the environment's own file, for a server that runs where its bundle
 //* can be read: the computers a desktop app is installed on. So it may hold no secret.
@@ -52,7 +46,7 @@ export class ServerEnvProfile {
   }
 
   static #carriesCredential(url: URL) {
-    return !!url.password || [...url.searchParams.keys()].some((name) => secretKey.test(name));
+    return !!url.password || [...url.searchParams.keys()].some((name) => Logger.isSecretKey(name));
   }
 
   static #isCredentialUrl(value: string) {
@@ -72,7 +66,10 @@ export class ServerEnvProfile {
     if (!value || typeof value !== "object") return { value, stripped: [] };
     const children = Object.entries(value).map(
       ([key, child]) =>
-        [key, ServerEnvProfile.strip(child, at ? `${at}.${key}` : key, underSecret || secretKey.test(key))] as const,
+        [
+          key,
+          ServerEnvProfile.strip(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
+        ] as const,
     );
     const stripped = children.flatMap(([, result]) => result.stripped);
     //? An array leaves out a stripped element whole, so neither a `null` nor an emptied `{}` takes its place.
@@ -107,14 +104,14 @@ export class ServerEnvProfile {
               .filter((part) => part.length >= 8)
               .map((part) => ({ path: at, value: part }))
           : [];
-      const named = secretKey.test(at.split(".").at(-1) ?? "");
+      const named = Logger.isSecretKey(at.split(".").at(-1) ?? "");
       return underSecret && value.length >= 8 && (named || ServerEnvProfile.distinctive(value))
         ? [{ path: at, value }]
         : [];
     }
     if (!value || typeof value !== "object") return [];
     return Object.entries(value).flatMap(([key, child]) =>
-      ServerEnvProfile.secretValues(child, at ? `${at}.${key}` : key, underSecret || secretKey.test(key)),
+      ServerEnvProfile.secretValues(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
     );
   }
 
@@ -132,7 +129,7 @@ export class ServerEnvProfile {
     if (typeof value === "string") return ServerEnvProfile.#isSecret(value, underSecret) ? [at] : [];
     if (!value || typeof value !== "object") return [];
     return Object.entries(value).flatMap(([key, child]) =>
-      ServerEnvProfile.secretPaths(child, at ? `${at}.${key}` : key, underSecret || secretKey.test(key)),
+      ServerEnvProfile.secretPaths(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
     );
   }
 
