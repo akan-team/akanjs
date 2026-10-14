@@ -35,13 +35,15 @@ import {
   type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { assertServerOfChannel, assertSigningKey, publishRelease } from "./lib/publish.ts";
+import { assertServerOfChannel, assertSigningKey, publishRelease, releaseRevocations } from "./lib/publish.ts";
 import {
   assertChannel,
   type DesktopArch,
   generateUpdateKey,
+  keyIdOf,
   type UpdateManifest,
   updateKeyPath,
+  validateUpdates,
   webManifest,
   writeWebBundle,
 } from "./lib/updates.ts";
@@ -102,7 +104,7 @@ export type {
 export { macosDistributionFromEnv, requestedDistribution, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.11.0";
+export const API_VERSION = "0.12.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -323,25 +325,35 @@ export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "confi
   server?: boolean;
   /** A desktop release's CPU, which names its feed folder: this computer's by default. */
   arch?: DesktopArch;
+  /**
+   * A phone release: keyIds of updates.publicKeys it starts revoking, beside updates.revokedKeys and what the channel's
+   * releases revoke. It is signed with a key listed after every key it revokes.
+   */
+  revoke?: string[];
+  /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+  resetSequence?: boolean;
 }
 
 /**
  * What publishUpdate() refuses before it builds, without building (CONFIG_INVALID): no updates settings, a channel no
- * app could be configured for, no signing key on this machine or another app's, and a desktop release whose server
- * presence is not the channel's previous release's. For a caller with a long build of its own before publishUpdate.
+ * app could be configured for, no signing key on this machine or another app's, a desktop release whose server
+ * presence is not the channel's previous release's, and a phone release whose revocations no phone would take. For a
+ * caller with a long build of its own before publishUpdate.
  */
 export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
   if (!options.config.updates)
     throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKeys } to publish for");
   const channel = options.channel ?? options.config.updates.channel ?? "production";
   const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
+  const problems: string[] = [];
+  const updates = validateUpdates(options.config.updates, problems);
+  if (!updates || problems.length)
+    throw new AkanNativeError("CONFIG_INVALID", "the config's updates are not valid", { problems });
   try {
     if (options.channel !== undefined) assertChannel(options.channel);
-    const { publicKey, publicKeys } = options.config.updates;
-    assertSigningKey(
-      { app: options.config.app, updates: { publicKeys: publicKeys ?? (publicKey ? [publicKey] : []) } },
-      options.platform,
-    );
+    const target = { app: options.config.app, updates };
+    assertSigningKey(target, options.platform);
+    releaseRevocations(target, options.platform, out, channel, options);
     const server = options.server ?? !!options.config.desktop?.server;
     assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel, options.arch);
   } catch (error) {
@@ -365,6 +377,10 @@ export function publishUpdate(
     windows?: Pick<WindowsBuild, "signing">;
     /** A desktop release's CPU, of the same OS: an x64 release from an arm64 machine. Default this computer's. */
     arch?: DesktopArch;
+    /** A phone release: keyIds of updates.publicKeys it starts revoking (PublishCheckOptions.revoke). */
+    revoke?: string[];
+    /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+    resetSequence?: boolean;
   },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
@@ -374,9 +390,11 @@ export function publishUpdate(
       ...(options.windows?.signing ? { windows: { signing: options.windows.signing } } : {}),
       ...(options.arch ? { arch: options.arch } : {}),
     });
-    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
-      throw toAkanNativeError(error, "CONFIG_INVALID");
-    });
+    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel, options).catch(
+      (error) => {
+        throw toAkanNativeError(error, "CONFIG_INVALID");
+      },
+    );
     return {
       build: result,
       dir,
@@ -403,15 +421,18 @@ export function compareBundles(shipped: string, bundle: string): { compatible: b
 
 /**
  * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
- * then read. `publicKey` goes into the config's `updates.publicKeys`; the key file never leaves the machine.
+ * then read. `publicKey` goes into the config's `updates.publicKeys`; the key file never leaves the machine. `keyId`
+ * is what a revocation names it by (`publishUpdate({ revoke })`, `updates.revokedKeys`).
  */
 export function updateKeygen(options: { config: AkanNativeConfig }): {
   publicKey: string;
+  keyId: string;
   keyPath: string;
   created: boolean;
 } {
   const keyPath = updateKeyPath(options.config.app.id);
-  return { ...generateUpdateKey(keyPath), keyPath };
+  const key = generateUpdateKey(keyPath);
+  return { ...key, keyId: keyIdOf(key.publicKey), keyPath };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */

@@ -174,6 +174,52 @@ describe("programmatic API", () => {
     }
   });
 
+  test("checkPublishUpdate refuses a phone release's revocation no phone would take, without building", () => {
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "revoke.update.key");
+    try {
+      const { publicKey } = updateKeygen({ config: config() });
+      const leaked = Buffer.alloc(32, 9).toString("base64");
+      const updates = { url: "https://updates.example.com", publicKeys: [leaked, publicKey] };
+      const out = join(root, "revoke-out");
+      const check = (options: { revoke?: string[]; resetSequence?: boolean }, extra: object = {}) => {
+        try {
+          return checkPublishUpdate({
+            appDir: app("revoke"),
+            config: config({ updates: { ...updates, ...extra } }),
+            platform: "android",
+            out,
+            ...options,
+          });
+        } catch (error) {
+          if (!(error instanceof AkanNativeError)) throw error;
+          return { code: error.code, message: error.message, problems: error.problems };
+        }
+      };
+      expect(check({ revoke: [keyIdOf(leaked)], resetSequence: true })).toEqual({ channel: "production", out });
+      expect(check({}, { revokedKeys: [keyIdOf(leaked)] })).toEqual({ channel: "production", out });
+      expect(check({ revoke: [keyIdOf(publicKey)] })).toMatchObject({
+        code: "CONFIG_INVALID",
+        message: expect.stringContaining("the key it would be signed with"),
+      });
+      expect(check({ revoke: ["0123456789abcdef"] })).toMatchObject({
+        code: "CONFIG_INVALID",
+        message: expect.stringContaining("--revoke 0123456789abcdef: updates.publicKeys holds"),
+      });
+      expect(check({ resetSequence: true })).toMatchObject({
+        code: "CONFIG_INVALID",
+        message: expect.stringContaining("--reset-sequence counts only in a release that revokes a key"),
+      });
+      expect(check({}, { revokedKeys: ["LEAKED"] })).toMatchObject({
+        code: "CONFIG_INVALID",
+        problems: ["updates.revokedKeys must list keyIds: 16 lowercase hex characters, as `update keygen` prints them"],
+      });
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
+  });
+
   test("desktop.recovery, desktop.window, desktop.screenCapture, desktop.webview2 and android.autoplay are checked", () => {
     const kiosk = config({
       desktop: {

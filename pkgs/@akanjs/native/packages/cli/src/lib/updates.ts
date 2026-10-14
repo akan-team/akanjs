@@ -17,7 +17,14 @@ import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sig
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
-import { checkUpdateEnvelope, isChannelName, isStrictBase64, RESERVED_CHANNELS } from "../../../core/src/kernel.ts";
+import {
+  checkUpdateEnvelope,
+  isChannelName,
+  isStrictBase64,
+  isUpdateKeyId,
+  MAX_REVOKE_KEYS,
+  RESERVED_CHANNELS,
+} from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError } from "./log.ts";
@@ -32,6 +39,11 @@ export interface UpdatesConfig {
    * app trusts the first.
    */
   publicKeys: string[];
+  /**
+   * keyIds every phone release revokes, kept in the config so a release published from another folder (a fresh CI
+   * checkout) still revokes them. `akan-native update publish --revoke` starts a revocation.
+   */
+  revokedKeys: string[];
   /** Manifest name under <platform>/. Default "production". */
   channel: string;
   /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
@@ -140,6 +152,7 @@ export function webManifest(release: {
   bundle: string;
   files: UpdateFile[];
   revokeKeys?: string[];
+  resetSequence?: boolean;
 }): UpdateManifest {
   return {
     schema: 2,
@@ -154,6 +167,7 @@ export function webManifest(release: {
     version: release.app.version,
     files: release.files,
     ...(release.revokeKeys?.length ? { revokeKeys: release.revokeKeys } : {}),
+    ...(release.resetSequence ? { resetSequence: true } : {}),
   };
 }
 
@@ -176,18 +190,20 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   if (typeof r.url !== "string" || !/^https?:\/\/[^/?#]+[^?#]*$/.test(r.url))
     problems.push("updates.url must be an http(s) URL without a query or fragment");
   const publicKeys = updatePublicKeys(r, problems);
+  const revokedKeys = updateRevokedKeys(r.revokedKeys, problems);
   if (r.channel !== undefined && (typeof r.channel !== "string" || !isChannelName(r.channel)))
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
   const reportUrl = updateReportUrl(r.report, problems);
   for (const key of Object.keys(r))
-    if (!["url", "publicKey", "publicKeys", "channel", "readyTimeout", "report"].includes(key))
+    if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report"].includes(key))
       problems.push(`updates.${key} is not supported`);
   if (typeof r.url !== "string" || !publicKeys) return null;
   return {
     url: r.url.replace(/\/+$/, ""),
     publicKeys,
+    revokedKeys,
     channel: (r.channel as string | undefined) ?? "production",
     readyTimeout: (r.readyTimeout as number | undefined) ?? 10_000,
     reportUrl,
@@ -203,6 +219,24 @@ function updateReportUrl(raw: unknown, problems: string[]): string | null {
     return null;
   }
   return url;
+}
+
+/** keyIds, as `update keygen` prints them, each once, no more than a manifest may revoke. */
+function updateRevokedKeys(raw: unknown, problems: string[]): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || !raw.every((id) => typeof id === "string" && isUpdateKeyId(id))) {
+    problems.push("updates.revokedKeys must list keyIds: 16 lowercase hex characters, as `update keygen` prints them");
+    return [];
+  }
+  if (new Set(raw).size !== raw.length) {
+    problems.push("updates.revokedKeys lists a key twice");
+    return [];
+  }
+  if (raw.length > MAX_REVOKE_KEYS) {
+    problems.push(`updates.revokedKeys lists more than the ${MAX_REVOKE_KEYS} keys a manifest may revoke`);
+    return [];
+  }
+  return raw as string[];
 }
 
 /** `publicKeys` (1–3, no repeats) or the one-key `publicKey`, never both. */

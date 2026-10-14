@@ -124,6 +124,12 @@ export interface AkanNativeConfig {
     url: string;
     publicKey?: string;
     publicKeys?: string[];
+    /**
+     * keyIds every phone release revokes (`update keygen` prints a key's), kept here so a release published from a fresh
+     * folder still revokes them; `update publish --revoke` starts a revocation. A key may revoke only keys listed
+     * before it in publicKeys, so a release is signed with one listed after them.
+     */
+    revokedKeys?: string[];
     channel?: string;
     readyTimeout?: number;
     report?: { url: string };
