@@ -424,7 +424,7 @@ Variable
 
 Workspace Config
 
-The `akan.config.ts` at the workspace root holds what spans every app: stages around all of them, the steps that close a build, and the cloud the CLI talks to. It is typed `WorkspaceConfig`, and app or library settings stay in their own files.
+The `akan.config.ts` at the workspace root holds what spans every app: stages around all of them, the steps that close a build, the cloud the CLI talks to, and the repositories it mirrors apps to (`subspace`). It is typed `WorkspaceConfig`, and app or library settings stay in their own files.
 
 - before (WorkspacePipelineStageInput[]): Stages that run before any app stage, one phase each.
 
@@ -439,6 +439,8 @@ The `akan.config.ts` at the workspace root holds what spans every app: stages ar
 Like an app's, the root `pipeline` may be a function of the build, `(ctx) => ({ … })`, without `ctx.app`.
 
 - cloud.host (string, default Akan Cloud): The cloud every cloud command talks to when it names no --host, such as a self-hosted one.
+
+- subspace.pushableBranches (string[], default main, develop, debug): Branches akan subspace push mirrors from; another is refused, so a feature branch never reaches a mirrored repo.
 
 Root Stage Kinds
 
