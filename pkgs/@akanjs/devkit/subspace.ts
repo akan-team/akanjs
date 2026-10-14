@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { toError } from "akanjs/common";
 import { AppExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { LibSource } from "./libSource";
@@ -200,7 +201,7 @@ export class Subspace {
     try {
       this.#config.assertPushable(branch);
     } catch (error) {
-      branchRefusal = error instanceof Error ? error.message : String(error);
+      branchRefusal = toError(error).message;
     }
     return {
       name: this.name,

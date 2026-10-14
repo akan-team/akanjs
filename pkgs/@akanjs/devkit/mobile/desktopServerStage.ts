@@ -1,6 +1,7 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ServerPolicy } from "@akanjs/native/api";
+import { toError } from "akanjs/common";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
@@ -150,7 +151,7 @@ export class DesktopServerStage {
       await this.app.spawn(process.execPath, DesktopServerStage.installArgs(arch), { cwd: this.dir });
     } catch (error) {
       throw new Error(
-        `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${error instanceof Error ? error.message : String(error)}`,
+        `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${toError(error).message}`,
         { cause: error },
       );
     }

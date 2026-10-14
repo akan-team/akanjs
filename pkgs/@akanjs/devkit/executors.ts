@@ -28,6 +28,7 @@ import {
   isRouteSourceFile,
   Logger,
   parseRouteModuleKey,
+  toError,
   validatePageSourceFile,
   validateSubRoutePageKey,
 } from "akanjs/common";
@@ -563,7 +564,7 @@ export class Executor {
       const { fixed } = await this.getLinter().fixFiles(filePaths);
       if (fixed.length > 0) this.logger.verbose(`Formatted ${fixed.length} scaffolded file(s)`);
     } catch (err) {
-      this.logger.verbose(`Skipped formatting scaffolded files: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.verbose(`Skipped formatting scaffolded files: ${toError(err).message}`);
     }
   }
   // Async so `typescript` (~65MB resident) loads only in the commands that typecheck.

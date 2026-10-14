@@ -27,6 +27,7 @@ import {
   pipelineOtaPlatforms,
   pipelinePlanLimits,
   pipelinePlanVersion,
+  toError,
 } from "akanjs/common";
 import { PipelineInputReader } from "./PipelineInputReader";
 import type {
@@ -161,7 +162,7 @@ export class PipelineCompiler {
     try {
       PipelinePlanSchema.parse(plan);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toError(error).message;
       this.#error(message.includes("at most") ? "pipeline.limit.exceeded" : "pipeline.internal", message, null, null);
       return this.#failed();
     }
@@ -230,12 +231,7 @@ export class PipelineCompiler {
       try {
         value = (config as (context: C) => unknown)(context);
       } catch (error) {
-        this.#error(
-          "pipeline.load.failed",
-          `the pipeline function threw: ${error instanceof Error ? error.message : String(error)}`,
-          file,
-          "pipeline",
-        );
+        this.#error("pipeline.load.failed", `the pipeline function threw: ${toError(error).message}`, file, "pipeline");
         return null;
       }
       if (value === undefined) {

@@ -20,7 +20,7 @@ import {
 } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import type { ServerPolicy } from "@akanjs/native/api";
-import { Logger, type LogRecord } from "akanjs/common";
+import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import type { InterruptTeardown } from "./interruptTeardown";
 
@@ -691,7 +691,7 @@ try {
     const failures = results.filter((result) => result.error);
     if (failures.length === 0) return;
     for (const failure of failures) {
-      const message = failure.error instanceof Error ? failure.error.message : String(failure.error);
+      const message = toError(failure.error).message;
       Logger.rawLog(`Native target ${failure.target} failed: ${message}`, undefined, "error");
     }
     throw new Error(`${failures.length}/${results.length} native targets failed`);
