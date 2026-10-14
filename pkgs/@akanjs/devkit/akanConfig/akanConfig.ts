@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ServerPolicy } from "@akanjs/native/api";
 import type { AkanPlugin } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
@@ -405,11 +406,9 @@ export class AkanAppConfig implements AppConfigResult {
       );
     return env as Record<string, string>;
   }
-  static #desktopServerWatchdog(
-    watchdog: unknown,
-    where: string,
-    configPath: string,
-  ): { intervalMs: number; failures: number } | null {
+  //? The akan.config.ts shape, which takes `true` and fills in what is left out; the launcher reads what this returns
+  //? with serverPolicyOf in @akanjs/native, which devkit cannot load while it reads a config.
+  static #desktopServerWatchdog(watchdog: unknown, where: string, configPath: string): ServerPolicy["watchdog"] | null {
     if (watchdog === undefined || watchdog === false) return null;
     const options = watchdog === true ? {} : watchdog;
     const whole = (value: unknown) => value === undefined || (Number.isInteger(value) && (value as number) > 0);

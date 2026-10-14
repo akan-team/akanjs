@@ -1,25 +1,22 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ServerPolicy } from "@akanjs/native/api";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
 import { DesktopBin } from "./desktopBin";
 
 /** What a desktop build hands the native runtime as `desktop.server`. */
-export interface DesktopServerBundle {
+export interface DesktopServerBundle extends ServerPolicy {
   dir: string;
   entry: string;
   env: Record<string, string>;
-  restart?: "forever" | number;
-  watchdog?: { intervalMs: number; failures: number };
 }
 
 /** How the targets that carry one build's server have it run (`desktop.server`, normalized). */
-export interface DesktopServerRun {
+export interface DesktopServerRun extends ServerPolicy {
   modules?: string[];
   env?: Record<string, string>;
-  restart?: "forever" | number;
-  watchdog?: { intervalMs: number; failures: number };
 }
 
 //* A desktop app's carried server is the backend `akan build` wrote into dist, installed on its own as the image's

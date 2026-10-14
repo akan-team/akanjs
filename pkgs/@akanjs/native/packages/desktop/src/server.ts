@@ -45,14 +45,36 @@ import { join } from "node:path";
 import { resolveGrant } from "./grants.ts";
 import type { DesktopServerState, DesktopServerStatus } from "./plugin.ts";
 
-export interface ServerManifest {
-  /** The file in resources/server that starts the server. */
-  entry: string;
-  env: Record<string, string>;
+/** How the launcher keeps the server running: server.json's, and desktop.server's in a config (cli desktop-server.ts). */
+export interface ServerPolicy {
   /** Crashes in a row before the launcher gives up, MAX_FAILURES unless named; "forever" never gives up. */
   restart?: number | "forever";
   /** The health route asked every `intervalMs` once the server is ready; `failures` missed in a row restart it. */
   watchdog?: { intervalMs: number; failures: number };
+}
+
+export interface ServerManifest extends ServerPolicy {
+  /** The file in resources/server that starts the server. */
+  entry: string;
+  env: Record<string, string>;
+}
+
+/** The policy `raw` names, and what is wrong with the rest of it, by key. */
+export function serverPolicyOf(raw: { restart?: unknown; watchdog?: unknown }): {
+  policy: ServerPolicy;
+  problems: string[];
+} {
+  const policy: ServerPolicy = {};
+  const problems: string[] = [];
+  const positive = (value: unknown): value is number => Number.isInteger(value) && (value as number) > 0;
+  const { restart, watchdog } = raw;
+  if (restart === "forever" || positive(restart)) policy.restart = restart;
+  else if (restart !== undefined) problems.push('restart must be "forever" or a count of crashes in a row from 1');
+  const { intervalMs, failures } = (watchdog ?? {}) as { intervalMs?: unknown; failures?: unknown };
+  if (positive(intervalMs) && positive(failures)) policy.watchdog = { intervalMs, failures };
+  else if (watchdog !== undefined)
+    problems.push("watchdog must be { intervalMs, failures }, both whole numbers from 1");
+  return { policy, problems };
 }
 
 /** Answered by the server's own process, solo or behind its gateway, without a database round trip. */
@@ -229,7 +251,7 @@ export function readServerManifest(resources: string): ServerManifest | null {
     entry?: unknown;
     env?: unknown;
     restart?: unknown;
-    watchdog?: { intervalMs?: unknown; failures?: unknown } | null;
+    watchdog?: unknown;
   };
   if (typeof raw.entry !== "string" || !raw.entry) throw new Error(`${file}: entry must name a file`);
   const env = Object.fromEntries(
@@ -237,16 +259,8 @@ export function readServerManifest(resources: string): ServerManifest | null {
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
-  const restart =
-    raw.restart === "forever" || (Number.isInteger(raw.restart) && (raw.restart as number) > 0)
-      ? (raw.restart as number | "forever")
-      : undefined;
-  const { intervalMs, failures } = raw.watchdog ?? {};
-  const watchdog =
-    Number.isInteger(intervalMs) && (intervalMs as number) > 0 && Number.isInteger(failures) && (failures as number) > 0
-      ? { intervalMs: intervalMs as number, failures: failures as number }
-      : undefined;
-  return { entry: raw.entry, env, ...(restart ? { restart } : {}), ...(watchdog ? { watchdog } : {}) };
+  //? The build checked it (cli desktop-server.ts); a policy that is wrong here is left out, never a launch refused.
+  return { entry: raw.entry, env, ...serverPolicyOf(raw).policy };
 }
 
 export function serverArgv(execPath: string, resources: string, entry: string): string[] {

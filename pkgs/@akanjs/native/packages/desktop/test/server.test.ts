@@ -19,6 +19,7 @@ import {
   type SpawnOptions,
   serverArgv,
   serverEnv,
+  serverPolicyOf,
 } from "../src/server.ts";
 
 interface FakeChild extends ServerProcess {
@@ -451,6 +452,19 @@ describe("the server a desktop app carries", () => {
     });
     writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: "main.js", restart: 0, watchdog: {} }));
     expect(readServerManifest(resources)).toEqual({ entry: "main.js", env: {} });
+  });
+
+  test("one reading of restart and watchdog, which names what is wrong with each", () => {
+    expect(serverPolicyOf({})).toEqual({ policy: {}, problems: [] });
+    expect(serverPolicyOf({ restart: 3, watchdog: { intervalMs: 500, failures: 2 } })).toEqual({
+      policy: { restart: 3, watchdog: { intervalMs: 500, failures: 2 } },
+      problems: [],
+    });
+    expect(serverPolicyOf({ restart: 1.5, watchdog: null }).problems).toEqual([
+      'restart must be "forever" or a count of crashes in a row from 1',
+      "watchdog must be { intervalMs, failures }, both whole numbers from 1",
+    ]);
+    expect(serverPolicyOf({ restart: "always", watchdog: { intervalMs: 500 } }).policy).toEqual({});
   });
 
   test("restart: forever never gives up, and paces a server that cannot boot instead of spinning", async () => {

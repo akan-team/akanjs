@@ -3,16 +3,14 @@
 
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { LAUNCHER_ENV_KEYS } from "../../../desktop/src/server.ts";
+import { LAUNCHER_ENV_KEYS, type ServerPolicy, serverPolicyOf } from "../../../desktop/src/server.ts";
 import type { AkanNativeConfig } from "../config.ts";
 
-export interface DesktopServerConfig {
+export interface DesktopServerConfig extends ServerPolicy {
   /** Absolute. */
   dir: string;
   entry: string;
   env: Record<string, string>;
-  restart?: number | "forever";
-  watchdog?: { intervalMs: number; failures: number };
 }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -58,13 +56,7 @@ export function validateDesktopServer(
       else if (typeof value !== "string") problems.push(`desktop.server.env.${key} must be a string`);
       else env[key] = value;
     }
-  const { restart, watchdog } = server;
-  if (restart !== undefined && restart !== "forever" && !(Number.isInteger(restart) && restart > 0))
-    problems.push('desktop.server.restart must be "forever" or a count of crashes in a row from 1');
-  const positive = (value: unknown) => Number.isInteger(value) && (value as number) > 0;
-  if (watchdog !== undefined && !(watchdog && positive(watchdog.intervalMs) && positive(watchdog.failures)))
-    problems.push("desktop.server.watchdog must be { intervalMs, failures }, both whole numbers from 1");
-  return problems.length === before && dir
-    ? { dir, entry, env, ...(restart !== undefined ? { restart } : {}), ...(watchdog ? { watchdog } : {}) }
-    : null;
+  const { policy, problems: policyProblems } = serverPolicyOf(server);
+  for (const problem of policyProblems) problems.push(`desktop.server.${problem}`);
+  return problems.length === before && dir ? { dir, entry, env, ...policy } : null;
 }
