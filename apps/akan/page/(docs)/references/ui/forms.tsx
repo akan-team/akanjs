@@ -614,8 +614,8 @@ export const Search = ({ query, onChangeQuery, onSearch }: SearchProps) => {
           name: "options",
           type: "T[] | { label, value }[] | enumOf class",
           desc: l.trans({
-            en: "The choices. An enum shows its raw values; pass pairs for translated labels.",
-            ko: "선택지입니다. enum은 원래 값을 그대로 보여주므로, 번역된 라벨이 필요하면 쌍으로 넘기세요.",
+            en: "The choices. An enum is listed under its dictionary's names; a value the dictionary does not name shows as is.",
+            ko: "선택지입니다. enum은 dictionary에 적은 이름으로 표시되고, dictionary에 없는 값은 그대로 보입니다.",
           }),
         },
         {

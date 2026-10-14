@@ -641,8 +641,8 @@ export default page().render(() => {
       key: "Model.ViewEditModal",
       type: "{ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel? }",
       desc: l.trans({
-        en: "One modal that flips between view and form; `menu={false}` drops the kebab and its remove entry.",
-        ko: "상세 보기와 폼을 오가는 modal 하나입니다. `menu={false}`면 케밥 메뉴와 그 안의 삭제 항목이 빠집니다.",
+        en: "One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.",
+        ko: "상세 보기와 폼을 오가는 modal 하나입니다. 수정 버튼과 삭제 항목은 slice guards가 연 동작에만 나타나며, `menu={false}`면 케밥 메뉴가 빠집니다.",
       }),
     },
     {

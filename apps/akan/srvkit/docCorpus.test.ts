@@ -36,7 +36,7 @@ describe("DocCorpus", () => {
     expect(entries.filter((entry) => !entry.summary)).toEqual([]);
     expect(entries.filter((entry) => entry.summary === entry.title)).toEqual([]);
     const signal = entries.find((entry) => entry.href === "/references/akanjs/signal");
-    expect(signal?.summary).toContain("Declares the calls a module exposes");
+    expect(signal?.summary).toContain("declares the API boundary around a service");
   });
 
   test("keeps the full page as the body, code examples included", () => {

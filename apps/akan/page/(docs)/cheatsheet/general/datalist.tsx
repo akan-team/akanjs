@@ -566,12 +566,15 @@ export const Card = ({ className, post }: ModelProps<"post", cnst.LightPost>) =>
             {l.trans({
               en: (
                 <span>
-                  A control that takes label/value pairs, such as <code>Select</code>, needs the labels mapped in:
+                  <code>Select</code> takes the class itself, as <code>{"options={cnst.PostStatus}"}</code>, and lists
+                  each value under its dictionary name. A control that takes only label/value pairs needs the labels
+                  mapped in:
                 </span>
               ),
               ko: (
                 <span>
-                  <code>Select</code>처럼 label/value 쌍을 받는 컨트롤에는 라벨을 직접 매핑해 넘깁니다:
+                  <code>Select</code>는 <code>{"options={cnst.PostStatus}"}</code>처럼 클래스를 그대로 받아 각 값을
+                  dictionary 이름으로 보여줍니다. label/value 쌍만 받는 컨트롤에는 라벨을 직접 매핑해 넘깁니다:
                 </span>
               ),
             })}
@@ -587,32 +590,6 @@ const statusOptions = cnst.PostStatus.map((status) => ({
   label: l(\`postStatus.\${status}\`),
 }));`}
         />
-        <Docs.Description>
-          <ul className={bulletList}>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>
-                      <code>Select</code> shows raw values.
-                    </strong>{" "}
-                    <code>{"options={cnst.PostStatus}"}</code> works, but the list reads <code>draft</code>, not the
-                    translated label.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>
-                      <code>Select</code>는 값을 그대로 보여줍니다.
-                    </strong>{" "}
-                    <code>{"options={cnst.PostStatus}"}</code>도 되지만, 목록에 번역된 라벨이 아니라 <code>draft</code>
-                    가 보입니다.
-                  </span>
-                ),
-              })}
-            </li>
-          </ul>
-        </Docs.Description>
       </Scroll.Slide>
       <Divider />
 
