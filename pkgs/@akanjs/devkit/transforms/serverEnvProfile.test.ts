@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { Logger } from "akanjs/common";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { ServerEnvProfile } from "./serverEnvProfile";
 
@@ -70,6 +71,16 @@ describe("ServerEnvProfile.secretPaths", () => {
       "db.pwd",
       "db.connectionString",
     ]);
+  });
+});
+
+describe("the secret names a profile may not carry", () => {
+  test("are the names the logger masks, so the two cannot drift apart", () => {
+    for (const name of ["apiKey", "sentryDsn", "slackWebhook", "dbPassword", "serviceAccount", "enrollKey", "host"]) {
+      const named = ServerEnvProfile.secretPaths({ [name]: "a value" }).length > 0;
+      expect(named).toBe(Logger.isSecretKey(name));
+      expect(Logger.redactAttrs({ [name]: "a value" })[name] === "[redacted]").toBe(named);
+    }
   });
 });
 

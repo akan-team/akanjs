@@ -88,8 +88,14 @@ const consoleMethodMap = {
 } as const satisfies { [key in LogLevel]: "debug" | "info" | "warn" | "error" };
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
-// Masked before the record exists: a record may leave the process over the network.
-const redactedAttrKey = /password|passwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key/i;
+//* Masked before the record exists, as a record may leave the process over the network; the same names are what a
+//* bundle shipped to other computers may not carry (devkit ServerEnvProfile). Beyond the obvious, what a config holds as
+//* a credential under another name: a webhook URL, a cloud access key, a mailer's `pass`, an HMAC, signing or
+//* encryption key, a registry's `regcred`, a DSN or connection string, and blocks that are credentials whole —
+//* `iapVerify` (its `apple` is the App Store shared secret) and a service account. Not every `…Key`: an `enrollKey`
+//* names a fleet.
+const secretKey =
+  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|cred|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
 
 // `process.env?.X` does not guard an undeclared `process`: its ReferenceError at module scope kills the client bundle.
 const envValue = (key: string): string | undefined => (typeof process === "undefined" ? undefined : process.env?.[key]);
@@ -175,16 +181,19 @@ export class Logger {
   static inlineData(value: unknown, max = 500): string {
     let text: string;
     try {
-      text = JSON.stringify(value, (key, val) => (key && redactedAttrKey.test(key) ? "[redacted]" : val)) ?? "";
+      text = JSON.stringify(value, (key, val) => (key && secretKey.test(key) ? "[redacted]" : val)) ?? "";
     } catch {
       text = "[unserializable]";
     }
     return text.length > max ? `${text.slice(0, max)}…` : text;
   }
+  static isSecretKey(name: string) {
+    return secretKey.test(name);
+  }
   static redactAttrs(attrs: LogAttrs): LogAttrs {
     let redacted: LogAttrs | null = null;
     for (const key of Object.keys(attrs)) {
-      if (!redactedAttrKey.test(key)) continue;
+      if (!secretKey.test(key)) continue;
       redacted ??= { ...attrs };
       redacted[key] = "[redacted]";
     }
