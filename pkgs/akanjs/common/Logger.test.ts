@@ -359,7 +359,7 @@ describe("Logger replay", () => {
 describe("Logger in a gateway's child", () => {
   // The gateway prints a spawned child's stdout and keeps its stderr to the log file unless asked.
   const run = (env: Record<string, string>) => {
-    const logger = new URL("./Logger.ts", import.meta.url).pathname;
+    const logger = new URL("./Logger.ts", import.meta.url).href;
     const script = `const { Logger } = await import(${JSON.stringify(logger)}); Logger.error("boom"); Logger.rawLog("raw", "process", "error");`;
     const proc = Bun.spawnSync(["bun", "-e", script], {
       env: { ...process.env, ...env },
