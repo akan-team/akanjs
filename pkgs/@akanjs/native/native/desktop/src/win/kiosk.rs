@@ -24,6 +24,9 @@ pub fn lock(webview: &wry::WebView, label: &str) {
   }));
   //? Chromium's own interception, under the script: an input in a closed shadow root, or clicked with dispatchEvent,
   //? opens no dialog either. It holds for the documents of the page's own process; a cross-site frame has the script.
+  //? Chromium sends the intercepted chooser as a Page domain event, which it takes only once that domain is enabled.
+  let enabled = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+  let _ = unsafe { core.CallDevToolsProtocolMethod(&HSTRING::from("Page.enable"), &HSTRING::from("{}"), &enabled) };
   let method = HSTRING::from("Page.setInterceptFileChooserDialog");
   if let Err(e) = unsafe { core.CallDevToolsProtocolMethod(&method, &HSTRING::from(r#"{"enabled":true}"#), &done) } {
     log!("{label}: a file input past the page's script may still open a file dialog: {e}");
