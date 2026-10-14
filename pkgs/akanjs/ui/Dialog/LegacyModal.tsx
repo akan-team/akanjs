@@ -1,5 +1,4 @@
 "use client";
-import { useDrag } from "@use-gesture/react";
 import { cn, usePage } from "akanjs/client";
 import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
@@ -9,6 +8,8 @@ import { config, useSpring } from "react-spring";
 import { animated } from "../animated";
 import { buttonRecipe } from "../Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
+import { SheetHandle } from "../SheetHandle";
+import { useDismissDrag } from "../useDismissDrag";
 
 import { DialogContext } from "./Provider";
 
@@ -92,18 +93,19 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     [closeModal, confirmClose],
   );
 
-  const bind = useDrag(
-    ({ last, velocity: [, vy], direction: [, dy], offset: [, oy], movement: [, my], cancel, canceled }) => {
-      if (!ref.current) return;
-      const height = Math.max((ref.current.clientHeight || MODAL_MARGIN) - MODAL_MARGIN, 1);
-      if (my > 70) cancel();
-      if (last) {
-        if (my > height * 0.5 || (vy > 0.5 && dy > 0)) requestClose({ velocity: vy / height });
-        else void openModal({ canceled });
-      } else void api.start({ translate: oy / height, immediate: true });
+  const bind = useDismissDrag({
+    threshold: (height) => height * 0.5,
+    flickSpeed: 0.5,
+    cutAt: 70,
+    heightOf: () => Math.max((ref.current?.clientHeight || MODAL_MARGIN) - MODAL_MARGIN, 1),
+    enabled: () => !!ref.current,
+    onDrag: (y, height) => void api.start({ translate: y / height, immediate: true }),
+    onRelease: ({ dismiss, velocity, height, canceled }) => {
+      if (dismiss) requestClose({ velocity: velocity / height });
+      else void openModal({ canceled });
     },
-    { from: () => [0, translate.get()], filterTaps: true, bounds: { top: 0 }, rubberband: true },
-  );
+    gesture: { from: () => [0, translate.get()], filterTaps: true, bounds: { top: 0 }, rubberband: true },
+  });
 
   const opacity = translate.to((t) => {
     return interpolate(OPACITY.END, OPACITY.START, t);
@@ -202,9 +204,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
                 title && "border-border/70 border-b bg-card/80 backdrop-blur-sm",
               )}
             >
-              <div className="flex justify-center pt-2 md:hidden">
-                <div className="h-1 w-10 rounded-full bg-foreground/15" />
-              </div>
+              <SheetHandle className="pt-2 md:hidden" />
               <div className="flex items-start gap-3 px-5 pt-4 pb-3">
                 <div className="min-w-0 flex-1 font-semibold text-lg leading-snug" id={titleId}>
                   {title}

@@ -1,5 +1,4 @@
 "use client";
-import { useDrag } from "@use-gesture/react";
 import { cn } from "akanjs/client";
 import { useBodyScrollLock, useEscapeKey, usePageActivity } from "akanjs/webkit";
 import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -9,6 +8,8 @@ import { config, useSpring } from "react-spring";
 import { animated } from "./animated";
 import { buttonRecipe } from "./Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "./overlayLayer";
+import { SheetHandle } from "./SheetHandle";
+import { useDismissDrag } from "./useDismissDrag";
 
 interface BottomSheetProps {
   className?: string;
@@ -83,11 +84,14 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
       onCancel?.();
     };
 
-    const bind = useDrag(({ down, movement: [, my] }) => {
-      const height = ref.current?.offsetHeight ?? 0;
-      if (down) void api.start({ y: height ? (Math.max(0, my) / height) * PARKED : 0, immediate: true });
-      else if (my > height / 3) dismiss();
-      else void show();
+    const bind = useDismissDrag({
+      threshold: (height) => height / 3,
+      heightOf: () => ref.current?.offsetHeight ?? 0,
+      onDrag: (y, height) => void api.start({ y: height ? (Math.max(0, y) / height) * PARKED : 0, immediate: true }),
+      onRelease: (release) => {
+        if (release.dismiss) dismiss();
+        else void show();
+      },
     });
 
     useImperativeHandle(bottomSheetRef, () => ({
@@ -150,9 +154,9 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
                   <OverlayPortalProvider value={root}>
                     {header ??
                       (type === "half" ? (
-                        <animated.div {...bind()} className="flex shrink-0 cursor-grab touch-pan-y justify-center py-3">
-                          {handle ?? <div className="h-1 w-10 rounded-full bg-foreground/15" />}
-                        </animated.div>
+                        <SheetHandle {...bind()} className="cursor-grab touch-pan-y py-3">
+                          {handle}
+                        </SheetHandle>
                       ) : (
                         <div className="flex shrink-0 justify-end p-2">
                           <div className="contents" onClick={dismiss}>

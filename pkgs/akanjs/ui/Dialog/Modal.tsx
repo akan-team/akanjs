@@ -1,5 +1,4 @@
 "use client";
-import { useDrag } from "@use-gesture/react";
 import { cn, usePage } from "akanjs/client";
 import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
@@ -7,10 +6,13 @@ import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
 import { buttonRecipe } from "../Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
+import { SheetHandle } from "../SheetHandle";
+import { useDismissDrag } from "../useDismissDrag";
 
 import { isSheetNow, type ModalSurfaceProps, modalSurfaceOf } from "./modalSurface";
 import { DialogContext } from "./Provider";
 
+//? A distance, not a share of the panel as a bottom sheet takes: a share of a full-screen sheet is most of the screen.
 const DISMISS_DRAG_PX = 120;
 
 export interface ModalProps extends ModalSurfaceProps {
@@ -50,18 +52,17 @@ export const Modal = ({
     onCancel?.();
   }, [confirmClose, l, onCancel, setOpen]);
 
-  const bindDismissDrag = useDrag(
-    ({ down, movement: [, my], velocity: [, vy], direction: [, dy] }) => {
-      if (!isSheetNow(presentation, placement)) return;
-      if (down) {
-        setDragY(Math.max(0, my));
-        return;
-      }
+  const bindDismissDrag = useDismissDrag({
+    threshold: () => DISMISS_DRAG_PX,
+    flickSpeed: 0.5,
+    enabled: () => isSheetNow(presentation, placement),
+    onDrag: (y) => setDragY(Math.max(0, y)),
+    onRelease: ({ dismiss }) => {
       setDragY(0);
-      if (my > DISMISS_DRAG_PX || (vy > 0.5 && dy > 0)) requestClose();
+      if (dismiss) requestClose();
     },
-    { axis: "y", filterTaps: true },
-  );
+    gesture: { axis: "y", filterTaps: true },
+  });
   const dragProps = presentation === "dialog" ? {} : bindDismissDrag();
 
   useBodyScrollLock(open);
@@ -134,9 +135,7 @@ export const Modal = ({
             </div>
           )}
           {presentation === "dialog" ? null : (
-            <div {...dragProps} className={cn("shrink-0 touch-none justify-center pt-2", surface.handle)}>
-              <div className="h-1 w-10 rounded-full bg-foreground/15" />
-            </div>
+            <SheetHandle {...dragProps} className={cn("touch-none pt-2", surface.handle)} />
           )}
           {title ? (
             <div
