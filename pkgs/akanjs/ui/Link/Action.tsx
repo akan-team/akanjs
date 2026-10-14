@@ -12,16 +12,15 @@ export interface BackProps extends ActionProps {
   fallback?: string;
 }
 
-export const Back = ({ className, children, fallback }: BackProps) =>
-  fallback === undefined ? (
-    <div className={cn("cursor-pointer", className)} onClick={() => router.back()}>
-      {children}
-    </div>
-  ) : (
-    <button type="button" className={cn("cursor-pointer", className)} onClick={() => router.backOrFallback(fallback)}>
-      {children}
-    </button>
-  );
+export const Back = ({ className, children, fallback }: BackProps) => (
+  <button
+    type="button"
+    className={cn("cursor-pointer", className)}
+    onClick={() => (fallback === undefined ? router.back() : router.backOrFallback(fallback))}
+  >
+    {children}
+  </button>
+);
 
 export const Close = ({ className, children }: ActionProps) => (
   <div className={cn("cursor-pointer", className)} onClick={() => window.close()}>
