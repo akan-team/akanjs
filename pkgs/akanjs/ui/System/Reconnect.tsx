@@ -3,6 +3,7 @@ import { cn, fetch, usePage } from "akanjs/client";
 import { useInterval } from "akanjs/webkit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TbPlugConnected, TbPlugConnectedX } from "react-icons/tb";
+import { overlayZ } from "../overlayLayer";
 
 const DOTS_LENGTH = 4;
 
@@ -77,7 +78,10 @@ export const Reconnect = () => {
   if (process.env.AKAN_PUBLIC_ENV !== "local") return null;
   if (connectStatus === "initial" || connectStatus === "normal") return null;
   return (
-    <div className="fixed inset-0 z-[200] flex animate-fadeIn flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 flex animate-fadeIn flex-col items-center justify-center bg-background/80 backdrop-blur-sm"
+      style={{ zIndex: overlayZ.reconnect }}
+    >
       <div className="flex w-[min(90vw,26rem)] flex-col items-center gap-4 rounded-box border border-border bg-card p-8 text-center text-card-foreground shadow-2xl">
         <div
           className={cn(

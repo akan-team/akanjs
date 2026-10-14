@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { isOwnOverlayClick, OVERLAY_LAYER_ATTR } from "./overlayLayer";
+import { isOwnOverlayClick, OVERLAY_LAYER_ATTR, overlayZ } from "./overlayLayer";
 
 const originalElement = globalThis.Element;
 
@@ -57,5 +57,24 @@ describe("isOwnOverlayClick", () => {
     expect(isOwnOverlayClick(clickIn(new FakeElement()), "menu1")).toBe(false);
     expect(isOwnOverlayClick(null, "menu1")).toBe(false);
     expect(isOwnOverlayClick({} as EventTarget, "menu1")).toBe(false);
+  });
+});
+
+describe("overlayZ", () => {
+  test("stacks the layers in the order their reasons give", () => {
+    const { select, dropdown, popconfirmScrim, popconfirm, tooltip, modal, approval } = overlayZ;
+    const bottomUp = [select, dropdown, popconfirmScrim, popconfirm, tooltip, modal, approval];
+    expect(bottomUp).toEqual([...bottomUp].sort((a, b) => a - b));
+    expect(new Set(bottomUp).size).toBe(bottomUp.length);
+
+    expect(overlayZ.toast).toBeGreaterThan(overlayZ.modal);
+    expect(overlayZ.agentLauncher).toBeLessThan(overlayZ.dropdown);
+    expect(overlayZ.agentLauncher).toBeLessThan(overlayZ.select);
+    expect(overlayZ.agentPanel).toBeGreaterThan(Math.max(overlayZ.toast, overlayZ.approval, overlayZ.modal));
+  });
+
+  test("leaves Reconnect alone on top", () => {
+    const others = Object.entries(overlayZ).filter(([name]) => name !== "reconnect");
+    for (const [, zIndex] of others) expect(overlayZ.reconnect).toBeGreaterThan(zIndex);
   });
 });
