@@ -188,6 +188,35 @@ describe("Executor filesystem helpers", () => {
     expect(formatted).toEqual([path.join(root, "apps/demo/page/task/_index.tsx")]);
   });
 
+  test("hands the formatter only the files a template wrote, never one overwrite: false kept", async () => {
+    const { root, app } = trackRoot(await createTempApp("demo"));
+    const formatted: string[] = [];
+    app.getLinter = () =>
+      ({
+        fixFiles: async (filePaths: string[]) => {
+          formatted.push(...filePaths);
+          return { fixed: [] };
+        },
+      }) as unknown as ReturnType<Executor["getLinter"]>;
+    const scalarDir = path.join(root, "apps/demo/lib/__scalar/money");
+    const own = "export class Money   {}\n";
+    await writeText(path.join(scalarDir, "money.constant.ts"), own);
+
+    const applied = await app.applyTemplate({
+      basePath: "./lib/__scalar",
+      template: "__scalar",
+      dict: { model: "money", models: "moneys", sysName: "demo" },
+      overwrite: false,
+    });
+
+    expect(applied.map((fileContent) => fileContent.filePath)).toContain(path.join(scalarDir, "money.constant.ts"));
+    expect(formatted.sort((a, b) => a.localeCompare(b))).toEqual([
+      path.join(scalarDir, "money.dictionary.ts"),
+      path.join(scalarDir, "money.document.ts"),
+    ]);
+    expect(await readFile(path.join(scalarDir, "money.constant.ts"), "utf8")).toBe(own);
+  });
+
   test("a formatter that cannot run does not fail the scaffold", async () => {
     // create-akan-workspace scaffolds before `bun install`, so Biome may be absent; a lint fix beats a failed scaffold.
     const root = await makeTempRoot();

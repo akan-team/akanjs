@@ -64,6 +64,10 @@ export interface PageRoot {
   keyPrefix: string;
 }
 
+export interface WrittenFileContent extends FileContent {
+  written: boolean;
+}
+
 const staticTemplateFileExtensions = new Set(
   ".avif .bmp .cjs .css .eot .gif .html .ico .jpeg .jpg .js .json .map .md .mjs .mp3 .mp4 .ogg .otf .pdf .png .svg"
     .split(" ")
@@ -302,17 +306,19 @@ export class Executor {
     filePath: string,
     content: string | object,
     { overwrite = true, silent = false }: { overwrite?: boolean; silent?: boolean } = {},
-  ): Promise<FileContent> {
+  ): Promise<WrittenFileContent> {
     const writePath = this.getPath(filePath);
     const dir = path.dirname(writePath);
     if (!(await FileSys.dirExists(dir))) await mkdir(dir, { recursive: true });
     let contentStr = typeof content === "string" ? content : JsonFormatter.stringify(content, writePath);
+    let written = true;
 
     if (await FileSys.fileExists(writePath)) {
       const currentContent = await FileSys.readText(writePath);
       if (currentContent === contentStr || !overwrite) {
         this.logger.verbose(`File ${writePath} is unchanged`);
         contentStr = currentContent;
+        written = false;
       } else {
         await FileSys.writeText(writePath, contentStr);
         if (Logger.isVerbose()) this.logger.rawLog(chalk.yellow(`File Update: ${filePath}`));
@@ -321,7 +327,7 @@ export class Executor {
       await FileSys.writeText(writePath, contentStr);
       if (!silent) this.logger.rawLog(chalk.green(`File Create: ${filePath}`));
     }
-    return { filePath: writePath, content: contentStr };
+    return { filePath: writePath, content: contentStr, written };
   }
   async writeJson(filePath: string, content: object) {
     await this.writeFile(filePath, content);
@@ -418,7 +424,7 @@ export class Executor {
     },
     dict: { [key: string]: string } = {},
     options: { [key: string]: unknown } = {},
-  ): Promise<FileContent | null> {
+  ): Promise<WrittenFileContent | null> {
     const convertPath = (target: string) =>
       Object.entries(dict).reduce(
         (converted, [key, value]) => converted.replace(new RegExp(`__${key}__`, "g"), value),
@@ -455,7 +461,7 @@ export class Executor {
       if (!(await FileSys.dirExists(dirname))) await mkdir(dirname, { recursive: true });
       await copyFile(templatePath, writePath);
       this.logger.verbose(`Apply template ${templatePath} to ${convertedTargetPath}`);
-      return { filePath: writePath, content: "" };
+      return { filePath: writePath, content: "", written: true };
     } else return null;
   }
   async _applyTemplate({
@@ -472,7 +478,7 @@ export class Executor {
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
-  }): Promise<FileContent[]> {
+  }): Promise<WrittenFileContent[]> {
     const templateRoot = await this.#resolveTemplateRoot();
     const templatePath = `${templateRoot}${template ? `/${template}` : ""}`;
     if ((await stat(templatePath)).isFile()) {
@@ -486,7 +492,7 @@ export class Executor {
         dict,
         options,
       );
-      return fileContent ? [fileContent] : ([] as FileContent[]);
+      return fileContent ? [fileContent] : ([] as WrittenFileContent[]);
     } else {
       const subdirs = await readDirEntries(templatePath);
       const fileContents = (
@@ -504,7 +510,7 @@ export class Executor {
                 dict,
                 options,
               );
-              return fileContent ? [fileContent] : ([] as FileContent[]);
+              return fileContent ? [fileContent] : ([] as WrittenFileContent[]);
             } else
               return await this._applyTemplate({
                 basePath: path.join(basePath, subdir),
@@ -539,7 +545,7 @@ export class Executor {
     overwrite?: boolean;
   }): Promise<FileContent[]> {
     const fileContents = await this._applyTemplate({ ...options, dict: withCapitalizedDict(options.dict) });
-    await this.#formatAppliedTemplate(fileContents);
+    await this.#formatAppliedTemplate(fileContents.filter((fileContent) => fileContent.written));
     return fileContents;
   }
 
