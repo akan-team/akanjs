@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
+import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
 import {
@@ -89,6 +90,22 @@ describe("external-view plugin", () => {
     expect(() => virtualKey("Hyper")).toThrow("not a key sendKey knows");
     for (const inherited of ["toString", "__proto__", "constructor", "hasOwnProperty"])
       expect(() => virtualKey(inherited)).toThrow("not a key sendKey knows");
+  });
+
+  test("a keyDown that times out on a busy page is still followed by its keyUp", async () => {
+    const host = fakeHost(createDesktopExternalView(), (op, args) => {
+      if ((args?.params as { type?: string } | undefined)?.type === "keyDown")
+        throw new AkanNativeError("TIMEOUT", "externalView.cdp had no answer within 30 s");
+      return answer(op);
+    });
+    expect(await host.call("sendKey", { id: "board", key: "z", code: "KeyZ" })).toMatchObject({
+      ok: false,
+      error: { code: "TIMEOUT" },
+    });
+    expect(host.shell.map((s) => (s.args?.params as { type?: string } | undefined)?.type)).toEqual([
+      "keyDown",
+      "keyUp",
+    ]);
   });
 
   test("presses Enter with the text Chrome gives it, so a form submits and a focused button clicks", async () => {

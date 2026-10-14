@@ -256,12 +256,20 @@ export function createDesktopExternalView() {
         //? keyDown carrying `text` makes Chrome fire keypress and input too, as a real printable key does; Enter's is
         //? "\r", without which a form does not submit and a focused button does not click.
         const typed = key.length === 1 ? key : key === "Enter" ? "\r" : "";
-        await shell(ctx, "cdp", {
-          view,
-          method: "Input.dispatchKeyEvent",
-          params: { type: "keyDown", ...base, ...(typed ? { text: typed, unmodifiedText: typed } : {}) },
-        });
-        await shell(ctx, "cdp", { view, method: "Input.dispatchKeyEvent", params: { type: "keyUp", ...base } });
+        const keyUp = () =>
+          shell(ctx, "cdp", { view, method: "Input.dispatchKeyEvent", params: { type: "keyUp", ...base } });
+        try {
+          await shell(ctx, "cdp", {
+            view,
+            method: "Input.dispatchKeyEvent",
+            params: { type: "keyDown", ...base, ...(typed ? { text: typed, unmodifiedText: typed } : {}) },
+          });
+        } catch (error) {
+          //? A keyDown past its deadline still waits in the busy page's queue: its keyUp follows, or the key stays held.
+          if (error instanceof AkanNativeError && error.code === "TIMEOUT") void keyUp().catch(() => {});
+          throw error;
+        }
+        await keyUp();
       },
       async setMuted(args, ctx) {
         await shell(ctx, "setMuted", { view: id(args), muted: bool(args, "muted") });
