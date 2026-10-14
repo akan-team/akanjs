@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { updateDecision } from "../../core/src/kernel.ts";
 import type { AkanNativeConfig } from "../src/config.ts";
 import { readBundleInfo } from "../src/lib/compat.ts";
 import { type LogEvent, withLogSink } from "../src/lib/log.ts";
@@ -218,6 +219,61 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(() => signManifest(manifest, path, [Buffer.alloc(32).toString("base64")])).toThrow(
       "is not one of updates.publicKeys",
     );
+  });
+
+  test("updates.revokedKeys may not revoke every key of updates.publicKeys", () => {
+    const key = Buffer.alloc(32, 7).toString("base64");
+    const problems: string[] = [];
+    validateUpdates({ url: "https://u", publicKey: key, revokedKeys: [keyIdOf(key)] }, problems);
+    expect(problems).toEqual([
+      "updates.revokedKeys revokes every key of updates.publicKeys: a phone built from it would trust none (add one with `akan-native update keygen`)",
+    ]);
+  });
+
+  test("a phone build trusts no key updates.revokedKeys revokes, so a fresh install never takes one; a desktop build reads the first", () => {
+    const online = Buffer.alloc(32, 1).toString("base64");
+    const spare = Buffer.alloc(32, 2).toString("base64");
+    const updates = {
+      url: "https://u",
+      publicKeys: [online, spare],
+      revokedKeys: [keyIdOf(online)],
+      channel: "main",
+      readyTimeout: 3000,
+      reportUrl: null,
+    };
+    const resource = (platform: "android" | "ios" | "macos") =>
+      JSON.parse(updatesResource(updates, { id: "dev.x", version: "1" }, platform, "abc", false));
+    expect(resource("android").publicKeys).toEqual([spare]);
+    expect(resource("ios").publicKeys).toEqual([spare]);
+    expect(resource("macos")).toMatchObject({ publicKeys: [online, spare], publicKey: online });
+    const out = mkdtempSync(join(tmpdir(), "akan-phone-ring-"));
+    try {
+      writeFileSync(
+        join(out, "bundle.json"),
+        JSON.stringify({
+          schema: 1,
+          app: { id: "dev.x", version: "1", build: 1 },
+          nativeApi: { hash: "abc", inputs: {} },
+          web: { hash: "w", files: 1 },
+        }),
+      );
+      writePhoneUpdates({
+        updatesJson: join(out, "updates.json"),
+        outDir: out,
+        updates,
+        app: { id: "dev.x", version: "1" },
+        platform: "ios",
+        nativeApi: "abc",
+        dev: false,
+      });
+      expect(readBundleInfo(join(out, "bundle.json")).updates?.keyIds).toEqual([keyIdOf(spare)]);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+    const ring = [keyIdOf(spare)];
+    const release = { ring, revoked: [], resetSequence: false, sequence: 10, embedded: 1, running: null };
+    expect(updateDecision({ ...release, signer: keyIdOf(online), revokeKeys: [] }).kind).toBe("untrusted");
+    expect(updateDecision({ ...release, signer: keyIdOf(spare), revokeKeys: [keyIdOf(online)] }).kind).toBe("take");
   });
 
   test("key location and the updates.json of a build", () => {
@@ -464,6 +520,21 @@ describe("publishing a release", () => {
       signWith("last");
       expect(releaseRevocations(config, "android", out, "pilot").revokeKeys).toEqual([id.spare]);
       expect(releaseRevocations(config, "android", out, "main").revokeKeys).toEqual([id.online]);
+    });
+  });
+
+  test("a desktop release signed with a revoked first key warns that installed desktop apps still take it", async () => {
+    await keyring(async ({ id, ring, signWith }) => {
+      signWith("online");
+      const check = (revokedKeys: string[], platform: "macos" | "android") =>
+        warningsOf(async () =>
+          assertSigningKey({ app: { id: "dev.test.revoke" }, updates: { publicKeys: ring, revokedKeys } }, platform),
+        );
+      expect(await check([id.online], "macos")).toEqual([
+        `updates.revokedKeys revokes ${id.online}, the first of updates.publicKeys, which a desktop app trusts: installed desktop apps keep taking releases it signs until a binary built with another first key replaces them`,
+      ]);
+      expect(await check([], "macos")).toEqual([]);
+      expect(await check([id.online], "android")).toEqual([]);
     });
   });
 
