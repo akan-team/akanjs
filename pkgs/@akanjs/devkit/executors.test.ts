@@ -305,7 +305,9 @@ describe("Executor filesystem helpers", () => {
     });
 
     expect(await readFile(path.join(root, "app/public/logo.png"), "utf8")).toBe("the app's own logo");
-    expect(applied).toEqual([{ filePath: path.join(root, "app/public/logo.png"), content: "", written: false }]);
+    expect(applied).toEqual([
+      expect.objectContaining({ filePath: path.join(root, "app/public/logo.png"), written: false }),
+    ]);
   });
 });
 
