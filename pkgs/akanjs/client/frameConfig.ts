@@ -53,7 +53,7 @@ const DEFAULT_BOOLEAN_INSET = 48;
 
 const hasOwn = <Key extends PropertyKey>(value: object, key: Key) => Object.hasOwn(value, key);
 
-export function validatePageConfig(routeKey: string, config?: PageConfig) {
+export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
   if (config === undefined) return;
   if (!isRecord(config)) throw new Error(`[route-convention] pageConfig in ${routeKey} must be an object.`);
   const pageConfig = config as PageConfig;
@@ -78,22 +78,22 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
       );
   }
   validateSafeAreaConfig(routeKey, pageConfig.safeArea);
-}
+};
 
 const isInsetPx = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 const responsiveInsetKeys = new Set<string>(["base", ...insetBreakpoints.map(([name]) => name)]);
 
-function isValidInsetValue(value: unknown): value is NonNullable<PageConfig["topInset"]> {
+const isValidInsetValue = (value: unknown): value is NonNullable<PageConfig["topInset"]> => {
   if (typeof value === "boolean" || isInsetPx(value)) return true;
   if (!isRecord(value) || !isInsetPx(value.base)) return false;
   return Object.entries(value).every(([key, px]) => responsiveInsetKeys.has(key) && isInsetPx(px));
-}
+};
 
 export const isResponsiveInset = (inset: PageConfig["topInset"]): inset is ResponsiveInset => isRecord(inset);
 
 /** The inset at each breakpoint, each one the nearest declared value at or below it. */
-export function insetsByBreakpoint(inset: PageConfig["topInset"]): { [bp in InsetBreakpoint]: number } {
+export const insetsByBreakpoint = (inset: PageConfig["topInset"]): { [bp in InsetBreakpoint]: number } => {
   const base = isResponsiveInset(inset) ? inset.base : resolveInset(inset);
   const values = { base } as { [bp in InsetBreakpoint]: number };
   let current = base;
@@ -102,17 +102,17 @@ export function insetsByBreakpoint(inset: PageConfig["topInset"]): { [bp in Inse
     values[name] = current;
   }
   return values;
-}
+};
 
 /** The inset in force at `width` px, assuming a 16px rem. */
-export function insetAt(inset: PageConfig["topInset"], width?: number): number {
+export const insetAt = (inset: PageConfig["topInset"], width?: number): number => {
   if (!isResponsiveInset(inset)) return resolveInset(inset);
   if (width === undefined) return inset.base;
   const values = insetsByBreakpoint(inset);
   return insetBreakpoints.reduce((value, [name, rem]) => (width >= rem * 16 ? values[name] : value), values.base);
-}
+};
 
-function validateSafeAreaConfig(routeKey: string, safeArea?: PageSafeAreaConfig) {
+const validateSafeAreaConfig = (routeKey: string, safeArea?: PageSafeAreaConfig) => {
   if (safeArea === undefined || typeof safeArea === "boolean" || safeArea === "top" || safeArea === "bottom") return;
   if (!isRecord(safeArea)) throw new Error(`[route-convention] pageConfig.safeArea in ${routeKey} is invalid.`);
   for (const key of Object.keys(safeArea)) {
@@ -132,9 +132,9 @@ function validateSafeAreaConfig(routeKey: string, safeArea?: PageSafeAreaConfig)
   ) {
     throw new Error(`[route-convention] pageConfig.safeArea.android in ${routeKey} is invalid.`);
   }
-}
+};
 
-export function mergePageConfigs(configChain: PageConfig[] = []): PageConfig {
+export const mergePageConfigs = (configChain: PageConfig[] = []): PageConfig => {
   const merged: PageConfig = {};
   for (const config of configChain) {
     for (const key of pageConfigKeys) {
@@ -148,9 +148,11 @@ export function mergePageConfigs(configChain: PageConfig[] = []): PageConfig {
     }
   }
   return merged;
-}
+};
 
-export function getExplicitPageConfigKeys(configChain: PageConfig[] = []): Partial<Record<keyof PageConfig, boolean>> {
+export const getExplicitPageConfigKeys = (
+  configChain: PageConfig[] = [],
+): Partial<Record<keyof PageConfig, boolean>> => {
   const explicitKeys: Partial<Record<keyof PageConfig, boolean>> = {};
   for (const config of configChain) {
     for (const key of pageConfigKeys) {
@@ -158,7 +160,7 @@ export function getExplicitPageConfigKeys(configChain: PageConfig[] = []): Parti
     }
   }
   return explicitKeys;
-}
+};
 
 //? Not in `csrTypes.ts`: under `react-server`, `react` exports no `createContext` or hooks, so the RSC worker (via
 //? `routeTreeBuilder.ts`) needs this react-free half of the page frame contract.
@@ -175,7 +177,7 @@ export const defaultPageState: PageState = {
   bottomSafeAreaColor: "var(--color-background, Canvas)",
 };
 
-export function resolvePageState({
+export const resolvePageState = ({
   configChain = [],
   path,
   basePath,
@@ -183,7 +185,7 @@ export function resolvePageState({
   deviceSafeArea,
   cssSafeArea,
   width,
-}: ResolvePageStateOptions): PageState {
+}: ResolvePageStateOptions): PageState => {
   const profile = getPlatformFrameProfile(platform);
   const routeRole = getRouteRoleFrameDefaults(path, platform, basePath);
   const config = mergePageConfigs([profile, routeRole, ...configChain]);
@@ -224,30 +226,30 @@ export function resolvePageState({
     topSafeAreaColor: config.topSafeAreaColor ?? defaultPageState.topSafeAreaColor,
     bottomSafeAreaColor: config.bottomSafeAreaColor ?? defaultPageState.bottomSafeAreaColor,
   };
-}
+};
 
-function resolveInset(inset: PageConfig["topInset"]): number {
+const resolveInset = (inset: PageConfig["topInset"]): number => {
   if (inset === true) return DEFAULT_BOOLEAN_INSET;
   if (inset === false || inset === undefined) return 0;
   if (isResponsiveInset(inset)) return inset.base;
   return inset;
-}
+};
 
 //? A browser has no safe-area API for script, so a page that asks for one on the web is padded by `env()` itself.
-function resolveSafeAreaEnv(safeArea?: PageSafeAreaConfig): { top: boolean; bottom: boolean } | undefined {
+const resolveSafeAreaEnv = (safeArea?: PageSafeAreaConfig): { top: boolean; bottom: boolean } | undefined => {
   if (safeArea === undefined || safeArea === false) return undefined;
   const top = safeArea === true || safeArea === "top" || (isRecord(safeArea) && safeArea.top !== false);
   const bottom = safeArea === true || safeArea === "bottom" || (isRecord(safeArea) && safeArea.bottom !== false);
   return top || bottom ? { top, bottom } : undefined;
-}
+};
 
-function getPlatformFrameProfile(platform: DevicePlatform): PageConfig {
+const getPlatformFrameProfile = (platform: DevicePlatform): PageConfig => {
   if (platform === "ios") return { safeArea: true, transition: "stack" };
   if (platform === "android") return { safeArea: { android: "auto" }, transition: "scaleOut", gesture: false };
   return { safeArea: false, transition: "none", gesture: false };
-}
+};
 
-function getRouteRoleFrameDefaults(path: string, platform: DevicePlatform, basePath?: string): PageConfig {
+const getRouteRoleFrameDefaults = (path: string, platform: DevicePlatform, basePath?: string): PageConfig => {
   const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "");
   const depth = path
     .split("/")
@@ -259,9 +261,9 @@ function getRouteRoleFrameDefaults(path: string, platform: DevicePlatform, baseP
     transition: platform === "ios" ? "stack" : platform === "android" ? "scaleOut" : "none",
     gesture: platform === "ios",
   };
-}
+};
 
-function resolveSafeArea({
+const resolveSafeArea = ({
   safeArea,
   platform,
   deviceSafeArea,
@@ -271,7 +273,7 @@ function resolveSafeArea({
   platform: DevicePlatform;
   deviceSafeArea: SafeAreaInsets;
   cssSafeArea?: SafeAreaInsets;
-}): SafeAreaInsets {
+}): SafeAreaInsets => {
   if (safeArea === false) return { top: 0, bottom: 0 };
   const enabledAt = (side: "top" | "bottom") =>
     safeArea === true ||
@@ -300,7 +302,7 @@ function resolveSafeArea({
     top: topEnabled ? source.top : 0,
     bottom: bottomEnabled ? source.bottom : 0,
   };
-}
+};
 
 const hasInset = (insets: SafeAreaInsets) => insets.top > 0 || insets.bottom > 0;
 
@@ -309,16 +311,16 @@ const maxInsets = (a: SafeAreaInsets, b?: SafeAreaInsets): SafeAreaInsets => ({
   bottom: Math.max(a.bottom, b?.bottom ?? 0),
 });
 
-export function readCssSafeAreaInsets(): SafeAreaInsets {
+export const readCssSafeAreaInsets = (): SafeAreaInsets => {
   if (typeof window === "undefined") return { top: 0, bottom: 0 };
   const style = window.getComputedStyle?.(document.documentElement);
   return {
     top: readCssPixel(style?.getPropertyValue("--akan-native-safe-area-top")) || readCssEnvProbe("top"),
     bottom: readCssPixel(style?.getPropertyValue("--akan-native-safe-area-bottom")) || readCssEnvProbe("bottom"),
   };
-}
+};
 
-function readCssEnvProbe(side: "top" | "bottom") {
+const readCssEnvProbe = (side: "top" | "bottom") => {
   if (typeof document === "undefined") return 0;
   const probe = document.createElement("div");
   probe.style.position = "fixed";
@@ -329,10 +331,10 @@ function readCssEnvProbe(side: "top" | "bottom") {
   const value = readCssPixel(window.getComputedStyle(probe)[side]);
   probe.remove();
   return value;
-}
+};
 
-function readCssPixel(value?: string) {
+const readCssPixel = (value?: string) => {
   if (!value) return 0;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
+};
