@@ -2,6 +2,22 @@
 export const webManifestHref = (basePath?: string | null) =>
   basePath ? `/${basePath}/manifest.webmanifest` : "/manifest.webmanifest";
 
+const trimSlashes = (value: string) => value.trim().replace(/^\/+|\/+$/g, "");
+
+/** The basePath a `/manifest.webmanifest` request asks for: by a visible prefix, else by the request's basePath. */
+export const getWebManifestBasePath = (
+  pathname: string,
+  basePaths: readonly string[],
+  headerBasePath?: string | null,
+): string | null | undefined => {
+  const segments = pathname.trim().split("/").filter(Boolean);
+  if (segments.at(-1) !== "manifest.webmanifest" || segments.length > 2) return undefined;
+  const known = basePaths.map(trimSlashes);
+  if (segments.length === 2) return known.includes(segments[0] ?? "") ? (segments[0] ?? null) : undefined;
+  const fromHeader = trimSlashes(headerBasePath ?? "");
+  return known.includes(fromHeader) ? fromHeader : null;
+};
+
 const camelToSnake = (key: string) => key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";

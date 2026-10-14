@@ -12,6 +12,7 @@ import {
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
+import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
 import {
@@ -58,7 +59,7 @@ import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, RscWorker } from "./rscWorkerHost";
-import { createDefaultSitemapXml, getSitemapBasePath, getWebManifestBasePath } from "./sitemap";
+import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
 import { resolveStaticPath } from "./staticPath";
