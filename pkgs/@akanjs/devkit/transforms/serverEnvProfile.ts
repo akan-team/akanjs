@@ -20,6 +20,17 @@ export interface LibEnvSource extends ServerEnvSource {
 
 type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
 
+interface Stripped {
+  value: unknown;
+  stripped: string[];
+}
+
+interface EnvFold<T> {
+  text(value: string, at: string, underSecret: boolean): T;
+  other(value: unknown): T;
+  node(value: object, children: (readonly [string, T])[]): T;
+}
+
 type EvaluatedMessage = { load: string } | { env: string; lossy: string[] } | { failure: string };
 
 //* A server env profile is bundled in place of the environment's own file, for a server that runs where its bundle
@@ -58,60 +69,76 @@ export class ServerEnvProfile {
     return (underSecret && !!value.trim()) || ServerEnvProfile.#isCredentialUrl(value);
   }
 
-  static strip(value: unknown, at = "", underSecret = false): { value: unknown; stripped: string[] } {
-    if (typeof value === "string")
-      return ServerEnvProfile.#isSecret(value, underSecret)
-        ? { value: undefined, stripped: [at] }
-        : { value, stripped: [] };
-    if (!value || typeof value !== "object") return { value, stripped: [] };
-    const children = Object.entries(value).map(
-      ([key, child]) =>
-        [
-          key,
-          ServerEnvProfile.strip(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
-        ] as const,
-    );
-    const stripped = children.flatMap(([, result]) => result.stripped);
-    //? An array leaves out a stripped element whole, so neither a `null` nor an emptied `{}` takes its place.
-    if (Array.isArray(value))
-      return {
-        value: children.flatMap(([, result]) =>
-          result.value === undefined ||
-          (result.stripped.length && typeof result.value === "object" && !Object.keys(result.value ?? {}).length)
-            ? []
-            : [result.value],
-        ),
-        stripped,
-      };
-    return {
-      value: Object.fromEntries(
-        children.flatMap(([key, result]) => (result.value === undefined ? [] : [[key, result.value]])),
+  //* The one walk over an env value: each string with its path, and whether a secret-named key holds it at any depth.
+  static #fold<T>(value: unknown, fold: EnvFold<T>, at = "", underSecret = false): T {
+    if (typeof value === "string") return fold.text(value, at, underSecret);
+    if (!value || typeof value !== "object") return fold.other(value);
+    return fold.node(
+      value,
+      Object.entries(value).map(
+        ([key, child]) =>
+          [
+            key,
+            ServerEnvProfile.#fold(child, fold, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
+          ] as const,
       ),
-      stripped,
-    };
+    );
+  }
+
+  static #collect<T>(text: EnvFold<T[]>["text"]): EnvFold<T[]> {
+    return { text, other: () => [], node: (_, children) => children.flatMap(([, found]) => found) };
+  }
+
+  static strip(value: unknown): Stripped {
+    return ServerEnvProfile.#fold<Stripped>(value, {
+      text: (text, at, underSecret) =>
+        ServerEnvProfile.#isSecret(text, underSecret)
+          ? { value: undefined, stripped: [at] }
+          : { value: text, stripped: [] },
+      other: (other) => ({ value: other, stripped: [] }),
+      node: (node, children) => {
+        const stripped = children.flatMap(([, result]) => result.stripped);
+        //? An array leaves out a stripped element whole, so neither a `null` nor an emptied `{}` takes its place.
+        if (Array.isArray(node))
+          return {
+            value: children.flatMap(([, result]) =>
+              result.value === undefined ||
+              (result.stripped.length && typeof result.value === "object" && !Object.keys(result.value ?? {}).length)
+                ? []
+                : [result.value],
+            ),
+            stripped,
+          };
+        return {
+          value: Object.fromEntries(
+            children.flatMap(([key, result]) => (result.value === undefined ? [] : [[key, result.value]])),
+          ),
+          stripped,
+        };
+      },
+    });
   }
 
   //* The values to look for in a bundle: each under a secret-named key, and each long one in a block that is a
   //* credential whole — but not a lowercase constant there (`service_account`), nor a URL holding no credential
   //* (a token endpoint), which library code holds as well. A webhook's URL is a credential whole.
-  static secretValues(value: unknown, at = "", underSecret = false): { path: string; value: string }[] {
-    if (typeof value === "string") {
-      const url = ServerEnvProfile.#url(value);
-      if (url)
-        return ServerEnvProfile.#carriesCredential(url) ||
-          (underSecret && (/webhook/i.test(at) || ServerEnvProfile.distinctive(value)))
-          ? [...new Set([value, url.password])]
-              .filter((part) => part.length >= 8)
-              .map((part) => ({ path: at, value: part }))
+  static secretValues(value: unknown): { path: string; value: string }[] {
+    return ServerEnvProfile.#fold(
+      value,
+      ServerEnvProfile.#collect((text, at, underSecret) => {
+        const url = ServerEnvProfile.#url(text);
+        if (url)
+          return ServerEnvProfile.#carriesCredential(url) ||
+            (underSecret && (/webhook/i.test(at) || ServerEnvProfile.distinctive(text)))
+            ? [...new Set([text, url.password])]
+                .filter((part) => part.length >= 8)
+                .map((part) => ({ path: at, value: part }))
+            : [];
+        const named = Logger.isSecretKey(at.split(".").at(-1) ?? "");
+        return underSecret && text.length >= 8 && (named || ServerEnvProfile.distinctive(text))
+          ? [{ path: at, value: text }]
           : [];
-      const named = Logger.isSecretKey(at.split(".").at(-1) ?? "");
-      return underSecret && value.length >= 8 && (named || ServerEnvProfile.distinctive(value))
-        ? [{ path: at, value }]
-        : [];
-    }
-    if (!value || typeof value !== "object") return [];
-    return Object.entries(value).flatMap(([key, child]) =>
-      ServerEnvProfile.secretValues(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
+      }),
     );
   }
 
@@ -125,11 +152,10 @@ export class ServerEnvProfile {
     return value.length >= 16 && !/^https?:\/\//.test(value) && !/^[a-z]+(?:[._-][a-z]+)*$/.test(value);
   }
 
-  static secretPaths(value: unknown, at = "", underSecret = false): string[] {
-    if (typeof value === "string") return ServerEnvProfile.#isSecret(value, underSecret) ? [at] : [];
-    if (!value || typeof value !== "object") return [];
-    return Object.entries(value).flatMap(([key, child]) =>
-      ServerEnvProfile.secretPaths(child, at ? `${at}.${key}` : key, underSecret || Logger.isSecretKey(key)),
+  static secretPaths(value: unknown): string[] {
+    return ServerEnvProfile.#fold(
+      value,
+      ServerEnvProfile.#collect((text, at, underSecret) => (ServerEnvProfile.#isSecret(text, underSecret) ? [at] : [])),
     );
   }
 
