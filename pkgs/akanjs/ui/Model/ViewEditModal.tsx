@@ -10,7 +10,7 @@ import { BiDotsVertical, BiTrash } from "react-icons/bi";
 import { servedEndpointOf } from "../../store/servedEndpointOf";
 import { agentAttrs } from "../agentAttrs";
 import { buttonRecipe } from "../Button";
-import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Dropdown } from "../Dropdown";
 import { Modal } from "../Modal";
 import Remove from "./Remove";
@@ -70,12 +70,8 @@ const SaveAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
   );
 };
 
-interface ViewEditModalProps {
+interface ViewEditModalProps extends ModalSurfaceProps {
   modalClassName?: string;
-  /** Passed to the `Modal`: `auto` is a full-screen sheet below `md`. */
-  presentation?: ModalPresentation;
-  /** Passed to the `Modal`: `right` is a side sheet from `md` up. */
-  placement?: ModalPlacement;
   viewClassName?: string;
   slice: SliceMeta;
   renderTitle?: (model: any) => ReactNode | string;

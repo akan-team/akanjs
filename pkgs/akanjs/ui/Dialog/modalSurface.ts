@@ -3,6 +3,13 @@ export type ModalPresentation = "dialog" | "sheet" | "auto";
 /** Where the modal sits from `md` up: centred, or a full-height sheet on the right edge. */
 export type ModalPlacement = "center" | "right";
 
+export interface ModalSurfaceProps {
+  /** `auto` is a full-screen sheet below `md`, which a drag down on its handle or title dismisses. */
+  presentation?: ModalPresentation;
+  /** `right` is a full-height side sheet from `md` up. */
+  placement?: ModalPlacement;
+}
+
 interface SurfaceClassNames {
   root: string;
   panel: string;

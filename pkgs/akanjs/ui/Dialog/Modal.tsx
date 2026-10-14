@@ -8,12 +8,12 @@ import { BiX } from "react-icons/bi";
 import { buttonRecipe } from "../Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
 
-import { isSheetNow, type ModalPlacement, type ModalPresentation, modalSurfaceOf } from "./modalSurface";
+import { isSheetNow, type ModalSurfaceProps, modalSurfaceOf } from "./modalSurface";
 import { DialogContext } from "./Provider";
 
 const DISMISS_DRAG_PX = 120;
 
-export interface ModalProps {
+export interface ModalProps extends ModalSurfaceProps {
   className?: string;
   bodyClassName?: string;
   confirmClose?: boolean;
@@ -21,10 +21,6 @@ export interface ModalProps {
   closeButton?: ReactNode | false;
   children?: ReactNode;
   onCancel?: () => void;
-  /** `auto` is a full-screen sheet below `md`, which a drag down on its handle or title dismisses. */
-  presentation?: ModalPresentation;
-  /** `right` is a full-height side sheet from `md` up. */
-  placement?: ModalPlacement;
 }
 export const Modal = ({
   className,

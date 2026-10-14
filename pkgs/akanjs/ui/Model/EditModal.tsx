@@ -10,7 +10,7 @@ import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
-import type { ModalPlacement, ModalPresentation } from "../Dialog/modalSurface";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
@@ -114,15 +114,11 @@ const EditModel = <Full,>({
   );
 };
 
-interface EditModalProps<Full extends { id: string }> extends EditModelProps<Full> {
+interface EditModalProps<Full extends { id: string }> extends EditModelProps<Full>, ModalSurfaceProps {
   id?: string;
   disabled?: boolean;
   checkSubmit?: boolean;
   modalClassName?: string;
-  /** Passed to the `Modal`: `auto` is a full-screen sheet below `md`. */
-  presentation?: ModalPresentation;
-  /** Passed to the `Modal`: `right` is a side sheet from `md` up. */
-  placement?: ModalPlacement;
   renderTitle?: ((model: Full) => string | ReactNode) | string;
   submitText?: ReactNode;
   submitClassName?: string;
