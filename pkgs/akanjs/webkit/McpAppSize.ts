@@ -3,6 +3,7 @@ import type { McpAppBridge } from "./McpAppBridge";
 
 export class McpAppSize {
   static readonly contentGap = 24;
+  static readonly styleSettleMs = 120;
 
   readonly #bridge: McpAppBridge;
   #lastHeight = 0;
@@ -36,13 +37,20 @@ export class McpAppSize {
       for (const content of document.querySelectorAll(".akan-page-content"))
         for (const child of content.children) resized.observe(child);
     };
-    const mutated = new MutationObserver(report);
+    let settling: ReturnType<typeof setTimeout> | undefined;
+    //? A spring rewrites `style` every frame; measured once it stops, the view still gets the size it ends at.
+    const mutated = new MutationObserver((records) => {
+      clearTimeout(settling);
+      if (records.some((record) => record.attributeName !== "style")) report();
+      else settling = setTimeout(report, McpAppSize.styleSettleMs);
+    });
     mutated.observe(document.body, { childList: true, subtree: true, attributes: true });
     //? An image or a font settling resizes boxes without a mutation or a document resize.
     document.addEventListener("load", report, true);
     void document.fonts.ready.then(report);
     this.#unwatch = () => {
       watching = false;
+      clearTimeout(settling);
       resized.disconnect();
       mutated.disconnect();
       document.removeEventListener("load", report, true);
