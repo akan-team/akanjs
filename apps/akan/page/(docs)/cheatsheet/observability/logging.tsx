@@ -554,15 +554,15 @@ export default page().render(() => {
     {
       name: "AKAN_LOG_STREAM_TOKEN",
       desc: l.trans({
-        en: "Unset, the route does not exist at all. It is absent, not a 403.",
-        ko: "설정하지 않으면 라우트가 아예 없습니다. 403을 답하는 것이 아니라 존재하지 않습니다.",
+        en: "Unset, the route does not exist: absent, not a 403. Whitespace inside the value does the same, with an error at boot.",
+        ko: "설정하지 않으면 라우트가 아예 없습니다. 403이 아니라 존재하지 않습니다. 값 안에 공백이 있어도 같고, 부팅 때 오류를 남깁니다.",
       }),
     },
     {
       name: "Authorization: Bearer",
       desc: l.trans({
-        en: "A missing or wrong token is answered with 401.",
-        ko: "토큰이 없거나 틀리면 401로 답합니다.",
+        en: "A missing or wrong token is answered with 401, and so is a header that is not `Bearer <one token>`.",
+        ko: "토큰이 없거나 틀리면 401로 답하고, `Bearer <토큰 하나>` 꼴이 아닌 헤더도 401입니다.",
       }),
     },
     {

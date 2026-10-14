@@ -62,6 +62,8 @@ More in akanjs/common
 
 - decodeJwtPayload: Reads a JWT's payload without checking its signature, so never trust it for access.
 
+- bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
+
 - isThenable: Tells whether a value can be awaited.
 
 - interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`

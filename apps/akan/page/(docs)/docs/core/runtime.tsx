@@ -631,8 +631,8 @@ REDIS_URI=redis://redis.internal:6379`}
                 type: "string",
                 default: l.trans({ en: "unset — route absent", ko: "미설정 — 라우트 없음" }),
                 desc: l.trans({
-                  en: "Mounts GET /_akan/app/logs, an SSE stream of the ring buffer, for a matching bearer token.",
-                  ko: "일치하는 bearer 토큰에게 링 버퍼를 SSE로 흘려 주는 GET /_akan/app/logs를 엽니다.",
+                  en: "Mounts GET /_akan/app/logs, the ring buffer as SSE, for this bearer token; one with whitespace inside keeps it off.",
+                  ko: "이 bearer 토큰에게 링 버퍼를 SSE로 흘려 주는 GET /_akan/app/logs를 엽니다. 안에 공백이 있으면 열지 않습니다.",
                 }),
               },
               {
