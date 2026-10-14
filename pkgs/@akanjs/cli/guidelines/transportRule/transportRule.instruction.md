@@ -108,7 +108,8 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
 - **A repeat answers the first response as it was sent** — resolved, masked and serialized — for 24 hours. What
   is kept is that wire form, never the handler's result, so no `hidden` or `secret` field reaches the cache.
 - A handler that throws frees the key, so a repeat runs it again. A failure after the handler returned is kept and
-  replayed instead: the handler's writes stand.
+  replayed instead, for the same 24 hours and a transient one (a relation read during a database blip) included:
+  the handler's writes stand, so running it again would repeat them.
 - **Only an HTTP call is deduplicated.** A signed-out call, one whose handler returns a `Response` (whose headers,
   such as a session's `Set-Cookie`, cannot be replayed), a websocket call, and a call through MCP all run every
   time.
