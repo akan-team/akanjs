@@ -278,7 +278,7 @@ describe("RouteTreeBuilder implicit locale", () => {
     expect(aboutHtml).not.toContain("canonical");
     expect(aboutHtml).not.toContain("og:url");
   });
-  test("supports route groups, repeated search params, and cached lazy modules", async () => {
+  test("supports route groups and cached lazy modules", async () => {
     let loadCount = 0;
     const routes = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
@@ -290,11 +290,6 @@ describe("RouteTreeBuilder implicit locale", () => {
     const matched = RouteTreeBuilder.match("/ko/about", routes);
 
     expect(matched?.pathRoute.path).toBe("/:lang/about");
-    expect(RouteTreeBuilder.parseSearchParams("?tag=a&tag=b&sort=latest")).toEqual({
-      tag: ["a", "b"],
-      sort: "latest",
-    });
-
     expect(matched && (await RouteElementComposer.resolveHead(pageInput(matched)))).toBe("about");
     expect(matched && (await RouteElementComposer.resolveHead(pageInput(matched)))).toBe("about");
     expect(loadCount).toBe(1);

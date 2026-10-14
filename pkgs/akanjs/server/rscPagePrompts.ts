@@ -1,8 +1,7 @@
 import type { PageDefinition, PathRoute } from "akanjs/client";
-import { Logger } from "akanjs/common";
+import { Logger, parseSearchParams } from "akanjs/common";
 import { getRequestStore } from "akanjs/fetch";
 import type { PagePromptEntry, PagePromptRecord, PagePromptRun, PagePromptRunInput } from "../signal/mcp/pagePrompt";
-import { RouteTreeBuilder } from "./routeTreeBuilder";
 
 interface RscPagePromptsProps {
   routes: () => PathRoute[];
@@ -59,7 +58,7 @@ export class RscPagePrompts {
     return await this.#props.run(request, route.path, async () => {
       const props = {
         params: { ...params, lang },
-        searchParams: RouteTreeBuilder.parseSearchParams(new URL(url).search),
+        searchParams: parseSearchParams(new URL(url).search),
       };
       try {
         for (const render of [...route.renderRootLayouts, ...route.renderLayouts, route.renderPage])
