@@ -49,12 +49,14 @@ export function prepareAkanHeadSnapshotPatch(snapshot: AkanHeadSnapshotV1): Prep
 
 export function commitPreparedAkanHeadSnapshotPatch(prepared: PreparedAkanHeadSnapshotPatch): boolean {
   try {
-    const anchor = prepared.existing[0];
+    //? A route node can leave the head between prepare and commit; one that has is not ours to anchor on or remove.
+    const inHead = prepared.existing.filter((node) => node.parentNode === document.head);
+    const anchor = inHead[0];
     if (!anchor) return false;
     const fragment = document.createDocumentFragment();
     for (const node of prepared.replacement) fragment.appendChild(node);
     document.head.insertBefore(fragment, anchor);
-    for (const node of prepared.existing) node.remove();
+    for (const node of inHead) node.remove();
     return true;
   } catch {
     return false;
@@ -66,10 +68,10 @@ export function rollbackPreparedAkanHeadSnapshotPatch(prepared: PreparedAkanHead
     const anchor = prepared.replacement.find((node) => node.parentNode === document.head) ?? null;
     if (anchor) {
       const fragment = document.createDocumentFragment();
-      for (const node of prepared.existing) fragment.appendChild(node);
+      for (const node of prepared.existing) if (!node.parentNode) fragment.appendChild(node);
       document.head.insertBefore(fragment, anchor);
     }
-    for (const node of prepared.replacement) node.remove();
+    for (const node of prepared.replacement) if (node.parentNode === document.head) node.remove();
   } catch {
     // Full fallback will repair the document head on the next successful commit.
   }
