@@ -1,12 +1,6 @@
 import { isRecord } from "akanjs/common";
-import type {
-  PageConfig,
-  PageSafeAreaConfig,
-  PageState,
-  ResponsiveInset,
-  SsrRenderMode,
-  TransitionType,
-} from "./csrTypes";
+import type { PageConfig, PageSafeAreaConfig, PageState, ResponsiveInset, SsrRenderMode } from "./csrTypes";
+import { transitionTypes } from "./transitionTypes";
 
 export type DevicePlatform = "ios" | "android" | "web" | (string & {});
 export type SafeAreaInsets = { top: number; bottom: number };
@@ -54,7 +48,6 @@ const pageConfigKeys = new Set<keyof PageConfig>([
 //* Read by the build off the source file, never merged into a page's runtime state — keep it out of
 //* `pageConfigKeys` so `mergePageConfigs` cannot leak it down the layout chain.
 const buildPageConfigKeys = new Set<keyof PageConfig>(["devOnly"]);
-const transitionTypes = new Set<TransitionType>(["none", "fade", "bottomUp", "stack", "scaleOut"]);
 const ssrRenderModes = new Set<SsrRenderMode>(["stream", "block"]);
 const DEFAULT_BOOLEAN_INSET = 48;
 
@@ -72,7 +65,7 @@ export function validatePageConfig(routeKey: string, config?: PageConfig) {
   if (pageConfig.devOnly !== undefined && typeof pageConfig.devOnly !== "boolean") {
     throw new Error(`[route-convention] pageConfig.devOnly in ${routeKey} must be a boolean.`);
   }
-  if (pageConfig.transition !== undefined && !transitionTypes.has(pageConfig.transition)) {
+  if (pageConfig.transition !== undefined && !transitionTypes.includes(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);
   }
   if (pageConfig.ssr !== undefined && !ssrRenderModes.has(pageConfig.ssr)) {

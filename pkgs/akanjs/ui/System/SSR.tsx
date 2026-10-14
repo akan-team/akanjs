@@ -7,20 +7,20 @@ import {
   type ReactFont,
   router,
   Translator,
+  transitionTypes,
   usePage,
+  viewTransitionClassOf,
 } from "akanjs/client";
 import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
-import * as React from "react";
 import {
   Children,
-  type ComponentType,
   type CSSProperties,
   Fragment,
   type ReactNode,
   Suspense,
   type ViewTransitionClassPerType,
-  type ViewTransitionProps,
 } from "react";
+import { ViewTransition } from "../../client/viewTransition";
 import { FontCss } from "../fontCss";
 import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
 import { Load } from "../Load";
@@ -127,18 +127,17 @@ const ServerFontFace = ({ fonts }: { fonts: ReactFont[] }) => {
   );
 };
 
-// An RSC navigation names `akan-<transition>-<push|pop>` after the route's `.config({ transition })`; each is the
-// class ui/styles.css animates, and a navigation that names none leaves the page to swap in place.
-//? React 19.3 added it; a named import fails the module link on 19.2, so an app there boots without the animation.
-const ViewTransition = (React as { ViewTransition?: ComponentType<ViewTransitionProps> }).ViewTransition;
-
+// An RSC navigation names its type after the route's `.config({ transition })`, and the page takes the class of the
+// same name; a navigation that names none leaves the page to swap in place.
 const pageViewTransition: ViewTransitionClassPerType = Object.fromEntries([
   ["default", "none"],
-  ...(["stack", "fade", "bottomUp", "scaleOut"] as const).flatMap((transition) =>
-    (["push", "pop"] as const).map((direction) => {
-      const type = `akan-${transition}-${direction}`;
-      return [type, type];
-    }),
+  ...transitionTypes.flatMap((transition) =>
+    transition === "none"
+      ? []
+      : (["push", "pop"] as const).map((direction) => {
+          const type = viewTransitionClassOf(transition, direction);
+          return [type, type];
+        }),
   ),
 ]);
 
