@@ -1683,25 +1683,6 @@ fn logical_pair(cmd: &json::V, a: &str, b: &str) -> Result<Option<(f64, f64)>, S
   }
 }
 
-/// An external view's `bounds`: "fill" (left out too), or `{ x, y, width, height }` in logical pixels.
-fn external_bounds(cmd: &json::V) -> Result<external::Bounds, String> {
-  match cmd.get("bounds") {
-    None => Ok(external::Bounds::Fill),
-    Some(v) if v.as_str() == Some("fill") => Ok(external::Bounds::Fill),
-    Some(v) => {
-      let num = |k: &str| {
-        let name = format!("bounds.{k}");
-        v.get(k).and_then(|n| n.as_f64()).ok_or_else(|| format!("{name} must be a number")).and_then(|n| placement::logical(&name, n))
-      };
-      let (x, y, width, height) = (num("x")?, num("y")?, num("width")?, num("height")?);
-      if !(width > 0.0 && height > 0.0) {
-        return Err("bounds.width and bounds.height must be positive".into());
-      }
-      Ok(external::Bounds::At { x, y, width, height })
-    }
-  }
-}
-
 /// window.create's `path`: an absolute path on the app origin.
 fn app_path(cmd: &json::V) -> Result<String, String> {
   let Some(v) = cmd.get("path") else { return Ok("/".into()) };
@@ -1829,28 +1810,7 @@ impl Windows {
       "externalView.list" => Ok(self.external.list()),
       "externalView.open" => {
         let (window, _) = self.external_host(cmd)?;
-        let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?.to_string();
-        let allow: Vec<String> = cmd
-          .get("allowOrigins")
-          .and_then(|v| v.as_array())
-          .ok_or("allowOrigins must be a list of origins")?
-          .iter()
-          .map(|o| o.as_str().and_then(external::origin_of).ok_or("allowOrigins holds an origin that is not http(s)"))
-          .collect::<Result<_, _>>()?;
-        if !external::allowed(&allow, &url) {
-          return Err(format!("NOT_ALLOWED: {url} is on none of allowOrigins"));
-        }
-        let opts = external::OpenOptions {
-          view: view()?,
-          window,
-          url,
-          allow,
-          bounds: external_bounds(cmd)?,
-          init_script: cmd.get("initScript").and_then(|v| v.as_str()).map(str::to_string),
-          muted: cmd.get("muted").and_then(|v| v.as_bool()).unwrap_or(false),
-          autoplay: cmd.get("autoplay").and_then(|v| v.as_bool()).unwrap_or(true),
-          console: cmd.get("console").and_then(|v| v.as_bool()).unwrap_or(false),
-        };
+        let opts = external::OpenOptions::from_cmd(cmd, window)?;
         let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
         let win = &self.map[&window];
         let hidden = win.cursor_hidden;
@@ -1878,7 +1838,7 @@ impl Windows {
         let window = self.external.get(&id)?.window;
         let win = self.map.get(&window).ok_or_else(|| format!("no window {window}"))?;
         let inner = inner_size(&win.window, Some(&win.webview));
-        self.external.set_bounds(&id, external_bounds(cmd)?, inner)
+        self.external.set_bounds(&id, external::Bounds::from_cmd(cmd)?, inner)
       }
       "externalView.setMuted" => self.external.set_muted(&view()?, flag("muted")?),
       "externalView.clearData" => self.external.clear_data(&view()?),
@@ -2576,7 +2536,7 @@ mod range_tests {
 
 #[cfg(test)]
 mod window_arg_tests {
-  use super::{app_path, external, external_bounds, json, logical_pair, parse_config, window_arg};
+  use super::{app_path, json, logical_pair, parse_config, window_arg};
 
   #[test]
   fn sizes_and_positions_come_in_pairs_and_in_range() {
@@ -2586,12 +2546,6 @@ mod window_arg_tests {
     assert_eq!(pair(r#"{"width":640}"#), Err("give both width and height".into()));
     for bad in [r#"{"width":"640","height":128}"#, r#"{"width":1e7,"height":128}"#, r#"{"width":640,"height":-3e9}"#, r#"{"width":1e999,"height":1}"#] {
       assert!(pair(bad).is_err(), "{bad}");
-    }
-    let bounds = |s: &str| external_bounds(&json::parse(s).unwrap());
-    assert_eq!(bounds(r#"{"bounds":"fill"}"#), Ok(external::Bounds::Fill));
-    assert_eq!(bounds(r#"{"bounds":{"x":-20,"y":0,"width":30.5,"height":10}}"#), Ok(external::Bounds::At { x: -20.0, y: 0.0, width: 30.5, height: 10.0 }));
-    for bad in [r#"{"bounds":{"x":0,"y":0,"width":3e9,"height":10}}"#, r#"{"bounds":{"x":-2e9,"y":0,"width":30,"height":10}}"#, r#"{"bounds":{"x":0,"y":0,"width":0,"height":10}}"#] {
-      assert!(bounds(bad).is_err(), "{bad}");
     }
   }
 
