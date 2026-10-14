@@ -151,7 +151,7 @@ describe("NativeApp", () => {
 
   describe("the public env a build inlined, recorded in its bundle.json", () => {
     const publicEnv = { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVE_DOMAIN: "akamir.com" };
-    const building = async (inlined: Record<string, string>, updates: object | undefined) => {
+    const building = async (inlined: Record<string, string>, updates: AkanNativeTarget["updates"]) => {
       const root = await makeTempRoot();
       const warned: string[] = [];
       const app = {

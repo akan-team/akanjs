@@ -99,6 +99,29 @@ describe("Executor filesystem helpers", () => {
     expect(entries.dirs).toContain("nested");
   });
 
+  test("lists a folder in name order, whatever order the filesystem keeps it in", async () => {
+    const root = await makeTempRoot();
+    const exec = new Executor("fixture", root);
+    for (const name of ["summary", "file", "banner", "_noti", "admin"]) await exec.mkdir(`lib/${name}`);
+    for (const name of ["st.ts", "cnst.ts", "dict.ts"]) await exec.writeFile(`lib/${name}`, "");
+
+    expect(await exec.readdir("lib")).toEqual([
+      "_noti",
+      "admin",
+      "banner",
+      "cnst.ts",
+      "dict.ts",
+      "file",
+      "st.ts",
+      "summary",
+    ]);
+    expect(await exec.getFilesAndDirs("lib")).toEqual({
+      files: ["cnst.ts", "dict.ts", "st.ts"],
+      dirs: ["_noti", "admin", "banner", "file", "summary"],
+    });
+    expect(await exec.getAllFiles("**/*", { cwd: exec.getPath("lib") })).toEqual(["cnst.ts", "dict.ts", "st.ts"]);
+  });
+
   test("a refreshed tsconfig re-reads the config it extends", async () => {
     const root = await makeTempRoot();
     const appDir = path.join(root, "apps/demo");
