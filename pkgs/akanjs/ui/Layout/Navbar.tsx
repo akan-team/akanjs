@@ -3,6 +3,7 @@ import {
   cn,
   DEFAULT_TOP_INSET,
   debugFrame,
+  isMcpView,
   type TransitionType,
   useCsr,
   useInHiddenLayout,
@@ -46,7 +47,7 @@ export const Navbar = ({
   const path = pathRoute?.path;
   const entryId = pathCtx.location?.entryId;
   //? A view opens on the screen its tool named; a back from there would leave it for one nobody asked for.
-  const isViewStart = !!globalThis.__AKAN_EMBED__ && !!entryId && history.current?.locations[0]?.entryId === entryId;
+  const isViewStart = isMcpView() && !!entryId && history.current?.locations[0]?.entryId === entryId;
   const shownBack = isViewStart ? false : back;
   const BackIcon = closeIconTransitions.has(pathRoute?.pageState.transition ?? "none") ? BiX : BiChevronLeft;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);

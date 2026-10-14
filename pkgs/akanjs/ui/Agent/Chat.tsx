@@ -1,5 +1,5 @@
 "use client";
-import { cn, isMobileDevice, usePage } from "akanjs/client";
+import { cn, isMcpView, isMobileDevice, usePage } from "akanjs/client";
 import { AgentPrompts, type AgentVisualOption } from "akanjs/store";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -227,7 +227,7 @@ export const DefaultChat = ({
     if (sticky.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [version, open]);
   useEffect(() => {
-    if (!shortcut || globalThis.__AKAN_EMBED__) return;
+    if (!shortcut || isMcpView()) return;
     const apple = isApplePlatform();
     setHotkey(apple ? { label: "⌘ L", keys: "Meta+L" } : { label: "Ctrl+L", keys: "Control+L" });
     const onKeyDown = (event: KeyboardEvent) => {
@@ -422,7 +422,7 @@ export const DefaultChat = ({
   const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
   //? Inside an MCP host's view the person is already talking to an agent, and this one's relay is out of reach.
   const layer = (surface: ReactNode) =>
-    globalThis.__AKAN_EMBED__ ? null : inline ? surface : overlay ? createPortal(surface, overlay) : null;
+    isMcpView() ? null : inline ? surface : overlay ? createPortal(surface, overlay) : null;
   if (!open)
     return launcher
       ? layer(

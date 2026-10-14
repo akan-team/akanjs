@@ -2,6 +2,7 @@ import {
   type Device,
   getExplicitPageConfigKeys,
   insetBreakpoints,
+  isMcpView,
   type LayoutModule,
   type PageConfig,
   type PathRoute,
@@ -294,7 +295,7 @@ export class CsrRouteTable {
   //? An MCP view hides a layout's own markup, so the room it reserves for its chrome would be an empty band; the
   //? insets follow what the page itself puts on screen instead.
   static #layoutConfigOf(config: PageConfig): PageConfig {
-    if (!globalThis.__AKAN_EMBED__) return config;
+    if (!isMcpView()) return config;
     const { topInset: _top, bottomInset: _bottom, ...rest } = config;
     return rest;
   }

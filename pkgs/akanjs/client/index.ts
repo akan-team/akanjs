@@ -9,6 +9,7 @@ export * from "./device";
 export * from "./frameConfig";
 export * from "./locale";
 export * from "./makePageProto";
+export * from "./mcpView";
 export * from "./resolveServerUrl";
 export * from "./route";
 export * from "./router";

@@ -10,6 +10,7 @@ import {
   getCookie,
   getPathInfo,
   initAuth,
+  isMcpView,
   type Location,
   navigateRsc,
   type PageActivity,
@@ -88,7 +89,7 @@ export const ClientWrapper = ({
   return (
     <>
       {Children.toArray(children)}
-      {reconnect && !globalThis.__AKAN_EMBED__ ? <Reconnect key="reconnect" /> : null}
+      {reconnect && !isMcpView() ? <Reconnect key="reconnect" /> : null}
     </>
   );
 };

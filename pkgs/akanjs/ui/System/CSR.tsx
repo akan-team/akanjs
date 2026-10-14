@@ -7,6 +7,7 @@ import {
   Device,
   debugFrame,
   getPathInfo,
+  isMcpView,
   type PageActivity,
   type ReactFont,
   router,
@@ -94,7 +95,7 @@ const CSRProvider = ({
             wsConnect={wsConnect}
           />
           <CSRBridge lang={lang} prefix={prefix} />
-          {globalThis.__AKAN_EMBED__ ? <EmbedApproval /> : null}
+          {isMcpView() ? <EmbedApproval /> : null}
         </>
       )}
     />
@@ -493,7 +494,7 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
               index={0}
               params={location.params}
               searchParams={location.searchParams}
-              isEmbedded={Boolean(globalThis.__AKAN_EMBED__)}
+              isEmbedded={isMcpView()}
             />
           </ClientPathWrapper>
         </animated.div>,
