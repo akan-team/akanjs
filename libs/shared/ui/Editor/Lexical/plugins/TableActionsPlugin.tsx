@@ -16,6 +16,7 @@ import {
 } from "@lexical/table";
 import { mergeRegister } from "@lexical/utils";
 import { buttonRecipe } from "@libs/util/ui";
+import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
 import {
   $getNodeByKey,
   $getSelection,
@@ -38,12 +39,14 @@ import type { CellAnchor } from "./tableActionsPlugin.type";
 /**
  * Floating table toolbar. When the caret sits inside a table cell it anchors a
  * compact action bar to that cell offering row/column insert & delete, header
- * row/column toggles, and whole-table delete. Positioned `fixed` in a body
- * portal so it escapes the editor's overflow, and repositioned on scroll/resize
- * (mirrors `CalloutPlugin`). Mounted only while the editor is editable.
+ * row/column toggles, and whole-table delete. Positioned `fixed` on the overlay
+ * layer (the enclosing modal's root, else body) so it escapes the editor's
+ * overflow, and repositioned on scroll/resize (mirrors `CalloutPlugin`).
+ * Mounted only while the editor is editable.
  */
 export const TableActionsPlugin = () => {
   const [editor] = useLexicalComposerContext();
+  const portal = useOverlayPortal();
   const [anchor, setAnchor] = useState<CellAnchor | null>(null);
 
   // Recompute the anchored cell + its viewport rect from the current selection.
@@ -133,12 +136,12 @@ export const TableActionsPlugin = () => {
     setAnchor(null);
   }, [editor, anchor]);
 
-  if (!anchor) return null;
+  if (!anchor || !portal) return null;
 
   return createPortal(
     <div
-      className="fixed z-50 flex items-center gap-0.5 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
-      style={{ top: anchor.rect.top - 44, left: anchor.rect.left }}
+      className="fixed flex items-center gap-0.5 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
+      style={{ top: anchor.rect.top - 44, left: anchor.rect.left, zIndex: overlayZ.select }}
       onMouseDown={(event) => event.preventDefault()}
     >
       <TableActionButton title="Insert row above" onClick={() => run(() => $insertTableRowAtSelection(false))}>
@@ -171,7 +174,7 @@ export const TableActionsPlugin = () => {
         <AiOutlineDelete className="text-destructive" />
       </TableActionButton>
     </div>,
-    document.body,
+    portal,
   );
 };
 

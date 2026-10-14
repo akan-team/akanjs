@@ -3,6 +3,7 @@ import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { buttonRecipe, inputRecipe } from "@libs/util/ui";
+import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
 import {
   $getSelection,
   $isRangeSelection,
@@ -44,6 +45,7 @@ const MARKS: Mark[] = [
  */
 export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<EditorFeatureKey> }) => {
   const [editor] = useLexicalComposerContext();
+  const portal = useOverlayPortal();
   const [state, setState] = useState<ToolbarState | null>(null);
   const [linkEditing, setLinkEditing] = useState(false);
   const marks = useMemo(() => MARKS.filter((mark) => features.has(formatFeatures[mark.format])), [features]);
@@ -125,7 +127,7 @@ export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<Edit
     };
   }, [editor, state, updateToolbar]);
 
-  if (!state || (!marks.length && !canLink)) return null;
+  if (!state || !portal || (!marks.length && !canLink)) return null;
 
   return createPortal(
     <FloatingToolbar
@@ -148,7 +150,7 @@ export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<Edit
         setLinkEditing(false);
       }}
     />,
-    document.body,
+    portal,
   );
 };
 
@@ -188,8 +190,8 @@ export const FloatingToolbar = ({
   return (
     <div
       ref={ref}
-      className="fixed z-50 flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg"
-      style={{ top, left, transform: "translateX(-50%)" }}
+      className="fixed flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg"
+      style={{ top, left, transform: "translateX(-50%)", zIndex: overlayZ.select }}
       onMouseDown={(event) => event.preventDefault()}
     >
       {linkEditing ? (

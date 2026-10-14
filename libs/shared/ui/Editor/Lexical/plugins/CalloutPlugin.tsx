@@ -2,6 +2,7 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $findMatchingParent, mergeRegister } from "@lexical/utils";
 import { cn } from "akanjs/client";
+import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
 import { $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, SELECTION_CHANGE_COMMAND } from "lexical";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -22,10 +23,11 @@ const VARIANT_SWATCHES: { key: CalloutVariant; className: string; title: string 
 /**
  * Shows a small variant picker anchored to the callout the caret is inside, so
  * a callout can be recolored across all 5 variants after insertion. Follows the
- * same selection-driven, body-portaled pattern as `FloatingToolbarPlugin`.
+ * same selection-driven, overlay-portaled pattern as `FloatingToolbarPlugin`.
  */
 export const CalloutPlugin = () => {
   const [editor] = useLexicalComposerContext();
+  const portal = useOverlayPortal();
   const [state, setState] = useState<CalloutPickerState | null>(null);
 
   const refresh = useCallback(() => {
@@ -65,7 +67,7 @@ export const CalloutPlugin = () => {
     };
   }, [state, refresh]);
 
-  if (!state) return null;
+  if (!state || !portal) return null;
 
   return createPortal(
     <div
@@ -74,7 +76,7 @@ export const CalloutPlugin = () => {
         top: state.rect.top + 6,
         left: state.rect.right - 8,
         transform: "translateX(-100%)",
-        zIndex: 50,
+        zIndex: overlayZ.select,
       }}
       className="flex items-center gap-1 rounded-md border border-foreground/15 bg-background p-1 shadow-lg"
       onMouseDown={(event) => event.preventDefault()}
@@ -98,6 +100,6 @@ export const CalloutPlugin = () => {
         />
       ))}
     </div>,
-    document.body,
+    portal,
   );
 };
