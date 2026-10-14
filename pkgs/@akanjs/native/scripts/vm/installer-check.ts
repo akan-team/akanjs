@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import sampleConfig from "../../examples/sample/akan-native.config.ts";
 import { build, publishUpdate, updateKeygen } from "../../packages/cli/src/api.ts";
+import { powershell, until } from "./harness.ts";
 
 if (process.platform !== "win32") throw new Error("installer-check installs a Windows program: run it on Windows");
 
@@ -44,16 +45,6 @@ const aumidKey = `HKCU:\\Software\\Classes\\AppUserModelId\\${id}`;
 const schemes = sampleConfig.deepLinks?.schemes ?? [];
 const localData = join(process.env.LOCALAPPDATA ?? "", id);
 const nextVersion = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
-
-function powershell(command: string, timeoutMs = 60_000): string {
-  const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: timeoutMs,
-  });
-  if (p.exitedDueToTimeout) throw new Error(`PowerShell did not answer within ${timeoutMs / 1000} s: ${command}`);
-  return p.stdout.toString().trim();
-}
 
 const quoted = (text: string) => text.replace(/'/g, "''");
 
@@ -79,14 +70,6 @@ const installedBuild = (): number | undefined => {
     return undefined; // mid-swap: the folder is being renamed
   }
 };
-
-async function until<T>(what: string, check: () => T | undefined | false, timeout = 30_000): Promise<T> {
-  for (const started = Date.now(); Date.now() - started < timeout; await Bun.sleep(250)) {
-    const value = check();
-    if (value) return value;
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
 
 async function runSetup(setup: string, args: string[], env: Record<string, string> = {}, expected = 0) {
   const p = Bun.spawn([setup, ...args], { stdout: "ignore", stderr: "ignore", env: { ...process.env, ...env } });

@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import sampleConfig from "../../examples/sample/akan-native.config.ts";
 import { build } from "../../packages/cli/src/api.ts";
+import { AppPage, powershell, until } from "./harness.ts";
 
 if (process.platform !== "win32")
   throw new Error("external-view-check drives WebView2's DevTools port: run it on Windows");
@@ -76,74 +77,22 @@ const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Resp
 const deadOrigin = `http://127.0.0.1:${closed.port}`;
 closed.stop(true);
 
-async function until<T>(what: string, check: () => Promise<T | undefined | false>, timeout = 20_000): Promise<T> {
-  let last: unknown;
-  for (const started = Date.now(); Date.now() - started < timeout; await Bun.sleep(250)) {
-    const value = await check().catch((error) => {
-      last = error;
-      return undefined;
-    });
-    if (value) return value;
-  }
-  throw new Error(`timed out waiting for ${what}${last ? ` (${String(last)})` : ""}`);
-}
+const page = new AppPage(port);
 
-/** One DevTools Protocol call on the app page, through its debugging port. */
-async function appCall<T>(method: string, params: Record<string, unknown>, what: string, timeout = 10_000): Promise<T> {
-  const pages = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as {
-    type: string;
-    url: string;
-    webSocketDebuggerUrl: string;
-  }[];
-  const page = pages.find((p) => p.type === "page" && p.url.startsWith("https://app.localhost"));
-  if (!page) throw new Error("no app page yet");
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = reject;
-  });
-  ws.send(JSON.stringify({ id: 1, method, params }));
-  const answer = await new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what}: no answer`)), timeout);
-    ws.onmessage = (event) => {
-      clearTimeout(timer);
-      resolve(JSON.parse(String(event.data)));
-    };
-  });
-  ws.close();
-  return answer;
-}
-
-async function evaluate(expression: string, what: string, timeout = 10_000): Promise<string | undefined> {
-  const answer = await appCall<{ result?: { result?: { value?: string } } }>(
-    "Runtime.evaluate",
-    { expression, awaitPromise: true },
-    what,
-    timeout,
-  );
-  return answer.result?.result?.value;
+async function evaluate(expression: string, what: string, timeout?: number): Promise<string | undefined> {
+  const answer = await page.evaluate(expression, what, timeout);
+  if (answer.exception) throw new Error(`${what} threw in the page: ${answer.exception}`);
+  return answer.value;
 }
 
 /** Space on the app page's focused element, as a person presses it: a trusted keyDown and keyUp. */
 async function appSpace(): Promise<void> {
   const key = { key: " ", code: "Space", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 };
-  await appCall("Input.dispatchKeyEvent", { type: "keyDown", ...key, text: " ", unmodifiedText: " " }, "keyDown");
-  await appCall("Input.dispatchKeyEvent", { type: "keyUp", ...key }, "keyUp");
+  await page.call("Input.dispatchKeyEvent", { type: "keyDown", ...key, text: " ", unmodifiedText: " " }, "keyDown");
+  await page.call("Input.dispatchKeyEvent", { type: "keyUp", ...key }, "keyUp");
 }
 
-interface BridgeAnswer {
-  ok: boolean;
-  result?: unknown;
-  error?: { code?: string; message?: string };
-}
-
-/** Calls a plugin method from the page, as a page does (the runtime's own request ids). */
-async function bridge(plugin: string, method: string, args?: unknown): Promise<BridgeAnswer> {
-  const request = JSON.stringify({ v: 1, plugin, method, ...(args === undefined ? {} : { args }) });
-  const expression = `(async () => { const rt = window.__AKAN_NATIVE__.__runtime; const r = ${request};
-    r.id = ++rt.nextId; return JSON.stringify(await rt.transport.send(r)); })()`;
-  return JSON.parse((await evaluate(expression, `${plugin}.${method}`)) ?? "{}");
-}
+const bridge = (plugin: string, method: string, args?: unknown) => page.bridge(plugin, method, args);
 
 async function ok<T = unknown>(plugin: string, method: string, args?: unknown): Promise<T> {
   const answer = await bridge(plugin, method, args);
@@ -184,16 +133,6 @@ const waitFor = (what: string, match: (e: Seen) => boolean, timeout?: number) =>
   until(what, async () => (await events()).find(match), timeout);
 const inView = async (script: string) =>
   (await ok<{ value: unknown }>("external-view", "evaluate", { id: "board", script })).value;
-
-function powershell(command: string, timeoutMs = 60_000): string {
-  const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: timeoutMs,
-  });
-  if (p.exitedDueToTimeout) throw new Error(`PowerShell did not answer within ${timeoutMs / 1000} s: ${command}`);
-  return p.stdout.toString().trim();
-}
 
 /** One screen pixel as rrggbb, read in device pixels whatever the display scale. */
 const screenPixel = (x: number, y: number) =>
