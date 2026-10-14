@@ -41,7 +41,8 @@ export interface UpdatesConfig {
   publicKeys: string[];
   /**
    * keyIds every phone release revokes, kept in the config so a release published from another folder (a fresh CI
-   * checkout) still revokes them. `akan-native update publish --revoke` starts a revocation.
+   * checkout) still revokes them. `akan-native update publish --revoke` starts a revocation. A phone build trusts none
+   * of them, though publicKeys still lists them.
    */
   revokedKeys: string[];
   /** Manifest name under <platform>/. Default "production". */
@@ -199,6 +200,10 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   for (const key of Object.keys(r))
     if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report"].includes(key))
       problems.push(`updates.${key} is not supported`);
+  if (publicKeys && publicKeys.every((key) => revokedKeys.includes(keyIdOf(key))))
+    problems.push(
+      "updates.revokedKeys revokes every key of updates.publicKeys: a phone built from it would trust none (add one with `akan-native update keygen`)",
+    );
   if (typeof r.url !== "string" || !publicKeys) return null;
   return {
     url: r.url.replace(/\/+$/, ""),
@@ -398,7 +403,7 @@ export function updatesResource(
     dev,
     url: updates.url,
     protocol: platform === "ios" || platform === "android" ? 2 : 1,
-    publicKeys: updates.publicKeys,
+    publicKeys: platform === "ios" || platform === "android" ? phoneRing(updates) : updates.publicKeys,
     //? A desktop app (protocol v1) reads this one key.
     publicKey: updates.publicKeys[0],
     channel: updates.channel,
@@ -406,6 +411,13 @@ export function updatesResource(
     ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
 }
+
+/**
+ * The keys a phone build trusts: updates.publicKeys without the revoked ones, so a fresh install trusts none of them
+ * before its first release tells it. A manifest that revokes a key the binary does not hold is still taken.
+ */
+export const phoneRing = (updates: Pick<UpdatesConfig, "publicKeys" | "revokedKeys">) =>
+  updates.publicKeys.filter((key) => !updates.revokedKeys.includes(keyIdOf(key)));
 
 /**
  * updates.json of a phone build, and the same facts in the build's bundle.json: a signer that registers the store build
@@ -439,7 +451,7 @@ export function writePhoneUpdates({
     protocol: 2,
     url: updates.url,
     channel: updates.channel,
-    keyIds: updates.publicKeys.map(keyIdOf),
+    keyIds: phoneRing(updates).map(keyIdOf),
     embeddedSequence,
     ...(updates.reportUrl ? { reportUrl: updates.reportUrl } : {}),
   };

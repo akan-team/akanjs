@@ -88,14 +88,18 @@ export function assertServerOfChannel(
  * app one the app does not trust (it trusts the first of updates.publicKeys).
  */
 export function assertSigningKey(
-  config: { app: { id: string }; updates?: { publicKeys: string[] } | null },
+  config: { app: { id: string }; updates?: { publicKeys: string[]; revokedKeys?: readonly string[] } | null },
   platform?: ReleasePlatform,
 ): void {
   if (!config.updates)
     throw new CliError("akan-native.config.ts has no updates: { url, publicKeys } (run `akan-native update keygen`)");
-  const { index } = signingKey(updateKeyPath(config.app.id), config.updates.publicKeys);
-  if (index !== 0 && (platform === "macos" || platform === "windows" || platform === "linux"))
-    throw new CliError("a desktop app trusts the first of updates.publicKeys only: sign with that key");
+  const { index, keyId } = signingKey(updateKeyPath(config.app.id), config.updates.publicKeys);
+  if (platform !== "macos" && platform !== "windows" && platform !== "linux") return;
+  if (index !== 0) throw new CliError("a desktop app trusts the first of updates.publicKeys only: sign with that key");
+  if (config.updates.revokedKeys?.includes(keyId))
+    log.warn(
+      `updates.revokedKeys revokes ${keyId}, the first of updates.publicKeys, which a desktop app trusts: installed desktop apps keep taking releases it signs until a binary built with another first key replaces them`,
+    );
 }
 
 /**

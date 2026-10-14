@@ -302,7 +302,7 @@ export function decideNavigation(
 }
 
 export interface UpdateDecisionInput {
-  /** The binary's keyIds, in `updates.publicKeys` order. */
+  /** The binary's keyIds, in `updates.publicKeys` order, without those `updates.revokedKeys` lists. */
   ring: readonly string[];
   /** keyIds state.json has revoked. */
   revoked: readonly string[];
