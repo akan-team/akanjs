@@ -97,6 +97,55 @@ pub(crate) struct OpenOptions {
   pub console: bool,
 }
 
+impl Bounds {
+  /// An external view's `bounds`: "fill" (left out too), or `{ x, y, width, height }` in logical pixels.
+  pub(crate) fn from_cmd(cmd: &json::V) -> Result<Self, String> {
+    match cmd.get("bounds") {
+      None => Ok(Bounds::Fill),
+      Some(v) if v.as_str() == Some("fill") => Ok(Bounds::Fill),
+      Some(v) => {
+        let num = |k: &str| {
+          let name = format!("bounds.{k}");
+          v.get(k).and_then(|n| n.as_f64()).ok_or_else(|| format!("{name} must be a number")).and_then(|n| crate::placement::logical(&name, n))
+        };
+        let (x, y, width, height) = (num("x")?, num("y")?, num("width")?, num("height")?);
+        if !(width > 0.0 && height > 0.0) {
+          return Err("bounds.width and bounds.height must be positive".into());
+        }
+        Ok(Bounds::At { x, y, width, height })
+      }
+    }
+  }
+}
+
+impl OpenOptions {
+  /// externalView.open's arguments, for a view in `window`.
+  pub(crate) fn from_cmd(cmd: &json::V, window: u32) -> Result<Self, String> {
+    let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?.to_string();
+    let allow: Vec<String> = cmd
+      .get("allowOrigins")
+      .and_then(|v| v.as_array())
+      .ok_or("allowOrigins must be a list of origins")?
+      .iter()
+      .map(|o| o.as_str().and_then(origin_of).ok_or("allowOrigins holds an origin that is not http(s)"))
+      .collect::<Result<_, _>>()?;
+    if !allowed(&allow, &url) {
+      return Err(format!("NOT_ALLOWED: {url} is on none of allowOrigins"));
+    }
+    Ok(Self {
+      view: cmd.get("view").and_then(|v| v.as_str()).map(str::to_string).ok_or("view must be a string")?,
+      window,
+      url,
+      allow,
+      bounds: Bounds::from_cmd(cmd)?,
+      init_script: cmd.get("initScript").and_then(|v| v.as_str()).map(str::to_string),
+      muted: cmd.get("muted").and_then(|v| v.as_bool()).unwrap_or(false),
+      autoplay: cmd.get("autoplay").and_then(|v| v.as_bool()).unwrap_or(true),
+      console: cmd.get("console").and_then(|v| v.as_bool()).unwrap_or(false),
+    })
+  }
+}
+
 /// `scheme://host[:port]` of an http(s) URL, lower-cased and without the scheme's default port.
 pub(crate) fn origin_of(url: &str) -> Option<String> {
   let (scheme, rest) = url.split_once("://")?;
@@ -915,6 +964,16 @@ mod mac {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn bounds_fill_the_window_or_stay_in_range() {
+    let bounds = |s: &str| Bounds::from_cmd(&json::parse(s).unwrap());
+    assert_eq!(bounds(r#"{"bounds":"fill"}"#), Ok(Bounds::Fill));
+    assert_eq!(bounds(r#"{"bounds":{"x":-20,"y":0,"width":30.5,"height":10}}"#), Ok(Bounds::At { x: -20.0, y: 0.0, width: 30.5, height: 10.0 }));
+    for bad in [r#"{"bounds":{"x":0,"y":0,"width":3e9,"height":10}}"#, r#"{"bounds":{"x":-2e9,"y":0,"width":30,"height":10}}"#, r#"{"bounds":{"x":0,"y":0,"width":0,"height":10}}"#] {
+      assert!(bounds(bad).is_err(), "{bad}");
+    }
+  }
 
   #[test]
   fn an_origin_is_scheme_and_host_without_the_default_port() {
