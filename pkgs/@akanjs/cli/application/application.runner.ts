@@ -67,6 +67,10 @@ export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOpt
   upload?: string;
   /** Desktop: the CPU of the apps the release is for, which names its feed folder (`<os>-<arch>`). */
   arch?: "arm64" | "x64";
+  /** A phone release: keyIds of updates.publicKeys it starts revoking, beside updates.revokedKeys and the channel's. */
+  revoke?: string[];
+  /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+  resetSequence?: boolean;
 }
 export interface MobileBuildOptions extends MobileTargetOptions, MobileSignOptions {
   profile?: "debug" | "release";
@@ -514,11 +518,14 @@ try {
       const appId = resolveAppId(mobileTarget.config.appId, nativePlatform);
       if (seen.has(appId)) continue;
       seen.add(appId);
-      const { publicKey, keyPath, created } = await new NativeApp(app, mobileTarget).updateKeygen(nativePlatform);
+      const { publicKey, keyId, keyPath, created } = await new NativeApp(app, mobileTarget).updateKeygen(
+        nativePlatform,
+      );
       app.log(
         `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
       );
       app.log(`  native: { updates: { url: "https://…/${app.name}", publicKeys: [${JSON.stringify(publicKey)}] } }`);
+      app.log(`  keyId ${keyId}: what publish-update --revoke and updates.revokedKeys name this key by`);
       const { publicKey: one, publicKeys } = mobileTarget.config.updates ?? {};
       const declared = publicKeys ?? (one ? [one] : null);
       if (declared && !declared.includes(publicKey))
@@ -531,7 +538,17 @@ try {
   async publishUpdate(
     app: App,
     platform: "desktop" | "android" | "ios",
-    { target, env = "main", channel, upload, arch, sign = false, notarize = false }: MobilePublishOptions = {},
+    {
+      target,
+      env = "main",
+      channel,
+      upload,
+      arch,
+      sign = false,
+      notarize = false,
+      revoke,
+      resetSequence,
+    }: MobilePublishOptions = {},
   ) {
     if (arch && platform !== "desktop")
       throw new Error(`--arch picks a desktop release's CPU; ${platform} publishes its web bundle.`);
@@ -551,6 +568,8 @@ try {
         server: ApplicationRunner.carriesServer(mobileTarget, nativePlatform),
         ...(channel ? { channel } : {}),
         ...(arch ? { arch } : {}),
+        revoke,
+        resetSequence,
       });
     const carried = await this.#stageMobile(app, nativePlatform, targets, env, arch);
     for (const mobileTarget of targets) {
@@ -560,6 +579,8 @@ try {
         ...(arch ? { arch } : {}),
         sign,
         notarize,
+        revoke,
+        resetSequence,
         ...(carried && ApplicationRunner.carriesServer(mobileTarget, nativePlatform) ? { server: carried } : {}),
       });
       this.#reportBuild(app, mobileTarget, published.build);

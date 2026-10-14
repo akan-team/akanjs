@@ -140,6 +140,12 @@ export interface AkanNativeUpdatesConfig {
   /** The one-key form of `publicKeys`, never beside it: a target overriding native.updates' keys keeps its form. */
   publicKey?: string;
   /**
+   * keyIds every phone release revokes (`akan update-keygen` prints a key's), kept here so a release published from a
+   * fresh checkout still revokes them; `akan publish-update --revoke` starts a revocation. A key may revoke only keys
+   * listed before it in publicKeys, so a release is signed with one listed after them.
+   */
+  revokedKeys?: string[];
+  /**
    * The manifest the app follows, e.g. a "pilot" target's "pilot". Default: the backend env the app is built for
    * (`main`, `develop`, `debug`, `local`).
    */

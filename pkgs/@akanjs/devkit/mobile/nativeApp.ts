@@ -24,6 +24,7 @@ type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
 type ReleaseOptions = Parameters<NativeBuildApiModule["release"]>[0];
 type AndroidSigning = Extract<ReleaseOptions, { platform: "android" }>["signing"];
+type PhoneRevocation = Pick<Parameters<NativeBuildApiModule["checkPublishUpdate"]>[0], "revoke" | "resetSequence">;
 
 export interface NativeRunOptions {
   device?: DeviceSelector;
@@ -324,7 +325,15 @@ export class NativeApp {
       arch,
       sign = false,
       notarize = false,
-    }: { channel?: string; server?: DesktopServerBundle; arch?: DesktopArch; sign?: boolean; notarize?: boolean } = {},
+      revoke,
+      resetSequence,
+    }: {
+      channel?: string;
+      server?: DesktopServerBundle;
+      arch?: DesktopArch;
+      sign?: boolean;
+      notarize?: boolean;
+    } & PhoneRevocation = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     this.#assertUpdates();
@@ -340,6 +349,8 @@ export class NativeApp {
       ...(arch ? { arch } : {}),
       ...(distribution.macos ? { macos: distribution.macos } : {}),
       ...(distribution.windows ? { windows: distribution.windows } : {}),
+      ...(revoke?.length ? { revoke } : {}),
+      ...(resetSequence ? { resetSequence } : {}),
     });
   }
 
@@ -376,11 +387,18 @@ export class NativeApp {
 
   /**
    * What publishing refuses once the release is built: no updates settings, an invalid config, no signing key or
-   * another app's, and a desktop release whose server presence is not its channel's previous release's.
+   * another app's, a desktop release whose server presence is not its channel's previous release's, and a phone release
+   * whose revocations no phone would take.
    */
   async assertPublishable(
     platform: NativePlatform,
-    { channel, server = false, arch }: { channel?: string; server?: boolean; arch?: DesktopArch } = {},
+    {
+      channel,
+      server = false,
+      arch,
+      revoke,
+      resetSequence,
+    }: { channel?: string; server?: boolean; arch?: DesktopArch } & PhoneRevocation = {},
   ) {
     this.#assertUpdates();
     const [api, { config }] = await Promise.all([
@@ -397,6 +415,8 @@ export class NativeApp {
         server,
         ...(channel ? { channel } : {}),
         ...(arch ? { arch } : {}),
+        ...(revoke?.length ? { revoke } : {}),
+        ...(resetSequence ? { resetSequence } : {}),
       });
     } catch (error) {
       throw new Error(
