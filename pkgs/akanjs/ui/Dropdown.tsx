@@ -22,7 +22,15 @@ import { createOverridable, useUiRecipe } from "./UiOverride";
 /** Put this on a menu item that runs its own interaction (a switch, a copy button) to keep the menu open. */
 export const DROPDOWN_KEEP_OPEN_ATTR = "data-dropdown-keep-open";
 
-const keepOpenSelector = `[${DROPDOWN_KEEP_OPEN_ATTR}]`;
+// A click into a field (a searchable Select's input) activates no row, and its stopPropagation cannot stop a capture.
+const keepOpenSelector = [
+  `[${DROPDOWN_KEEP_OPEN_ATTR}]`,
+  '[role="combobox"]',
+  'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="reset"]):not([type="submit"])',
+  "select",
+  "textarea",
+  '[contenteditable]:not([contenteditable="false"])',
+].join(",");
 
 export interface DropdownProps {
   /** Trigger content, drawn inside the framework's own ghost button. */
