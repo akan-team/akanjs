@@ -34,6 +34,7 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { waitForReveal } from "./rscReveal";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 type InlineRscChunk = [1, string] | [3, string];
@@ -58,6 +59,7 @@ type RscThenable = Promise<ReactNode> & {
   status?: "pending" | "fulfilled" | "rejected";
   value?: ReactNode;
   reason?: unknown;
+  revealed?: Promise<void>;
 };
 type RscCacheNode = RscNavigationCacheNode<RscThenable>;
 type RscSegmentCacheNode = AkanSegmentCacheNode<RscThenable>;
@@ -133,7 +135,14 @@ function trackRscThenable(thenable: RscThenable): RscThenable {
 }
 
 function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
-  return trackRscThenable(createFromReadableStream<ReactNode>(stream) as RscThenable);
+  // The shell resolves while the page is still behind Suspense; the drain closes once those rows have arrived.
+  const [reactStream, drainStream] = stream.tee();
+  const thenable = trackRscThenable(createFromReadableStream<ReactNode>(reactStream) as RscThenable);
+  thenable.revealed = drainStream.pipeTo(new WritableStream()).then(
+    () => undefined,
+    () => undefined,
+  );
+  return thenable;
 }
 
 function hardNavigateAfterRscFailure(target: string, replace = false, error?: unknown): void {
@@ -215,7 +224,7 @@ function commitHistory(target: string, replace: boolean | undefined) {
   renderedHref = target;
 }
 
-//? The page's `ViewTransition` animates only a transition that names a type, so a route left at "none" just swaps.
+//? The page's `ViewTransition` animates only a navigation that names a type, so a route left at "none" just swaps.
 function viewTransitionTypeOf(transition: string | undefined, push: boolean): string | null {
   const type = transitionTypes.find((candidate) => candidate === transition);
   if (!type || type === "none") return null;
@@ -529,6 +538,9 @@ function Root(): ReactNode {
         options.pop ? currentRouterState?.transition : nextNode.routerState?.transition,
         !options.pop,
       );
+      // The snapshot is whatever this commit paints, so wait out the flight rather than slide the shell's loading fallback.
+      if (viewTransitionType) await waitForReveal(nextNode.thenable.revealed);
+      if (navId !== navigationSeq) return;
       const committed = commitLatestRscNavigation({
         cache: rscCache,
         href: target,
@@ -537,8 +549,8 @@ function Root(): ReactNode {
         startTransition,
         commitThenable: (node) => {
           if (viewTransitionType && addTransitionType) {
+            document.documentElement.dataset.akanVt = viewTransitionType;
             addTransitionType("akan-nav");
-            addTransitionType(viewTransitionType);
           }
           currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();

@@ -323,52 +323,61 @@ body.akan-mobile-document {
   }
 }
 
-/* Route transitions on the web: an RSC navigation tags itself `akan-<transition>-<push|pop>` from the route's
-   `.config({ transition })`, and the page content's ViewTransition takes that class. The rest of the page holds. */
+/* Route transitions on the web. The page's ViewTransition takes the class `akan-page` for the type `akan-nav`, and
+   this navigation's direction is `data-akan-vt` (`akan-<transition>-<push|pop>`). A leftover type cannot flip it:
+   React concatenates types kept from an entangled navigation, and the later rule would otherwise win. */
+:root:active-view-transition-type(akan-nav)::view-transition-group(root),
 :root:active-view-transition-type(akan-nav)::view-transition-old(root),
 :root:active-view-transition-type(akan-nav)::view-transition-new(root) {
   animation: none;
 }
-::view-transition-old(.akan-stack-push) {
-  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-left;
-}
-::view-transition-new(.akan-stack-push) {
-  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-right;
-}
-::view-transition-old(.akan-stack-pop) {
-  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-right;
-}
-::view-transition-new(.akan-stack-pop) {
-  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-left;
-}
-::view-transition-old(.akan-bottomUp-push),
-::view-transition-new(.akan-bottomUp-pop) {
+html[data-akan-vt]::view-transition-group(.akan-page) {
   animation: none;
 }
-::view-transition-new(.akan-bottomUp-push) {
+html[data-akan-vt]::view-transition-old(.akan-page),
+html[data-akan-vt]::view-transition-new(.akan-page) {
+  mix-blend-mode: normal;
+}
+html[data-akan-vt="akan-stack-push"]::view-transition-old(.akan-page) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-left;
+}
+html[data-akan-vt="akan-stack-push"]::view-transition-new(.akan-page) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-right;
+}
+html[data-akan-vt="akan-stack-pop"]::view-transition-old(.akan-page) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-out-right;
+}
+html[data-akan-vt="akan-stack-pop"]::view-transition-new(.akan-page) {
+  animation: 260ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-left;
+}
+html[data-akan-vt="akan-bottomUp-push"]::view-transition-old(.akan-page),
+html[data-akan-vt="akan-bottomUp-pop"]::view-transition-new(.akan-page) {
+  animation: none;
+}
+html[data-akan-vt="akan-bottomUp-push"]::view-transition-new(.akan-page) {
   animation: 280ms cubic-bezier(0.32, 0.72, 0, 1) both akan-vt-in-up;
 }
-::view-transition-old(.akan-bottomUp-pop) {
+html[data-akan-vt="akan-bottomUp-pop"]::view-transition-old(.akan-page) {
   animation: 240ms ease-in both akan-vt-out-down;
 }
-::view-transition-old(.akan-fade-push),
-::view-transition-old(.akan-fade-pop) {
+html[data-akan-vt="akan-fade-push"]::view-transition-old(.akan-page),
+html[data-akan-vt="akan-fade-pop"]::view-transition-old(.akan-page) {
   animation: 180ms ease-in both akan-vt-fade-out;
 }
-::view-transition-new(.akan-fade-push),
-::view-transition-new(.akan-fade-pop) {
+html[data-akan-vt="akan-fade-push"]::view-transition-new(.akan-page),
+html[data-akan-vt="akan-fade-pop"]::view-transition-new(.akan-page) {
   animation: 180ms ease-out both akan-vt-fade-in;
 }
-::view-transition-old(.akan-scaleOut-push) {
+html[data-akan-vt="akan-scaleOut-push"]::view-transition-old(.akan-page) {
   animation: 220ms ease-in both akan-vt-shrink-out;
 }
-::view-transition-new(.akan-scaleOut-push) {
+html[data-akan-vt="akan-scaleOut-push"]::view-transition-new(.akan-page) {
   animation: 220ms ease-out both akan-vt-fade-in;
 }
-::view-transition-old(.akan-scaleOut-pop) {
+html[data-akan-vt="akan-scaleOut-pop"]::view-transition-old(.akan-page) {
   animation: 200ms ease-in both akan-vt-fade-out;
 }
-::view-transition-new(.akan-scaleOut-pop) {
+html[data-akan-vt="akan-scaleOut-pop"]::view-transition-new(.akan-page) {
   animation: 220ms ease-out both akan-vt-grow-in;
 }
 @keyframes akan-vt-in-right {

@@ -12,7 +12,9 @@ describe("viewTransitionClassOf", () => {
     );
 
     expect(animated).toHaveLength(8);
-    for (const name of animated) expect(css).toContain(`::view-transition-new(.${name})`);
-    for (const name of animated) expect(css).toContain(`::view-transition-old(.${name})`);
+    for (const name of animated) {
+      expect(css).toContain(`[data-akan-vt="${name}"]::view-transition-new(.akan-page)`);
+      expect(css).toContain(`[data-akan-vt="${name}"]::view-transition-old(.akan-page)`);
+    }
   });
 });

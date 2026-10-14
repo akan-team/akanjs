@@ -7,9 +7,7 @@ import {
   type ReactFont,
   router,
   Translator,
-  transitionTypes,
   usePage,
-  viewTransitionClassOf,
 } from "akanjs/client";
 import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
 import {
@@ -127,19 +125,9 @@ const ServerFontFace = ({ fonts }: { fonts: ReactFont[] }) => {
   );
 };
 
-// An RSC navigation names its type after the route's `.config({ transition })`, and the page takes the class of the
-// same name; a navigation that names none leaves the page to swap in place.
-const pageViewTransition: ViewTransitionClassPerType = Object.fromEntries([
-  ["default", "none"],
-  ...transitionTypes.flatMap((transition) =>
-    transition === "none"
-      ? []
-      : (["push", "pop"] as const).map((direction) => {
-          const type = viewTransitionClassOf(transition, direction);
-          return [type, type];
-        }),
-  ),
-]);
+// One type for every navigation. React concatenates types left over from an entangled navigation, so a direction
+// carried by the type plays the next push backwards; `rscClient` puts this navigation's direction on `data-akan-vt`.
+const pageViewTransition: ViewTransitionClassPerType = { default: "none", "akan-nav": "akan-page" };
 
 interface SSRWrapperProps {
   className?: string;
@@ -232,7 +220,8 @@ const SSRWrapper = ({
                     exit={pageViewTransition}
                     update={pageViewTransition}
                   >
-                    {Children.toArray(children)}
+                    {/* React names every host child of a ViewTransition on its own, so a fragment slides in pieces. */}
+                    <div>{children}</div>
                   </ViewTransition>
                 ) : (
                   Children.toArray(children)
