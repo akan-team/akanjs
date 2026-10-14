@@ -105,7 +105,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       await this.cloudScript.update(workspace, tag, { registryUrl: resolveRegistryUrl(registry) });
     }),
   pushUpdate: target({
-    desc: "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it; exits 2 when the pack needs a new store build or the project rejects it",
+    desc: "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it. Exits 2 when the pack needs a new store build or the project rejects it, 1 on any other failure",
   })
     .with(App)
     .option("platform", String, {
@@ -168,7 +168,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       },
     ),
   registerBinary: target({
-    desc: "Register the store build of a phone app with the Akan Cloud project, with a pack of the same commit as its embedded bundle",
+    desc: "Register the store build of a phone app with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Exits 2 when the store build differs natively from this commit's pack, 1 on any other failure",
   })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the store build to register" })

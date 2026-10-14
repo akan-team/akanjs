@@ -23,6 +23,7 @@ import {
 } from "./argMeta";
 import { camelToKebabCase } from "./camelToKebabCase";
 import { CommandContainer } from "./dependencyBuilder";
+import { ExitCodeError } from "./exitCodeError";
 import { formatCommandHelp, formatHelp } from "./helpFormatter";
 import { type CommandCls, getTargetCommandNames, getTargetMetas } from "./targetMeta";
 
@@ -324,7 +325,7 @@ export const runCommands = async (...commands: CommandCls[]) => {
   let failureExitCode = 1;
   process.on("unhandledRejection", (error) => {
     printCliError(error);
-    process.exit(failureExitCode);
+    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
   });
   const __dirname = getDirname(import.meta.url);
   const packageJsonCandidates = [`${path.dirname(Bun.main)}/package.json`, `${__dirname}/../package.json`];
@@ -452,6 +453,6 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
   // Handled here, not by the handler above: a rejection reaching the entry's top-level await prints Bun's own trace.
   await program.parseAsync(process.argv).catch((error: unknown) => {
     printCliError(error);
-    process.exit(failureExitCode);
+    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
   });
 };

@@ -12,7 +12,7 @@ import {
   UpdatePackUpload,
   type WindowsTestTargetConfig,
 } from "@akanjs/devkit/cloud";
-import { type App, assertPromptable, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, assertPromptable, ExitCodeError, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { type MobilePlatform, NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
@@ -704,12 +704,12 @@ export class CloudRunner extends runner("cloud") {
           throw CloudApi.refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
         });
       const label = `${pack.app} ${pack.target} ${pack.platform} on channel ${target}: release ${release.id}`;
-      if (release.status === "rejected") {
-        process.exitCode = 2;
-        Logger.error(
+      if (release.status === "rejected")
+        throw new ExitCodeError(
           `The project rejected ${label}:\n${(release.problems ?? []).map((problem) => `  - ${problem}`).join("\n")}`,
+          2,
         );
-      } else if (release.status === "published")
+      if (release.status === "published")
         Logger.rawLog(`Published ${label} (${pack.files} files, native API ${pack.nativeApi}).`);
       else
         Logger.rawLog(
@@ -742,10 +742,11 @@ export class CloudRunner extends runner("cloud") {
         `The store build at ${bundlePath} is not this commit's --env ${env} build: its web bundle differs from the pack's. Run \`${rebuild}\`, then register that build.`,
       );
     const compat = await NativeApp.compareBundles(app.cwdPath, bundlePath, path.join(pack.out, "bundle.json"));
-    if (!compat.compatible)
-      throw new Error(
-        `The store build at ${bundlePath} differs from this commit's pack:\n- ${compat.problems.join("\n- ")}\nRun \`${rebuild}\`, then register that build.`,
-      );
+    const verdict = NativeApp.storeBuildVerdict(
+      { out: pack.out, compat: { against: bundlePath, ...compat } },
+      `Run \`${rebuild}\`, then register that build.`,
+    );
+    if (verdict) throw verdict;
     if (bundle.updates.channel !== pack.channel)
       throw new Error(
         `The store build at ${bundlePath} reads updates channel ${bundle.updates.channel}, and this commit's --env ${env} pack is for ${pack.channel}. Run \`${rebuild}\`, then register that build.`,
