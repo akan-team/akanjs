@@ -5,6 +5,7 @@ import type { TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import {
   type App,
   type Apps,
+  assertPromptable,
   type Exec,
   type Lib,
   type Sys,
@@ -65,6 +66,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   static devServerReadyTimeoutMs = DevSupervisor.bootTimeoutMs;
   readonly #interrupt = new InterruptTeardown();
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
+    assertPromptable(`Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}`, {
+      remedy: `install them first with \`bun add ${installSpecs.join(" ")}\``,
+    });
     return await confirm({
       message: `Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}. Install them now?`,
       default: true,

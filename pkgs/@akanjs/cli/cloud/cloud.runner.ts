@@ -12,7 +12,7 @@ import {
   UpdatePackUpload,
   type WindowsTestTargetConfig,
 } from "@akanjs/devkit/cloud";
-import { type App, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, assertPromptable, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { type MobilePlatform, NativeApp, type NativeUpdatePack, resolveMobileTargets } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
@@ -138,6 +138,9 @@ export class CloudRunner extends runner("cloud") {
   }
 
   async #getRemoteEnvServerWithUsername(): Promise<SelectedRemoteEnvServer> {
+    assertPromptable("The env archive goes over scp to a remote server picked here, as AKAN_WORKSPACE_ID is not set", {
+      remedy: "set AKAN_WORKSPACE_ID in the workspace .env to use Akan Cloud, or run it once in a terminal",
+    });
     const remoteServer = await this.#selectRemoteEnvServer();
     if (remoteServer.config.username) return remoteServer;
     const username = await this.#ask(`SSH username for ${remoteServer.config.host} (optional): `);
@@ -262,6 +265,9 @@ export class CloudRunner extends runner("cloud") {
     for (const result of [...unreachable, ...warning]) {
       const reason = result.infraError ?? "failing tests";
       if (!interactive) continue;
+      assertPromptable(`${result.platform} did not pass (${reason}) — ${run.logDir}`, {
+        remedy: "leave it out of --platforms to publish without it, or run it in a terminal to be asked",
+      });
       const proceed = await confirm({
         message: `${result.platform} did not pass (${reason}). Continue without it?`,
         default: false,
@@ -280,6 +286,9 @@ export class CloudRunner extends runner("cloud") {
     return results;
   }
   async #askWindowsTestTarget(): Promise<WindowsTestTargetConfig> {
+    assertPromptable("No Windows test target is configured", {
+      remedy: "run it once in a terminal, which saves the target to ~/.akan/config.json",
+    });
     Logger.info("No Windows test target is configured yet; it is saved to ~/.akan/config.json once entered.");
     const required = (value: string) => !!value.trim();
     const host = await this.#ask("Windows host (ip or name): ", required);
@@ -338,6 +347,10 @@ export class CloudRunner extends runner("cloud") {
       const newDistPackageJson = this.#normalizeAkanPackageJson(distPackageJson, library, nextVersion);
       await workspace.writeJson(`dist/pkgs/${library}/package.json`, newDistPackageJson);
     }
+    if (confirmPublish)
+      assertPromptable(`Publishing ${akanPkgs.join(", ")}@${nextVersion} asks for a confirmation`, {
+        remedy: "run it in a terminal",
+      });
     if (confirmPublish && !(await confirm({ message: "Are you sure you want to deploy the libraries?" }))) {
       Logger.error("Deployment cancelled");
       return;

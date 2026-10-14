@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
@@ -1096,4 +1096,33 @@ describe("ApplicationRunner", () => {
 
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
+});
+
+describe("runner prompts on a stdin that is not a terminal", () => {
+  const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  beforeEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
+  });
+  afterEach(() => {
+    if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  });
+
+  test("a script left unnamed is refused with the scripts there are", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "script", "seed.ts"), "");
+    await writeText(path.join(app.cwdPath, "script", "migrate.ts"), "");
+
+    await expect(new ApplicationRunner().getScriptFilename(app)).rejects.toThrow(
+      /^Missing argument 'filename': stdin is not a terminal to prompt on, so pass it on the command line \(choices: (seed, migrate|migrate, seed)\)\.$/,
+    );
+  });
+
+  test("a database mode's missing packages are named to install instead of asked about", async () => {
+    await expect(
+      new ApplicationScript().confirmDatabaseModeDependencyInstall("cluster", ["postgres@3.4.5"]),
+    ).rejects.toThrow(
+      "Database mode 'cluster' requires missing dependencies: postgres@3.4.5: stdin is not a terminal to prompt on, so install them first with `bun add postgres@3.4.5`.",
+    );
+  });
 });

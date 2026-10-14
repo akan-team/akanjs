@@ -5,7 +5,7 @@ import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
-import { type App, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import {
@@ -125,6 +125,9 @@ export class ApplicationRunner extends runner("application") {
       throw new Error(`No script files found. make a script file in apps/${app.name}/script folder`);
     }
     const scriptFiles = (await app.readdir("script")).filter((file) => file.endsWith(".ts"));
+    assertPromptable("Missing argument 'filename'", {
+      choices: scriptFiles.map((file) => file.replace(".ts", "")),
+    });
     const scriptFile = await (await loadPrompts()).select({
       message: "Select script to run",
       choices: scriptFiles.map((file) => ({ name: file, value: file.replace(".ts", "") })),
