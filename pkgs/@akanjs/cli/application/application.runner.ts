@@ -306,10 +306,10 @@ try {
       fast = false,
       reporter,
       spinner = false,
-      profile,
-    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean; profile?: string } = {},
+      envProfile,
+    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean; envProfile?: string } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile }).build({ spinner });
   }
   async start(
     app: App,
@@ -658,7 +658,7 @@ try {
     const { modules, env: serverEnv, restart, watchdog } = server;
     return await stage?.prepare(env, { modules, env: serverEnv, restart, watchdog });
   }
-  async #buildMobileCsr(app: App, env: NativeEnv, profile?: string) {
+  async #buildMobileCsr(app: App, env: NativeEnv, envProfile?: string) {
     const prevEnv = {
       AKAN_PUBLIC_ENV: process.env.AKAN_PUBLIC_ENV,
       AKAN_PUBLIC_OPERATION_MODE: process.env.AKAN_PUBLIC_OPERATION_MODE,
@@ -670,7 +670,7 @@ try {
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app, { environment: env, profile }).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env, profile: envProfile }).build({ spinner: true });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];

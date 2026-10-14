@@ -30,7 +30,7 @@ const input = {
   space: { install: 150 * MIB + 1, unpack: 160 * MIB },
   schemes: ["board", "board-dev"],
   icon: "C:\\build\\gen\\app.ico",
-  bootstrapper: "C:\\cache\\MicrosoftEdgeWebview2Setup.exe",
+  webview2Setup: "C:\\cache\\MicrosoftEdgeWebview2Setup.exe",
   stopScript: "C:\\build\\gen\\stop-app.ps1",
   outFile: "C:\\build\\board-1.2.0-x64-setup.exe",
 };

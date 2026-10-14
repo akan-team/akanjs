@@ -195,7 +195,8 @@ export interface DesktopServerOptions {
   onState?(state: DesktopServerState): void;
   readyTimeout?: number;
   stopGrace?: number;
-  restartDelay?(failures: number, everReady: boolean): number;
+  /** `paced`: the 1 s → 30 s schedule, once the server was ready or it failed MAX_FAILURES times before that. */
+  restartDelay?(failures: number, paced: boolean): number;
   now?(): number;
   /** Whether the server at `url` answers its health route; the watchdog's question. */
   probe?(url: string, timeoutMs: number): Promise<boolean>;
@@ -378,8 +379,8 @@ async function probeHealth(url: string, timeoutMs: number): Promise<boolean> {
   }
 }
 
-export function restartDelay(failures: number, everReady = true): number {
-  return everReady ? Math.min(1000 * 2 ** (failures - 1), 30_000) : BOOT_RESTART_DELAY;
+export function restartDelay(failures: number, paced = true): number {
+  return paced ? Math.min(1000 * 2 ** (failures - 1), 30_000) : BOOT_RESTART_DELAY;
 }
 
 const listenOn = (port: number) =>
