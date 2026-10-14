@@ -171,6 +171,8 @@ A stream endpoint with one lossy room and one room that must see every frame:
 
 **Agents do not get it.** A signal that returns `Binary` is not published to MCP.
 
+**`Binary.toBase64(bytes)` and `Binary.fromBase64(text)` are its wire codec.** They use `Buffer` where the runtime has one and `btoa` / `atob` in a browser, so code on either side that needs base64 calls them instead of keeping its own copy.
+
 **Binary is never a model field.** A model that declares `field(Binary)` fails to load. Keep the bytes in a `File` model and store a relation to it.
 
 Upload

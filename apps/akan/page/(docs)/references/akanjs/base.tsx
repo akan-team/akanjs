@@ -921,6 +921,28 @@ export class StreamEndpoint extends endpoint(srv.stream, ({ pubsub }) => ({
                 ),
               })}
             </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>Binary.toBase64(bytes)</code> and <code>Binary.fromBase64(text)</code> are its wire codec.
+                    </strong>{" "}
+                    They use <code>Buffer</code> where the runtime has one and <code>btoa</code> / <code>atob</code> in
+                    a browser, so code on either side that needs base64 calls them instead of keeping its own copy.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>Binary.toBase64(bytes)</code>와 <code>Binary.fromBase64(text)</code>가 그 wire 코덱입니다.
+                    </strong>{" "}
+                    런타임에 <code>Buffer</code>가 있으면 그것을, 브라우저에서는 <code>btoa</code> / <code>atob</code>를
+                    쓰므로, 어느 쪽에서든 base64가 필요하면 따로 구현하지 말고 이것을 부릅니다.
+                  </span>
+                ),
+              })}
+            </li>
           </ul>
           <Docs.Alert type="warning">
             {l.trans({
