@@ -1,6 +1,7 @@
 import { getEnv } from "akanjs/base";
 import {
   authTokenKey,
+  bearerTokenOf,
   decodeJwtPayload,
   isOwnAuthToken,
   Logger,
@@ -116,7 +117,7 @@ export const getAccount = <AddData = unknown>(): Account<AddData> => {
   const embedded = globalThis.__AKAN_EMBED__;
   if (embedded)
     return embedded.account ? ({ ...defaultAccount, ...embedded.account } as Account<AddData>) : defaultAccount;
-  const jwt = getAuthToken() ?? getHeader("authorization")?.replace(/^Bearer\s+/i, "");
+  const jwt = getAuthToken() ?? bearerTokenOf(getHeader("authorization"));
   if (!jwt) return defaultAccount;
   const account = decodeJwtPayload<Account<AddData>>(jwt);
   if (account.appName !== getEnv().appName || account.environment !== getEnv().environment) return defaultAccount;
