@@ -43,7 +43,7 @@ export class ProjectTypecheck {
   }
 
   async #check(tsconfigPath: string) {
-    const proc = Bun.spawn([process.execPath, await this.#workerEntry()], {
+    const proc = Bun.spawn([process.execPath, await ProjectTypecheck.workerEntry(this.workspaceRoot)], {
       cwd: this.workspaceRoot,
       env: { ...this.env, AKAN_COMMAND_TYPE: "typecheck", AKAN_TYPECHECK_TSCONFIG: tsconfigPath },
       stdout: "pipe",
@@ -57,15 +57,16 @@ export class ProjectTypecheck {
     if (exitCode !== 0) throw new Error((stderr || stdout).trim() || `Typecheck failed with exit code ${exitCode}`);
   }
 
-  async #workerEntry() {
+  //? The workspace's own devkit first, then an installed one, then the entry a bundle puts beside its chunks.
+  static async workerEntry(workspaceRoot: string) {
     const candidates = [
-      path.join(this.workspaceRoot, "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(this.workspaceRoot, "node_modules/@akanjs/devkit/typecheck/typecheck.proc.ts"),
+      path.join(workspaceRoot, "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts"),
+      path.join(workspaceRoot, "node_modules/@akanjs/devkit/typecheck/typecheck.proc.ts"),
       path.join(import.meta.dir, "typecheck.proc.js"),
       path.join(import.meta.dir, "typecheck.proc.ts"),
       path.join(import.meta.dir, "..", "typecheck.proc.js"),
     ];
     for (const candidate of candidates) if (await Bun.file(candidate).exists()) return candidate;
-    throw new Error(`[cli] typecheck worker entry not found; looked in: ${candidates.join(", ")}`);
+    throw new Error(`[devkit] typecheck worker entry not found; looked in: ${candidates.join(", ")}`);
   }
 }

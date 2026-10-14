@@ -52,6 +52,7 @@ import { AppInfo, isAkanFrameworkDependency, LibInfo, PkgInfo, WorkspaceInfo } f
 import { Spinner } from "./spinner";
 // Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
 import type { TypeChecker } from "./typeChecker";
+import { ProjectTypecheck } from "./typecheck/projectTypecheck";
 import type { FileContent, PackageJson, TsConfigJson } from "./types";
 import { barrelFacetDirs } from "./workspaceLayout";
 
@@ -580,7 +581,7 @@ export class Executor {
   }
   async typeCheckAsync(filePath: string) {
     const path = this.getPath(filePath);
-    const entry = await this.#resolveTypecheckWorkerEntry();
+    const entry = await ProjectTypecheck.workerEntry(process.cwd());
     const proc = Bun.spawn([process.execPath, entry], {
       cwd: this.cwdPath,
       env: {
@@ -610,18 +611,6 @@ export class Executor {
       fileWarnings: Array.from({ length: result.fileWarningsCount }),
       message: result.message,
     };
-  }
-  async #resolveTypecheckWorkerEntry() {
-    const dirname = getDirname(import.meta.url);
-    const candidates = [
-      path.join(process.cwd(), "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(process.cwd(), "node_modules/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(dirname, "typecheck/typecheck.proc.ts"),
-      path.join(dirname, "typecheck.proc.js"),
-      path.join(dirname, "typecheck.proc.ts"),
-    ];
-    for (const candidate of candidates) if (await Bun.file(candidate).exists()) return candidate;
-    throw new Error(`[devkit] typecheck worker entry not found; looked in: ${candidates.join(", ")}`);
   }
   getLinter() {
     this.linter ??= new Linter(this.cwdPath);
