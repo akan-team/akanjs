@@ -1,5 +1,5 @@
 import { Binary, FIELD_META } from "akanjs/base";
-import { plainFieldsOf, readAuthToken } from "akanjs/common";
+import { bearerTokenOf, plainFieldsOf, readAuthToken } from "akanjs/common";
 import { Err, type ErrPayload } from "akanjs/dictionary";
 import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
 import dayjs from "dayjs";
@@ -145,9 +145,9 @@ export class EndpointIdempotency {
   static #callerOf(context: SignalContext, req: Request & { cookies?: Bun.CookieMap }) {
     const principal = EndpointIdempotency.#principalOf(context.get("account"));
     if (principal) return EndpointIdempotency.#digest(`account:${principal}`);
-    const credential = (
-      req.headers.get("authorization") ?? readAuthToken((name) => req.cookies?.get(name) ?? undefined)
-    )?.replace(/^bearer\s+/i, "");
+    const cookie = readAuthToken((name) => req.cookies?.get(name) ?? undefined);
+    //? As the account layer reads it: a header wins over the cookie whatever it holds, and only a bearer token counts.
+    const credential = bearerTokenOf(req.headers.get("authorization") ?? (cookie ? `Bearer ${cookie}` : null));
     return credential ? EndpointIdempotency.#digest(`credential:${credential}`) : null;
   }
 
