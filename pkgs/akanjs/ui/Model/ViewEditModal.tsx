@@ -14,12 +14,22 @@ import { Modal } from "../Modal";
 import Remove from "./Remove";
 import View from "./View";
 
-// Declared from whichever face is mounted, so the shared close verb is published once and withdrawn on close.
+// Declared from whichever face is mounted (the view's body when it offers no edit), so the shared close verb is
+// published once and withdrawn on close.
 const useCloseViewTool = (modelName: string, closeView: () => void) =>
   st
     .tool(`closeViewOf${capitalize(modelName)}`)
     .desc(`Close the open ${modelName} modal.`)
     .exec(closeView);
+
+interface CloseViewToolProps {
+  modelName: string;
+  closeView: () => void;
+}
+const CloseViewTool = ({ modelName, closeView }: CloseViewToolProps) => {
+  useCloseViewTool(modelName, closeView);
+  return null;
+};
 
 interface ActionProps {
   modelName: string;
@@ -178,7 +188,10 @@ export default function ViewEditModal({
       }
     >
       {modelModal === "view" ? (
-        <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
+        <>
+          {canUpdate ? null : <CloseViewTool modelName={modelName} closeView={closeView} />}
+          <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
+        </>
       ) : modelModal === "edit" ? (
         <Template />
       ) : null}

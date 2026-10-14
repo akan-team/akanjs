@@ -1,5 +1,7 @@
 import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
+import { act } from "react";
+import { AgenticSurface, AgentProvider } from "use-agentic";
 import { itemFixtureOf, l, mountSuspense, setTestEnv, waitFor } from "../testHelpers.fixture";
 
 let ViewEditModal: typeof import("./ViewEditModal").default;
@@ -21,7 +23,7 @@ beforeAll(async () => {
   ({ default: ViewEditModal } = await import("./ViewEditModal"));
 });
 
-const openView = async () => {
+const openView = async (surface = new AgenticSurface()) => {
   makeStore();
   st.set({
     viewEditTestItem: new Full({ id: "aaaaaaaaaaaaaaaaaaaaaa01", title: "Ada" }),
@@ -29,11 +31,13 @@ const openView = async () => {
     viewEditTestItemLoading: false,
   } as never);
   const mounted = await mountSuspense(
-    <ViewEditModal
-      slice={slice}
-      renderView={(model: { title: string }) => <div>{model.title}</div>}
-      renderTemplate={() => <div>form</div>}
-    />,
+    <AgentProvider surface={surface}>
+      <ViewEditModal
+        slice={slice}
+        renderView={(model: { title: string }) => <div>{model.title}</div>}
+        renderTemplate={() => <div>form</div>}
+      />
+    </AgentProvider>,
   );
   await waitFor(() => document.body.textContent?.includes("Ada") ?? false);
   return mounted;
@@ -60,5 +64,25 @@ describe("Model.ViewEditModal", () => {
     expect(editButton()).toBeNull();
     expect(menuButton()).toBeNull();
     unmount();
+  });
+
+  test("lets an agent close the view whether or not the slice serves update", async () => {
+    for (const servesUpdate of [true, false]) {
+      if (servesUpdate) runtimeFetch.updateViewEditTestItem = async () => null;
+      else delete runtimeFetch.updateViewEditTestItem;
+      const surface = new AgenticSurface();
+      const { unmount } = await openView(surface);
+      const names = () => surface.snapshot().tools.map((tool) => tool.name);
+      await waitFor(() => names().includes("closeViewOfViewEditTestItem"));
+      expect(names()).toContain("closeViewOfViewEditTestItem");
+
+      await act(async () => {
+        await surface.call("closeViewOfViewEditTestItem", {});
+      });
+      await waitFor(() => !document.body.textContent?.includes("Ada"));
+      expect(document.body.textContent).not.toContain("Ada");
+      expect(names()).not.toContain("closeViewOfViewEditTestItem");
+      unmount();
+    }
   });
 });
