@@ -16,16 +16,18 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   async logout(workspace: Workspace, host?: string | null) {
     await this.cloudRunner.logout(await GlobalConfig.hostFor(workspace, host));
   }
+  async #cloudApi(workspace: Workspace, given?: string | null) {
+    const host = await GlobalConfig.hostFor(workspace, given);
+    await this.login(workspace, host);
+    return await CloudApi.fromHost(workspace, host);
+  }
   async downloadEnv(
     workspace: Workspace,
     workspaceId = workspace.getWorkspaceId({ allowEmpty: true }),
     { host: given }: { host?: string | null } = {},
   ) {
     if (workspaceId) {
-      const host = await GlobalConfig.hostFor(workspace, given);
-      await this.login(workspace, host);
-      const cloudApi = await CloudApi.fromHost(workspace, host);
-      await this.cloudRunner.downloadEnv(cloudApi, workspace, workspaceId);
+      await this.cloudRunner.downloadEnv(await this.#cloudApi(workspace, given), workspace, workspaceId);
       return;
     }
     await this.cloudRunner.downloadEnvByScp(workspace);
@@ -44,10 +46,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       throw new Error("A scoped env upload needs a cloud workspace id — the scp target is workspace-wide.");
     const { files, path } = await this.cloudRunner.gatherEnvFiles(workspace, { scope, archivePath });
     if (workspaceId) {
-      const host = await GlobalConfig.hostFor(workspace, given);
-      await this.login(workspace, host);
-      const cloudApi = await CloudApi.fromHost(workspace, host);
-      await this.cloudRunner.uploadEnv(cloudApi, workspaceId, path);
+      await this.cloudRunner.uploadEnv(await this.#cloudApi(workspace, given), workspaceId, path);
       return { workspaceId, files };
     }
     await this.cloudRunner.uploadEnvByScp(workspace, path);
@@ -66,23 +65,17 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   ) {
     CloudRunner.assertSecretName(name);
     CloudRunner.assertSecretBranch(branch);
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
     const value = await this.cloudRunner.readSecretValue(name, file);
-    const host = await GlobalConfig.hostFor(workspace, given);
-    await this.login(workspace, host);
-    const cloudApi = await CloudApi.fromHost(workspace, host);
-    await this.cloudRunner.uploadSecret(cloudApi, devProjectId, { name, branch, value });
+    await this.cloudRunner.uploadSecret(await this.#cloudApi(workspace, given), devProjectId, { name, branch, value });
   }
   async listSecrets(
     workspace: Workspace,
     { branch, subspace, host: given }: { branch: string | null; subspace: string | null; host?: string | null },
   ) {
     CloudRunner.assertSecretBranch(branch);
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
-    const host = await GlobalConfig.hostFor(workspace, given);
-    await this.login(workspace, host);
-    const cloudApi = await CloudApi.fromHost(workspace, host);
-    await this.cloudRunner.listSecrets(cloudApi, devProjectId, branch);
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
+    await this.cloudRunner.listSecrets(await this.#cloudApi(workspace, given), devProjectId, branch);
   }
   async removeSecret(
     workspace: Workspace,
@@ -95,11 +88,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   ) {
     CloudRunner.assertSecretName(name);
     CloudRunner.assertSecretBranch(branch);
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace);
-    const host = await GlobalConfig.hostFor(workspace, given);
-    await this.login(workspace, host);
-    const cloudApi = await CloudApi.fromHost(workspace, host);
-    await this.cloudRunner.removeSecret(cloudApi, devProjectId, { name, branch });
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
+    await this.cloudRunner.removeSecret(await this.#cloudApi(workspace, given), devProjectId, { name, branch });
   }
 
   async pushUpdate(
@@ -129,13 +119,11 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       pack: string | null;
     },
   ) {
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace, app.name);
     const pack = await this.#packToPush(app, { platform, target, env, write, allowLocalRelease, packDir });
     const verdict = UpdatePackFolder.storeBuildVerdict(pack);
     if (verdict) throw verdict;
-    const host = await GlobalConfig.hostFor(workspace, given);
-    await this.login(workspace, host);
-    return await this.cloudRunner.pushUpdate(await CloudApi.fromHost(workspace, host), devProjectId, pack, {
+    return await this.cloudRunner.pushUpdate(await this.#cloudApi(workspace, given), devProjectId, pack, {
       channel,
       notes,
     });
@@ -193,11 +181,9 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       allowLocalRelease: boolean;
     },
   ) {
-    const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace, app.name);
     const pack = await this.applicationScript.packUpdate(app, platform, { target, env, write, allowLocalRelease });
-    const host = await GlobalConfig.hostFor(workspace, given);
-    await this.login(workspace, host);
-    return await this.cloudRunner.registerBinary(await CloudApi.fromHost(workspace, host), devProjectId, app, pack, {
+    return await this.cloudRunner.registerBinary(await this.#cloudApi(workspace, given), devProjectId, app, pack, {
       distribution,
       env,
     });

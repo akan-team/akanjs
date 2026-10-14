@@ -538,8 +538,8 @@ export class CloudRunner extends runner("cloud") {
     return secretPaths.flat();
   }
 
-  /** A secret's project: the workspace's own, or a subspace's, each its own project with its own secrets. */
-  async secretProject(workspace: Workspace, subspace: string | null, appName?: string) {
+  /** The Akan Cloud project a call addresses: the workspace's own, or a subspace's, each with its own secrets and apps. */
+  async projectOf(workspace: Workspace, subspace: string | null, appName?: string) {
     if (!subspace) {
       const workspaceId = workspace.getWorkspaceId({ allowEmpty: true });
       if (!workspaceId)
