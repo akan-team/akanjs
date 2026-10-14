@@ -314,7 +314,7 @@ For somebody else's issuer, set these in the deployment env:
 
 OAuth resource server, by env
 
-**No credential.** Once an issuer is named, a request with no bearer gets a `401` with `WWW-Authenticate`; before that, only a call a guard refuses does. Either way the client signs in instead of concluding the tool does not exist.
+**No credential.** Once an issuer is named, a request with no bearer gets a `401` with `WWW-Authenticate`; before that, only a call a guard refuses does. Either way the client signs in instead of concluding the tool does not exist. An `Authorization` header that is not `Bearer <one token>` counts as no credential.
 
 **Scopes are for somebody else's issuer.** `insufficient_scope` is enforced only once `AKAN_MCP_SCOPES` is set. Tokens an app mounting `libs/shared` issues itself carry no scope claim, so setting it there refuses every one of them with `403`.
 

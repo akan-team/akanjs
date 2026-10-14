@@ -1094,14 +1094,16 @@ export default page().render(() => {
         <>
           <strong>No credential.</strong> Once an issuer is named, a request with no bearer gets a <code>401</code> with{" "}
           <code>WWW-Authenticate</code>; before that, only a call a guard refuses does. Either way the client signs in
-          instead of concluding the tool does not exist.
+          instead of concluding the tool does not exist. An <code>Authorization</code> header that is not{" "}
+          <code>Bearer &lt;one token&gt;</code> counts as no credential.
         </>
       ),
       ko: (
         <>
           <strong>자격 증명이 없을 때.</strong> issuer를 지정하면 bearer 없는 모든 요청이 <code>WWW-Authenticate</code>
           와 함께 <code>401</code>을 받고, 지정 전에는 가드가 거절한 호출만 받습니다. 어느 쪽이든 클라이언트는 툴이
-          없다고 결론짓지 않고 로그인합니다.
+          없다고 결론짓지 않고 로그인합니다. <code>Bearer &lt;토큰 하나&gt;</code> 꼴이 아닌 <code>Authorization</code>{" "}
+          헤더는 자격 증명이 없는 것으로 봅니다.
         </>
       ),
     }),

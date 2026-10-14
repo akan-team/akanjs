@@ -1496,6 +1496,8 @@ More in akanjs/common
 
 - decodeJwtPayload: Reads a JWT's payload without checking its signature, so never trust it for access.
 
+- bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
+
 - isThenable: Tells whether a value can be awaited.
 
 - interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`
@@ -1511,8 +1513,6 @@ A script that logs through an instance, a static call, a structured record and a
 **Six levels, lowest first:** `trace`, `verbose`, `debug`, `info`, `warn`, `error`. A line prints at or above the console level, and `error` lines go to stderr.
 
 **The second argument is the context.** `logger.warn("retrying charge", "stripe")` prints `[stripe]` before the message.
-
-**Secret-looking keys are masked.** An `attrs` key containing a word such as password, token, secret, cookie or api key reads `[redacted]` before any sink sees it.
 
 ## akanjs/constant
 

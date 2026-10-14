@@ -152,7 +152,7 @@ The level ladder is trace, verbose, debug, info, warn, error, and three destinat
 
 - AKAN_LOG_STREAM (0 | 1, default 0): 1 forwards child records to the gateway always, not only while akan logs or .tail listens.
 
-- AKAN_LOG_STREAM_TOKEN (string, default unset — route absent): Mounts GET /_akan/app/logs, an SSE stream of the ring buffer, for a matching bearer token.
+- AKAN_LOG_STREAM_TOKEN (string, default unset — route absent): Mounts GET /_akan/app/logs, the ring buffer as SSE, for this bearer token; one with whitespace inside keeps it off.
 
 - AKAN_LOG_CANONICAL (0 | 1 | all | slow, default 0): One record per call at its end; 1 or all logs every call, slow only failed or slow ones.
 

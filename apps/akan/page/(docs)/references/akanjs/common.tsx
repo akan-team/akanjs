@@ -133,6 +133,14 @@ export default page().render(() => {
       }),
     },
     {
+      name: "bearerTokenOf",
+      desc: l.trans({
+        en: "The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`.",
+        ko: "`Authorization` 값의 토큰입니다. 대소문자를 가리지 않는 `Bearer` 뒤에 토큰 하나만 있어야 하고, 아니면 `null`입니다.",
+      }),
+      example: 'bearerTokenOf("bearer abc"); // "abc"',
+    },
+    {
       name: "isThenable",
       desc: l.trans({ en: "Tells whether a value can be awaited.", ko: "값을 await할 수 있는지 알려 줍니다." }),
     },
