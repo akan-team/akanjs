@@ -48,11 +48,34 @@ describe("OpsTokenVerifier", () => {
     });
   });
 
+  test("accepts its audience among a list's, and asks a control plane's token for no typ", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    expect(verifier.verify(mint(claims({ aud: ["puffinplace/main/edge-2", "puffinplace/main/edge-3"] })), now).ok).toBe(
+      true,
+    );
+    const head = `${b64({ alg: "EdDSA" })}.${b64(claims())}`;
+    expect(verifier.verify(`${head}.${sign(null, Buffer.from(head), privateKey).toString("base64url")}`, now).ok).toBe(
+      true,
+    );
+  });
+
   test("refuses another key's signature and a non-EdDSA header", () => {
     const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
     const other = generateKeyPairSync("ed25519").privateKey;
     expect(verifier.verify(mint(claims(), { key: other }), now)).toEqual({ ok: false, reason: "bad signature" });
     expect(verifier.verify(mint(claims(), { alg: "none" }), now)).toEqual({ ok: false, reason: "alg must be EdDSA" });
+  });
+
+  test("reads the request's bearer as every other gate does: one word after the scheme, in any case", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    const requestWith = (authorization: string) =>
+      new Request("http://edge/_akan/ops/info", { headers: { authorization } });
+    expect(verifier.verifyRequest(requestWith(`bearer  ${mint(claims())}`), now).ok).toBe(true);
+    for (const authorization of [`Bearer\t${mint(claims())}`, `Bearer ${mint(claims())} x`, mint(claims())])
+      expect(verifier.verifyRequest(requestWith(authorization), now)).toEqual({
+        ok: false,
+        reason: "missing bearer token",
+      });
   });
 
   test("parses the key from PEM, JWK and raw base64url", () => {

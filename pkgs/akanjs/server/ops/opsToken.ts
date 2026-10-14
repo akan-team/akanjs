@@ -1,4 +1,7 @@
-import { createPublicKey, type KeyObject, verify } from "node:crypto";
+import type { KeyObject } from "node:crypto";
+import { bearerTokenOf } from "akanjs/common";
+import { Ed25519Key } from "../ed25519Key";
+import { EdDsaJwt } from "../edDsaJwt";
 
 export interface OpsTokenClaims {
   aud: string;
@@ -31,43 +34,21 @@ export class OpsTokenVerifier {
   }
 
   static parsePublicKey(value: string): KeyObject {
-    const trimmed = value.trim();
-    if (trimmed.startsWith("{")) return createPublicKey({ key: JSON.parse(trimmed) as JsonWebKey, format: "jwk" });
-    const pem = trimmed.includes("-----BEGIN") ? trimmed.replace(/\\n/g, "\n") : null;
-    if (pem) return createPublicKey(pem);
-    const raw = Buffer.from(trimmed, "base64url");
-    if (raw.length === 32)
-      return createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: raw.toString("base64url") }, format: "jwk" });
-    if (raw.length === 44) return createPublicKey({ key: raw, format: "der", type: "spki" });
-    throw new Error("AKAN_OPS_PUBLIC_KEY must be a PEM, a JWK, base64 SPKI DER, or a raw 32-byte base64url key");
+    return Ed25519Key.parsePublic(value, "AKAN_OPS_PUBLIC_KEY");
   }
 
   verifyRequest(req: Request, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
-    const match = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "");
-    if (!match?.[1]) return { ok: false, reason: "missing bearer token" };
-    return this.verify(match[1], nowSec);
+    const token = bearerTokenOf(req.headers.get("authorization"));
+    if (!token) return { ok: false, reason: "missing bearer token" };
+    return this.verify(token, nowSec);
   }
 
   verify(token: string, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
-    const parts = token.split(".");
-    if (parts.length !== 3) return { ok: false, reason: "malformed token" };
-    const [headerPart = "", payloadPart = "", signaturePart = ""] = parts;
-    const header = OpsTokenVerifier.#decodeJson(headerPart);
-    if (header?.alg !== "EdDSA") return { ok: false, reason: "alg must be EdDSA" };
-    const signed = verify(
-      null,
-      Buffer.from(`${headerPart}.${payloadPart}`),
-      this.#key,
-      Buffer.from(signaturePart, "base64url"),
-    );
-    if (!signed) return { ok: false, reason: "bad signature" };
-    const claims = OpsTokenVerifier.#decodeJson(payloadPart);
-    if (!claims) return { ok: false, reason: "malformed claims" };
-    const { aud, exp, iat, jti } = claims;
+    const verdict = EdDsaJwt.verify(token, this.#key, { audience: this.audience });
+    if (!verdict.ok) return verdict;
+    const { exp, iat, jti } = verdict.claims;
     if (typeof exp !== "number" || typeof iat !== "number" || typeof jti !== "string" || !jti)
       return { ok: false, reason: "exp, iat and jti are required" };
-    const audiences = Array.isArray(aud) ? aud : [aud];
-    if (!audiences.includes(this.audience)) return { ok: false, reason: "audience mismatch" };
     if (exp <= nowSec) return { ok: false, reason: "expired" };
     if (iat > nowSec + OpsTokenVerifier.clockSkewSec) return { ok: false, reason: "issued in the future" };
     if (exp - iat > OpsTokenVerifier.maxLifetimeSec) return { ok: false, reason: "lifetime exceeds 300s" };
@@ -82,14 +63,5 @@ export class OpsTokenVerifier {
     if (this.#seen.size >= OpsTokenVerifier.maxRememberedJti) return false;
     this.#seen.set(jti, exp);
     return true;
-  }
-
-  static #decodeJson(part: string): Record<string, unknown> | null {
-    try {
-      const value = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as unknown;
-      return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-    } catch {
-      return null;
-    }
   }
 }

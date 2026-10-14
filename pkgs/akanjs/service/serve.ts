@@ -1,4 +1,4 @@
-import { type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
+import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
@@ -14,6 +14,8 @@ import type { DatabaseService, DatabaseServiceForModel } from "./types";
 interface ServiceOptions {
   enabled?: boolean | (() => boolean);
   serverMode?: "batch" | "federation";
+  /** The operation modes the module mounts in; `modules: ["@edge"]` selects every module that lists `edge`. */
+  operationMode?: BaseEnv["operationMode"][];
 }
 export type ServiceType = "database" | "plain";
 
@@ -61,6 +63,7 @@ export type ServiceCls<
     readonly type: ServiceType;
     readonly [INJECT_META]: InjectMap;
     readonly enabled: boolean;
+    readonly operationMode: readonly string[] | undefined;
   }
 >;
 
@@ -96,7 +99,7 @@ export function serve(
   ...extendSrvs: Cls[]
 ) {
   const refName = typeof refNameOrDb === "string" ? lowerlize(refNameOrDb) : refNameOrDb.refName;
-  const option = typeof optionOrInjectBuilder === "object" ? optionOrInjectBuilder : { enabled: true };
+  const option: ServiceOptions = typeof optionOrInjectBuilder === "object" ? optionOrInjectBuilder : { enabled: true };
   const injectBuilder =
     typeof optionOrInjectBuilder === "function" ? optionOrInjectBuilder : (injectBuilderOrExtendSrv as InjectBuilder);
   const extSrvs = [
@@ -117,6 +120,7 @@ export function serve(
   const srvRef = class Service {
     static readonly type = serviceType;
     static readonly refName = refName;
+    static readonly operationMode: readonly string[] | undefined = option.operationMode;
     static get enabled() {
       // A thunk resolves on first read instead of at module load, so it may consult config the boot fills in later.
       if (enabledCache === undefined)

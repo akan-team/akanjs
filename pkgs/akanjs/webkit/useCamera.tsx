@@ -1,4 +1,5 @@
 "use client";
+import { Binary } from "akanjs/base";
 import { Translator } from "akanjs/client";
 import {
   AkanNativeError,
@@ -27,17 +28,11 @@ export interface CameraPromptLabels {
 const promptLabel = (key: string, override?: string) =>
   override ?? Translator.translateByLocale(Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale, key);
 
-const toBase64 = (bytes: Uint8Array) => {
-  let binary = "";
-  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-  return btoa(binary);
-};
-
 //* The runtime serves a photo from memory until it is released, so it is read once and let go.
 const toDataUrl = async (photo: Photo) => {
   try {
     const bytes = new Uint8Array(await (await fileBlob(photo)).arrayBuffer());
-    return { dataUrl: `data:${photo.mime};base64,${toBase64(bytes)}` };
+    return { dataUrl: `data:${photo.mime};base64,${Binary.toBase64(bytes)}` };
   } finally {
     void releaseFile(photo).catch(() => undefined);
   }

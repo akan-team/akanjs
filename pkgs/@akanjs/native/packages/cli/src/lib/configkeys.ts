@@ -19,11 +19,11 @@ const KNOWN: Shape = {
     },
   },
   env: { defaults: true, platforms: { web: true, macos: true, windows: true, linux: true, ios: true, android: true } },
-  shell: { backgroundColor: true, backgroundColorDark: true },
+  shell: { backgroundColor: true, backgroundColorDark: true, devtools: true },
   usageDescriptions: true,
   privacy: { tracking: true, trackingDomains: true, collectedDataTypes: true, accessedApis: true },
   permissions: { camera: true, microphone: true, location: true },
-  updates: { url: true, publicKey: true, channel: true, readyTimeout: true },
+  updates: { url: true, publicKey: true, publicKeys: true, channel: true, readyTimeout: true, report: { url: true } },
   deepLinks: { schemes: true, domains: { "[]": { host: true, pathPrefixes: true } } },
   native: {
     ios: { infoPlist: true, entitlements: true },
@@ -36,9 +36,11 @@ const KNOWN: Shape = {
   desktop: {
     quitOnLastWindowClosed: true,
     recovery: true,
-    window: { fullscreen: true, skipTaskbar: true },
+    window: { fullscreen: true, skipTaskbar: true, frameless: true },
     screenCapture: true,
-    server: { dir: true, entry: true, env: true },
+    webview2: true,
+    publisher: true,
+    server: { dir: true, entry: true, env: true, restart: true, watchdog: { intervalMs: true, failures: true } },
     bin: true,
     dmg: {
       background: true,

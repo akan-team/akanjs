@@ -70,6 +70,10 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - **A filter may not be keyed after its own model.** Filter methods are assigned after CRUD, so a filter `chat` on
   model `chat` would silently swap the single-document `removeChat`/`updateChat` for a hookless query-level one. It
   throws at boot instead (`assertFilterFitsCrud`).
+- **An insight field counts or sums.** `accumulate: {}` counts the rows the query matches and `accumulate: { status:
+  "active" }` those that also match the condition; `accumulate: { $sum: "totalValue", status: "active" }` adds the
+  field up over the same rows (`field(Float, { default: 0, accumulate: … })`), a stored value that is not a number
+  counting as nothing — the same answer on SQLite and Postgres.
 - **"Has no value" is `q.empty`, never `q.missing`.** The three absence operators are distinct: `q.exists` is the
   key being present, `q.missing` is the key being *absent from the stored JSON*, and `q.empty` is either — absent,
   or present and null. An optional field is written both ways over its life: an insert that omits it leaves the key
@@ -187,6 +191,10 @@ shape, so `cascade` never means "related" — it means one of exactly these:
   unmounted `refPath` candidate only warns, since that list spans optional modules by design.
 - **Nothing checks whether another document still references the same target.** `File` in particular is deduped
   by `origin`, so two parents can share one row; `removeRef` claims the field owns its target exclusively.
+- **A reference no cascade removes keeps pointing at the removed row, and a response reads it live-only**: a list
+  leaves the target out, an optional field reads `null`, and a required one answers 404
+  `base.error.relationNotFound` naming the model and the field path. Make a reference whose target can go first
+  `.optional()`, or let it go with the target through `removeWith`.
 - Removal is soft (`removedAt`), but the storage delete a `_postRemove` performs is not — a cascade is not
   restorable, and reviving the owner does not revive what went with it.
 - A `removeWith` declaration **auto-creates its index** (`{ removedAt, fk }`, or `{ removedAt, typeKey, fk }` when

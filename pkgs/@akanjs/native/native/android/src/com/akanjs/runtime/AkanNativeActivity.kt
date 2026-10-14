@@ -3,6 +3,7 @@ package com.akanjs.runtime
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -221,6 +222,11 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         if (debuggable && intent.hasExtra(EXTRA_ENV)) webView.reload()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (AkanNativeFeatures.UPDATES && !unsupportedWebView) AkanNativeUpdateReports.flush()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (unsupportedWebView) return
@@ -238,6 +244,9 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     override fun onDestroy() {
         if (unsupportedWebView) return super.onDestroy()
+        // Left queued, they would roll back the trial a recreated activity runs: onTrial belongs to the process.
+        webView.removeCallbacks(readyTimeout)
+        rendererProbe?.let(webView::removeCallbacks)
         bridge.windowEnded(this) // the window is gone: so is its page's document
         for (plugin in bridge.plugins()) runCatching { plugin.destroy() }
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -373,10 +382,14 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             }
         }
 
+        //? Armed when the page starts, not when it finishes: a bundle stuck in a script never finishes loading.
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            startReadyTimer()
+        }
+
         override fun onPageFinished(view: WebView, url: String) {
             root.requestApplyInsets() // push insets into the new document
             if (splashConfig.optBoolean("autoHide", true)) hideSplash(SPLASH_FADE_MS)
-            startReadyTimer()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -840,8 +853,25 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     // ---------------------------------------------------------------- web bundle updates (UP-2)
 
+    private var rendererProbe: Runnable? = null
+
     private val readyTimeout = Runnable {
-        if (AkanNativeFeatures.UPDATES && AkanNativeUpdates.onTrial) serveBundle(AkanNativeUpdates.rollback())
+        if (!AkanNativeFeatures.UPDATES || !AkanNativeUpdates.onTrial) return@Runnable
+        val (root, report) = AkanNativeUpdates.rollback()
+        // A renderer stuck in a script never runs the next navigation: one that does not answer is ended, and
+        // onRenderProcessGone makes the activity again, on the bundle the rollback made active. One that cannot be
+        // ended (a single-process WebView has none of its own) takes a new process.
+        var answered = false
+        webView.evaluateJavascript("0") { answered = true }
+        val probe = Runnable {
+            if (answered) return@Runnable serveBundle(root)
+            report?.let { AkanNativeUpdateReports.amend(it, AkanNativeUpdateReason.HANG) }
+            if (webView.webViewRenderProcess?.terminate() == true) return@Runnable
+            startActivity(Intent.makeRestartActivityTask(ComponentName(this, javaClass)))
+            Runtime.getRuntime().exit(0)
+        }
+        rendererProbe = probe
+        webView.postDelayed(probe, RENDERER_PROBE_MS)
     }
 
     /** A bundle on trial must call notifyReady() within updates.readyTimeout of loading. */
@@ -855,6 +885,7 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
     /** Serves another web bundle (null: the APK's own) and loads it from the start. */
     override fun serveBundle(root: File?) {
         webView.removeCallbacks(readyTimeout)
+        rendererProbe?.let(webView::removeCallbacks)
         server.root = root
         webView.loadUrl("${AkanNativeAssetServer.ORIGIN}/")
     }
@@ -977,6 +1008,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         const val EXTRA_ENV = "akanNativeEnv"
         private const val STATE_PENDING = "akan-native.pendingResults"
         private const val SPLASH_FADE_MS = 200L
+        /** How long a page on trial has to answer before its renderer counts as stuck. */
+        private const val RENDERER_PROBE_MS = 2_000L
         // Must match @akanjs/native/core protocol.ts INIT_PREFIX / INIT_SUFFIX.
         private const val INIT_PREFIX = "window.__AKAN_NATIVE__=(function(o,b,e){for(var k in b)o[k]=b[k];o.env=e;return o})(window.__AKAN_NATIVE__||{},"
         private const val INIT_SUFFIX = ");\n"

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { $createParagraphNode, $createTextNode, $getRoot, createEditor, type Klass, type LexicalNode } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $isElementNode,
+  createEditor,
+  type Klass,
+  type LexicalNode,
+} from "lexical";
 
 import { isSerializedEditorState } from "./softGuard";
 
@@ -82,7 +90,9 @@ describe("Lexical serialization", () => {
     const formats = restored.read(() =>
       $getRoot()
         .getChildren()
-        .map((block) => (block.getFirstChild() as ReturnType<typeof $createTextNode>).getFormat()),
+        .map((block) =>
+          $isElementNode(block) ? (block.getFirstChild() as ReturnType<typeof $createTextNode>).getFormat() : 0,
+        ),
     );
     expect(formats.every((f) => f > 0)).toBe(true);
     expect(new Set(formats).size).toBe(marks.length);
@@ -126,9 +136,10 @@ describe("mention node", () => {
     const json2 = editor.parseEditorState(json1).toJSON();
     expect(json2).toEqual(json1);
 
-    const chip = editor
-      .parseEditorState(json1)
-      .read(() => $getRoot().getFirstChild()?.getLastChild()?.exportJSON()) as Record<string, unknown>;
+    const chip = editor.parseEditorState(json1).read(() => {
+      const paragraph = $getRoot().getFirstChild();
+      return $isElementNode(paragraph) ? paragraph.getLastChild()?.exportJSON() : undefined;
+    }) as Record<string, unknown>;
     expect(chip).toMatchObject({
       type: "akan-mention",
       refName: "admin",

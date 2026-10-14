@@ -53,6 +53,16 @@ export class GlobalConfig {
       await GlobalConfig.#setAkanGlobalConfig(mutate(await GlobalConfig.#getAkanGlobalConfig()));
     });
   }
+  static async hostFor(workspace: { getConfig(): Promise<{ cloudHost: string | null }> }, host?: string | null) {
+    return GlobalConfig.#normalizeHost(host || ((await workspace.getConfig()).cloudHost ?? GlobalConfig.akanCloudHost));
+  }
+  //? A login is stored under the host string, so `--host` and the workspace's `cloud.host` must spell one cloud alike.
+  static #normalizeHost(host: string) {
+    const url = URL.canParse(host) ? new URL(host) : null;
+    return url && (url.protocol === "https:" || url.protocol === "http:")
+      ? `${url.origin}${url.pathname.replace(/\/+$/, "")}`
+      : host.replace(/\/+$/, "");
+  }
   static async getHostConfig(host = GlobalConfig.akanCloudHost): Promise<HostConfig> {
     const akanConfig = await GlobalConfig.#getAkanGlobalConfig();
     return GlobalConfig.toHostConfig(akanConfig.cloudHost[host] ?? getDefaultHostConfig(host));

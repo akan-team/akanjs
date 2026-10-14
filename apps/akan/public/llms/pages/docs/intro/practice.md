@@ -12,8 +12,9 @@
 - Create icecream order module (#create-module)
 - Define Constant (#define-constant)
 - Fill dictionary (#fill-dictionary)
+- Allow orders in signal (#allow-orders)
 - Make template file (#make-template)
-- Update unit file (#update-unit)
+- Update unit and view files (#update-unit)
 - Expose to page (#expose-to-page)
 
 ## Content
@@ -150,25 +151,33 @@ This provides a longer explanation of what this feature does. It helps users und
 
 These translations make your app user-friendly! For example, when customers visit your ice cream shop website, they'll see "Ice cream Order" as a page title, not the technical "icecreamOrder". The description helps explain what the page is for.
 
-Now customers will see "Size" instead of "size" and "Small/Medium/Large" instead of "50/100/200". Next, let's create the actual form where customers can place their orders.
+Now customers will see "Size" instead of "size", and every topping in their own language. Before building the order form, let's allow customers to place orders.
+
+Allow orders in signal
+
+The signal file decides who may call each API. A new module lets anyone read its data, but nobody can create, update, or remove it until you name a guard. Customers order without signing in, so open creation to everyone:
+
+"create: Public" overrides "cru" for creation only, so updating and removing orders stays closed. If your generated file reads "Admin" instead of "None", keep it and add "create: Public" the same way.
 
 Make template file
 
 Now let's create the order form that customers will use. The Template file creates input forms where customers can select ice cream size and toppings.
 
-This code creates two input fields: one for selecting ice cream size (small/medium/large) and another for choosing multiple toppings. The Field.ToggleSelect shows three size options as buttons, while Field.MultiToggleSelect allows customers to pick several toppings at once.
+This code creates two input fields: one for selecting ice cream size (50cc/100cc/200cc) and another for choosing multiple toppings. The Field.ToggleSelect shows three size options as buttons, while Field.MultiToggleSelect allows customers to pick several toppings at once.
 
 The "st.use.icecreamOrderForm()" gets the current form data, while "st.do.setSizeOnIcecreamOrder" and "st.do.setToppingsOnIcecreamOrder" update the form when customers make selections.
 
 Now customers can create orders using your form. But how do we show those orders in a nice, visual way? Let's create a card design to display each order beautifully.
 
-Update unit file
+Update unit and view files
 
 The Unit file shows how each order looks in a list or card view. Think of it as the "receipt" or "order summary" that displays the order information nicely.
 
-This creates a card design for each ice cream order. The card shows the order ID and status with different colors - green for "active", blue for "processing", and red for "served".
+This creates a card design for each ice cream order. The card shows the order ID and its status, with a different color for each status.
 
 The cn function changes the card's appearance based on the order status, and l() displays the status text in the user's language.
+
+The generated View file still shows the "name" field the module started with, which our order no longer has. Show the size and toppings instead:
 
 We have the form (Template) and the display card (Unit). Now let's put it all together on a webpage so customers can actually visit and use your ice cream ordering system!
 
@@ -184,7 +193,7 @@ This creates a "New Order" button that opens the form (Template.General) when cl
 
 This displays all existing ice cream orders as cards, showing the order details and status.
 
-Now visit http://localhost:8282/icecreamOrder to see your ice cream ordering system!
+Now visit http://localhost:8282 to see your ice cream ordering system and place your first order!
 
 ## Code Examples
 
@@ -255,7 +264,7 @@ export class Topping extends enumOf("topping", [
 ] as const) {}
 
 export class IcecreamOrderInput extends via((field) => ({
-  size: field(Int, { min: 50, max: 200}), // [!code highlight:2]
+  size: field(Int, { min: 50, max: 200 }), // [!code highlight:2]
   toppings: field([Topping]),
 })) {}
 
@@ -266,7 +275,7 @@ export class IcecreamOrderObject extends via(IcecreamOrderInput, (field) => ({
 export class LightIcecreamOrder extends via(
   IcecreamOrderObject,
   ["size", "toppings", "status"] as const,
-  (resolve) => ({})
+  (resolve) => ({}),
 ) {}
 
 export class IcecreamOrder extends via(IcecreamOrderObject, LightIcecreamOrder, (resolve) => ({})) {}
@@ -287,7 +296,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -324,12 +333,34 @@ export const dictionary = modelDictionary(["en", "ko"])
   .translate({});
 ```
 
+### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts
+
+```ts
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interval }) => ({})) {}
+
+export class IcecreamOrderSlice extends slice(
+  srv.icecreamOrder,
+  { guards: { root: None, get: Public, cru: None, create: Public } }, // [!code highlight]
+  (init) => ({
+    inPublic: init({ guards: [Public] }).exec(function () {
+      return this.icecreamOrderService.queryAny();
+    }),
+  }),
+) {}
+
+export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({})) {}
+```
+
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Template.tsx
 
 ```ts
 "use client"; // [!code collapse:8]
-import { Field, Layout } from "akanjs/ui";
 import { cnst, st, usePage } from "@apps/koyo/client";
+import { Field, Layout } from "akanjs/ui";
 
 interface GeneralProps {
   className?: string;
@@ -360,26 +391,27 @@ export const General = ({ className }: GeneralProps) => {
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { cn, ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { cnst, usePage } from "@apps/koyo/client";
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:3]
+import { cn, type ModelProps } from "akanjs/client";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl border border-border bg-background px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center">
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded border border-border bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg text-primary">
+          <span className="inline-block rounded border border-border bg-muted px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
+          {icecreamOrder.id}
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full border border-border bg-background px-3 py-1 text-sm font-semibold text-foreground/80",
+              "ml-2 rounded-full border border-border bg-background px-3 py-1 font-semibold text-foreground/80 text-sm",
               icecreamOrder.status === "active" && "bg-primary text-primary-foreground",
               icecreamOrder.status === "processing" && "bg-warning text-warning-foreground",
               icecreamOrder.status === "served" && "bg-secondary text-secondary-foreground",
@@ -396,12 +428,37 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
 };
 ```
 
+### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
+
+```ts
+import { type cnst, usePage } from "@apps/koyo/client"; // [!code collapse:7]
+import { cn } from "akanjs/client";
+
+interface GeneralProps {
+  className?: string;
+  icecreamOrder: cnst.IcecreamOrder;
+}
+export const General = ({ className, icecreamOrder }: GeneralProps) => {
+  const { l } = usePage();
+  return (
+    <div className={cn("w-full", className)}>
+      <div>
+        {l("icecreamOrder.size")}: {icecreamOrder.size}cc
+      </div>
+      <div>
+        {l("icecreamOrder.toppings")}: {icecreamOrder.toppings.map((topping) => l(`topping.${topping}`)).join(", ")}
+      </div>
+    </div>
+  );
+};
+```
+
 ### apps/koyo/page/_index.tsx
 
 ```ts
-import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client";
 import { page } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -409,12 +466,12 @@ export default page().render(() => {
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-5xl font-black">
-        <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
+      <div className="flex items-center gap-4">
+        <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <Model.New
           trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
-          renderTitle="name"
+          renderTitle="default"
           partial={icecreamOrderForm}
         >
           <IcecreamOrder.Template.General />

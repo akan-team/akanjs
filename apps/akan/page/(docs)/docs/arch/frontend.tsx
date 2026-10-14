@@ -178,12 +178,12 @@ export default page().render(() => {
           desc: l.trans({
             en: (
               <span>
-                Check sign-in in <code>_layout.tsx</code> before any HTML is sent, not after rendering.
+                Check sign-in in <code>_layout.tsx</code>, before any of the page's markup renders.
               </span>
             ),
             ko: (
               <span>
-                로그인 확인은 HTML이 나가기 전에 <code>_layout.tsx</code>에서 합니다. 렌더링한 뒤가 아닙니다.
+                로그인 확인은 페이지 마크업이 렌더링되기 전에 <code>_layout.tsx</code>에서 합니다.
               </span>
             ),
           }),

@@ -1,33 +1,56 @@
 // Web bundle updates (UP-2) and app updates (UP-1): keys, signed manifests, local serving.
 //
 // Layout under the update URL (and `akan-native update publish`'s output folder):
-//   <platform>/<channel>.json        the manifest (UpdateManifest, JSON)
-//   <platform>/<channel>.json.sig    base64 Ed25519 signature of the manifest's exact bytes
-//   <platform>/files/<sha256>        web bundle files, content-addressed (unchanged files are shared)
-//   macos/app/<sha256>               desktop app archives (UP-1)
+//   <platform>/<channel>/<nativeApi>.json   a phone's web bundle (protocol v2): an UpdateEnvelope holding the
+//                                           manifest's bytes, the signer's keyId and the signature, in one file
+//   <platform>/files/<sha256>               web bundle files, content-addressed (unchanged files are shared)
+//   <os>-<arch>/<channel>.json(.sig)        a desktop app (UP-1, protocol v1): the manifest and its base64 signature
+//   <os>-<arch>/app/<sha256>                desktop app archives
 //
 // The whole manifest is signed, not only the artifact: Tauri signs the artifact and leaves the
 // manifest open, then has to compare a signed version string to stop downgrades
 // (tauri-plugins-workspace/plugins/updater/src/updater.rs:1661-1708). Here `sequence` inside the
-// signed manifest must grow, so an old but validly signed bundle cannot be replayed.
+// signed manifest must grow, so an old but validly signed bundle cannot be replayed. A phone binary
+// reads only its own native API's envelope, so each binary generation on a channel takes its own fixes.
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
+import {
+  checkUpdateEnvelope,
+  isChannelName,
+  isStrictBase64,
+  isUpdateKeyId,
+  MAX_REVOKE_KEYS,
+  RESERVED_CHANNELS,
+} from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
+import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
 
 export interface UpdatesConfig {
   /** Base URL of the update files, e.g. "https://example.com/updates". http:// only for localhost / 10.0.2.2 in dev builds. */
   url: string;
-  /** Raw 32-byte Ed25519 public key, base64 (`akan-native update keygen` prints it). */
-  publicKey: string;
+  /**
+   * Raw 32-byte Ed25519 public keys, base64 (`akan-native update keygen` prints one): the keys a phone binary trusts, the
+   * online signing key first and offline spares after it, since a key may revoke only keys listed before it. A desktop
+   * app trusts the first.
+   */
+  publicKeys: string[];
+  /**
+   * keyIds every phone release revokes, kept in the config so a release published from another folder (a fresh CI
+   * checkout) still revokes them. `akan-native update publish --revoke` starts a revocation. A phone build trusts none
+   * of them, though publicKeys still lists them.
+   */
+  revokedKeys: string[];
   /** Manifest name under <platform>/. Default "production". */
   channel: string;
   /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout: number;
+  /** Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed); null: no reports. */
+  reportUrl: string | null;
 }
 
 export interface UpdateFile {
@@ -46,7 +69,8 @@ export function hostArch(): DesktopArch {
 }
 
 export interface UpdateManifest {
-  schema: 1;
+  /** 2 for a phone's web bundle, which travels in an UpdateEnvelope; 1 for a desktop app. */
+  schema: 1 | 2;
   kind: "web" | "app";
   app: string;
   platform: Platform;
@@ -71,6 +95,19 @@ export interface UpdateManifest {
   patches?: { from: string; url: string; sha256: string; size: number }[];
   /** App updates: whether the app carries a server; an installed app refuses a release that differs from itself. */
   server?: boolean;
+  /** Web bundles: keyIds the phone stops trusting for good; each listed before the signer's key in its updates.publicKeys. */
+  revokeKeys?: string[];
+  /** Web bundles: with a new revocation, compare this release with the binary's own bundle instead of the running one. */
+  resetSequence?: boolean;
+}
+
+/** A phone's `<platform>/<channel>/<nativeApi>.json`: one object, so a new manifest never meets an old signature. */
+export interface UpdateEnvelope {
+  /** The manifest's exact bytes, base64. */
+  manifest: string;
+  keyId: string;
+  /** Ed25519 over the manifest bytes, base64. */
+  signature: string;
 }
 
 /** Every file of a web bundle as the app serves it: index.html with the init script and CSP, public/, env.runtime.json. */
@@ -115,9 +152,11 @@ export function webManifest(release: {
   sequence: number;
   bundle: string;
   files: UpdateFile[];
+  revokeKeys?: string[];
+  resetSequence?: boolean;
 }): UpdateManifest {
   return {
-    schema: 1,
+    schema: 2,
     kind: "web",
     app: release.app.id,
     platform: release.platform,
@@ -128,20 +167,17 @@ export function webManifest(release: {
     runtimeVersion: runtimeVersion(),
     version: release.app.version,
     files: release.files,
+    ...(release.revokeKeys?.length ? { revokeKeys: release.revokeKeys } : {}),
+    ...(release.resetSequence ? { resetSequence: true } : {}),
   };
 }
 
-/** A channel is a file name in the release folder and a string an app's config compares: lowercase, no separators. */
-const CHANNEL_NAME = /^[a-z0-9][a-z0-9._-]{0,40}$/;
-/** `<channel>.json` of these would overwrite what an unsigned phone update (packUpdate) writes to the same folder. */
-const RESERVED_CHANNELS = ["bundle", "manifest.template", "compat"];
-
 /** Refuses a channel no app could be configured for: it would be written but never taken. */
 export function assertChannel(channel: string): void {
-  if (!CHANNEL_NAME.test(channel))
-    throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
+  if (isChannelName(channel)) return;
   if (RESERVED_CHANNELS.includes(channel))
-    throw new CliError(`channel "${channel}" would overwrite ${channel}.json of an unsigned update: name another`);
+    throw new CliError(`channel "${channel}" is a name the update folder already uses: name another`);
+  throw new CliError(`channel "${channel}" is not a short lowercase name like "production" or "pilot"`);
 }
 
 export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig | null {
@@ -151,30 +187,91 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     return null;
   }
   const r = raw as Record<string, unknown>;
-  if (typeof r.url !== "string" || !/^https?:\/\/[^/]+/.test(r.url))
-    problems.push("updates.url must be an http(s) URL");
-  if (typeof r.publicKey !== "string" || Buffer.from(r.publicKey, "base64").length !== 32)
-    problems.push("updates.publicKey must be a base64 Ed25519 public key (akan-native update keygen)");
-  if (
-    r.channel !== undefined &&
-    (typeof r.channel !== "string" || !CHANNEL_NAME.test(r.channel) || RESERVED_CHANNELS.includes(r.channel))
-  )
+  //? The shells append `/<platform>/…` to the URL as text: a query or fragment would swallow the path.
+  if (typeof r.url !== "string" || !/^https?:\/\/[^/?#]+[^?#]*$/.test(r.url))
+    problems.push("updates.url must be an http(s) URL without a query or fragment");
+  const publicKeys = updatePublicKeys(r, problems);
+  const revokedKeys = updateRevokedKeys(r.revokedKeys, problems);
+  if (r.channel !== undefined && (typeof r.channel !== "string" || !isChannelName(r.channel)))
     problems.push('updates.channel must be a short name like "production"');
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
+  const reportUrl = updateReportUrl(r.report, problems);
   for (const key of Object.keys(r))
-    if (!["url", "publicKey", "channel", "readyTimeout"].includes(key))
+    if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report"].includes(key))
       problems.push(`updates.${key} is not supported`);
-  if (typeof r.url !== "string" || typeof r.publicKey !== "string") return null;
+  if (publicKeys && publicKeys.every((key) => revokedKeys.includes(keyIdOf(key))))
+    problems.push(
+      "updates.revokedKeys revokes every key of updates.publicKeys: a phone built from it would trust none (add one with `akan-native update keygen`)",
+    );
+  if (typeof r.url !== "string" || !publicKeys) return null;
   return {
     url: r.url.replace(/\/+$/, ""),
-    publicKey: r.publicKey,
+    publicKeys,
+    revokedKeys,
     channel: (r.channel as string | undefined) ?? "production",
     readyTimeout: (r.readyTimeout as number | undefined) ?? 10_000,
+    reportUrl,
   };
 }
 
+/** `report: { url }`, posted to as it is: the address is the receiver's, a path of its own included. */
+function updateReportUrl(raw: unknown, problems: string[]): string | null {
+  if (raw === undefined) return null;
+  const url = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).url : undefined;
+  if (typeof url !== "string" || !/^https?:\/\/[^/?#]+[^#]*$/.test(url) || Object.keys(raw as object).length !== 1) {
+    problems.push("updates.report must be { url } with an http(s) URL");
+    return null;
+  }
+  return url;
+}
+
+/** keyIds, as `update keygen` prints them, each once, no more than a manifest may revoke. */
+function updateRevokedKeys(raw: unknown, problems: string[]): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || !raw.every((id) => typeof id === "string" && isUpdateKeyId(id))) {
+    problems.push("updates.revokedKeys must list keyIds: 16 lowercase hex characters, as `update keygen` prints them");
+    return [];
+  }
+  if (new Set(raw).size !== raw.length) {
+    problems.push("updates.revokedKeys lists a key twice");
+    return [];
+  }
+  if (raw.length > MAX_REVOKE_KEYS) {
+    problems.push(`updates.revokedKeys lists more than the ${MAX_REVOKE_KEYS} keys a manifest may revoke`);
+    return [];
+  }
+  return raw as string[];
+}
+
+/** `publicKeys` (1–3, no repeats) or the one-key `publicKey`, never both. */
+function updatePublicKeys(r: Record<string, unknown>, problems: string[]): string[] | null {
+  if (r.publicKey !== undefined && r.publicKeys !== undefined) {
+    problems.push("updates takes publicKey or publicKeys, not both");
+    return null;
+  }
+  const keys = r.publicKeys ?? (r.publicKey === undefined ? undefined : [r.publicKey]);
+  //? Strict, as iOS decodes it: a key Node and Android would take beside it leaves the iOS binary with no updates.
+  const isKey = (key: unknown) =>
+    typeof key === "string" && isStrictBase64(key) && Buffer.from(key, "base64").length === 32;
+  if (!Array.isArray(keys) || keys.length < 1 || keys.length > 3 || !keys.every(isKey)) {
+    problems.push(
+      "updates.publicKeys must be 1 to 3 base64 Ed25519 public keys (akan-native update keygen), or publicKey one",
+    );
+    return null;
+  }
+  if (new Set(keys.map(keyIdOf)).size !== keys.length) {
+    problems.push("updates.publicKeys lists a key twice");
+    return null;
+  }
+  return keys as string[];
+}
+
 // ------------------------------------------------------------------ keys
+
+/** What an envelope names its signer by: the first 8 bytes of the raw public key's SHA-256, in hex. */
+export const keyIdOf = (publicKey: string) =>
+  createHash("sha256").update(Buffer.from(publicKey, "base64")).digest().subarray(0, 8).toString("hex");
 
 /** Where the signing key of an app lives: AKAN_NATIVE_UPDATE_KEY (a file path), else ~/.akan/native/keys/<app id>.update.key. */
 export function updateKeyPath(appId: string, env: Record<string, string | undefined> = process.env): string {
@@ -202,27 +299,83 @@ function publicKeyOf(privateKey: ReturnType<typeof createPrivateKey>): string {
   return der.subarray(der.length - 32).toString("base64");
 }
 
-/** The key at `keyPath`, refused unless it is the one whose public half the apps were built with. */
-export function signingKey(keyPath: string, expectedPublicKey: string) {
+/** The key at `keyPath` and where it sits in `publicKeys`, refused unless the apps were built to trust it. */
+export function signingKey(keyPath: string, publicKeys: readonly string[]) {
   const key = readPrivateKey(keyPath);
-  if (publicKeyOf(key) !== expectedPublicKey)
-    throw new CliError(`the key at ${keyPath} does not match updates.publicKey in akan-native.config.ts`);
-  return key;
+  const publicKey = publicKeyOf(key);
+  const index = publicKeys.indexOf(publicKey);
+  if (index < 0) throw new CliError(`the key at ${keyPath} is not one of updates.publicKeys in akan-native.config.ts`);
+  return { key, keyId: keyIdOf(publicKey), index };
 }
 
-export function signManifest(bytes: Uint8Array, keyPath: string, expectedPublicKey: string): string {
-  return sign(null, bytes, signingKey(keyPath, expectedPublicKey)).toString("base64");
+/** A desktop app's base64 signature (protocol v1), with the key the app trusts: the first of updates.publicKeys. */
+export function signManifest(bytes: Uint8Array, keyPath: string, publicKeys: readonly string[]): string {
+  const { key, index } = signingKey(keyPath, publicKeys);
+  if (index !== 0)
+    throw new CliError(
+      `a desktop app trusts the first of updates.publicKeys only, and the key at ${keyPath} is not it`,
+    );
+  return sign(null, bytes, key).toString("base64");
+}
+
+/** A phone's envelope (protocol v2) for the manifest's exact bytes, signed with any key of `publicKeys`. */
+export function sealManifest(bytes: Uint8Array, keyPath: string, publicKeys: readonly string[]): UpdateEnvelope {
+  const { key, keyId } = signingKey(keyPath, publicKeys);
+  return {
+    manifest: Buffer.from(bytes).toString("base64"),
+    keyId,
+    signature: sign(null, bytes, key).toString("base64"),
+  };
+}
+
+/**
+ * The manifest bytes of an envelope, verified as a phone verifies it against `publicKeys` (minus `revoked`):
+ * kernel.ts checkUpdateEnvelope. What it then decides (revocation, sequence) is kernel.ts updateDecision.
+ */
+export function openEnvelope(
+  text: string,
+  publicKeys: readonly string[],
+  revoked: readonly string[] = [],
+): { manifest: Uint8Array; keyId: string } {
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(text);
+  } catch {
+    throw new CliError("the update envelope is not JSON");
+  }
+  const { manifest, keyId, signature } = (
+    envelope && typeof envelope === "object" && !Array.isArray(envelope) ? envelope : {}
+  ) as Partial<UpdateEnvelope>;
+  if (typeof manifest !== "string" || typeof keyId !== "string" || typeof signature !== "string")
+    throw new CliError("the update envelope needs manifest, keyId and signature");
+  const keys = new Map(publicKeys.map((key) => [keyIdOf(key), key]));
+  const opened = checkUpdateEnvelope({ manifest, keyId, signature }, [...keys.keys()], revoked, (bytes, sig, id) => {
+    const key = keys.get(id);
+    return key !== undefined && verifySignature(bytes, sig, key);
+  });
+  switch (opened.verdict) {
+    case "open":
+      return { manifest: opened.manifest, keyId };
+    case "untrusted":
+    case "revoked":
+      throw new CliError(`the update envelope is signed by key ${keyId}, which is not trusted`);
+    case "encoding":
+      throw new CliError("the update envelope's manifest or signature is not padded standard base64");
+    case "too-large":
+      throw new CliError("the update envelope's manifest is larger than 1 MiB");
+    case "signature":
+      throw new CliError("the update envelope's signature does not verify");
+  }
 }
 
 /** Verifies like the apps do: raw public key, base64 signature over the exact manifest bytes. */
 export function verifyManifest(bytes: Uint8Array, signature: string, publicKey: string): boolean {
+  return verifySignature(bytes, Buffer.from(signature, "base64"), publicKey);
+}
+
+function verifySignature(bytes: Uint8Array, signature: Uint8Array, publicKey: string): boolean {
   const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey, "base64")]);
-  return verify(
-    null,
-    bytes,
-    createPublicKey({ key: spki, format: "der", type: "spki" }),
-    Buffer.from(signature, "base64"),
-  );
+  return verify(null, bytes, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
 }
 
 export const sha256 = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex");
@@ -239,17 +392,68 @@ export function updatesResource(
   platform: Platform,
   nativeApi: string | undefined,
   dev: boolean,
+  embeddedSequence = Math.floor(Date.now() / 1000),
 ): string {
   return JSON.stringify({
     app: app.id,
     version: app.version,
     platform,
     nativeApi: nativeApi ?? null,
-    embeddedSequence: Math.floor(Date.now() / 1000),
+    embeddedSequence,
     dev,
     url: updates.url,
-    publicKey: updates.publicKey,
+    protocol: platform === "ios" || platform === "android" ? 2 : 1,
+    publicKeys: platform === "ios" || platform === "android" ? phoneRing(updates) : updates.publicKeys,
+    //? A desktop app (protocol v1) reads this one key.
+    publicKey: updates.publicKeys[0],
     channel: updates.channel,
     readyTimeout: updates.readyTimeout,
+    ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
+}
+
+/**
+ * The keys a phone build trusts: updates.publicKeys without the revoked ones, so a fresh install trusts none of them
+ * before its first release tells it. A manifest that revokes a key the binary does not hold is still taken.
+ */
+export const phoneRing = (updates: Pick<UpdatesConfig, "publicKeys" | "revokedKeys">) =>
+  updates.publicKeys.filter((key) => !updates.revokedKeys.includes(keyIdOf(key)));
+
+/**
+ * updates.json of a phone build, and the same facts in the build's bundle.json: a signer that registers the store build
+ * checks the binary reads its URL and keys, and takes `embeddedSequence` as the floor every release must pass.
+ */
+export function writePhoneUpdates({
+  updatesJson,
+  outDir,
+  updates,
+  app,
+  platform,
+  nativeApi,
+  dev,
+}: {
+  /** Where the binary reads updates.json. */
+  updatesJson: string;
+  /** The build folder, whose bundle.json records them too. */
+  outDir: string;
+  updates: UpdatesConfig;
+  app: { id: string; version: string };
+  platform: "ios" | "android";
+  nativeApi: string | undefined;
+  dev: boolean;
+}): void {
+  const embeddedSequence = Math.floor(Date.now() / 1000);
+  writeFileSync(updatesJson, updatesResource(updates, app, platform, nativeApi, dev, embeddedSequence));
+  const bundlePath = join(outDir, BUNDLE_FILE);
+  if (!existsSync(bundlePath)) return;
+  const info = readBundleInfo(bundlePath);
+  info.updates = {
+    protocol: 2,
+    url: updates.url,
+    channel: updates.channel,
+    keyIds: phoneRing(updates).map(keyIdOf),
+    embeddedSequence,
+    ...(updates.reportUrl ? { reportUrl: updates.reportUrl } : {}),
+  };
+  writeFileSync(bundlePath, `${JSON.stringify(info, null, 2)}\n`);
 }

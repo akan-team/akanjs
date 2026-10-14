@@ -32,9 +32,10 @@ const env = { ...process.env, AKAN_NATIVE_UPDATE_KEY: join(scratch, "update.key"
 const cli = ["bun", resolve(import.meta.dir, "../../packages/cli/src/index.ts")];
 
 function run(args: string[], quiet = true): string {
-  const p = Bun.spawnSync([...cli, ...args], { cwd: sample, env, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawnSync([...cli, ...args], { cwd: sample, env, stdout: "pipe", stderr: "pipe", timeout: 1_200_000 });
   const out = p.stdout.toString() + p.stderr.toString();
-  if (p.exitCode !== 0) throw new Error(`akan-native ${args.join(" ")} failed:\n${out}`);
+  if (p.exitCode !== 0)
+    throw new Error(`akan-native ${args.join(" ")} ${p.exitedDueToTimeout ? "timed out" : "failed"}:\n${out}`);
   if (!quiet) console.info(out.trim());
   return out;
 }
@@ -43,7 +44,7 @@ const step = (text: string) => console.info(`\n== ${text}`);
 
 // A throwaway key, and its public key in the sample's config.
 const keygen = run(["update", "keygen"]);
-const publicKey = /publicKey: "([^"]+)"/.exec(keygen)?.[1];
+const publicKey = /publicKeys: \["([^"]+)"\]/.exec(keygen)?.[1];
 if (!publicKey) throw new Error(`no public key in:\n${keygen}`);
 const configPath = join(sample, "akan-native.config.ts");
 const original = readFileSync(configPath, "utf8");
@@ -158,7 +159,9 @@ try {
       if (Date.now() - started > timeoutMs) {
         console.info(`--- last app output\n${all.join("\n")}\n--- processes`);
         console.info(
-          Bun.spawnSync(os === "windows" ? ["tasklist"] : ["ps", "-eo", "pid,ppid,stat,args"]).stdout.toString(),
+          Bun.spawnSync(os === "windows" ? ["tasklist"] : ["ps", "-eo", "pid,ppid,stat,args"], {
+            timeout: 30_000,
+          }).stdout.toString(),
         );
         console.info(`--- install folder: ${readdirSync(join(scratch, "install")).join(", ")}`);
         throw new Error(`no ${until} within ${timeoutMs / 1000} s`);
@@ -170,11 +173,11 @@ try {
   }
   stopAll = () => {
     const exeName = exe.split(/[\\/]/).pop()!;
-    if (os === "windows") Bun.spawnSync(["taskkill", "/F", "/IM", exeName]);
+    if (os === "windows") Bun.spawnSync(["taskkill", "/F", "/IM", exeName], { timeout: 30_000 });
     else {
-      Bun.spawnSync(["pkill", "-f", install]);
+      Bun.spawnSync(["pkill", "-f", install], { timeout: 30_000 });
       Bun.sleepSync(1500);
-      Bun.spawnSync(["pkill", "-9", "-f", install]);
+      Bun.spawnSync(["pkill", "-9", "-f", install], { timeout: 30_000 });
     }
   };
 

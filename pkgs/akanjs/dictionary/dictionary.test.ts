@@ -439,6 +439,16 @@ describe("makeTrans", () => {
     expect(allDict.ja.dictionaryTestService.ready).toEqual({ t: "サービス準備完了" });
   });
 
+  test("hands a macro the same bytes whichever order the dictionaries were filled in", () => {
+    const service = (translations: Record<string, [string, string]>) =>
+      ({ dict: serviceDictionary(["en", "ko"]).translate(translations) }) as never;
+    const forward = makeTrans({ alpha: service({ zeta: ["Z", "Z"], beta: ["B", "B"] }), omega: service({}) });
+    const backward = makeTrans({ omega: service({}), alpha: service({ beta: ["B", "B"], zeta: ["Z", "Z"] }) });
+
+    expect(JSON.stringify(forward.getAllDictionary())).toBe(JSON.stringify(backward.getAllDictionary()));
+    expect(Object.keys(forward.getAllDictionary().en.alpha as object)).toEqual(["beta", "error", "signal", "zeta"]);
+  });
+
   test("keeps dictionary snapshots isolated between makeTrans calls", () => {
     const first = makeTrans({
       hotReloadService: {

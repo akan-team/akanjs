@@ -1,15 +1,21 @@
 import path from "node:path";
+import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import {
+  type AppBinaryDistribution,
   CloudApi,
+  CloudUpdates,
   GlobalConfig,
   getDefaultHostConfig,
+  PipelineSecrets,
   type RemoteEnvServerConfig,
   type WindowsTestTargetConfig,
 } from "@akanjs/devkit/cloud";
-import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type App, assertPromptable, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import type { NativeUpdatePack } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
+import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger, sleep } from "akanjs/common";
 import chalk from "chalk";
@@ -130,6 +136,9 @@ export class CloudRunner extends runner("cloud") {
   }
 
   async #getRemoteEnvServerWithUsername(): Promise<SelectedRemoteEnvServer> {
+    assertPromptable("The env archive goes over scp to a remote server picked here, as AKAN_WORKSPACE_ID is not set", {
+      remedy: "set AKAN_WORKSPACE_ID in the workspace .env to use Akan Cloud, or run it once in a terminal",
+    });
     const remoteServer = await this.#selectRemoteEnvServer();
     if (remoteServer.config.username) return remoteServer;
     const username = await this.#ask(`SSH username for ${remoteServer.config.host} (optional): `);
@@ -254,6 +263,9 @@ export class CloudRunner extends runner("cloud") {
     for (const result of [...unreachable, ...warning]) {
       const reason = result.infraError ?? "failing tests";
       if (!interactive) continue;
+      assertPromptable(`${result.platform} did not pass (${reason}) — ${run.logDir}`, {
+        remedy: "leave it out of --platforms to publish without it, or run it in a terminal to be asked",
+      });
       const proceed = await confirm({
         message: `${result.platform} did not pass (${reason}). Continue without it?`,
         default: false,
@@ -272,6 +284,9 @@ export class CloudRunner extends runner("cloud") {
     return results;
   }
   async #askWindowsTestTarget(): Promise<WindowsTestTargetConfig> {
+    assertPromptable("No Windows test target is configured", {
+      remedy: "run it once in a terminal, which saves the target to ~/.akan/config.json",
+    });
     Logger.info("No Windows test target is configured yet; it is saved to ~/.akan/config.json once entered.");
     const required = (value: string) => !!value.trim();
     const host = await this.#ask("Windows host (ip or name): ", required);
@@ -322,7 +337,7 @@ export class CloudRunner extends runner("cloud") {
     for (const library of akanPkgs) {
       const packageJson = (await workspace.readJson(`pkgs/${library}/package.json`)) as { version: string };
       const newPackageJson = this.#normalizeAkanPackageJson(packageJson, library, nextVersion);
-      await workspace.writeFile(`pkgs/${library}/package.json`, JSON.stringify(newPackageJson, null, 2));
+      await workspace.writeJson(`pkgs/${library}/package.json`, newPackageJson);
       const distPackageJson = (await workspace.readJson(`dist/pkgs/${library}/package.json`)) as {
         version: string;
         dependencies?: Record<string, string>;
@@ -330,6 +345,10 @@ export class CloudRunner extends runner("cloud") {
       const newDistPackageJson = this.#normalizeAkanPackageJson(distPackageJson, library, nextVersion);
       await workspace.writeJson(`dist/pkgs/${library}/package.json`, newDistPackageJson);
     }
+    if (confirmPublish)
+      assertPromptable(`Publishing ${akanPkgs.join(", ")}@${nextVersion} asks for a confirmation`, {
+        remedy: "run it in a terminal",
+      });
     if (confirmPublish && !(await confirm({ message: "Are you sure you want to deploy the libraries?" }))) {
       Logger.error("Deployment cancelled");
       return;
@@ -403,7 +422,9 @@ export class CloudRunner extends runner("cloud") {
 
   async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
     await workspace.mkdir("local");
-    const localPath = (await cloudApi.downloadEnv(workspaceId)) as string;
+    const localPath = (await cloudApi.downloadEnv(workspaceId).catch((error: unknown) => {
+      throw CloudApi.refusal(error, "downloading its env archive takes the project owner's own `akan login`");
+    })) as string;
     // Relative, so GNU tar never reads a Windows drive letter (`C:\…`) as a remote `host:file` spec.
     const relativePath = path.relative(workspace.workspaceRoot, localPath).split(path.sep).join("/");
     await workspace.spawn("tar", ["-xf", relativePath], { cwd: workspace.workspaceRoot });
@@ -411,7 +432,9 @@ export class CloudRunner extends runner("cloud") {
   }
   async uploadEnv(cloudApi: CloudApi, workspaceId: string, filePath: string) {
     const file = new File([Bun.file(filePath)], path.basename(filePath));
-    await cloudApi.uploadEnv(workspaceId, file);
+    await cloudApi.uploadEnv(workspaceId, file).catch((error: unknown) => {
+      throw CloudApi.refusal(error, "an env archive is uploaded by a project member signed in with `akan login`");
+    });
   }
   async downloadEnvByScp(workspace: Workspace) {
     const envArchivePath = "local/env.tar";
@@ -507,6 +530,69 @@ export class CloudRunner extends runner("cloud") {
       }),
     );
     return secretPaths.flat();
+  }
+
+  /** The Akan Cloud project a call addresses: the workspace's own, or a subspace's, each with its own secrets and apps. */
+  async projectOf(workspace: Workspace, subspace: string | null, appName?: string) {
+    if (!subspace) {
+      const workspaceId = workspace.getWorkspaceId({ allowEmpty: true });
+      if (!workspaceId)
+        throw new Error("AKAN_WORKSPACE_ID is not set in the workspace .env, so there is no project to address.");
+      return workspaceId;
+    }
+    const config = await SubspaceConfig.from(workspace);
+    if (!config) throw new Error("The workspace root akan.config.ts declares no `subspace`.");
+    const [declaration] = config.select([subspace]);
+    if (!declaration?.workspaceId)
+      throw new Error(`Subspace "${subspace}" declares no workspaceId in ${SubspaceConfig.source}.`);
+    if (appName && !declaration.apps.includes(appName))
+      throw new Error(
+        `Subspace "${subspace}" declares no app ${appName} in ${SubspaceConfig.source}; it serves ${declaration.apps.join(", ")}.`,
+      );
+    return declaration.workspaceId;
+  }
+
+  async readSecretValue(name: string, file: string | null) {
+    return await PipelineSecrets.readValue(name, file);
+  }
+
+  async uploadSecret(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    secret: { name: string; branch: string | null; value: string },
+  ) {
+    await new PipelineSecrets(cloudApi, devProjectId).upload(secret);
+  }
+
+  async listSecrets(cloudApi: CloudApi, devProjectId: string, branch: string | null) {
+    await new PipelineSecrets(cloudApi, devProjectId).list(branch);
+  }
+
+  async removeSecret(cloudApi: CloudApi, devProjectId: string, secret: { name: string; branch: string | null }) {
+    await new PipelineSecrets(cloudApi, devProjectId).remove(secret);
+  }
+
+  async readPack(app: App, dir: string, flags: Parameters<typeof CloudUpdates.readPack>[2]) {
+    return await CloudUpdates.readPack(app, dir, flags);
+  }
+
+  async pushUpdate(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    pack: NativeUpdatePack,
+    options: { channel: string | null; notes: string | null },
+  ) {
+    return await new CloudUpdates(cloudApi, devProjectId).push(pack, options);
+  }
+
+  async registerBinary(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    app: App,
+    pack: NativeUpdatePack,
+    options: { distribution: AppBinaryDistribution; env: NativeEnv },
+  ) {
+    return await new CloudUpdates(cloudApi, devProjectId).registerBinary(app, pack, options);
   }
 
   async #syncSecretGitignore(workspace: Workspace, appNames: string[]) {

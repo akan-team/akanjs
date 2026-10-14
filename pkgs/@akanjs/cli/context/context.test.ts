@@ -105,7 +105,7 @@ describe("ContextRunner", () => {
     expect(runner.explainCommand("mcp")).toContain("permission mode");
     expect(runner.explainCommand("create-module")).toContain("scaffolds a database-backed domain module");
     expect(runner.explainCommand("mcp-install")).toContain("installs the Akan MCP server config");
-    expect(runner.explainCommand("typecheck")).toContain("runs an application typecheck");
+    expect(runner.explainCommand("typecheck")).toContain("typechecks an app or a library");
     expect(runner.explainCommand("sync")).toContain("refreshes generated Akan files");
     expect(runner.explainCommand("workflow plan")).toContain("returns a read-only plan");
     expect(runner.explainCommand("workflow validate")).toContain("stores a structured run report");

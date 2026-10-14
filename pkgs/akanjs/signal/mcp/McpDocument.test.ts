@@ -169,6 +169,38 @@ describe("McpDocument", () => {
     expect(names(doc)).toContain("countMcpPosts");
   });
 
+  test("with MCP Apps, publishes an `mcp: false` endpoint to rendered views only, and nothing else it refused", () => {
+    const doc = new McpDocument(signal(), { apps: true });
+    const appNames = doc.appTools.map((tool) => tool.name);
+    expect(appNames).toEqual(
+      expect.arrayContaining(["requestMcpPostCode", "mcpPostListQuietSlice", "mcpPostInsightQuietSlice"]),
+    );
+    expect(names(doc)).not.toContain("requestMcpPostCode");
+    expect(doc.appTools.every((tool) => tool._meta?.ui?.visibility?.join() === "app")).toBe(true);
+    expect(doc.findTool("requestMcpPostCode")?.key).toBe("requestMcpPostCode");
+    expect(doc.isAppOnly("requestMcpPostCode")).toBe(true);
+    const undescribed = doc.undescribed.map(({ key }) => key);
+    expect(undescribed.length).toBeGreaterThan(0);
+    for (const name of appNames) expect(undescribed).not.toContain(name);
+    expect(doc.refusals.map(({ key }) => key)).not.toContain("requestMcpPostCode");
+    expect(appNames).not.toContain("signMcpPost");
+    expect(appNames).not.toContain("mcpPostListPersonSlice");
+    expect(new McpDocument(signal()).appTools).toEqual([]);
+  });
+
+  test("with MCP Apps, lets a view read a relation's light shape under the get's guards, and no model", () => {
+    const doc = new McpDocument(signal(), { apps: true });
+    expect(names(doc)).not.toContain("lightMcpPost");
+    expect(doc.appTools.map((tool) => tool.name)).toContain("lightMcpPost");
+    expect(doc.findTool("lightMcpPost")?.endpoint.guards).toEqual(doc.findTool("mcpPost")?.endpoint.guards);
+    expect(doc.appOnly.find(({ key }) => key === "lightMcpPost")?.reason).toContain("`mcpPost`");
+    expect(doc.appOnly.find(({ key }) => key === "requestMcpPostCode")?.reason).toContain("`mcp: false`");
+    expect(doc.resourceTemplates.map(({ name }) => name)).not.toContain("lightMcpPost");
+    const personOnly = signal();
+    personOnly.mcpPost.agents = { get: false };
+    expect(new McpDocument(personOnly, { apps: true }).appTools.map((tool) => tool.name)).not.toContain("lightMcpPost");
+  });
+
   test("keeps out what a person-only guard protects, at every altitude, and says which guards did it", () => {
     const doc = new McpDocument(signal());
     const refusals = Object.fromEntries(doc.refusals.map(({ key, reason }) => [key, reason]));
@@ -335,14 +367,24 @@ describe("McpDocument", () => {
   test("closes each tool's schema over the models it mentions", () => {
     const doc = new McpDocument(signal());
     const tool = doc.tools.find((candidate) => candidate.name === "mcpPost");
-    expect(tool?.outputSchema?.$ref).toBe("#/$defs/McpPost");
     const defs = tool?.outputSchema?.$defs as Record<string, { properties: Record<string, unknown> }>;
     expect(Object.keys(defs)).toEqual(["McpPost"]);
     expect(defs.McpPost.properties.tag).toEqual({ type: ["object", "null"], description: "McpTag" });
+    expect(tool?.outputSchema?.$ref).toBeUndefined();
+    expect(tool?.outputSchema?.properties).toEqual(defs.McpPost.properties);
     const full = new McpDocument(signal(), { outputSchema: "full" }).tools.find(
       (candidate) => candidate.name === "mcpPost",
     );
     expect(Object.keys(full?.outputSchema?.$defs as object)).toEqual(["McpPost", "McpTag"]);
+  });
+
+  test("roots every input and output schema at an object, as SDK clients validate", () => {
+    for (const outputSchema of ["shallow", "full"] as const) {
+      for (const tool of new McpDocument(signal(), { outputSchema }).tools) {
+        expect(tool.inputSchema.type).toBe("object");
+        if (tool.outputSchema) expect(tool.outputSchema.type).toBe("object");
+      }
+    }
   });
 
   test("asks for a relation's id in a request schema, which is what the wire carries", () => {

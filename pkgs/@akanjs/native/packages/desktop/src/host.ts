@@ -63,6 +63,52 @@ export function shellError(message: string): AkanNativeError {
     : new AkanNativeError("INVALID_ARGS", message);
 }
 
+/**
+ * Shell ops a webview engine answers from its callback, which a page busy in a loop holds up: past this many ms they
+ * fail with TIMEOUT. Other ops answer at once or wait for a person (an alert, a file panel), so they have no deadline.
+ */
+export const SHELL_DEADLINES: Readonly<Record<string, number>> = {
+  "externalView.evaluate": 30_000,
+  "externalView.cdp": 30_000,
+};
+
+export function createShellCalls(send: (id: number, json: string) => void, deadlines = SHELL_DEADLINES) {
+  let seq = 0;
+  const pending = new Map<number, { resolve(value: unknown): void; reject(error: unknown): void }>();
+  return {
+    call(op: string, args: Record<string, unknown> = {}): Promise<unknown> {
+      const id = ++seq;
+      return new Promise<unknown>((resolve, reject) => {
+        const ms = Object.hasOwn(deadlines, op) ? deadlines[op] : undefined;
+        const timer =
+          ms === undefined
+            ? undefined
+            : setTimeout(() => {
+                if (pending.delete(id))
+                  reject(new AkanNativeError("TIMEOUT", `${op} had no answer within ${ms / 1000} s`));
+              }, ms);
+        pending.set(id, {
+          resolve: (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          reject: (error) => {
+            clearTimeout(timer);
+            reject(error);
+          },
+        });
+        send(id, JSON.stringify({ ...args, op }));
+      });
+    },
+    answer(id: number, ok: boolean, result: unknown, error: unknown): void {
+      const call = pending.get(id);
+      pending.delete(id);
+      if (ok) call?.resolve(result);
+      else call?.reject(shellError(String(error)));
+    },
+  };
+}
+
 export function startHost(plugins: DesktopPlugin[]): void {
   const paths = resolvePaths();
   //? A Worker keeps its own copy of process.env, and Bun.spawn without `env` ignores it anyway: the server launcher
@@ -115,16 +161,9 @@ export function startHost(plugins: DesktopPlugin[]): void {
   const fileIds = new Set<string>();
 
   // Shell commands (window plugin, …) are answered by "shellReply" events.
-  let shellSeq = 0;
-  const shellPending = new Map<number, { resolve(v: unknown): void; reject(e: unknown): void }>();
+  const shellCalls = createShellCalls((id, json) => native.akan_native_shell(BigInt(id), cstr(json)));
   const nativeListeners = new Map<string, Set<(event: NativeEvent) => void>>();
-  const shell = (op: string, args: Record<string, unknown> = {}) => {
-    const id = ++shellSeq;
-    return new Promise<unknown>((resolve, reject) => {
-      shellPending.set(id, { resolve, reject });
-      native.akan_native_shell(BigInt(id), cstr(JSON.stringify({ ...args, op })));
-    });
-  };
+  const shell = shellCalls.call;
 
   // Quit and close sequence (plugins.md D4). shell.json carries desktop.quitOnLastWindowClosed.
   const shellConfig = JSON.parse(readFileSync(join(paths.resources, "shell.json"), "utf8")) as {
@@ -322,10 +361,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
 
   const onEvent = (event: NativeEvent) => {
     if (event.type === "shellReply" && typeof event.id === "number") {
-      const pending = shellPending.get(event.id);
-      shellPending.delete(event.id);
-      if (event.ok) pending?.resolve(event.result);
-      else pending?.reject(shellError(String(event.error)));
+      shellCalls.answer(event.id, event.ok === true, event.result, event.error);
       return;
     }
     trackWindows(event);

@@ -1,20 +1,40 @@
 import { describe, expect, test } from "bun:test";
-import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import { stale } from "../../../scripts/contract.ts";
 import { aclCheck, loadAcl } from "../src/acl.ts";
 import { ID_BUNDLE, ID_DOCUMENT, ID_FILE_REF, ID_NAME } from "../src/contract.ts";
 import {
   admitDocument,
   assetMime,
+  checkUpdateEnvelope,
   decideNavigation,
   declares,
   fileMime,
   fileRefSandboxed,
   idValid,
+  isChannelName,
   isHostPath,
+  isStrictBase64,
+  isUpdateKeyId,
+  MAX_REVOKE_KEYS,
+  MAX_UPDATE_MANIFEST,
   parseRange,
   RetainedEvents,
   route,
+  UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_EVENTS,
+  UPDATE_REPORT_LIMIT,
+  UPDATE_REPORT_REASONS,
+  type UpdateReportEvent,
+  type UpdateReportReason,
+  updateDecision,
+  updateDecisionWire,
+  updateManifestUrl,
+  updateReportKey,
+  updateReportOutcome,
+  updateReportRetryAt,
+  updateReportTime,
+  updateReportWaits,
 } from "../src/kernel.ts";
 import { validateRequest } from "../src/protocol.ts";
 
@@ -146,5 +166,134 @@ describe("ed25519 vectors", () => {
       Buffer.from(signature, "hex"),
     );
     expect(ok).toBe(valid);
+  });
+});
+
+// Updates protocol v2 as the Swift and Kotlin shells decide it (AkanNativeKernel.updateDecision).
+const updates = (await load("updates")) as {
+  keyIds: [string, string][];
+  decisions: [string[], string[], string, string[], boolean, number, number, [number, string] | null, string, string][];
+  urls: [string, string, string, string, string][];
+  envelopeKeys: string[];
+  envelopes: [string | [string, number, string], string, string, string[], string, string][];
+  limits: { revokeKeys: number; manifestBytes: number; reportEvents: number; reportBatch: number };
+  reports: {
+    events: string[];
+    reasons: string[];
+    outcomes: [number, string][];
+    retryAfter: [string | null, number, number | null, string][];
+    waits: [number | null, number, boolean][];
+    keys: [UpdateReportEvent, string, UpdateReportReason | null, string][];
+    times: [number, string][];
+  };
+};
+const keyIdOf = (key: string) =>
+  createHash("sha256").update(Buffer.from(key, "base64")).digest().subarray(0, 8).toString("hex");
+describe("updates vectors", () => {
+  test.each(updates.keyIds)("keyId of %s is %s", (publicKey, keyId) => {
+    expect(keyIdOf(publicKey)).toBe(keyId);
+  });
+  test.each(updates.decisions)(
+    "%#: %j %j signer %s revokes %j reset %p seq %d over %d running %j → %s (%s)",
+    (ring, revoked, signer, revokeKeys, resetSequence, sequence, embedded, running, expected) => {
+      const decision = updateDecision({
+        ring,
+        revoked,
+        signer,
+        revokeKeys,
+        resetSequence,
+        sequence,
+        embedded,
+        running: running && { sequence: running[0], keyId: running[1] },
+      });
+      expect(updateDecisionWire(decision)).toBe(expected);
+    },
+  );
+  test.each(updates.urls)("%s %s %s %s → %s", (url, platform, channel, nativeApi, expected) => {
+    expect(updateManifestUrl(url, platform, channel, nativeApi)).toBe(expected);
+  });
+  const keys = new Map(updates.envelopeKeys.map((key) => [keyIdOf(key), key]));
+  const verify = (manifest: Uint8Array, signature: Uint8Array, keyId: string) => {
+    const key = keys.get(keyId);
+    if (!key) return false;
+    const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(key, "base64")]);
+    return cryptoVerify(null, manifest, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
+  };
+  test.each(updates.envelopes)("%#: envelope → %s (%s)", (field, keyId, signature, revoked, expected) => {
+    const manifest = typeof field === "string" ? field : field[0].repeat(field[1]) + field[2];
+    const opened = checkUpdateEnvelope({ manifest, keyId, signature }, [...keys.keys()], revoked, verify);
+    expect(opened.verdict).toBe(expected as typeof opened.verdict);
+    if (opened.verdict === "open") expect(opened.manifest).toEqual(new Uint8Array(Buffer.from(manifest, "base64")));
+  });
+  test("limits", () => {
+    expect({
+      revokeKeys: MAX_REVOKE_KEYS,
+      manifestBytes: MAX_UPDATE_MANIFEST,
+      reportEvents: UPDATE_REPORT_LIMIT,
+      reportBatch: UPDATE_REPORT_BATCH,
+    }).toEqual(updates.limits);
+  });
+  const { reports } = updates;
+  test("report vocabulary", () => {
+    expect(reports.events).toEqual([...UPDATE_REPORT_EVENTS]);
+    expect(reports.reasons).toEqual([...UPDATE_REPORT_REASONS]);
+  });
+  test.each(reports.outcomes)("an answer of %d → %s", (status, expected) => {
+    expect(updateReportOutcome(status)).toBe(expected as ReturnType<typeof updateReportOutcome>);
+  });
+  test.each(reports.retryAfter)("Retry-After %j at %d → %p (%s)", (header, now, expected) => {
+    expect(updateReportRetryAt(header, now)).toBe(expected);
+  });
+  test.each(reports.waits)("retryAt %p at %d waits: %p", (retryAt, now, expected) => {
+    expect(updateReportWaits(retryAt, now)).toBe(expected);
+  });
+  test.each(reports.keys)("%s %s %p → %s", (event, bundle, reason, expected) => {
+    expect(updateReportKey(event, bundle, reason)).toBe(expected);
+  });
+  test.each(reports.times)("%d → %s", (ms, expected) => {
+    expect(updateReportTime(ms)).toBe(expected);
+  });
+  test("strict base64 is what iOS decodes, and nothing Android or Java would take beside it", () => {
+    for (const s of ["", "YQ==", "YWI=", "YWJj", "+/+/"]) expect(isStrictBase64(s)).toBe(true);
+    for (const s of ["YQ", "YQ=", "YQ===", "Y\nQ==", " YQ==", "YQ== ", "=YQ=", "Y=Q=", "-_-_", "YWJ\u00e9"])
+      expect(isStrictBase64(s)).toBe(false);
+  });
+});
+
+// What the publisher writes and a desktop app's setChannel() takes: one rule, so no device waits on a channel nobody
+// can publish to.
+describe("update names", () => {
+  test.each([
+    ["production", true],
+    ["pilot", true],
+    ["beta-2", true],
+    ["v1.2", true],
+    ["a_b", true],
+    ["x".repeat(41), true],
+    ["x".repeat(42), false],
+    ["Pilot", false],
+    ["", false],
+    [".hidden", false],
+    ["-x", false],
+    ["../stable", false],
+    ["a/b", false],
+    ["a\\b", false],
+    ["bundle", false],
+    ["manifest.template", false],
+    ["compat", false],
+    ["pack", false],
+    ["files", false],
+    ["app", false],
+  ] as const)("channel %j: %p", (name, valid) => {
+    expect(isChannelName(name)).toBe(valid);
+  });
+  test.each([
+    ["4bb06f8e4e3a7715", true],
+    ["4BB06F8E4E3A7715", false],
+    ["4bb06f8e4e3a771", false],
+    ["4bb06f8e4e3a77150", false],
+    ["4bb06f8e4e3a771g", false],
+  ] as const)("keyId %j: %p", (keyId, valid) => {
+    expect(isUpdateKeyId(keyId)).toBe(valid);
   });
 });

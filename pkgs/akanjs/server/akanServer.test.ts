@@ -255,6 +255,24 @@ describe("AkanServer route prefix", () => {
 });
 
 describe("AkanServer MCP config", () => {
+  test("is off on an edge server unless the env or the app turns it on", async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-mcp-edge-"));
+    const previous = process.env.AKAN_PUBLIC_OPERATION_MODE;
+    try {
+      process.env.AKAN_PUBLIC_OPERATION_MODE = "edge";
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).mcp).toBe(false);
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).setMcp(true).mcp).toBe(true);
+      process.env.AKAN_MCP = "true";
+      expect(new AkanServer("serverGet", createEnv(tmp), "all", createLib()).mcp).toBe(true);
+    } finally {
+      delete process.env.AKAN_MCP;
+      if (previous === undefined) delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+      else process.env.AKAN_PUBLIC_OPERATION_MODE = previous;
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("reads every option from env and lets code override it", async () => {
     const { AkanServer, createLib } = await loadRuntime();
     const tmp = await mkdtemp(join(tmpdir(), "akan-server-mcp-"));
@@ -272,6 +290,7 @@ describe("AkanServer MCP config", () => {
       "AKAN_MCP_RATE_LIMIT",
       "AKAN_MCP_CONCURRENT",
       "AKAN_MCP_PROMPT_BUDGET",
+      "AKAN_MCP_APPS",
     ];
 
     try {
@@ -288,6 +307,7 @@ describe("AkanServer MCP config", () => {
       process.env.AKAN_MCP_RATE_LIMIT = "60/30";
       process.env.AKAN_MCP_CONCURRENT = "2";
       process.env.AKAN_MCP_PROMPT_BUDGET = "20000";
+      process.env.AKAN_MCP_APPS = "false";
 
       const fromEnv = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
       expect(fromEnv.mcp).toBe(true);
@@ -302,6 +322,7 @@ describe("AkanServer MCP config", () => {
         outputSchema: "none",
         rateLimit: { calls: 60, windowMs: 30_000, concurrent: 2 },
         promptBudget: 20_000,
+        apps: false,
       });
       expect(fromEnv.mcpAuth).toEqual({ authorizationServers: ["https://auth.example.com"] });
       process.env.AKAN_MCP_RATE_LIMIT = "off";
@@ -603,6 +624,13 @@ describe("AkanServer console process", () => {
       await replica.start({ listen: false });
       expect(fixture.resolverOrder).toContain("init");
       await replica.stop();
+
+      fixture.resetResolverOrder();
+      const quiet = new AkanServer("serverGet", createEnv(join(tmp, "quiet")), "all", createLib());
+      await quiet.start({ listen: false, schedules: false });
+      expect(quiet.getService("serverResolverTestItem")).toBeDefined();
+      expect(fixture.resolverOrder).not.toContain("init");
+      await quiet.stop();
 
       fixture.resetResolverOrder();
       process.env.AKAN_COMMAND_TYPE = "console";

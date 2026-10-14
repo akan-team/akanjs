@@ -23,6 +23,8 @@ metadata, authorization with PKCE and a consent page, client registration, token
   token dies early. Revocation answers 200 whether or not the token was live, so it cannot be used to probe tokens.
 - A token this server minted names its client and the MCP resource; a browser session names neither. That difference is
   what `isAgentCall` / `Person` read to keep an act a person may take from being taken on a model's say-so.
+- Disconnecting an app and deciding a consent are such acts: an agent's token is refused, an MCP App view's relayed
+  call included. Listing connections stays open to a token, so it can find its own grant.
 - None of these endpoints is published to MCP: they are the protocol and the account's own controls, not tools.
 
 authorize -> pending -> approved | denied -> code -> token -> refresh -> revoked

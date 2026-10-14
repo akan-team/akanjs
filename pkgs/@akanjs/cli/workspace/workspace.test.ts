@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
@@ -11,6 +11,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import { Logger } from "akanjs/common";
 import { WorkspaceCommand } from "./workspace.command";
 import { defaultMaxDiagnostics, WorkspaceRunner } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
@@ -230,6 +231,28 @@ describe("WorkspaceScript", () => {
     ).toEqual(["app", "lib", "pkg"]);
   });
 
+  test("machine-keygen prints only the public key, and claims mode 600 only where the mode holds", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    script.workspaceRunner.machineKeygen = async () => ({ file: "/keys/cloud.pem", publicKey: "PUBLIC-KEY" });
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    const keygenOn = async (os: NodeJS.Platform) => {
+      Object.defineProperty(process, "platform", { value: os });
+      printed.mockClear();
+      await script.machineKeygen({} as never, "keys/cloud.pem");
+      return printed.mock.calls.map(([line]) => String(line)).join("\n");
+    };
+    try {
+      expect(await keygenOn("linux")).toContain("Wrote the private key to /keys/cloud.pem (mode 600).");
+      const windows = await keygenOn("win32");
+      expect(windows).not.toContain("mode 600");
+      expect(windows).toContain("Windows gives it the permissions of its folder");
+      expect(windows).toContain("AKAN_MACHINE_PUBLIC_KEY=PUBLIC-KEY");
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
+  });
+
   test("delegates agent rule generation to the workspace runner", async () => {
     const script = CommandContainer.get(WorkspaceScript);
     const recorder = createCallRecorder();
@@ -253,6 +276,25 @@ describe("WorkspaceScript", () => {
 });
 
 describe("WorkspaceRunner", () => {
+  test("machine-keygen writes a private key only the owner reads, refuses to overwrite it, and returns the public key", async () => {
+    const { mkdtemp, rm, stat } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const root = await mkdtemp(path.join(tmpdir(), "akan-machine-keygen-"));
+    try {
+      const runner = new WorkspaceRunner();
+      const workspace = { workspaceRoot: root } as never;
+      const { file, publicKey } = await runner.machineKeygen(workspace, "local/keys/cloud.pem");
+      expect(file).toBe(path.join(root, "local/keys/cloud.pem"));
+      if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
+      const { createPrivateKey, createPublicKey } = await import("node:crypto");
+      const derived = createPublicKey(createPrivateKey(await Bun.file(file).text()));
+      expect(derived.export({ format: "jwk" }).x).toBe(publicKey);
+      await expect(runner.machineKeygen(workspace, "local/keys/cloud.pem")).rejects.toThrow("never overwrites a key");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses the provided akan version", async () => {
     const runner = new WorkspaceRunner();
     stubNpmLatest();
@@ -465,5 +507,46 @@ describe("Scan convention validation", () => {
 
     const scanInfo = await app.scanSync({ write: false });
     expect(scanInfo.type).toBe("app");
+  });
+
+  test("allows one test per module file, named after the file it covers", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.spec.ts`, "export const spec = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.service.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/Task.Zone.test.tsx`, "export const test = 1;\n");
+
+    const scanInfo = await app.scanSync({ refresh: true, write: false });
+    expect(scanInfo.type).toBe("app");
+  });
+
+  test("rejects a role's tests split across several topic suites", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task/task.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.trim.signal.test.ts`, "export const test = 1;\n");
+    await writeText(`${app.cwdPath}/lib/task/task.security.test.ts`, "export const test = 1;\n");
+
+    const message = await app.scanSync({ refresh: true, write: false }).then(
+      () => "",
+      (error: Error) => error.message,
+    );
+    expect(message).toContain("apps/demo/lib/task/task.trim.signal.test.ts: a module test is named after the one");
+    expect(message).toContain("apps/demo/lib/task/task.security.test.ts: a module test is named after the one");
+    expect(message).not.toContain("task/task.signal.test.ts");
+  });
+
+  test("rejects a test at the lib root and points it at its module folder or srvkit", async () => {
+    const { app } = track(await createTempApp("demo"));
+
+    await writeText(`${app.cwdPath}/lib/task/task.constant.ts`, "export const TaskStatus = {};\n");
+    await writeText(`${app.cwdPath}/lib/task.signal.test.ts`, "export const test = 1;\n");
+
+    await expect(app.scanSync({ refresh: true, write: false })).rejects.toThrow(
+      /apps\/demo\/lib\/task.signal.test.ts: a test beside the generated barrels; .*srvkit\//,
+    );
   });
 });

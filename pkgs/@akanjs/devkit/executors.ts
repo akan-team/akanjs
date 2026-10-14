@@ -28,6 +28,7 @@ import {
   isRouteSourceFile,
   Logger,
   parseRouteModuleKey,
+  toError,
   validatePageSourceFile,
   validateSubRoutePageKey,
 } from "akanjs/common";
@@ -40,7 +41,7 @@ import {
   scanScopeRecipes,
   upsertAgentBlock,
 } from "./agentsIndex";
-import { AkanAppConfig, AkanLibConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
+import { AkanAppConfig, AkanLibConfig, AkanWorkspaceConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { CodegenLock } from "./codegenLock";
 import { FileSys, getDirname } from "./fileSys";
@@ -52,6 +53,7 @@ import { AppInfo, isAkanFrameworkDependency, LibInfo, PkgInfo, WorkspaceInfo } f
 import { Spinner } from "./spinner";
 // Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
 import type { TypeChecker } from "./typeChecker";
+import { ProjectTypecheck } from "./typecheck/projectTypecheck";
 import type { FileContent, PackageJson, TsConfigJson } from "./types";
 import { barrelFacetDirs } from "./workspaceLayout";
 
@@ -457,6 +459,8 @@ export class Executor {
     } else if (staticTemplateFileExtensions.has(path.extname(targetPath).toLowerCase())) {
       const convertedTargetPath = convertPath(targetPath);
       const writePath = this.getPath(convertedTargetPath);
+      if (!overwrite && (await FileSys.fileExists(writePath)))
+        return { filePath: writePath, content: "", written: false };
       const dirname = path.dirname(writePath);
       if (!(await FileSys.dirExists(dirname))) await mkdir(dirname, { recursive: true });
       await copyFile(templatePath, writePath);
@@ -560,7 +564,7 @@ export class Executor {
       const { fixed } = await this.getLinter().fixFiles(filePaths);
       if (fixed.length > 0) this.logger.verbose(`Formatted ${fixed.length} scaffolded file(s)`);
     } catch (err) {
-      this.logger.verbose(`Skipped formatting scaffolded files: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.verbose(`Skipped formatting scaffolded files: ${toError(err).message}`);
     }
   }
   // Async so `typescript` (~65MB resident) loads only in the commands that typecheck.
@@ -578,7 +582,7 @@ export class Executor {
   }
   async typeCheckAsync(filePath: string) {
     const path = this.getPath(filePath);
-    const entry = await this.#resolveTypecheckWorkerEntry();
+    const entry = await ProjectTypecheck.workerEntry(process.cwd());
     const proc = Bun.spawn([process.execPath, entry], {
       cwd: this.cwdPath,
       env: {
@@ -608,18 +612,6 @@ export class Executor {
       fileWarnings: Array.from({ length: result.fileWarningsCount }),
       message: result.message,
     };
-  }
-  async #resolveTypecheckWorkerEntry() {
-    const dirname = getDirname(import.meta.url);
-    const candidates = [
-      path.join(process.cwd(), "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(process.cwd(), "node_modules/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(dirname, "typecheck/typecheck.proc.ts"),
-      path.join(dirname, "typecheck.proc.js"),
-      path.join(dirname, "typecheck.proc.ts"),
-    ];
-    for (const candidate of candidates) if (await Bun.file(candidate).exists()) return candidate;
-    throw new Error(`[devkit] typecheck worker entry not found; looked in: ${candidates.join(", ")}`);
   }
   getLinter() {
     this.linter ??= new Linter(this.cwdPath);
@@ -713,6 +705,12 @@ export class WorkspaceExecutor extends Executor {
   }
   async scan(): Promise<WorkspaceInfo> {
     return await WorkspaceInfo.fromExecutor(this);
+  }
+  #akanConfig: AkanWorkspaceConfig | null = null;
+  async getConfig({ refresh }: { refresh?: boolean } = {}) {
+    if (this.#akanConfig && !refresh) return this.#akanConfig;
+    this.#akanConfig = await AkanWorkspaceConfig.from(this, { bustImportCache: refresh });
+    return this.#akanConfig;
   }
   async getApps() {
     return await this.#getDirHasFile(`${this.workspaceRoot}/apps`, "akan.config.ts");

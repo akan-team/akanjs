@@ -22,6 +22,7 @@ import {
 } from "akanjs/common";
 import { createElement } from "react";
 import { defaultPageState, validatePageConfig } from "../client/frameConfig";
+import { RouteHead } from "../client/route/RouteHead";
 import {
   type ResolvedRouteModule,
   type RouteModuleSource,
@@ -129,17 +130,6 @@ export class RouteTreeBuilder {
     return candidates[0] ?? null;
   }
 
-  static parseSearchParams(search: string): Record<string, string | string[]> {
-    const result: Record<string, string | string[]> = {};
-    const urlSearchParams = new URLSearchParams(search);
-    for (const [key, value] of urlSearchParams.entries()) {
-      const existing = result[key];
-      if (existing !== undefined) result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
-      else result[key] = value;
-    }
-    return result;
-  }
-
   #addRouteModule(filePath: string, loader: () => Promise<RouteModuleSource>) {
     const parsed = parseRouteModuleKey(filePath);
     if (parsed.kind === "page") this.#pagePatterns.push({ key: filePath, pattern: parsed.pattern });
@@ -196,7 +186,7 @@ export class RouteTreeBuilder {
               renderPage: route.renderPage,
               renderRootLayouts: layer.pageRenderRootLayouts,
               renderLayouts: layer.pageRenderLayouts,
-              resolveHead: RouteTreeBuilder.#composeHeadResolvers(route.renderPage.resolveHead, pageHead),
+              resolveHead: RouteTreeBuilder.#composePageHead(route.renderPage.resolveHead, pageHead),
               pageState: route.pageState ?? defaultPageState,
             },
           ]
@@ -291,7 +281,16 @@ export class RouteTreeBuilder {
       },
       resolveHead: async (props: PageProps) => {
         const mod = await loadSynced();
-        return mod.generateHead ? await mod.generateHead(props) : mod.head;
+        try {
+          return mod.generateHead ? await mod.generateHead(props) : mod.head;
+        } catch (error) {
+          //? Heads resolve before the layouts render, so a read the visitor may not make — a guard refusing a signed-out
+          //? one — would fail the request ahead of the layout's own sign-in redirect. A redirect or not-found still routes.
+          const digest = (error as { digest?: unknown } | null)?.digest;
+          if (digest === "AKAN_REDIRECT" || digest === "AKAN_NOT_FOUND") throw error;
+          RouteTreeBuilder.logger.warn(`${key}: .head() threw, so the route renders without it: ${String(error)}`);
+          return undefined;
+        }
       },
       checkArgs: async ({ params, searchParams }: PageProps) => {
         (await loadModule()).definition?.resolveArgs({ params, searchParams });
@@ -301,13 +300,13 @@ export class RouteTreeBuilder {
       routeRender.getPageConfig = pageConfigOf;
       routeRender.getRouteDefinition = async () => (await loadModule()).definition;
     } else {
+      const layoutModule = async () => (await loadModule()).module as LayoutModule;
       routeRender.getLayoutPageConfig = pageConfigOf;
-      routeRender.getLayoutTheme = async () => {
-        const { module: mod } = await loadModule();
-        return "theme" in mod ? (mod.theme as string | undefined) : undefined;
-      };
-      routeRender.resolveNotFound = async () => syncFallbacks((await loadModule()).module as LayoutModule).NotFound;
-      routeRender.resolveError = async () => syncFallbacks((await loadModule()).module as LayoutModule).Error;
+      routeRender.getLayoutTheme = async () => (await layoutModule()).theme;
+      routeRender.getLayoutViewport = async () => (await layoutModule()).viewport;
+      routeRender.getLayoutManifest = async () => (await layoutModule()).manifest;
+      routeRender.resolveNotFound = async () => syncFallbacks(await layoutModule()).NotFound;
+      routeRender.resolveError = async () => syncFallbacks(await layoutModule()).Error;
     }
     return routeRender;
   }
@@ -325,15 +324,18 @@ export class RouteTreeBuilder {
     };
   }
 
+  /** `resolvers` run leaf first; their heads merge root first, so a deeper level takes over each tag it writes. */
   static #composeHeadResolvers(...resolvers: (ResolveHead | undefined)[]): ResolveHead | undefined {
     const chain = resolvers.filter((resolver): resolver is ResolveHead => Boolean(resolver));
-    if (chain.length === 0) return undefined;
+    if (chain.length <= 1) return chain[0];
+    return async (props) => RouteHead.merge(await Promise.all(chain.toReversed().map((resolver) => resolver(props))));
+  }
+
+  static #composePageHead(page: ResolveHead | undefined, layouts: ResolveHead | undefined): ResolveHead | undefined {
+    if (!layouts) return page;
     return async (props) => {
-      for (const resolver of chain) {
-        const head = await resolver(props);
-        if (head !== null && head !== undefined) return head;
-      }
-      return undefined;
+      const [layoutHead, pageHead] = await Promise.all([layouts(props), page?.(props)]);
+      return RouteHead.mergePage(layoutHead, pageHead);
     };
   }
 }

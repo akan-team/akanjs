@@ -44,12 +44,14 @@ const makeEnvUploadWorkspace = async () => {
   process.env.AKAN_PUBLIC_ENV = "local";
   process.env.AKAN_WORKSPACE_ID = "workspace-project";
   await writeText(
-    path.join(root, SubspaceConfig.fileName),
+    path.join(root, "akan.config.ts"),
     `export default {
-  subspaces: [
-    { name: "acme", repo: "git@github.com:acme/app.git", apps: ["acme"] },
-    { name: "globex", repo: "git@github.com:globex/app.git", apps: ["globex"], workspaceId: "workspace-project" },
-  ],
+  subspace: {
+    subspaces: [
+      { name: "acme", repo: "git@github.com:acme/app.git", apps: ["acme"] },
+      { name: "globex", repo: "git@github.com:globex/app.git", apps: ["globex"], workspaceId: "workspace-project" },
+    ],
+  },
 };
 `,
   );
@@ -76,14 +78,16 @@ describe("SubspaceRunner.chooseNames", () => {
     ]);
   });
 
-  test("asks for exactly one subspace for diff and pull", async () => {
+  test("asks for exactly one subspace for plan, diff and pull", async () => {
     const { prompts, calls } = fakePrompts("globex");
 
     expect(await SubspaceRunner.chooseNames(config, "pull", { interactive: true, prompts })).toEqual(["globex"]);
     expect(await SubspaceRunner.chooseNames(config, "diff", { interactive: true, prompts })).toEqual(["globex"]);
+    expect(await SubspaceRunner.chooseNames(config, "plan", { interactive: true, prompts })).toEqual(["globex"]);
     expect(calls.map((call) => [call.kind, call.message])).toEqual([
       ["select", "Select a subspace to pull"],
       ["select", "Select a subspace to diff"],
+      ["select", "Select a subspace to plan"],
     ]);
   });
 

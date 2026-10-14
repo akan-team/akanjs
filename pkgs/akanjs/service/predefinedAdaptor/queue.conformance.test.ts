@@ -66,6 +66,30 @@ const until = async (condition: () => boolean, timeoutMs = 3_000) => {
   }
 };
 
+interface Timeline {
+  now: () => number;
+  pass: (ms: number) => Promise<void>;
+}
+
+//? bullmq schedules a retry on Redis by the wall clock, so only Solid's time is the test's to move.
+const wallTimeline: Timeline = { now: () => Date.now(), pass: async (ms) => await Bun.sleep(ms) };
+
+//? A millisecond a step, each settled before the next, so an attempt runs and records the very millisecond it fell due.
+const steppedTimeline = (queue: SolidQueue): Timeline => {
+  let at = Date.now();
+  queue.now = () => at;
+  return {
+    now: () => at,
+    pass: async (ms) => {
+      for (let step = 0; step < ms; step++) {
+        at += 1;
+        queue.wake();
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    },
+  };
+};
+
 const kinds: QueueKind[] = ["solid", ...(ConformanceEnv.has("queue conformance", "redis") ? (["bull"] as const) : [])];
 
 for (const kind of kinds) {
@@ -82,6 +106,10 @@ for (const kind of kinds) {
       const created = await newBackend(kind);
       cleanups.push(created.remove);
       return created.location;
+    };
+    const openTimed = async () => {
+      const queue = await open(await backend());
+      return { queue, timeline: queue instanceof SolidQueue ? steppedTimeline(queue) : wallTimeline };
     };
 
     afterEach(async () => {
@@ -132,6 +160,36 @@ for (const kind of kinds) {
       expect(order).toEqual(["none", "one", "five"]);
     });
 
+    test("a job that fails every attempt reaches onFailed once, retried on a capped backoff", async () => {
+      const { queue, timeline } = await openTimed();
+      const runs: number[] = [];
+      const dead: unknown[] = [];
+      queue.registerProcessWorker(
+        "mail",
+        async () => {
+          runs.push(timeline.now());
+          throw new Error("refused");
+        },
+        { onFailed: (job) => void dead.push(job.data) },
+      );
+      await queue.registerProcessQueue("mail", ["to@example.com"], {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 40, maxDelay: 60 },
+      });
+      await until(() => runs.length === 1);
+      await timeline.pass(40);
+      await until(() => runs.length === 2);
+      await timeline.pass(60);
+      await until(() => dead.length === 1, 5_000);
+      await timeline.pass(100);
+      expect(dead).toEqual([["to@example.com"]]);
+      expect(runs).toHaveLength(3);
+      const [first = 0, second = 0, third = 0] = runs;
+      expect(second - first).toBeGreaterThanOrEqual(35);
+      expect(third - second).toBeGreaterThanOrEqual(55);
+      expect(third - second).toBeLessThan(1_000);
+    });
+
     test("[Q-7] a destroyed adaptor stops taking jobs", async () => {
       const location = await backend();
       const worker = await openQueue(kind, location);
@@ -147,20 +205,39 @@ for (const kind of kinds) {
     });
 
     test("[Q-5] a failing job retries on bullmq's exponential schedule", async () => {
-      const queue = await open(await backend());
+      const { queue, timeline } = await openTimed();
       const attempts: number[] = [];
       queue.registerProcessWorker("mail", async () => {
-        attempts.push(Date.now());
+        attempts.push(timeline.now());
         throw new Error("try again");
       });
       await queue.registerProcessQueue("mail", ["retry"], {
         attempts: 3,
         backoff: { type: "exponential", delay: 100 },
       });
+      await until(() => attempts.length === 1);
+      await timeline.pass(100);
+      await until(() => attempts.length === 2);
+      await timeline.pass(200);
       await until(() => attempts.length === 3, 5_000);
       const [first, second, third] = attempts as [number, number, number];
       expect(second - first).toBeGreaterThanOrEqual(90);
       expect(third - second).toBeGreaterThanOrEqual(190);
+    });
+
+    test("a failing job whose backoff names no type waits its delay before the next attempt", async () => {
+      const { queue, timeline } = await openTimed();
+      const attempts: number[] = [];
+      queue.registerProcessWorker("mail", async () => {
+        attempts.push(timeline.now());
+        throw new Error("try again");
+      });
+      await queue.registerProcessQueue("mail", ["untyped"], { attempts: 2, backoff: { delay: 100 } });
+      await until(() => attempts.length === 1);
+      await timeline.pass(100);
+      await until(() => attempts.length === 2, 5_000);
+      const [first = 0, second = 0] = attempts;
+      expect(second - first).toBeGreaterThanOrEqual(90);
     });
 
     test.skipIf(onBull)("a job whose worker stopped answering is picked up once its lease runs out", async () => {

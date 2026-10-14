@@ -14,6 +14,7 @@
 - Float (#Float)
 - Any (#Any)
 - Binary (#Binary)
+- ImageResult (#ImageResult)
 - Upload (#Upload)
 - dayjs / Dayjs (#dayjs / Dayjs)
 - enumOf (#enumOf)
@@ -36,6 +37,8 @@ Export
 - Any: An open value Akan does not check. You name its shape with a type argument.
 
 - Binary: Raw bytes in a signal argument or return.
+
+- ImageResult: A picture a signal returns: JSON over HTTP, an image block over MCP.
 
 - Upload: A file in the body of the upload mutation.
 
@@ -68,6 +71,8 @@ Signal return — query() mutation()
   - Any: Payloads whose shape stays open.
 
   - Binary: Keep stored bytes in a `File` model.
+
+  - ImageResult: A picture for an agent to see.
 
   - Upload: Only in the body of a `fileUpload: true` mutation.
 
@@ -171,7 +176,21 @@ A stream endpoint with one lossy room and one room that must see every frame:
 
 **Agents do not get it.** A signal that returns `Binary` is not published to MCP.
 
+**`Binary.toBase64(bytes)` and `Binary.fromBase64(text)` are its wire codec.** They use `Buffer` where the runtime has one and `btoa` / `atob` in a browser, so code on either side that needs base64 calls them instead of keeping its own copy.
+
 **Binary is never a model field.** A model that declares `field(Binary)` fails to load. Keep the bytes in a `File` model and store a relation to it.
+
+ImageResult
+
+`ImageResult` is a picture an endpoint returns as `{ data, mimeType, caption? }`. `data` is padded base64 without a `data:` prefix, and `mimeType` is `image/png`, `image/jpeg`, `image/webp` or `image/gif`, the types Anthropic and OpenAI models take.
+
+**A model sees the picture.** `tools/call` answers the caption as a text block and the picture as an image block, one pair per picture for `[ImageResult]`, with no `outputSchema`, `structuredContent` or JSON text block to repeat the base64.
+
+**Everyone else reads JSON.** Over HTTP, and in an MCP App view, the endpoint answers the JSON object. A page prompt or the in-page agent reads only its `mimeType` and `caption`.
+
+**A malformed value is not sent.** A `data:` URL or an unlisted type answers the generic failure, and the log names what an `ImageResult` needs.
+
+**It is not storable.** Like `Binary`, `field(ImageResult)` fails the class build; keep a stored picture in a `File` model.
 
 Upload
 
@@ -388,6 +407,23 @@ export class StreamEndpoint extends endpoint(srv.stream, ({ pubsub }) => ({
   patchReceived: pubsub(Binary, { guards: [Every], backpressure: "queue" })
     .room("docId", ID)
     .exec(() => undefined),
+})) {}
+```
+
+### apps/myapp/lib/_screen/screen.signal.ts
+
+```typescript
+import { Every } from "@libs/shared/srvkit";
+import { ImageResult } from "akanjs/base";
+import { endpoint } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class ScreenEndpoint extends endpoint(srv.screen, ({ query }) => ({
+  screenShot: query(ImageResult, { guards: [Every] }).exec(async function () {
+    const png = await this.screenService.capture();
+    return { data: png.toString("base64"), mimeType: "image/png", caption: "The current screen" };
+  }),
 })) {}
 ```
 

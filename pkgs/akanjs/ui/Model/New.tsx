@@ -2,12 +2,13 @@ import { usePage } from "akanjs/client";
 import type { SliceMeta } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { AiOutlinePlus } from "react-icons/ai";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { buttonRecipe } from "../recipe";
 import type { DraftProp } from "./draftScope";
 import EditModal from "./EditModal";
 import NewWrapper from "./NewWrapper";
 
-interface NewProps<Full = any> {
+interface NewProps<Full = any> extends ModalSurfaceProps {
   trigger?: ReactNode;
   children: ReactNode;
   slice: SliceMeta;
@@ -20,7 +21,18 @@ interface NewProps<Full = any> {
   draft?: DraftProp;
 }
 
-export default function New({ trigger, children, slice, modal, partial, renderTitle, namespace, draft }: NewProps) {
+export default function New({
+  trigger,
+  children,
+  slice,
+  modal,
+  partial,
+  renderTitle,
+  namespace,
+  draft,
+  presentation,
+  placement,
+}: NewProps) {
   const { l } = usePage();
   return (
     <>
@@ -38,7 +50,14 @@ export default function New({ trigger, children, slice, modal, partial, renderTi
           </button>
         )}
       </NewWrapper>
-      <EditModal renderTitle={renderTitle} slice={slice} draft={draft}>
+      <EditModal
+        renderTitle={renderTitle}
+        slice={slice}
+        modal={modal ?? undefined}
+        draft={draft}
+        presentation={presentation}
+        placement={placement}
+      >
         {children}
       </EditModal>
     </>

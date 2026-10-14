@@ -10,6 +10,7 @@ let DefaultChat: typeof import("./Chat").DefaultChat;
 let Chat: typeof import("./Chat").default;
 let Guide: typeof import("./Guide").Guide;
 let UiOverrideProvider: typeof import("../UiOverride").UiOverrideProvider;
+let overlayZ: typeof import("../overlayLayer").overlayZ;
 
 const runtimeFetch: Record<string, unknown> = {};
 
@@ -23,6 +24,7 @@ beforeAll(async () => {
   ({ DefaultChat, default: Chat } = await import("./Chat"));
   ({ Guide } = await import("./Guide"));
   ({ UiOverrideProvider } = await import("../UiOverride"));
+  ({ overlayZ } = await import("../overlayLayer"));
 });
 
 // The chat portals to the body, so the query scope is the body.
@@ -677,12 +679,23 @@ describe("Agent.Chat", () => {
     const floating = mountChat(session);
     // Under `#pageContainers` (isolation: isolate) no z-index beats the body-level modal, so the chat must leave.
     expect(floating.host.querySelector("aside")).toBeNull();
-    expect(document.body.querySelector("aside")?.className).toContain("z-[150]");
+    expect(document.body.querySelector("aside")?.style.zIndex).toBe(String(overlayZ.agentPanel));
     floating.unmount();
 
     const inline = mountChat(session, { defaultOpen: true, inline: true });
     expect(inline.host.querySelector("aside")?.className).not.toContain("fixed");
     inline.unmount();
+  });
+
+  test("the launcher sits under menus and modals, above the page's bottom chrome, in the corner it is given", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mountChat(session, { launcherPlacement: "left", hideLauncherBelow: "md" });
+    const launcher = document.body.querySelector<HTMLButtonElement>('button[aria-label="base.agent"]');
+    expect(launcher?.style.zIndex).toBe(String(overlayZ.agentLauncher));
+    expect(launcher?.className).toContain("var(--akan-bottom-inset");
+    expect(launcher?.className).toContain("left-[calc(env(safe-area-inset-left,0px)+1rem)]");
+    expect(launcher?.className).toContain("max-md:hidden");
+    chat.unmount();
   });
 
   test("a touch screen opens onto the intro without raising its keyboard, a desktop into the composer", () => {

@@ -3,9 +3,10 @@
 import { Readable } from "node:stream";
 import { getApiPrefix, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type AkanRequestStore, type AkanTheme, pushRequestFallback, requestStorage } from "akanjs/fetch";
+import { type AkanRequestStore, type AkanTheme, createRequestStore, requestStorage } from "akanjs/fetch";
 import type { ReactNode } from "react";
-import { renderToReadableStream } from "react-dom/server.browser";
+//? Not server.browser: it resumes a boundary from a MessageChannel task, which runs with an empty AsyncLocalStorage.
+import { renderToReadableStream } from "react-dom/server.edge";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
 import { concatBytes } from "./rscHttp";
@@ -484,15 +485,10 @@ export function interleaveRscScriptsWithHtml(
       };
 
       const requestContext = options.requestStore ?? options.request;
-      const runPump = () => {
-        const cleanup = requestContext ? pushRequestFallback(requestContext) : undefined;
-        return pump()
+      const runPump = () =>
+        pump()
           .catch(fail)
-          .finally(() => {
-            cleanup?.();
-            options.onComplete?.();
-          });
-      };
+          .finally(() => options.onComplete?.());
       if (requestContext && requestStorage) void requestStorage.run(requestContext, runPump);
       else void runPump();
     },
@@ -593,11 +589,15 @@ export class SsrFromRscRenderer {
 
   async render(input: SsrFromRscInput): Promise<ReadableStream<Uint8Array>> {
     const [rscForSsr, rscForClient] = input.rscStream.tee();
+    const requestStore = input.requestStore ?? (input.request ? createRequestStore(input.request) : undefined);
+    const inRequestScope = <T,>(fn: () => T): T =>
+      requestStore && requestStorage ? requestStorage.run(requestStore, fn) : fn();
 
     const ssrNodeStream = Readable.fromWeb(sanitizeFlightForSsrStream(rscForSsr) as never);
     const stderrSuppressor = ExpectedLateRedirectStderrSuppressor.start(input.lateControl);
+    //? The Flight client wakes what Fizz suspended on from its stream's data handler, so it reads in the request scope.
     const thenable = SsrFromRscRenderer.#suppressExpectedLateRedirectError(
-      createFromNodeStream(ssrNodeStream, input.ssrManifest),
+      inRequestScope(() => createFromNodeStream(ssrNodeStream, input.ssrManifest)),
       input.lateControl,
     );
 
@@ -611,9 +611,7 @@ export class SsrFromRscRenderer {
         inlineBoundaries: input.inlineBoundaries,
         onError: (error, phase) => SsrFromRscRenderer.#reportRenderError(error, input, phase),
       });
-    const requestContext = input.requestStore ?? input.request;
-    const htmlStream =
-      requestContext && requestStorage ? await requestStorage.run(requestContext, renderHtml) : await renderHtml();
+    const htmlStream = await inRequestScope(renderHtml);
 
     const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
       importmap: input.importmap,
@@ -629,8 +627,7 @@ export class SsrFromRscRenderer {
       lateControl: input.lateControl,
       onComplete: () => stderrSuppressor?.stop(),
       onCancel: input.onCancel,
-      request: input.request,
-      requestStore: input.requestStore,
+      requestStore,
     });
   }
 

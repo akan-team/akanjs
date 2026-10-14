@@ -81,6 +81,7 @@ export { CsrImage } from "./CsrImage";
 export { Data } from "./Data";
 export { DatePicker } from "./DatePicker";
 export { Dialog } from "./Dialog";
+export type { ModalPlacement, ModalPresentation, ModalSurfaceProps } from "./Dialog/modalSurface";
 export { DragAction } from "./DragAction";
 export { DraggableList } from "./DraggableList";
 export { DROPDOWN_KEEP_OPEN_ATTR, Dropdown } from "./Dropdown";

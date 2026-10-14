@@ -1,5 +1,5 @@
 import type { DefaultPrimitiveName, UnCls } from "akanjs/base";
-import type { ServiceModel } from "akanjs/service";
+import type { AkanJob, ServiceModel } from "akanjs/service";
 import type { RateLimitBudget } from "./endpointRateLimit";
 import type { GuardCls } from "./guard";
 import type { MiddlewareCls } from "./middleware";
@@ -89,6 +89,11 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
    * it. Losing the race does not stop the handler, which runs to completion with nobody holding its result.
    */
   timeout?: number;
+  /**
+   * A `process` job that failed its last attempt, with `this` the internal: the dead letter, called once per job on
+   * whichever queue ran it. Throwing from it is logged and changes nothing.
+   */
+  onFailed?: (this: any, job: AkanJob, error: unknown) => Promise<void> | void;
   partial?: _Key[] | readonly _Key[];
   /**
    * Milliseconds to reuse the answer, keyed by endpoint and arguments; unset caches nothing. Only a `query` with no
@@ -205,7 +210,10 @@ export interface SerializedSignalMcp {
 
 export type SignalType = "restapi" | "websocket";
 
-export type WebsocketReqData = { key: string; data: unknown[]; subscribe?: boolean };
+/** Where a client's copy of a room stands: the numbering it came from, and the last frame it took. */
+export type WebsocketRoomCursor = { epoch: string; seq: number };
+/** `since` asks a resubscribe to send what was published after it, if the server still can. */
+export type WebsocketReqData = { key: string; data: unknown[]; subscribe?: boolean; since?: WebsocketRoomCursor };
 export type WebsocketMessageData = { type: "msg"; key: string; data: object | object[] };
 /**
  * `op` is relative to the room, not the database: a row edited out of a filter is `leave` there and `enter` where it
@@ -226,7 +234,12 @@ export type WebsocketSubscribeAck = {
   roomId: string;
   requestRoomId: string;
   subscribe: boolean;
+  /** The room's numbering at the subscribe, when the server numbers its frames. */
+  cursor?: WebsocketRoomCursor;
+  /** Answering `since`: `true` when every frame after it was sent ahead of this ack, `false` for a gap. */
+  replayed?: boolean;
 };
-export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[] };
+/** `seq` numbers the frames one server process delivers for a room, one apart. */
+export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[]; seq?: number };
 export type WebsocketAuthAck = { type: "auth"; revokedRooms: string[] };
 export type WebsocketResData = WebsocketMessageData | WebsocketSubscribeAck | WebsocketPublishData | WebsocketAuthAck;

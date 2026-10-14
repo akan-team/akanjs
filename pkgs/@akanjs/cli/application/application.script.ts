@@ -5,6 +5,7 @@ import type { TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import {
   type App,
   type Apps,
+  assertPromptable,
   type Exec,
   type Lib,
   type Sys,
@@ -16,7 +17,7 @@ import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
-import { Logger } from "akanjs/common";
+import { Logger, toError } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
 import {
   ApplicationRunner,
@@ -65,6 +66,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   static devServerReadyTimeoutMs = DevSupervisor.bootTimeoutMs;
   readonly #interrupt = new InterruptTeardown();
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
+    assertPromptable(`Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}`, {
+      remedy: `install them first with \`bun add ${installSpecs.join(" ")}\``,
+    });
     return await confirm({
       message: `Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}. Install them now?`,
       default: true,
@@ -134,12 +138,17 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
 
   async build(
     app: App,
-    { write = true, fast = false, quiet = false }: { write?: boolean; fast?: boolean; quiet?: boolean } = {},
+    {
+      write = true,
+      fast = false,
+      quiet = false,
+      profile,
+    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string } = {},
   ) {
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
-      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet });
+      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet, envProfile: profile });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);
     } catch (error) {
@@ -150,16 +159,24 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
 
   async typecheck(
-    app: App,
-    { write = true, clean = false, incremental = true }: TypecheckOptions & { write?: boolean } = {},
+    exec: App | Exec,
+    { write = true, clean = false, incremental = true, tests = false }: TypecheckOptions & { write?: boolean } = {},
   ) {
-    await app.scanSync({ write });
-    const spinner = app.spinning(`Typechecking ${app.name}...`);
+    if (!(exec instanceof AppExecutor) && !(exec instanceof LibExecutor))
+      throw new Error(
+        `akan typecheck takes an app or a library; ${exec.name} is a package, checked by its own tsconfig.`,
+      );
+    if (exec instanceof AppExecutor) await exec.scanSync({ write });
+    else if (write) await this.libraryScript.syncLibrary(exec);
+    else await exec.scan({ write: false });
+    const spinner = exec.spinning(`Typechecking ${exec.name}${tests ? " with its tests" : ""}...`);
     try {
-      await this.applicationRunner.typecheck(app, { clean, incremental });
-      spinner.succeed(`${app.name} typechecked`);
+      if (exec instanceof LibExecutor)
+        await this.applicationRunner.typecheckLibrary(exec, { clean, incremental, tests });
+      else await this.applicationRunner.typecheck(exec, { clean, incremental, tests });
+      spinner.succeed(`${exec.name} typechecked`);
     } catch (error) {
-      spinner.fail(`${app.name} typecheck failed`);
+      spinner.fail(`${exec.name} typecheck failed`);
       Logger.rawLog(ApplicationBuildReporter.formatError(error), undefined, "error");
       throw error;
     }
@@ -402,7 +419,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   ) {
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
-    await this.applicationRunner.packUpdate(app, platform, options);
+    return await this.applicationRunner.packUpdate(app, platform, options);
   }
   async updateKeygen(app: App, platform: "desktop" | "android" | "ios", { target }: { target?: string } = {}) {
     await this.applicationRunner.updateKeygen(app, platform, target);
@@ -478,11 +495,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         Logger.rawLog(`${app.name} is shared at ${share.url}`);
       }),
     ).catch((error: unknown) => {
-      Logger.rawLog(
-        `Could not open the tunnel: ${error instanceof Error ? error.message : String(error)}`,
-        undefined,
-        "error",
-      );
+      Logger.rawLog(`Could not open the tunnel: ${toError(error).message}`, undefined, "error");
     });
     return urls;
   }

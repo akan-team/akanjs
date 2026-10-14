@@ -15,6 +15,28 @@ export const MCP_META_CLIENT_CAPABILITIES = `${MCP_META_PREFIX}clientCapabilitie
 export const MCP_META_CLIENT_INFO = `${MCP_META_PREFIX}clientInfo`;
 export const MCP_META_SERVER_INFO = `${MCP_META_PREFIX}serverInfo`;
 
+/** MCP Apps (SEP-1865): a tool names a `ui://` resource, and a host that speaks the extension renders it in an iframe. */
+export const MCP_UI_EXTENSION = `${MCP_META_PREFIX}ui`;
+export const MCP_UI_MIME_TYPE = "text/html;profile=mcp-app";
+//? Deprecated flat spelling of `_meta.ui.resourceUri`; the official SDK still writes both, and some hosts read only it.
+export const MCP_UI_LEGACY_RESOURCE_URI = "ui/resourceUri";
+
+// This framework's own wire between its server and the view it renders: `_meta` is the one part of a result no host
+// hands to the model.
+export const MCP_APP_META = {
+  snapshot: "akanjs/snapshot",
+  account: "akanjs/account",
+  view: "akanjs/view",
+  value: "akanjs/value",
+  error: "akanjs/error",
+} as const;
+
+export interface McpAppSnapshotRecord {
+  key: string;
+  args: Record<string, unknown>;
+  value: unknown;
+}
+
 // `-32020`..`-32099` is reserved by the spec; `-32021` is left out because this server requires no client capability.
 // `-32002` (resource not found) is retired in the modern revision: an unknown resource is `invalidParams`.
 export const McpErrorCode = {
@@ -37,11 +59,28 @@ export interface McpJsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
+export interface McpJsonRpcResponse {
+  jsonrpc: "2.0";
+  id: string | number | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+export type McpJsonRpcMessage = McpJsonRpcRequest & Partial<McpJsonRpcResponse>;
+
 export interface McpToolAnnotations {
   readOnlyHint?: boolean;
   destructiveHint?: boolean;
   idempotentHint?: boolean;
   openWorldHint?: boolean;
+}
+
+/** `model` lists the tool to the model, `app` lets a rendered view call it; a host enforces both. */
+export type McpUiVisibility = "model" | "app";
+
+export interface McpToolUiMeta {
+  resourceUri?: string;
+  visibility?: McpUiVisibility[];
 }
 
 export interface McpTool {
@@ -51,6 +90,7 @@ export interface McpTool {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   annotations?: McpToolAnnotations;
+  _meta?: { ui?: McpToolUiMeta; [MCP_UI_LEGACY_RESOURCE_URI]?: string };
 }
 
 export interface McpResourceTemplate {
@@ -67,6 +107,7 @@ export interface McpResource {
   title?: string;
   description?: string;
   mimeType?: string;
+  _meta?: Record<string, unknown>;
 }
 
 export interface McpPromptArgument {
@@ -88,14 +129,22 @@ export interface McpTextContent {
   text: string;
 }
 
+export interface McpImageContent {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
 export interface McpToolResult {
-  content: McpTextContent[];
+  content: (McpTextContent | McpImageContent)[];
   structuredContent?: unknown;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
 }
 
 export interface McpResourceContents {
   uri: string;
   mimeType: string;
   text: string;
+  _meta?: Record<string, unknown>;
 }

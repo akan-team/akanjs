@@ -52,8 +52,8 @@ export class StoreSurfaceSource implements SurfaceSource {
           : "path must be an internal path starting with /.",
       run: async (args) => {
         const path = String(args.path);
-        router.push(path);
         try {
+          router.push(path);
           await router.navigation();
         } catch {
           throw new Error(

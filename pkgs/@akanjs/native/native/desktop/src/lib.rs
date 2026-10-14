@@ -15,6 +15,7 @@ macro_rules! log {
 
 mod contract;
 mod devproxy;
+mod external;
 mod json;
 mod navigation;
 mod page_menu;
@@ -31,6 +32,10 @@ mod notify_schedule;
 mod camera;
 #[cfg(target_os = "macos")]
 mod js_panels;
+#[cfg(target_os = "macos")]
+mod kiosk;
+#[cfg(target_os = "macos")]
+mod page_cursor;
 #[cfg(target_os = "macos")]
 mod panels;
 mod dialog_args;
@@ -383,6 +388,11 @@ enum UserEvent {
   WebviewGone { window: u32, reason: &'static str },
   /// desktop.recovery "reload": the wait after a window's page ended in a row is over; load it again.
   ReloadGone(u32),
+  /// An external view's web process ended (external.rs).
+  #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+  ExternalGone { view: String, reason: &'static str },
+  /// The wait after an external view's page ended in a row is over; load it again.
+  ExternalReload(String),
 }
 
 // ───────────────────────── C ABI ─────────────────────────
@@ -528,12 +538,38 @@ pub unsafe extern "C" fn akan_native_last_error(buf: *mut u8, cap: usize) -> usi
   text.len()
 }
 
+/// akan_native_init(1): a dev build. The shell's test hooks and the WebView2 debugging port need it, never shell.devtools,
+/// which a release build may carry: one variable in its environment would then open a port any local program drives.
+static DEV_BUILD: AtomicBool = AtomicBool::new(false);
+
+fn dev_build() -> bool {
+  DEV_BUILD.load(Ordering::Acquire)
+}
+
+/// desktop.recovery "reload", the switch of an app nobody attends: what its pages do by themselves never takes a person
+/// out of its windows (kiosk.rs, win/kiosk.rs, linux/kiosk.rs).
+static UNATTENDED: AtomicBool = AtomicBool::new(false);
+
+fn unattended() -> bool {
+  UNATTENDED.load(Ordering::Acquire)
+}
+
+/// Run first in every document of an unattended app's pages, frames included, on Windows and macOS.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const KIOSK_SCRIPT: &str = include_str!("kiosk.js");
+
+/// A test hook's variable, read by a dev build only.
+fn dev_env(name: &str) -> Option<String> {
+  dev_build().then(|| std::env::var(name).ok()).flatten()
+}
+
 /// Called by main.ts before it starts the plugin host Worker, so no other akan-native thread runs yet.
 /// Release builds (`dev` 0) drop the engines' debugging variables: a WEBVIEW2_* or WEBKIT_* setting
 /// in the user's environment would open a debugger port or switch off WebKit's sandbox, and
 /// SSLKEYLOGFILE would log TLS keys (Tauri CEF #15995). The debug port is never taken from argv.
 #[no_mangle]
 pub extern "C" fn akan_native_init(dev: u8) -> i32 {
+  DEV_BUILD.store(dev != 0, Ordering::Release);
   if dev == 0 {
     let dropped: Vec<String> = std::env::vars_os()
       .filter_map(|(k, _)| k.into_string().ok())
@@ -660,8 +696,8 @@ fn window_state_with(window: &tao::window::Window, webview: Option<&WebView>, re
 }
 
 /// One window's shell op: everything but the ops on the set of windows (Windows::shell).
-fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json::V, op: &str) -> Result<String, String> {
-  let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
+fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json::V, op: &str, min: (f64, f64)) -> Result<String, String> {
+  let logical = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number")).and_then(|v| placement::logical(k, v));
   let flag = |k: &str| cmd.get(k).and_then(|v| v.as_bool()).ok_or_else(|| format!("{k} must be a boolean"));
   let mut req = Requested::default();
   match op {
@@ -672,15 +708,15 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
       req.title = Some(title);
     }
     "window.setSize" => {
-      let (w, h) = (num("width")?, num("height")?);
+      let (w, h) = (logical("width")?, logical("height")?);
       if !(w >= 1.0 && h >= 1.0) {
         return Err("width and height must be positive".into());
       }
       window.set_inner_size(LogicalSize::new(w, h));
-      req.size = Some((w.max(MIN_INNER.0), h.max(MIN_INNER.1)));
+      req.size = Some((w.max(min.0), h.max(min.1)));
     }
     "window.setPosition" => {
-      let (x, y) = (num("x")?, num("y")?);
+      let (x, y) = (logical("x")?, logical("y")?);
       window.set_outer_position(tao::dpi::LogicalPosition::new(x, y));
       req.position = Some((x, y));
     }
@@ -719,6 +755,9 @@ fn window_op(window: &tao::window::Window, webview: Option<&WebView>, cmd: &json
       req.fullscreen = Some(value);
     }
     "window.setAlwaysOnTop" => window.set_always_on_top(flag("value")?),
+    "window.setDecorations" => window.set_decorations(flag("value")?),
+    //? Hidden while it is over this window only: a kiosk's screen shows no pointer, the rest of the desktop still does.
+    "window.setCursorVisible" => window.set_cursor_visible(flag("value")?),
     "window.show" => window.set_visible(true),
     "window.hide" => window.set_visible(false),
     "window.focus" => window.set_focus(),
@@ -770,6 +809,8 @@ struct Config {
   /// the display it is placed on, and no taskbar button (Windows, Linux).
   fullscreen: bool,
   skip_taskbar: bool,
+  /// The main window has no title bar or border (desktop.window.frameless).
+  frameless: bool,
   /// desktop.screenCapture "auto" (Windows): the page captures the first screen without the picker.
   screen_capture_auto: bool,
 }
@@ -778,6 +819,16 @@ struct Config {
 struct Colors {
   light: (u8, u8, u8, u8),
   dark: (u8, u8, u8, u8),
+}
+
+impl Colors {
+  fn of(&self, window: &tao::window::Window) -> (u8, u8, u8, u8) {
+    if window_theme(window) == tao::window::Theme::Dark {
+      self.dark
+    } else {
+      self.light
+    }
+  }
 }
 
 /// SH-3 background for the current appearance, on the window and the webview.
@@ -841,6 +892,7 @@ fn parse_config(s: &str) -> Result<Config, String> {
     },
     fullscreen: get_b("fullscreen", false),
     skip_taskbar: get_b("skipTaskbar", false),
+    frameless: get_b("frameless", false),
     screen_capture_auto: match get_s("screenCapture").as_deref() {
       None | Some("picker") => false,
       Some("auto") => true,
@@ -1065,6 +1117,10 @@ fn in_app(url: &str) -> bool {
 /// Hands a link to the OS (navigation.rs): http(s) to the browser, mailto and tel to their apps.
 /// Any other scheme is refused, so the page cannot start other programs this way.
 fn open_external(url: &str) {
+  if unattended() {
+    log!("not opening {}: an unattended app (desktop.recovery \"reload\") hands no link to the OS", navigation::shown(url));
+    return;
+  }
   if !navigation::opens_externally(url) {
     log!("not opening {}: only http, https, mailto, tel and security.shell.externalSchemes links leave the app", navigation::shown(url));
     return;
@@ -1133,6 +1189,8 @@ struct WindowOptions {
   /// macOS has no taskbar: its Dock shows apps, not windows.
   #[cfg_attr(target_os = "macos", allow(dead_code))]
   skip_taskbar: bool,
+  /// No title bar or border: a kiosk drawn at an exact size, as an LED board needs.
+  frameless: bool,
 }
 
 /// One window. The webview is declared first so that it is dropped before its window.
@@ -1148,6 +1206,10 @@ struct Win {
   /// A reload is waiting out recovery_wait: ends reported meanwhile (an unresponsive page repeats its report) are
   /// the same end, and must neither raise the streak nor start a second wait.
   reload_pending: bool,
+  /// Its minimum inner size (window.setMinSize), logical points.
+  min_size: (f64, f64),
+  /// window.setCursorVisible(false): the external views over it hide the pointer too.
+  cursor_hidden: bool,
 }
 
 struct Windows {
@@ -1161,6 +1223,10 @@ struct Windows {
   /// Ids by last focus, most recent last.
   focus: Vec<u32>,
   next: u32,
+  /// The external-view plugin's views, by the id the page gave each.
+  external: external::Views,
+  /// Where each external view keeps its own browser profile.
+  external_data: PathBuf,
 }
 
 fn is_dark() -> bool {
@@ -1168,24 +1234,6 @@ fn is_dark() -> bool {
   return macos::is_dark_mode();
   #[cfg(not(target_os = "macos"))]
   false
-}
-
-fn monitors(target: &EventLoopWindowTarget<UserEvent>) -> Vec<placement::Rect> {
-  target.available_monitors().map(|m| logical_rect(&m)).collect()
-}
-
-fn logical_rect(m: &tao::monitor::MonitorHandle) -> placement::Rect {
-  let scale = m.scale_factor();
-  let (p, s) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
-  placement::Rect { x: p.x, y: p.y, width: s.width, height: s.height }
-}
-
-/// The display holding a logical point.
-fn monitor_at(target: &EventLoopWindowTarget<UserEvent>, x: f64, y: f64) -> Option<tao::monitor::MonitorHandle> {
-  target.available_monitors().find(|m| {
-    let r = logical_rect(m);
-    x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
-  })
 }
 
 /// desktop.recovery "reload": how long to wait before loading a page again after `streak` ends in a
@@ -1318,6 +1366,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     .with_background_color(background)
     // D2: stay hidden until the first page load finished, so no blank frame is ever shown.
     .with_visible(false)
+    .with_decorations(!opts.frameless)
     .with_window_icon(shell.icon.clone());
   // Reopen where asked, unless that display is gone (placement.rs; window-state for window 1).
   // Not WindowBuilder::with_position: on macOS tao takes that as the content's top-left corner
@@ -1327,7 +1376,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   let mut placed = None;
   if let Some((x, y)) = opts.position {
     let wanted = placement::Rect { x, y, width, height };
-    match placement::place(wanted, &monitors(target), MIN_INNER) {
+    match placement::place(wanted, &placement::monitors(target), MIN_INNER) {
       Some(r) => {
         builder = builder.with_inner_size(LogicalSize::new(r.width, r.height));
         outer_position = Some(tao::dpi::LogicalPosition::new(r.x, r.y));
@@ -1338,7 +1387,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   }
   if opts.fullscreen {
     // Set before the first frame, on the display the window was placed on (else the primary one).
-    let monitor = placed.and_then(|r| monitor_at(target, r.x + r.width / 2.0, r.y + r.height / 2.0));
+    let monitor = placed.and_then(|r| placement::monitor_at(target, r.x + r.width / 2.0, r.y + r.height / 2.0));
     builder = builder.with_fullscreen(Some(tao::window::Fullscreen::Borderless(monitor)));
   }
   #[cfg(target_os = "windows")]
@@ -1378,7 +1427,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   // `akan-native test` (dev builds only): WebKit suspends a page whose window is covered by other apps
   // (visibilityState "hidden"), which stalled the self-test at the first sheet whenever the test
   // window opened behind the user's work. WRY sets WKPreferences.inactiveSchedulingPolicy (macOS 14+).
-  if shell.devtools && std::env::var_os("AKAN_NATIVE_TEST_NO_THROTTLING").is_some() {
+  if dev_env("AKAN_NATIVE_TEST_NO_THROTTLING").is_some() {
     builder = builder.with_background_throttling(wry::BackgroundThrottlingPolicy::Disabled);
   }
   if register_scheme {
@@ -1395,7 +1444,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     // Dev builds: AKAN_NATIVE_WEBVIEW2_DEBUG_PORT opens the Chrome DevTools Protocol on that port, for
     // test automation. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS does not apply: wry passes arguments of
     // its own, repeated here because these replace them (wry webview2/mod.rs, with autoplay on).
-    let port = std::env::var("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").ok().filter(|_| shell.devtools).and_then(|p| p.parse::<u16>().ok());
+    let port = dev_env("AKAN_NATIVE_WEBVIEW2_DEBUG_PORT").and_then(|p| p.parse::<u16>().ok());
     // desktop.screenCapture "auto": getDisplayMedia answers with the first screen, no picker, no user gesture. Not
     // --auto-select-desktop-capture-source: it matches the picker's title, which follows the UI language (verified).
     let capture = shell.screen_capture_auto.then(|| "--use-fake-ui-for-media-stream".to_string());
@@ -1409,6 +1458,17 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
       ))
     }
   };
+  #[cfg(target_os = "windows")]
+  let builder = if unattended() {
+    builder.with_initialization_script_for_main_only(KIOSK_SCRIPT, false).with_download_started_handler(|url, _| {
+      log!("refused a download of {}: an unattended app's page saves nothing", navigation::shown(&url));
+      false
+    })
+  } else {
+    builder
+  };
+  #[cfg(target_os = "macos")]
+  let builder = if unattended() { builder.with_initialization_script_for_main_only(KIOSK_SCRIPT, false) } else { builder };
   // SH-4: pages never leave the app origin (navigation.rs). Linux decides in its own signal handlers.
   #[cfg(not(target_os = "linux"))]
   let builder = builder.with_navigation_handler(|url| navigation::allow(&url));
@@ -1491,6 +1551,17 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   let webview = webview.map_err(|e| format!("webview: {e}"))?;
   navigation::install(&webview);
   watch_web_process(&webview, id);
+  if unattended() {
+    #[cfg(target_os = "windows")]
+    {
+      win::kiosk::lock(&webview, &format!("window {id}"));
+      navigation::refuse_launches(&webview, &format!("window {id}"));
+    }
+    #[cfg(target_os = "macos")]
+    kiosk::install(&webview);
+    #[cfg(target_os = "linux")]
+    linux::kiosk::lock(&webview);
+  }
   // Release builds: the page's right-click menu without the browser's items.
   page_menu::install(shell.devtools, &webview);
   #[cfg(target_os = "macos")]
@@ -1510,7 +1581,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     std::thread::sleep(Duration::from_millis(3000));
     send(UserEvent::Show(id));
   });
-  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0, reload_pending: false })
+  Ok(Win { webview, window, reloaded_at: None, gone_streak: 0, reload_pending: false, min_size: MIN_INNER, cursor_hidden: false })
 }
 
 /// A `window` argument: a positive whole number.
@@ -1568,17 +1639,7 @@ impl Windows {
   }
 
   fn create(&mut self, target: &EventLoopWindowTarget<UserEvent>, cmd: &json::V) -> Result<String, String> {
-    let pair = |a: &str, b: &str| -> Result<Option<(f64, f64)>, String> {
-      match (cmd.get(a), cmd.get(b)) {
-        (None, None) => Ok(None),
-        (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
-          (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x, y))),
-          _ => Err(format!("{a} and {b} must be numbers")),
-        },
-        _ => Err(format!("give both {a} and {b}")),
-      }
-    };
-    let size = pair("width", "height")?;
+    let size = placement::logical_pair(cmd, "width", "height")?;
     if size.is_some_and(|(w, h)| !(w >= 1.0 && h >= 1.0)) {
       return Err("width and height must be positive".into());
     }
@@ -1586,8 +1647,12 @@ impl Windows {
       None => None,
       Some(v) => Some(v.as_str().ok_or("title must be a string")?.to_string()),
     };
+    let frameless = match cmd.get("frameless") {
+      None => false,
+      Some(v) => v.as_bool().ok_or("frameless must be a boolean")?,
+    };
     // Without a position, cascade from the focused window like AppKit does for new documents.
-    let position = match pair("x", "y")? {
+    let position = match placement::logical_pair(cmd, "x", "y")? {
       Some(p) => Some(p),
       None => self.focus.iter().rev().find_map(|id| self.map.get(id)).and_then(|w| {
         let scale = w.window.scale_factor();
@@ -1599,7 +1664,7 @@ impl Windows {
     };
     let id = self.next;
     self.next += 1;
-    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false, fullscreen: false, skip_taskbar: false })?;
+    let win = open_window(target, &self.shell, &mut self.web_context, id, WindowOptions { path: app_path(cmd)?, title, size, position, maximized: false, fullscreen: false, skip_taskbar: false, frameless })?;
     let state = self.state(id, &win);
     self.insert(id, win);
     push_event(&format!(r#"{{"type":"window","event":"created","window":{id}}}"#));
@@ -1614,6 +1679,7 @@ impl Windows {
       return Err("the last window cannot be destroyed; hide it or quit".into());
     }
     let win = self.map.remove(&id).unwrap();
+    self.external.close_window(id, &win.webview);
     self.ids.remove(&win.window.id());
     self.focus.retain(|&f| f != id);
     drop_pending(id);
@@ -1632,9 +1698,96 @@ impl Windows {
     Ok(format!(r#"{{"id":{id}}}"#))
   }
 
+  fn external_recover(&mut self, view: &str) {
+    let Some(win) = self.external.window_of(view).and_then(|w| self.map.get(&w)) else { return };
+    let background = self.shell.colors.of(&win.window);
+    if let Err(e) = self.external.recover(view, &win.window, &win.webview, &self.external_data, self.shell.devtools, background) {
+      log!("external view {view}: could not load it again: {e}");
+    }
+  }
+
+  fn external_host(&self, cmd: &json::V) -> Result<(u32, &Win), String> {
+    let id = match window_arg(cmd)? {
+      Some(id) => id,
+      None => self.primary().ok_or("there is no window")?,
+    };
+    let win = self.map.get(&id).ok_or_else(|| format!("no window {id}"))?;
+    Ok((id, win))
+  }
+
+  fn external_op(&mut self, op: &str, cmd: &json::V) -> Result<String, String> {
+    let view = || cmd.get("view").and_then(|v| v.as_str()).map(str::to_string).ok_or("view must be a string");
+    let flag = |k: &str| cmd.get(k).and_then(|v| v.as_bool()).ok_or_else(|| format!("{k} must be a boolean"));
+    match op {
+      "externalView.list" => Ok(self.external.list()),
+      "externalView.open" => {
+        let (window, _) = self.external_host(cmd)?;
+        let opts = external::OpenOptions::from_cmd(cmd, window)?;
+        let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
+        let win = &self.map[&window];
+        let hidden = win.cursor_hidden;
+        let background = self.shell.colors.of(&win.window);
+        let answer = self.external.open(&win.window, &win.webview, &data, devtools, background, opts)?;
+        if hidden {
+          self.external.set_cursor_hidden(window, true);
+        }
+        Ok(answer)
+      }
+      "externalView.close" => {
+        let id = view()?;
+        let window = self.external.get(&id)?.window;
+        let win = self.map.get(&window).ok_or_else(|| format!("no window {window}"))?;
+        self.external.close(&id, &win.webview)
+      }
+      "externalView.navigate" => {
+        let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?;
+        self.external.navigate(&view()?, url)
+      }
+      "externalView.reload" => self.external.reload(&view()?),
+      "externalView.setVisible" => self.external.set_visible(&view()?, flag("visible")?),
+      "externalView.setBounds" => {
+        let id = view()?;
+        let window = self.external.get(&id)?.window;
+        let win = self.map.get(&window).ok_or_else(|| format!("no window {window}"))?;
+        let inner = inner_size(&win.window, Some(&win.webview));
+        self.external.set_bounds(&id, external::Bounds::from_cmd(cmd)?, inner)
+      }
+      "externalView.setMuted" => self.external.set_muted(&view()?, flag("muted")?),
+      "externalView.clearData" => self.external.clear_data(&view()?),
+      _ => Err(format!("unknown op {op}")),
+    }
+  }
+
+  /// evaluate and cdp answer from the engine's callback: true when this took the op.
+  fn external_async(&self, id: u64, json: &str) -> bool {
+    let Ok(cmd) = json::parse(json) else { return false };
+    let op = cmd.get("op").and_then(|v| v.as_str()).unwrap_or("");
+    if op != "externalView.evaluate" && op != "externalView.cdp" {
+      return false;
+    }
+    let started = (|| -> Result<(), String> {
+      let view = cmd.get("view").and_then(|v| v.as_str()).ok_or("view must be a string")?;
+      if op == "externalView.evaluate" {
+        let script = cmd.get("script").and_then(|v| v.as_str()).ok_or("script must be a string")?;
+        //? Sent on as a JSON string: the engine's text is spliced into the reply, and not every engine's is JSON.
+        return self.external.evaluate(view, script, move |result| reply(id, result.map(|text| json::quote(&text))));
+      }
+      let method = cmd.get("method").and_then(|v| v.as_str()).ok_or("method must be a string")?;
+      let params = cmd.get("params").map(json::stringify).unwrap_or_else(|| "{}".into());
+      self.external.cdp(view, method, &params, move |result| reply(id, result.map(|text| json::quote(&text))))
+    })();
+    if let Err(e) = started {
+      reply(id, Err(e));
+    }
+    true
+  }
+
   fn shell_op(&mut self, target: &EventLoopWindowTarget<UserEvent>, json: &str) -> Result<String, String> {
     let cmd = json::parse(json)?;
     let op = cmd.get("op").and_then(|v| v.as_str()).ok_or("op is required")?;
+    if op.starts_with("externalView.") {
+      return self.external_op(op, &cmd);
+    }
     match op {
       "window.create" => return self.create(target, &cmd),
       "window.list" => {
@@ -1645,7 +1798,7 @@ impl Windows {
       }
       "window.destroy" => return self.destroy(window_arg(&cmd)?.ok_or("window is required")?),
       // Dev builds: the idle wake budget counters (the self-test's K-idle check).
-      "debug.stats" if self.shell.devtools => return Ok(stats_json()),
+      "debug.stats" if dev_build() => return Ok(stats_json()),
       _ => {}
     }
     // App-wide ops, not a window's: menu, tray, global shortcut, dock, screen and volume plugins
@@ -1675,7 +1828,7 @@ impl Windows {
     };
     let win = self.map.get(&id).ok_or_else(|| format!("no window {id}"))?;
     // Dev builds (the self-test): end the window's web content process, as a crash would (N2).
-    if op == "webview.crashForTest" && self.shell.devtools {
+    if op == "webview.crashForTest" && dev_build() {
       #[cfg(target_os = "macos")]
       unsafe {
         use objc2::{msg_send, runtime::AnyObject, sel};
@@ -1742,12 +1895,33 @@ impl Windows {
       return Ok(window_state(&win.window, Some(&win.webview)));
     }
     if op == "webview.print" {
+      if unattended() {
+        return Err("NOT_ALLOWED: an unattended app (desktop.recovery \"reload\") opens no print dialog".into());
+      }
       // D8: WKWebView ignores window.print(); the page runtime calls this instead (Tauri does the
       // same, tauri/crates/tauri/src/webview/plugin.rs:198). A sheet on the window, not modal.
       win.webview.print().map_err(|e| e.to_string())?;
       return Ok("null".into());
     }
-    window_op(&win.window, Some(&win.webview), &cmd, op)
+    if op == "window.placeOnDisplay" || op == "window.setMinSize" {
+      let min = if op == "window.setMinSize" {
+        placement::set_min_size(&cmd, &win.window)?
+      } else {
+        placement::place_on_display(&cmd, target, &win.window, &win.webview, win.min_size)?
+      };
+      let state = window_state(&win.window, Some(&win.webview));
+      self.map.get_mut(&id).expect("looked up above").min_size = min;
+      return Ok(state);
+    }
+    let state = window_op(&win.window, Some(&win.webview), &cmd, op, win.min_size)?;
+    if op == "window.setCursorVisible" {
+      let hidden = cmd.get("value").and_then(|v| v.as_bool()) == Some(false);
+      #[cfg(target_os = "macos")]
+      page_cursor::set_hidden(&win.webview, hidden);
+      self.map.get_mut(&id).expect("looked up above").cursor_hidden = hidden;
+      self.external.set_cursor_hidden(id, hidden);
+    }
+    Ok(state)
   }
 }
 
@@ -1805,6 +1979,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     log!("pages from {base} (akan-native dev --hmr)");
   }
   navigation::set_extra_schemes(cfg.external_schemes.clone());
+  UNATTENDED.store(cfg.recovery_reload, Ordering::Release);
   // Linux: GTK names the window after the program (X11 WM_CLASS, Wayland app_id), and a dock shows the <name>.desktop
   // that matches it, so the name is the app id the deep links and the dock plugin write their entry under. Not tao's
   // with_app_id: a second launch would then hand itself to the first over D-Bus and exit before single-instance runs.
@@ -1867,6 +2042,12 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     ids: HashMap::new(),
     focus: Vec::new(),
     next: 2,
+    external: external::Views::default(),
+    external_data: cfg
+      .data_dir
+      .clone()
+      .unwrap_or_else(|| std::env::temp_dir().join(format!("{}-webview", cfg.app_id)))
+      .join("ev"),
   };
   let main = WindowOptions {
     path: cfg.start_path.clone(),
@@ -1876,6 +2057,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     maximized: cfg.maximized,
     fullscreen: cfg.fullscreen,
     skip_taskbar: cfg.skip_taskbar,
+    frameless: cfg.frameless,
   };
   match open_window(&event_loop, &windows.shell, &mut windows.web_context, 1, main) {
     Ok(win) => windows.insert(1, win),
@@ -1929,8 +2111,10 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
           }
           WindowEvent::Resized(_) => {
             let logical = inner_size(&win.window, Some(&win.webview)); // not the event's size (see inner_size)
+            windows.external.fit(id, logical);
             push_event(&format!(r#"{{"type":"window","event":"resized","window":{id},"width":{},"height":{}}}"#, logical.width, logical.height));
           }
+          WindowEvent::ScaleFactorChanged { .. } => windows.external.fit(id, inner_size(&win.window, Some(&win.webview))),
           WindowEvent::Moved(position) => {
             let logical = position.to_logical::<f64>(win.window.scale_factor());
             push_event(&format!(r#"{{"type":"window","event":"moved","window":{id},"x":{},"y":{}}}"#, logical.x, logical.y));
@@ -1956,6 +2140,9 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
         }
       }
       Event::UserEvent(UserEvent::Shell { id, json }) => {
+        if windows.external_async(id, &json) {
+          return;
+        }
         // notify.*, camera.*, panel.*, alert.* and autostart.* answer later, from completion
         // handlers or a thread (notify.rs, camera.rs, panels.rs, autostart.rs).
         #[cfg(target_os = "macos")]
@@ -2013,6 +2200,8 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
           }
         }
       }
+      Event::UserEvent(UserEvent::ExternalGone { view, reason }) => windows.external.gone(&view, reason),
+      Event::UserEvent(UserEvent::ExternalReload(view)) => windows.external_recover(&view),
       Event::UserEvent(UserEvent::ReloadGone(window)) => {
         if let Some(win) = windows.map.get_mut(&window) {
           win.reload_pending = false;
@@ -2324,5 +2513,17 @@ mod recovery_tests {
     assert!(super::parse_config(&format!(r#"{{{base},"recovery":"always"}}"#)).is_err());
     assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"auto"}}"#)).unwrap().screen_capture_auto);
     assert!(super::parse_config(&format!(r#"{{{base},"screenCapture":"any"}}"#)).is_err());
+  }
+}
+
+#[cfg(test)]
+mod dev_build_tests {
+  #[test]
+  fn a_shell_not_told_it_is_a_dev_build_reads_no_test_hook_variable() {
+    assert!(!super::dev_build());
+    assert!(std::env::var_os("PATH").is_some());
+    assert_eq!(super::dev_env("PATH"), None);
+    // Its callers pass shell.devtools, which a release build may carry.
+    assert!(crate::dialog_args::TestAnswers::get(true).is_none());
   }
 }

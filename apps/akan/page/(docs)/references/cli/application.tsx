@@ -92,6 +92,40 @@ export default page().render(() => {
       ko: "`--env local`로 만든 릴리스를 허용합니다.",
     }),
   };
+  const signOption: ReferenceRow = {
+    name: "--sign",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "Sign a macOS or Windows release build with the identity `AKAN_NATIVE_MACOS_*` or `AKAN_NATIVE_WINDOWS_*` names. The env alone signs nothing, and `--sign` without an identity stops before the build.",
+      ko: "`AKAN_NATIVE_MACOS_*`나 `AKAN_NATIVE_WINDOWS_*`가 가리키는 신원으로 macOS·Windows release 빌드에 서명합니다. 환경 변수만으로는 서명하지 않고, 신원 없이 `--sign`을 주면 빌드 전에 멈춥니다.",
+    }),
+  };
+  const notarizeOption: ReferenceRow = {
+    name: "--notarize",
+    type: "Boolean",
+    defaultValue: "false",
+    desc: l.trans({
+      en: "macOS: upload the signed app to Apple's notary service and staple the ticket. It takes `--sign` and the notary credentials (`AKAN_NATIVE_MACOS_NOTARY_*`).",
+      ko: "macOS 전용입니다. 서명한 앱을 Apple 공증 서비스에 올리고 ticket을 staple합니다. `--sign`과 공증 자격 증명(`AKAN_NATIVE_MACOS_NOTARY_*`)이 필요합니다.",
+    }),
+  };
+  const cloudSubspaceOption: ReferenceRow = {
+    name: "--subspace",
+    type: "String",
+    desc: l.trans({
+      en: "A subspace of the root `akan.config.ts`: the project its `workspaceId` names gets it. Left out, the project `AKAN_WORKSPACE_ID` names.",
+      ko: "루트 `akan.config.ts`의 subspace입니다. 그 `workspaceId`가 가리키는 프로젝트로 보냅니다. 생략하면 `AKAN_WORKSPACE_ID`가 가리키는 프로젝트입니다.",
+    }),
+  };
+  const cloudHostOption: ReferenceRow = {
+    name: "--host",
+    type: "String",
+    desc: l.trans({
+      en: "The cloud to send to. Left out, `cloud.host` of the root `akan.config.ts`, else Akan Cloud (`https://cloud.akanjs.com`).",
+      ko: "보낼 클라우드입니다. 생략하면 루트 `akan.config.ts`의 `cloud.host`, 없으면 Akan Cloud(`https://cloud.akanjs.com`)입니다.",
+    }),
+  };
   const releaseModeOption: ReferenceRow = {
     name: "--release",
     type: "Boolean",
@@ -258,7 +292,10 @@ export default page().render(() => {
         {
           name: "typecheck",
           href: "#typecheck",
-          desc: l.trans({ en: "Typecheck the app.", ko: "앱의 타입을 검사합니다." }),
+          desc: l.trans({
+            en: "Typecheck an app or a library, its tests included.",
+            ko: "앱이나 라이브러리의 타입을 테스트까지 포함해 검사합니다.",
+          }),
         },
         {
           name: "test",
@@ -314,8 +351,8 @@ export default page().render(() => {
           }),
         },
         {
-          name: ["update-keygen", "publish-update", "pack-update"],
-          href: ["#update-keygen", "#publish-update", "#pack-update"],
+          name: ["update-keygen", "publish-update", "pack-update", "push-update", "register-binary"],
+          href: ["#update-keygen", "#publish-update", "#pack-update", "#push-update", "#register-binary"],
           desc: l.trans({
             en: "Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.",
             ko: "설치된 앱이 스스로 업데이트할 릴리스를 서명해 게시하거나, 다른 곳에서 서명할 폰 업데이트를 묶습니다.",
@@ -894,20 +931,27 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
     },
     {
       name: "typecheck",
-      signature: "akan typecheck <app> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>]",
+      signature:
+        "akan typecheck <app|lib> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>] [--tests <boolean>]",
       desc: l.trans({
-        en: "Typecheck the app with TypeScript. It reuses an incremental cache, which `--clean` clears first.",
-        ko: "TypeScript로 앱의 타입을 검사합니다. 증분 캐시를 재사용하며, `--clean`을 주면 먼저 캐시를 지웁니다.",
+        en: "Typecheck an app or a library with TypeScript, its own `*.test.ts` and `*.spec.ts` included. A library is checked from its `server.ts`, `client.ts`, `index.ts` and pages, and a bare `akan typecheck` in a workspace with one app checks that app. It reuses an incremental cache, which `--clean` clears first.",
+        ko: "TypeScript로 앱이나 라이브러리의 타입을 검사하며, 그 대상의 `*.test.ts`와 `*.spec.ts`도 함께 검사합니다. 라이브러리는 `server.ts`, `client.ts`, `index.ts`와 페이지에서 시작해 검사하고, 앱이 하나뿐인 워크스페이스에서 대상 없이 `akan typecheck`를 실행하면 그 앱을 검사합니다. 증분 캐시를 재사용하며, `--clean`을 주면 먼저 캐시를 지웁니다.",
       }),
       options: [
-        writeOption,
+        {
+          ...writeOption,
+          desc: l.trans({
+            en: "Sync the app or library first so generated files are current. `--write false` writes nothing, for a library too.",
+            ko: "먼저 앱이나 라이브러리를 sync해 생성 파일을 최신으로 맞춥니다. `--write false`면 라이브러리도 아무것도 쓰지 않습니다.",
+          }),
+        },
         {
           name: "--clean",
           type: "Boolean",
           defaultValue: "false",
           desc: l.trans({
-            en: "Delete the incremental cache (`tsconfig.tsbuildinfo`) before checking.",
-            ko: "검사 전에 증분 캐시(`tsconfig.tsbuildinfo`)를 지웁니다.",
+            en: "Delete this check's incremental cache, under `.akan/typecheck`, before checking.",
+            ko: "검사 전에 `.akan/typecheck` 아래에 있는 이 검사의 증분 캐시를 지웁니다.",
           }),
         },
         {
@@ -919,9 +963,20 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             ko: "TypeScript 증분 캐시를 재사용합니다.",
           }),
         },
+        {
+          name: "--tests",
+          type: "Boolean",
+          defaultValue: "true",
+          desc: l.trans({
+            en: "Check the target's `*.test.ts` and `*.spec.ts` too, which nothing imports and Bun runs unchecked. `--tests false` leaves them out, as a build's typecheck does.",
+            ko: "아무도 import하지 않아 Bun이 검사 없이 실행하는 `*.test.ts`와 `*.spec.ts`도 검사합니다. `--tests false`면 빌드의 타입 검사처럼 이 파일들을 뺍니다.",
+          }),
+        },
       ],
       notes: [aliasNote("t")],
       examples: `akan typecheck myapp
+akan typecheck util
+akan typecheck myapp --tests false
 akan typecheck myapp --clean true --incremental false`,
     },
     {
@@ -946,7 +1001,7 @@ akan test util`,
     },
     {
       name: "build",
-      signature: "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>]",
+      signature: "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>]",
       desc: l.trans({
         en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
         ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -968,9 +1023,24 @@ akan test util`,
             ko: "진행 상황과 빌드 요약을 출력하지 않습니다.",
           }),
         },
+        {
+          name: "--profile",
+          type: "String",
+          desc: l.trans({
+            en: "A server env profile: the build bundles `env/env.server.<env>.<profile>.ts` in place of the environment's own file, and each lib's `env.server.testing.<profile>.ts` in place of its defaults. The app's profile file must exist, and a profile file whose secret-named key holds a value stops the build.",
+            ko: "서버 env 프로필입니다. 빌드가 환경 자신의 파일 대신 `env/env.server.<env>.<profile>.ts`를, lib의 기본값 대신 그 lib의 `env.server.testing.<profile>.ts`를 번들합니다. 앱의 프로필 파일이 있어야 하고, 비밀 이름의 키에 값이 든 프로필 파일이 있으면 빌드가 멈춥니다.",
+          }),
+        },
       ],
       notes: [
         aliasNote("b"),
+        {
+          name: l.trans({ en: "lib defaults", ko: "lib 기본값" }),
+          desc: l.trans({
+            en: "With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.",
+            ko: "`--profile`을 주면, 자기 프로필 파일이 없는 lib은 비밀 이름의 값을 모두 뺀 기본값으로 실리고, 빌드가 무엇을 뺐는지 알립니다.",
+          }),
+        },
         {
           name: l.trans({ en: "web surfaces", ko: "웹 화면" }),
           desc: l.trans({
@@ -980,7 +1050,8 @@ akan test util`,
         },
       ],
       examples: `akan build myapp
-akan build myapp --write true --fast false --quiet false`,
+akan build myapp --write true --fast false --quiet false
+akan build myapp --profile edge`,
     },
     {
       name: "start-ios",
@@ -1072,10 +1143,10 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
     {
       name: "build-desktop",
       signature:
-        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--write <boolean>]",
+        "akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--write <boolean>]",
       desc: l.trans({
-        en: "Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build signs from the environment — a Developer ID with notarization on macOS (`AKAN_NATIVE_MACOS_*`), Authenticode on Windows (`AKAN_NATIVE_WINDOWS_*`) — and warns when it cannot, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.",
-        ko: "이 컴퓨터의 OS용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. release 빌드는 환경 변수로 서명합니다. macOS는 Developer ID 서명과 공증(`AKAN_NATIVE_MACOS_*`), Windows는 Authenticode(`AKAN_NATIVE_WINDOWS_*`)이고, 서명하지 못하면 경고합니다. 내려받은 사본이 막히거나 경고를 받기 때문입니다. 데스크톱 배포 치트시트를 보세요.",
+        en: "Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build is signed only with `--sign`: the environment names which identity, a Developer ID on macOS (`AKAN_NATIVE_MACOS_*`) or an Authenticode certificate on Windows (`AKAN_NATIVE_WINDOWS_*`), and `--notarize` then has Apple notarize the signed macOS app. An unsigned release build warns, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.",
+        ko: "이 컴퓨터의 OS용 데스크톱 앱을 빌드합니다. macOS는 `.app`, Windows와 Linux는 앱 폴더입니다. `build-ios`처럼 먼저 `--env` 환경으로 배포용 웹 빌드를 만듭니다. release 빌드는 `--sign`을 줄 때만 서명합니다. 어떤 신원으로 서명할지는 환경 변수가 정합니다. macOS는 Developer ID(`AKAN_NATIVE_MACOS_*`), Windows는 Authenticode 인증서(`AKAN_NATIVE_WINDOWS_*`)이고, `--notarize`를 더하면 서명한 macOS 앱을 Apple이 공증합니다. 서명하지 않은 release 빌드는 경고합니다. 내려받은 사본이 막히거나 경고를 받기 때문입니다. 데스크톱 배포 치트시트를 보세요.",
       }),
       options: [
         targetOption,
@@ -1099,6 +1170,8 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
             ko: "Windows·Linux 앱이 도는 CPU입니다. `arm64` 또는 `x64`이고, 서버의 애드온과 `bin`도 따릅니다. macOS 앱은 Apple silicon(arm64)만 만듭니다.",
           }),
         },
+        signOption,
+        notarizeOption,
         writeOption,
       ],
       notes: [
@@ -1124,7 +1197,8 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
       ],
       examples: `akan build-desktop myapp --target default
 akan build-desktop myapp --target kiosk --env main
-akan build-desktop myapp --installer true --env main`,
+akan build-desktop myapp --installer true --env main
+akan build-desktop myapp --installer true --env main --sign true --notarize true`,
     },
     {
       name: "release-ios",
@@ -1195,8 +1269,8 @@ akan release-android myapp --assemble-type apk --target all --env main`,
       name: "update-keygen",
       signature: "akan update-keygen <app> [--platform <platform>] [--target <target>]",
       desc: l.trans({
-        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.",
-        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `native.updates.publicKey`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다.",
+        en: "Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for. It also prints the key's keyId, the name `publish-update --revoke` and `native.updates.revokedKeys` call it by.",
+        ko: "업데이트 릴리스에 서명할 Ed25519 키를 app id마다 한 번 만들고, `native.updates.publicKeys`에 넣을 공개 키를 출력합니다. 다시 실행하면 만든 키를 읽습니다. 키는 `~/.akan/native/keys/<app id>.update.key`나 `AKAN_NATIVE_UPDATE_KEY`가 가리키는 곳에 있습니다. 설치된 앱은 검증할 수 없는 릴리스를 받지 않으므로, 릴리스 머신이 읽는 비밀 저장소에 보관합니다. `appId`가 플랫폼마다 다르면 id마다 키가 있으므로, 게시할 `--platform`을 적습니다. 키의 keyId도 출력하며, `publish-update --revoke`와 `native.updates.revokedKeys`는 키를 이 이름으로 부릅니다.",
       }),
       options: [
         {
@@ -1217,10 +1291,10 @@ akan update-keygen myapp --platform android`,
     {
       name: "publish-update",
       signature:
-        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]",
+        "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.",
-        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 `<channel>.json`, 서명, 파일을 쓰며, 그 폴더에는 올릴 것만 있습니다. 그 폴더를 `native.updates.url`에 올리되 `<channel>.json`과 `.sig`는 마지막에 함께 올리고, CDN이 두 파일을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+        en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
+        ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<channel>.json`과 `.sig`이며 CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
       }),
       options: [
         {
@@ -1241,6 +1315,50 @@ akan update-keygen myapp --platform android`,
           desc: l.trans({
             en: "Default `updates.channel`, else `--env`. It names only the manifest written, not the channel the release follows.",
             ko: "기본값은 `updates.channel`, 없으면 `--env`입니다. 쓸 매니페스트만 정하고, 릴리스가 따르는 채널은 바꾸지 않습니다.",
+          }),
+        },
+        {
+          name: "--upload",
+          type: "String",
+          desc: l.trans({
+            en: "`s3://<bucket>/<prefix>` to upload the release just published to: its files first, then its signature and its manifest or envelope; a file the bucket already holds is skipped. It sends nothing else from the folder — no `pack-update` record, no other channel's or native API's manifest — and nothing at all when that release is missing or fails a check. The credentials and endpoint come from `S3_*` or `AWS_*`, and it takes one target at a time.",
+            ko: "방금 게시한 릴리스를 올릴 `s3://<bucket>/<prefix>`입니다. 파일을 먼저, 그다음 서명과 매니페스트(폰은 봉투)를 올리고, 버킷에 이미 있는 파일은 건너뜁니다. 폴더의 다른 것은 올리지 않습니다. `pack-update`의 기록도, 다른 채널이나 네이티브 API의 매니페스트도 올리지 않고, 그 릴리스가 없거나 검사에 걸리면 아무것도 올리지 않습니다. 자격 증명과 endpoint는 `S3_*`나 `AWS_*`에서 읽고, 한 번에 타깃 하나만 받습니다.",
+          }),
+        },
+        {
+          name: "--arch",
+          type: "String",
+          defaultValue: l.trans({ en: "this computer's", ko: "이 컴퓨터의 CPU" }),
+          enumOrFlag: "arm64 | x64",
+          desc: l.trans({
+            en: "Desktop only: the CPU of the apps the release updates, written to that CPU's feed folder. A macOS release is arm64 only.",
+            ko: "데스크톱 전용입니다. 릴리스가 업데이트할 앱의 CPU이며, 그 CPU의 피드 폴더에 씁니다. macOS 릴리스는 arm64만 됩니다.",
+          }),
+        },
+        {
+          ...signOption,
+          desc: l.trans({
+            en: "Sign a desktop release with the identity `AKAN_NATIVE_MACOS_*` or `AKAN_NATIVE_WINDOWS_*` names. A signed installed app takes only a release signed the same way, so publish with `--sign` when the downloaded app was signed.",
+            ko: "`AKAN_NATIVE_MACOS_*`나 `AKAN_NATIVE_WINDOWS_*`가 가리키는 신원으로 데스크톱 릴리스에 서명합니다. 서명된 설치 앱은 같은 방식으로 서명한 릴리스만 받으므로, 내려받은 앱이 서명돼 있었다면 `--sign`으로 게시합니다.",
+          }),
+        },
+        notarizeOption,
+        {
+          name: "--revoke",
+          type: "String",
+          desc: l.trans({
+            en: "Android and iOS: keyIds of `updates.publicKeys` this release starts revoking, comma-separated.",
+            ko: "Android·iOS 전용입니다. 이 릴리스가 폐기를 시작할 `updates.publicKeys`의 keyId를 쉼표로 나열합니다.",
+          }),
+        },
+        {
+          name: "--reset-sequence",
+          type: "Boolean",
+          defaultValue: "false",
+          enumOrFlag: "-R",
+          desc: l.trans({
+            en: "With `--revoke`, phones compare the release with their binary's own bundle instead of the running one.",
+            ko: "`--revoke`와 함께 쓰면, 폰이 릴리스를 실행 중인 번들 대신 바이너리에 든 번들과 비교합니다.",
           }),
         },
         writeOption,
@@ -1276,18 +1394,48 @@ akan update-keygen myapp --platform android`,
             ko: "`updates.url`에 닿는 누구나 릴리스를 읽을 수 있고, 업데이터는 인증 정보를 보내지 않습니다. 데스크톱 릴리스는 앱 전체이므로 내장 서버의 `private/`와 env 파일도 들어 있습니다.",
           }),
         },
+        {
+          name: l.trans({ en: "revocation", ko: "폐기" }),
+          desc: l.trans({
+            en: "A phone release revokes `updates.revokedKeys`, the channel's published revocations and `--revoke` together, and is signed by a key listed after them all.",
+            ko: "폰 릴리스는 `updates.revokedKeys`, 그 채널에 게시된 폐기, `--revoke`를 합쳐 폐기하며, 그 모두보다 뒤에 나열된 키로 서명합니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "refused", ko: "거부" }),
+          desc: l.trans({
+            en: "Before the build: a keyId the ring lacks, over 16 revoked keys, `-R` revoking nothing, either flag on a desktop, a signer not listed after them.",
+            ko: "빌드 전에 거부합니다. 키링에 없는 keyId, 16개를 넘는 폐기, 폐기 없는 `-R`, 데스크톱의 두 플래그, 폐기하는 키보다 뒤에 있지 않은 서명 키입니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "leaked key", ko: "새어 나간 키" }),
+          desc: l.trans({
+            en: "Sign with a spare (`AKAN_NATIVE_UPDATE_KEY`), `--revoke` the key on every phone platform and channel, then list it in `updates.revokedKeys`.",
+            ko: "예비 키(`AKAN_NATIVE_UPDATE_KEY`)로 서명해 모든 폰 플랫폼과 채널에서 `--revoke`로 폐기한 뒤, `updates.revokedKeys`에 적습니다.",
+          }),
+        },
+        {
+          name: l.trans({ en: "native API", ko: "네이티브 API" }),
+          desc: l.trans({
+            en: "The CLI needs the native build API 0.12.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.",
+            ko: "CLI는 앱의 akanjs에 든 네이티브 빌드 API 0.12.0 이상이 필요합니다. akanjs와 @akanjs/cli를 맞는 버전으로 설치합니다.",
+          }),
+        },
       ],
       examples: `akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main
-akan publish-update myapp --platform android --env main`,
+akan publish-update myapp --env main --sign true --notarize true --upload s3://releases/myapp
+akan publish-update myapp --platform android --env main
+AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform ios --env main --revoke 0123456789abcdef`,
     },
     {
       name: "pack-update",
       signature:
         "akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]",
       desc: l.trans({
-        en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.",
-        ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓰고, 매니페스트의 `channel`·`sequence`·`bundle`은 서명자가 채웁니다. 서명자는 올리는 바이트 그대로에 서명하고 `files/`를 먼저 올립니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
+        en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its web build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.",
+        ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, 서명자가 `channel`·`sequence`·`bundle`을 채울 `manifest.template.json`, 파이프라인이 읽는 기록 `pack.json`을 씁니다. 서명자는 `files/`를 먼저 올리고 서명한 봉투를 `<platform>/<channel>/<nativeApi>.json`에 올립니다. `--against`가 새 스토어 빌드가 필요하다고 하면 종료 코드 2로 끝나고, 웹 빌드를 포함한 그 밖의 실패는 1로 끝나며 `pack.json`을 남기지 않습니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
       }),
       options: [
         {
@@ -1319,6 +1467,133 @@ akan publish-update myapp --platform android --env main`,
       ],
       examples: `akan pack-update myapp --platform android --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json`,
+    },
+    {
+      name: "push-update",
+      signature:
+        "akan push-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>]",
+      desc: l.trans({
+        en: "Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why; any other failure exits 1.",
+        ko: "`pack-update`처럼 업데이트를 묶거나 `--pack`으로 그 명령이 만든 폴더를 받아 Akan Cloud 프로젝트에 올립니다. 키 보관과 서명, 게시는 그 프로젝트가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 팩에 새 스토어 빌드가 필요하거나 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝나며, 그 밖의 실패는 1로 끝납니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          enumOrFlag: "ios | android",
+          desc: l.trans({
+            en: "The app it updates. Required to pack; with `--pack` it defaults to the pack's.",
+            ko: "업데이트할 앱입니다. 묶을 때는 꼭 적고, `--pack`이면 기본값이 팩의 것입니다.",
+          }),
+        },
+        {
+          name: "--target",
+          type: "String",
+          desc: l.trans({
+            en: "A key of `native.targets`. Left out, the only target, so an app with several needs it to pack; with `--pack`, the pack's.",
+            ko: "`native.targets`의 키입니다. 생략하면 하나뿐인 타깃을 쓰므로, 타깃이 여럿인 앱은 묶을 때 꼭 적습니다. `--pack`이면 팩의 것입니다.",
+          }),
+        },
+        {
+          ...releaseEnvOption,
+          desc: l.trans({
+            en: "Backend environment the app connects to; with `--pack`, the pack's.",
+            ko: "앱이 연결할 백엔드 환경입니다. `--pack`이면 팩의 것입니다.",
+          }),
+        },
+        {
+          name: "--channel",
+          type: "String",
+          defaultValue: "updates.channel",
+          desc: l.trans({
+            en: "The channel the project publishes the release on.",
+            ko: "프로젝트가 릴리스를 게시할 채널입니다.",
+          }),
+        },
+        {
+          name: "--notes",
+          type: "String",
+          desc: l.trans({
+            en: "Release notes the project shows with the release.",
+            ko: "프로젝트가 릴리스와 함께 보여 줄 릴리스 노트입니다.",
+          }),
+        },
+        cloudSubspaceOption,
+        cloudHostOption,
+        writeOption,
+        {
+          ...allowLocalReleaseOption,
+          desc: l.trans({
+            en: "Allow packing with `--env local`, or uploading a pack made with it.",
+            ko: "`--env local`로 묶거나, 그렇게 묶은 팩을 올리는 것을 허용합니다.",
+          }),
+        },
+        {
+          name: "--pack",
+          type: "String",
+          enumOrFlag: "-d",
+          desc: l.trans({
+            en: "A folder `pack-update` already wrote, uploaded as it is instead of packing again. It must be this app's, and `--platform`, `--target` and `--env`, when given, must match it. A pack its `--against` check refused exits 2 without uploading.",
+            ko: "`pack-update`가 이미 만든 폴더이며, 다시 묶지 않고 그대로 올립니다. 이 앱의 팩이어야 하고, `--platform`, `--target`, `--env`를 적었다면 팩과 같아야 합니다. `--against` 검사에서 거부된 팩이면 올리지 않고 2로 끝납니다.",
+          }),
+        },
+      ],
+      notes: [
+        {
+          name: "--subspace",
+          desc: l.trans({
+            en: "The subspace must declare the app in the root `akan.config.ts`, or the command stops before it packs.",
+            ko: "subspace가 루트 `akan.config.ts`에 이 앱을 선언해야 하며, 아니면 묶기 전에 멈춥니다.",
+          }),
+        },
+      ],
+      examples: `akan push-update myapp --platform android --env main --notes "Fix the login screen"
+akan pack-update myapp --platform ios --env main --against store/bundle.json && akan push-update myapp --pack dist/native/myapp/default/updates/ios`,
+    },
+    {
+      name: "register-binary",
+      signature:
+        "akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>]",
+      desc: l.trans({
+        en: "After `release-ios` or `release-android`, register that store build with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Refused when the store build is not this commit's `--env` build — its web bundle, native API or update channel differs from the pack's, as when a later native build of the target overwrote `build/<platform>/bundle.json`. That refusal exits 2; any other failure exits 1.",
+        ko: "`release-ios`나 `release-android` 뒤에 그 스토어 빌드를 Akan Cloud 프로젝트에 등록하고, 같은 커밋의 팩을 내장 번들로 함께 올립니다. 스토어 빌드가 이 커밋의 `--env` 빌드가 아니면 거부합니다. 웹 번들, 네이티브 API, 업데이트 채널 중 하나라도 팩과 다른 경우이며, 이후에 그 타깃을 다시 네이티브 빌드해 `build/<platform>/bundle.json`을 덮어쓴 경우가 그렇습니다. 이 거부는 2로, 그 밖의 실패는 1로 끝납니다.",
+      }),
+      options: [
+        {
+          name: "--platform",
+          type: "String",
+          enumOrFlag: "ios | android",
+          desc: l.trans({ en: "The store build to register.", ko: "등록할 스토어 빌드입니다." }),
+        },
+        {
+          name: "--distribution",
+          type: "String",
+          enumOrFlag: "appStore | testFlight | playStore | playTesting | direct",
+          desc: l.trans({ en: "Where the binary ships.", ko: "바이너리를 내보내는 곳입니다." }),
+        },
+        {
+          ...targetOption,
+          desc: l.trans({
+            en: "One key of `native.targets` in `akan.config.ts`; `all` is not taken. Asked for when there are several.",
+            ko: "`akan.config.ts`의 `native.targets` 키 하나이며 `all`은 받지 않습니다. 타깃이 여럿이면 물어봅니다.",
+          }),
+        },
+        releaseEnvOption,
+        cloudSubspaceOption,
+        cloudHostOption,
+        writeOption,
+        allowLocalReleaseOption,
+      ],
+      notes: [
+        {
+          name: "--subspace",
+          desc: l.trans({
+            en: "The subspace must declare the app in the root `akan.config.ts`, or the command stops before it packs.",
+            ko: "subspace가 루트 `akan.config.ts`에 이 앱을 선언해야 하며, 아니면 묶기 전에 멈춥니다.",
+          }),
+        },
+      ],
+      examples: `akan release-android myapp --env main && akan register-binary myapp --platform android --distribution playTesting`,
     },
   ];
 
@@ -1363,6 +1638,24 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
                   <span>
                     <strong>앱 지정.</strong> <code>&lt;app&gt;</code>은 <code>apps/</code> 아래 폴더 이름입니다.
                     생략하면 CLI가 고르라고 묻고, 앱이 하나뿐이면 그 앱을 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Without a terminal, a missing argument is an error.</strong> When stdin is piped or closed,
+                    as in CI, a missing argument, option, app, library, package or module is not asked for: the command
+                    fails at once with an error that says which is missing and, where there is a list, what it may be.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>터미널이 없으면 빠진 인자는 오류입니다.</strong> CI처럼 stdin이 파이프로 이어졌거나 닫혀
+                    있으면 빠진 인자, 옵션, 앱, 라이브러리, 패키지, 모듈을 묻지 않고, 무엇이 빠졌는지와, 고를 목록이
+                    있으면 그 목록을 알리는 오류로 바로 멈춥니다.
                   </span>
                 ),
               })}

@@ -92,6 +92,9 @@ export class PostgresDialect implements SqlDialect {
   extract(path: string, kind: PathKind = "json") {
     return this.#value(path, kind);
   }
+  sumOf(path: string) {
+    return `COALESCE(SUM(CASE WHEN jsonb_typeof(${this.#jsonb(path)}) = 'number' THEN ${this.#text(path)}::numeric END), 0)`;
+  }
   projectExpr(path: string) {
     return this.#jsonb(path);
   }

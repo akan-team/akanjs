@@ -33,7 +33,11 @@ class ConfInput extends via((f) => ({
 class ConfObject extends via(ConfInput, () => ({})) {}
 class ConfLight extends via(ConfObject, ["title"] as const, () => ({})) {}
 class ConfFull extends via(ConfObject, ConfLight, () => ({})) {}
-class ConfInsight extends via(ConfFull, (f) => ({ count: f(Int, { default: 0, accumulate: {} }) })) {}
+class ConfInsight extends via(ConfFull, (f) => ({
+  count: f(Int, { default: 0, accumulate: {} }),
+  scoreSum: f(Int, { default: 0, accumulate: { $sum: "score" } }),
+  activeScoreSum: f(Int, { default: 0, accumulate: { $sum: "score", status: "active" } }),
+})) {}
 const confConstant = ConstantRegistry.buildModel(
   "dialectConf",
   ConfInput,
@@ -176,6 +180,26 @@ const validIndexNamesOf = async (driver: SqlDriver, table: string) => {
   return rows.map(({ name }) => name);
 };
 
+const backendPidOf = async (driver: SqlDriver) => {
+  const row = await driver.database.getConnection().prepare(`SELECT pg_backend_pid() AS "pid"`).get<{ pid: number }>();
+  return row?.pid ?? 0;
+};
+
+// The second racer queues on the first one's tuple lock rather than on the holder, so waiters are followed transitively.
+const lockWaitersBehind = async (driver: SqlDriver, pid: number, expected: number, timeoutMs = 3000) => {
+  const statement = driver.database
+    .getConnection()
+    .prepare(
+      `WITH RECURSIVE "behind"("pid") AS (SELECT ?::int UNION SELECT a."pid" FROM pg_stat_activity a JOIN "behind" b ON b."pid" = ANY(pg_blocking_pids(a."pid"))) SELECT count(*)::int - 1 AS "count" FROM "behind"`,
+    );
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const waiting = (await statement.get<{ count: number }>(pid))?.count ?? 0;
+    if (waiting >= expected || Date.now() >= deadline) return waiting;
+    await Bun.sleep(10);
+  }
+};
+
 const describeDriver = (kind: SqlDriverKind) => {
   const onPostgres = kind === "postgres";
 
@@ -227,6 +251,47 @@ const describeDriver = (kind: SqlDriverKind) => {
     test("[PG-3] count() answers a number", async () => {
       await store.create({ title: "one" });
       expect(await store.count({})).toBe(1);
+    });
+
+    test("an insight's $sum adds a field up over the rows its condition matches", async () => {
+      await store.create({ title: "a", score: 3 });
+      await store.create({ title: "b", score: 4, status: "draft" });
+      await store.create({ title: "c", score: 5 });
+      expect(await store.insight({})).toMatchObject({ count: 3, scoreSum: 12, activeScoreSum: 8 });
+      expect(await store.insight({ title: "b" })).toMatchObject({ count: 1, scoreSum: 4, activeScoreSum: 0 });
+      expect(await store.sum("score", { title: "none" })).toBe(0);
+    });
+
+    test("upsertById writes a record under its own id twice into one row, keeping its timestamps when asked", async () => {
+      const id = "64a0000000000000000000a1";
+      const createdAt = dayjs("2026-07-01T09:00:00Z");
+      const updatedAt = dayjs("2026-07-02T09:00:00Z");
+      await store.upsertById({ id, title: "legacy", score: 1, createdAt, updatedAt }, { preserveTimestamps: true });
+      await store.upsertById({ id, title: "legacy", score: 2, createdAt, updatedAt }, { preserveTimestamps: true });
+      const [row] = await store.find({ id });
+      expect(await store.count({})).toBe(1);
+      expect(row).toMatchObject({ title: "legacy", score: 2 });
+      expect(row?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(row?.updatedAt.valueOf()).toBe(updatedAt.valueOf());
+
+      const before = Date.now();
+      await store.upsertById({ id, title: "synced", score: 3 });
+      const [synced] = await store.find({ id });
+      expect(synced?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(synced?.updatedAt.valueOf()).toBeGreaterThanOrEqual(before - 1);
+      expect(synced).toMatchObject({ title: "synced", score: 3 });
+    });
+
+    test("upsertById keeps the stored createdAt when the record names none, and answers the one stored", async () => {
+      const id = "64a0000000000000000000a2";
+      const createdAt = dayjs("2026-07-01T09:00:00Z");
+      await store.upsertById({ id, title: "first", createdAt, updatedAt: createdAt }, { preserveTimestamps: true });
+      const backfilled = await store.upsertById({ id, title: "backfilled" }, { preserveTimestamps: true });
+      const synced = await store.upsertById({ id, title: "synced" });
+      const [row] = await store.find({ id });
+      expect(row?.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(backfilled.createdAt.valueOf()).toBe(createdAt.valueOf());
+      expect(synced.createdAt.valueOf()).toBe(createdAt.valueOf());
     });
 
     test("[DI-1] a nested set creates the parents it needs", async () => {
@@ -564,17 +629,21 @@ const describeDriver = (kind: SqlDriverKind) => {
       const released = new Promise<void>((resolve) => {
         release = resolve;
       });
+      let holderPid = 0;
       const holder = driver.database.transaction(async () => {
         await store.updateOneByQuery({ id }, { note: "held" });
+        if (onPostgres) holderPid = await backendPidOf(driver);
         held();
         await released;
       });
       await holding;
       const racers = [0, 1].map(() => store.updateOneByQuery({ id, score: 0 }, { score: 1 }));
-      await Bun.sleep(200);
+      const queued = onPostgres ? await lockWaitersBehind(driver, holderPid, racers.length) : null;
+      if (!onPostgres) await Bun.sleep(200);
       release();
       await holder;
       const counts = (await Promise.all(racers)).map(({ modifiedCount }) => modifiedCount);
+      if (queued !== null) expect(queued).toBe(racers.length);
       expect(counts.sort()).toEqual([0, 1]);
       expect(await store.pickById(id)).toMatchObject({ score: 1, note: "held" });
     });

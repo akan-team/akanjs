@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ServerPolicy } from "@akanjs/native/api";
 import type { AkanPlugin } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
+import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../types";
 import { AkanBin } from "./akanBin";
 import {
@@ -151,6 +153,8 @@ const dedupeDockerRuns = (runs: DockerRun[]): DockerRun[] => {
   return [...byKey.values()];
 };
 
+class LibConfigRefusal extends Error {}
+
 export class AkanAppConfig implements AppConfigResult {
   app: App;
   rootPackageJson: PackageJson;
@@ -280,9 +284,14 @@ export class AkanAppConfig implements AppConfigResult {
         if (basePath && !this.basePaths.has(basePath))
           throw new Error(`Native target '${name}' uses unknown basePath '${basePath}' in ${configPath}`);
         const { updates } = merged;
-        if (updates && (!updates.url || !updates.publicKey))
+        if (updates && (!updates.url || !(updates.publicKey || updates.publicKeys?.length)))
           throw new Error(
-            `${where}.updates in ${configPath} has no url or publicKey${named ? "; give them in native.updates or the target's own" : ""}.`,
+            `${where}.updates in ${configPath} has no url or publicKeys${named ? "; give them in native.updates or the target's own" : ""}.`,
+          );
+        //? NativeConfig prefers publicKeys to publicKey, so a target's own key beside the section's list would be lost.
+        if (updates?.publicKey !== undefined && updates.publicKeys !== undefined)
+          throw new Error(
+            `${where}.updates in ${configPath} has both publicKey and publicKeys${named ? ", native.updates merged in: give one, in native.updates' own form when overriding its keys" : ": give one"}.`,
           );
         AkanAppConfig.#assertFiles(own ?? {}, where, configPath);
         const {
@@ -330,7 +339,7 @@ export class AkanAppConfig implements AppConfigResult {
     );
     return { appName, appId, ...(root.fileName ? { fileName: root.fileName } : {}), version, buildNum, targets };
   }
-  //? `true` or `{ omit }`: each omitted name trimmed once, so two targets that omit the same packages stage one server.
+  //? `true` or `{ omit, profile, modules }`: lists trimmed once, so two targets that agree on them stage one server.
   static #desktopServer<T extends { server?: AkanNativeDesktopConfig["server"] }>(
     desktop: T,
     where: string,
@@ -339,12 +348,83 @@ export class AkanAppConfig implements AppConfigResult {
     const { server } = desktop;
     if (server === undefined || typeof server === "boolean") return desktop;
     if (!AkanAppConfig.#isPlainObject(server))
-      throw new Error(`${where} in ${configPath} must be true or { omit: string[] }.`);
-    const omit = server.omit;
-    if (omit !== undefined && (!Array.isArray(omit) || omit.some((name) => typeof name !== "string" || !name.trim())))
-      throw new Error(`${where}.omit in ${configPath} must be a list of package names.`);
-    const names = [...new Set((omit ?? []).map((name) => name.trim()))].sort();
-    return { ...desktop, server: { omit: names } };
+      throw new Error(`${where} in ${configPath} must be true or { omit, profile, modules }.`);
+    const names = (list: unknown, key: string, what: string) => {
+      if (list === undefined) return [];
+      if (!Array.isArray(list) || list.some((name) => typeof name !== "string" || !name.trim()))
+        throw new Error(`${where}.${key} in ${configPath} must be a list of ${what}.`);
+      return [...new Set(list.map((name: string) => name.trim()))].sort();
+    };
+    const { profile } = server;
+    if (profile !== undefined && (typeof profile !== "string" || !ServerEnvProfile.namePattern.test(profile)))
+      throw new Error(
+        `${where}.profile in ${configPath} names env/env.server.<env>.<profile>.ts: a lowercase-first name of letters, digits and dashes.`,
+      );
+    const modules = names(server.modules, "modules", "module names or @<operationMode> selectors");
+    const env = AkanAppConfig.#desktopServerEnv(server.env, where, configPath);
+    const { restart } = server;
+    if (restart !== undefined && restart !== "forever" && !(Number.isInteger(restart) && (restart as number) > 0))
+      throw new Error(`${where}.restart in ${configPath} must be "forever" or a count of crashes in a row from 1.`);
+    const watchdog = AkanAppConfig.#desktopServerWatchdog(server.watchdog, where, configPath);
+    return {
+      ...desktop,
+      server: {
+        omit: names(server.omit, "omit", "package names"),
+        ...(profile ? { profile } : {}),
+        ...(modules.length ? { modules } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
+        ...(restart !== undefined ? { restart } : {}),
+        ...(watchdog ? { watchdog } : {}),
+      },
+    };
+  }
+  //? The stage owns these: the operation mode, the database mode, what is served and the shutdown budget the shell's
+  //? quit waits on are what make it the carried server.
+  static readonly #stagedServerEnv = new Set([
+    "AKAN_PUBLIC_OPERATION_MODE",
+    "AKAN_DATABASE_MODE",
+    "AKAN_DATABASE_MODES",
+    "AKAN_SSR",
+    "AKAN_CSR",
+    "AKAN_MCP",
+    "AKAN_SHUTDOWN_TIMEOUT_MS",
+    "AKAN_MODULES",
+  ]);
+  static #desktopServerEnv(env: unknown, where: string, configPath: string): Record<string, string> {
+    if (env === undefined) return {};
+    if (!AkanAppConfig.#isPlainObject(env) || Object.values(env).some((value) => typeof value !== "string"))
+      throw new Error(`${where}.env in ${configPath} must be an object of strings.`);
+    const staged = Object.keys(env).filter((key) => AkanAppConfig.#stagedServerEnv.has(key.toUpperCase()));
+    if (staged.length)
+      throw new Error(
+        `${where}.env in ${configPath} sets ${staged.join(", ")}, which the carried server's stage owns (modules: desktop.server.modules).`,
+      );
+    const secrets = ServerEnvProfile.secretPaths(env);
+    if (secrets.length)
+      throw new Error(
+        `${where}.env in ${configPath} holds secret-named values (${secrets.join(", ")}), and the app carries its env where anyone on the computer reads it. Leave them out.`,
+      );
+    return env as Record<string, string>;
+  }
+  //? The akan.config.ts shape, which takes `true` and fills in what is left out; the launcher reads what this returns
+  //? with serverPolicyOf in @akanjs/native, which devkit cannot load while it reads a config.
+  static #desktopServerWatchdog(watchdog: unknown, where: string, configPath: string): ServerPolicy["watchdog"] | null {
+    if (watchdog === undefined || watchdog === false) return null;
+    const options = watchdog === true ? {} : watchdog;
+    const whole = (value: unknown) => value === undefined || (Number.isInteger(value) && (value as number) > 0);
+    if (
+      !AkanAppConfig.#isPlainObject(options) ||
+      Object.keys(options).some((key) => key !== "intervalMs" && key !== "failures") ||
+      !whole(options.intervalMs) ||
+      !whole(options.failures)
+    )
+      throw new Error(
+        `${where}.watchdog in ${configPath} must be true or { intervalMs, failures }, whole numbers from 1.`,
+      );
+    return {
+      intervalMs: (options.intervalMs as number | undefined) ?? 10_000,
+      failures: (options.failures as number | undefined) ?? 3,
+    };
   }
   static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
     const { indexPath: rawIndexPath, ...rest } = section;
@@ -356,7 +436,7 @@ export class AkanAppConfig implements AppConfigResult {
     const merge = (kept: unknown, value: unknown, top: boolean, key: string): unknown => {
       if (!AkanAppConfig.#isPlainObject(kept) || !AkanAppConfig.#isPlainObject(value)) return value;
       //? An icon or splash given as an object is one value: its image and color go together.
-      if (top && (key === "icon" || key === "splash")) return value;
+      if (top && (key === "icon" || key === "splash" || key === "backgroundColor")) return value;
       const out: Record<string, unknown> = { ...kept };
       for (const [inner, next] of Object.entries(value))
         if (next !== undefined) out[inner] = merge(out[inner], next, false, inner);
@@ -381,10 +461,12 @@ export class AkanAppConfig implements AppConfigResult {
       "buildNum",
       "icon",
       "splash",
+      "backgroundColor",
       "permissions",
       "plugins",
       "deepLinks",
       "updates",
+      "devtools",
       "ios",
       "android",
       "desktop",
@@ -401,8 +483,18 @@ export class AkanAppConfig implements AppConfigResult {
       "activity",
       "files",
     ],
-    desktop: ["indexPath", "server", "recovery", "window", "screenCapture", "entitlements", "dmg"],
-    desktopServer: ["omit"],
+    desktop: [
+      "indexPath",
+      "server",
+      "recovery",
+      "window",
+      "screenCapture",
+      "webview2",
+      "publisher",
+      "entitlements",
+      "dmg",
+    ],
+    desktopServer: ["omit", "profile", "modules", "env", "restart", "watchdog"],
     dmg: ["background", "background2x", "window", "iconSize", "textSize", "app", "applications"],
     deepLinks: ["schemes", "domains"],
   } as const;
@@ -586,7 +678,19 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       app.workspace.getPackageJson(),
     ]);
     const resolved = typeof configImp === "function" ? configImp(app) : configImp;
-    const { plugins, ...config } = (resolved ?? {}) as AppConfigDeclaration & { plugins?: AkanPlugin[] };
+    //* `pipeline` is read by `akan pipeline` alone, from the module itself: off the instance, it never reaches akan.app.json.
+    const {
+      plugins,
+      pipeline: _pipeline,
+      ...config
+    } = (resolved ?? {}) as AppConfigDeclaration & {
+      plugins?: AkanPlugin[];
+      pipeline?: unknown;
+    };
+    if ("subspace" in config)
+      throw new Error(
+        `apps/${app.name}/akan.config.ts declares \`subspace\`, a workspace setting: it belongs in the workspace root akan.config.ts.`,
+      );
     const libContributions = await AkanAppConfig.#collectLibContributions(app, libs, bustImportCache);
     return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv, plugins ?? [], libContributions);
   }
@@ -598,6 +702,8 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
         LibExecutor.from(app, libName)
           .getConfig({ refresh: bustImportCache })
           .catch((error: unknown) => {
+            //? Skipping a refused lib config would build the image without its docker steps, and the build would pass.
+            if (error instanceof LibConfigRefusal) throw error;
             app.logger.warn(`Skipped libs/${libName}/akan.config.ts contributions: ${String(error)}`);
             return null;
           }),
@@ -664,6 +770,9 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
       .map((lib) => `${lib}@${this.#resolveProductionDependencyVersion(lib)}`);
   }
   get akanVersion() {
+    return AkanAppConfig.akanVersion;
+  }
+  static get akanVersion() {
     return getAkanPackageJson().version;
   }
   getProductionPackageJson(data: Partial<PackageJson> = {}): PackageJson {
@@ -752,6 +861,14 @@ export class AkanLibConfig implements LibConfigResult {
     const configImp = await AkanAppConfig.importConfigModule(lib.cwdPath, { bustImportCache });
     const resolved = typeof configImp === "function" ? configImp(lib) : configImp;
     const { plugins, ...config } = (resolved ?? {}) as LibConfigDeclaration & { plugins?: AkanPlugin[] };
+    if ("pipeline" in config)
+      throw new LibConfigRefusal(
+        `libs/${lib.name}/akan.config.ts declares \`pipeline\`, which a lib does not take: pipelines belong to apps and the workspace root, and a lib's build-time work goes in an akan build plugin.`,
+      );
+    if ("subspace" in config)
+      throw new LibConfigRefusal(
+        `libs/${lib.name}/akan.config.ts declares \`subspace\`, a workspace setting: it belongs in the workspace root akan.config.ts.`,
+      );
     return new AkanLibConfig(lib, config, plugins ?? []);
   }
 }

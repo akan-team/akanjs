@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { cn } from "../../client/cn";
 import { badgeRecipe } from "./badgeRecipe";
 import { buttonRecipe } from "./buttonRecipe";
 import { recipe, tv } from "./factory";
@@ -117,7 +118,19 @@ describe("recipe factory — badgeRecipe", () => {
 describe("recipe factory — inputRecipe", () => {
   test("default renders the former fixed shell", () => {
     const t = tokens(inputRecipe());
-    expect(t).toEqual(expect.arrayContaining(["h-10", "px-3", "text-sm"]));
+    expect(t).toEqual(
+      expect.arrayContaining(["h-10", "px-3", "[:where(&)]:text-sm", "[:where(&)]:pointer-coarse:text-base"]),
+    );
+  });
+
+  test("a caller's own text size outranks the touch floor as well as the default size", () => {
+    for (const size of ["xs", "sm", "md"] as const) {
+      const t = tokens(cn(inputRecipe({ size }), "text-2xl"));
+      const sizing = t.filter((token) => /(^|:)text-(xs|sm|base|lg|\d?xl)$/.test(token) && token !== "text-2xl");
+      expect(t).toContain("text-2xl");
+      expect(sizing).toContain("[:where(&)]:pointer-coarse:text-base");
+      expect(sizing.every((token) => token.startsWith("[:where(&)]:"))).toBe(true);
+    }
   });
 
   test("size sets the field height through the kind compound", () => {

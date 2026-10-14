@@ -73,6 +73,18 @@ const WKWEBVIEW: &[&str] = &[
   "WKMenuItemIdentifierShareMenu",
 ];
 
+/// What an unattended app's menu also drops on macOS: the system's text services hand the page's text to another app
+/// (Search With Google opens the browser, Look Up the Dictionary, Quick Note the Notes app), a way out of a kiosk.
+const WKWEBVIEW_UNATTENDED: &[&str] = &[
+  "WKMenuItemIdentifierSearchWeb",
+  "WKMenuItemIdentifierLookUp",
+  "WKMenuItemIdentifierTranslate",
+  "WKMenuItemIdentifierRevealImage",
+  "WKMenuItemIdentifierAddHighlightToCurrentQuickNote",
+  "WKMenuItemIdentifierAddHighlightToNewQuickNote",
+  "WKMenuItemIdentifierWritingTools",
+];
+
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn browser_item_webview2(name: &str) -> bool {
   WEBVIEW2.contains(&name)
@@ -86,6 +98,12 @@ fn browser_item_webkitgtk(action: &str) -> bool {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn browser_item_wkwebview(identifier: &str) -> bool {
   WKWEBVIEW.contains(&identifier)
+}
+
+/// A submenu WebKit gives no identifier is one AppKit adds, Services among them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn unattended_item_wkwebview(identifier: &str, submenu: bool) -> bool {
+  WKWEBVIEW_UNATTENDED.contains(&identifier) || (identifier.is_empty() && submenu)
 }
 
 /// With the browser items gone: the separators to remove (a leading or trailing one, or one after
@@ -229,9 +247,10 @@ mod mac {
     }
     let Some(menu) = (unsafe { menu.as_ref() }) else { return };
     let items: Retained<NSArray<NSMenuItem>> = menu.itemArray();
+    let unattended = crate::unattended();
     for item in items.iter() {
       let identifier = item.identifier().map(|id| id.to_string()).unwrap_or_default();
-      if super::browser_item_wkwebview(&identifier) {
+      if super::browser_item_wkwebview(&identifier) || (unattended && super::unattended_item_wkwebview(&identifier, item.hasSubmenu())) {
         menu.removeItem(&item);
       }
     }
@@ -270,6 +289,17 @@ mod tests {
     }
     for id in ["WKMenuItemIdentifierCopy", "WKMenuItemIdentifierPaste", "WKMenuItemIdentifierLookUp", "WKMenuItemIdentifierTranslate", "WKMenuItemIdentifierSpeechMenu", ""] {
       assert!(!browser_item_wkwebview(id), "{id}");
+    }
+  }
+
+  #[test]
+  fn an_unattended_app_drops_the_text_services_too() {
+    for id in ["WKMenuItemIdentifierSearchWeb", "WKMenuItemIdentifierLookUp", "WKMenuItemIdentifierTranslate", "WKMenuItemIdentifierAddHighlightToNewQuickNote"] {
+      assert!(unattended_item_wkwebview(id, false), "{id}");
+    }
+    assert!(unattended_item_wkwebview("", true), "a submenu AppKit adds, as Services");
+    for (id, submenu) in [("WKMenuItemIdentifierCopy", false), ("WKMenuItemIdentifierPaste", false), ("WKMenuItemIdentifierSpeechMenu", true), ("", false)] {
+      assert!(!unattended_item_wkwebview(id, submenu), "{id}");
     }
   }
 

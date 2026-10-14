@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
 import type { DesktopServerStatus, NativeEvent } from "../../../packages/desktop/src/plugin.ts";
 import { createServerStatus } from "../../../packages/desktop/src/server.ts";
-import { createDesktopUpdates, MAX_STRIKES, type UpdatesConfig } from "../src/desktop.ts";
+import { createDesktopUpdates, type DesktopUpdatesOptions, MAX_STRIKES, type UpdatesConfig } from "../src/desktop.ts";
 
 const APP_ID = "dev.test.updates";
 const EXE = "demo";
@@ -54,6 +54,7 @@ interface HarnessOptions {
   dev?: boolean;
   /** The folder the app is installed in, when it is not a fresh temporary one. */
   root?: string;
+  signatureTool?: DesktopUpdatesOptions["signatureTool"];
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -89,6 +90,7 @@ async function harness(options: HarnessOptions = {}) {
       if (options.platform !== "win32") for (const [from, to] of moves) renameSync(from, to);
       relaunches.push({ exe, moves, ...(recover ? { recover } : {}) });
     },
+    ...(options.signatureTool ? { signatureTool: options.signatureTool } : {}),
   });
   const listeners = new Map<string, Set<(event: NativeEvent) => void>>();
   const quits: number[] = [];
@@ -108,8 +110,11 @@ async function harness(options: HarnessOptions = {}) {
     quit: (code) => void quits.push(code),
   });
   await dispatcher.launched;
-  const call = async (method: string) =>
-    (await dispatcher.handle(JSON.stringify({ v: 1, id: 1, plugin: "updates", method }), 1)) as {
+  const call = async (method: string, args?: unknown) =>
+    (await dispatcher.handle(
+      JSON.stringify({ v: 1, id: 1, plugin: "updates", method, ...(args !== undefined ? { args } : {}) }),
+      1,
+    )) as {
       ok: boolean;
       result?: unknown;
       error?: { code: string; message: string };
@@ -151,6 +156,86 @@ const onTrial = (app: string) => {
     failed: [],
   };
 };
+
+describe("desktop updates: the channel a server moves this device to", () => {
+  test("setChannel reads another manifest from now on, survives a restart, and null goes back to the built one", async () => {
+    const asked: string[] = [];
+    const feed = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        asked.push(new URL(req.url).pathname);
+        return new Response("no release", { status: 404 });
+      },
+    });
+    try {
+      const url = `http://127.0.0.1:${feed.port}/releases`;
+      const { call, state, root } = await harness({ url });
+      expect(await call("setChannel", { channel: "pilot" })).toMatchObject({ ok: true });
+      expect(state().channel).toBe("pilot");
+      expect(((await call("getState")).result as { channel: string }).channel).toBe("pilot");
+      expect(await call("check")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+      expect(asked.at(-1)).toBe(`/releases/linux-${process.arch}/pilot.json`);
+
+      const restarted = await harness({ url, root });
+      expect(((await restarted.call("getState")).result as { channel: string }).channel).toBe("pilot");
+      expect(await restarted.call("setChannel", { channel: null })).toMatchObject({ ok: true });
+      await restarted.call("check");
+      expect(asked.at(-1)).toBe(`/releases/linux-${process.arch}/main.json`);
+      for (const channel of ["../stable", "Pilot", "app", "files", "x".repeat(42)])
+        expect(await restarted.call("setChannel", { channel })).toMatchObject({
+          ok: false,
+          error: { code: "INVALID_ARGS" },
+        });
+    } finally {
+      feed.stop(true);
+    }
+  });
+
+  test("a download of the channel the device leaves is dropped, one of the channel it stays on is kept", async () => {
+    const { call, state, install } = await harness({ state: (app) => pendingOf(app, BUILD + 100) });
+    expect(await call("setChannel", { channel: "main" })).toMatchObject({ ok: true });
+    expect(state().pending).toMatchObject({ bundle: `${BUILD + 100}-aaaaaaaa` });
+    expect(await call("setChannel", { channel: "pilot" })).toMatchObject({ ok: true });
+    expect(state().pending).toBeUndefined();
+    expect(readdirSync(install)).toEqual(["Renamed App"]);
+    expect(await call("apply")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+
+    const back = await harness({ state: (app) => ({ ...pendingOf(app, BUILD + 100), channel: "pilot" }) });
+    expect(await back.call("setChannel", { channel: null })).toMatchObject({ ok: true });
+    expect(back.state().pending).toBeUndefined();
+    expect(back.state().channel).toBeUndefined();
+  });
+
+  test("reset() keeps the channel setChannel() chose", async () => {
+    const { call, state } = await harness({
+      state: (app) => ({ ...pendingOf(app, BUILD + 100), failed: ["900-aaaaaaaa"], channel: "pilot" }),
+    });
+    expect(await call("reset")).toMatchObject({ ok: true });
+    expect(state()).toMatchObject({ channel: "pilot", failed: [] });
+    expect(state().pending).toBeUndefined();
+    expect(((await call("getState")).result as { channel: string }).channel).toBe("pilot");
+  });
+
+  test("a release downloaded while setChannel() moved the device is not kept", async () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    let open = () => {};
+    const release = serveRelease(root, { archiveGate: new Promise<void>((resolve) => (open = resolve)) });
+    try {
+      const { call, state, install } = await harness({ url: release.url, publicKey: release.publicKey });
+      const downloaded = call("download");
+      await until(() => release.archiveRequests() > 0);
+      expect(await call("setChannel", { channel: "pilot" })).toMatchObject({ ok: true });
+      open();
+      expect(await downloaded).toMatchObject({ ok: false, error: { code: "CANCELLED" } });
+      expect(state().pending).toBeUndefined();
+      expect(state().failed).toEqual([]);
+      expect(readdirSync(install)).toEqual(["Renamed App"]);
+    } finally {
+      release.stop();
+    }
+  });
+});
 
 describe("desktop updates: the trial of a release that carries a server", () => {
   test("a server that never comes up rolls the release back at once and keeps it for another try", async () => {
@@ -453,7 +538,22 @@ interface ReleaseOptions {
   build?: number;
   /** Holds the archive's answer until this resolves. */
   archiveGate?: Promise<unknown>;
+  /** The release is a macOS app, "Sample.app". */
+  mac?: boolean;
 }
+
+/** A macOS app as a release carries it: its executable, and the Info.plist naming the app. */
+const writeMacApp = (dir: string) => {
+  mkdirSync(join(dir, "Contents", "MacOS"), { recursive: true });
+  mkdirSync(join(dir, "Contents", "Resources"), { recursive: true });
+  writeFileSync(join(dir, "Contents", "MacOS", EXE), "");
+  writeFileSync(
+    join(dir, "Contents", "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${APP_ID}</string></dict></plist>
+`,
+  );
+};
 
 /** Serves one signed release of the app, built as "Sample" (the tar's top folder is the build's app name). */
 function serveRelease(
@@ -465,20 +565,16 @@ function serveRelease(
     bundle = "2000-abcdef12",
     build = 1999,
     archiveGate,
+    mac = false,
   }: ReleaseOptions = {},
 ) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const built = join(root, "built");
-  writeApp(join(built, "Sample"), "new", { server: carries });
+  const name = mac ? "Sample.app" : "Sample";
+  if (mac) writeMacApp(join(built, name));
+  else writeApp(join(built, name), "new", { server: carries });
   const tarPath = join(root, "release.tar");
-  const packed = Bun.spawnSync([
-    process.platform === "win32" ? "tar.exe" : "tar",
-    "-cf",
-    tarPath,
-    "-C",
-    built,
-    "Sample",
-  ]);
+  const packed = Bun.spawnSync([process.platform === "win32" ? "tar.exe" : "tar", "-cf", tarPath, "-C", built, name]);
   if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
   const tar = readFileSync(tarPath);
   const gz = Bun.gzipSync(tar);
@@ -657,5 +753,108 @@ describe("desktop updates: download and apply", () => {
     expect(state()).toMatchObject({
       trial: { from: BUILD, staged: join(`${app}.update-${BUILD + 100}-aaaaaaaa`, "Sample") },
     });
+  });
+});
+
+describe("desktop updates: the signer of a release", () => {
+  type Signature = [status: string, subject: string];
+  /** Get-AuthenticodeSignature's lines for the installed executable and the release's, as the plugin asks for them. */
+  const authenticode = (own: Signature, release: Signature, asked: Record<string, string>[] = []) =>
+    (async (cmd, env) => {
+      if (!cmd.includes("-EncodedCommand") || !env) return { code: 1, output: "" };
+      asked.push(env);
+      const line = ([status, subject]: Signature) => `${status} ${Buffer.from(subject).toString("base64")}\r\n`;
+      return { code: 0, output: line(own) + line(release) };
+    }) satisfies DesktopUpdatesOptions["signatureTool"];
+
+  const stops: (() => void)[] = [];
+  afterEach(() => {
+    for (const stop of stops.splice(0)) stop();
+  });
+  const download = async (signatureTool: DesktopUpdatesOptions["signatureTool"], options: ReleaseOptions = {}) => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    const release = serveRelease(root, options);
+    stops.push(release.stop);
+    const platform = options.mac ? "darwin" : "win32";
+    const updates = await harness({ url: release.url, publicKey: release.publicKey, platform, signatureTool });
+    return { ...updates, result: await updates.call("download") };
+  };
+
+  test("a Windows app signed with Authenticode refuses an unsigned release, and keeps it refused", async () => {
+    const asked: Record<string, string>[] = [];
+    const { result, state, call, install, app } = await download(
+      authenticode(["Valid", "CN=Sample Corp, O=Sample Corp"], ["NotSigned", ""], asked),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+    expect(result.error?.message).toContain("CN=Sample Corp, O=Sample Corp");
+    expect(asked[0]).toMatchObject({
+      AKAN_NATIVE_INSTALLED_EXE: join(app, EXE),
+      AKAN_NATIVE_RELEASE_EXE: join(`${app}.update-2000-abcdef12`, "Sample", EXE),
+    });
+    expect(state().failed).toEqual(["2000-abcdef12"]);
+    expect(state().pending).toBeUndefined();
+    expect(readdirSync(install)).toEqual(["Renamed App"]);
+    expect(await call("check")).toMatchObject({ ok: true, result: { available: false, bundle: "2000-abcdef12" } });
+  });
+
+  for (const [own, release, taken] of [
+    [["Valid", "CN=Sample Corp"], ["Valid", "CN=Other Corp"], false],
+    [["Valid", "CN=Sample Corp"], ["HashMismatch", "CN=Sample Corp"], false],
+    [["Valid", "CN=Sample Corp"], ["Valid", "CN=Sample Corp"], true],
+    [["NotSigned", ""], ["NotSigned", ""], true],
+  ] as [Signature, Signature, boolean][])
+    test(`a Windows app ${own[0]} ${own[1]} ${taken ? "takes" : "refuses"} a release ${release[0]} ${release[1]}`, async () => {
+      const { result, state } = await download(authenticode(own, release));
+      expect(result).toMatchObject(taken ? { ok: true } : { ok: false, error: { code: "NOT_ALLOWED" } });
+      expect(state().pending !== undefined).toBe(taken);
+    });
+
+  test("a Windows app takes a release when PowerShell cannot say who signed it", async () => {
+    const { result } = await download(async () => ({ code: -1, output: "spawn ENOENT" }));
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  /** codesign as it answers for the installed app ("Renamed App") and the release, each signed by `teams` or ad hoc. */
+  const codesign = (teams: { own: string | null; release: string | null }, asked: string[][] = []) =>
+    (async (cmd) => {
+      asked.push(cmd);
+      const target = cmd.at(-1) ?? "";
+      const team = target.endsWith("Renamed App") ? teams.own : teams.release;
+      if (cmd.includes("--display"))
+        return { code: 0, output: `Executable=${target}\nTeamIdentifier=${team ?? "not set"}\n` };
+      const required = /subject\.OU\] = "(\w+)"/.exec(cmd.find((arg) => arg.startsWith("-R=")) ?? "")?.[1];
+      return required === undefined || required === team
+        ? { code: 0, output: "" }
+        : { code: 3, output: "test-requirement: code failed to satisfy specified code requirement(s)" };
+    }) satisfies DesktopUpdatesOptions["signatureTool"];
+
+  //? The bundle id of a macOS release is read with /usr/bin/plutil, which only a Mac has.
+  test("a macOS app signed by a team refuses a release signed ad hoc", async () => {
+    if (process.platform !== "darwin") return;
+    const asked: string[][] = [];
+    const { result, state } = await download(codesign({ own: "ABCDE12345", release: null }, asked), { mac: true });
+    expect(result).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+    expect(result.error?.message).toContain("team ABCDE12345");
+    expect(asked.find((cmd) => cmd.some((arg) => arg.startsWith("-R=")))).toEqual([
+      "/usr/bin/codesign",
+      "--verify",
+      '-R=anchor apple generic and certificate leaf[subject.OU] = "ABCDE12345"',
+      expect.stringMatching(/Sample\.app$/),
+    ]);
+    expect(state().failed).toEqual(["2000-abcdef12"]);
+    expect(state().pending).toBeUndefined();
+  });
+
+  test("a macOS app takes a release of its own team, and an app signed ad hoc takes any", async () => {
+    if (process.platform !== "darwin") return;
+    for (const teams of [
+      { own: "ABCDE12345", release: "ABCDE12345" },
+      { own: null, release: null },
+    ]) {
+      const { result, state } = await download(codesign(teams), { mac: true });
+      expect(result).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
+      expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
+    }
   });
 });

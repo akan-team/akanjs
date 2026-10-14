@@ -60,7 +60,7 @@ prompt
 
 - Page (page/**)
 
-  - page().prompt(): A screen the user runs as a slash command; the model does not pick it.
+  - page().prompt(): A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.
 
 Published as
 
@@ -74,13 +74,13 @@ Refused when
 
 Why, and what to do
 
-- It declares `mcp: false` — It was curated off the shelf on purpose; its guards and HTTP stay exactly as they were.
+- It declares `mcp: false` — Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.
 
 - A guard declares `static agents = false`, like `Person` — It is an act reserved for a person, so no model is ever offered it.
 
 - It declares no `guards`, or an empty list — Nobody decided who may call it; write `guards: [Public]` if anonymous access is the intent.
 
-- It is the generated `light<Model>` read — It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead.
+- It is the generated `light<Model>` read — It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; a screen drawn in the chat still calls it, under its guards.
 
 - It is a `pubsub` or a `message` — It rides the websocket, and its arguments read a socket an MCP request does not have.
 
@@ -112,7 +112,7 @@ Options
 
 - enabled (boolean, default true, AKAN_MCP, AKAN_PUBLIC_MCP): Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.
 
-- readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow; the env turns it on only on `true` or `1`.
+- readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow, and turns MCP Apps off; the env turns it on only on `true` or `1`.
 
 - path (string, default /mcp, AKAN_MCP_PATH): Mount path; the OAuth resource identifier, and so the `aud` a token needs, follows it.
 
@@ -133,6 +133,10 @@ Options
 - rateLimit ({ calls?, windowMs?, concurrent? } | false, default 120 calls / 60s, 8 in flight, AKAN_MCP_RATE_LIMIT, AKAN_MCP_CONCURRENT): Per-caller budget for `tools/call`, `resources/read` and `prompts/get`, counted per process.
 
 - promptBudget (number, default 60000, AKAN_MCP_PROMPT_BUDGET): Characters of screen data one page prompt may attach before its lists are cut.
+
+- apps (boolean, default true, AKAN_MCP_APPS): Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps. A read-only deployment has none: no page tools, views or app-only tools.
+
+- modern (boolean, default true unless a page shows a view, AKAN_MCP_MODERN): Offer the `2026-07-28` revision; withheld while a `.prompt()` page may show as a view, until the RSC worker lists none, as claude.ai draws one only after `initialize`.
 
 - auth ({ authorizationServers?, scopes?, resource?, verify? }, default {}, AKAN_MCP_AUTH_SERVERS, AKAN_MCP_SCOPES, AKAN_MCP_RESOURCE): The OAuth resource-server identity; naming an authorization server makes a token mandatory.
 
@@ -204,7 +208,7 @@ Generated resource URIs
 
 A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name, description)`: the user runs it as a slash command, and the model receives what the page loads:
 
-**The description is the whole instruction.** Write it in English, in API vocabulary; `<Agent.Guide>` text never reaches MCP.
+**The description is the whole instruction.** Write it in English, in API vocabulary; `<Agent.Guide>` text never reaches a prompt.
 
 **Arguments come from the page's declaration.** `.param()` is required, `.search()` is optional, and `desc` becomes the argument's description.
 
@@ -213,6 +217,10 @@ A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name
 **Names are unique.** A name matches `^[A-Za-z0-9_-]{1,64}$` and is unique across pages; `prompts/list` lists every page with `.prompt()`.
 
 **Only pages declare prompts.** A signal has no `prompt()` builder, and `Msg` is not a public API.
+
+**The same page is a tool, and can be the screen itself.** Claude Code reads the briefing and a link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a `Person` act stays on the web. The tool declares `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included.
+
+**A client that renders views is known by a signed session.** A legacy client that declares the MCP Apps extension at `initialize` is issued `Mcp-Session-Id: ui.<nonce>.<signature>`, signed by the app; an id it did not sign is served as a client without views.
 
 What prompts/get sends back
 
@@ -306,7 +314,7 @@ For somebody else's issuer, set these in the deployment env:
 
 OAuth resource server, by env
 
-**No credential.** Once an issuer is named, a request with no bearer gets a `401` with `WWW-Authenticate`; before that, only a call a guard refuses does. Either way the client signs in instead of concluding the tool does not exist.
+**No credential.** Once an issuer is named, a request with no bearer gets a `401` with `WWW-Authenticate`; before that, only a call a guard refuses does. Either way the client signs in instead of concluding the tool does not exist. An `Authorization` header that is not `Bearer <one token>` counts as no credential.
 
 **Scopes are for somebody else's issuer.** `insufficient_scope` is enforced only once `AKAN_MCP_SCOPES` is set. Tokens an app mounting `libs/shared` issues itself carry no scope claim, so setting it there refuses every one of them with `403`.
 

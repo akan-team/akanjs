@@ -62,6 +62,31 @@ Screen code is invariant — a plain `<Button variant="primary">` never changes.
 - Theme-following colors still belong to the app: a lib token is for a color that must **not** change with `data-theme`.
 - An `@import` the CSS pipeline cannot resolve fails the build; it is never dropped. A stylesheet under `page/` that no route imports is compiled by nothing and warns at build time.
 
+## Frame Variables (the page's chrome and the device's insets)
+
+The frame writes these on `#frameRoot` and `<html>`, so any class can read them. The insets and the content height
+are there on every surface; the three keyboard variables are written only on the server-rendered web:
+
+- `--akan-top-safe-area` / `--akan-bottom-safe-area` — the notch and the home indicator. On the web they are
+  `env(safe-area-inset-*)` where the route chain declares `safeArea` (`.config({ safeArea: true })` on the root
+  layout) and `0px` where it does not, and `env()` measures nothing unless the viewport meta carries
+  `viewport-fit=cover` — the root layout's `.viewport({ fitCover: true })`, which a native app has by default; in a
+  native app they are the shell's inset. Use the variable alone: never write `env(safe-area-inset-*)` beside it, and
+  never subtract one from the other. The frame paints the bottom strip only under bottom chrome (a `BottomInset` or
+  `BottomTab`) or a route's own `bottomSafeAreaColor`; elsewhere a page's `fixed bottom-0` bar paints its own
+  safe-area padding.
+- `--akan-top-inset` / `--akan-bottom-inset` — the height of the page's top bar and bottom tab slot, per breakpoint
+  when the page declares a responsive inset. A slot whose inset is 0 at a width clips its chrome there and hides it
+  from the keyboard and screen readers, so a phone-only bar needs no `md:hidden`.
+- `--akan-keyboard-inset`, `--akan-viewport-height`, `--akan-viewport-offset-top` — the on-screen keyboard over the
+  page's bottom, the visible height, and how far iOS panned the page to show a field (the top slots follow it). Only
+  an SSR page in a browser writes them; a CSR bundle and a native app never do, so read them with a fallback
+  (`var(--akan-keyboard-inset, 0px)`), or take the keyboard from the store's `keyboardHeight`, which a native app's
+  keyboard plugin fills.
+- `--akan-content-height` — the room between the insets. iOS pans under the keyboard instead of shrinking the page,
+  so a column sized by it leaves the panned-to area blank: keep a keyboard-heavy screen's input bar in flow at the end
+  of its column, or in the keyboard slot.
+
 ## Codegen Rules
 - Do not hardcode hex or raw-palette colors (`bg-red-500`, `#ff0000`); use semantic tokens.
 - Do not put inline color literals in `style={{ }}`; use token classes.

@@ -33,6 +33,8 @@ export interface StToolMeta {
   settle?: boolean;
   confirm?: ToolConfirm;
   guard?: ToolGuard;
+  /** What a person reads for this action in a command palette, in their language (an `l()` result); never the model. */
+  label?: string;
 }
 
 /** A scalar, an enum, or one array level of either. */
@@ -141,6 +143,7 @@ export class StToolBuilder<Args extends unknown[] = []> {
         description: spec.desc,
         settle: spec.meta.settle,
         parameters: StToolBuilder.parametersOf(spec.args),
+        label: () => live.current.meta.label,
         // A `remove*` tool confirms unless it declares otherwise — destructiveness read off the key, as MCP hints are.
         ...(spec.meta.confirm === undefined && !name.startsWith("remove")
           ? {}

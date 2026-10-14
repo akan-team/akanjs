@@ -8,6 +8,7 @@ import { type DoctorCheck, doctorChecks, hostPlatforms, runFixes } from "./comma
 import type { AkanNativeConfig } from "./config.ts";
 import { makeNativeBoot } from "./lib/boot.ts";
 import { BUNDLE_FILE, compatProblems, readBundleInfo } from "./lib/compat.ts";
+import { requestedDistribution } from "./lib/distribution.ts";
 import { CancelledError, withSignal } from "./lib/exec.ts";
 import { type HmrContext, lanAddress, resolveDevEntry, startHmrServer } from "./lib/hmr.ts";
 import type { Device, DeviceSelector, Launched } from "./lib/launch.ts";
@@ -34,13 +35,15 @@ import {
   type WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { assertServerOfChannel, assertSigningKey, publishRelease } from "./lib/publish.ts";
+import { assertServerOfChannel, assertSigningKey, publishRelease, releaseRevocations } from "./lib/publish.ts";
 import {
   assertChannel,
   type DesktopArch,
   generateUpdateKey,
+  keyIdOf,
   type UpdateManifest,
   updateKeyPath,
+  validateUpdates,
   webManifest,
   writeWebBundle,
 } from "./lib/updates.ts";
@@ -49,6 +52,33 @@ import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
 import { iosDevices, physicalIosDevice } from "./platforms/ios.ts";
 
+export {
+  MAX_REVOKE_KEYS,
+  MAX_UPDATE_MANIFEST,
+  UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_EVENTS,
+  UPDATE_REPORT_LIMIT,
+  UPDATE_REPORT_REASONS,
+  type UpdateDecision,
+  type UpdateDecisionInput,
+  type UpdateReportBody,
+  type UpdateReportEntry,
+  type UpdateReportEvent,
+  type UpdateReportOutcome,
+  type UpdateReportReason,
+  updateDecision,
+  updateReportOutcome,
+} from "../../core/src/kernel.ts";
+/** How a desktop app's launcher keeps the server it carries running: desktop.server's restart and watchdog. */
+export type { ServerPolicy } from "../../desktop/src/server.ts";
+/** A build's bundle.json, and the manifest and envelope of a release, as a signer or server reads them. */
+export type { BundleInfo, NativeApi } from "./lib/compat.ts";
+export type { UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.ts";
+/**
+ * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
+ * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.
+ */
+export { keyIdOf, openEnvelope } from "./lib/updates.ts";
 export type {
   AkanNativeConfig,
   AndroidSigning,
@@ -73,10 +103,10 @@ export type {
  * environment (the API itself reads no variable): pass the result as `macos`.
  */
 /** The Authenticode settings the AKAN_NATIVE_WINDOWS_* variables name: pass the result as `windows.signing`. */
-export { macosDistributionFromEnv, windowsSigningFromEnv };
+export { macosDistributionFromEnv, requestedDistribution, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.10.0";
+export const API_VERSION = "0.12.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -295,23 +325,39 @@ export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "confi
   out?: string;
   /** Whether the release will carry a server; the config's `desktop.server` by default. */
   server?: boolean;
+  /** A desktop release's CPU, which names its feed folder: this computer's by default. */
+  arch?: DesktopArch;
+  /**
+   * A phone release: keyIds of updates.publicKeys it starts revoking, beside updates.revokedKeys and what the channel's
+   * releases revoke. It is signed with a key listed after every key it revokes.
+   */
+  revoke?: string[];
+  /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+  resetSequence?: boolean;
 }
 
 /**
  * What publishUpdate() refuses before it builds, without building (CONFIG_INVALID): no updates settings, a channel no
- * app could be configured for, no signing key on this machine or another app's, and a desktop release whose server
- * presence is not the channel's previous release's. For a caller with a long build of its own before publishUpdate.
+ * app could be configured for, no signing key on this machine or another app's, a desktop release whose server
+ * presence is not the channel's previous release's, and a phone release whose revocations no phone would take. For a
+ * caller with a long build of its own before publishUpdate.
  */
 export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
   if (!options.config.updates)
-    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKey } to publish for");
+    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKeys } to publish for");
   const channel = options.channel ?? options.config.updates.channel ?? "production";
   const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
+  const problems: string[] = [];
+  const updates = validateUpdates(options.config.updates, problems);
+  if (!updates || problems.length)
+    throw new AkanNativeError("CONFIG_INVALID", "the config's updates are not valid", { problems });
   try {
     if (options.channel !== undefined) assertChannel(options.channel);
-    assertSigningKey(options.config);
+    const target = { app: options.config.app, updates };
+    assertSigningKey(target, options.platform);
+    releaseRevocations(target, options.platform, out, channel, options);
     const server = options.server ?? !!options.config.desktop?.server;
-    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel);
+    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel, options.arch);
   } catch (error) {
     throw toAkanNativeError(error, "CONFIG_INVALID");
   }
@@ -331,6 +377,12 @@ export function publishUpdate(
     macos?: Pick<MacosBuild, "signing" | "notarize">;
     /** Authenticode for a Windows release's files. No setup program is made. */
     windows?: Pick<WindowsBuild, "signing">;
+    /** A desktop release's CPU, of the same OS: an x64 release from an arm64 machine. Default this computer's. */
+    arch?: DesktopArch;
+    /** A phone release: keyIds of updates.publicKeys it starts revoking (PublishCheckOptions.revoke). */
+    revoke?: string[];
+    /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+    resetSequence?: boolean;
   },
 ): Promise<PublishResult> {
   return task(options, async (warnings) => {
@@ -338,10 +390,13 @@ export function publishUpdate(
     const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings, {
       ...(options.macos ? { macos: { ...options.macos, dmg: false } } : {}),
       ...(options.windows?.signing ? { windows: { signing: options.windows.signing } } : {}),
+      ...(options.arch ? { arch: options.arch } : {}),
     });
-    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel).catch((error) => {
-      throw toAkanNativeError(error, "CONFIG_INVALID");
-    });
+    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel, options).catch(
+      (error) => {
+        throw toAkanNativeError(error, "CONFIG_INVALID");
+      },
+    );
     return {
       build: result,
       dir,
@@ -368,15 +423,18 @@ export function compareBundles(shipped: string, bundle: string): { compatible: b
 
 /**
  * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
- * then read. `publicKey` goes into the config's `updates.publicKey`; the key file never leaves the machine.
+ * then read. `publicKey` goes into the config's `updates.publicKeys`; the key file never leaves the machine. `keyId`
+ * is what a revocation names it by (`publishUpdate({ revoke })`, `updates.revokedKeys`).
  */
 export function updateKeygen(options: { config: AkanNativeConfig }): {
   publicKey: string;
+  keyId: string;
   keyPath: string;
   created: boolean;
 } {
   const keyPath = updateKeyPath(options.config.app.id);
-  return { ...generateUpdateKey(keyPath), keyPath };
+  const key = generateUpdateKey(keyPath);
+  return { ...key, keyId: keyIdOf(key.publicKey), keyPath };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */

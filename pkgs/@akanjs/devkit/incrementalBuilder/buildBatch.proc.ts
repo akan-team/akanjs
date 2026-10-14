@@ -33,12 +33,17 @@ class BuildBatch {
   }
 
   async run(): Promise<BuildBatchResult> {
-    if (this.#request.needs.includes("base")) await this.#buildBase();
-    if (this.#request.needs.includes("csr")) await this.#buildCsr();
-    if (this.#request.needs.includes("ssr")) await this.#buildSsrRegistry();
+    const { needs } = this.#request;
+    //? A CSR artifact inlines the stylesheets, so it waits for this batch's compile of them; the registry reads none.
+    const cssFirst = needs.includes("css") && needs.includes("csr") && resolveDevCsrMode() === "artifact";
+    if (needs.includes("base")) await this.#buildBase();
+    if (cssFirst) await this.#buildCss();
+    if (needs.includes("csr")) await this.#buildCsr();
+    if (needs.includes("shell")) await this.#buildShell();
+    if (needs.includes("ssr")) await this.#buildSsrRegistry();
     // Css before pages: it scans the sources and reads nothing pages produces, so a class edit need not wait for pages.
-    if (this.#request.needs.includes("css")) await this.#buildCss();
-    if (this.#request.needs.includes("pages")) await this.#buildPages();
+    if (needs.includes("css") && !cssFirst) await this.#buildCss();
+    if (needs.includes("pages")) await this.#buildPages();
     return this.#result;
   }
 
@@ -72,7 +77,7 @@ class BuildBatch {
     const message = ApplicationBuildReporter.formatError(err, this.#request.workspaceRoot);
     this.#logger.error(`${label} failed: ${message}`);
     this.#result.errors[need] = message;
-    if (need !== "base") this.#emitStatus(need, message);
+    if (need !== "base" && need !== "shell") this.#emitStatus(need, message);
   }
 
   // Streams nothing: the builder is not serving yet, so the watcher reads the outcome from the batch result.
@@ -99,8 +104,20 @@ class BuildBatch {
     }
   }
 
+  //? No `csr-updated`: under the registry no tab runs this build, and the reload would send every CSR tab back to it.
+  async #buildShell(): Promise<void> {
+    const started = Date.now();
+    try {
+      await new CsrArtifactBuilder(this.#app, "start", "en", { cssAssets: this.#request.cssAssets }).build();
+      this.#logger.verbose(`csr-shell ok (${Date.now() - started}ms)`);
+    } catch (err) {
+      this.#fail("shell", "csr-shell", err);
+    }
+  }
+
   async #rebuildCsrArtifact(started: number): Promise<void> {
-    await new CsrArtifactBuilder(this.#app).build();
+    const cssAssets = this.#result.cssAssets ?? this.#request.cssAssets;
+    await new CsrArtifactBuilder(this.#app, "start", "en", { cssAssets }).build();
     this.#logger.verbose(`csr-rebundle ok (${Date.now() - started}ms)`);
     // A CSR tab takes none of the SSR refresh messages, so a rebuilt artifact reaches it only as this reload.
     if (this.#request.changedFiles.length === 0) return;

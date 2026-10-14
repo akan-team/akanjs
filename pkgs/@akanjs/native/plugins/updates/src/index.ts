@@ -64,9 +64,16 @@ export interface UpdatesApi {
   notifyReady(): Promise<void>;
   /**
    * Phones: back to the app's own bundle from the next launch on. Desktop: drops the download and forgets the refused
-   * releases; the running app stays, and a trial keeps its record.
+   * releases; the running app stays, a trial keeps its record, and setChannel()'s channel stays set.
    */
   reset(): Promise<void>;
+  /**
+   * Desktop: the manifest this app reads from now on, over the built `updates.channel` until set back with `null` —
+   * a server that moves this device between a pilot and a stable channel. The name follows `updates.channel`'s rule,
+   * and a download of the channel left is dropped. A release older than the running one is never taken, so a device
+   * leaving a pilot channel stays on its pilot build until the other channel passes it.
+   */
+  setChannel(args: { channel: string | null }): Promise<void>;
 }
 
 export interface UpdatesEvents {
@@ -74,7 +81,7 @@ export interface UpdatesEvents {
 }
 
 export const updates = definePlugin<UpdatesApi, UpdatesEvents>("updates", {
-  methods: ["getState", "check", "download", "apply", "notifyReady", "reset"],
+  methods: ["getState", "check", "download", "apply", "notifyReady", "reset", "setChannel"],
   events: ["progress"],
 });
 

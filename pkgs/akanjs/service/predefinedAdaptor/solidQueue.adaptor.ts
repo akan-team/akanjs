@@ -2,7 +2,8 @@ import type { Database, Statement } from "bun:sqlite";
 import { getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 import { type AkanJob, type AkanJobOptions, type AkanWorker, sendAkanIpc } from "../ipcTypes";
-import type { QueueAdaptor } from "./queue.adaptor";
+import type { ProcessWorkerOptions, QueueAdaptor } from "./queue.adaptor";
+import { QueueBackoff } from "./queueBackoff";
 import { getSolidConfig, openSolidDatabase, type SolidConfig, type SolidEnv } from "./solidSqlite";
 
 type JobRow = {
@@ -24,6 +25,7 @@ class SolidWorker implements AkanWorker {
     private readonly name: string,
     private readonly handler: (job: AkanJob) => Promise<unknown>,
     pollIntervalMs: number,
+    private readonly options: ProcessWorkerOptions = {},
   ) {
     this.#timer = setInterval(() => void this.pump(), pollIntervalMs);
     void this.pump();
@@ -40,7 +42,7 @@ class SolidWorker implements AkanWorker {
       while (!this.#closed) {
         const job = this.queue.claimJob(this.name);
         if (!job) return;
-        await this.queue.runJob(job, this.handler);
+        await this.queue.runJob(job, this.handler, this.options);
       }
     } finally {
       this.#running = false;
@@ -65,6 +67,8 @@ export class SolidQueue
   }))
   implements QueueAdaptor
 {
+  /** What jobs are scheduled and claimed by; a test swaps in a clock it moves itself. */
+  now = () => Date.now();
   #db!: Database;
   #workers = new Map<string, SolidWorker>();
   #claimStmt!: Statement;
@@ -132,14 +136,18 @@ export class SolidQueue
     this.#db?.close();
   }
 
-  registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<unknown>): AkanWorker {
-    const worker = new SolidWorker(this, key, handler, this.config.queuePollIntervalMs);
+  registerProcessWorker(
+    key: string,
+    handler: (job: AkanJob) => Promise<unknown>,
+    options: ProcessWorkerOptions = {},
+  ): AkanWorker {
+    const worker = new SolidWorker(this, key, handler, this.config.queuePollIntervalMs, options);
     this.#workers.set(key, worker);
     return worker;
   }
 
   async registerProcessQueue(key: string, args: unknown[], jobOptions: AkanJobOptions = {}): Promise<AkanJob> {
-    const now = Date.now();
+    const now = this.now();
     const id = Bun.randomUUIDv7();
     const runAt = now + Number(jobOptions.delay ?? 0);
     const maxAttempts = Math.max(1, Number(jobOptions.attempts ?? 1));
@@ -161,7 +169,7 @@ export class SolidQueue
   }
 
   claimJob(name: string): AkanJob | null {
-    const now = Date.now();
+    const now = this.now();
     this.#db.run("BEGIN IMMEDIATE");
     try {
       const row = this.#claimStmt.get(this.queueName, name, now, now) as JobRow | null;
@@ -185,7 +193,7 @@ export class SolidQueue
     }
   }
 
-  async runJob(job: AkanJob, handler: (job: AkanJob) => Promise<unknown>) {
+  async runJob(job: AkanJob, handler: (job: AkanJob) => Promise<unknown>, { onFailed }: ProcessWorkerOptions = {}) {
     try {
       await handler({ ...job, data: job.data });
       this.#settle(job, "completed", job.opts?.removeOnComplete ?? true);
@@ -195,17 +203,22 @@ export class SolidQueue
         .query(`SELECT "attempts", "maxAttempts" FROM "_akan_solid_jobs" WHERE "id" = ?`)
         .get(job.id) as { attempts: number; maxAttempts: number } | null;
       const failed = !row || row.attempts >= row.maxAttempts;
-      const delay = this.#getBackoffDelay(job.opts?.backoff, row?.attempts ?? 1);
+      const delay = QueueBackoff.delayOf(job.opts?.backoff, row?.attempts ?? 1);
       this.#db
         .query(
           `UPDATE "_akan_solid_jobs"
            SET "status" = ?, "runAt" = ?, "lockedBy" = NULL, "lockedUntil" = NULL, "lastError" = ?, "updatedAt" = ?
            WHERE "id" = ?`,
         )
-        .run(failed ? "failed" : "pending", Date.now() + delay, message, Date.now(), job.id);
+        .run(failed ? "failed" : "pending", this.now() + delay, message, this.now(), job.id);
       if (!failed) return;
       this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
       this.#settle(job, "failed", job.opts?.removeOnFail ?? false);
+      await Promise.resolve(onFailed?.(job, error)).catch((hookError: unknown) =>
+        this.logger.warn(
+          `onFailed of ${job.name} threw: ${hookError instanceof Error ? hookError.message : hookError}`,
+        ),
+      );
     }
   }
 
@@ -220,7 +233,7 @@ export class SolidQueue
         .query(
           `UPDATE "_akan_solid_jobs" SET "status" = 'completed', "lockedBy" = NULL, "lockedUntil" = NULL, "updatedAt" = ? WHERE "id" = ?`,
         )
-        .run(Date.now(), job.id);
+        .run(this.now(), job.id);
     if (typeof remove !== "number") return;
     this.#db
       .query(
@@ -234,7 +247,7 @@ export class SolidQueue
 
   //* Batched and yielding: an old queue may hold millions of completed rows, and bun:sqlite deletes synchronously.
   async #cleanup() {
-    const expiredFailedAt = Date.now() - this.config.queueFailedRetentionMs;
+    const expiredFailedAt = this.now() - this.config.queueFailedRetentionMs;
     for (let batch = 0; batch < 10 && !this.#closed; batch++) {
       const { changes } = this.#db
         .query(
@@ -249,13 +262,5 @@ export class SolidQueue
       if (changes < 1000) return;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-  }
-
-  // bullmq's own schedule, so a job retries at the same times whichever queue runs it.
-  #getBackoffDelay(backoff: AkanJobOptions["backoff"], attemptsMade: number) {
-    if (!backoff) return 0;
-    if (typeof backoff === "number") return backoff;
-    const delay = Number(backoff.delay ?? 0);
-    return backoff.type === "exponential" ? Math.round(2 ** (attemptsMade - 1) * delay) : delay;
   }
 }

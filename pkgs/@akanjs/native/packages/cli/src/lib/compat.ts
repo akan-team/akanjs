@@ -47,6 +47,16 @@ export interface BundleInfo {
   nativeApi: { hash: string; inputs: NativeApi };
   /** sha256 of the web files (index.html as served and public/), for update integrity later. */
   web: { hash: string; files: number };
+  /** A phone build with updates: what its binary reads (updates.json), the floor of every release's sequence included. */
+  updates?: {
+    protocol: 2;
+    url: string;
+    channel: string;
+    keyIds: string[];
+    embeddedSequence: number;
+    /** updates.report.url, so a server registering the binary can check the reports come to it. */
+    reportUrl?: string;
+  };
 }
 
 /** "0.1.4" → "0.1", "1.2.0" → "1". */

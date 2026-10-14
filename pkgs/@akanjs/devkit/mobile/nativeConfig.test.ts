@@ -67,6 +67,30 @@ describe("NativeConfig.build", () => {
     expect(build(undefined)).toBeUndefined();
   });
 
+  test("paints the window before its page with backgroundColor, and names the Windows publisher", () => {
+    const build = (target: Partial<AkanNativeTarget>) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/minimal",
+        target: { ...minimalTarget, ...target },
+        webDir: "/repo/dist/native/minimal/default/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "windows",
+      }).config;
+
+    expect(build({ backgroundColor: "#000000" }).shell).toEqual({ backgroundColor: "#000000" });
+    expect(build({ backgroundColor: { light: "#fafafa", dark: "#111111" } }).shell).toEqual({
+      backgroundColor: "#fafafa",
+      backgroundColorDark: "#111111",
+    });
+    expect(build({}).shell).toBeUndefined();
+    expect(build({ backgroundColor: "#000000", devtools: true }).shell).toEqual({
+      backgroundColor: "#000000",
+      devtools: true,
+    });
+    expect(build({ desktop: { publisher: "Leading Flight" } }).desktop?.publisher).toBe("Leading Flight");
+  });
+
   test("turns the minimal app's push target into the runtime's config, single-instance carrying its link scheme", () => {
     const { config, warnings } = NativeConfig.build({
       appPath: "/repo/apps/minimal",
@@ -208,8 +232,36 @@ describe("NativeConfig.build", () => {
       readyTimeout: 15_000,
     });
     expect(build({ url, publicKey: updatesKey }).updates).toEqual({ url, publicKey: updatesKey });
+    const spare = Buffer.alloc(32, 8).toString("base64");
+    expect(build({ url, publicKeys: [updatesKey, spare] }, "main").updates).toEqual({
+      url,
+      publicKeys: [updatesKey, spare],
+      channel: "main",
+    });
+    const report = { url: "https://cloud.example.com/api/ota/report/abcdefghijklmnop" };
+    expect(build({ url, publicKey: updatesKey, report }, "main").updates).toEqual({
+      url,
+      publicKey: updatesKey,
+      channel: "main",
+      report,
+    });
     expect(build({ url, publicKey: updatesKey }, "main").plugins).toContain("updates");
     expect(build(undefined, "main").plugins).not.toContain("updates");
+  });
+
+  test("devtools opens the web inspector of a release build only when a target asks for it", () => {
+    const build = (devtools?: boolean) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: { ...adminTarget, ...(devtools === undefined ? {} : { devtools }) },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "android",
+      }).config.shell;
+    expect(build(true)).toEqual({ devtools: true });
+    expect(build(false)).toBeUndefined();
+    expect(build()).toBeUndefined();
   });
 
   test("push, privacy and the icon and splash objects reach the runtime, paths from the app folder", () => {
@@ -342,7 +394,12 @@ describe("NativeConfig.build", () => {
         permissions: [],
         deepLinks: undefined,
         android: { autoplay: true },
-        desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
+        desktop: {
+          recovery: "reload",
+          window: { fullscreen: true, skipTaskbar: true },
+          screenCapture: "auto",
+          webview2: "standalone",
+        },
       },
       webDir: path.join(root, "web"),
       contributions: [],
@@ -355,6 +412,7 @@ describe("NativeConfig.build", () => {
       recovery: "reload",
       window: { fullscreen: true, skipTaskbar: true },
       screenCapture: "auto",
+      webview2: "standalone",
       bin: root,
     });
     expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });

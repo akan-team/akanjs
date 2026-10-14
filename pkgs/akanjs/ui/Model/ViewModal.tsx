@@ -4,6 +4,7 @@ import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import View from "./View";
 
@@ -20,7 +21,7 @@ const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
   return null;
 };
 
-interface ViewModalProps {
+interface ViewModalProps extends ModalSurfaceProps {
   id: string;
   modal?: string;
   modalClassName?: string;
@@ -34,6 +35,8 @@ export default function ViewModal({
   id,
   modal,
   modalClassName,
+  presentation,
+  placement,
   viewClassName,
   slice,
   renderTitle,
@@ -74,7 +77,15 @@ export default function ViewModal({
   return (
     <>
       {isModalOpen ? <ViewTools modelName={modelName} closeView={closeView} /> : null}
-      <Modal open={isModalOpen} onCancel={closeView} className={modalClassName} title={<Title />} action={<Action />}>
+      <Modal
+        open={isModalOpen}
+        onCancel={closeView}
+        className={modalClassName}
+        presentation={presentation}
+        placement={placement}
+        title={<Title />}
+        action={<Action />}
+      >
         <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
       </Modal>
     </>

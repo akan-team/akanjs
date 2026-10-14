@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import sampleConfig from "../../examples/sample/akan-native.config.ts";
 import { build } from "../../packages/cli/src/api.ts";
+import { AppPage, powershell, until } from "./harness.ts";
 
 if (process.platform !== "win32") throw new Error("kiosk-check drives WebView2's DevTools port: run it on Windows");
 
@@ -24,80 +25,17 @@ const scratch = mkdtempSync(join(tmpdir(), "akan-native-kiosk-check-"));
 const port = 9231;
 const step = (text: string) => console.info(`\n== ${text}`);
 
-async function until<T>(what: string, check: () => Promise<T | undefined | false>, timeout = 20_000): Promise<T> {
-  let last: unknown;
-  for (const started = Date.now(); Date.now() - started < timeout; await Bun.sleep(250)) {
-    const value = await check().catch((error) => {
-      last = error;
-      return undefined;
-    });
-    if (value) return value;
-  }
-  throw new Error(`timed out waiting for ${what}${last ? ` (${String(last)})` : ""}`);
-}
-
-async function pageSocket(): Promise<WebSocket> {
-  const pages = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as {
-    type: string;
-    url: string;
-    webSocketDebuggerUrl: string;
-  }[];
-  const page = pages.find((p) => p.type === "page" && p.url.startsWith("https://app.localhost"));
-  if (!page) throw new Error("no app page yet");
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = reject;
-  });
-  return ws;
-}
+const page = new AppPage(port);
 
 /** Ends the page's renderer process, as a crash does (the shell's own test op is not on Windows). */
 async function crashPage() {
-  const ws = await pageSocket();
+  const ws = await page.socket();
   ws.send(JSON.stringify({ id: 1, method: "Page.crash" }));
   await Bun.sleep(500);
   ws.close();
 }
 
-interface Evaluated {
-  result?: { value?: string };
-  exceptionDetails?: { exception?: { description?: string } };
-}
-
-async function evaluate(expression: string, what: string, timeout = 5000): Promise<Evaluated> {
-  const ws = await pageSocket();
-  ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, awaitPromise: true } }));
-  const answer = await new Promise<{ result?: Evaluated }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what}: no answer`)), timeout);
-    ws.onmessage = (event) => {
-      clearTimeout(timer);
-      resolve(JSON.parse(String(event.data)));
-    };
-    ws.onclose = () => {
-      clearTimeout(timer);
-      resolve({ result: { result: { value: '{"ok":true,"closed":true}' } } });
-    };
-  });
-  ws.close();
-  return answer.result ?? {};
-}
-
-/** Calls a plugin method from the page, as a page does (the runtime's own request ids). */
-async function bridge(plugin: string, method: string, args?: unknown): Promise<{ ok: boolean; result?: any }> {
-  const request = JSON.stringify({ v: 1, plugin, method, ...(args === undefined ? {} : { args }) });
-  const expression = `(async () => { const rt = window.__AKAN_NATIVE__.__runtime; const r = ${request};
-    r.id = ++rt.nextId; return JSON.stringify(await rt.transport.send(r)); })()`;
-  return JSON.parse((await evaluate(expression, `${plugin}.${method}`)).result?.value ?? "{}");
-}
-
-function powershell(command: string): string {
-  const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return p.stdout.toString().trim();
-}
+const bridge = <T = unknown>(plugin: string, method: string, args?: unknown) => page.bridge<T>(plugin, method, args);
 
 const appPids = (name: string) =>
   powershell(`(Get-Process -Name '${name}' -ErrorAction SilentlyContinue).Id -join ','`)
@@ -146,7 +84,7 @@ try {
 
   step("1. the main window is fullscreen from the start");
   const state = await until("the window state", async () => {
-    const answer = await bridge("window", "getState");
+    const answer = await bridge<{ fullscreen?: boolean }>("window", "getState");
     return answer.ok ? answer.result : undefined;
   });
   console.info(JSON.stringify(state));
@@ -184,16 +122,15 @@ try {
   console.info(`  browser ${browser} ended: ${relaunched} -> ${after}`);
 
   step("5. getDisplayMedia() answers with the first screen, without the picker");
-  const captured = await evaluate(
+  const captured = await page.evaluate(
     `(async () => { const s = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const t = s.getVideoTracks()[0]; const r = { label: t.label, surface: t.getSettings().displaySurface };
     s.getTracks().forEach((x) => x.stop()); return JSON.stringify(r); })()`,
     "getDisplayMedia",
-    10_000,
   );
-  const track = captured.result?.value;
+  const track = captured.value;
   if (!track?.includes('"surface":"monitor"'))
-    throw new Error(`no screen without the picker: ${captured.exceptionDetails?.exception?.description ?? track}`);
+    throw new Error(`no screen without the picker: ${captured.exception ?? track}`);
   console.info(`  ${track}`);
   console.info("\nkiosk-check passed");
 } catch (error) {

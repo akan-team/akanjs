@@ -20,7 +20,9 @@ const PORT = Number(process.env.PORT ?? 8799);
 
 mkdirSync(VM_DIR, { recursive: true });
 if (!existsSync(KEY)) {
-  const keygen = Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "akan-native-vm", "-f", KEY]);
+  const keygen = Bun.spawnSync(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "akan-native-vm", "-f", KEY], {
+    timeout: 60_000,
+  });
   if (keygen.exitCode !== 0) throw new Error(`ssh-keygen failed: ${keygen.stderr}`);
 }
 const publicKey = readFileSync(`${KEY}.pub`, "utf8").trim();

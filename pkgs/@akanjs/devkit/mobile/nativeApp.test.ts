@@ -58,6 +58,7 @@ describe("NativeApp", () => {
         ({
           config: {},
           api: {
+            requestedDistribution: () => ({ notice: null, unused: [] }),
             build: async ({ env }: { env?: Record<string, string> }) => {
               seen = env;
               return { artifacts: [], warnings: [] };
@@ -84,6 +85,65 @@ describe("NativeApp", () => {
       } finally {
         delete process.env.AKAN_PUBLIC_SERVER_URL;
       }
+    });
+  });
+
+  describe("the server a release carries, signed or not", () => {
+    const releasing = async () => {
+      const root = await makeTempRoot();
+      const appPath = path.join(root, "apps/portal");
+      await writeText(
+        path.join(appPath, "env/env.server.main.ts"),
+        'export const env = { security: { jwtSecret: "main-jwt-0123456789" } };\n',
+      );
+      const server = { dir: path.join(root, "server"), entry: "main.js", env: {} };
+      await writeText(path.join(server.dir, "main.js"), 'const jwt = "main-jwt-0123456789";\n');
+      const app = {
+        ...fakeApp(),
+        cwdPath: appPath,
+        workspace: { workspaceRoot: root },
+        logger: { info: () => undefined, warn: () => undefined },
+      } as unknown as App;
+      const updates = { url: "https://releases.example.com/portal", publicKey: `${"a".repeat(43)}=` };
+      const nativeApp = new NativeApp(app, target({ updates }), "main");
+      const built: string[] = [];
+      nativeApp.assembleWeb = async () => undefined as never;
+      nativeApp.prepare = async () =>
+        ({
+          config: {},
+          api: {
+            requestedDistribution: () => ({ notice: null, unused: [] }),
+            build: async ({ profile }: { profile: string }) => {
+              built.push(profile);
+              return { artifacts: [], warnings: [] };
+            },
+            publishUpdate: async () => {
+              built.push("update");
+              return {};
+            },
+          },
+        }) as never;
+      return { appPath, server, nativeApp, built };
+    };
+
+    test("an unsigned release build and an unsigned update are refused when it holds a secret, a debug build is not searched", async () => {
+      const { server, nativeApp, built } = await releasing();
+      await expect(nativeApp.build("linux", { server })).rejects.toThrow(
+        "main.js holds apps/portal/env/env.server.main.ts security.jwtSecret",
+      );
+      await expect(nativeApp.publishUpdate("linux", { server })).rejects.toThrow("security.jwtSecret");
+      await nativeApp.build("linux", { server, profile: "debug" });
+      expect(built).toEqual(["debug"]);
+    });
+
+    test("an env file that cannot be evaluated stops the release instead of going unsearched", async () => {
+      const { appPath, server, nativeApp, built } = await releasing();
+      await writeText(path.join(server.dir, "main.js"), "\n");
+      await writeText(path.join(appPath, "env/env.server.develop.ts"), 'export { env } from "./missing";\n');
+      await expect(nativeApp.build("linux", { server })).rejects.toThrow(
+        "The server this app carries was not searched for the secret values of apps/portal/env/env.server.develop.ts",
+      );
+      expect(built).toEqual([]);
     });
   });
 

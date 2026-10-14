@@ -1,9 +1,10 @@
 // Runs the shared vectors (packages/core/vectors: scope, routes, ranges, ids, bridge,
-// navigation), which bun test runs against the TypeScript reference and cargo test against the
-// desktop, against the Swift and Kotlin kernels (AkanNativeKernel, AkanNativeAcl; runners AkanNativeVectors.*):
+// navigation, updates) against the TypeScript reference (packages/core/test/kernel.test.ts) and the
+// Swift and Kotlin kernels (AkanNativeKernel, AkanNativeAcl; runners AkanNativeVectors.*); cargo test
+// runs them against the desktop:
 //
-//   bun scripts/native-vectors.ts            both
-//   bun scripts/native-vectors.ts swift      or one of them
+//   bun scripts/native-vectors.ts            all three
+//   bun scripts/native-vectors.ts swift      or one of them: ts, swift, kotlin
 //
 // Swift builds for the Mac with swiftc (Xcode's command line tools). Kotlin runs on the JVM with the
 // JDK and the pinned kotlinc akan-native builds Android apps with; its vectors are Kotlin literals (no JSON
@@ -20,10 +21,13 @@ const REPO = resolve(import.meta.dir, "..");
 const work = join(tmpdir(), `akan-native-native-vectors-${process.pid}`);
 mkdirSync(work, { recursive: true });
 
-function run(cmd: string[], env?: Record<string, string>): boolean {
-  const r = Bun.spawnSync(cmd, { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, ...env } });
+function run(cmd: string[], env?: Record<string, string>, cwd?: string): boolean {
+  const r = Bun.spawnSync(cmd, { cwd, stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, ...env } });
   return r.exitCode === 0;
 }
+
+const typescript = () =>
+  run([process.execPath, "test", "--isolate", "packages/core/test/kernel.test.ts"], undefined, REPO);
 
 /** The kernel sources the runners test: contract tables, the kernel, the scope matchers, the runner. */
 const SWIFT = [
@@ -174,6 +178,7 @@ ${httpCases.map(([i, o]) => `        ${k(i)} to ${k(o)},`).join("\n")}
 const which = process.argv[2];
 let ok = true;
 try {
+  if (!which || which === "ts") ok = typescript() && ok;
   if (!which || which === "swift") ok = swift() && swiftHttp() && ok;
   if (!which || which === "kotlin") ok = (await kotlin()) && (await kotlinHttp()) && ok;
 } finally {

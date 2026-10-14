@@ -17,6 +17,8 @@ export interface McpExposureOption {
   key: string;
   /** The read-only deployment valve: server configuration the browser explorer cannot know. */
   readOnly?: boolean;
+  /** MCP Apps: judges what a rendered view may call, which lifts the two refusals that only curate a model's shelf. */
+  view?: boolean;
 }
 
 /** `Any` publishes as the empty schema, which tells a model nothing, so it is left out. */
@@ -45,16 +47,16 @@ export const mcpHintsOf = (key: string, endpoint: { type: string }) => {
 
 export const mcpRefusalOf = (
   endpoint: McpExposureEndpoint,
-  { refName, key, readOnly }: McpExposureOption,
+  { refName, key, readOnly, view }: McpExposureOption,
 ): string | null => {
-  if (endpoint.mcp === false)
+  if (endpoint.mcp === false && !view)
     return "it declares `mcp: false`, so it is deliberately off the agent shelf. HTTP still serves it.";
   // Refused outright: hiding it per caller at listing time would still leave it in the document.
   if (endpoint.agents === false)
     return `its guards (${(endpoint.guards ?? []).join(", ")}) admit no agent — an act reserved for a person, so it is off the agent shelf. HTTP still serves it.`;
   if (!endpoint.guards?.length)
     return "it declares no guards, and exposure follows them — write `guards: [Public]` if anonymous access is the intent.";
-  if (key === `light${capitalize(refName)}`)
+  if (key === `light${capitalize(refName)}` && !view)
     return `it reads the same document as \`${refName}\` in a smaller shape — call \`${refName}\` instead.`;
   if (endpoint.type === "pubsub" || endpoint.type === "message")
     return `\`${endpoint.type}\` rides the websocket, and its internal arguments read a socket an MCP request does not have.`;

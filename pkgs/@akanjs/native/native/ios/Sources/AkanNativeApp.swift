@@ -48,28 +48,33 @@ final class AkanNativeAppServices {
     static let shared = AkanNativeAppServices()
     /// Tells processes apart in the self-test ($host.info): a window made again keeps this one.
     let instance = UUID().uuidString
-    /// The web bundle to serve (UP-2), nil for the one inside the app. Chosen once per process: a
-    /// scene that connects again must not count as a new launch of an unconfirmed bundle and roll it
-    /// back. Later it is whatever apply() or a rollback made active.
-    var bundleRoot: URL? {
+    /// The web bundle to serve (UP-2), nil for the one inside the app. Chosen once per process, when the
+    /// first window asks: a scene that connects again must not count as a new launch of an unconfirmed
+    /// bundle and roll it back, and a launch in the background (a silent push) has no page to confirm
+    /// one. Later it is whatever apply() or a rollback made active.
+    func bundleRoot() -> URL? {
+        if !bundleChosen {
+            bundleChosen = true
+            #if AKAN_NATIVE_UPDATES
+            _ = AkanNativeUpdates.launch()
+            #endif
+            bundleSelections += 1
+        }
         #if AKAN_NATIVE_UPDATES
-        AkanNativeUpdates.active.map { AkanNativeUpdates.bundleDirectory($0.bundle) }
+        return AkanNativeUpdates.active.map { AkanNativeUpdates.bundleDirectory($0.bundle) }
         #else
-        nil
+        return nil
         #endif
     }
     private(set) var bundleSelections = 0
     /// Windows (view controllers) made in this process.
     var windows = 0
     private var started = false
+    private var bundleChosen = false
 
     func start() {
         guard !started else { return }
         started = true
-        #if AKAN_NATIVE_UPDATES
-        _ = AkanNativeUpdates.launch()
-        #endif
-        bundleSelections += 1
         // Before didFinishLaunching returns, as the SDK asks, so a tap that launched the app arrives (C5).
         UNUserNotificationCenter.current().delegate = AkanNativeNotifications.shared
     }
@@ -102,7 +107,8 @@ final class AkanNativeSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = nil
     }
 
-    /// Dev builds ($host.recreate): a new window in the same process, as when a scene connects again.
+    /// A new window in the same process, as when a scene connects again: dev builds' $host.recreate, and an update
+    /// rolled back from a page that stopped answering.
     func recreate() {
         guard let windowScene = window?.windowScene else { return }
         (window?.rootViewController as? AkanNativeViewController)?.windowEnded()

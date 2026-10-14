@@ -175,8 +175,8 @@ const chainStages = [
         layout: false,
         rootLayout: true,
         required: false,
-        en: "The web app manifest (name, startUrl, icons…) for installable, PWA-like behaviour.",
-        ko: "설치형 앱·PWA 동작에 쓰는 web app manifest입니다. name, startUrl, icons 등을 담습니다.",
+        en: "The web app manifest (name, startUrl, icons…), served at /manifest.webmanifest so the app installs.",
+        ko: "설치형 앱에 쓰는 web app manifest(name, startUrl, icons 등)이며, /manifest.webmanifest로 제공합니다.",
       },
       {
         name: ".theme",
@@ -217,6 +217,16 @@ const chainStages = [
         required: false,
         en: "The outer page container style, web or mobile. Use mobile for app-like shells.",
         ko: "바깥 페이지 컨테이너 스타일이며 web 또는 mobile입니다. 앱 같은 화면에는 mobile을 씁니다.",
+      },
+      {
+        name: ".viewport",
+        args: "({ … })",
+        page: false,
+        layout: false,
+        rootLayout: true,
+        required: false,
+        en: "The viewport meta: fitCover for edge-to-edge, the keyboard's interactiveWidget, and themeColor.",
+        ko: "viewport meta입니다. 화면 끝까지 그리는 fitCover, 키보드의 interactiveWidget, themeColor를 정합니다.",
       },
     ],
   },
@@ -396,8 +406,8 @@ export default page()
         />
         <Docs.Alert type="info">
           {l.trans({
-            en: "Heads are not merged — the nearest .head() wins, so restate what you still need (such as the favicon link). Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.",
-            ko: "head는 병합되지 않습니다. .head()를 선언한 가장 가까운 라우트 모듈 하나만 적용되므로, favicon link처럼 계속 필요한 요소는 다시 적어야 합니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param()과 .prompt()의 이름은 문자열 리터럴로 씁니다.",
+            en: "Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.",
+            ko: "head는 root부터 아래로 병합됩니다. 더 깊은 .head()는 <title>, name이나 property가 같은 meta, canonical·manifest·icon link를 덮어쓰고 나머지는 그대로 둡니다. canonical link와 og:url은 URL 하나를 가리키므로, 페이지는 레이아웃의 것을 물려받지 않고 자기 .head()에 적은 것만 씁니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param()과 .prompt()의 이름은 문자열 리터럴로 씁니다.",
           })}
         </Docs.Alert>
       </Scroll.Slide>
@@ -514,8 +524,8 @@ export default layout()
         <Docs.Description>
           <div>
             {l.trans({
-              en: "The root _layout.tsx of an app, or of a basePath, is a rootLayout() chain. It is still a layout, but it also carries the app-wide stages for fonts, manifest, theme, realtime connection, and mobile-style rendering. The stylesheet import stays the first line of the file.",
-              ko: "앱 또는 basePath의 root _layout.tsx는 rootLayout() 체인입니다. 기본적으로는 layout이지만 font, manifest, theme, realtime connection, mobile-style rendering 같은 앱 공통 단계를 함께 가집니다. 스타일시트 import는 파일의 첫 줄에 그대로 둡니다.",
+              en: "The root _layout.tsx of an app, or of a basePath, is a rootLayout() chain. It is still a layout, but it also carries the app-wide stages for fonts, manifest, theme, viewport, realtime connection, and mobile-style rendering. The stylesheet import stays the first line of the file.",
+              ko: "앱 또는 basePath의 root _layout.tsx는 rootLayout() 체인입니다. 기본적으로는 layout이지만 font, manifest, theme, viewport, realtime connection, mobile-style rendering 같은 앱 공통 단계를 함께 가집니다. 스타일시트 import는 파일의 첫 줄에 그대로 둡니다.",
             })}
           </div>
         </Docs.Description>

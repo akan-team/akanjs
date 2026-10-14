@@ -337,9 +337,9 @@ Reconnect where you left off; an evicted range arrives as an explicit gap event
 
 Piece
 
-- AKAN_LOG_STREAM_TOKEN: Unset, the route does not exist at all. It is absent, not a 403.
+- AKAN_LOG_STREAM_TOKEN: Unset, the route does not exist: absent, not a 403. Whitespace inside the value does the same, with an error at boot.
 
-- Authorization: Bearer: A missing or wrong token is answered with 401.
+- Authorization: Bearer: A missing or wrong token is answered with 401, and so is a header that is not `Bearer <one token>`.
 
 - ?level=&endpoint=…: The `akan logs` filters, plus `name`, `stream` and `limit`.
 

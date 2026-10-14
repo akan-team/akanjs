@@ -1,8 +1,16 @@
 import { getEnv } from "akanjs/base";
 import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
+import { csrLocation } from "./csrLocation";
+import { isMcpView } from "./mcpView";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
+  /**
+   * Writes the URL and the store's path and search params without asking the server for the page, as for `?peek=`;
+   * honoured only when the path stays the same. A server component reading `.search()` sees it at the next full
+   * navigation.
+   */
+  shallow?: boolean;
 }
 export interface RouteManifest {
   routes: string[];
@@ -19,6 +27,8 @@ export interface RouterInstance {
   replace: (href: string, routeOptions?: RouteOptions) => void | Promise<void>;
   back: (routeOptions?: RouteOptions) => void;
   refresh: () => void;
+  /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
+  canGoBack?: () => boolean;
 }
 interface RouterOptions {
   prefix?: string;
@@ -144,7 +154,7 @@ export const getPathInfo = (requestUrl: string, lang: string, prefix: string) =>
     ? pathWithSubRoute
     : pathWithSubRoute === `/${prefix}`
       ? "/"
-      : pathWithSubRoute.startsWith(`/${prefix}`)
+      : pathWithSubRoute.startsWith(`/${prefix}/`)
         ? pathWithSubRoute.slice(prefixLength)
         : pathWithSubRoute;
   const subRoute = prefix ? `/${prefix}` : "";
@@ -160,6 +170,10 @@ class Router {
   #indexPath = "/";
   #navigation: Promise<void> = Promise.resolve();
   #historyIdx = 0;
+  //? Each client pushes the entry only once the next page is ready, so a write here would stamp the page being left.
+  #historyWrittenByNavigation = false;
+  #listensToPopstate: boolean = false;
+  #backsAwaitingPopstate = 0;
   #redirects = 0;
   #instance: RouterInstance = {
     push: (href: string) => {
@@ -197,54 +211,54 @@ class Router {
     Logger.verbose("Router initialized");
   }
   #initSsrClientRouter(options: SsrClientRouterOption) {
+    this.#historyWrittenByNavigation = true;
     const navigate = (method: "push" | "replace") => (href: string, routeOptions?: RouteOptions) => {
       const pathInfo = this.#getPathInfo(href);
       const navigationPathInfo = this.#getNavigationPathInfo(href);
-      this.#postPathChange(pathInfo);
+      this.postPathChange(pathInfo);
       return options.router[method](navigationPathInfo.href, routeOptions);
     };
     this.#instance = {
       push: navigate("push"),
       replace: navigate("replace"),
       back: () => {
-        const router = options.router;
-        const pathInfo = this.#getPathInfo(document.referrer);
-        this.#postPathChange(pathInfo);
-        router.back();
+        this.#postPathAfterBack();
+        options.router.back();
       },
       refresh: () => {
         const router = options.router;
         const pathInfo = this.#getPathInfo(location.pathname);
-        this.#postPathChange(pathInfo);
+        this.postPathChange(pathInfo);
         router.refresh();
       },
     };
   }
   #initCsrClientRouter(options: CSRClientRouterOption) {
+    this.#historyWrittenByNavigation = options.router.canGoBack !== undefined;
     this.#instance = {
       push: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
-        this.#postPathChange({ path, pathname, hash });
+        this.postPathChange({ path, pathname, hash });
         return options.router.push(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
       },
       replace: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
-        this.#postPathChange({ path, pathname, hash });
+        this.postPathChange({ path, pathname, hash });
         // for avoiding set state while rendering in redirect
         setTimeout(() => {
           options.router.replace(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
         }, 0);
       },
       back: (routeOptions) => {
-        const { path, pathname, hash } = this.#getPathInfo(document.referrer);
-        this.#postPathChange({ path, pathname, hash });
+        this.#postPathAfterBack();
         options.router.back(routeOptions);
       },
       refresh: () => {
-        const { path, pathname, hash } = this.#getPathInfo(location.pathname);
-        this.#postPathChange({ path, pathname, hash });
+        const { path, pathname, hash } = this.#getPathInfo(csrLocation.pathname);
+        this.postPathChange({ path, pathname, hash });
         options.router.refresh();
       },
+      canGoBack: options.router.canGoBack,
     };
   }
   #checkInitialized() {
@@ -255,29 +269,30 @@ class Router {
     if (getEnv().side === "server") return;
     const history = globalThis.window?.history;
     if (!history?.replaceState) return;
-    const state = (history.state ?? {}) as Record<string, unknown>;
+    const state = (csrLocation.state ?? {}) as Record<string, unknown>;
     const akanState = (state.__akanRouter ?? {}) as { idx?: number };
     this.#historyIdx = Number.isInteger(akanState.idx) ? (akanState.idx as number) : this.#historyIdx;
-    history.replaceState(
-      { ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } },
-      "",
-      globalThis.window.location.href,
-    );
-    if (!globalThis.window.addEventListener) return;
+    csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
+    if (this.#listensToPopstate || !globalThis.window.addEventListener) return;
+    this.#listensToPopstate = true;
     globalThis.window.addEventListener("popstate", (event) => {
       const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
       if (Number.isInteger(nextState.idx)) this.#historyIdx = nextState.idx as number;
+      if (this.#backsAwaitingPopstate === 0) return;
+      this.#backsAwaitingPopstate -= 1;
+      this.postPathChange(this.#getPathInfo(csrLocation.href));
     });
   }
 
   #rememberHistoryState(kind: "push" | "replace") {
-    if (getEnv().side === "server") return;
+    if (getEnv().side === "server" || this.#historyWrittenByNavigation) return;
     const history = globalThis.window?.history;
     if (!history) return;
     if (kind === "push") this.#historyIdx += 1;
-    const state = (history.state ?? {}) as Record<string, unknown>;
+    if (!history.replaceState) return;
+    const state = (csrLocation.state ?? {}) as Record<string, unknown>;
     const nextState = { ...state, __akanRouter: { ...((state.__akanRouter ?? {}) as object), idx: this.#historyIdx } };
-    if (history.replaceState) history.replaceState(nextState, "", globalThis.window.location.href);
+    csrLocation.replace(nextState);
   }
 
   #getPathInfo(href: string, prefix = this.#prefix) {
@@ -287,7 +302,7 @@ class Router {
     return this.#getPathInfo(href, shouldExposeBasePath() ? this.#prefix : "");
   }
   #withCsrRuntimeSearchParams(href: string) {
-    const currentSearch = new URLSearchParams(window.location.search);
+    const currentSearch = new URLSearchParams(csrLocation.search);
     if (currentSearch.get("csr") !== "true") return href;
 
     const [hrefWithoutHash, hash = ""] = href.split("#");
@@ -304,9 +319,20 @@ class Router {
   #getVisiblePathInfo(href: string, lang = this.#lang) {
     return getPathInfo(href, lang, shouldExposeBasePath() ? this.#prefix : "");
   }
-  #postPathChange({ path, pathname, hash }: { path: string; pathname: string; hash: string }) {
-    Logger.info(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
-    window.parent.postMessage({ type: "pathChange", path, pathname, hash }, "*");
+  //? `document.referrer` names the last document, not the entry a same-document push left; once history moves, the URL is.
+  #postPathAfterBack() {
+    if (this.canGoBack()) this.#backsAwaitingPopstate += 1;
+  }
+  /** Tells the frame embedding this page where it went: a new path, or a page of a paginated list. */
+  postPathChange(change: { path: string; pathname: string; hash: string } | { page: number }) {
+    const message =
+      "page" in change
+        ? { type: "pathChange", page: change.page }
+        : { type: "pathChange", path: change.path, pathname: change.pathname, hash: change.hash };
+    if (!("page" in change)) Logger.info(`pathChange-start:${change.path}${change.hash ? `#${change.hash}` : ""}`);
+    //? An MCP host reads every message from its view as JSON-RPC; this one would arrive as a malformed request.
+    if (isMcpView()) return;
+    window.parent.postMessage(message, "*");
   }
   #postDevSyncNavigation(kind: "push" | "replace", href: string) {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
@@ -386,7 +412,13 @@ class Router {
   }
   canGoBack() {
     if (getEnv().side === "server") return false;
-    return this.#historyIdx > 0;
+    const fromStack = this.#instance.canGoBack?.();
+    if (fromStack !== undefined) return fromStack;
+    const state = globalThis.window?.history
+      ? (csrLocation.state as { __akanRouter?: { idx?: unknown } } | null)
+      : null;
+    const idx = state?.__akanRouter?.idx;
+    return (Number.isInteger(idx) ? (idx as number) : this.#historyIdx) > 0;
   }
   backOrFallback(fallbackHref = this.#indexPath, routeOptions?: RouteOptions) {
     if (this.canGoBack()) {
@@ -446,11 +478,8 @@ class Router {
   setLang(lang: string) {
     if (getEnv().side === "server") throw new Error("setLang is only available in client side");
     this.#checkInitialized();
-    const currentLang = getLocaleFromPathname(window.location.pathname) ?? this.#lang;
-    const { path, search, hash } = this.#getVisiblePathInfo(
-      `${window.location.pathname}${window.location.search ?? ""}${window.location.hash ?? ""}`,
-      currentLang,
-    );
+    const currentLang = getLocaleFromPathname(csrLocation.pathname) ?? this.#lang;
+    const { path, search, hash } = this.#getVisiblePathInfo(csrLocation.href, currentLang);
     this.#lang = lang;
     this.#instance.replace(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`);
     return undefined as never;
@@ -459,7 +488,7 @@ class Router {
   routeOf(pathname: string) {
     return getPathInfo(pathname, this.#lang, this.#prefix).path;
   }
-  getPath(pathname = window.location.pathname) {
+  getPath(pathname = csrLocation.pathname) {
     if (getEnv().side === "server") throw new Error("getPath is only available in client side");
     return this.routeOf(pathname);
   }

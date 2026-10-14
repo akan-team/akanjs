@@ -9,9 +9,10 @@
 //   every update) gets the small delta from that release (@akanjs/native/desktop/delta); otherwise the full
 //   gzip archive. Either way the tar's sha256 must match the manifest.
 // - It is unpacked next to the app (`<App>.app.update-<bundle>`, same volume, so the swap is a
-//   rename: Electrobun extractor/main.zig:7355-7373), checked (app id; macOS `codesign --verify`),
-//   flushed to the disk, and swapped in by apply(): <App>.app → <App>.app.previous, the new one →
-//   <App>.app, relaunch. Windows does not rename a folder whose program is running, so there a helper
+//   rename: Electrobun extractor/main.zig:7355-7373), checked (app id; macOS `codesign --verify`;
+//   the signer of an app a team or Authenticode signed), flushed to the disk, and swapped in by
+//   apply(): <App>.app → <App>.app.previous, the new one → <App>.app, relaunch. Windows does not
+//   rename a folder whose program is running, so there a helper
 //   (PowerShell, started through cmd.exe to outlive the app) waits for the app to exit, does the renames
 //   and starts the result (moveThenRelaunch); a RunOnce value puts back what a shutdown left half moved.
 // - The new app runs on trial. notifyReady() within updates.readyTimeout of its page's load confirms
@@ -43,7 +44,7 @@ import {
 import { uptime } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
-import { isBundleId } from "../../../packages/core/src/kernel.ts";
+import { isBundleId, isChannelName } from "../../../packages/core/src/kernel.ts";
 import { applyDelta } from "../../../packages/desktop/src/delta.ts";
 import {
   type DesktopContext,
@@ -104,6 +105,8 @@ interface State {
   rollback?: { build: number; previous: string; to: string; attempts: number };
   /** embeddedSequence of the build installed here: another one means the app was installed again. */
   installed?: number;
+  /** setChannel(): the manifest read over updates.json's `channel`. */
+  channel?: string;
 }
 
 interface Manifest {
@@ -156,6 +159,44 @@ const tarBinary = () =>
   process.platform === "win32"
     ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
     : (["/usr/bin/tar", "/bin/tar"].find((path) => existsSync(path)) ?? "tar");
+
+const powershell = () =>
+  join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+/**
+ * The status and signer of the installed executable, then of the release's, one `<status> <subject>` line each. The
+ * subject goes as base64 of its UTF-8, which no console code page garbles.
+ */
+const AUTHENTICODE = `$ProgressPreference = 'SilentlyContinue'
+foreach ($path in $env:AKAN_NATIVE_INSTALLED_EXE, $env:AKAN_NATIVE_RELEASE_EXE) {
+  $signature = Get-AuthenticodeSignature -LiteralPath $path -ErrorAction Stop
+  $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
+  "$($signature.Status) $([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($subject)))"
+}`;
+
+/** A signature tool's exit code and what it printed; -1 when it could not start. */
+async function runSignatureTool(
+  cmd: string[],
+  env?: Record<string, string>,
+): Promise<{ code: number; output: string }> {
+  try {
+    const p = Bun.spawn(cmd, {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      windowsHide: true,
+      ...(env ? { env: { ...process.env, ...env } } : {}),
+    });
+    const [out, err, code] = await Promise.all([
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+      p.exited,
+    ]);
+    return { code, output: `${out}${err}` };
+  } catch (error) {
+    return { code: -1, output: String(error) };
+  }
+}
 
 /** fsync of a file, or of a folder on macOS and Linux; Windows flushes only a handle opened for writing. */
 function flush(path: string, folder = false): void {
@@ -237,6 +278,8 @@ export interface DesktopUpdatesOptions {
   relaunch?(exe: string, moves: [string, string][], recover?: RelaunchOptions["recover"]): Promise<void>;
   serverBootAllowance?: number;
   serverSettle?: number;
+  /** Runs codesign (macOS) or PowerShell (Windows) on a signature; runSignatureTool by default. */
+  signatureTool?(cmd: string[], env?: Record<string, string>): Promise<{ code: number; output: string }>;
 }
 
 export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): DesktopPlugin<UpdatesApi, UpdatesEvents> {
@@ -249,6 +292,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const relaunch = options.relaunch ?? ((exe, moves, recover) => relaunchAfterExit(exe, moves, { recover }));
   const allowance = options.serverBootAllowance ?? SERVER_BOOT_ALLOWANCE;
   const settleTime = options.serverSettle ?? SERVER_SETTLE;
+  const signatureTool = options.signatureTool ?? runSignatureTool;
   /** The executable inside an app with the running one's name. */
   const executableIn = (app: string) => (mac ? join(app, "Contents", "MacOS", exeName) : join(app, exeName));
   const resources = (app: string) => resourcesOf(app, mac);
@@ -292,13 +336,14 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     renameSync(tmp, path);
     flush(dir, true);
   };
-  const need = (): UpdatesConfig => {
+  const need = (state?: State): UpdatesConfig => {
     if (!config)
       throw new AkanNativeError(
         "UNSUPPORTED",
         "updates are not configured (akan-native.config.ts `updates`, a built app)",
       );
-    return config;
+    const { channel } = state ?? readState();
+    return channel ? { ...config, channel } : config;
   };
   /** `entry` when the running app is that release (installed by an update), not another build. */
   const ifRunning = <E extends Entry>(entry: E | undefined): E | undefined =>
@@ -462,6 +507,35 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     release === carries(app)
       ? null
       : `the release ${release ? "carries a server, and this app does not" : "carries no server, and this app does"}; install it instead`;
+  //? A release signed otherwise would lose the app's TCC grants and Keychain items (macOS) or its publisher (Windows).
+  //? An app signed ad hoc or not at all (a development build) still takes any release.
+  const signerRefusal = async (staged: string, app: string): Promise<string | null> => {
+    if (mac) {
+      const shown = await signatureTool(["/usr/bin/codesign", "--display", "--verbose=2", app]);
+      const team = shown.code === 0 ? /^TeamIdentifier=([A-Z0-9]{10})$/m.exec(shown.output)?.[1] : undefined;
+      if (!team) return null;
+      const requirement = `anchor apple generic and certificate leaf[subject.OU] = "${team}"`;
+      const { code } = await signatureTool(["/usr/bin/codesign", "--verify", `-R=${requirement}`, staged]);
+      return code === 0 ? null : `the release is not signed by team ${team}, as this app is; publish it with --sign`;
+    }
+    if (!windows) return null;
+    const { output } = await signatureTool(
+      [
+        powershell(),
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(AUTHENTICODE, "utf16le").toString("base64"),
+      ],
+      { AKAN_NATIVE_INSTALLED_EXE: executableIn(app), AKAN_NATIVE_RELEASE_EXE: executableIn(staged) },
+    );
+    const [own, release] = [...output.matchAll(/^(\w+) ([A-Za-z0-9+/=]*)\r?$/gm)].map(([, status, subject]) => ({
+      status,
+      subject: Buffer.from(subject ?? "", "base64").toString("utf8"),
+    }));
+    if (own?.status !== "Valid" || (release?.status === "Valid" && release.subject === own.subject)) return null;
+    return `the release is not Authenticode-signed by ${own.subject}, as this app is; publish it with --sign`;
+  };
 
   /** null once the carried server answered ready and stayed up SERVER_SETTLE; else why it did not in time. */
   const serverVerdict = (server: DesktopServerStatus): Promise<string | null> =>
@@ -769,16 +843,25 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           }
           if (id !== c.app)
             throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
-          // The manifest signature already vouches for the bytes; macOS also checks the code signature
-          // (Windows Authenticode and Linux packages come with distribution signing, CLI-9).
-          if (mac) await run(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
-          const unpackedRefusal = serverRefusal(carries(staged), app);
+          // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
+          // signed by a team or with Authenticode takes only its own signer's release (Linux packages: CLI-9).
+          if (mac) {
+            const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
+            if (verified.code !== 0)
+              throw new AkanNativeError("INTERNAL", `codesign failed: ${verified.output.trim()}`);
+          }
+          const unpackedRefusal = (await signerRefusal(staged, app)) ?? serverRefusal(carries(staged), app);
           if (unpackedRefusal) {
             rmSync(staging, { recursive: true, force: true });
             const latest = readState();
             fail(latest, m.bundle, unpackedRefusal);
             writeState(latest);
             throw new AkanNativeError("NOT_ALLOWED", unpackedRefusal);
+          }
+          //? setChannel() while this downloaded: the release is of the channel the device left.
+          if (need().channel !== c.channel) {
+            rmSync(staging, { recursive: true, force: true });
+            throw new AkanNativeError("CANCELLED", "the channel changed during the download");
           }
           flushTree(staged);
 
@@ -891,6 +974,26 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         if (windows) void recordInstalledVersion(c.app, installed, entry.version);
       },
 
+      async setChannel(args) {
+        need();
+        const channel = (args as { channel?: unknown } | undefined)?.channel ?? null;
+        if (channel !== null && (typeof channel !== "string" || !isChannelName(channel)))
+          throw new AkanNativeError(
+            "INVALID_ARGS",
+            "channel must be a channel name (lowercase letters, digits, . _ -; up to 41) or null",
+          );
+        const state = readState();
+        const left = need(state).channel;
+        if (channel === null) delete state.channel;
+        else state.channel = channel;
+        //? A download is its channel's release: the device that left the channel must not install it.
+        if (state.pending && need(state).channel !== left) {
+          rmSync(dirname(state.pending.staged), { recursive: true, force: true });
+          state.pending = undefined;
+        }
+        writeState(state);
+      },
+
       async reset() {
         need();
         const state = readState();
@@ -903,6 +1006,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           ...(runningIs(state.trial) ? { trial: state.trial } : {}),
           ...(state.rollback ? { rollback: state.rollback } : {}),
           ...(state.installed !== undefined ? { installed: state.installed } : {}),
+          ...(state.channel ? { channel: state.channel } : {}),
         });
       },
     },

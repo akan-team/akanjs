@@ -6,6 +6,9 @@ export type NativeBuildApiModule = typeof NativeBuildApi;
 export class NativeApi {
   //* The build API versions itself; a major this devkit was not written against is refused before anything builds.
   static readonly supportedMajor = 0;
+  //? An update release's `revoke` and `resetSequence` arrived in 0.12.0, and an older API would publish without them;
+  //? `requestedDistribution` in 0.11.0; akanjs 3.0.x vendors 0.10.0.
+  static readonly minimumVersion = "0.12.0";
 
   /** The API of the akanjs the app installed: the workspace package inside this repo, akanjs's vendored copy elsewhere. */
   static entryOf(appDir: string): string {
@@ -22,9 +25,9 @@ export class NativeApi {
       throw new Error(`The installed akanjs has no native build at ${entry}; update akanjs.`);
     const api = (await import(entry)) as NativeBuildApiModule;
     const major = Number(api.API_VERSION.split(".")[0]);
-    if (major !== NativeApi.supportedMajor)
+    if (major !== NativeApi.supportedMajor || Bun.semver.order(api.API_VERSION, NativeApi.minimumVersion) < 0)
       throw new Error(
-        `The native build API is ${api.API_VERSION}, and this akan CLI speaks ${NativeApi.supportedMajor}.x; install matching versions of akanjs and @akanjs/cli.`,
+        `The native build API is ${api.API_VERSION}, and this akan CLI speaks ${NativeApi.minimumVersion} or a later ${NativeApi.supportedMajor}.x; install matching versions of akanjs and @akanjs/cli.`,
       );
     return api;
   }

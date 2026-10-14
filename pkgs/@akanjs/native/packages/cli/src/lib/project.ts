@@ -25,15 +25,17 @@ export interface ResolvedConfig
   web: Required<Pick<AkanNativeConfig["web"], "dir" | "base">> & { build?: string; devEntry?: string };
   plugins: string[];
   env: EnvConfig;
-  shell: { backgroundColor: string; backgroundColorDark: string };
+  shell: { backgroundColor: string; backgroundColorDark: string; devtools: boolean };
   usageDescriptions: Record<string, string>;
   permissions: PermissionsConfig;
   deepLinks: { schemes: string[]; domains: { host: string; pathPrefixes: string[] }[] };
   desktop: {
     quitOnLastWindowClosed: boolean;
     recovery: "errorPage" | "reload";
-    window: { fullscreen: boolean; skipTaskbar: boolean };
+    window: { fullscreen: boolean; skipTaskbar: boolean; frameless: boolean };
     screenCapture: "picker" | "auto";
+    webview2: "bootstrapper" | "standalone";
+    publisher?: string;
     server?: DesktopServerConfig;
     /** Absolute. */
     bin?: string;
@@ -201,13 +203,19 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   const recovery = raw.desktop?.recovery;
   if (recovery !== undefined && recovery !== "errorPage" && recovery !== "reload")
     problems.push(`desktop.recovery must be "errorPage" or "reload" (got ${JSON.stringify(recovery)})`);
-  for (const key of ["fullscreen", "skipTaskbar"] as const) {
+  for (const key of ["fullscreen", "skipTaskbar", "frameless"] as const) {
     const value = raw.desktop?.window?.[key];
     if (value !== undefined && typeof value !== "boolean") problems.push(`desktop.window.${key} must be a boolean`);
   }
   const screenCapture = raw.desktop?.screenCapture;
   if (screenCapture !== undefined && screenCapture !== "picker" && screenCapture !== "auto")
     problems.push(`desktop.screenCapture must be "picker" or "auto" (got ${JSON.stringify(screenCapture)})`);
+  const webview2 = raw.desktop?.webview2;
+  if (webview2 !== undefined && webview2 !== "bootstrapper" && webview2 !== "standalone")
+    problems.push(`desktop.webview2 must be "bootstrapper" or "standalone" (got ${JSON.stringify(webview2)})`);
+  const publisher = raw.desktop?.publisher;
+  if (publisher !== undefined && (typeof publisher !== "string" || !publisher.trim() || /["\r\n]/.test(publisher)))
+    problems.push("desktop.publisher must be a name on one line, without a double quote");
   if (raw.android?.autoplay !== undefined && typeof raw.android.autoplay !== "boolean")
     problems.push("android.autoplay must be a boolean");
   const bin = raw.desktop?.bin;
@@ -253,6 +261,7 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   const shell = {
     backgroundColor: raw.shell?.backgroundColor ?? "#ffffff",
     backgroundColorDark: raw.shell?.backgroundColorDark ?? raw.shell?.backgroundColor ?? "#000000",
+    devtools: raw.shell?.devtools === true,
   };
   const icon = typeof raw.icon === "string" ? { image: raw.icon } : raw.icon;
   const splashColor = raw.splash?.backgroundColor;
@@ -279,9 +288,12 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
       quitOnLastWindowClosed: raw.desktop?.quitOnLastWindowClosed ?? true,
       recovery: raw.desktop?.recovery === "reload" ? "reload" : "errorPage",
       screenCapture: raw.desktop?.screenCapture === "auto" ? "auto" : "picker",
+      webview2: raw.desktop?.webview2 === "standalone" ? "standalone" : "bootstrapper",
+      ...(typeof raw.desktop?.publisher === "string" ? { publisher: raw.desktop.publisher.trim() } : {}),
       window: {
         fullscreen: raw.desktop?.window?.fullscreen === true,
         skipTaskbar: raw.desktop?.window?.skipTaskbar === true,
+        frameless: raw.desktop?.window?.frameless === true,
       },
       ...(desktopServer ? { server: desktopServer } : {}),
       ...(binDir ? { bin: binDir } : {}),

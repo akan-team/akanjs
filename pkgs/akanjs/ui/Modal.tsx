@@ -3,9 +3,10 @@
 import type { ReactNode } from "react";
 
 import { Dialog } from "./Dialog";
+import type { ModalSurfaceProps } from "./Dialog/modalSurface";
 import { createOverridable } from "./UiOverride";
 
-export interface ModalProps {
+export interface ModalProps extends ModalSurfaceProps {
   className?: string;
   trigger?: ReactNode;
   title?: string | ReactNode;
@@ -30,6 +31,8 @@ export const DefaultModal = ({
   bodyClassName,
   children,
   confirmClose = false,
+  presentation,
+  placement,
 }: ModalProps) => {
   return (
     <Dialog open={open}>
@@ -40,6 +43,8 @@ export const DefaultModal = ({
         bodyClassName={bodyClassName}
         confirmClose={confirmClose}
         closeButton={closeButton}
+        presentation={presentation}
+        placement={placement}
       >
         {title ? <Dialog.Title>{title}</Dialog.Title> : null}
         <Dialog.Content>{children}</Dialog.Content>

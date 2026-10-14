@@ -108,7 +108,7 @@ export async function publishAppUpdate(
     build: (
       JSON.parse(readFileSync(join(resourcesOf(os, app), "updates.json"), "utf8")) as { embeddedSequence: number }
     ).embeddedSequence,
-    arch: hostArch(),
+    arch: ctx.arch ?? hostArch(),
     files: [{ path: basename(app), sha256: tarSha, size: tar.length }],
     archive: { sha256: tarSha, url: `app/${tarSha}.tar.gz`, size: gz.length, gzSha256: sha256(gz) },
     patches,

@@ -141,6 +141,67 @@ enum AkanNativeVectors {
             check(valid == c[3] as? Bool, "ed25519 \(c[4])")
         }
 
+        // Updates protocol v2 (AkanNativeUpdates, AkanNativeKernel.updateDecision).
+        let updates = load("updates")
+        for c in rows(updates, "keyIds") {
+            check(AkanNativeKernel.updateKeyId(Data(base64Encoded: c[0] as! String) ?? Data()) == c[1] as? String, "update keyId \(c[0])")
+        }
+        for c in rows(updates, "decisions") {
+            let running = (c[7] as? [Any]).map { (sequence: ($0[0] as! NSNumber).doubleValue, keyId: $0[1] as! String) }
+            let got = AkanNativeKernel.updateDecision(
+                ring: c[0] as! [String], revoked: c[1] as! [String], signer: c[2] as! String, revokeKeys: c[3] as! [String],
+                resetSequence: c[4] as! Bool, sequence: (c[5] as! NSNumber).doubleValue, embedded: (c[6] as! NSNumber).doubleValue, running: running
+            )
+            check(got.wire == c[8] as? String, "update decision \(c[9]): \(got.wire)")
+        }
+        for c in rows(updates, "urls") {
+            let got = AkanNativeKernel.updateManifestURL(c[0] as! String, platform: c[1] as! String, channel: c[2] as! String, nativeApi: c[3] as! String)
+            check(got == c[4] as? String, "update url \(got)")
+        }
+        let envelopeKeys = (updates["envelopeKeys"] as? [String] ?? []).compactMap { Data(base64Encoded: $0) }
+        let ring = envelopeKeys.map(AkanNativeKernel.updateKeyId)
+        for c in rows(updates, "envelopes") {
+            let large = c[0] as? [Any]
+            let manifest = large.map { String(repeating: $0[0] as! String, count: ($0[1] as! NSNumber).intValue) + ($0[2] as! String) } ?? c[0] as! String
+            let got = AkanNativeKernel.checkUpdateEnvelope(
+                manifest: manifest, keyId: c[1] as! String, signature: c[2] as! String, ring: ring, revoked: c[3] as! [String]
+            ) { bytes, signature, keyId in
+                guard let i = ring.firstIndex(of: keyId), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: envelopeKeys[i]) else { return false }
+                return key.isValidSignature(signature, for: bytes)
+            }
+            check(got.verdict.rawValue == c[4] as? String, "update envelope \(c[5]): \(got.verdict.rawValue)")
+        }
+        let limits = [AkanNativeKernel.maxRevokeKeys, AkanNativeKernel.maxUpdateManifest, AkanNativeKernel.updateReportLimit, AkanNativeKernel.updateReportBatch]
+        let declared = updates["limits"] as? [String: Any]
+        let expectedLimits = ["revokeKeys", "manifestBytes", "reportEvents", "reportBatch"].map { (declared?[$0] as? NSNumber)?.intValue ?? -1 }
+        check(limits == expectedLimits, "update limits: \(limits)")
+
+        // What a phone posts to updates.report.url (AkanNativeUpdateReports).
+        let reports = updates["reports"] as? [String: Any] ?? [:]
+        check(AkanNativeUpdateEvent.allCases.map(\.rawValue) == reports["events"] as? [String], "report events")
+        check(AkanNativeUpdateReason.allCases.map(\.rawValue) == reports["reasons"] as? [String], "report reasons")
+        for c in rows(reports, "outcomes") {
+            let got = AkanNativeKernel.updateReportOutcome((c[0] as! NSNumber).intValue)
+            check(got.rawValue == c[1] as? String, "report outcome \(c[0]): \(got.rawValue)")
+        }
+        for c in rows(reports, "retryAfter") {
+            let got = AkanNativeKernel.updateReportRetryAt(str(c[0]), now: (c[1] as! NSNumber).doubleValue)
+            check(got == (c[2] as? NSNumber)?.doubleValue, "report Retry-After \(c[3]): \(String(describing: got))")
+        }
+        for c in rows(reports, "waits") {
+            let got = AkanNativeKernel.updateReportWaits((c[0] as? NSNumber)?.doubleValue, now: (c[1] as! NSNumber).doubleValue)
+            check(got == c[2] as? Bool, "report waits \(c)")
+        }
+        for c in rows(reports, "keys") {
+            let event = AkanNativeUpdateEvent(rawValue: c[0] as! String)
+            let got = event.map { AkanNativeKernel.updateReportKey($0, bundle: c[1] as! String, reason: str(c[2]).flatMap(AkanNativeUpdateReason.init(rawValue:))) }
+            check(got == c[3] as? String, "report key \(c)")
+        }
+        for c in rows(reports, "times") {
+            let got = AkanNativeKernel.updateReportTime((c[0] as! NSNumber).int64Value)
+            check(got == c[1] as? String, "report time \(c[0]): \(got)")
+        }
+
         // A missing or truncated file must not pass as fewer checks.
         for (name, count) in AkanNativeVectorData.counts where ran[name, default: 0] != count {
             failures.append("\(name): \(ran[name, default: 0]) of \(count) checks ran")

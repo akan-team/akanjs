@@ -16,6 +16,12 @@ export interface McpDocumentOptions {
    * no `outputSchema` (results still ship as `structuredContent`).
    */
   outputSchema?: McpOutputSchemaMode;
+  /**
+   * MCP Apps: an endpoint kept off the shelf only by `mcp: false`, or the `light<Model>` read a relation field makes,
+   * is published as an app-only tool, which a host lists to the views it renders and never to the model. Every other
+   * refusal still holds.
+   */
+  apps?: boolean;
 }
 
 export type McpOutputSchemaMode = "full" | "shallow" | "none";
@@ -47,6 +53,10 @@ export class McpDocument {
   static readonly listKey = "items";
 
   readonly tools: McpTool[];
+  /** `visibility: ["app"]` — callable by a rendered view, absent from every model-facing list. */
+  readonly appTools: McpTool[];
+  /** Each app tool, and the refusal that keeps it from a model. */
+  readonly appOnly: McpRefusal[];
   readonly resourceTemplates: McpResourceTemplate[];
   /** Every readable thing is addressed by a template, so there are no fixed resources to enumerate. */
   readonly resources: McpResource[] = [];
@@ -58,6 +68,7 @@ export class McpDocument {
   readonly #catalogue: AgentCatalogue;
   readonly #byToolName = new Map<string, McpExposedEndpoint>();
   readonly #templates = new Map<string, string>();
+  readonly #appOnly: (McpExposedEndpoint & { reason: string })[] = [];
   #cost: McpListingCost | null = null;
 
   constructor(serializedSignal: Record<string, SerializedSignal>, options: McpDocumentOptions = {}) {
@@ -70,8 +81,10 @@ export class McpDocument {
       const uriTemplate = this.#templates.get(item.key);
       return uriTemplate ? [this.#template(item, uriTemplate)] : [];
     });
-    // Read last: resolving the tool and template texts above is what fills it.
+    // Read after the published texts resolve, which is what fills it, and before the app-only ones: no model reads those.
     this.undescribed = this.#catalogue.undescribed;
+    this.appTools = this.#appOnly.map((item) => ({ ...this.#tool(item), _meta: { ui: { visibility: ["app"] } } }));
+    this.appOnly = this.#appOnly.map(({ key, reason }) => ({ key, reason }));
   }
 
   get listingCost(): McpListingCost {
@@ -115,12 +128,17 @@ export class McpDocument {
 
   #collect(serializedSignal: Record<string, SerializedSignal>): McpExposedEndpoint[] {
     const tools: McpExposedEndpoint[] = [];
+    const appOnly: (McpExposedEndpoint & { reason: string })[] = [];
     for (const candidate of AgentCatalogue.candidates(serializedSignal, {
       excludeSignals: this.#options.excludeSignals,
     })) {
       const { refName, key, endpoint } = candidate;
       const item: McpExposedEndpoint = { refName, key, endpoint };
       const reason = mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly });
+      if (reason && this.#isAppOnly(item)) {
+        appOnly.push({ ...item, reason });
+        continue;
+      }
       if (reason) {
         this.#catalogue.refuse(key, reason);
         continue;
@@ -134,7 +152,22 @@ export class McpDocument {
       if (uriTemplate) this.#templates.set(key, uriTemplate);
       tools.push(item);
     }
+    // Claimed after every published entry, so a name the model's shelf holds is never lost to one only a view calls.
+    for (const item of appOnly) {
+      if (!this.#catalogue.claim(item.key)) continue;
+      this.#byToolName.set(item.key, item);
+      this.#appOnly.push(item);
+    }
     return tools;
+  }
+
+  isAppOnly(name: string): boolean {
+    return this.#appOnly.some((item) => item.key === name);
+  }
+
+  #isAppOnly({ refName, key, endpoint }: McpExposedEndpoint) {
+    if (!this.#options.apps) return false;
+    return !mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly, view: true });
   }
 
   static #addressable({ origin, refName, key, baseVerb }: AgentCandidate): boolean {
@@ -183,7 +216,17 @@ export class McpDocument {
           additionalProperties: false,
         }
       : returns;
-    return { ...schema, ...this.#defs(schema, "output") };
+    const defs = this.#defs(schema, "output");
+    return { ...McpDocument.#objectRoot(schema, defs.$defs), ...defs };
+  }
+
+  // The spec types `outputSchema` as an object schema, and SDK clients reject a root `$ref` with the whole `tools/list`.
+  // The model's definition is copied to the root and stays in `$defs`, where a self-reference still resolves.
+  static #objectRoot(schema: Record<string, unknown>, defs: Record<string, unknown> | undefined) {
+    const { $ref, ...rest } = schema;
+    if (typeof $ref !== "string" || !$ref.startsWith("#/$defs/")) return schema;
+    const target = defs?.[$ref.slice("#/$defs/".length)];
+    return target && typeof target === "object" ? { ...(target as Record<string, unknown>), ...rest } : schema;
   }
 
   #defs(seed: unknown, side: McpSchemaSide) {

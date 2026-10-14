@@ -7,10 +7,19 @@ export interface ActionProps {
   children?: ReactNode;
 }
 
-export const Back = ({ className, children }: ActionProps) => (
-  <div className={cn("cursor-pointer", className)} onClick={() => router.back()}>
+export interface BackProps extends ActionProps {
+  /** Where to go when there is no history to go back to, as on a deep link or a freshly opened app. */
+  fallback?: string;
+}
+
+export const Back = ({ className, children, fallback }: BackProps) => (
+  <button
+    type="button"
+    className={cn("cursor-pointer", className)}
+    onClick={() => (fallback === undefined ? router.back() : router.backOrFallback(fallback))}
+  >
     {children}
-  </div>
+  </button>
 );
 
 export const Close = ({ className, children }: ActionProps) => (

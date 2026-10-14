@@ -88,6 +88,27 @@ export default page().render(() => {
       }),
     },
     {
+      name: "isMcpView",
+      desc: l.trans({
+        en: "True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.",
+        ko: "페이지가 agent 호스트 채팅 안의 MCP App view로 실행 중이면 true입니다. 이때는 부모 프레임에 아무 메시지도 보내지 않습니다.",
+      }),
+    },
+    {
+      name: ["breakpointQuery", "TailwindBreakpoint"],
+      desc: l.trans({
+        en: "The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.",
+        ko: "Tailwind의 `md:`(또는 `{ below: true }`이면 `max-md:`)가 맞추는 media query입니다. 컴포넌트에서 `matchMedia`에 씁니다.",
+      }),
+    },
+    {
+      name: ["transitionTypes", "viewTransitionClassOf"],
+      desc: l.trans({
+        en: "The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.",
+        ko: "`.config({ transition })`가 받는 페이지 전환 목록과, 각 전환이 push나 pop될 때 그리는 view transition class입니다.",
+      }),
+    },
+    {
       name: ["resolveRouteModule", "isRouteDefinition"],
       desc: l.trans({
         en: "Used by route loaders. App code never calls them.",
@@ -98,14 +119,14 @@ export default page().render(() => {
 
   const routerRows = [
     {
-      name: "push(href, { scrollToTop })",
+      name: "push(href, { scrollToTop, shallow })",
       desc: l.trans({
         en: "Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.",
         ko: "route로 이동하고 history 항목을 하나 추가합니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
       }),
     },
     {
-      name: "replace(href)",
+      name: "replace(href, { shallow })",
       desc: l.trans({
         en: "Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.",
         ko: "현재 history 항목을 바꾸면서 이동합니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
@@ -114,6 +135,13 @@ export default page().render(() => {
     {
       name: "back()",
       desc: l.trans({ en: "Goes back one entry. Browser only.", ko: "한 단계 뒤로 갑니다. 브라우저에서만 됩니다." }),
+    },
+    {
+      name: "postPathChange(change)",
+      desc: l.trans({
+        en: "Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.",
+        ko: "이 페이지를 embed한 프레임에 어디로 갔는지 알립니다. 새 경로나 페이지 목록의 `{ page }`입니다. MCP App view에서는 아무것도 보내지 않습니다.",
+      }),
     },
     {
       name: "backOrFallback(href?)",
@@ -377,6 +405,11 @@ export default page().render(() => {
           marks: onRoot,
         },
         {
+          name: ".viewport(obj)",
+          desc: l.trans({ en: "The viewport and theme-color meta.", ko: "viewport와 theme-color meta입니다." }),
+          marks: onRoot,
+        },
+        {
           name: ".reconnect(on?)",
           desc: l.trans({ en: "The connection-lost overlay.", ko: "연결이 끊겼을 때 뜨는 오버레이입니다." }),
           marks: onRoot,
@@ -465,8 +498,8 @@ export default page().render(() => {
       key: ".manifest(manifest)",
       type: "WebAppManifest",
       desc: l.trans({
-        en: "The PWA manifest, emitted as a data URL.",
-        ko: "PWA manifest입니다. data URL로 내보냅니다.",
+        en: "The PWA manifest, served at `/manifest.webmanifest`; a CSR or native bundle carries it inline.",
+        ko: "PWA manifest입니다. `/manifest.webmanifest`로 제공하고, CSR·네이티브 번들은 안에 담아 둡니다.",
       }),
     },
     {
@@ -476,6 +509,14 @@ export default page().render(() => {
       desc: l.trans({
         en: "`mobile` centers the app in a column at most 600px wide, and fills a narrower screen.",
         ko: "`mobile`은 앱을 가운데 최대 600px 폭의 열에 그리고, 그보다 좁은 화면은 꽉 채웁니다.",
+      }),
+    },
+    {
+      key: ".viewport(viewport)",
+      type: "RouteViewport",
+      desc: l.trans({
+        en: "`fitCover` draws under the notch (native default), `interactiveWidget` the keyboard mode, `themeColor` one or per theme.",
+        ko: "`fitCover`는 노치 아래까지(네이티브 기본값), `interactiveWidget`은 키보드 방식, `themeColor`는 하나 또는 테마별 색입니다.",
       }),
     },
     {
@@ -504,8 +545,8 @@ export default page().render(() => {
       type: '"none" | "fade" | "bottomUp" | "stack" | "scaleOut"',
       default: l.trans({ en: "by platform", ko: "플랫폼별" }),
       desc: l.trans({
-        en: "Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.",
-        ko: "들어올 때의 애니메이션입니다. 하위 route는 iOS에서 `stack`, Android에서 `scaleOut`, 그 밖에는 `none`입니다.",
+        en: "Enter animation, a view transition on the web. Nested routes default to `stack` on iOS, `scaleOut` on Android.",
+        ko: "들어올 때의 애니메이션이며 웹에서는 view transition입니다. 하위 route 기본값은 iOS `stack`, Android `scaleOut`입니다.",
       }),
     },
     {
@@ -513,26 +554,26 @@ export default page().render(() => {
       type: 'boolean | "top" | "bottom" | { top, bottom, android }',
       default: l.trans({ en: "on in the app, off on the web", ko: "앱은 켜짐, 웹은 꺼짐" }),
       desc: l.trans({
-        en: "Pads the page for the notch and the home bar.",
-        ko: "노치와 홈 바만큼 페이지에 여백을 줍니다.",
+        en: "Pads the page for the notch and the home bar. The web needs `.viewport({ fitCover: true })`.",
+        ko: "노치와 홈 바만큼 페이지에 여백을 줍니다. 웹에서는 `.viewport({ fitCover: true })`가 있어야 합니다.",
       }),
     },
     {
       key: "topInset",
-      type: "number | boolean",
-      default: "0",
+      type: 'number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }',
+      default: l.trans({ en: "0; in the app, the chrome's height", ko: "0, 앱에서는 chrome 높이" }),
       desc: l.trans({
-        en: "Space kept for a fixed top bar, in px. `true` means 48.",
-        ko: "고정된 상단 바를 위해 비워 둘 높이(px)입니다. `true`는 48입니다.",
+        en: "Space kept for a fixed top bar: px, or px per breakpoint from its width up. `true` means 48.",
+        ko: "고정된 상단 바를 위해 비워 둘 높이입니다. px 하나, 또는 breakpoint마다 그 너비부터 쓸 px이며 `true`는 48입니다.",
       }),
     },
     {
       key: "bottomInset",
-      type: "number | boolean",
-      default: "0",
+      type: 'number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }',
+      default: l.trans({ en: "0; in the app, the chrome's height", ko: "0, 앱에서는 chrome 높이" }),
       desc: l.trans({
-        en: "Space kept for a fixed bottom bar, in px. `true` means 48.",
-        ko: "고정된 하단 바를 위해 비워 둘 높이(px)입니다. `true`는 48입니다.",
+        en: "Space kept for a fixed bottom bar, in the same forms. `{ base: 48, md: 0 }` reserves a phone-only bar.",
+        ko: "고정된 하단 바를 위해 비워 둘 높이이며 형식은 같습니다. `{ base: 48, md: 0 }`은 폰에서만 보이는 바의 자리입니다.",
       }),
     },
     {
@@ -1081,6 +1122,32 @@ export class ProjectStore extends store(sig.project, () => ({
                   <span>
                     <strong>page에서는 redirect를 씁니다.</strong> page의 render 안에서{" "}
                     <code>router.redirect("/signin")</code>을 부르면 307 redirect로 응답합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>shallow</code> keeps the page.
+                    </strong>{" "}
+                    On an SSR page, a push or replace that keeps the path writes the URL and the store's search params
+                    without asking the server, and back or forward between such entries stays shallow. Client components
+                    see the change at once; a server component's <code>.search()</code> at the next full navigation. A
+                    new path, or a CSR app, navigates normally.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>shallow</code>는 페이지를 그대로 둡니다.
+                    </strong>{" "}
+                    SSR 페이지에서 경로가 같은 push·replace는 서버에 페이지를 묻지 않고 URL과 store의 search param만
+                    바꾸며, 그런 항목 사이의 뒤로·앞으로 가기도 그대로 shallow입니다. 클라이언트 컴포넌트는 바로 보고,
+                    서버 컴포넌트의 <code>.search()</code>는 다음 전체 이동 때 봅니다. 경로가 다르거나 CSR 앱이면
+                    평소처럼 이동합니다.
                   </span>
                 ),
               })}

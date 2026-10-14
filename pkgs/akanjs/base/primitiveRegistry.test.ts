@@ -7,6 +7,7 @@ import {
   EXAMPLE_VALUE,
   Float,
   ID,
+  ImageResult,
   Int,
   PrimitiveRegistry,
   PrimitiveScalar,
@@ -24,6 +25,7 @@ describe("PrimitiveRegistry", () => {
     expect(PrimitiveRegistry.get("Any")).toBe(Any);
     expect(PrimitiveRegistry.get("Binary")).toBe(Binary);
     expect(PrimitiveRegistry.get("Upload")).toBe(Upload);
+    expect(PrimitiveRegistry.get("ImageResult")).toBe(ImageResult);
 
     expect(PrimitiveRegistry.getName(Int)).toBe("Int");
     expect(PrimitiveRegistry.has(Float)).toBe(true);
@@ -35,6 +37,7 @@ describe("PrimitiveRegistry", () => {
       "Any",
       "Binary",
       "Upload",
+      "ImageResult",
       "String",
       "Boolean",
       "Date",
@@ -178,6 +181,21 @@ describe("Binary", () => {
     expect(parsed[299_999]).toBe(bytes[299_999]);
   });
 
+  test("codes the same base64 without a Buffer, as a browser bundle has none", () => {
+    const bytes = new Uint8Array(70_000);
+    for (let idx = 0; idx < bytes.length; idx += 1) bytes[idx] = (idx * 7) % 256;
+    const encoded = Binary.toBase64(bytes);
+    const holder = globalThis as { Buffer?: unknown };
+    const buffer = holder.Buffer;
+    holder.Buffer = undefined;
+    try {
+      expect(Binary.toBase64(bytes)).toBe(encoded);
+      expect(Binary.fromBase64(encoded)).toEqual(bytes);
+    } finally {
+      holder.Buffer = buffer;
+    }
+  });
+
   test("reads a view that does not start at its buffer origin", () => {
     const view = new Uint8Array([9, 9, 1, 2, 3]).subarray(2);
     expect(Binary._serialize(view)).toBe(Binary._serialize(new Uint8Array([1, 2, 3])));
@@ -185,5 +203,34 @@ describe("Binary", () => {
 
   test("refuses a value that is neither bytes nor base64", () => {
     expect(() => Binary._serialize(42 as never)).toThrow("Invalid Binary value");
+  });
+});
+
+describe("ImageResult", () => {
+  const data = ImageResult[EXAMPLE_VALUE].data;
+
+  test("accepts padded base64 in one of the image types a model reads, with or without a caption", () => {
+    expect(ImageResult.validate({ data, mimeType: "image/png", caption: "plan" })).toBe(true);
+    expect(ImageResult.validate({ data, mimeType: "image/webp" })).toBe(true);
+    expect(ImageResult._parse({ data, mimeType: "image/jpeg" })).toEqual({ data, mimeType: "image/jpeg" });
+  });
+
+  test("refuses a data URL, wrapped or url-safe base64, and an image type a model cannot read", () => {
+    expect(ImageResult.validate({ data: `data:image/png;base64,${data}`, mimeType: "image/png" })).toBe(false);
+    expect(ImageResult.validate({ data: `${data.slice(0, 40)}\n${data.slice(40)}`, mimeType: "image/png" })).toBe(
+      false,
+    );
+    expect(ImageResult.validate({ data: "ab-_", mimeType: "image/png" })).toBe(false);
+    expect(ImageResult.validate({ data: "abc", mimeType: "image/png" })).toBe(false);
+    expect(ImageResult.validate({ data, mimeType: "image/svg+xml" as never })).toBe(false);
+    expect(() => ImageResult._parse("not an image" as never)).toThrow("Invalid ImageResult value");
+  });
+
+  test("shows every agent but the MCP tool path the caption instead of the base64", () => {
+    expect(ImageResult.agent.read({ data, mimeType: "image/png", caption: "plan" })).toEqual({
+      mimeType: "image/png",
+      caption: "plan",
+    });
+    expect(ImageResult.agent.read({ data, mimeType: "image/png" })).toEqual({ mimeType: "image/png" });
   });
 });

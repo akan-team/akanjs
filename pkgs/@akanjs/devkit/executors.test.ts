@@ -292,6 +292,23 @@ describe("Executor filesystem helpers", () => {
       await readFile(path.join(templateRoot, "favicon.ico")),
     );
   });
+
+  test("keeps a static file already there when overwrite is false, and reports it unwritten", async () => {
+    const root = await makeTempRoot();
+    const exec = new Executor("fixture", root);
+    await writeText(path.join(root, "app/public/logo.png"), "the app's own logo");
+
+    const applied = await exec.applyTemplate({
+      basePath: "app/public",
+      template: "app/public/logo.png",
+      overwrite: false,
+    });
+
+    expect(await readFile(path.join(root, "app/public/logo.png"), "utf8")).toBe("the app's own logo");
+    expect(applied).toEqual([
+      expect.objectContaining({ filePath: path.join(root, "app/public/logo.png"), written: false }),
+    ]);
+  });
 });
 
 describe("Workspace and app executor environment contracts", () => {

@@ -54,7 +54,7 @@ import { type BuildContext, SigningError } from "../lib/prepare.ts";
 import { privacyApiProblems, privacyManifest } from "../lib/privacy.ts";
 import type { IosManifest } from "../lib/project.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
-import { updatesResource } from "../lib/updates.ts";
+import { writePhoneUpdates } from "../lib/updates.ts";
 import { swiftVectorData } from "../lib/vectors.ts";
 
 const SHELL_SRC = join(PACKAGE_ROOT, "native", "ios", "Sources");
@@ -199,17 +199,22 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
   const boot = makeNativeBoot(ctx, "ios");
   writeFileSync(join(appPath, "boot.json"), JSON.stringify(boot));
   if (config.updates)
-    writeFileSync(
-      join(appPath, "updates.json"),
-      updatesResource(config.updates, config.app, "ios", boot.nativeApi, ctx.dev),
-    );
+    writePhoneUpdates({
+      updatesJson: join(appPath, "updates.json"),
+      outDir: ctx.outDir,
+      updates: config.updates,
+      app: config.app,
+      platform: "ios",
+      nativeApi: boot.nativeApi,
+      dev: ctx.dev,
+    });
   writeFileSync(join(appPath, "env.runtime.json"), JSON.stringify(ctx.env, null, 2));
   writeFileSync(
     join(appPath, "shell.json"),
     JSON.stringify({
       backgroundColor: config.shell.backgroundColor,
       backgroundColorDark: config.shell.backgroundColorDark,
-      devtools: ctx.dev,
+      devtools: ctx.dev || config.shell.devtools,
       splash: { autoHide: config.splash.autoHide, timeout: config.splash.timeout },
       // L0: schemes the app adds to what links and the opener may hand to the OS.
       externalSchemes: config.security?.shell?.externalSchemes ?? [],

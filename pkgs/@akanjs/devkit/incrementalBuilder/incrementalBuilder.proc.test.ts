@@ -82,6 +82,165 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     expect(log).toContain(reason);
   }, 30_000);
 
+  test("builds a view's shell once on request, answers with its failure, and reports it to no tab", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    // A stand-in batch: boots, and fails a shell batch by naming the needs it was handed.
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation, needs } = JSON.parse(process.argv[2]);
+const errors = needs.includes("base") ? {} : { shell: "handed " + needs.join(",") };
+process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+      proc.send({ type: "build-csr", id: 7, reason: "mcp app view", shell: true } satisfies BuilderMessage);
+      await until(proc, "build-csr-res", () => messages.some((message) => message.type === "build-csr-res"));
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+    expect(messages.find((message) => message.type === "build-csr-res")).toEqual({
+      type: "build-csr-res",
+      id: 7,
+      ok: false,
+      error: "handed shell",
+    });
+    expect(messages.some((message) => message.type === "build-status")).toBe(false);
+  }, 30_000);
+
+  test("answers a second shell request in the same generation without building again", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const ledger = path.join(root, "batches.log");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation, needs } = JSON.parse(process.argv[2]);
+require("node:fs").appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + "\\n");
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const answers = () => messages.filter((message) => message.type === "build-csr-res");
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+      proc.send({ type: "build-csr", id: 7, reason: "mcp app view", shell: true } satisfies BuilderMessage);
+      await until(proc, "the first build-csr-res", () => answers().length === 1);
+      proc.send({ type: "build-csr", id: 8, reason: "mcp app view", shell: true } satisfies BuilderMessage);
+      await until(proc, "the second build-csr-res", () => answers().length === 2);
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+    expect(answers()).toEqual([
+      { type: "build-csr-res", id: 7, ok: true },
+      { type: "build-csr-res", id: 8, ok: true },
+    ]);
+    const batches = (await Bun.file(ledger).text()).trim().split("\n");
+    expect(batches.filter((needs) => needs === "shell")).toHaveLength(1);
+  }, 30_000);
+
+  test("builds the shell again once the css it inlined is replaced, though the generation has not moved", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const ledger = path.join(root, "batches.log");
+    const gate = path.join(root, "css-lands");
+    const landed = { "": { cssUrl: "/_akan/styles/root-next.css", cssRelPath: "styles/root-next.css" } };
+    // The registry's boot build stands in for a save's css compile, held until the first shell is built.
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation, needs, cssAssets } = JSON.parse(process.argv[2]);
+fs.appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + " " + JSON.stringify(cssAssets) + "\\n");
+const orphaned = () => process.exit(1);
+process.on("disconnect", orphaned);
+const deadline = Date.now() + 15_000;
+if (needs.includes("ssr")) while (!fs.existsSync(${JSON.stringify(gate)}) && Date.now() < deadline) await Bun.sleep(20);
+const css = needs.includes("ssr") ? { cssAssets: ${JSON.stringify(landed)} } : {};
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] }, ...css } });
+process.off("disconnect", orphaned);
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+        AKAN_DEV_CSR_PATCHER: "off",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const answers = () => messages.filter((message) => message.type === "build-csr-res");
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+      proc.send({ type: "build-csr", id: 7, reason: "mcp app view", shell: true } satisfies BuilderMessage);
+      await until(proc, "the first build-csr-res", () => answers().length === 1);
+      await writeText(gate, "");
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
+      proc.send({ type: "build-csr", id: 8, reason: "mcp app view", shell: true } satisfies BuilderMessage);
+      await until(proc, "the second build-csr-res", () => answers().length === 2);
+    } finally {
+      await writeText(gate, "");
+      proc.kill();
+      await proc.exited;
+    }
+    expect(answers()).toEqual([
+      { type: "build-csr-res", id: 7, ok: true },
+      { type: "build-csr-res", id: 8, ok: true },
+    ]);
+    const shells = (await Bun.file(ledger).text()).split("\n").filter((line) => line.startsWith("shell "));
+    expect(shells).toEqual(["shell null", `shell ${JSON.stringify(landed)}`]);
+  }, 30_000);
+
   test("a killed boot build is tried again after the crash window, before boot-armed; a route build's check waits likewise", async () => {
     // Inside the checkout so the route's client bundle resolves the framework from its source.
     const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));

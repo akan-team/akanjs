@@ -43,6 +43,22 @@ export interface CreateWindowOptions {
   /** Default: offset from the focused window, like new documents on macOS. */
   x?: number;
   y?: number;
+  /** No title bar or border, from the first frame: a kiosk drawn at an exact size. */
+  frameless?: boolean;
+}
+
+/** A display of `screen.getDisplays()` and where on it the window goes. */
+export interface PlaceOnDisplayOptions {
+  /** The display's `id`. */
+  display?: number;
+  /** Or its place in that list; 0 is the primary display. */
+  index?: number;
+  /** From the display's top-left corner, the window's frame; left out, the whole display. */
+  bounds?: { x: number; y: number; width: number; height: number };
+  /** "logical" (default): CSS px at that display's own scale. "physical": its device pixels, as a panel is specified. */
+  unit?: "logical" | "physical";
+  /** Borderless fullscreen on that display, in place of `bounds`. */
+  fullscreen?: boolean;
 }
 
 /** `window`: which window an op acts on. Default: the window of the page that calls. */
@@ -61,6 +77,23 @@ export interface WindowApi {
   restore(args?: On): Promise<WindowState>;
   setFullscreen(args: { value: boolean } & On): Promise<WindowState>;
   setAlwaysOnTop(args: { value: boolean } & On): Promise<WindowState>;
+  /** Shows or hides the title bar and border. */
+  setDecorations(args: { value: boolean } & On): Promise<WindowState>;
+  /**
+   * Hides the pointer while it is over this window, as a kiosk screen does — over its external views too, on
+   * Windows; elsewhere on the desktop it still shows.
+   */
+  setCursorVisible(args: { value: boolean } & On): Promise<WindowState>;
+  /**
+   * The smallest inner size, logical pixels: both or neither (none); one alone is INVALID_ARGS. The default is
+   * 320×240, which an LED board drawn at its device size (640×128 ÷ the display's `scale`) is below.
+   */
+  setMinSize(args: { width?: number; height?: number } & On): Promise<WindowState>;
+  /**
+   * Puts the window on one display, however the displays' scales differ. Bounds below the minimum size lower it to
+   * fit. NOT_FOUND for a display that is not connected.
+   */
+  placeOnDisplay(args: PlaceOnDisplayOptions & On): Promise<WindowState>;
   show(args?: On): Promise<WindowState>;
   hide(args?: On): Promise<WindowState>;
   focus(args?: On): Promise<WindowState>;
@@ -126,6 +159,10 @@ export const appWindow = definePlugin<WindowApi, WindowEvents>("window", {
     "restore",
     "setFullscreen",
     "setAlwaysOnTop",
+    "setDecorations",
+    "setCursorVisible",
+    "setMinSize",
+    "placeOnDisplay",
     "show",
     "hide",
     "focus",
@@ -159,6 +196,11 @@ export interface WindowHandle {
   toggleMaximize(): Promise<WindowState>;
   setFullscreen(value: boolean): Promise<WindowState>;
   setAlwaysOnTop(value: boolean): Promise<WindowState>;
+  setDecorations(value: boolean): Promise<WindowState>;
+  setCursorVisible(value: boolean): Promise<WindowState>;
+  /** Both left out: no minimum. One alone is INVALID_ARGS. */
+  setMinSize(width?: number, height?: number): Promise<WindowState>;
+  placeOnDisplay(options: PlaceOnDisplayOptions): Promise<WindowState>;
   show(): Promise<WindowState>;
   hide(): Promise<WindowState>;
   focus(): Promise<WindowState>;
@@ -188,6 +230,15 @@ export function windowHandle(id: number): WindowHandle {
     toggleMaximize: () => appWindow.toggleMaximize(on),
     setFullscreen: (value) => appWindow.setFullscreen({ value, ...on }),
     setAlwaysOnTop: (value) => appWindow.setAlwaysOnTop({ value, ...on }),
+    setDecorations: (value) => appWindow.setDecorations({ value, ...on }),
+    setCursorVisible: (value) => appWindow.setCursorVisible({ value, ...on }),
+    setMinSize: (width, height) =>
+      appWindow.setMinSize({
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...on,
+      }),
+    placeOnDisplay: (options) => appWindow.placeOnDisplay({ ...options, ...on }),
     show: () => appWindow.show(on),
     hide: () => appWindow.hide(on),
     focus: () => appWindow.focus(on),

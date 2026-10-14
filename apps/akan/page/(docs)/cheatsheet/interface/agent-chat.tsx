@@ -300,8 +300,8 @@ export default page().render(() => {
     {
       name: "AgentLauncher",
       fallback: "DefaultLauncher",
-      en: "The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge.",
-      ko: "`label`, `hotkey`, 새 메시지 뱃지용 `unread`를 받는 닫힌 상태의 버튼입니다.",
+      en: "The closed-state button, given `label`, `hotkey`, `unread` for a new-message badge, and `style` carrying its layer, which it spreads onto its root as it does `className`.",
+      ko: "`label`, `hotkey`, 새 메시지 뱃지용 `unread`, 그리고 레이어를 담은 `style`을 받는 닫힌 상태의 버튼입니다. `style`은 `className`처럼 루트에 펼쳐 넣습니다.",
     },
     {
       name: "AgentBubble",
@@ -1387,6 +1387,23 @@ export default layout().render(({ children }) => {
                 desc: l.trans({
                   en: "`false` draws no floating button, for a shell that already has its own entry point.",
                   ko: "이미 진입점이 있는 셸이라면 `false`로 떠 있는 버튼을 그리지 않습니다.",
+                }),
+              },
+              {
+                key: "launcherPlacement",
+                type: '"right" | "left"',
+                default: '"right"',
+                desc: l.trans({
+                  en: "The button's corner, kept above a tab bar or composer and the safe area, and under menus and modals.",
+                  ko: "버튼이 놓일 모서리이며, 탭 바나 입력창과 safe area 위, 메뉴와 modal 아래에 놓입니다.",
+                }),
+              },
+              {
+                key: "hideLauncherBelow",
+                type: '"sm" | "md" | "lg"',
+                desc: l.trans({
+                  en: "Hides the button below this breakpoint; ⌘L / Ctrl+L or a controlled `open` still opens the panel.",
+                  ko: "이 breakpoint보다 좁으면 버튼을 숨기며, ⌘L / Ctrl+L이나 제어하는 `open`으로는 패널이 열립니다.",
                 }),
               },
               {

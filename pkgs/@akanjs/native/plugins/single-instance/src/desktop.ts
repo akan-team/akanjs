@@ -20,6 +20,10 @@ export function createDesktopSingleInstance(
   let listens = 0;
 
   const received = (ctx: DesktopContext, message: SecondInstance) => {
+    //? The count only: a deep link in the arguments can carry an OAuth code or a token.
+    console.info(
+      `[akan-native] single-instance: a second launch handed over to this one (${message.args.length} arguments)`,
+    );
     bringToFront(ctx).catch((error) => console.error("[akan-native] single-instance: cannot focus the window", error));
     // Windows and Linux open a deep link by starting the app again (D6): it arrives here.
     ctx.openLinks(message.args);

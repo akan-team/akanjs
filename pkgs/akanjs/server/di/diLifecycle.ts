@@ -22,6 +22,7 @@ import type { ServerSignal, ServerSignalCls } from "../../signal/serverSignal";
 import { SignalRegistry } from "../../signal/signalRegistry";
 import type { AkanLib, DatabaseModule, ScalarModule, ServiceModule } from "../akanLib";
 import { createDefaultAkanOption } from "../akanOption";
+import { MachineAccount } from "../machine/machineAccount";
 import type { WebProxyRegistration } from "../proxy";
 import { CascadeRunner, DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
 import type { SignalRoutes, WebsocketRoutes } from "../types";
@@ -32,6 +33,7 @@ import {
   type DiModuleCandidate,
   getModuleCascadeRefNames,
   getModuleDependencyRefNames,
+  getModuleRelationRefNames,
   isDestroyableUse,
   normalizeAdaptorRefName,
   normalizeServiceRefName,
@@ -169,6 +171,8 @@ export class DiLifecycle {
         this.#scalar.set(mod.constant.refName, mod);
       });
     });
+    //? Last, so it runs innermost: it reads the account the libs' middlewares resolved and owns `account.machine`.
+    this.#middleware.set(MachineAccount.refName, MachineAccount);
     const disabledModules = this.#resolveDisabledModules({
       databaseCandidates,
       serviceCandidates,
@@ -236,12 +240,19 @@ export class DiLifecycle {
     const candidates = new Map<string, DiModuleCandidate>([...databaseCandidates, ...serviceCandidates]);
     const disabledReasons = new Map<string, string>();
 
+    const { operationMode } = getEnv();
     candidates.forEach(({ refName, module }) => {
-      if (!module.service.srv.enabled) disabledReasons.set(refName, "service disabled");
+      const modes = module.service.srv.operationMode;
+      if (modes && !modes.includes(operationMode))
+        disabledReasons.set(refName, `operationMode "${operationMode}" is not in [${modes.join(", ")}]`);
+      else if (!module.service.srv.enabled) disabledReasons.set(refName, "service disabled");
     });
 
     // Applied over the enabled set rather than beside it: naming a module the workspace disabled does not enable it.
-    const selected = this.#resolveSelectedModules(candidates, modules);
+    const selected = this.#resolveSelectedModules(
+      candidates,
+      DiLifecycle.#expandSelectors(modules, candidates, "modules"),
+    );
     if (selected) {
       candidates.forEach(({ refName }) => {
         if (!selected.has(refName) && !disabledReasons.has(refName))
@@ -249,7 +260,12 @@ export class DiLifecycle {
       });
     }
 
-    const excluded = this.#resolveExcludedModules({ candidates, disableModules, disableLibs, moduleLibs });
+    const excluded = this.#resolveExcludedModules({
+      candidates,
+      disableModules: DiLifecycle.#expandSelectors(disableModules, candidates, "disableModules"),
+      disableLibs,
+      moduleLibs,
+    });
     // Last, so it wins over a selection: `modules` says what a process is for, the exclusions what it must not run.
     excluded.forEach((reason, refName) => {
       if (!disabledReasons.has(refName)) disabledReasons.set(refName, reason);
@@ -261,11 +277,15 @@ export class DiLifecycle {
       changed = false;
       candidates.forEach(({ refName, module }) => {
         if (disabledReasons.has(refName)) return;
-        for (const dependencyRefName of getModuleDependencyRefNames(module)) {
+        const reached = [
+          ...[...getModuleDependencyRefNames(module)].map((target) => ["depends on", target] as const),
+          ...[...getModuleRelationRefNames(module)].map((target) => ["relates to", target] as const),
+        ];
+        for (const [link, dependencyRefName] of reached) {
           if (dependencyRefName === refName) continue;
           const dependencyReason = disabledReasons.get(dependencyRefName);
           if (!dependencyReason) continue;
-          disabledReasons.set(refName, `depends on disabled module "${dependencyRefName}"`);
+          disabledReasons.set(refName, `${link} disabled module "${dependencyRefName}"`);
           if (excludedClosure.has(dependencyRefName)) excludedClosure.add(refName);
           changed = true;
           break;
@@ -338,12 +358,33 @@ export class DiLifecycle {
       const dependencies = [
         ...getModuleDependencyRefNames(candidate.module),
         ...getModuleCascadeRefNames(candidate.module),
+        ...getModuleRelationRefNames(candidate.module),
       ];
       for (const dependency of dependencies) if (candidates.has(dependency)) pending.push(dependency);
     }
     const mounted = [...selected].sort((a, b) => a.localeCompare(b)).join(", ");
     this.logger.debug(`Mounting ${selected.size} of ${candidates.size} module(s): ${mounted}`);
     return selected;
+  }
+
+  //* `@<operationMode>` names every module whose serve() lists that mode, so a new one joins without editing a list.
+  static #expandSelectors(names: string[], candidates: Map<string, DiModuleCandidate>, option: string) {
+    return [
+      ...new Set(
+        names.flatMap((name) => {
+          if (!name.startsWith("@")) return [name];
+          const mode = name.slice(1);
+          const tagged = [...candidates.values()]
+            .filter(({ module }) => module.service.srv.operationMode?.includes(mode))
+            .map(({ refName }) => refName);
+          if (!tagged.length)
+            throw new Error(
+              `[DI:${option}] "${name}" names no module: no serve() in this app or its libs lists operationMode "${mode}".`,
+            );
+          return tagged;
+        }),
+      ),
+    ];
   }
 
   static #assertKnown(names: string[], known: Set<string>, unknownLabel: string, knownLabel: string) {

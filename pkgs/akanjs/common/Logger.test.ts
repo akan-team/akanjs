@@ -239,6 +239,19 @@ describe("Logger attrs", () => {
       );
     }));
 
+  test("masks every key a server env profile may not carry, not only the obvious ones", () => {
+    const attrs = { discordWebhook: "w", sentryDsn: "d", awsAccessKey: "a", regcred: "r", enrollKey: "e", ms: 1 };
+    expect(Logger.redactAttrs(attrs)).toEqual({
+      discordWebhook: "[redacted]",
+      sentryDsn: "[redacted]",
+      awsAccessKey: "[redacted]",
+      regcred: "[redacted]",
+      enrollKey: "e",
+      ms: 1,
+    });
+    expect(Logger.inlineData({ mailer: { pass: "p", host: "h" } })).toBe('{"mailer":{"pass":"[redacted]","host":"h"}}');
+  });
+
   test("a record without attrs keeps the historical line", () =>
     withSink((entries) => {
       Logger.setLevel("error");

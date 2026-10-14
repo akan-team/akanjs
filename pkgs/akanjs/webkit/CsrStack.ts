@@ -1,4 +1,11 @@
-import type { CsrNavigationPhase, CsrPageType, CsrStackEntry, History, Location } from "akanjs/client";
+import {
+  type CsrNavigationPhase,
+  type CsrPageType,
+  type CsrStackEntry,
+  csrLocation,
+  type History,
+  type Location,
+} from "akanjs/client";
 
 interface CsrStackState {
   history: History;
@@ -41,7 +48,7 @@ export class CsrStack {
    */
   static restore(current: Location, locate: (href: string) => Location) {
     const stored = CsrStack.#stored();
-    const entryId = (window.history.state as { akanEntryId?: string } | null)?.akanEntryId;
+    const entryId = (csrLocation.state as { akanEntryId?: string } | null)?.akanEntryId;
     const at = stored?.entries[stored.idx];
     if (!stored || !at || !entryId || at.entryId !== entryId || at.href !== current.href) return null;
     try {

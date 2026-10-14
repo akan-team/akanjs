@@ -1,5 +1,6 @@
 "use client";
 import type { RefObject } from "react";
+import { csrLocation } from "./csrLocation";
 import { readCssSafeAreaInsets } from "./frameConfig";
 import type { DeviceInfo } from "./native";
 
@@ -102,7 +103,7 @@ const createWebDevice = ({
   lang?: string;
   supportLanguages: string[] | readonly string[];
 }) => {
-  const pathname = typeof window === "undefined" ? "" : window.location.pathname;
+  const pathname = typeof window === "undefined" ? "" : csrLocation.pathname;
   return new Device({
     lang: lang ?? langInPath(pathname, supportLanguages) ?? getBrowserLanguage(),
     info: webDeviceInfo,

@@ -1,5 +1,6 @@
 "use client";
-import type { Location, PathRoute, RouteGuide } from "akanjs/client";
+import { csrLocation, type Location, type PathRoute, type RouteGuide } from "akanjs/client";
+import { parseSearchParams } from "akanjs/common";
 import { useCallback, useRef } from "react";
 import { CsrStack } from "./CsrStack";
 
@@ -34,7 +35,8 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
       const targetRouteGuide = getTargetRouteGuide(pathSegments, routeGuide.current);
       const pathRoute = targetRouteGuide.pathRoute;
       if (!pathRoute) {
-        window.location.assign("/404");
+        //? A view in memory has no /404 to load: only the screen it stands on leaves, and a link elsewhere is refused.
+        if (!csrLocation.isMemory || pathname === csrLocation.pathname) csrLocation.assign("/404");
         throw new Error("404");
       }
       return pathRoute;
@@ -46,23 +48,12 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
         return params;
       }, {});
     };
-    const getSearchParams = (search: string) => {
-      return [...new URLSearchParams(search).entries()].reduce<{ [key: string]: string | string[] }>(
-        (params, [key, value]) => {
-          params[key] = (
-            params[key] ? [...(Array.isArray(params[key]) ? params[key] : [params[key]]), value] : value
-          ) as string | string[];
-          return params;
-        },
-        {},
-      );
-    };
-    const hrefWithoutOrigin = href.replace(window.location.origin, "");
+    const hrefWithoutOrigin = csrLocation.strip(href);
     const [hrefWithoutHash, hash = ""] = hrefWithoutOrigin.split("#");
     const [pathname, search] = hrefWithoutHash.split("?");
     const pathRoute = getPathRoute(pathname);
     const params = getParams(pathname, pathRoute);
-    const searchParams = getSearchParams(search);
+    const searchParams = parseSearchParams(search ?? "");
     return { pathname, search, params, searchParams, pathRoute, hash, href, entryId: CsrStack.nextEntryId() };
   }, []);
   return { getLocation };

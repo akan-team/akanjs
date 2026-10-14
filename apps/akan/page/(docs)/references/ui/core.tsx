@@ -120,8 +120,8 @@ export default page().render(() => {
       key: "activeClassName",
       type: "string",
       desc: l.trans({
-        en: "Class added while the current path starts with `href`.",
-        ko: "현재 경로가 `href`로 시작하는 동안 붙는 class입니다.",
+        en: "Class added while the current page is `href` or below it. The locale and the basePath are ignored.",
+        ko: "현재 페이지가 `href`이거나 그 아래일 때 붙는 class입니다. locale과 basePath는 비교에서 뺍니다.",
       }),
     },
     {
@@ -130,6 +130,14 @@ export default page().render(() => {
       desc: l.trans({
         en: "Adds `activeClassName` only on the exact path, not on its sub-paths.",
         ko: "하위 경로는 빼고, 경로가 정확히 같을 때만 `activeClassName`을 붙입니다.",
+      }),
+    },
+    {
+      key: "activeMatch",
+      type: "string[]",
+      desc: l.trans({
+        en: "More paths under which the link counts as active, such as a tab lit on its detail pages.",
+        ko: "링크를 활성으로 볼 경로를 더합니다. 상세 페이지에서도 켜져 있어야 하는 탭에 씁니다.",
       }),
     },
     {
@@ -169,10 +177,10 @@ export default page().render(() => {
   const linkHelpers = [
     {
       key: "Link.Back",
-      type: "{ className?, children? }",
+      type: "{ className?, children?, fallback? }",
       desc: l.trans({
-        en: "Calls `router.back()` on click. It is a plain `div`, so it wraps any mark you give it.",
-        ko: "클릭하면 `router.back()`을 호출합니다. 버튼이 아닌 평범한 `div`라 어떤 표시든 감쌀 수 있습니다.",
+        en: "A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history.",
+        ko: "`router.back()`을 호출하는 `<button>`입니다. `fallback`을 주면 뒤로 갈 기록이 없을 때 그 경로로 갑니다.",
       }),
     },
     {
@@ -298,11 +306,11 @@ export default page().render(() => {
   const layoutChrome = [
     {
       key: "Layout.Navbar",
-      type: "{ className?, children?, height?, back? }",
+      type: "{ className?, title?, left?, right?, children?, back?, backFallback?, height? }",
       default: "height 48",
       desc: l.trans({
-        en: "Portals `children` into the top inset. `back` is `true` for the default chevron, or your node.",
-        ko: "`children`을 상단 inset으로 옮겨 그립니다. `back`은 `true`면 기본 화살표, 아니면 직접 넘긴 요소입니다.",
+        en: "Fills the top inset. `title` truncates to fill the bar, `right` is pushed to the end, `back` adds a back button.",
+        ko: "상단 inset을 채웁니다. `title`은 바를 채우고 넘치면 잘리며, `right`는 끝으로 밀리고, `back`은 뒤로 가기 버튼을 더합니다.",
       }),
     },
     {
@@ -318,8 +326,8 @@ export default page().render(() => {
       key: "Layout.TopLeftAction",
       type: "{ className?, children }",
       desc: l.trans({
-        en: "The inset's top-left corner, where the navbar's `back` lands. Other corner controls go here.",
-        ko: "상단 inset의 왼쪽 모서리로, navbar의 `back`이 놓이는 자리입니다. 다른 모서리 버튼도 여기에 둡니다.",
+        en: "The inset's top-left corner, fixed while the page scrolls: where `back` lands and other corner controls go.",
+        ko: "상단 inset의 왼쪽 모서리로, 스크롤해도 제자리에 있습니다. `back`이 놓이고 다른 모서리 버튼도 여기에 둡니다.",
       }),
     },
     {
@@ -575,7 +583,7 @@ export default page().render(() => {
   const modelTriggers = [
     {
       key: "Model.New",
-      type: "{ slice, children, trigger?, partial?, renderTitle?, modal?, namespace?, draft? }",
+      type: "{ slice, children, trigger?, partial?, renderTitle?, modal?, namespace?, draft?, presentation?, placement? }",
       desc: l.trans({
         en: "`children` is the form body, `partial` seeds it, `trigger` replaces the default New button.",
         ko: "`children`은 폼 본문, `partial`은 초기값, `trigger`는 기본 신규 버튼을 대신할 요소입니다.",
@@ -623,7 +631,7 @@ export default page().render(() => {
   const modelBodies = [
     {
       key: "Model.EditModal",
-      type: "{ slice, children, edit?, type?, id?, renderTitle?, submitText?, renderSubmit?, onSubmit?, onCancel?, draft?, draftBarClassName?, … }",
+      type: "{ slice, children, edit?, type?, id?, renderTitle?, submitText?, renderSubmit?, onSubmit?, onCancel?, draft?, presentation?, placement?, … }",
       desc: l.trans({
         en: 'The edit shell with no trigger. `onSubmit` / `onCancel`: `"back"`, `"reset"`, a path, or a callback.',
         ko: 'trigger 없는 수정 셸입니다. `onSubmit` / `onCancel`에는 `"back"`, `"reset"`, 경로, 콜백 중 하나를 넘깁니다.',
@@ -631,7 +639,7 @@ export default page().render(() => {
     },
     {
       key: "Model.ViewModal",
-      type: "{ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName? }",
+      type: "{ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }",
       desc: l.trans({
         en: "The detail view in a modal, with title and action slots.",
         ko: "상세 보기를 modal로 띄우며, 제목과 action 자리가 있습니다.",
@@ -639,7 +647,7 @@ export default page().render(() => {
     },
     {
       key: "Model.ViewEditModal",
-      type: "{ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel? }",
+      type: "{ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel?, presentation?, placement? }",
       desc: l.trans({
         en: "One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.",
         ko: "상세 보기와 폼을 오가는 modal 하나입니다. 수정 버튼과 삭제 항목은 slice guards가 연 동작에만 나타나며, `menu={false}`면 케밥 메뉴가 빠집니다.",
@@ -774,14 +782,16 @@ export const Card = ({ product }: ModelProps<"product", cnst.LightProduct>) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>Active is a prefix match.</strong> <code>/product/1/edit</code> also counts as the card's
-                    page; add <code>activeExact</code> to stop that.
+                    <strong>Active matches by path segment.</strong> <code>/product/1/edit</code> also counts as the
+                    card's page and <code>/product/10</code> does not; add <code>activeExact</code> to stop the first.{" "}
+                    <code>/</code> matches only itself.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>활성 여부는 앞부분 일치로 봅니다.</strong> <code>/product/1/edit</code>에서도 이 카드가
-                    활성으로 보이므로, 막으려면 <code>activeExact</code>를 붙입니다.
+                    <strong>활성 여부는 경로 구간 단위로 봅니다.</strong> <code>/product/1/edit</code>에서는 이 카드가
+                    활성이고 <code>/product/10</code>에서는 아닙니다. 앞의 경우를 막으려면 <code>activeExact</code>를
+                    붙입니다. <code>/</code>는 자기 자신에만 맞습니다.
                   </span>
                 ),
               })}
@@ -915,8 +925,22 @@ export const Avatar = ({ user }: ModelProps<"user", cnst.LightUser>) => {
           <Docs.SubSubTitle>{l.trans({ en: "Top and bottom chrome", ko: "위아래 chrome" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
-              en: "Navbar, TopInset, BottomInset and BottomTab register their height with the route, so the scrolling body is never hidden behind them.",
-              ko: "Navbar, TopInset, BottomInset, BottomTab은 자기 높이를 route에 등록합니다. 그래서 스크롤 본문이 그 뒤에 가려지지 않습니다.",
+              en: (
+                <span>
+                  Chrome is in the server HTML in its slot's place, so nothing pops in, and after hydration that same
+                  DOM moves into the slot: text typed into it, the focus and the caret survive. The route reserves its
+                  space with <code>topInset</code> / <code>bottomInset</code> in <code>.config()</code>; in the app, an
+                  inset the route leaves out takes the height of the chrome it renders.
+                </span>
+              ),
+              ko: (
+                <span>
+                  chrome은 서버 HTML의 자기 슬롯 자리에 들어 있어 늦게 튀어나오지 않고, hydration 뒤에는 그 DOM이 그대로
+                  슬롯으로 옮겨지므로 입력한 글자, 포커스, 커서가 남습니다. 자리는 route가 <code>.config()</code>의{" "}
+                  <code>topInset</code> / <code>bottomInset</code>으로 비우고, 앱에서는 route가 적지 않은 inset이 그
+                  route가 그리는 chrome의 높이를 따릅니다.
+                </span>
+              ),
             })}
           </div>
           <Docs.OptionTable items={layoutChrome} />
@@ -929,6 +953,23 @@ export const Avatar = ({ user }: ModelProps<"user", cnst.LightUser>) => {
           </div>
           <Docs.OptionTable items={layoutOverlays} />
           <ul className="my-4 list-disc space-y-2 pl-5">
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Back with nowhere to go.</strong> <code>back</code> is <code>true</code> for the default
+                    button or a node of your own. With no history, as after a deep link, the default button goes to{" "}
+                    <code>backFallback</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>돌아갈 곳이 없을 때.</strong> <code>back</code>은 <code>true</code>면 기본 버튼, 아니면 직접
+                    넘긴 요소입니다. 딥 링크로 들어와 기록이 없으면 기본 버튼은 <code>backFallback</code>으로 갑니다.
+                  </span>
+                ),
+              })}
+            </li>
             <li>
               {l.trans({
                 en: (
@@ -967,24 +1008,6 @@ export const Avatar = ({ user }: ModelProps<"user", cnst.LightUser>) => {
               })}
             </li>
           </ul>
-          <Docs.Alert type="warning">
-            {l.trans({
-              en: (
-                <span>
-                  <strong>Layout.Navbar ignores title, left and right.</strong> They are in its prop type, but only{" "}
-                  <code>children</code> and <code>back</code> reach the screen. Build the title and the trailing
-                  controls inside <code>children</code>.
-                </span>
-              ),
-              ko: (
-                <span>
-                  <strong>Layout.Navbar는 title, left, right를 무시합니다.</strong> prop 타입에는 있지만 화면에 닿는
-                  것은 <code>children</code>과 <code>back</code>뿐입니다. 제목과 오른쪽 버튼은 <code>children</code>{" "}
-                  안에서 조합합니다.
-                </span>
-              ),
-            })}
-          </Docs.Alert>
           <Docs.SubSubTitle>{l.trans({ en: "Example", ko: "예시" })}</Docs.SubSubTitle>
           <div>
             {l.trans({
@@ -1002,6 +1025,7 @@ import { Layout, Link } from "akanjs/ui";
 
 export default page()
   .param("orderId", ID)
+  .config({ topInset: true })
   .render(async ({ orderId }) => {
     const { l } = usePage();
     const [{ order, orderView }] = await Promise.all([
@@ -1009,12 +1033,12 @@ export default page()
     ]);
     return (
       <>
-        <Layout.Navbar back>
-          <div className="flex w-full items-center justify-between">
-            <div className="font-bold">{order.name}</div>
-            <Link href={\`/order/\${orderId}/edit\`}>{l("base.edit")}</Link>
-          </div>
-        </Layout.Navbar>
+        <Layout.Navbar
+          back
+          backFallback="/order"
+          title={order.name}
+          right={<Link href={\`/order/\${orderId}/edit\`}>{l("base.edit")}</Link>}
+        />
         <Order.Zone.View view={orderView} />
       </>
     );
@@ -1025,8 +1049,8 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    <strong>Anywhere in the tree.</strong> The navbar portals its content into the top inset, so the
-                    page renders it right beside the body.
+                    <strong>Anywhere in the tree.</strong> The navbar moves its content into the top inset, so the page
+                    renders it right beside the body.
                   </span>
                 ),
                 ko: (
@@ -1041,14 +1065,14 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    <strong>The page stays on the server.</strong> <code>children</code> and <code>back</code> are plain
-                    props, so the page needs no <code>{'"use client"'}</code>.
+                    <strong>The page stays on the server.</strong> <code>title</code>, <code>right</code> and{" "}
+                    <code>back</code> are plain props, so the page needs no <code>{'"use client"'}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>page는 서버에 그대로 남습니다.</strong> <code>children</code>과 <code>back</code>은 평범한
-                    prop이라 page에 <code>{'"use client"'}</code>가 필요 없습니다.
+                    <strong>page는 서버에 그대로 남습니다.</strong> <code>title</code>, <code>right</code>,{" "}
+                    <code>back</code>은 평범한 prop이라 page에 <code>{'"use client"'}</code>가 필요 없습니다.
                   </span>
                 ),
               })}
@@ -1527,6 +1551,28 @@ export const Create = () => {
                       같은 slice에 생성 버튼을 하나 더 두면 <code>namespace</code>가 필요합니다.
                     </strong>{" "}
                     버튼이 인페이지 에이전트에 공개하는 tool 이름 뒤에 붙습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>presentation</code> and <code>placement</code> reach the <code>Modal</code>.
+                    </strong>{" "}
+                    <code>presentation="auto"</code> opens the form as a full-screen sheet on a phone; see{" "}
+                    <code>Modal</code> in Overlays UI.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>presentation</code>과 <code>placement</code>는 <code>Modal</code>로 전달됩니다.
+                    </strong>{" "}
+                    <code>presentation="auto"</code>면 폰에서 폼이 전체 화면 시트로 열립니다. 자세한 내용은 오버레이
+                    UI의 <code>Modal</code>을 보세요.
                   </span>
                 ),
               })}

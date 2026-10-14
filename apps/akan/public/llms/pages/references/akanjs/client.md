@@ -54,6 +54,12 @@ Export
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
+- isMcpView: True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.
+
+- breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
+
+- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
@@ -66,11 +72,13 @@ router
 
 Method
 
-- push(href, { scrollToTop }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
+- push(href, { scrollToTop, shallow }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
 
-- replace(href): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
+- replace(href, { shallow }): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
 
 - back(): Goes back one entry. Browser only.
+
+- postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
 
@@ -93,6 +101,8 @@ A store action that opens the record it just created:
 **Paths are app-internal.** Write `/profile`, not `/en/profile`. A path that already starts with the locale is accepted too.
 
 **Redirect from a page.** In a page's render, `router.redirect("/signin")` answers the request with a 307 redirect.
+
+**`shallow` keeps the page.** On an SSR page, a push or replace that keeps the path writes the URL and the store's search params without asking the server, and back or forward between such entries stays shallow. Client components see the change at once; a server component's `.search()` at the next full navigation. A new path, or a CSR app, navigates normally.
 
 cn
 
@@ -196,6 +206,8 @@ rootLayout
 
   - .layoutStyle(…): Full-width web layout, or a centered phone column.
 
+  - .viewport(obj): The viewport and theme-color meta.
+
   - .reconnect(on?): The connection-lost overlay.
 
   - .wsConnect(on?): Opens the websocket when the page loads.
@@ -256,9 +268,11 @@ These are app-wide settings, so only the root `_layout.tsx` of an app or a baseP
 
 - .theme(theme) ("system" | "css" | string): `system` follows the OS, `css` sets no `data-theme`, and any other name is set as is.
 
-- .manifest(manifest) (WebAppManifest): The PWA manifest, emitted as a data URL.
+- .manifest(manifest) (WebAppManifest): The PWA manifest, served at `/manifest.webmanifest`; a CSR or native bundle carries it inline.
 
 - .layoutStyle(style) ("web" | "mobile", default "web"): `mobile` centers the app in a column at most 600px wide, and fills a narrower screen.
+
+- .viewport(viewport) (RouteViewport): `fitCover` draws under the notch (native default), `interactiveWidget` the keyboard mode, `themeColor` one or per theme.
 
 - .reconnect(on = true) (boolean, default operationMode === "local"): Shows an overlay while the websocket is disconnected.
 
@@ -276,13 +290,13 @@ PageConfig
 
 `PageConfig` is the object `.config()` takes. It sets how a route enters, how much room it keeps for the device edges, and how the server sends it.
 
-- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default by platform): Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default by platform): Enter animation, a view transition on the web. Nested routes default to `stack` on iOS, `scaleOut` on Android.
 
-- safeArea (boolean | "top" | "bottom" | { top, bottom, android }, default on in the app, off on the web): Pads the page for the notch and the home bar.
+- safeArea (boolean | "top" | "bottom" | { top, bottom, android }, default on in the app, off on the web): Pads the page for the notch and the home bar. The web needs `.viewport({ fitCover: true })`.
 
-- topInset (number | boolean, default 0): Space kept for a fixed top bar, in px. `true` means 48.
+- topInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default 0; in the app, the chrome's height): Space kept for a fixed top bar: px, or px per breakpoint from its width up. `true` means 48.
 
-- bottomInset (number | boolean, default 0): Space kept for a fixed bottom bar, in px. `true` means 48.
+- bottomInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default 0; in the app, the chrome's height): Space kept for a fixed bottom bar, in the same forms. `{ base: 48, md: 0 }` reserves a phone-only bar.
 
 - gesture (boolean, default on for nested routes on iOS): Allows swipe-back.
 

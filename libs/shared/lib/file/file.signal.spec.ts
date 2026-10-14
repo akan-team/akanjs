@@ -17,7 +17,7 @@ export const getFileInputSamples = (num = 1): [fileList: FileList, metas: cnst.F
   const buffers = new Array(num).fill(imageBase64).map((base64: string) => Buffer.from(base64, "base64"));
   const files = buffers.map((buffer) => new File([buffer], "image.jpg", { type: "image/jpeg" }));
   const metas = files.map((file) => ({ lastModifiedAt: dayjs(), size: file.size }));
-  return [files as unknown as FileList, metas];
+  return [files as unknown as FileList, metas as unknown as cnst.FileMeta[]];
 };
 
 export const addAndWaitActiveFiles = async (
@@ -34,7 +34,7 @@ export const addAndWaitActiveFiles = async (
   // 2. 파일 업로드 완료 대기
   const MAX_TRY_NUM = 5;
   const activeFiles = await Promise.all(
-    files.map(async (file) => {
+    files.map(async (file: cnst.LightFile) => {
       expect(file).toMatchObject({ status: "uploading", size: metas[0].size });
 
       for (let i = 0; i < MAX_TRY_NUM; i++) {

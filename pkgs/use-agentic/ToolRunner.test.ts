@@ -207,6 +207,114 @@ describe("ToolRunner serialization", () => {
     expect((await parked).error).toBe("The user declined.");
   });
 
+  test("a call aborted while it waited in the queue never starts", async () => {
+    let release: () => void = () => undefined;
+    const busy = new ToolRunner(
+      surfaceWith({ name: "wait", run: () => new Promise<void>((resolve) => (release = resolve)) }),
+    );
+    let ran = 0;
+    const queued = new ToolRunner(
+      surfaceWith({
+        name: "removeTask",
+        run: () => {
+          ran += 1;
+        },
+      }),
+    );
+    const first = busy.run(call("wait"), new AbortController().signal);
+    await tick();
+    const controller = new AbortController();
+    const second = queued.run(call("removeTask"), controller.signal);
+    controller.abort();
+    release();
+    await first;
+    expect((await second).error).toBe("The call was stopped before it ran.");
+    expect(ran).toBe(0);
+  });
+
+  test("an approval covers the tool the user read, not one the screen put in its place meanwhile", async () => {
+    let decide = null as ((verdict: true | string) => void) | null;
+    const surface = new AgenticSurface();
+    let ran = "";
+    const unregister = surface.registerTool([], {
+      name: "removeTask",
+      description: "Remove one task.",
+      confirm: true,
+      run: () => {
+        ran = "first";
+      },
+    });
+    const runner = new ToolRunner(surface, {
+      approve: () => new Promise<true | string>((resolve) => (decide = resolve)),
+    });
+    const parked = runner.run(call("removeTask"), new AbortController().signal);
+    await until(() => !!decide);
+    unregister();
+    surface.registerTool([], {
+      name: "removeTask",
+      description: "Remove every task in the project.",
+      confirm: true,
+      run: () => {
+        ran = "second";
+      },
+    });
+    decide?.(true);
+    expect((await parked).error).toContain("changed on screen");
+    expect(ran).toBe("");
+  });
+
+  // A list registers one declaration per row, and a row mounting while the user decides is a live insert, not a
+  // different action: every registration takes the id as an argument, so the one the user approved still applies.
+  test("an approval survives another row registering the same declaration while the user decides", async () => {
+    let decide = null as ((verdict: true | string) => void) | null;
+    const surface = new AgenticSurface();
+    const removed: unknown[] = [];
+    const row = (): ToolActionEntry => ({
+      name: "removeTask",
+      description: "Remove one task.",
+      parameters: { type: "object", properties: { modelId: { type: "string" } }, required: ["modelId"] },
+      confirm: true,
+      run: (args) => {
+        removed.push(args.modelId);
+      },
+    });
+    surface.registerTool([], row());
+    const runner = new ToolRunner(surface, {
+      approve: () => new Promise<true | string>((resolve) => (decide = resolve)),
+    });
+    const parked = runner.run(call("removeTask", { modelId: "t1" }), new AbortController().signal);
+    await until(() => !!decide);
+    surface.registerTool([], row());
+    decide?.(true);
+    expect((await parked).error).toBeUndefined();
+    expect(removed).toEqual(["t1"]);
+  });
+
+  test("an approval does not carry over to a declaration that asks something else for the same arguments", async () => {
+    let decide = null as ((verdict: true | string) => void) | null;
+    const surface = new AgenticSurface();
+    let ran = 0;
+    const declaration = (message: string): ToolActionEntry => ({
+      name: "removeTask",
+      description: "Remove one task.",
+      confirm: () => message,
+      run: () => {
+        ran += 1;
+      },
+    });
+    const unregister = surface.registerTool([], declaration("Remove the draft?"));
+    const runner = new ToolRunner(surface, {
+      approve: () => new Promise<true | string>((resolve) => (decide = resolve)),
+    });
+    const parked = runner.run(call("removeTask"), new AbortController().signal);
+    await until(() => !!decide);
+    unregister();
+    surface.registerTool([], declaration("Remove the published task?"));
+    decide?.(true);
+    expect((await parked).error).toContain("changed on screen");
+    expect(ran).toBe(0);
+  });
+
   test("an aborted call releases the queue instead of jamming it", async () => {
     const stuck = new ToolRunner(surfaceWith({ name: "wait", run: () => new Promise<void>(() => undefined) }));
     const controller = new AbortController();
@@ -286,6 +394,71 @@ describe("ToolRunner activity", () => {
     });
     await runner.run(call("navigate"), new AbortController().signal);
     expect(order).toEqual(["drew", "ran"]);
+  });
+
+  test("a declaration swapped in while the start is drawn never runs in place of the approved one", async () => {
+    const surface = new AgenticSurface();
+    let ran = "";
+    const seen: ToolActivity[] = [];
+    const unregister = surface.registerTool([], {
+      name: "removeTask",
+      description: "Remove one task.",
+      confirm: true,
+      run: () => {
+        ran = "approved";
+      },
+    });
+    const runner = new ToolRunner(surface, {
+      approve: async () => true,
+      activity: (event) => {
+        seen.push(event);
+        if (event.phase !== "start") return;
+        unregister();
+        surface.registerTool([], {
+          name: "removeTask",
+          description: "Remove every task in the project.",
+          confirm: true,
+          run: () => {
+            ran = "swapped";
+          },
+        });
+      },
+    });
+    const result = await runner.run(call("removeTask"), new AbortController().signal);
+    expect(result.error).toContain("changed on screen");
+    expect(ran).toBe("");
+    expect(seen.map((event) => event.phase)).toEqual(["start", "end"]);
+    expect(seen[1].error).toContain("changed on screen");
+  });
+
+  test("a call that needed no asking does not run a declaration swapped in that would have asked", async () => {
+    const surface = new AgenticSurface();
+    let ran = "";
+    const unregister = surface.registerTool([], {
+      name: "archiveTasks",
+      description: "Archive the tasks.",
+      run: () => {
+        ran = "unasked";
+      },
+    });
+    const runner = new ToolRunner(surface, {
+      approve: async () => true,
+      activity: (event) => {
+        if (event.phase !== "start") return;
+        unregister();
+        surface.registerTool([], {
+          name: "archiveTasks",
+          description: "Archive the tasks.",
+          confirm: true,
+          run: () => {
+            ran = "asking";
+          },
+        });
+      },
+    });
+    const result = await runner.run(call("archiveTasks"), new AbortController().signal);
+    expect(result.error).toContain("changed on screen");
+    expect(ran).toBe("");
   });
 
   // A guard runs inside `surface.call`, so the call has begun by then — the start is honest and the end carries why.

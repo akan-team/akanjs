@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
@@ -79,6 +82,7 @@ function createFakeRscWorker(
   ) => {
     cacheState?: RouteCacheRenderState;
     lateControl?: SsrLateRedirect | null;
+    lateControlAfterMs?: number;
     status?: number;
   } = () => ({ cacheState: { cacheable: true, revalidate: 5 } }),
 ): FakeRscWorker {
@@ -93,7 +97,10 @@ function createFakeRscWorker(
         type: "stream",
         stream: streamOf("0:null\n"),
         status: state.status,
-        lateControl: Promise.resolve(state.lateControl ?? null),
+        lateControl:
+          state.lateControlAfterMs === undefined
+            ? Promise.resolve(state.lateControl ?? null)
+            : sleep(state.lateControlAfterMs).then(() => state.lateControl ?? null),
         cacheState: Promise.resolve(state.cacheState ?? { cacheable: true, revalidate: 5 }),
         cancel: () => {},
       };
@@ -618,6 +625,50 @@ describe("WebRouter firebase messaging service worker", () => {
     const routeKeys = await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => Object.keys(renderEnvRoutes));
 
     expect(routeKeys).not.toContain("/firebase-messaging-sw.js");
+  });
+});
+
+describe("WebRouter public files and the web manifest", () => {
+  test("lets any origin read a font from public/, as an MCP view's CORS-mode font fetch needs, and nothing else", async () => {
+    const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-public-"));
+    fs.mkdirSync(path.join(appDir, "public", "fonts"), { recursive: true });
+    fs.writeFileSync(path.join(appDir, "public", "fonts", "brand.woff2"), "wOF2");
+    fs.writeFileSync(path.join(appDir, "public", "logo.png"), "png");
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const font = await fullSsr(new Request("https://example.test/fonts/brand.woff2"));
+          const image = await fullSsr(new Request("https://example.test/logo.png"));
+
+          expect(font.status).toBe(200);
+          expect(font.headers.get("Access-Control-Allow-Origin")).toBe("*");
+          expect(image.status).toBe(200);
+          expect(image.headers.get("Access-Control-Allow-Origin")).toBeNull();
+        },
+        { appDir },
+      );
+    } finally {
+      fs.rmSync(appDir, { recursive: true, force: true });
+    }
+  });
+
+  test("answers 503 for the web manifest while the RSC worker cannot, and the manifest once it can", async () => {
+    const requestManifest = async (webManifest: () => Promise<unknown>) =>
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => await fullSsr(new Request("https://example.test/manifest.webmanifest")),
+        { worker: Object.assign(createFakeRscWorker(), { webManifest }) },
+      );
+
+    const unavailable = await requestManifest(async () => {
+      throw new Error("rsc worker is stopped");
+    });
+    const served = await requestManifest(async () => ({ name: "Fixture" }));
+
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.get("Cache-Control")).toBe("no-store");
+    expect(served.status).toBe(200);
+    expect(served.headers.get("Content-Type")).toContain("application/manifest+json");
+    await expect(served.json()).resolves.toEqual({ name: "Fixture" });
   });
 });
 
@@ -1324,10 +1375,26 @@ describe("WebRouter full SSR cache orchestration", () => {
     );
   });
 
+  test("answers a redirect known before the response starts with a real one", async () => {
+    const fakeWorker = createFakeRscWorker(() => ({
+      lateControl: { type: "redirect", location: "/login", method: "replace", status: 307 },
+    }));
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const response = await fullSsr(new Request("https://example.test/docs/redirect"));
+        expect(response.status).toBe(307);
+        expect(response.headers.get("Location")).toBe("https://example.test/login");
+      },
+      { worker: fakeWorker },
+    );
+  });
+
   test("does not store full SSR HTML when a late redirect is observed", async () => {
     const fakeWorker = createFakeRscWorker(() => ({
       cacheState: { cacheable: true, revalidate: 5 },
       lateControl: { type: "redirect", location: "/login", method: "replace", status: 307 },
+      lateControlAfterMs: 5,
     }));
 
     await withFullSsrCacheHarness(

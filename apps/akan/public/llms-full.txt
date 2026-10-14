@@ -548,6 +548,8 @@ Headings:
 - Images And Public Env
 - Secret Files
 - Build And Runtime
+- Pipeline
+- Workspace Config
 - Defaults And Rules
 
 App Config
@@ -578,6 +580,8 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - plugins (AkanPlugin[], default []): Akan plugins this app contributes, read live by the CLI.
 
+- pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
+
 - docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
@@ -607,8 +611,6 @@ CLI commands, production builds, and native app commands all read this file.
 Config Shape
 
 The default export can be a plain object or a function. Use an object for most apps. Use a function only when the config needs app metadata while it is being loaded.
-
-Object config
 
 ## Data Layer
 
@@ -974,7 +976,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads are not merged — the nearest .head() wins, so restate what you still need (such as the favicon link). Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
 
 Chain Stages
 
@@ -1146,8 +1148,9 @@ Headings:
 - Create icecream order module
 - Define Constant
 - Fill dictionary
+- Allow orders in signal
 - Make template file
-- Update unit file
+- Update unit and view files
 - Expose to page
 
 Practice
@@ -1284,6 +1287,7 @@ Headings:
 - Float
 - Any
 - Binary
+- ImageResult
 - Upload
 - dayjs / Dayjs
 - enumOf
@@ -1304,6 +1308,8 @@ Export
 - Any: An open value Akan does not check. You name its shape with a type argument.
 
 - Binary: Raw bytes in a signal argument or return.
+
+- ImageResult: A picture a signal returns: JSON over HTTP, an image block over MCP.
 
 - Upload: A file in the body of the upload mutation.
 
@@ -1337,6 +1343,8 @@ Signal return — query() mutation()
 
   - Binary: Keep stored bytes in a `File` model.
 
+  - ImageResult: A picture for an agent to see.
+
   - Upload: Only in the body of a `fileUpload: true` mutation.
 
 - JavaScript globals, no import
@@ -1346,10 +1354,6 @@ Signal return — query() mutation()
   - Boolean: Text such as "true", "false", "1" and "0" is read as a boolean.
 
   - Date: The value is a `Dayjs`, not a JavaScript `Date`.
-
-Can be used
-
-Not used here
 
 ## akanjs/client
 
@@ -1402,6 +1406,12 @@ Export
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.
 
+- isMcpView: True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.
+
+- breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
+
+- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
 **Most of it runs on the server too.** `page()`, `cn`, `getCookie` and `getAccount` work in server components; `router.back()`, `setCookie` and `Device` need the browser.
@@ -1414,25 +1424,19 @@ router
 
 Method
 
-- push(href, { scrollToTop }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
+- push(href, { scrollToTop, shallow }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
 
-- replace(href): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
+- replace(href, { shallow }): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
 
 - back(): Goes back one entry. Browser only.
+
+- postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
 
 - refresh(): Renders the current route again. Browser only.
 
 - redirect(href, { method, status }): On the server, answers with a redirect (307 by default). In the browser, navigates.
-
-- notFound(): Shows the nearest layout's .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
-
-- setLang(lang): Switches the locale and stays on the same route. Browser only.
-
-- getPath(): The current route without the locale and basePath. Browser only.
-
-- getPrefixedPath(path): Adds the locale and basePath to a path when the app has a basePath.
 
 ## akanjs/common
 
@@ -1493,6 +1497,10 @@ More in akanjs/common
 
 - decodeJwtPayload: Reads a JWT's payload without checking its signature, so never trust it for access.
 
+- bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
+
+- parseSearchParams: A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included. — Example: `parseSearchParams("?tag=&tag=b&q=x"); // { tag: ["", "b"], q: "x" }`
+
 - isThenable: Tells whether a value can be awaited.
 
 - interpolateTranslation: Fills `{name}` placeholders and leaves one whose value is missing as written. — Example: `interpolateTranslation("Hi {name}", { name: "Akan" }); // "Hi Akan"`
@@ -1506,10 +1514,6 @@ Akan's leveled logger. A service already has one as `this.logger`, named after i
 A script that logs through an instance, a static call, a structured record and a sink:
 
 **Six levels, lowest first:** `trace`, `verbose`, `debug`, `info`, `warn`, `error`. A line prints at or above the console level, and `error` lines go to stderr.
-
-**The second argument is the context.** `logger.warn("retrying charge", "stripe")` prints `[stripe]` before the message.
-
-**Secret-looking keys are masked.** An `attrs` key containing a word such as password, token, secret, cookie or api key reads `[redacted]` before any sink sees it.
 
 ## akanjs/constant
 
@@ -1881,6 +1885,8 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
+- useVisualViewportFrame(): `{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.
+
 - usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
 
 - createRobotPage, createSitemapPage: Build robots rules (`disallow: "/admin/"` by default) and a list of sitemap entries.
@@ -1894,8 +1900,6 @@ Other Exports
 **Push and speech come from the util library.** `usePushNotification` and `useSpeech` are imported from `@libs/util/webkit`, not from here.
 
 Writing Your Own Hook
-
-Where an app or lib puts its own browser-only hooks.
 
 ## Agent
 
@@ -2013,7 +2017,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
 - Check and Build
 
-  - typecheck: Typecheck the app.
+  - typecheck: Typecheck an app or a library, its tests included.
 
   - test: Run the tests of an app, library or package.
 
@@ -2029,7 +2033,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - release-ios, release-android: Build the app for an App Store or Play Store release.
 
-  - update-keygen, publish-update, pack-update: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
+  - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
 
@@ -2048,7 +2052,7 @@ Headings:
 
 Cloud CLI
 
-Five optional commands for signing in to Akan Cloud, updating the framework and moving env values. Internal deployment commands are left out of this page on purpose.
+Eight optional commands for signing in to Akan Cloud, updating the framework, moving env values and managing pipeline secrets. Internal deployment commands are left out of this page on purpose.
 
 Words Used on This Page
 
@@ -2061,6 +2065,8 @@ Term
 - AKAN_WORKSPACE_ID: The cloud workspace id in the root `.env`, which decides where env values are kept.
 
 - SCP server: A server of your own, reached over SSH, that keeps env values when there is no cloud workspace.
+
+- pipeline secret: A named value build steps read as an environment variable; it is written, never read back.
 
 Where Each Command Connects
 
@@ -2084,27 +2090,25 @@ This machine only
 
   - upload-env: Pushes the local env values to that same place for the next `download-env`.
 
+- Pipeline secrets
+
+  - upload-secret: Saves a named secret that pipeline steps can read.
+
+  - list-secrets: Lists the secrets' names and scopes, never their values.
+
+  - remove-secret: Removes a secret from the project.
+
 Connects
 
 Does not connect
 
 **Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and `.env`.
 
-**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands.
+**`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands. `cloud: { host }` in the root `akan.config.ts` makes one the default.
 
-**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it.
+**One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it. `--host` and `cloud.host` are both read as the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port still names the same session.
 
-Where Env Values Are Kept
-
-`download-env` and `upload-env` read the root `.env` to pick the store. Both use the same one, so what one uploads the other downloads.
-
-Store
-
-Used when
-
-Where the archive lives
-
-- Akan Cloud — `AKAN_WORKSPACE_ID` is set — The cloud workspace with that id, after signing in if needed.
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing. A question a command asks while it runs — which script to run, a confirmation, which env server to copy to — fails the same way, naming the option that answers it.
 
 ## Code CLI
 
@@ -2664,6 +2668,75 @@ Check After It Runs
 **The pages check no session.** Writes follow the slice `create-module` wrote: `cru: Admin` with `libs/shared`, `cru: None` without it. Gate the pages in a `_layout.tsx` and set the guards your screens need before you ship.
 
 **`--base-path` is a folder inside the app, not a URL prefix.** `--base-path admin` writes to `apps/shop/admin/`, outside `page/`, so no route is created. Give the whole folder, such as `page/(shop)/(admin)/product`.
+
+## Pipeline
+
+Source: /references/cli/pipeline
+Mirror: /llms/pages/references/cli/pipeline.md
+Priority: P0
+
+Headings:
+- Pipeline CLI
+
+Pipeline
+
+`akan pipeline [plan|validate|dry-run] [--branch <branch>] [--env <env>] [--apps <a,b>] [--trigger <trigger>] [-n <num>] [--commit <sha>] [--out <file>] [--format <text|json>]`
+
+Plan the build pipeline declared in the workspace and app `akan.config.ts` files, without running it. Each flag is a fact about the build: a flag you give is copied into the plan as is, and a missing one comes from git and the workspace.
+
+- action (String, default dry-run, plan | validate | dry-run): `dry-run` shows the plan, `validate` checks it, `plan` prints the envelope.
+
+- --branch (String, default current git branch): Branch the build is for; every `when.branch` is decided against it.
+
+- --env (String, default the branch): `AKAN_PUBLIC_ENV` the build is for.
+
+- --apps (String, default every app): Apps the build covers, comma-separated; an unknown or repeated app is an error.
+
+- --trigger (String, default manual, push | redeploy | initial | rebuild | manual): What started the build; every `when.trigger` is decided against it.
+
+- --build-num (Number, default 0, -n): The build's number, a whole number of 0 or more.
+
+- --commit (String, default HEAD): Commit the build is for.
+
+- --out (String): Also write the envelope to this file, whole or not at all.
+
+- --format (String, default text, text | json): `json` prints the envelope instead of text, for any action.
+
+- nothing runs: No stage runs and nothing is uploaded; Akan Cloud runs the same planner when it builds.
+
+- function form: `validate` runs a function-form `pipeline` for one sample context and warns that others may differ.
+
+- exit code: 0 a plan, 1 errors with the envelope written, 2 anything else with no envelope.
+
+Pipeline CLI
+
+`akan pipeline` turns the pipeline declared in your `akan.config.ts` files into the plan Akan Cloud would run, and runs none of it. Check a change with it before you push.
+
+Words Used on This Page
+
+Term
+
+- plan: The phases, stages and steps one build runs, as JSON that Akan Cloud executes.
+
+- phase: Stages that run together; the next phase starts when every stage of this one ends.
+
+- envelope: `{ ok, plan, diagnostics }`, the result `plan` prints or writes to `--out`.
+
+- diagnostic: An error or warning about a definition, with a code such as `pipeline.action.dockerWithoutBuild`.
+
+Three Actions
+
+Prints
+
+Use it for
+
+- dry-run — The plan as a table, phase by phase. — Seeing what a build would run.
+
+- validate — A one-line verdict and the diagnostics. — Checking a definition before you push.
+
+- plan — The envelope as JSON. — Handing the plan to a program.
+
+Exit Codes
 
 ## Primitive
 
@@ -4516,7 +4589,7 @@ Let's understand the new schema additions:
 
 An enum defining how the customer wants their order - for here, take out, or delivery
 
-Customer's phone number with validation using isPhoneNumber for pickup notifications
+Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
 
 Updated to include serveType for display in order lists and dashboards
 
@@ -4546,7 +4619,7 @@ The ice cream shop is so successful that delivery orders are flooding in! Now we
 
 In this tutorial, you'll learn how to:
 
-Define relationships between models using embedded references
+Define relationships between models with Light model references
 
 Trigger side effects when related data is created
 
@@ -4558,7 +4631,7 @@ First, let's create the Delivery module using the CLI. This module will connect 
 
 Define Relationship
 
-Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - this creates an embedded reference that stores the essential order data directly in the delivery document.
+Now let's define the Delivery model with a relationship to IcecreamOrder. The key is using LightIcecreamOrder as the field type - the delivery stores each order's id, and reading a delivery hands the orders back as LightIcecreamOrder.
 
 Let's understand the key relationship pattern:
 
@@ -4624,7 +4697,7 @@ Declare Adapter
 
 First, let's start by connecting an external API or module like an alert. You can connect an api that sends messages or emails, but in this tutorial, we'll create an api that simply prints to the console and connect it.
 
-Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder as follows.
+Modules like service, signal, document should not be directly connected to external systems, but rather created as adapters that are injected. First, let's create an adapter in the /srvkit folder with adapt(). An adapter gets its own logger as this.logger.
 
 Why use the adapter pattern? By injecting external dependencies as adapters rather than directly importing them in services, you gain several benefits:
 
@@ -4659,7 +4732,7 @@ Dashboard Slice
 
 First, let's declare a slice for the real-time dashboard to show to customers. You can display the waiting orders and the orders being picked up by querying them separately.
 
-inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. When the slice is declared, the state and actions of the store are automatically created.
+inWaiting slice is a slice that queries the waiting orders and inPickup slice is a slice that queries the orders being picked up. Each init() names its own guards, and the dashboard is public. When the slice is declared, the state and actions of the store are automatically created.
 
 Just like labeling different shelves in an ice cream shop - "Ready for pickup", "Being made" - we need to give proper names to our slices in the dictionary. This ensures the UI displays meaningful labels and the slice functions are properly documented.
 
@@ -4704,6 +4777,8 @@ When a customer places an order, it starts as "active". Staff can begin processi
 
 While an order is being prepared, it's in "processing" status. Once ready, staff can mark it as "served".
 
+Once the customer has picked up the order, staff closes it as "finished".
+
 Only active orders can be canceled. Once processing begins, cancellation is no longer allowed.
 
 Business Rules
@@ -4712,9 +4787,7 @@ Only active orders can be processed or canceled
 
 Only processing orders can be served
 
-Served and canceled orders are final states
-
-Implement Document Business Logic
+Only served orders can be finished
 
 ## Show Details
 
@@ -4724,7 +4797,7 @@ Priority: P1
 
 Headings:
 - Show Details
-- Add View/Edit Modal
+- Add View Modal
 - Add View Button to Unit Cards
 - Design Detail View
 - Test Your Implementation
@@ -4744,11 +4817,11 @@ The actual content inside the modal, showing all the order information in an org
 
 This separation allows each component to have a single responsibility: the wrapper handles clicking, the modal handles the popup behavior, and the view handles the display formatting.
 
-Add View/Edit Modal
+Add View Modal
 
-Now let's add a View/Edit modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
+Now let's add a view modal to our ice cream order page. This creates a popup window where customers can see all their order details in an organized format. The modal functions like a detailed receipt that appears when customers want to review their order information.
 
-This code creates a modal system that handles the display and editing of orders. Let's examine what each part does:
+This code renders each order as a card with its own view modal. Let's examine what each part does:
 
 Load.Units Component
 
@@ -5229,6 +5302,44 @@ The namespace picks the branch
 You never write the branch as a value. The chart reads it from the release namespace:
 
 You deploy into `<appName>-<branch>`, for example `myapp-main`.
+
+## Build Pipeline
+
+Source: /cheatsheet/dev/pipeline
+Mirror: /llms/pages/cheatsheet/dev/pipeline.md
+Priority: P2
+
+Headings:
+- Build Pipeline
+- Add A Stage To An App
+- Run Steps Around Every App
+- Give A Step A Secret
+- Check Before You Push
+- Pitfalls
+
+Build Pipeline
+
+Akan Cloud builds and deploys each app as `build`, `docker`, then `deploy`. Add your own stages around them in `akan.config.ts`, and check the result with `akan pipeline dry-run` before you push.
+
+Words used on this page
+
+Term
+
+- stage: One named step of a build, such as a test run, with one or more shell commands.
+
+- build, docker, deploy: The built-in actions Akan Cloud runs for an app; you place them with `{ use }`.
+
+- plan: What one build runs, made from your config; `akan pipeline` shows it locally.
+
+Two files
+
+- App — apps/<app>/akan.config.ts — That app's stages in order, its three actions included.
+
+- Workspace — akan.config.ts — Stages before and after every app, and the steps that close a build.
+
+Steps
+
+Add a stage to an app.
 
 ## PWA
 
@@ -5869,7 +5980,7 @@ Desktop Release
 
 - AKAN_NATIVE_MACOS_CERTIFICATE + _PASSWORD: A .p12 file and its password. The build imports it into a keychain of its own and deletes it afterwards: the CI way.
 
-- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id). Turns on notarization and stapling.
+- AKAN_NATIVE_MACOS_NOTARY_KEY + _KEY_ID + _ISSUER: An App Store Connect API key (the AuthKey_XXXX.p8 file, its key id, the issuer id): the credentials `--notarize` submits and staples with.
 
 - AKAN_NATIVE_MACOS_NOTARY_PROFILE: Instead of the key: a profile `xcrun notarytool store-credentials` saved in the keychain.
 
@@ -5881,7 +5992,7 @@ Desktop Release
 
 - AKAN_NATIVE_WINDOWS_TIMESTAMP_URL: The RFC 3161 timestamp server. Default http://timestamp.digicert.com.
 
-A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs from the environment, packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
+A desktop app people download from the internet has to be signed so the OS opens it: Gatekeeper refuses an unsigned or un-notarized macOS app, and SmartScreen warns on an unsigned Windows program. `akan build-desktop` signs with `--sign` and notarizes with `--notarize`, using the identity the environment names; the environment alone signs nothing. It packs the file people download with `--installer true`, and picks a Windows or Linux app's CPU with `--arch`; a macOS app is Apple silicon only.
 
 A desktop app is built on its own OS: a Mac builds the macOS app, a Windows PC the Windows one. The CI recipe below runs one job per OS instead of cross-compiling.
 
@@ -6020,7 +6131,7 @@ Page Transitions
 
 Your app runs inside a native shell, yet every screen change lands like a web page swap. The user cannot tell whether they went deeper or sideways, and the back button is the only way out.
 
-Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does.
+Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does, and a browser plays it as a view transition.
 
 Words used on this page
 
@@ -6468,6 +6579,7 @@ Use `message` for small actions the browser sends to the server: a read receipt,
 - Docker: /llms/pages/cheatsheet/dev/docker.md
 - Documentation: /llms/pages/cheatsheet/dev/docs.md
 - Kubernetes: /llms/pages/cheatsheet/dev/k8s.md
+- Build Pipeline: /llms/pages/cheatsheet/dev/pipeline.md
 - PWA: /llms/pages/cheatsheet/dev/pwa.md
 - Script: /llms/pages/cheatsheet/dev/script.md
 - Testing: /llms/pages/cheatsheet/dev/test.md

@@ -39,9 +39,8 @@ export default page().render(() => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts"
             code={`
-import { Admin } from "@libs/shared/srvkit"; // [!code collapse:14]
-import { ID } from "akanjs/base";
-import { endpoint, internal, Public, slice } from "akanjs/signal";
+import { ID } from "akanjs/base"; // [!code collapse:12]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -54,42 +53,42 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder, // [!code collapse:2]
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init().exec(function () { // [!code --:3]
+    inPublic: init({ guards: [Public] }).exec(function () { // [!code --:3]
       return this.icecreamOrderService.queryAny();
     }),
-    inPublic: init() // [!code ++:5]
+    inPublic: init({ guards: [Public] }) // [!code ++:5]
       .search("statuses", [cnst.IcecreamOrderStatus])
       .exec(function (statuses) {
         return this.icecreamOrderService.queryByStatuses(statuses);
       }),
-    inWaiting: init().exec(function () {
+    inWaiting: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryByStatuses(["active", "processing"]);
     }),
-    inPickup: init().exec(function () {
+    inPickup: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryByStatuses(["served"]);
     }),
-  })
+  }),
 ) {}
-// [!code collapse:30]
+// [!code collapse:23]
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder)
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -152,7 +151,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     serveType: t(["Serve Type", "서빙 타입"]).desc(["Serve type of the icecream order", "아이스크림 주문의 서빙 타입"]),
@@ -225,8 +224,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     onlyActiveCanBeCanceled: ["Only active orders can be canceled", "활성 상태의 주문만 취소할 수 있습니다"],
   })
   .translate({
-    pickup: ["Pickup", "픽업"],
-    waiting: ["Waiting", "대기"],
+    waiting: ["Waiting", "대기중"],
+    pickup: ["Pickup", "픽업가능"],
   });
 `}
           />
@@ -240,11 +239,12 @@ export const dictionary = modelDictionary(["en", "ko"])
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Util.tsx"
             code={`
-"use client"; // [!code collapse:2]
-import { st, usePage } from "@apps/koyo/client";
-import { cnst } from "@apps/koyo/client"; // [!code ++:2]
-import { Select, buttonRecipe } from "akanjs/ui";
-// [!code collapse:81]
+"use client";
+import { st, usePage } from "@apps/koyo/client"; // [!code --:2]
+import { buttonRecipe } from "akanjs/ui";
+import { cnst, st, usePage } from "@apps/koyo/client"; // [!code ++:2]
+import { buttonRecipe, Select } from "akanjs/ui";
+// [!code collapse:80]
 interface ProcessProps {
   className?: string;
   icecreamOrderId: string;
@@ -364,6 +364,13 @@ export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
                 ko: "스토어의 쿼리 인자를 업데이트하며, 이는 자동으로 필터링된 데이터의 재조회를 트리거합니다.",
               })}
             </li>
+            <li>
+              <strong>options</strong>:{" "}
+              {l.trans({
+                en: "The enum class itself. Select lists each status under its dictionary name (icecreamOrderStatus.<value>), and shows a value the dictionary does not name as it is.",
+                ko: "enum 클래스를 그대로 넘깁니다. Select가 각 상태를 사전의 이름(icecreamOrderStatus.<value>)으로 보여 주고, 사전에 없는 값은 그대로 보여 줍니다.",
+              })}
+            </li>
           </ul>
           <div>
             {l.trans({
@@ -375,9 +382,9 @@ export const PublicQueryMaker = ({ className }: PublicQueryMakerProps) => {
             className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code collapse:4]
-import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code collapse:4]
 import { page } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -385,24 +392,24 @@ export default page().render(() => {
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-5xl font-black"> // [!code collapse:5]
-        <div className="text-5xl font-black">{l("inventory.modelName")}</div>
-        <Inventory.Util.Refill className="absolute top-2 right-2" />
+      <div className="flex items-center gap-4"> // [!code collapse:5]
+        <div className="font-black text-5xl">{l("inventory.modelName")}</div>
+        <Inventory.Util.Refill />
       </div>
       <Inventory.Zone.Today />
-      <div className="flex items-center gap-4 text-5xl font-black">
-        <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div>
+      <div className="flex items-center gap-4">
+        <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
         <Model.New
           trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
-          renderTitle="name"
+          renderTitle="default"
           partial={icecreamOrderForm}
         >
           <IcecreamOrder.Template.General />
         </Model.New>
       </div>
-      <IcecreamOrder.Zone.Card // [!code collapse:5]
+      <IcecreamOrder.Zone.Card
         className="space-y-2"
         init={icecreamOrderInitInPublic}
         slice={fetch.slice.icecreamOrderInPublic}
@@ -465,7 +472,7 @@ export class ServeType extends enumOf("serveType", ["forHere", "takeOut", "deliv
 
 export class IcecreamOrderInput extends via((field) => ({
   serveType: field(ServeType, { default: "forHere" }),
-  phone: field(String, { validate: isPhoneNumber }).optional(),
+  phone: field.hidden(String, { validate: isPhoneNumber }).optional(),
   size: field(Int, { min: 50, max: 200 }),
   toppings: field([Topping]),
 })) {}
@@ -477,7 +484,7 @@ export class IcecreamOrderObject extends via(IcecreamOrderInput, (field) => ({
 export class LightIcecreamOrder extends via(
   IcecreamOrderObject,
   ["serveType", "size", "toppings", "status"] as const,
-  (resolve) => ({})
+  (resolve) => ({}),
 ) {}
 
 export class IcecreamOrder extends via(IcecreamOrderObject, LightIcecreamOrder, (resolve) => ({})) {}
@@ -563,7 +570,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     serveType: t(["Serve Type", "서빙 타입"]).desc(["Serve type of the icecream order", "아이스크림 주문의 서빙 타입"]),
@@ -649,8 +656,8 @@ export const dictionary = modelDictionary(["en", "ko"])
     onlyActiveCanBeCanceled: ["Only active orders can be canceled", "활성 상태의 주문만 취소할 수 있습니다"],
   })
   .translate({
-    pickup: ["Pickup", "픽업"],
-    waiting: ["Waiting", "대기"],
+    waiting: ["Waiting", "대기중"],
+    pickup: ["Pickup", "픽업가능"],
   });
 `}
           />
@@ -664,9 +671,8 @@ export const dictionary = modelDictionary(["en", "ko"])
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx"
             code={`
-import { cn } from "akanjs/client"; // [!code collapse:66]
-import { cnst, usePage } from "@apps/koyo/client";
-import { IcecreamOrder } from "@apps/koyo/client";
+import { type cnst, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:64]
+import { cn } from "akanjs/client";
 
 interface GeneralProps {
   className?: string;
@@ -678,14 +684,14 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   return (
     <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4">
-        <span className="text-3xl font-extrabold text-primary">🍦</span>
-        <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="text-foreground/50 ml-auto text-xs">#{icecreamOrder.id}</span>
+        <span className="font-extrabold text-3xl text-primary">🍦</span>
+        <span className="font-bold text-2xl">{l("icecreamOrder.modelName")}</span>
+        <span className="ml-auto text-foreground/50 text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
@@ -693,18 +699,18 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 font-medium text-primary text-xs"
               >
                 {l(\`topping.\${topping}\`)}
               </span>
             ))
           )}
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              "inline-block rounded-full px-2 py-1 font-semibold text-xs",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -715,9 +721,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(\`icecreamOrderStatus.\${icecreamOrder.status}\`)}
           </span>
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -730,7 +736,7 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   );
 };
 
-interface InsightProps {
+interface InsightProps { // [!code ++:53]
   className?: string;
   icecreamOrderInsight: cnst.IcecreamOrderInsight;
 }
@@ -741,43 +747,43 @@ export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.yogurtIcecreamQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.yogurtIcecreamQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.yogurtIcecreamQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.fruitRingQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.fruitRingQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.fruitRingQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.oreoQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.oreoQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.oreoQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.strawberryQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.strawberryQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.strawberryQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.mangoQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.mangoQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.mangoQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.cheeseCubeQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.cheeseCubeQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.cheeseCubeQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.cornQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.cornQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.cornQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.granolaQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.granolaQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.granolaQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.bananaQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.bananaQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.bananaQty}</div>
         </div>
         <div>
           <div className="text-xs">{l("icecreamOrder.insight.figQty")}</div>
-          <div className="text-2xl font-bold">{icecreamOrderInsight.figQty}</div>
+          <div className="font-bold text-2xl">{icecreamOrderInsight.figQty}</div>
         </div>
       </div>
     </div>
@@ -786,8 +792,8 @@ export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
           />
           <div>
             {l.trans({
-              en: `The View component displays each insight metric in a responsive grid. The chef can quickly see how much yogurt to prepare and which toppings are most popular.`,
-              ko: `View 컴포넌트는 각 인사이트 메트릭을 반응형 그리드에 표시합니다. 셰프는 얼마나 많은 요거트를 준비해야 하는지, 어떤 토핑이 가장 인기 있는지 빠르게 확인할 수 있습니다.`,
+              en: `The View component displays each insight metric in a responsive grid. The chef can see how many orders the current filter holds and how many of them asked for each topping.`,
+              ko: `View 컴포넌트는 각 인사이트 메트릭을 반응형 그리드에 표시합니다. 셰프는 현재 필터에 해당하는 주문이 몇 건이고, 그중 각 토핑을 고른 주문이 몇 건인지 확인할 수 있습니다.`,
             })}
           </div>
           <div>
@@ -800,12 +806,12 @@ export const Insight = ({ className, icecreamOrderInsight }: InsightProps) => {
             className="w-full"
             title="apps/koyo/lib/icecreamOrder/IcecreamOrder.Zone.tsx"
             code={`
-"use client"; // [!code collapse:54]
-import { DefaultOf } from "akanjs/constant";
+"use client"; // [!code collapse:52]
+import { type cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
-import { useInterval } from "akanjs/webkit";
 import { Load, Model } from "akanjs/ui";
-import { cnst, fetch, IcecreamOrder, st } from "@apps/koyo/client";
+import { useInterval } from "akanjs/webkit";
+import { Fragment } from "react";
 
 interface CardProps {
   className?: string;
@@ -818,29 +824,28 @@ export const Card = ({ className, init, slice = fetch.slice.icecreamOrder, showC
     void st.slice[slice.sliceName as "icecreamOrder"].do.refreshIcecreamOrder();
   }, 3000);
   return (
-    <>
-      <Load.Units
-        className={className}
-        init={init}
-        renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
-          <IcecreamOrder.Unit.Card key={icecreamOrder.id} icecreamOrder={icecreamOrder} showControls={showControls} />
-        )}
-      />
-      {showControls ? (
-        <Model.ViewEditModal
-          slice={slice}
-          renderTitle={(icecreamOrder: DefaultOf<cnst.IcecreamOrder>) =>
-            \`IcecreamOrder - \${icecreamOrder.id ? icecreamOrder.id : "New"}\`
-          }
-          renderView={(icecreamOrder: cnst.IcecreamOrder) => (
-            <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
-          )}
-          renderTemplate={() => <IcecreamOrder.Template.General />}
-        />
-      ) : null}
-    </>
+    <Load.Units
+      className={className}
+      init={init}
+      renderItem={(icecreamOrder: cnst.LightIcecreamOrder) => (
+        <Fragment key={icecreamOrder.id}>
+          <IcecreamOrder.Unit.Card icecreamOrder={icecreamOrder} showControls={showControls} />
+          {showControls ? (
+            <Model.ViewModal
+              id={icecreamOrder.id}
+              slice={slice}
+              renderTitle={(icecreamOrder: cnst.IcecreamOrder) => \`IcecreamOrder - \${icecreamOrder.id}\`}
+              renderView={(icecreamOrder: cnst.IcecreamOrder) => (
+                <IcecreamOrder.View.General className="w-full" icecreamOrder={icecreamOrder} />
+              )}
+            />
+          ) : null}
+        </Fragment>
+      )}
+    />
   );
 };
+
 interface ViewProps {
   className?: string;
   view: ClientView<"icecreamOrder", cnst.IcecreamOrder>;
@@ -854,7 +859,7 @@ export const View = ({ view }: ViewProps) => {
   );
 };
 
-interface InsightProps {
+interface InsightProps { // [!code ++:8]
   className?: string;
   slice?: SliceMeta;
 }
@@ -873,8 +878,8 @@ export const Insight = ({ className, slice = fetch.slice.icecreamOrder }: Insigh
             <li>
               <strong>st.slice[slice.sliceName].use.icecreamOrderInsight()</strong>:{" "}
               {l.trans({
-                en: "Auto-generated hook that retrieves the aggregated insight data for the specified slice. The framework handles all the aggregation pipeline execution.",
-                ko: "지정된 슬라이스에 대한 집계된 인사이트 데이터를 가져오는 자동 생성된 훅입니다. 프레임워크가 모든 집계 파이프라인 실행을 처리합니다.",
+                en: "Auto-generated hook that reads the insight the slice loaded with its list, counted on the server for the slice's current query arguments.",
+                ko: "슬라이스가 목록과 함께 불러온 인사이트를 읽는 자동 생성된 훅입니다. 인사이트는 슬라이스의 현재 쿼리 인자 기준으로 서버에서 집계됩니다.",
               })}
             </li>
             <li>
@@ -887,17 +892,17 @@ export const Insight = ({ className, slice = fetch.slice.icecreamOrder }: Insigh
           </ul>
           <div>
             {l.trans({
-              en: `Finally, add the Insight Zone to your page to display real-time aggregated statistics:`,
-              ko: `마지막으로, 실시간 집계 통계를 표시하기 위해 페이지에 Insight Zone을 추가합니다:`,
+              en: `Finally, add the Insight Zone to your page to display the aggregated statistics:`,
+              ko: `마지막으로, 집계 통계를 표시하기 위해 페이지에 Insight Zone을 추가합니다:`,
             })}
           </div>
           <Code.Snippet
             className="w-full"
             title="apps/koyo/page/_index.tsx"
             code={`
-import { Model, buttonRecipe } from "akanjs/ui"; // [!code collapse:22]
-import { cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client";
+import { type cnst, fetch, IcecreamOrder, Inventory, usePage } from "@apps/koyo/client"; // [!code collapse:4]
 import { page } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export default page().render(() => {
   const { l } = usePage();
@@ -905,31 +910,29 @@ export default page().render(() => {
   const icecreamOrderForm: Partial<cnst.IcecreamOrderInput> = {};
   return (
     <div className="space-y-4">
-      <div className="space-y-4">
-        <div className="flex items-center gap-4 text-5xl font-black">
-          <div className="text-5xl font-black">{l("inventory.modelName")}</div>
-          <Inventory.Util.Refill className="absolute top-2 right-2" />
-        </div>
-        <Inventory.Zone.Today />
-        <div className="flex items-center gap-4 text-5xl font-black">
-          <div className="text-5xl font-bold">{l("icecreamOrder.modelName")}</div> // [!code collapse:10]
-          <IcecreamOrder.Util.PublicQueryMaker />
-          <Model.New
-            trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
-            slice={fetch.slice.icecreamOrderInPublic}
-            renderTitle="name"
-            partial={icecreamOrderForm}
-          >
-            <IcecreamOrder.Template.General />
-          </Model.New>
-        </div>
-        <IcecreamOrder.Zone.Insight slice={fetch.slice.icecreamOrderInPublic} /> // [!code ++]
-        <IcecreamOrder.Zone.Card
-          className="space-y-2"
-          init={icecreamOrderInitInPublic}
+      <div className="flex items-center gap-4"> // [!code collapse:5]
+        <div className="font-black text-5xl">{l("inventory.modelName")}</div>
+        <Inventory.Util.Refill />
+      </div>
+      <Inventory.Zone.Today />
+      <div className="flex items-center gap-4">
+        <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
+        <IcecreamOrder.Util.PublicQueryMaker />
+        <Model.New
+          trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
-        />
-      </div> // [!code collapse:10]
+          renderTitle="default"
+          partial={icecreamOrderForm}
+        >
+          <IcecreamOrder.Template.General />
+        </Model.New>
+      </div>
+      <IcecreamOrder.Zone.Insight slice={fetch.slice.icecreamOrderInPublic} /> // [!code ++]
+      <IcecreamOrder.Zone.Card
+        className="space-y-2"
+        init={icecreamOrderInitInPublic}
+        slice={fetch.slice.icecreamOrderInPublic}
+      />
     </div>
   );
 });`}
@@ -942,8 +945,8 @@ export default page().render(() => {
           </div>
           <div>
             {l.trans({
-              en: `In the next tutorial, we'll explore how to relate data between different models. This will allow you to create relationships like associating orders with customers, linking products to categories, and building complex data graphs.`,
-              ko: `다음 튜토리얼에서는 서로 다른 모델 간의 데이터 연결 방법을 살펴볼 것입니다. 이를 통해 주문과 고객 연결, 제품과 카테고리 연결, 복잡한 데이터 그래프 구축 같은 관계를 만들 수 있게 됩니다.`,
+              en: `In the next tutorial, we'll relate data between models: a Delivery that groups several ice cream orders so one driver can carry them together.`,
+              ko: `다음 튜토리얼에서는 모델 간 데이터를 연결합니다. 여러 아이스크림 주문을 하나의 Delivery로 묶어 배달원 한 명이 함께 가져갈 수 있게 만듭니다.`,
             })}
           </div>
         </Docs.Description>

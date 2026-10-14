@@ -1,7 +1,7 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { mergeRegister } from "@lexical/utils";
-import { COMMAND_PRIORITY_LOW, DRAGOVER_COMMAND, DROP_COMMAND, PASTE_COMMAND } from "lexical";
+import { COMMAND_PRIORITY_LOW, DRAGOVER_COMMAND, DROP_COMMAND, PASTE_COMMAND, type PasteCommandType } from "lexical";
 import { useEffect } from "react";
 
 import { insertFile, insertImage, insertVideo } from "../media";
@@ -80,8 +80,8 @@ export const UploadPlugin = () => {
       ),
       editor.registerCommand(
         PASTE_COMMAND,
-        (event: ClipboardEvent) => {
-          const files = event.clipboardData?.files;
+        (event: PasteCommandType) => {
+          const files = "clipboardData" in event ? event.clipboardData?.files : undefined;
           const images = files ? [...files].filter((file) => file.type.startsWith("image/")) : [];
           if (images.length > 0) {
             event.preventDefault();

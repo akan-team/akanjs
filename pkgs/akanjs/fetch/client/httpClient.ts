@@ -1,3 +1,4 @@
+import { Backoff, isRecord, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
 import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
 
@@ -10,6 +11,9 @@ export interface HttpClientOptions {
 
 interface FetchOptions extends Pick<HttpClientOptions, "headers" | "timeout"> {
   baseUrl?: string;
+  /** Over the client's default; `false` sends once. */
+  retry?: RetryPolicy | false;
+  idempotencyKey?: string;
 }
 
 const jsonContentType = /^application\/(?:[\w.+-]+\+)?json\b/i;
@@ -23,7 +27,16 @@ const transportErrorKeyMap = {
 } as const;
 
 const serverUnreachableKey = "base.error.serverUnreachable";
+//* What a later try can change: no answer, a restart, a slow upstream, a rate limit, or the same key still running.
+const retryableKeys = new Set([
+  serverUnreachableKey,
+  "base.error.serverUnavailable",
+  "base.error.gatewayTimeout",
+  "base.error.tooManyRequests",
+  "base.error.idempotencyInFlight",
+]);
 const unexpectedResponseKey = "base.error.unexpectedResponse";
+const dictionaryErrorKey = /^\w+\.error\./;
 const transportDetailLimit = 200;
 // A solo process has no gateway to answer a dead upstream with a 504, and a severed connection answers nothing at all.
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -32,6 +45,7 @@ export class HttpClient {
   readonly baseUrl: string;
   #headers: Record<string, string>;
   #timeout?: number | false;
+  #retry: RetryPolicy | false = false;
   private ErrorCls?: ErrorConstructor;
   constructor(baseUrl: string, options: HttpClientOptions = {}) {
     this.baseUrl = baseUrl;
@@ -46,6 +60,16 @@ export class HttpClient {
   /** The budget every call that names none takes. `false` waits as long as the runtime will. */
   setTimeout(timeout?: number | false) {
     this.#timeout = timeout;
+  }
+  get timeout(): number | false | undefined {
+    return this.#timeout;
+  }
+  /** What every call that names no `retry` of its own does; `false`, the default, sends once. */
+  setRetry(retry: RetryPolicy | false) {
+    this.#retry = retry;
+  }
+  get retry(): RetryPolicy | false {
+    return this.#retry;
   }
   #resolveUrl(url: string, options: FetchOptions) {
     return `${(options.baseUrl ?? this.baseUrl).replace(/\/$/, "")}${url}`;
@@ -101,18 +125,72 @@ export class HttpClient {
     );
   }
 
+  //* A mutation retries only under an Idempotency-Key — named, or minted once for every try of this call — so a try
+  //* whose answer was lost runs once on the server. An upload is sent once: its body may be a stream already read.
   async #request<Returns>(url: string, init: RequestInit, options: FetchOptions = {}): Promise<Returns> {
-    const res = await this.#fetch(url, this.#withTimeout(init, options));
+    const retry = options.retry ?? this.#retry;
+    const mutation = !!init.method && init.method !== "GET";
+    const idempotencyKey = options.idempotencyKey ?? (retry && mutation ? HttpClient.#uuid() : undefined);
+    const sent: RequestInit = idempotencyKey
+      ? { ...init, headers: { ...(init.headers as Record<string, string>), "Idempotency-Key": idempotencyKey } }
+      : init;
+    const policy = retry && !(init.body instanceof FormData) ? retry : null;
+    //? The budget is the call's, not each try's: every try and every wait between them share one deadline.
+    const deadline = this.#deadlineOf(init, options);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.#requestOnce<Returns>(url, sent, deadline);
+      } catch (error) {
+        const wait = policy ? HttpClient.retryWait(error, attempt, policy) : null;
+        if (wait === null || Date.now() + wait >= deadline) throw error;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+  }
+
+  //? `crypto.randomUUID` exists only in a secure context, which a dev server at http://192.168.x.x is not.
+  static #uuid(): string {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  /** The wait before the next try, or `null` when this error is final or the tries are spent. */
+  static retryWait(error: unknown, attempt: number, { attempts = 4, ...backoff }: RetryPolicy): number | null {
+    const restored = error as RestoredError | undefined;
+    if (attempt >= attempts || !retryableKeys.has(restored?.error ?? "")) return null;
+    const wait = Backoff.delay(attempt, { ...backoff, min: backoff.min ?? 500 });
+    const seconds = (restored?.data as { seconds?: unknown } | undefined)?.seconds;
+    return typeof seconds === "number" && seconds > 0 ? Math.max(wait, seconds * 1000) : wait;
+  }
+
+  async #requestOnce<Returns>(url: string, init: RequestInit, deadline: number): Promise<Returns> {
+    const res = await this.#fetch(url, this.#withDeadline(init, deadline));
     const body = await this.#readBody(res);
     if (res.ok) return body as Returns;
+    //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
+    if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
+      throw this.#transportError(res, JSON.stringify(body));
     throw this.#restoreError(body, res.status);
   }
 
+  static #namesErrorKey(body: unknown) {
+    return isRecord(body) && typeof body.error === "string" && dictionaryErrorKey.test(body.error);
+  }
+
   //* An upload gets no deadline: a large file on a slow uplink is a long request that is still working.
-  #withTimeout(init: RequestInit, options: FetchOptions): RequestInit {
+  #deadlineOf(init: RequestInit, options: FetchOptions) {
     const timeout = options.timeout ?? (init.body instanceof FormData ? false : (this.#timeout ?? DEFAULT_TIMEOUT_MS));
-    if (timeout === false || !Number.isFinite(timeout) || timeout <= 0) return init;
-    return { ...init, signal: AbortSignal.timeout(timeout) };
+    if (timeout === false || !Number.isFinite(timeout) || timeout <= 0) return Number.POSITIVE_INFINITY;
+    return Date.now() + timeout;
+  }
+
+  #withDeadline(init: RequestInit, deadline: number): RequestInit {
+    if (deadline === Number.POSITIVE_INFINITY) return init;
+    return { ...init, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) };
   }
 
   //* `fetch` rejects only when no response arrived: the server is unreachable, not `TypeError: Failed to fetch`.
@@ -163,7 +241,7 @@ export class HttpClient {
   static #retryAfterSeconds(res: Response): number {
     const header = res.headers.get("retry-after")?.trim() ?? "";
     const seconds = /^\d+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header) - Date.now()) / 1000);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds : 60;
+    return Number.isFinite(seconds) ? Math.max(0, seconds) : 60;
   }
 
   #restoreError(body: unknown, fallbackStatusCode: number): RestoredError {
@@ -221,8 +299,14 @@ export class HttpClient {
     bodyArgs.forEach((arg) => {
       const argValue = valueOf(arg);
       if (argValue === null || argValue === undefined) return;
-      formData.append(arg.name, typeof argValue === "string" ? argValue : JSON.stringify(argValue));
+      formData.append(arg.name, HttpClient.#multipartText(arg, argValue));
     });
     return formData;
+  }
+  //? `HttpExecutionContext` JSON-parses every multipart field but a lone String or ID, so a string bound for any other
+  //? type goes quoted too: `"42"` for an `Any` would otherwise arrive as the number 42.
+  static #multipartText(arg: SerializedArg, value: unknown): string {
+    if (!arg.arrDepth && (arg.refName === "String" || arg.refName === "ID") && typeof value === "string") return value;
+    return JSON.stringify(value);
   }
 }

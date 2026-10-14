@@ -32,6 +32,8 @@ When a customer places an order, it starts as "active". Staff can begin processi
 
 While an order is being prepared, it's in "processing" status. Once ready, staff can mark it as "served".
 
+Once the customer has picked up the order, staff closes it as "finished".
+
 Only active orders can be canceled. Once processing begins, cancellation is no longer allowed.
 
 Business Rules
@@ -40,7 +42,9 @@ Only active orders can be processed or canceled
 
 Only processing orders can be served
 
-Served and canceled orders are final states
+Only served orders can be finished
+
+Finished and canceled orders are final states
 
 Implement Document Business Logic
 
@@ -82,7 +86,9 @@ Think of signal endpoints as the communication system between the frontend (like
 
 Each signal endpoint is defined using the mutation() builder, specifying the return type and accepting the order ID as a parameter via .param(). The .exec() callback delegates to the corresponding service method to perform the actual business logic.
 
-The second argument to slice() is the guard map, not boilerplate: root is the generated admin query API and is always Admin, get covers reads, and cru covers create, update and remove — create is opened on its own here because the kiosk takes anonymous orders. Leaving root: Public hands that admin query API to every anonymous caller, and to every AI agent through /mcp.
+The second argument to slice() is the guard map, not boilerplate: root is the generated admin query API and stays closed (None here, Admin once your workspace has libs/shared), get covers reads, and cru covers create, update and remove — create is opened on its own because the kiosk takes anonymous orders. Leaving root: Public hands that admin query API to every anonymous caller, and to every AI agent through /mcp.
+
+Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them. Once you add sign-in, replace Public with a staff guard such as Admin.
 
 We also need to add dictionary entries for these API endpoints so they display properly in the UI:
 
@@ -110,7 +116,7 @@ Each button component includes:
 
 Consistent Styling
 
-Each button has appropriate styling: primary for Process, secondary for Serve, outlined warning for Cancel
+Each button has its own variant: secondary for Process, accent for Serve, success for Finish, and warning for Cancel
 
 Disabled State
 
@@ -148,7 +154,7 @@ Let's test our status management implementation to ensure everything works corre
 
 Testing Steps:
 
-Navigate to http://localhost:8282/icecreamOrder
+Navigate to http://localhost:8282
 
 Create a new ice cream order (it will start as 'active')
 
@@ -159,6 +165,8 @@ Click 'Process' - the status should change to 'processing'
 Now only the 'Serve' button should be enabled
 
 Click 'Serve' - the status should change to 'served'
+
+Click 'Finish' - the status should change to 'finished'
 
 All action buttons should now be disabled (final state)
 
@@ -174,14 +182,14 @@ Error messages should appear if business rules are violated
 
 What's Next?
 
-In the next tutorial, we'll learn how to edit existing data by implementing order modification functionality. This will allow customers to update their ice cream orders before they're processed, completing the full CRUD operations for our ice cream shop.
+In the next tutorial, we'll connect the service layer to the outside world: notify staff and customers through an external API, and run a scheduled job that checks on orders.
 
 ## Code Examples
 
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts
 
 ```ts
-import { by, from, into, type SchemaOf } from "akanjs/document"; // [!code collapse:3]
+import { by, from, into } from "akanjs/document"; // [!code collapse:3]
 
 import * as cnst from "../cnst";
 import { Err } from "../dict"; // [!code ++]
@@ -230,7 +238,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -302,9 +310,8 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts
 
 ```ts
-import { Admin } from "@libs/shared/srvkit";
 import { ID } from "akanjs/base"; // [!code ++]
-import { endpoint, internal, Public, slice } from "akanjs/signal"; // [!code collapse:18]
+import { endpoint, internal, None, Public, slice } from "akanjs/signal"; // [!code collapse:7]
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -313,31 +320,31 @@ export class IcecreamOrderInternal extends internal(srv.icecreamOrder, ({ interv
 
 export class IcecreamOrderSlice extends slice(
   srv.icecreamOrder,
-  { guards: { root: Admin, get: Public, cru: Admin, create: Public } },
+  { guards: { root: None, get: Public, cru: None, create: Public } },
   (init) => ({
-    inPublic: init().exec(function () {
+    inPublic: init({ guards: [Public] }).exec(function () {
       return this.icecreamOrderService.queryAny();
     }),
-  })
+  }),
 ) {}
 
 export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query, mutation }) => ({
-  processIcecreamOrder: mutation(cnst.IcecreamOrder) // [!code ++:20]
+  processIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] }) // [!code ++:20]
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.processIcecreamOrder(icecreamOrderId);
     }),
-  serveIcecreamOrder: mutation(cnst.IcecreamOrder)
+  serveIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.serveIcecreamOrder(icecreamOrderId);
     }),
-  finishIcecreamOrder: mutation(cnst.IcecreamOrder)
+  finishIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.finishIcecreamOrder(icecreamOrderId);
     }),
-  cancelIcecreamOrder: mutation(cnst.IcecreamOrder)
+  cancelIcecreamOrder: mutation(cnst.IcecreamOrder, { guards: [Public] })
     .param("icecreamOrderId", ID)
     .exec(function (icecreamOrderId) {
       return this.icecreamOrderService.cancelIcecreamOrder(icecreamOrderId);
@@ -358,7 +365,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     t(["Icecream Order", "아이스크림 주문"]).desc([
       "IcecreamOrder is an option that customers can choose when ordering icecream at koyo store.",
       "아이스크림 주문은 koyo 가게에서 고객이 아이스크림을 주문할 때 커스텀할 수 있는 옵션들을 선택할 수 있습니다.",
-    ])
+    ]),
   )
   .model<IcecreamOrder>((t) => ({
     size: t(["Size", "사이즈"]).desc(["Size of the icecream order", "아이스크림 주문의 사이즈"]),
@@ -424,9 +431,8 @@ export const dictionary = modelDictionary(["en", "ko"])
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.store.ts
 
 ```ts
-import { store } from "akanjs/store"; // [!code collapse:5]
+import { store } from "akanjs/store"; // [!code collapse:4]
 
-import * as cnst from "../cnst";
 import { fetch, sig } from "../useClient";
 
 export class IcecreamOrderStore extends store(sig.icecreamOrder, () => ({
@@ -542,29 +548,28 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.Unit.tsx
 
 ```ts
-import { cn, type ModelProps } from "akanjs/client"; // [!code collapse:3]
-import { Model, buttonRecipe } from "akanjs/ui";
-import { cnst, fetch, usePage } from "@apps/koyo/client";
-import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
+import { type cnst, fetch, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:3]
+import { cn, type ModelProps } from "akanjs/client";
+import { buttonRecipe, Model } from "akanjs/ui";
 
 export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIcecreamOrder>) => {
   const { l } = usePage();
   return (
     <div className="group flex w-full flex-wrap justify-between gap-2 overflow-hidden rounded-xl bg-linear-to-br from-background via-muted to-border px-8 py-6 shadow-md transition-all duration-300 hover:shadow-xl">
       <div className="flex flex-col justify-center"> // [!code collapse:25]
-        <div className="flex items-center gap-2 text-lg font-semibold text-primary">
-          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-bold tracking-wider uppercase">
+        <div className="flex items-center gap-2 font-semibold text-lg">
+          <span className="inline-block rounded bg-muted px-2 py-1 font-bold text-xs uppercase tracking-wider">
             {l("icecreamOrder.id")}
           </span>
           <span className="ml-2 font-mono text-primary">#{icecreamOrder.id.slice(-4)}</span>
         </div>
         <div className="mt-4 flex items-center gap-2">
-          <span className="inline-block rounded border border-border bg-background px-2 py-1 text-xs font-bold tracking-wider text-primary uppercase">
+          <span className="inline-block rounded border border-border bg-background px-2 py-1 font-bold text-primary text-xs uppercase tracking-wider">
             {l("icecreamOrder.status")}
           </span>
           <span
             className={cn(
-              "ml-2 rounded-full px-3 py-1 text-sm font-semibold",
+              "ml-2 rounded-full px-3 py-1 font-semibold text-sm",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -576,7 +581,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
           </span>
         </div>
       </div>
-      <div className="bg-background flex items-center justify-center gap-2 rounded-xl p-4">
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
           <button className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
@@ -595,10 +600,9 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
 ### apps/koyo/lib/icecreamOrder/IcecreamOrder.View.tsx
 
 ```ts
-import { cn } from "akanjs/client"; // [!code collapse:2]
-import { cnst, usePage } from "@apps/koyo/client";
-import { IcecreamOrder } from "@apps/koyo/client"; // [!code ++]
-// [!code collapse:5]
+import { type cnst, IcecreamOrder, usePage } from "@apps/koyo/client"; // [!code collapse:8]
+import { cn } from "akanjs/client";
+
 interface GeneralProps {
   className?: string;
   icecreamOrder: cnst.IcecreamOrder;
@@ -609,14 +613,14 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
   return (
     <div className={cn(className, "mx-auto w-full space-y-6 rounded-xl p-8 shadow-lg")}>
       <div className="flex items-center gap-3 border-b pb-4"> // [!code collapse:43]
-        <span className="text-3xl font-extrabold text-primary">🍦</span>
-        <span className="text-2xl font-bold">{l("icecreamOrder.modelName")}</span>
-        <span className="text-foreground/50 ml-auto text-xs">#{icecreamOrder.id}</span>
+        <span className="font-extrabold text-3xl text-primary">🍦</span>
+        <span className="font-bold text-2xl">{l("icecreamOrder.modelName")}</span>
+        <span className="ml-auto text-foreground/50 text-xs">#{icecreamOrder.id}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.size")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.size")}</div>
         <div>{icecreamOrder.size} cc</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.toppings")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.toppings")}</div>
         <div className="flex flex-wrap gap-2">
           {icecreamOrder.toppings.length === 0 ? (
             <span className="text-foreground/70 italic">{l.trans({ en: "No toppings", ko: "토핑 없음" })}</span>
@@ -624,18 +628,18 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             icecreamOrder.toppings.map((topping) => (
               <span
                 key={topping}
-                className="inline-block rounded-full bg-background px-2 py-1 text-xs font-medium text-primary"
+                className="inline-block rounded-full bg-background px-2 py-1 font-medium text-primary text-xs"
               >
                 {l(`topping.${topping}`)}
               </span>
             ))
           )}
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.status")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.status")}</div>
         <div>
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-1 text-xs font-semibold",
+              "inline-block rounded-full px-2 py-1 font-semibold text-xs",
               icecreamOrder.status === "active" && "border border-primary/40 bg-background text-primary",
               icecreamOrder.status === "processing" && "border border-warning/40 bg-background text-warning",
               icecreamOrder.status === "served" && "border border-info/40 bg-info text-info-foreground",
@@ -646,9 +650,9 @@ export const General = ({ className, icecreamOrder }: GeneralProps) => {
             {l(`icecreamOrderStatus.${icecreamOrder.status}`)}
           </span>
         </div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.createdAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.createdAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.createdAt.format("YYYY-MM-DD HH:mm:ss")}</div>
-        <div className="text-foreground/50 font-semibold">{l("icecreamOrder.updatedAt")}</div>
+        <div className="font-semibold text-foreground/50">{l("icecreamOrder.updatedAt")}</div>
         <div className="text-foreground/70">{icecreamOrder.updatedAt.format("YYYY-MM-DD HH:mm:ss")}</div>
       </div>
       <div className="flex items-center justify-end gap-2"> // [!code ++:6]

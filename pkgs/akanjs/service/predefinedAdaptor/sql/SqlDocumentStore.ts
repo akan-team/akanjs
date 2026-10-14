@@ -45,6 +45,7 @@ import {
   type SqliteDocumentRow,
   type TransferRow,
   toSafeRefName,
+  type UpsertByIdOptions,
   type WriteHookOptions,
 } from "./types";
 import { UpdateCompiler } from "./UpdateCompiler";
@@ -251,6 +252,31 @@ export class SqlDocumentStore {
 
   async clone(data: DocumentRecord & { id: string }) {
     return this.create(data);
+  }
+
+  //* The write a sync or a backfill repeats safely: the row under the record's own id is written whole, a second run
+  //* lands on the same row, and no hook runs — what arrives was validated where it was made. A live room learns nothing.
+  async upsertById(data: DocumentRecord & { id: string }, { preserveTimestamps = false }: UpsertByIdOptions = {}) {
+    if (!isDocumentId(data.id)) throw new Error(`Invalid ID value: ${data.id}`);
+    const now = dayjs();
+    const keepsCreatedAt = preserveTimestamps && data.createdAt != null;
+    const prepared = this.prepareDocument({
+      ...data,
+      createdAt: keepsCreatedAt ? data.createdAt : now,
+      updatedAt: preserveTimestamps ? (data.updatedAt ?? now) : now,
+    });
+    const row = this.toRow(prepared);
+    const kept = keepsCreatedAt ? `"createdAt" = excluded."createdAt", ` : "";
+    const stored = await this.owner
+      .getConnection()
+      .prepare(
+        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})
+           ON CONFLICT("id") DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"
+           RETURNING "createdAt"`,
+      )
+      .get<{ createdAt: number | string }>(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
+    const createdAt = Number(stored?.createdAt ?? row.createdAt);
+    return this.#withStoredRow(this.hydrate({ ...prepared, createdAt: dayjs(createdAt) }), { ...row, createdAt });
   }
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
@@ -466,13 +492,31 @@ export class SqlDocumentStore {
     return row?.count ?? 0;
   }
 
+  /** The stored numbers at `path` added up over the live rows the query matches; 0 when none. */
+  async sum(path: string, query?: DocumentQuery) {
+    if (BASE_COLUMNS.has(path) || path.startsWith("_")) throw new Error(`sum reads a model field, not "${path}"`);
+    this.compiler.fieldExpr(path);
+    const { where, params, joins } = this.safeQuery(query, "sum", {});
+    const row = await this.prepareStmt(
+      `SELECT ${this.dialect.sumOf(path)} as total FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where}`,
+    ).get<{ total: number | string | null }>(...this.joinParams(joins), ...params);
+    return Number(row?.total ?? 0);
+  }
+
   async insight(query?: DocumentQuery) {
     const insightFields = this.constant.insight[FIELD_META] as unknown as FieldMap;
     const result: DocumentRecord = {};
     for (const [key, field] of Object.entries(insightFields)) {
       const props = field.getProps();
+      const { $sum: sumPath, ...condition } = (props.accumulate ?? {}) as Record<string, unknown>;
       if (!props.accumulate) {
         result[key] = props.default;
+      } else if (typeof sumPath === "string") {
+        //* `{ $sum: "<field>", ...condition }` adds the field up over the rows the condition also matches.
+        const scoped = Object.keys(condition).length
+          ? documentQueryHelper.all(query ?? {}, condition as DocumentQuery)
+          : query;
+        result[key] = await this.sum(sumPath, scoped);
       } else if (
         typeof props.accumulate === "object" &&
         !Object.keys(props.accumulate as Record<string, unknown>).some((key) => key.startsWith("$"))

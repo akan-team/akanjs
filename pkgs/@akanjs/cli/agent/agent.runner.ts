@@ -153,7 +153,7 @@ ${frameworkGuide.trim()}
 ## Before You Finish
 
 1. \`bun run akan lint <appName>\` — Tailwind class order, \`Err\`, \`console\`, \`#private\` scope, unused imports.
-2. \`bun run akan typecheck <appName>\` — server/client boundary violations.
+2. \`bun run akan typecheck <appName>\` — server/client boundary violations, and the tests and specs nothing imports.
 3. \`bun run akan sync <appName>\` if you added, renamed, or deleted any file.
 4. Did you write or change a \`.tsx\` file? \`bun run akan quality ssr\` — did the server share hold, and did you add
    a \`"use client"\` you cannot justify?

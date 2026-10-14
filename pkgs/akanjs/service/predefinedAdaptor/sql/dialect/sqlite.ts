@@ -22,6 +22,10 @@ export class SqliteDialect implements SqlDialect {
   extract(path: string) {
     return `json_extract(${this.docColumn()}, ${this.#path(path)})`;
   }
+  sumOf(path: string) {
+    const at = `${this.docColumn()}, ${this.#path(path)}`;
+    return `COALESCE(SUM(CASE WHEN json_type(${at}) IN ('integer', 'real') THEN json_extract(${at}) END), 0)`;
+  }
   // `json_extract` would unwrap a string holding '{"a":1}' into an object and a boolean into 0/1; `->` keeps the JSON
   // text, which `decodeProjected` parses back exactly.
   projectExpr(path: string) {

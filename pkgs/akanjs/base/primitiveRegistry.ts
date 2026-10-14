@@ -194,7 +194,7 @@ export class Any extends PrimitiveScalar {
 }
 PrimitiveRegistry.register(Any);
 
-type NodeBuffer = Uint8Array & { toString(encoding: string): string };
+type NodeBuffer = Uint8Array<ArrayBuffer> & { toString(encoding: string): string };
 interface BufferCtor {
   from(buffer: ArrayBufferLike, byteOffset: number, length: number): NodeBuffer;
   from(text: string, encoding: string): NodeBuffer;
@@ -212,13 +212,13 @@ export class Binary extends PrimitiveScalar {
     return value instanceof Uint8Array || typeof value === "string";
   }
   static override parseValue(input: Uint8Array | string): Uint8Array {
-    return typeof input === "string" ? Binary.#fromBase64(input) : input;
+    return typeof input === "string" ? Binary.fromBase64(input) : input;
   }
   static override serializeValue(value: Uint8Array | string): string {
-    return typeof value === "string" ? value : Binary.#toBase64(value);
+    return typeof value === "string" ? value : Binary.toBase64(value);
   }
 
-  static #toBase64(bytes: Uint8Array): string {
+  static toBase64(bytes: Uint8Array): string {
     const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
     if (buffer) return buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
     let binary = "";
@@ -226,7 +226,7 @@ export class Binary extends PrimitiveScalar {
       binary += String.fromCharCode(...bytes.subarray(idx, idx + 0x8000));
     return btoa(binary);
   }
-  static #fromBase64(text: string): Uint8Array {
+  static fromBase64(text: string): Uint8Array<ArrayBuffer> {
     const buffer = (globalThis as { Buffer?: BufferCtor }).Buffer;
     if (buffer) return buffer.from(text, "base64");
     const binary = atob(text);
@@ -247,6 +247,65 @@ export class Upload extends PrimitiveScalar {
   __TEMP_TYPE__: "Upload" = "Upload";
 }
 PrimitiveRegistry.register(Upload);
+
+export type ImageResultMimeType = (typeof ImageResult.mimeTypes)[number];
+export interface ImageResultValue {
+  /** Standard padded base64, without a `data:` prefix. */
+  data: string;
+  mimeType: ImageResultMimeType;
+  caption?: string | null;
+}
+
+/** A picture an endpoint returns: JSON over HTTP, an image content block over MCP. Not storable. */
+export class ImageResult extends PrimitiveScalar {
+  static override refName: "ImageResult" = "ImageResult";
+  static override [SERVER_VALUE]: ImageResultValue;
+  static override [CLIENT_VALUE]: ImageResultValue;
+  static override [DEFAULT_VALUE]: ImageResultValue | null = null;
+  static override [PURIFIED_VALUE]: ImageResultValue | null = null;
+  static override [EXAMPLE_VALUE]: ImageResultValue = {
+    data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    mimeType: "image/png",
+    caption: "A 1x1 pixel.",
+  };
+  //? The image types MCP clients forward to Anthropic and OpenAI models; an SVG or a BMP is refused by both.
+  static readonly mimeTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+  static override jsonSchema: PrimitiveJsonSchema = {
+    type: "object",
+    properties: {
+      data: { type: "string", contentEncoding: "base64" },
+      mimeType: { type: "string", enum: [...ImageResult.mimeTypes] },
+      caption: { type: ["string", "null"] },
+    },
+    required: ["data", "mimeType"],
+    additionalProperties: false,
+  };
+  //? Only the MCP tool path can show a model the picture; every other agent read gets the caption, not the base64.
+  static override agent: PrimitiveAgentFace<ImageResultValue> = {
+    schema: {
+      type: "object",
+      properties: { mimeType: { type: "string" }, caption: { type: "string" } },
+      required: ["mimeType"],
+    },
+    read: ({ mimeType, caption }) => (caption ? { mimeType, caption } : { mimeType }),
+  };
+
+  static override validate(value: ImageResultValue): boolean {
+    if (!value || typeof value !== "object") return false;
+    const { data, mimeType, caption } = value;
+    return (
+      typeof data === "string" &&
+      ImageResult.#isBase64(data) &&
+      (ImageResult.mimeTypes as readonly string[]).includes(mimeType) &&
+      (caption === undefined || caption === null || typeof caption === "string")
+    );
+  }
+
+  static #isBase64(data: string) {
+    return data.length > 0 && data.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(data);
+  }
+}
+PrimitiveRegistry.register(ImageResult);
 
 declare global {
   interface StringConstructor {
@@ -391,4 +450,14 @@ Object.assign(Date, {
 });
 PrimitiveRegistry.register(Date);
 
-export type DefaultPrimitiveName = "String" | "Boolean" | "Date" | "Int" | "Float" | "ID" | "Any" | "Binary" | "Upload";
+export type DefaultPrimitiveName =
+  | "String"
+  | "Boolean"
+  | "Date"
+  | "Int"
+  | "Float"
+  | "ID"
+  | "Any"
+  | "Binary"
+  | "Upload"
+  | "ImageResult";

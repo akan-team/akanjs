@@ -39,8 +39,9 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain("const inheritedLayout = resolveRouteModule(inheritedModule as never");
     expect(generatedSource).not.toContain("<System.Provider");
     expect(generatedSource).toContain("export async function generateHead(props: PageProps)");
-    expect(generatedSource).toContain("if (userLayout.generateHead) return userLayout.generateHead(props);");
-    expect(generatedSource).toContain("return inheritedLayout.head;");
+    // The ancestor root is a level of the route tree, which merges its head; this boundary returns only its own.
+    expect(generatedSource).toContain("[userLayout].map((layout)");
+    expect(generatedSource).toContain("return RouteHead.mergeNodes(heads);");
     expect(generatedSource).not.toContain("generateMetadata");
     expect(generatedSource).toContain("export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;");
     expect(generatedSource).toContain("export const Error = userLayout.Error ?? inheritedLayout.Error;");
@@ -71,6 +72,9 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain("<System.Provider");
     expect(generatedSource).toContain("export const theme = userLayout.theme ?? inheritedLayout.theme;");
     expect(generatedSource).toContain("theme={theme}");
+    expect(generatedSource).toContain("export const viewport = userLayout.viewport ?? inheritedLayout.viewport;");
+    expect(generatedSource).toContain("viewport={viewport}");
+    expect(generatedSource).toContain("[inheritedLayout, userLayout].map((layout)");
     expect(generatedSource).toContain('import { allDictionary } from "../dict/useDict.ts";');
     expect(generatedSource).toContain(
       'allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}',

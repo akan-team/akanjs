@@ -233,17 +233,23 @@ describe("AkanQualityScanner layout rules", () => {
     expect(warnings[0]?.fix).toContain("akan sync");
   });
 
-  test("keeps a root signal test out of the lib facet rule", async () => {
+  test("flags a test at the lib root and points it at its module folder or srvkit", async () => {
     const root = await makeWorkspace({
       "libs/demo/lib/cnst.ts": "export const cnst = 1;\n",
       "libs/demo/lib/user.signal.test.ts": "export const test = 1;\n",
+      "libs/demo/lib/user/user.signal.test.ts": "export const test = 1;\n",
       "libs/demo/lib/helper.ts": "export const helper = 1;\n",
     });
 
     const warnings = rulesOf(await new AkanQualityScanner().scan(root), "akan.layout.lib-facet-file");
 
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.file).toBe("libs/demo/lib/helper.ts");
+    expect(warnings.map((warning) => warning.file ?? "").sort((a, b) => a.localeCompare(b))).toEqual([
+      "libs/demo/lib/helper.ts",
+      "libs/demo/lib/user.signal.test.ts",
+    ]);
+    const rootTest = warnings.find((warning) => warning.file === "libs/demo/lib/user.signal.test.ts");
+    expect(rootTest?.message).toContain("lib/<model>/<model>.signal.test.ts");
+    expect(rootTest?.message).toContain("srvkit/");
   });
 });
 
@@ -296,7 +302,7 @@ describe("bang comments in browser-reachable files", () => {
       "apps/demo/ui/Last.tsx": "export const Last = () => null;\n//! left behind\n",
     });
 
-    expect(warnings.map((warning) => `${warning.file}:${warning.line}`).sort()).toEqual([
+    expect(warnings.map((warning) => `${warning.file}:${warning.line}`).sort((a, b) => a.localeCompare(b))).toEqual([
       "apps/demo/ui/First.tsx:1",
       "apps/demo/ui/Last.tsx:2",
     ]);
@@ -344,6 +350,8 @@ describe("bang comments in browser-reachable files", () => {
     ];
     const warnings = await bangWarningsIn(Object.fromEntries(files.map((file) => [file, body])));
 
-    expect(warnings.map((warning) => warning.file).sort()).toEqual([...files].sort());
+    expect(warnings.map((warning) => warning.file ?? "").sort((a, b) => a.localeCompare(b))).toEqual(
+      [...files].sort((a, b) => a.localeCompare(b)),
+    );
   });
 });

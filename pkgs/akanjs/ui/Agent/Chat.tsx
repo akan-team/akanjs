@@ -1,5 +1,5 @@
 "use client";
-import { cn, isMobileDevice, usePage } from "akanjs/client";
+import { cn, isMcpView, isMobileDevice, usePage } from "akanjs/client";
 import { AgentPrompts, type AgentVisualOption } from "akanjs/store";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -22,6 +22,7 @@ import {
   SessionContext,
   type SessionHistory,
 } from "use-agentic";
+import { overlayZ } from "../overlayLayer";
 import { createOverridable } from "../UiOverride";
 import Approval from "./Approval";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
@@ -79,6 +80,10 @@ export interface ChatProps {
   /** `false` leaves Cmd/Ctrl+L to the browser. */
   shortcut?: boolean;
   launcherClassName?: string;
+  /** The corner the launcher sits in; it clears the page's bottom chrome and safe area either way. */
+  launcherPlacement?: "right" | "left";
+  /** Draws no launcher below this breakpoint; the panel still opens from the shortcut or a controlled `open`. */
+  hideLauncherBelow?: "sm" | "md" | "lg";
   panelClassName?: string;
   /** Shown in place of the intro line while the transcript is empty. */
   intro?: ReactNode;
@@ -108,10 +113,17 @@ const isApplePlatform = () => {
 };
 
 // Portalled to the body: `#pageContainers` is `isolation: isolate`, so a z-index inside it never tops a body overlay.
-// z-150 sits above toast 140, modal 120, sheet 101 and dropdown 100, and below Reconnect 200, which blocks on purpose.
-const launcherLayer = "fixed right-4 bottom-4 z-[150]";
+// The launcher reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar and the home indicator.
+const launcherLayer =
+  "fixed bottom-[calc(var(--akan-bottom-inset,0px)+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))+1rem)]";
+const launcherStyle = { zIndex: overlayZ.agentLauncher } as const;
+const launcherSides = {
+  right: "right-[calc(env(safe-area-inset-right,0px)+1rem)]",
+  left: "left-[calc(env(safe-area-inset-left,0px)+1rem)]",
+} as const;
+const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
-const panelLayer = "fixed inset-0 z-[150] sm:inset-auto sm:right-4 sm:bottom-4";
+const panelLayer = "fixed inset-0 sm:inset-auto sm:right-4 sm:bottom-4";
 const panelSize =
   "h-dvh w-screen rounded-none sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box";
 
@@ -135,6 +147,8 @@ export const DefaultChat = ({
   inline = false,
   shortcut = true,
   launcherClassName,
+  launcherPlacement = "right",
+  hideLauncherBelow,
   panelClassName,
   intro,
   header,
@@ -213,7 +227,7 @@ export const DefaultChat = ({
     if (sticky.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [version, open]);
   useEffect(() => {
-    if (!shortcut) return;
+    if (!shortcut || isMcpView()) return;
     const apple = isApplePlatform();
     setHotkey(apple ? { label: "⌘ L", keys: "Meta+L" } : { label: "Ctrl+L", keys: "Control+L" });
     const onKeyDown = (event: KeyboardEvent) => {
@@ -406,12 +420,20 @@ export const DefaultChat = ({
   // The estimate walks every message, and the composer re-renders on every keystroke.
   const context = useMemo(() => session.context, [version]);
   const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
-  const layer = (surface: ReactNode) => (inline ? surface : overlay ? createPortal(surface, overlay) : null);
+  //? Inside an MCP host's view the person is already talking to an agent, and this one's relay is out of reach.
+  const layer = (surface: ReactNode) =>
+    isMcpView() ? null : inline ? surface : overlay ? createPortal(surface, overlay) : null;
   if (!open)
     return launcher
       ? layer(
           <Launcher
-            className={cn(!inline && launcherLayer, className, launcherClassName)}
+            className={cn(
+              !inline && [launcherLayer, launcherSides[launcherPlacement]],
+              hideLauncherBelow && launcherHiddenBelow[hideLauncherBelow],
+              className,
+              launcherClassName,
+            )}
+            style={inline ? undefined : launcherStyle}
             hotkey={hotkey}
             label={l("base.agent")}
             buttonRef={launcherRef}
@@ -433,7 +455,7 @@ export const DefaultChat = ({
         panelClassName,
       )}
       role="dialog"
-      style={inline ? undefined : keyboardFrame}
+      style={inline ? undefined : { zIndex: overlayZ.agentPanel, ...keyboardFrame }}
       {...files.dropProps}
     >
       {chrome ? (

@@ -1,8 +1,9 @@
 // Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
-// packages/core/src/kernel.ts and protocol.ts validateRequest. Foundation only, so
+// packages/core/src/kernel.ts and protocol.ts validateRequest. Foundation and CryptoKit only, so
 // scripts/native-vectors.ts compiles it on the Mac with swiftc, and the self-test runs the same
 // vectors on the device (AkanNativeVectors.swift, dev builds). Tables come from AkanNativeContract.swift.
 
+import CryptoKit
 import Foundation
 
 enum AkanNativeRoute: Equatable {
@@ -27,6 +28,41 @@ enum AkanNativeAdmission: String {
 
 enum AkanNativeNavigation: String {
     case load, open, drop
+}
+
+/// kernel.ts UpdateDecision: what a verified web bundle manifest means to this binary (updates protocol v2).
+struct AkanNativeUpdateDecision: Equatable {
+    enum Kind: String {
+        case untrusted, revoked, selfRevoke = "self-revoke", revokeLater = "revoke-later", take, stale
+    }
+
+    let kind: Kind
+    var baseline: Double = 0
+    var revoke: [String] = []
+
+    var wire: String {
+        kind == .take || kind == .stale ? "\(kind.rawValue):\(Int(baseline)):\(revoke.joined(separator: ","))" : kind.rawValue
+    }
+}
+
+/// kernel.ts EnvelopeVerdict: whether a phone takes an envelope's manifest, or why not.
+enum AkanNativeEnvelopeVerdict: String {
+    case open, untrusted, revoked, encoding, tooLarge = "too-large", signature
+}
+
+/// kernel.ts UpdateReportEvent: what became of a release on a phone (updates.report.url).
+enum AkanNativeUpdateEvent: String, CaseIterable, Sendable {
+    case downloaded, applied, confirmed, rolledBack, failed
+}
+
+/// kernel.ts UpdateReportReason.
+enum AkanNativeUpdateReason: String, CaseIterable, Sendable {
+    case timeout, relaunch, hang, verify, download, disk, signature, manifest
+}
+
+/// kernel.ts UpdateReportOutcome: what the answer to a report request does to its batch.
+enum AkanNativeReportOutcome: String {
+    case sent, dropped, kept
 }
 
 /// kernel.ts RetainedEvents: events that can come before the page listens (links, taps; C2). A live
@@ -313,5 +349,103 @@ enum AkanNativeKernel {
         guard let scheme else { return .drop }
         if !topLevel { return AkanNativeContract.frameSchemes.contains(scheme) ? .load : .drop }
         return externalSchemes(extra).contains(scheme) ? .open : .drop
+    }
+
+    /// kernel.ts updateDecision: a key revokes only keys listed before it (a leaked online key, listed first, cannot
+    /// revoke the spares that recover from it), and resetSequence counts only when it newly revokes a key.
+    static func updateDecision(
+        ring: [String], revoked: [String], signer: String, revokeKeys: [String], resetSequence: Bool,
+        sequence: Double, embedded: Double, running: (sequence: Double, keyId: String)?
+    ) -> AkanNativeUpdateDecision {
+        guard let index = ring.firstIndex(of: signer) else { return AkanNativeUpdateDecision(kind: .untrusted) }
+        if revoked.contains(signer) { return AkanNativeUpdateDecision(kind: .revoked) }
+        if revokeKeys.contains(signer) { return AkanNativeUpdateDecision(kind: .selfRevoke) }
+        if revokeKeys.contains(where: { (ring.firstIndex(of: $0) ?? -1) > index }) { return AkanNativeUpdateDecision(kind: .revokeLater) }
+        let revoke = ring.filter { revokeKeys.contains($0) && !revoked.contains($0) }
+        let bar = running.flatMap { revoked.contains($0.keyId) || revoke.contains($0.keyId) ? nil : $0.sequence } ?? 0
+        let baseline = resetSequence && !revoke.isEmpty ? embedded : max(embedded, bar)
+        return AkanNativeUpdateDecision(kind: sequence > baseline ? .take : .stale, baseline: baseline, revoke: revoke)
+    }
+
+    /// kernel.ts updateManifestUrl: one envelope per channel and native API.
+    static func updateManifestURL(_ url: String, platform: String, channel: String, nativeApi: String) -> String {
+        "\(url)/\(platform)/\(channel)/\(nativeApi).json"
+    }
+
+    /// The first 8 bytes of the raw public key's SHA-256, in hex: what an envelope names its signer by.
+    static func updateKeyId(_ publicKey: Data) -> String {
+        SHA256.hash(data: publicKey).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func isUpdateKeyId(_ s: String) -> Bool {
+        s.count == 16 && s.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
+    /// kernel.ts MAX_REVOKE_KEYS: the most keys a manifest may revoke.
+    static let maxRevokeKeys = 16
+
+    /// kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes.
+    static let maxUpdateManifest = 1 << 20
+
+    /// kernel.ts isStrictBase64: the standard alphabet, padded, no whitespace.
+    static func isStrictBase64(_ s: String) -> Bool {
+        let bytes = Array(s.utf8)
+        guard bytes.count % 4 == 0 else { return false }
+        let pad = bytes.last == 61 ? (bytes.count > 1 && bytes[bytes.count - 2] == 61 ? 2 : 1) : 0
+        return bytes.dropLast(pad).allSatisfy { (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 43 || $0 == 47 }
+    }
+
+    /// kernel.ts checkUpdateEnvelope: in this order, a signer of `ring` not `revoked`, both fields in strict base64, a
+    /// manifest of at most maxUpdateManifest bytes, and `verify` (Ed25519 by the signer's key) over the decoded bytes.
+    static func checkUpdateEnvelope(
+        manifest: String, keyId: String, signature: String, ring: [String], revoked: [String],
+        verify: (_ manifest: Data, _ signature: Data, _ keyId: String) -> Bool
+    ) -> (verdict: AkanNativeEnvelopeVerdict, manifest: Data?) {
+        guard ring.contains(keyId) else { return (.untrusted, nil) }
+        if revoked.contains(keyId) { return (.revoked, nil) }
+        guard isStrictBase64(manifest), isStrictBase64(signature) else { return (.encoding, nil) }
+        let pad = manifest.hasSuffix("==") ? 2 : manifest.hasSuffix("=") ? 1 : 0
+        guard manifest.utf8.count / 4 * 3 - pad <= maxUpdateManifest else { return (.tooLarge, nil) }
+        guard let bytes = Data(base64Encoded: manifest), let signed = Data(base64Encoded: signature) else { return (.encoding, nil) }
+        return verify(bytes, signed, keyId) ? (.open, bytes) : (.signature, nil)
+    }
+
+    /// kernel.ts UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH: the events kept waiting, and those one request carries.
+    static let updateReportLimit = 100
+    static let updateReportBatch = 20
+
+    /// kernel.ts updateReportKey: an event is kept once per release and reason.
+    static func updateReportKey(_ event: AkanNativeUpdateEvent, bundle: String, reason: AkanNativeUpdateReason?) -> String {
+        "\(event.rawValue)|\(bundle)|\(reason?.rawValue ?? "")"
+    }
+
+    /// kernel.ts updateReportOutcome: a 2xx sends the batch, a 400, 413 or 422 drops it, anything else keeps it.
+    static func updateReportOutcome(_ status: Int) -> AkanNativeReportOutcome {
+        if (200..<300).contains(status) { return .sent }
+        return [400, 413, 422].contains(status) ? .dropped : .kept
+    }
+
+    /// kernel.ts updateReportRetryAt: `now` plus a Retry-After of delay-seconds (digits only), else nil.
+    static func updateReportRetryAt(_ retryAfter: String?, now: Double) -> Double? {
+        guard let value = retryAfter?.trimmingCharacters(in: CharacterSet(charactersIn: " \t")), !value.isEmpty,
+              value.utf8.allSatisfy({ (48...57).contains($0) }), let seconds = Double(value), seconds.isFinite else { return nil }
+        return now + seconds
+    }
+
+    /// kernel.ts updateReportWaits: a wait of more than a day is a clock that moved, so it ends.
+    static func updateReportWaits(_ retryAt: Double?, now: Double) -> Bool {
+        guard let retryAt else { return false }
+        return retryAt > now && retryAt < now + 86_400
+    }
+
+    /// kernel.ts updateReportTime: UTC, always three fraction digits.
+    static func updateReportTime(_ ms: Int64) -> String {
+        var seconds = time_t(ms / 1000)
+        var parts = tm()
+        gmtime_r(&seconds, &parts)
+        return String(
+            format: "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday,
+            parts.tm_hour, parts.tm_min, parts.tm_sec, Int32(ms % 1000)
+        )
     }
 }

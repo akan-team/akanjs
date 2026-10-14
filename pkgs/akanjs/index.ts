@@ -1,6 +1,7 @@
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { AkanI18nConfig } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
+import type { AppPipelineConfig, WorkspacePipelineConfig } from "./pipelineConfig";
 
 export const archs = ["amd64", "arm64"] as const;
 export type Arch = (typeof archs)[number];
@@ -126,12 +127,24 @@ export interface AkanNativeDeepLinks {
  */
 export interface AkanNativeUpdatesConfig {
   /**
-   * A static base URL, https in a release build: `<url>/<os>-<arch>/<channel>.json` (desktop) or `<url>/<platform>/…`
-   * (a phone's web bundle).
+   * A static base URL, https in a release build, with no query: `<url>/<os>-<arch>/<channel>.json` (desktop) or
+   * `<url>/<platform>/<channel>/<nativeApi>.json` (a phone's web bundle, one envelope per binary generation).
    */
   url: string;
-  /** The update key's public half, the raw 32-byte Ed25519 key in base64 (`akan update-keygen` prints it). */
-  publicKey: string;
+  /**
+   * The keys a phone binary trusts, raw 32-byte Ed25519 public keys in base64 (`akan update-keygen` prints one), 1 to
+   * 3: the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A
+   * desktop app trusts the first.
+   */
+  publicKeys?: string[];
+  /** The one-key form of `publicKeys`, never beside it: a target overriding native.updates' keys keeps its form. */
+  publicKey?: string;
+  /**
+   * keyIds every phone release revokes (`akan update-keygen` prints a key's), kept here so a release published from a
+   * fresh checkout still revokes them; `akan publish-update --revoke` starts a revocation. A key may revoke only keys
+   * listed before it in publicKeys, so a release is signed with one listed after them.
+   */
+  revokedKeys?: string[];
   /**
    * The manifest the app follows, e.g. a "pilot" target's "pilot". Default: the backend env the app is built for
    * (`main`, `develop`, `debug`, `local`).
@@ -139,6 +152,11 @@ export interface AkanNativeUpdatesConfig {
   channel?: string;
   /** How long a newly applied release has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout?: number;
+  /**
+   * Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed) at its next
+   * launch or return to the foreground, so rollback rates are visible. Left out, nothing is sent.
+   */
+  report?: { url: string };
 }
 
 export interface AkanNativeIosConfig {
@@ -182,6 +200,23 @@ export interface AkanNativeDesktopServerConfig {
    * The server's own bundle must not import them. The image is unchanged.
    */
   omit?: string[];
+  /**
+   * The server bundles `env/env.server.<env>.<profile>.ts` in place of `env/env.server.<env>.ts`, so the environment's
+   * own file and its secrets stay off the computers the app is installed on. The build refuses a profile file that holds
+   * a secret-named value.
+   */
+  profile?: string;
+  /** What the server mounts, as `AKAN_MODULES`: names, or `@edge` for every module whose `serve()` lists edge. */
+  modules?: string[];
+  /**
+   * Variables the server starts with over the image's, written into the app where anyone on the computer reads them:
+   * the build refuses a secret-named one, and those the launcher or the stage sets.
+   */
+  env?: Record<string, string>;
+  /** Crashes in a row before the app gives up on its server, 5 unless named; `"forever"` for a screen nobody attends. */
+  restart?: "forever" | number;
+  /** Asks the running server's health route every `intervalMs` (10 s) and restarts it after `failures` (3) missed. */
+  watchdog?: boolean | { intervalMs?: number; failures?: number };
 }
 
 export interface AkanNativeDesktopConfig {
@@ -189,7 +224,8 @@ export interface AkanNativeDesktopConfig {
   indexPath?: string;
   /**
    * The desktop app carries the app's server (API only, database mode single, on loopback) and its pages call
-   * nothing else: `true`, or `{ omit }` to carry it without some of the image's packages. `build-desktop`,
+   * nothing else: `true`, or `{ omit, profile, modules }` to carry it without some of the image's packages, with a
+   * secret-free env, or with only some modules. `build-desktop`,
    * `start-desktop` and `publish-update` all read it, and an installed app refuses a release that carries a server
    * when it has none, or none when it has one.
    */
@@ -200,13 +236,23 @@ export interface AkanNativeDesktopConfig {
    * app nobody attends. `"errorPage"` (default): one reload, then an error page, and a quit for the browser.
    */
   recovery?: "errorPage" | "reload";
-  /** The main window from its first frame: borderless fullscreen, and no taskbar button (Windows, Linux). */
-  window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+  /**
+   * The main window from its first frame: borderless fullscreen, no taskbar button (Windows, Linux), and no title
+   * bar or border (`frameless`, a kiosk drawn at an exact size).
+   */
+  window?: { fullscreen?: boolean; skipTaskbar?: boolean; frameless?: boolean };
   /**
    * Windows: `"auto"` answers getDisplayMedia() with the first screen at once, no picker or gesture — remote
    * support on an unattended screen; it covers every media request, so not for an app that asks for a camera.
    */
   screenCapture?: "picker" | "auto";
+  /**
+   * Windows installer: `"bootstrapper"` (default) carries Microsoft's small setup that downloads the WebView2 Runtime
+   * where none is installed; `"standalone"` carries the whole runtime (~200 MB) for a PC offline at install.
+   */
+  webview2?: "bootstrapper" | "standalone";
+  /** Windows: who publishes the app, as the installed app's Publisher and its executable's company name (default: the app name). */
+  publisher?: string;
   /**
    * macOS: entitlements of the app's executable beyond what it gets by itself — the JIT's under the hardened runtime and
    * the camera's or microphone's when a usage text asks for it — e.g. `com.apple.security.cs.disable-library-validation`
@@ -264,11 +310,18 @@ export interface AkanNativeSettings {
   icon?: string | { image: string; backgroundColor?: string };
   /** A PNG shown centered at launch, or the launch screen's color, image and when it hides. */
   splash?: string | NonNullable<AkanNativeConfig["splash"]>;
+  /** A window's and an external view's color before its page paints (and the splash's default): one, or `{ light, dark }`. Default white / black. */
+  backgroundColor?: string | { light: string; dark: string };
   permissions?: NativePermission[];
   /** Native runtime plugins beyond the ones the permissions bring: a builtin id (`"iap"`) or a folder, from the app's. */
   plugins?: string[];
   deepLinks?: AkanNativeDeepLinks;
   updates?: Partial<AkanNativeUpdatesConfig>;
+  /**
+   * The web inspector (Safari's, `chrome://inspect`) in a release build too, as a debug build always has it: for an
+   * internal test target only, since anyone holding the device can then read and drive the page.
+   */
+  devtools?: boolean;
   ios?: AkanNativeIosConfig;
   android?: AkanNativeAndroidConfig;
   desktop?: AkanNativeDesktopConfig;
@@ -431,12 +484,15 @@ export interface LibConfigContext {
   readonly type: "lib";
 }
 
+export * from "./pipelineConfig";
+
 export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web" | "bin" | "native"> & {
   docker?: DockerOption;
   web?: AkanWebOption;
   bin?: AkanBinConfig;
   native?: AkanNativeAppConfig;
   plugins?: AkanPlugin[];
+  pipeline?: AppPipelineConfig;
 };
 export type LibConfigInput = Omit<DeepPartial<LibConfigResult>, "bin"> & {
   bin?: AkanBinConfig;
@@ -448,17 +504,30 @@ export interface SubspaceDeclaration {
   repo: string;
   /** Apps this subspace serves. Libraries are never listed — they are derived from each app's closure. */
   apps: string[];
-  /** The subspace's own `AKAN_WORKSPACE_ID`, not this workspace's; only `akan subspace upload-env` reads it. */
+  /** The subspace's own `AKAN_WORKSPACE_ID`, not this workspace's: `akan subspace upload-env` and `--subspace` read it. */
   workspaceId?: string;
 }
 
-/** `akan.subspace.ts`: the repos this workspace mirrors to, on whichever branch the workspace is on. */
+/** The repos this workspace mirrors to, on whichever branch the workspace is on. */
 export interface SubspaceConfigInput {
   /** A feature branch is refused: pushing it would copy this workspace's branch namespace into every customer repo. */
   pushableBranches?: string[];
   /** Workspace-root names or `dir/` prefixes kept out of every subspace, on top of the ones that always are. */
   exclude?: string[];
   subspaces: SubspaceDeclaration[];
+}
+
+/** The cloud a workspace's CLI talks to when a command names no `--host`: a self-hosted control plane, say. */
+export interface WorkspaceCloudConfig {
+  /** The cloud's origin, e.g. `https://cloud.example.com`. Default: Akan Cloud. */
+  host?: string;
+}
+
+/** The workspace root's `akan.config.ts`. It never reaches a subspace, and app or lib settings are refused in it. */
+export interface WorkspaceConfig {
+  subspace?: SubspaceConfigInput;
+  pipeline?: WorkspacePipelineConfig;
+  cloud?: WorkspaceCloudConfig;
 }
 
 export type AppConfig = AppConfigInput | ((app: AppConfigContext) => AppConfigInput);

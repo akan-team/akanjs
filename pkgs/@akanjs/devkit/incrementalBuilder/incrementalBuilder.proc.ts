@@ -63,6 +63,7 @@ class IncrementalBuilder {
   #autoImportSync: AutoImportSync;
   #watcher: HmrWatcher | null = null;
   #generation = 0;
+  #shellKey: string | null = null;
   #discoveredThrough = 0;
   #csrActive = IncrementalBuilder.#csrArmedByEnv();
   #csrBundler: CsrDevBundler;
@@ -798,7 +799,7 @@ class IncrementalBuilder {
       if (crashedNeeds.includes("ssr")) this.#ssrPatcher?.releaseHandedOver();
       // `base` is not a `BuildPhase` and never comes through here: `#buildBootDeps` throws into the degraded boot.
       for (const need of crashedNeeds)
-        if (need !== "base")
+        if (need !== "base" && need !== "shell")
           this.#sendBuildStatus(need, {
             generation,
             ok: false,
@@ -874,6 +875,10 @@ class IncrementalBuilder {
 
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.
   async handleBuildCsr(msg: BuilderCsrReq): Promise<void> {
+    if (msg.shell) {
+      await this.#buildShell(msg);
+      return;
+    }
     //? Armed now, not when the build lands: a save handled meanwhile then patches CSR behind #csrGate instead of skipping.
     this.#beginCsrArm();
     this.#csrActive = true;
@@ -901,6 +906,32 @@ class IncrementalBuilder {
     });
     this.#csrGate = this.#armingCsr(armed);
     await armed;
+  }
+
+  // Asked on every view read and rebuilt only when a save moved the generation or the css it inlines, instead of armed
+  // per save: a restarted builder has no last build to trust, and so rebuilds once on the next read.
+  async #buildShell(msg: BuilderCsrReq): Promise<void> {
+    await this.#workQueue.enqueue("build-shell", async (): Promise<void> => {
+      const generation = this.#generation;
+      //? A save moves the generation before its css compile lands, so a shell built in between holds the old css.
+      const shellKey = `${generation}:${JSON.stringify(this.#artifact.cssAssets)}`;
+      let error: string | undefined;
+      if (this.#shellKey !== shellKey)
+        try {
+          const result = await this.#batchRunner.run(
+            await this.#batchRequest({ generation, needs: ["shell"], changedFiles: [] }),
+          );
+          error = result.errors.shell;
+          if (!error) this.#shellKey = shellKey;
+        } catch (err) {
+          error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
+        }
+      await BuilderChannel.send(
+        error
+          ? { type: "build-csr-res", id: msg.id, ok: false, error }
+          : { type: "build-csr-res", id: msg.id, ok: true },
+      );
+    });
   }
 
   //? Settled by the last of the arming builds in flight, not by each: two requests that both fail would otherwise leave

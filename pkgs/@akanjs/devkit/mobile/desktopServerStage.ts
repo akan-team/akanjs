@@ -1,15 +1,23 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ServerPolicy } from "@akanjs/native/api";
+import { toError } from "akanjs/common";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
 import { DesktopBin } from "./desktopBin";
 
 /** What a desktop build hands the native runtime as `desktop.server`. */
-export interface DesktopServerBundle {
+export interface DesktopServerBundle extends ServerPolicy {
   dir: string;
   entry: string;
   env: Record<string, string>;
+}
+
+/** How the targets that carry one build's server have it run (`desktop.server`, normalized). */
+export interface DesktopServerRun extends ServerPolicy {
+  modules?: string[];
+  env?: Record<string, string>;
 }
 
 //* A desktop app's carried server is the backend `akan build` wrote into dist, installed on its own as the image's
@@ -44,11 +52,16 @@ export class DesktopServerStage {
       );
   }
 
-  static env(config: AkanAppConfig, environment: NativeEnv): Record<string, string> {
+  static env(
+    config: AkanAppConfig,
+    environment: NativeEnv,
+    { modules = [], env = {} }: Pick<DesktopServerRun, "modules" | "env"> = {},
+  ): Record<string, string> {
     //? The launcher picks the port, and the log file stays on: a user's computer has no log collector.
     const { PORT: _port, AKAN_LOG_TO_FILE: _fileLog, ...image } = config.getProductionEnv(environment);
     return {
       ...image,
+      ...env,
       //? Neither the developer's machine (local, which derives a forgeable JWT secret) nor a deployment (cloud).
       AKAN_PUBLIC_OPERATION_MODE: "edge",
       AKAN_DATABASE_MODE: "single",
@@ -59,6 +72,7 @@ export class DesktopServerStage {
       AKAN_MCP: "false",
       //? Ahead of the launcher's 1.5 s grace before it signals, which sits inside the shell's 2 s quit budget.
       AKAN_SHUTDOWN_TIMEOUT_MS: "1000",
+      ...(modules.length ? { AKAN_MODULES: modules.join(",") } : {}),
     };
   }
 
@@ -137,7 +151,7 @@ export class DesktopServerStage {
       await this.app.spawn(process.execPath, DesktopServerStage.installArgs(arch), { cwd: this.dir });
     } catch (error) {
       throw new Error(
-        `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${error instanceof Error ? error.message : String(error)}`,
+        `The desktop app's server could not install its packages in ${this.dir}: it needs the npm registry, or a Bun cache that already holds every one of them.\n${toError(error).message}`,
         { cause: error },
       );
     }
@@ -162,7 +176,7 @@ export class DesktopServerStage {
   }
 
   //? Copies the build beside what `install` put in the stage, so it runs after both.
-  async prepare(environment: NativeEnv): Promise<DesktopServerBundle> {
+  async prepare(environment: NativeEnv, run: DesktopServerRun = {}): Promise<DesktopServerBundle> {
     const config = await this.app.getConfig();
     const dist = this.app.dist.cwdPath;
     await mkdir(this.dir, { recursive: true });
@@ -173,6 +187,12 @@ export class DesktopServerStage {
     const carried = [...DesktopBin.select(config, scanInfo.getLibs()).keys()];
     const notice = DesktopServerStage.imageStepsNotice(config, carried);
     if (notice) this.app.logger[notice.level](notice.message);
-    return { dir: this.dir, entry: "main.js", env: DesktopServerStage.env(config, environment) };
+    return {
+      dir: this.dir,
+      entry: "main.js",
+      env: DesktopServerStage.env(config, environment, run),
+      ...(run.restart !== undefined ? { restart: run.restart } : {}),
+      ...(run.watchdog ? { watchdog: run.watchdog } : {}),
+    };
   }
 }

@@ -5,7 +5,7 @@ import { TunnelRunner } from "./tunnel.runner";
 
 export interface TunnelShareArgs {
   workspace: Workspace;
-  host?: string;
+  host?: string | null;
   port?: number;
   ttl?: number;
 }
@@ -32,11 +32,11 @@ export class TunnelScript extends script("tunnel", [TunnelRunner]) {
     });
   }
 
-  async list(workspace: Workspace, host?: string) {
+  async list(workspace: Workspace, host?: string | null) {
     await this.tunnelRunner.list(workspace, host);
   }
 
-  async stop(code: string, workspace: Workspace, host?: string) {
+  async stop(code: string, workspace: Workspace, host?: string | null) {
     await this.tunnelRunner.stop(code, workspace, host);
   }
 }

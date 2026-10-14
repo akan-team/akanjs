@@ -55,6 +55,12 @@ export class AgenticSurface {
   #sources = new Set<SurfaceSource>();
   #listeners = new Set<() => void>();
   #warned = new Set<string>();
+  #version = 0;
+
+  /** Bumped on every change, so a store binding can use it as the snapshot. */
+  get version() {
+    return this.#version;
+  }
 
   subscribe(listener: () => void) {
     this.#listeners.add(listener);
@@ -127,14 +133,14 @@ export class AgenticSurface {
   /**
    * This surface for a subtree behind `gate`: what registers through it is published only while the gate is active,
    * and every other call reaches this surface untouched. A proxy rather than a wrapper class, so a method added to the
-   * surface later is forwarded instead of missing.
+   * surface later is forwarded instead of missing. Guidance follows `guideGate` instead when one is named.
    */
-  gated(gate: AgentGate): AgenticSurface {
+  gated(gate: AgentGate, guideGate: AgentGate | null = gate): AgenticSurface {
     const registrations: Partial<Record<PropertyKey, unknown>> = {
       registerTool: (scope: string[], entry: ToolEntry) => this.registerTool(scope, entry, gate),
       registerResource: (scope: string[], entry: ResourceEntry) => this.registerResource(scope, entry, gate),
       openScope: (parent: string[], scope: ScopeEntry) => this.openScope(parent, scope, gate),
-      registerGuide: (scope: string[], text: string) => this.registerGuide(scope, text, gate),
+      registerGuide: (scope: string[], text: string) => this.registerGuide(scope, text, guideGate),
     };
     // Bound once: a method is read on every render, and a fresh function each time would resubscribe its readers.
     const bound = new Map<PropertyKey, unknown>();
@@ -362,6 +368,7 @@ export class AgenticSurface {
   }
 
   #notify() {
+    this.#version += 1;
     for (const listener of this.#listeners) listener();
   }
 

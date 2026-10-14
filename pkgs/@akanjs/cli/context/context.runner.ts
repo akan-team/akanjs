@@ -491,7 +491,8 @@ export class ContextRunner extends runner("context") {
         "`akan add-enum-field --app <app-or-lib> --module <module> --field <field> --values a,b --format json` adds an enum field to source constant/dictionary files without editing generated files.",
       sync: "`akan sync <app-or-lib>` refreshes generated Akan files from source conventions.",
       lint: "`akan lint <app-or-lib-or-pkg>` runs Biome linting after preparing generated files.",
-      typecheck: "`akan typecheck <app-name>` runs an application typecheck after preparing generated files.",
+      typecheck:
+        "`akan typecheck <app-or-lib>` typechecks an app or a library after preparing generated files, its tests and specs included (`--tests false` to leave them out; a build does).",
       test: "`akan test <app-or-lib-or-pkg>` prepares the target and runs its tests.",
       build: "`akan build <app-name>` creates a production build after preparing generated files.",
       doctor:

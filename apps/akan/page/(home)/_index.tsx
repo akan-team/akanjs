@@ -6,6 +6,12 @@ import { BsArrowRight, BsArrowUpRight } from "react-icons/bs";
 import { FaAndroid, FaApple, FaGlobe, FaLinux, FaWindows } from "react-icons/fa";
 
 export default page()
+  .head(
+    <>
+      <link rel="canonical" href="https://akanjs.com" />
+      <meta property="og:url" content="https://akanjs.com" />
+    </>,
+  )
   .loading(() => <JellyLoader className="min-h-[100svh]" />)
   .render(() => {
     const { l } = usePage();

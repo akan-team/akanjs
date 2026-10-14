@@ -260,9 +260,9 @@ Member
 
 - setJwt(jwt): Sends this token with every later call, over HTTP and WebSocket. `null` clears it.
 
-- clone({ origin, jwt, connect }): A copy with the same endpoints, for another origin or user. `connect` defaults to `true`.
+- clone({ origin, jwt, connect, retry, ws }): A copy with the same endpoints, for another origin or user. It keeps this client's default timeout, `retry` policy and WebSocket options, and its own `retry` or `ws` overrides them. `connect` defaults to `true`, except on the server for a clone given an `origin` or a clone of one that points at another origin.
 
-- setTimeout(ms): Budget for calls whose endpoint and caller name none: 30 seconds by default, `false` for no limit.
+- setTimeout(ms): Budget for calls whose endpoint and caller name none: 30 seconds by default, `false` for no limit. A retried call's tries and the waits between them share that one deadline, so each try gets only the time left.
 
 - connect(), disconnect(): Open or close the WebSocket that `pubsub` and `message` endpoints use.
 
@@ -274,7 +274,7 @@ Signal tests use `clone` to call the server as a signed-in user:
 
 **One clone per user.** Each clone carries its own token, so two users can call the same server side by side.
 
-**`connect: false` skips the WebSocket** for a copy that only makes HTTP calls. The API explorer clones this way.
+**`connect: false` skips the WebSocket** for a copy that only makes HTTP calls. The API explorer clones this way. On the server a clone given an `origin`, and a clone of one that points at another origin, open none unless they pass `connect: true`.
 
 **Never write the API prefix by hand.** `getEnv().serverHttpUri` from `akanjs/base` already ends with it.
 
@@ -282,17 +282,17 @@ getRequest / headers / cookies
 
 These read the request a page is being rendered for. `akanjs/fetch` pulls in no client code, so a server component can import them freely.
 
-- getRequest() (Request | undefined): The request being rendered.
+- getRequest() (Request | undefined): The request being rendered; `undefined` outside a render.
 
-- headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call.
+- headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call, empty outside a render.
 
-- cookies() (Map<string, { name, value }>): The parsed `Cookie` header. A `j:` value is decoded as JSON.
+- cookies() (Map<string, { name, value }>): The parsed `Cookie` header, empty outside a render. A `j:` value is decoded as JSON.
 
-- getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache.
+- getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache. `undefined` outside a render.
 
 A page can read them while it renders:
 
-**They see a request only while a page renders.** Anywhere else the maps are empty and `getRequest()` is `undefined`.
+**They see a request only while a page renders.** Anywhere else the maps are empty and `getRequest()` is `undefined`. There is no fallback to a recent request: with several renders in flight, it could be another visitor's.
 
 **Endpoints read the caller another way:** `.with(Self)` in the signal, or `context.get("account")` in a guard.
 

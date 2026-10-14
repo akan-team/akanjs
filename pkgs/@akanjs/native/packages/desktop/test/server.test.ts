@@ -19,6 +19,7 @@ import {
   type SpawnOptions,
   serverArgv,
   serverEnv,
+  serverPolicyOf,
 } from "../src/server.ts";
 
 interface FakeChild extends ServerProcess {
@@ -439,6 +440,89 @@ describe("the server a desktop app carries", () => {
     expect(readServerManifest(resources)).toEqual({ entry: "main.js", env: { A: "1" } });
     writeFileSync(join(resources, "server.json"), JSON.stringify({ env: {} }));
     expect(() => readServerManifest(resources)).toThrow("entry");
+    writeFileSync(
+      join(resources, "server.json"),
+      JSON.stringify({ entry: "main.js", env: {}, restart: "forever", watchdog: { intervalMs: 10_000, failures: 3 } }),
+    );
+    expect(readServerManifest(resources)).toEqual({
+      entry: "main.js",
+      env: {},
+      restart: "forever",
+      watchdog: { intervalMs: 10_000, failures: 3 },
+    });
+    writeFileSync(join(resources, "server.json"), JSON.stringify({ entry: "main.js", restart: 0, watchdog: {} }));
+    expect(readServerManifest(resources)).toEqual({ entry: "main.js", env: {} });
+  });
+
+  test("one reading of restart and watchdog, which names what is wrong with each", () => {
+    expect(serverPolicyOf({})).toEqual({ policy: {}, problems: [] });
+    expect(serverPolicyOf({ restart: 3, watchdog: { intervalMs: 500, failures: 2 } })).toEqual({
+      policy: { restart: 3, watchdog: { intervalMs: 500, failures: 2 } },
+      problems: [],
+    });
+    expect(serverPolicyOf({ restart: 1.5, watchdog: null }).problems).toEqual([
+      'restart must be "forever" or a count of crashes in a row from 1',
+      "watchdog must be { intervalMs, failures }, both whole numbers from 1",
+    ]);
+    expect(serverPolicyOf({ restart: "always", watchdog: { intervalMs: 500 } }).policy).toEqual({});
+  });
+
+  test("restart: forever never gives up, and paces a server that cannot boot instead of spinning", async () => {
+    const delays: [number, boolean][] = [];
+    const { server, children, gaveUp } = setup({
+      manifest: { entry: "main.js", env: {}, restart: "forever" },
+      restartDelay: (failures, paced) => {
+        delays.push([failures, paced]);
+        return 1;
+      },
+    });
+    void server.start();
+    for (let n = 1; n <= 8; n++) {
+      await until(() => children.length === n);
+      children[n - 1]?.exit(1);
+    }
+    await until(() => children.length === 9);
+    expect(gaveUp).toEqual([]);
+    expect(server.state).toBe("starting");
+    expect(delays.map(([, paced]) => paced)).toEqual([false, false, false, false, true, true, true, true]);
+    await server.stop();
+  });
+
+  test("restart: a count gives up after that many crashes in a row", async () => {
+    const { server, children, gaveUp } = setup({ manifest: { entry: "main.js", env: {}, restart: 2 } });
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.ready();
+    await started;
+    children[0]?.exit(1);
+    await until(() => children.length === 2);
+    children[1]?.exit(1);
+    await until(() => gaveUp.length === 1);
+    expect(children).toHaveLength(2);
+    expect(gaveUp[0]).toContain("2 times in a row");
+  });
+
+  test("the watchdog kills a ready server that stops answering its health route, and it restarts as after a crash", async () => {
+    const answers = [true, false, false, false];
+    const asked: string[] = [];
+    const { server, children } = setup({
+      manifest: { entry: "main.js", env: {}, watchdog: { intervalMs: 5, failures: 3 } },
+      probe: async (url) => {
+        asked.push(url);
+        return answers.shift() ?? true;
+      },
+    });
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.ready();
+    await started;
+    await until(() => (children[0]?.killed.length ?? 0) > 0);
+    expect(children[0]?.killed).toEqual(["SIGKILL"]);
+    expect(asked[0]).toBe("http://127.0.0.1:52345/_akan/app/health");
+    children[0]?.exit(137);
+    await until(() => children.length === 2);
+    expect(children).toHaveLength(2);
+    await server.stop();
   });
 });
 

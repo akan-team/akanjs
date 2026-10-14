@@ -3,10 +3,10 @@
 
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { LAUNCHER_ENV_KEYS } from "../../../desktop/src/server.ts";
+import { LAUNCHER_ENV_KEYS, type ServerPolicy, serverPolicyOf } from "../../../desktop/src/server.ts";
 import type { AkanNativeConfig } from "../config.ts";
 
-export interface DesktopServerConfig {
+export interface DesktopServerConfig extends ServerPolicy {
   /** Absolute. */
   dir: string;
   entry: string;
@@ -56,5 +56,7 @@ export function validateDesktopServer(
       else if (typeof value !== "string") problems.push(`desktop.server.env.${key} must be a string`);
       else env[key] = value;
     }
-  return problems.length === before && dir ? { dir, entry, env } : null;
+  const { policy, problems: policyProblems } = serverPolicyOf(server);
+  for (const problem of policyProblems) problems.push(`desktop.server.${problem}`);
+  return problems.length === before && dir ? { dir, entry, env, ...policy } : null;
 }

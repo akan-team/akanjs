@@ -1,0 +1,5 @@
+---
+"akanjs": patch
+---
+
+Security: a mutation repeated under its `Idempotency-Key` replays the response it sent, not its handler's result. The entry used to hold the raw result for 24 hours in the cache backend (Redis, or the SQLite-backed cache), `field.hidden` and `field.secret` values included, and a repeat resolved it again from JSON, so a `resolveField` that read its parent's methods or dates failed only on the retry. Now the entry is the answer as it went out — relations and computed fields resolved, hidden and secret fields masked, serialized — so neither value reaches the cache and a repeat answers the first response byte for byte. A run whose handler succeeded but whose answer then failed (a relation that no longer exists) keeps that failure for the same 24 hours, a transient one (a database blip while a relation is read) included, so a repeat answers it rather than running the handler twice. A call through MCP is never deduplicated: the header belongs to its JSON-RPC request, not to one tool call.

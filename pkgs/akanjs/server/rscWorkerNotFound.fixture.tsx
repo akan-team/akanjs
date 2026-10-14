@@ -1,13 +1,42 @@
 import { ID } from "akanjs/base";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
+import { untrackedCookies, untrackedHeaders } from "../fetch";
 import type { PagesContext } from "./routeTreeBuilder";
+
+const requestTag = () =>
+  `theme=${untrackedCookies().get("theme")?.value ?? "-"} base=${untrackedHeaders().get("x-base-path") ?? "-"}`;
+
+const StreamedTag = async () => {
+  await Bun.sleep(300);
+  return <p>{`streamed ${requestTag()}`}</p>;
+};
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
     default: ({ children }: { children: ReactNode }) => <main>root:{children}</main>,
-    NotFound: ({ pathname }: { pathname: string }) => <p>root missing {pathname}</p>,
+    NotFound: ({ pathname }: { pathname: string }) => <p>{`root missing ${pathname} ${requestTag()}`}</p>,
+  }),
+  "./slowread/_index.tsx": async () => ({
+    default: page().render(async () => {
+      const tag = requestTag();
+      await Bun.sleep(1000);
+      return <p>{`slow ${tag}`}</p>;
+    }),
+  }),
+  "./afterawait/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(300);
+      return <p>{`after ${requestTag()}`}</p>;
+    }),
+  }),
+  "./streamed/_index.tsx": async () => ({
+    default: page().render(() => (
+      <Suspense fallback={<i>streaming</i>}>
+        <StreamedTag />
+      </Suspense>
+    )),
   }),
   "./nfprobesync/_index.tsx": async () => ({ default: page().render(() => router.notFound()) }),
   "./nfprobe/_index.tsx": async () => ({
@@ -16,6 +45,26 @@ export const pages: PagesContext = {
       return router.notFound();
     }),
   }),
+  "./rdsync/_index.tsx": async () => ({ default: page().render(() => router.redirect("/target")) }),
+  "./rdresolved/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Promise.resolve();
+      return router.redirect("/target");
+    }),
+  }),
+  "./rdio/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(20);
+      return router.redirect("/target");
+    }),
+  }),
+  "./gate/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => {
+      router.redirect("/signin");
+      return <section>{children}</section>;
+    }),
+  }),
+  "./gate/inner.tsx": async () => ({ default: page().render(() => <p>inner</p>) }),
   "./drawing/[drawingId]/_index.tsx": async () => ({
     default: page()
       .param("drawingId", ID)

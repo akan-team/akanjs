@@ -263,6 +263,17 @@ export async function prepare(project: Project, platform: Platform, options: Bui
       `updates.url must be https in a release build (http only for this machine): ${config.updates.url}`,
     );
   }
+  const reportUrl = config.updates?.reportUrl;
+  //? Only a phone posts reports, and its release shell posts none in cleartext: an http receiver would get nothing.
+  if (
+    options.profile === "release" &&
+    reportUrl &&
+    (platform === "ios" || platform === "android") &&
+    !secureUpdateUrl(reportUrl)
+  )
+    throw new CliError(
+      `updates.report.url must be https in a release build (http only for this machine): ${reportUrl}`,
+    );
   for (const warning of aclWarnings(resolveAcl(config.capabilities, project.plugins, platform), project.plugins))
     log.warn(warning);
   if (options.profile === "release" && config.capabilities === undefined && project.plugins.length) {

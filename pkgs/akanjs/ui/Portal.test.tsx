@@ -1,28 +1,33 @@
+import "../test/registerDom";
 import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { Portal } from "./Portal";
-import { createServerPortalStore, ServerPortalOutlet, setActiveServerPortalStore } from "./ServerPortal";
+import { mount } from "./testHelpers.fixture";
 
 async function renderToText(node: ReactNode): Promise<string> {
   return new Response(await renderToReadableStream(node)).text();
 }
 
 describe("Portal", () => {
-  test("captures portal children into server outlets", async () => {
-    const store = createServerPortalStore();
-    setActiveServerPortalStore(store);
-    const html = await renderToText(
-      <>
-        <Portal id="slot">
-          <button>Action</button>
-        </Portal>
-        <div id="slot">
-          <ServerPortalOutlet id="slot" />
-        </div>
-      </>,
+  test("draws nothing on the server", async () => {
+    await expect(renderToText(<Portal id="slot">{"content"}</Portal>)).resolves.toBe("");
+  });
+
+  test("fills the host once mounted, and empties it when unmounted", () => {
+    const host = document.createElement("div");
+    host.id = "slot";
+    document.body.appendChild(host);
+    const { container, unmount } = mount(
+      <Portal id="slot">
+        <button type="button">Action</button>
+      </Portal>,
     );
 
-    expect(html).toContain("<button>Action</button>");
+    expect(host.innerHTML).toBe('<button type="button">Action</button>');
+    expect(container.innerHTML).toBe("");
+    unmount();
+    expect(host.innerHTML).toBe("");
+    host.remove();
   });
 });

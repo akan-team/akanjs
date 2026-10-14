@@ -133,7 +133,7 @@ export class ToolRunner {
       const approved = await approve({ callId: call.id, name: call.name, args: call.args, message }, signal);
       if (approved !== true) return { ...base, error: approved };
     }
-    return await ToolRunner.#serialized(() => this.#execute(call, entry, signal));
+    return await ToolRunner.#serialized(() => this.#execute(call, entry, message, signal));
   }
 
   /**
@@ -163,13 +163,23 @@ export class ToolRunner {
     };
   }
 
-  async #execute(call: ToolCallRequest, entry: ToolEntry, signal: AbortSignal): Promise<ToolCallResult> {
+  async #execute(
+    call: ToolCallRequest,
+    entry: ToolEntry,
+    message: string | null,
+    signal: AbortSignal,
+  ): Promise<ToolCallResult> {
     const base = { id: call.id, name: call.name };
+    //? Aborted while it queued behind another call: past this point the work starts, and an abort only stops waiting.
+    if (signal.aborted) return { ...base, error: "The call was stopped before it ran." };
+    if (!this.#stillDecided(call, entry, message)) return { ...base, error: ToolRunner.#movedError(call.name) };
     const before = this.#surface.snapshot();
     // Here rather than in `#answer`, so nothing is drawn for a call an approval or a guard turned back.
     await this.#host.activity?.({ callId: call.id, name: call.name, args: call.args, phase: "start" });
     let failed: string | undefined;
     try {
+      //? Again past the awaited start, in the tick of `surface.call`'s own lookup, so nothing re-registers between.
+      if (!this.#stillDecided(call, entry, message)) throw new Error(ToolRunner.#movedError(call.name));
       const result = await AgentAbort.run(signal, () =>
         AgentProgress.run(
           (report) => this.#host.progress?.({ callId: call.id, report }),
@@ -198,6 +208,25 @@ export class ToolRunner {
         ...(failed ? { error: failed } : {}),
       });
     }
+  }
+
+  /**
+   * A consent covers the action the user read. Another registration of that declaration — one per row of a list — is
+   * the same action; anything else the screen put under the name since may not run in its place, asked or not.
+   */
+  #stillDecided(call: ToolCallRequest, decided: ToolEntry, message: string | null) {
+    const shown = this.#surface.tool(call.name);
+    return (
+      !!shown &&
+      !shown.card &&
+      shown.description === decided.description &&
+      JSON.stringify(shown.parameters) === JSON.stringify(decided.parameters) &&
+      ToolRunner.confirmMessage(call.name, shown, call.args) === message
+    );
+  }
+
+  static #movedError(name: string) {
+    return `${name} changed on screen before it ran, so it did not run.`;
   }
 
   static #serialized<T>(work: () => Promise<T>): Promise<T> {

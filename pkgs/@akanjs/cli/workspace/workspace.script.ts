@@ -93,6 +93,17 @@ export class WorkspaceScript extends script("workspace", [
       await this.agentScript.agent(workspace, "install", "agents-md", { force: overwrite });
     spinner.succeed(`Agent rules ready (${files.length} file${files.length === 1 ? "" : "s"})`);
   }
+  async machineKeygen(workspace: Workspace, out: string) {
+    const { file, publicKey } = await this.workspaceRunner.machineKeygen(workspace, out);
+    const access =
+      process.platform === "win32"
+        ? "; Windows gives it the permissions of its folder, so keep it in one only you can read"
+        : " (mode 600)";
+    Logger.rawLog(
+      `Wrote the private key to ${file}${access}. Set it as AKAN_MACHINE_PRIVATE_KEY on the server that issues machine tokens; nothing else needs it.`,
+    );
+    Logger.rawLog(`A server that only verifies them takes the public key:\nAKAN_MACHINE_PUBLIC_KEY=${publicKey}`);
+  }
   async lint(exec: Exec, workspace: Workspace, { fix = true, maxDiagnostics }: LintOptions = {}) {
     if (exec instanceof AppExecutor) await this.applicationScript.sync(exec);
     else if (exec instanceof LibExecutor) await this.libraryScript.syncLibrary(exec);
@@ -123,7 +134,7 @@ export class WorkspaceScript extends script("workspace", [
     for (const libName of libNames) await this.libraryScript.syncLibrary(LibExecutor.from(workspace, libName));
     for (const appName of appNames) await this.applicationScript.sync(AppExecutor.from(workspace, appName));
   }
-  async init(devProjectId: string, workspace: Workspace, { host }: { host?: string } = {}) {
+  async init(devProjectId: string, workspace: Workspace, { host }: { host?: string | null } = {}) {
     const [bunfigExists, packageJsonExists, tsconfigExists] = await Promise.all([
       workspace.exists("bunfig.toml"),
       workspace.exists("package.json"),

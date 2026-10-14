@@ -906,6 +906,32 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>If a phone update key leaks, revoke it.</strong> A key revokes only those listed before it in{" "}
+          <code>updates.publicKeys</code>, so keep spares after the signing key. Point{" "}
+          <code>AKAN_NATIVE_UPDATE_KEY</code> at a spare's file and publish iOS and Android on every channel with{" "}
+          <code>--revoke &lt;keyId&gt;</code> (<code>akan update-keygen</code> prints a key's keyId). Then add the keyId
+          to <code>updates.revokedKeys</code>, so every later release, signed with the spare, keeps revoking it, and
+          keep it there after a new binary drops the key: older binaries still need it. A phone build already trusts
+          none of the keys it lists. A desktop app trusts only the first key and takes no revocation: a desktop release
+          signed with a revoked first key warns, and only a new binary with another first key ends that trust.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>폰 업데이트 키가 새면 폐기합니다.</strong> 키는 <code>updates.publicKeys</code>에서 자기보다 앞에 있는
+          키만 폐기하므로, 예비 키를 서명 키 뒤에 둡니다. <code>AKAN_NATIVE_UPDATE_KEY</code>로 예비 키 파일을 고르고
+          모든 채널에서 iOS와 Android를 <code>--revoke &lt;keyId&gt;</code>로 게시합니다(keyId는{" "}
+          <code>akan update-keygen</code>이 출력합니다). 그다음 그 keyId를 <code>updates.revokedKeys</code>에 넣어, 예비
+          키로 서명하는 이후 릴리스가 모두 폐기를 이어 가게 하고, 새 바이너리에서 그 키를 뺀 뒤에도 남겨 둡니다. 옛
+          바이너리는 계속 폐기를 받아야 합니다. 폰 빌드는 이 목록의 키를 처음부터 믿지 않습니다. 데스크톱 앱은 첫 키만
+          믿으므로 폐기를 받지 않습니다. 폐기된 첫 키로 서명한 데스크톱 릴리스는 경고를 내며, 그 신뢰는 다른 첫 키로
+          만든 새 바이너리로만 끝납니다.
+        </>
+      ),
+    }),
   ];
 
   const symptomRows = [
@@ -1827,7 +1853,10 @@ const input = await NativeFile.resolve(grant, "read");`}
                   reloads a crashed page and relaunches the app, and <code>desktop.window</code> opens it fullscreen
                   without a taskbar button. <code>desktop.screenCapture: "auto"</code> shares the screen on Windows
                   without the picker, for every media request, so leave it off in an app that uses a camera or a
-                  microphone.
+                  microphone. With <code>"reload"</code> its pages also open nothing outside the window: no print or
+                  file dialog, no share sheet, no download on Windows, no link handed to the OS, and on macOS no text
+                  service such as Search With Google in the right-click menu. The app's own <code>opener</code> and{" "}
+                  <code>file-picker</code> plugin calls still work, so open what it needs through them.
                 </span>
               ),
               ko: (
@@ -1835,7 +1864,11 @@ const input = await NativeFile.resolve(grant, "read");`}
                   키오스크나 전광판에는 새로고침을 누를 사람이 없습니다. <code>desktop.recovery: "reload"</code>는 멈춘
                   페이지를 다시 불러오고 앱을 다시 띄우며, <code>desktop.window</code>는 창을 전체화면, 작업 표시줄 버튼
                   없이 엽니다. <code>desktop.screenCapture: "auto"</code>는 Windows에서 선택 창 없이 화면을 공유하는데,
-                  모든 미디어 요청에 적용되므로 카메라나 마이크를 쓰는 앱에서는 켜지 않습니다.
+                  모든 미디어 요청에 적용되므로 카메라나 마이크를 쓰는 앱에서는 켜지 않습니다. <code>"reload"</code>
+                  이면 페이지가 창 밖으로 아무것도 열지 못합니다. 인쇄·파일 대화상자, 공유 시트, Windows의 다운로드,
+                  OS에 넘기는 링크, macOS 우클릭 메뉴의 Search With Google 같은 텍스트 서비스가 모두 막힙니다. 앱이 직접
+                  부르는 <code>opener</code>와 <code>file-picker</code> 플러그인은 그대로 동작하므로, 필요한 것은
+                  그것으로 엽니다.
                 </span>
               ),
             })}

@@ -1,10 +1,12 @@
 "use client";
 import { cn } from "akanjs/client";
-import type { Ref } from "react";
+import type { CSSProperties, Ref } from "react";
 import { createOverridable } from "../UiOverride";
 
 export interface LauncherProps {
   className?: string;
+  /** The overlay layer the launcher floats on; an override applies it to its root, as it does `className`. */
+  style?: CSSProperties;
   label: string;
   /** Shown on hover; null until the client knows the platform. */
   hotkey?: { label: string; keys: string } | null;
@@ -14,7 +16,7 @@ export interface LauncherProps {
   buttonRef?: Ref<HTMLButtonElement>;
 }
 
-export const DefaultLauncher = ({ className, label, hotkey, unread, onOpen, buttonRef }: LauncherProps) => (
+export const DefaultLauncher = ({ className, style, label, hotkey, unread, onOpen, buttonRef }: LauncherProps) => (
   <button
     aria-expanded={false}
     aria-haspopup="dialog"
@@ -27,6 +29,7 @@ export const DefaultLauncher = ({ className, label, hotkey, unread, onOpen, butt
     )}
     onClick={onOpen}
     ref={buttonRef}
+    style={style}
     type="button"
   >
     {hotkey ? (

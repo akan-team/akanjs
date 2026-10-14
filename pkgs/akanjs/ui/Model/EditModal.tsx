@@ -10,9 +10,11 @@ import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
 import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
+import { NewFormOrigin } from "./newFormOrigin";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
 
@@ -112,7 +114,7 @@ const EditModel = <Full,>({
   );
 };
 
-interface EditModalProps<Full extends { id: string }> extends EditModelProps<Full> {
+interface EditModalProps<Full extends { id: string }> extends EditModelProps<Full>, ModalSurfaceProps {
   id?: string;
   disabled?: boolean;
   checkSubmit?: boolean;
@@ -138,6 +140,8 @@ export default function EditModal<Full extends { id: string }>({
   disabled,
   checkSubmit = true,
   modalClassName,
+  presentation,
+  placement,
   edit,
   modal,
   renderTitle,
@@ -186,10 +190,14 @@ export default function EditModal<Full extends { id: string }>({
   );
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modalId = id ?? ((modelEdit as DynamicRecord)?.[names.modelObj] as Full | undefined)?.id ?? undefined;
+  const opensNewForm = NewFormOrigin.useEditor(modelName, sliceName, modal ?? "edit", !modalId);
   const isModalOpen =
     modelModal === (modal ?? "edit") &&
     (modelFormLoading === false || modelFormLoading === modalId) &&
-    ((!modelFormId && !modalId) || modalId === modelFormId);
+    ((!modelFormId && !modalId && opensNewForm) || (!!modalId && modalId === modelFormId));
+  useEffect(() => {
+    if (!modelModal) NewFormOrigin.clear(modelName);
+  }, [modelModal]);
   const isEditPayloadStale = useCallback((viewAt?: Date | null) => {
     if (isRscNavigationFromCache()) return true;
     return (
@@ -353,6 +361,8 @@ export default function EditModal<Full extends { id: string }>({
           handleCancel();
         }}
         className={modalClassName}
+        presentation={presentation}
+        placement={placement}
         title={<Title />}
         action={<Submit />}
       >

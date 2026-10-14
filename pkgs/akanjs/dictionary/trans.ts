@@ -19,6 +19,13 @@ export type TransMessage<Locale extends Record<string, unknown>> = {
   [K in keyof Locale]-?: `${K & string}${Locale[K] extends Record<string, unknown> ? `.${keyof Locale[K] extends string ? keyof Locale[K] : never}` : ""}`;
 }[keyof Locale];
 
+const sortedKeys = <T>(value: T): T => {
+  if (Array.isArray(value)) return value.map(sortedKeys) as T;
+  if (!value || typeof value !== "object") return value;
+  const entries = Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return Object.fromEntries(entries.map(([key, child]) => [key, sortedKeys(child)])) as T;
+};
+
 export const makeDictionary = <Dicts extends Record<string, unknown>[]>(...dicts: Dicts) =>
   Object.assign(...(dicts as unknown as [object, object])) as Prettify<ObjectAssign<Dicts>>;
 
@@ -189,7 +196,9 @@ export const makeTrans = <
     translate,
     msg,
     getDictionary: (lang: Language) => rootDictionary[lang],
-    getAllDictionary: () => rootDictionary,
+    //? A macro inlines this into the client bundle, and a lib's dictionary is shared with every app that mounts it, so
+    //? its key order follows whichever module filled it first in the build process: sorted, a build is its bytes.
+    getAllDictionary: () => sortedKeys(rootDictionary),
     __Dict_Key__: null as unknown as _DictKey,
     __Error_Key__: null as unknown as _ErrorKey,
   };

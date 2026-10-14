@@ -41,4 +41,4 @@ export const fetch = new Proxy({} as BaseFetch, {
     return Reflect.get(fetchCache, prop, receiver);
   },
 });
-export const getSerializedSignal = () => fetch.serializedSignal;
+export const getSerializedSignal = () => fetch.ownSerializedSignal;

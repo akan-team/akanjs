@@ -50,7 +50,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
 - Check and Build
 
-  - typecheck: Typecheck the app.
+  - typecheck: Typecheck an app or a library, its tests included.
 
   - test: Run the tests of an app, library or package.
 
@@ -66,7 +66,7 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - release-ios, release-android: Build the app for an App Store or Play Store release.
 
-  - update-keygen, publish-update, pack-update: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
+  - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
 
@@ -224,15 +224,17 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 - in the console: `akan console` has the same filters as `.tail` and `.trace <id>`.
 
-`akan typecheck <app> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>]`
+`akan typecheck <app|lib> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>] [--tests <boolean>]`
 
-Typecheck the app with TypeScript. It reuses an incremental cache, which `--clean` clears first.
+Typecheck an app or a library with TypeScript, its own `*.test.ts` and `*.spec.ts` included. A library is checked from its `server.ts`, `client.ts`, `index.ts` and pages, and a bare `akan typecheck` in a workspace with one app checks that app. It reuses an incremental cache, which `--clean` clears first.
 
-- --write (Boolean, default true): Run `akan sync` first so generated files are current.
+- --write (Boolean, default true): Sync the app or library first so generated files are current. `--write false` writes nothing, for a library too.
 
-- --clean (Boolean, default false): Delete the incremental cache (`tsconfig.tsbuildinfo`) before checking.
+- --clean (Boolean, default false): Delete this check's incremental cache, under `.akan/typecheck`, before checking.
 
 - --incremental (Boolean, default true): Reuse the TypeScript incremental cache.
+
+- --tests (Boolean, default true): Check the target's `*.test.ts` and `*.spec.ts` too, which nothing imports and Bun runs unchecked. `--tests false` leaves them out, as a build's typecheck does.
 
 - alias: `akan t` runs this command.
 
@@ -242,7 +244,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -252,7 +254,11 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --quiet (Boolean, default false): Hide the progress output and the build summary.
 
+- --profile (String): A server env profile: the build bundles `env/env.server.<env>.<profile>.ts` in place of the environment's own file, and each lib's `env.server.testing.<profile>.ts` in place of its defaults. The app's profile file must exist, and a profile file whose secret-named key holds a value stops the build.
+
 - alias: `akan b` runs this command.
+
+- lib defaults: With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
@@ -364,9 +370,9 @@ Build an APK of the Android app on the native runtime. Like `build-ios`, it make
 
 - output: Written under `dist/native/<app>/<target>/build/android`; the command prints each file's path.
 
-`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--write <boolean>]`
+`akan build-desktop <app> [--target <target>] [--env <env>] [--debug <boolean>] [--installer <boolean>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--write <boolean>]`
 
-Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build signs from the environment — a Developer ID with notarization on macOS (`AKAN_NATIVE_MACOS_*`), Authenticode on Windows (`AKAN_NATIVE_WINDOWS_*`) — and warns when it cannot, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.
+Build the desktop app on this computer's OS: a `.app` on macOS and an app folder on Windows and Linux. Like `build-ios`, it makes a production web build against `--env` first. A release build is signed only with `--sign`: the environment names which identity, a Developer ID on macOS (`AKAN_NATIVE_MACOS_*`) or an Authenticode certificate on Windows (`AKAN_NATIVE_WINDOWS_*`), and `--notarize` then has Apple notarize the signed macOS app. An unsigned release build warns, since a downloaded copy is blocked or flagged. See the Desktop Release cheatsheet.
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
@@ -377,6 +383,10 @@ Build the desktop app on this computer's OS: a `.app` on macOS and an app folder
 - --installer (Boolean, default false): Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`).
 
 - --arch (String, default this computer's): The CPU a Windows or Linux app runs on: `arm64` or `x64`. The server's addons and `bin` follow it. A macOS app is Apple silicon (arm64) only.
+
+- --sign (Boolean, default false): Sign a macOS or Windows release build with the identity `AKAN_NATIVE_MACOS_*` or `AKAN_NATIVE_WINDOWS_*` names. The env alone signs nothing, and `--sign` without an identity stops before the build.
+
+- --notarize (Boolean, default false): macOS: upload the signed app to Apple's notary service and staple the ticket. It takes `--sign` and the notary credentials (`AKAN_NATIVE_MACOS_NOTARY_*`).
 
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 
@@ -434,15 +444,15 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 `akan update-keygen <app> [--platform <platform>] [--target <target>]`
 
-Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKey`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for. It also prints the key's keyId, the name `publish-update --revoke` and `native.updates.revokedKeys` call it by.
 
 - --platform (String, default desktop, desktop | android | ios): The platform whose app id the key signs for.
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
-`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--write <boolean>] [--allow-local-release <boolean>]`
+`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes `<channel>.json`, its signature and its files under `dist/native/<app>/<target>/updates`, which holds only what you upload: upload that folder to `native.updates.url`, `<channel>.json` and its `.sig` last and together, and keep a CDN from caching those two apart. A desktop release of a target that carries its server carries it too.
+Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.
 
 - --platform (String, default desktop, desktop | android | ios): `desktop` is this computer's own OS and CPU.
 
@@ -451,6 +461,18 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
 - --channel (String): Default `updates.channel`, else `--env`. It names only the manifest written, not the channel the release follows.
+
+- --upload (String): `s3://<bucket>/<prefix>` to upload the release just published to: its files first, then its signature and its manifest or envelope; a file the bucket already holds is skipped. It sends nothing else from the folder — no `pack-update` record, no other channel's or native API's manifest — and nothing at all when that release is missing or fails a check. The credentials and endpoint come from `S3_*` or `AWS_*`, and it takes one target at a time.
+
+- --arch (String, default this computer's, arm64 | x64): Desktop only: the CPU of the apps the release updates, written to that CPU's feed folder. A macOS release is arm64 only.
+
+- --sign (Boolean, default false): Sign a desktop release with the identity `AKAN_NATIVE_MACOS_*` or `AKAN_NATIVE_WINDOWS_*` names. A signed installed app takes only a release signed the same way, so publish with `--sign` when the downloaded app was signed.
+
+- --notarize (Boolean, default false): macOS: upload the signed app to Apple's notary service and staple the ticket. It takes `--sign` and the notary credentials (`AKAN_NATIVE_MACOS_NOTARY_*`).
+
+- --revoke (String): Android and iOS: keyIds of `updates.publicKeys` this release starts revoking, comma-separated.
+
+- --reset-sequence (Boolean, default false, -R): With `--revoke`, phones compare the release with their binary's own bundle instead of the running one.
 
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 
@@ -466,9 +488,17 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 - readable: Anyone who reaches `updates.url` can read the release; the updater sends no credentials. A desktop release is the whole app, the carried server's `private/` and env file included.
 
+- revocation: A phone release revokes `updates.revokedKeys`, the channel's published revocations and `--revoke` together, and is signed by a key listed after them all.
+
+- refused: Before the build: a keyId the ring lacks, over 16 revoked keys, `-R` revoking nothing, either flag on a desktop, a signer not listed after them.
+
+- leaked key: Sign with a spare (`AKAN_NATIVE_UPDATE_KEY`), `--revoke` the key on every phone platform and channel, then list it in `updates.revokedKeys`.
+
+- native API: The CLI needs the native build API 0.12.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.
+
 `akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]`
 
-Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json` and `manifest.template.json`, the manifest with `channel`, `sequence` and `bundle` left for the signer, who signs exactly the bytes it uploads and uploads `files/` first. `publish-update` does the same with a key on this machine.
+Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its web build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.
 
 - --platform (String, ios | android): The app it updates.
 
@@ -484,9 +514,59 @@ Pack an Android or iOS web bundle update unsigned, for a signer that keeps the k
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
 
+`akan push-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>]`
+
+Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why; any other failure exits 1.
+
+- --platform (String, ios | android): The app it updates. Required to pack; with `--pack` it defaults to the pack's.
+
+- --target (String): A key of `native.targets`. Left out, the only target, so an app with several needs it to pack; with `--pack`, the pack's.
+
+- --env (String, default main, debug | develop | main | local): Backend environment the app connects to; with `--pack`, the pack's.
+
+- --channel (String, default updates.channel): The channel the project publishes the release on.
+
+- --notes (String): Release notes the project shows with the release.
+
+- --subspace (String): A subspace of the root `akan.config.ts`: the project its `workspaceId` names gets it. Left out, the project `AKAN_WORKSPACE_ID` names.
+
+- --host (String): The cloud to send to. Left out, `cloud.host` of the root `akan.config.ts`, else Akan Cloud (`https://cloud.akanjs.com`).
+
+- --write (Boolean, default true): Run `akan sync` first so generated files are current.
+
+- --allow-local-release (Boolean, default false, -l): Allow packing with `--env local`, or uploading a pack made with it.
+
+- --pack (String, -d): A folder `pack-update` already wrote, uploaded as it is instead of packing again. It must be this app's, and `--platform`, `--target` and `--env`, when given, must match it. A pack its `--against` check refused exits 2 without uploading.
+
+- --subspace: The subspace must declare the app in the root `akan.config.ts`, or the command stops before it packs.
+
+`akan register-binary <app> --platform <platform> --distribution <distribution> [--target <target>] [--env <env>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>]`
+
+After `release-ios` or `release-android`, register that store build with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Refused when the store build is not this commit's `--env` build — its web bundle, native API or update channel differs from the pack's, as when a later native build of the target overwrote `build/<platform>/bundle.json`. That refusal exits 2; any other failure exits 1.
+
+- --platform (String, ios | android): The store build to register.
+
+- --distribution (String, appStore | testFlight | playStore | playTesting | direct): Where the binary ships.
+
+- --target (String): One key of `native.targets` in `akan.config.ts`; `all` is not taken. Asked for when there are several.
+
+- --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
+
+- --subspace (String): A subspace of the root `akan.config.ts`: the project its `workspaceId` names gets it. Left out, the project `AKAN_WORKSPACE_ID` names.
+
+- --host (String): The cloud to send to. Left out, `cloud.host` of the root `akan.config.ts`, else Akan Cloud (`https://cloud.akanjs.com`).
+
+- --write (Boolean, default true): Run `akan sync` first so generated files are current.
+
+- --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
+
+- --subspace: The subspace must declare the app in the root `akan.config.ts`, or the command stops before it packs.
+
 Rules Every Command Shares
 
 **Choosing the app.** `<app>` is a folder name under `apps/`. Leave it out and the CLI asks you to pick, or takes the only app there is.
+
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument, option, app, library, package or module is not asked for: the command fails at once with an error that says which is missing and, where there is a list, what it may be.
 
 **Boolean options.** `--fast` on its own means true. To turn an option off, give the value: `--write false`.
 
@@ -618,6 +698,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'
 
 ```bash
 akan typecheck myapp
+akan typecheck util
+akan typecheck myapp --tests false
 akan typecheck myapp --clean true --incremental false
 ```
 
@@ -634,6 +716,7 @@ akan test util
 ```bash
 akan build myapp
 akan build myapp --write true --fast false --quiet false
+akan build myapp --profile edge
 ```
 
 ### start-ios
@@ -677,6 +760,7 @@ akan build-android myapp --target all --env debug
 akan build-desktop myapp --target default
 akan build-desktop myapp --target kiosk --env main
 akan build-desktop myapp --installer true --env main
+akan build-desktop myapp --installer true --env main --sign true --notarize true
 ```
 
 ### release-ios
@@ -705,7 +789,9 @@ akan update-keygen myapp --platform android
 ```bash
 akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main
+akan publish-update myapp --env main --sign true --notarize true --upload s3://releases/myapp
 akan publish-update myapp --platform android --env main
+AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform ios --env main --revoke 0123456789abcdef
 ```
 
 ### pack-update
@@ -713,6 +799,19 @@ akan publish-update myapp --platform android --env main
 ```bash
 akan pack-update myapp --platform android --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json
+```
+
+### push-update
+
+```bash
+akan push-update myapp --platform android --env main --notes "Fix the login screen"
+akan pack-update myapp --platform ios --env main --against store/bundle.json && akan push-update myapp --pack dist/native/myapp/default/updates/ios
+```
+
+### register-binary
+
+```bash
+akan release-android myapp --env main && akan register-binary myapp --platform android --distribution playTesting
 ```
 
 ## Agent Notes

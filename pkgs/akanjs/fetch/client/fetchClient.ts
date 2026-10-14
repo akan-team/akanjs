@@ -4,6 +4,7 @@ import {
   type FetchPolicy,
   fileUploadContract,
   Logger,
+  type RetryPolicy,
   readAuthToken,
   resolveFileUploadCapability,
 } from "akanjs/common";
@@ -28,10 +29,10 @@ import {
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
-import type { ErrorConstructor } from "./remoteError";
+import type { ErrorConstructor, RestoredError } from "./remoteError";
 import { SliceInitHandle } from "./sliceInitHandle";
 import { expandQueryArgs, normalizeQueryArgs } from "./sliceQueryArgs";
-import { WsClient } from "./wsClient";
+import { WsClient, type WsClientOptions } from "./wsClient";
 
 type FetchHandler = (...args: unknown[]) => PromiseOrObject<unknown>;
 type FetchHandlerFactory = () => FetchHandler;
@@ -67,6 +68,22 @@ const sharedSignalRegistry: SharedSignalRegistry = globalWithSharedSignal[SHARED
 };
 globalWithSharedSignal[SHARED_SIGNAL_KEY] = sharedSignalRegistry;
 
+export interface FetchBridgeCall {
+  key: string;
+  type: "query" | "mutation";
+  args: UnknownRecord;
+  returns: SerializedReturns;
+  timeout?: number | false;
+}
+
+/** A transport that is not HTTP: a view inside an MCP host has no network, and reaches the server through the host. */
+export interface FetchBridge {
+  call(request: FetchBridgeCall): Promise<unknown>;
+}
+
+const FETCH_BRIDGE_KEY = Symbol.for("akanjs.fetch.bridge");
+const globalWithFetchBridge = globalThis as typeof globalThis & { [FETCH_BRIDGE_KEY]?: FetchBridge | null };
+
 type ClientSignalMap<SigType extends { fetch: any }> = {
   [K in keyof SigType as SigType[K] extends DatabaseSignal<any, any, any, any>
     ? K
@@ -89,13 +106,17 @@ export class FetchClient {
   readonly sortValueMap = new Map<string, { [key: string]: { [path: string]: 1 | -1 } }>();
   readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
   readonly #originWs = new Map<string, WsClient>();
+  #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
   #sharedRegistryAppliedVersion = 0;
   #clientIp: string | null = null;
+  /** Cloned toward another server: the request being served is this server's visitor, not that server's caller. */
+  #foreign = false;
   static #testClientIps = false;
   static #testClientIpSeq = 0;
   serializedSignal: { [key: string]: SerializedSignal } = {};
+  #ownSignal: { [key: string]: SerializedSignal } = {};
   jwt: string | null = null;
 
   constructor(
@@ -118,6 +139,16 @@ export class FetchClient {
   static resetSharedRegistry() {
     sharedSignalRegistry.signal = {};
     sharedSignalRegistry.version++;
+  }
+  /** Every client in this tab sends its queries and mutations through `bridge`, and opens no socket; `null` restores HTTP. */
+  static setBridge(bridge: FetchBridge | null) {
+    globalWithFetchBridge[FETCH_BRIDGE_KEY] = bridge;
+  }
+  static get bridge(): FetchBridge | null {
+    return globalWithFetchBridge[FETCH_BRIDGE_KEY] ?? null;
+  }
+  static get bridged() {
+    return !!FetchClient.bridge;
   }
   static resetSharedClient() {
     sharedClientState.proxy = null;
@@ -151,31 +182,43 @@ export class FetchClient {
     signal: SerializedSignal,
   ) {
     const current = serializedSignal[refName];
-    serializedSignal[refName] = current
-      ? {
-          ...current,
-          ...signal,
-          endpoint: { ...current.endpoint, ...signal.endpoint },
-          slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
-          filter:
-            current.filter || signal.filter
-              ? {
-                  filter: { ...current.filter?.filter, ...signal.filter?.filter },
-                  sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
-                  sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
-                }
-              : undefined,
-          getGuards: signal.getGuards ?? current.getGuards,
-          cruGuards: signal.cruGuards ?? current.cruGuards,
-          createGuards: signal.createGuards ?? current.createGuards,
-          updateGuards: signal.updateGuards ?? current.updateGuards,
-          removeGuards: signal.removeGuards ?? current.removeGuards,
-          origin:
-            current.origin || signal.origin
-              ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
-              : undefined,
-        }
-      : signal;
+    serializedSignal[refName] = current ? FetchClient.#definedOnly(FetchClient.#merged(current, signal)) : signal;
+  }
+  //? A macro inlines its return as written, so a merge must not leave keys an unmerged signal does not have.
+  static #definedOnly(signal: SerializedSignal): SerializedSignal {
+    return Object.fromEntries(Object.entries(signal).filter(([, value]) => value !== undefined)) as SerializedSignal;
+  }
+  static #merged(current: SerializedSignal, signal: SerializedSignal): SerializedSignal {
+    return {
+      ...current,
+      ...signal,
+      endpoint: { ...current.endpoint, ...signal.endpoint },
+      slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
+      filter:
+        current.filter || signal.filter
+          ? {
+              filter: { ...current.filter?.filter, ...signal.filter?.filter },
+              sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
+              sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
+            }
+          : undefined,
+      getGuards: signal.getGuards ?? current.getGuards,
+      cruGuards: signal.cruGuards ?? current.cruGuards,
+      createGuards: signal.createGuards ?? current.createGuards,
+      updateGuards: signal.updateGuards ?? current.updateGuards,
+      removeGuards: signal.removeGuards ?? current.removeGuards,
+      origin:
+        current.origin || signal.origin
+          ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
+          : undefined,
+    };
+  }
+  /**
+   * What this client was built with and applied itself, never what it synced from another client in the process:
+   * a `getSerializedSignal` macro reads this, so a lib's bundle cannot depend on which app's signals loaded first.
+   */
+  get ownSerializedSignal(): { [key: string]: SerializedSignal } {
+    return this.#ownSignal;
   }
   /** For calls neither the caller nor the endpoint budgets; `false` waits as long as the runtime will (minutes). */
   setTimeout(timeout?: number | false) {
@@ -189,8 +232,10 @@ export class FetchClient {
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
-      for (const [refName, signal] of Object.entries(serializedSignal))
+      for (const [refName, signal] of Object.entries(serializedSignal)) {
         FetchClient.#mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
+        FetchClient.#mergeSerializedSignalInto(this.#ownSignal, refName, signal);
+      }
       sharedSignalRegistry.version++;
       this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
     }
@@ -250,7 +295,9 @@ export class FetchClient {
     this.#handlerFactory.set(key, factory);
     delete this.#handlerStore[key];
   }
+  //? A bridged tab has no network: the socket would fail, or under a lenient host reach whatever origin hosts the view.
   connect() {
+    if (FetchClient.bridged) return;
     this.ws.connect();
   }
   disconnect() {
@@ -261,17 +308,27 @@ export class FetchClient {
   // A server cloning toward another origin makes one-off calls; a socket it opened would reconnect forever, unclosed.
   clone({
     origin,
-    connect = !(origin && typeof window === "undefined"),
+    connect = !((origin || this.#foreign) && typeof window === "undefined"),
     jwt,
     clientIp,
+    ws,
+    retry,
   }: {
     origin?: string;
     connect?: boolean;
     jwt?: string;
     /** Sent as `x-real-ip`, which a server believes only from a trusted proxy — a test's loopback is one. */
     clientIp?: string | null;
+    /** Over this client's own: reconnect backoff, upgrade headers and TLS, and state, revocation and error hooks. */
+    ws?: WsClientOptions;
+    /** This client's unless given; every call's unless it names one. A mutation retries under one Idempotency-Key. */
+    retry?: RetryPolicy | false;
   } = {}) {
     const instance = new FetchClient(origin ?? this.origin, {}, this.serializedSignal, this.ErrorCls);
+    instance.configureWs({ ...this.#wsOptions, ...ws });
+    instance.http.setRetry(retry ?? this.http.retry);
+    instance.http.setTimeout(this.http.timeout);
+    instance.#foreign = this.#foreign || (!!origin && !FetchClient.#sameOrigin(origin, this.origin));
     instance.#clientIp =
       clientIp !== undefined ? clientIp : FetchClient.#testClientIps ? FetchClient.#nextTestClientIp() : this.#clientIp;
     Object.entries(this.handler).forEach(([key, handler]) => {
@@ -281,6 +338,12 @@ export class FetchClient {
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
   }
+  /** Every socket this client holds or opens later: its own and one per `FetchPolicy.origin`. */
+  configureWs(options: WsClientOptions) {
+    this.#wsOptions = { ...this.#wsOptions, ...options };
+    this.ws.configure(options);
+    for (const ws of this.#originWs.values()) ws.configure(options);
+  }
   setJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
@@ -288,25 +351,24 @@ export class FetchClient {
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
-    if (!origin) return this.ws;
-    const target = origin.replace(/\/+$/, "");
-    if (target === this.origin.replace(/\/+$/, "")) return this.ws;
+    if (!origin || FetchClient.#sameOrigin(origin, this.origin)) return this.ws;
+    const target = FetchClient.#normalizeOrigin(origin);
     const cached = this.#originWs.get(target);
     if (cached) return cached;
-    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls);
+    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
     this.#originWs.set(target, ws);
     ws.setJwt(this.jwt);
     ws.connect();
     return ws;
   }
   #makeRequestHeaders(option?: FetchPolicy): Record<string, string> {
-    const clientIp = this.#clientIp ? { "x-real-ip": this.#clientIp } : FetchClient.#forwardedClientIp(option);
+    const clientIp = this.#clientIp ? { "x-real-ip": this.#clientIp } : this.#forwardedClientIp(option);
     return { ...this.#makeAuthHeaders(option), ...clientIp };
   }
   // A call made while rendering reaches this server from its own address; the page request's `x-real-ip` (which the
   // page renderer resolved) keeps rate limits and `.with(Ip)` about the person.
-  static #forwardedClientIp(option?: FetchPolicy): Record<string, string> {
-    if (option?.origin) return {};
+  #forwardedClientIp(option?: FetchPolicy): Record<string, string> {
+    if (!this.#forwardsVisitor(option)) return {};
     try {
       if (getEnv().side !== "server") return {};
       const clientIp = requestHeaders().get("x-real-ip");
@@ -315,10 +377,21 @@ export class FetchClient {
       return {};
     }
   }
+  static #normalizeOrigin(origin: string) {
+    return origin.replace(/\/+$/, "");
+  }
+  static #sameOrigin(a: string, b: string) {
+    return FetchClient.#normalizeOrigin(a) === FetchClient.#normalizeOrigin(b);
+  }
+  // Security: the request being rendered belongs to this server's visitor; a call aimed at another server carries only
+  // the token its caller gave it, or the visitor's session would reach a server they never signed in to.
+  #forwardsVisitor(option?: FetchPolicy) {
+    return !this.#foreign && (!option?.origin || FetchClient.#sameOrigin(option.origin, this.origin));
+  }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };
     try {
-      if (getEnv().side === "server") {
+      if (getEnv().side === "server" && this.#forwardsVisitor(option)) {
         const authorization = requestHeaders().get("authorization");
         if (authorization) return { Authorization: authorization };
         const token = readAuthToken((key) => requestCookies().get(key)?.value);
@@ -350,11 +423,16 @@ export class FetchClient {
       case "query":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
+          const bridge = this.#bridgeOf(option?.origin);
+          if (bridge)
+            return parseReturn(await this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap }), {
+              crystalize: option?.crystalize ?? true,
+            });
           const headers = this.#makeRequestHeaders(option);
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
           // An origin override targets another server, so it bypasses the request-query cache keyed by this origin.
-          const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout });
+          const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout, retry: option?.retry });
           // A caller that did not start the request parses a copy: the memo hands one response to every caller in
           // the request, and a parsed model can hold references into it.
           const claim = baseUrl
@@ -368,11 +446,18 @@ export class FetchClient {
       case "mutation":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
+          const bridge = this.#bridgeOf(option?.origin);
+          if (bridge)
+            return parseReturn(await this.#viaBridge(bridge, { key, type: "mutation", endpoint, option, argMap }), {
+              crystalize: option?.crystalize ?? true,
+            });
           const body = HttpClient.makeBody(bodyArgs, uploadArgs, argMap);
           const response = await this.http.send(endpoint.method ?? "POST", url, body, {
             headers: this.#makeRequestHeaders(option),
             baseUrl: this.#baseUrlOf(endpoint, option?.origin),
             timeout: option?.timeout ?? endpoint.timeout,
+            retry: option?.retry,
+            idempotencyKey: option?.idempotencyKey,
           });
           return parseReturn(response, { crystalize: option?.crystalize ?? true });
         };
@@ -394,6 +479,8 @@ export class FetchClient {
           const parseReturn = this.#makeReturnParser(endpoint.returns);
           const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
           return (...argData: unknown[]) => {
+            //? A bridged tab has no socket to subscribe on: the room never fires, and a queued frame would never leave.
+            if (FetchClient.bridged) return () => undefined;
             const args = argData.slice(0, roomArgLength);
             const handleEvent = argData[roomArgLength] as (data: unknown) => void;
             const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
@@ -423,6 +510,7 @@ export class FetchClient {
           const msgArgLength = msgArgs.length;
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           return (...argData: unknown[]) => {
+            if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
@@ -448,6 +536,40 @@ export class FetchClient {
       default:
         this.logger.error(`Unsupported endpoint type: ${endpoint.type}`);
         break;
+    }
+  }
+  //? The host relays to the server that rendered the view, so a call aimed at any other server stays off the bridge.
+  #bridgeOf(origin?: string) {
+    return origin || this.#foreign ? null : FetchClient.bridge;
+  }
+  // A refusal the server described arrives as a payload, and becomes the app's own `Err` the way an HTTP one does.
+  async #viaBridge(
+    bridge: FetchBridge,
+    {
+      key,
+      type,
+      endpoint,
+      option,
+      argMap,
+    }: {
+      key: string;
+      type: FetchBridgeCall["type"];
+      endpoint: SerializedEndpoint;
+      option?: FetchPolicy;
+      argMap: Map<string, unknown>;
+    },
+  ) {
+    try {
+      return await bridge.call({
+        key,
+        type,
+        args: Object.fromEntries(argMap),
+        returns: endpoint.returns,
+        timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
+      });
+    } catch (error) {
+      const payload = (error as RestoredError | null)?.toJSON?.();
+      throw payload && this.ErrorCls ? this.ErrorCls.fromJSON(payload) : error;
     }
   }
   static #makeWsUri(origin: string) {
@@ -593,6 +715,9 @@ export class FetchClient {
       names.addModelFiles,
       () =>
         (async (fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
+          //? A host relays JSON tool calls and MCP refuses a file upload: a bridged view has no way to send the bytes.
+          if (this.#bridgeOf())
+            throw new Error("File upload is unavailable in an MCP App view: its host relays tool calls, not files.");
           const cap = resolveFileUploadCapability(this.serializedSignal);
           const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
           if (!cap || !endpoint)
@@ -828,7 +953,7 @@ export class FetchClient {
         );
       } else {
         Object.assign(handler, signal.handler);
-        Object.entries(signal.serializedSignal).forEach(([refName, signal]) => {
+        Object.entries(signal.ownSerializedSignal ?? signal.serializedSignal).forEach(([refName, signal]) => {
           FetchClient.#mergeSerializedSignalInto(serializedSignal, refName, signal);
         });
       }
@@ -893,6 +1018,8 @@ export class FetchClient {
       get(target, prop) {
         if (prop in target) return (target as any)[prop];
         else if (prop === "instance") return instance;
+        //? Before the handler lookup, whose miss syncs every signal of the process into this client.
+        else if (prop === "ownSerializedSignal") return instance.ownSerializedSignal;
         else if (typeof prop === "string") {
           const handler = instance.#getOrCreateHandler(prop);
           if (handler) return handler;

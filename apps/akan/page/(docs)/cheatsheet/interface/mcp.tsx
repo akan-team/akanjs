@@ -97,10 +97,10 @@ export default page().render(() => {
         {
           name: "page().prompt()",
           desc: l.trans({
-            en: "A screen the user runs as a slash command; the model does not pick it.",
-            ko: "사용자가 슬래시 커맨드로 실행하는 화면입니다. 모델이 고르는 것이 아닙니다.",
+            en: "A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.",
+            ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 툴이 되고, MCP Apps 클라이언트에선 레이아웃 없이 페이지만 채팅에 뜹니다.",
           }),
-          marks: { tool: false, resource: false, prompt: true },
+          marks: { tool: true, resource: false, prompt: true },
         },
       ],
     },
@@ -110,8 +110,8 @@ export default page().render(() => {
     {
       when: l.trans({ en: "It declares `mcp: false`", ko: "`mcp: false`를 선언했다" }),
       why: l.trans({
-        en: "It was curated off the shelf on purpose; its guards and HTTP stay exactly as they were.",
-        ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로입니다.",
+        en: "Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.",
+        ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로이고, 채팅 안에 뜬 화면은 여전히 부를 수 있습니다.",
       }),
     },
     {
@@ -137,8 +137,8 @@ export default page().render(() => {
     {
       when: l.trans({ en: "It is the generated `light<Model>` read", ko: "생성된 `light<Model>` 조회다" }),
       why: l.trans({
-        en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead.",
-        ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다.",
+        en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; a screen drawn in the chat still calls it, under its guards.",
+        ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다. 채팅 안에 뜬 화면은 가드 아래에서 여전히 부를 수 있습니다.",
       }),
     },
     {
@@ -270,8 +270,8 @@ export default page().render(() => {
       default: "false",
       tags: ["AKAN_MCP_READONLY", "AKAN_PUBLIC_MCP_READONLY"],
       desc: l.trans({
-        en: "Publishes queries only, whatever the guards allow; the env turns it on only on `true` or `1`.",
-        ko: "가드가 무엇을 허용하든 query만 게시합니다. env는 `true`나 `1`일 때만 켭니다.",
+        en: "Publishes queries only, whatever the guards allow, and turns MCP Apps off; the env turns it on only on `true` or `1`.",
+        ko: "가드가 무엇을 허용하든 query만 게시하고, MCP Apps를 끕니다. env는 `true`나 `1`일 때만 켭니다.",
       }),
     },
     {
@@ -373,6 +373,26 @@ export default page().render(() => {
       desc: l.trans({
         en: "Characters of screen data one page prompt may attach before its lists are cut.",
         ko: "페이지 프롬프트 하나가 목록이 잘리기 전까지 붙일 수 있는 화면 데이터의 글자 수입니다.",
+      }),
+    },
+    {
+      key: "apps",
+      type: "boolean",
+      default: "true",
+      tags: ["AKAN_MCP_APPS"],
+      desc: l.trans({
+        en: "Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps. A read-only deployment has none: no page tools, views or app-only tools.",
+        ko: "`.prompt()` 페이지를 툴로도 게시하고, MCP Apps를 그리는 클라이언트는 그 화면을 채팅 안에 띄웁니다. 읽기 전용 배포에는 페이지 툴, 화면, 앱 전용 툴이 모두 없습니다.",
+      }),
+    },
+    {
+      key: "modern",
+      type: "boolean",
+      default: "true unless a page shows a view",
+      tags: ["AKAN_MCP_MODERN"],
+      desc: l.trans({
+        en: "Offer the `2026-07-28` revision; withheld while a `.prompt()` page may show as a view, until the RSC worker lists none, as claude.ai draws one only after `initialize`.",
+        ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 화면을 그리므로, `.prompt()` 페이지가 화면으로 뜰 수 있는 동안에는 빼 두고, RSC worker가 그런 페이지가 없다고 하면 제공합니다.",
       }),
     },
     {
@@ -657,13 +677,13 @@ export default page().render(() => {
       en: (
         <>
           <strong>The description is the whole instruction.</strong> Write it in English, in API vocabulary;{" "}
-          <code>{"<Agent.Guide>"}</code> text never reaches MCP.
+          <code>{"<Agent.Guide>"}</code> text never reaches a prompt.
         </>
       ),
       ko: (
         <>
           <strong>description이 지시의 전부입니다.</strong> API 용어로, 영어로 씁니다. <code>{"<Agent.Guide>"}</code>{" "}
-          문구는 MCP에 전달되지 않습니다.
+          문구는 프롬프트에 전달되지 않습니다.
         </>
       ),
     }),
@@ -721,6 +741,41 @@ export default page().render(() => {
         <>
           <strong>프롬프트는 페이지에서만 선언합니다.</strong> 시그널에는 <code>prompt()</code> 빌더가 없고,{" "}
           <code>Msg</code>는 공개 API가 아닙니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>The same page is a tool, and can be the screen itself.</strong> Claude Code reads the briefing and a
+          link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a{" "}
+          <code>Person</code> act stays on the web. The tool declares <code>readOnlyHint: false</code>, since running
+          the page makes its own <code>fetch.*</code> calls, mutations included.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>같은 페이지가 툴이 되고, 화면 자체로도 뜹니다.</strong> Claude Code는 브리핑과 링크를 받고,
+          claude.ai·ChatGPT·VS Code는 채팅 안에 페이지를 그립니다. 거기서 누르는 동작은 에이전트 토큰으로 실행되므로{" "}
+          <code>Person</code> 행위는 웹에서 합니다. 페이지를 실행하면 mutation을 포함한 그 페이지의 <code>fetch.*</code>{" "}
+          호출이 일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다.
+        </>
+      ),
+    }),
+    l.trans({
+      en: (
+        <>
+          <strong>A client that renders views is known by a signed session.</strong> A legacy client that declares the
+          MCP Apps extension at <code>initialize</code> is issued{" "}
+          <code>{"Mcp-Session-Id: ui.<nonce>.<signature>"}</code>, signed by the app; an id it did not sign is served as
+          a client without views.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>화면을 그리는 클라이언트는 서명된 세션으로 알아봅니다.</strong> <code>initialize</code>에서 MCP Apps
+          확장을 선언한 legacy 클라이언트는 앱이 서명한 <code>{"Mcp-Session-Id: ui.<nonce>.<signature>"}</code>를 받고,
+          앱이 서명하지 않은 id는 화면이 없는 클라이언트로 대합니다.
         </>
       ),
     }),
@@ -1039,14 +1094,16 @@ export default page().render(() => {
         <>
           <strong>No credential.</strong> Once an issuer is named, a request with no bearer gets a <code>401</code> with{" "}
           <code>WWW-Authenticate</code>; before that, only a call a guard refuses does. Either way the client signs in
-          instead of concluding the tool does not exist.
+          instead of concluding the tool does not exist. An <code>Authorization</code> header that is not{" "}
+          <code>Bearer &lt;one token&gt;</code> counts as no credential.
         </>
       ),
       ko: (
         <>
           <strong>자격 증명이 없을 때.</strong> issuer를 지정하면 bearer 없는 모든 요청이 <code>WWW-Authenticate</code>
           와 함께 <code>401</code>을 받고, 지정 전에는 가드가 거절한 호출만 받습니다. 어느 쪽이든 클라이언트는 툴이
-          없다고 결론짓지 않고 로그인합니다.
+          없다고 결론짓지 않고 로그인합니다. <code>Bearer &lt;토큰 하나&gt;</code> 꼴이 아닌 <code>Authorization</code>{" "}
+          헤더는 자격 증명이 없는 것으로 봅니다.
         </>
       ),
     }),

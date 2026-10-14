@@ -1,4 +1,5 @@
 import type { Workspace } from "../commandDecorators";
+import { CloudHttpError } from "./cloudHttpError";
 import type { AccessToken, AccessTokenDto, HostConfig } from "./constants";
 import { GlobalConfig } from "./globalConfig";
 
@@ -25,7 +26,7 @@ class HttpClient {
     const response = await fetch(`${this.baseUrl}${url}`, {
       headers: { ...this.headers, ...headers },
     });
-    if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+    if (!response.ok) throw await CloudHttpError.of(response, url);
     await Bun.write(localPath, response);
   }
   async post<T>(url: string, data: unknown, { headers, signal }: HttpRequestOptions = {}): Promise<T> {
@@ -42,9 +43,8 @@ class HttpClient {
   }
   // A missing route answers an HTML error page, so the status is read before the body is parsed as JSON.
   static async #body<T>(response: Response, url: string): Promise<T> {
-    const text = await response.text();
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText} from ${url}: ${text.slice(0, 200)}`);
-    return JSON.parse(text) as T;
+    if (!response.ok) throw await CloudHttpError.of(response, url);
+    return JSON.parse(await response.text()) as T;
   }
   setHeaders(headers: Record<string, string>) {
     Object.assign(this.headers, headers);
@@ -63,6 +63,45 @@ export interface TunnelGrant {
   expiresAt: string | null;
 }
 
+/** `scope` is `"*"` for every branch or the one branch it overrides. No call ever returns a value. */
+export interface PipelineSecretSummary {
+  name: string;
+  scope: string;
+  updatedAt: string;
+}
+
+export interface PipelineSecretListing extends PipelineSecretSummary {
+  updatedBy: string | null;
+}
+
+/** What Akan Cloud answers for an uploaded pack or a registered binary; a pack's release also says how it was taken. */
+export interface CloudRecord {
+  id: string;
+  status?: string;
+  problems?: string[];
+  [key: string]: unknown;
+}
+
+export interface UpdateUploadRequest {
+  appName: string;
+  target: string;
+  platform: "ios" | "android";
+  channel: string;
+  notes: string | null;
+  size: number;
+  sha256: string;
+}
+
+export interface UpdateUploadTicket {
+  uploadId: string;
+  /** A presigned PUT: whoever holds it writes the staging object, so it is never logged or put in an argv. */
+  uploadUrl: string;
+  expiresAt: string;
+  contentType: string;
+}
+
+export type AppBinaryDistribution = "appStore" | "testFlight" | "playStore" | "playTesting" | "direct";
+
 export interface TunnelSummary {
   code: string;
   hostname: string;
@@ -74,6 +113,20 @@ export interface TunnelSummary {
 }
 
 export class CloudApi {
+  //* The project's guards answer by status: 401 no sign-in it accepts, 403 not allowed, 400 a refused request.
+  static refusal(error: unknown, who: string, { unavailable }: { unavailable?: string } = {}) {
+    if (!(error instanceof CloudHttpError)) return error;
+    if (error.status === 401)
+      return new Error("The server did not accept your sign-in: run `akan login`, then try again.", { cause: error });
+    if (error.status === 403) return new Error(`The project refused: ${who}.`, { cause: error });
+    if (error.status === 400)
+      return new Error(`The project refused the request${error.error ? `: ${error.error}` : ""}.`, { cause: error });
+    //? A proxy, or the gateway with no replica ready, answers 503 too; only the server's own names a domain Err key.
+    const { errKey } = error;
+    if (error.status === 503 && unavailable && errKey && errKey !== "base.error.serverUnavailable")
+      return new Error(`${unavailable}: ${errKey}.`, { cause: error });
+    return error;
+  }
   readonly #api: HttpClient;
   #accessToken: AccessToken | null = null;
   #workspace: Workspace;
@@ -112,6 +165,47 @@ export class CloudApi {
     formData.append("devProjectId", devProjectId);
     formData.append("file", file);
     return await this.#api.post<boolean>(`/uploadEnv/${devProjectId}`, formData);
+  }
+  async uploadSecret(devProjectId: string, secret: { scope: string; name: string; value: string }) {
+    return await this.#api.post<PipelineSecretSummary>(`/uploadSecret/${encodeURIComponent(devProjectId)}`, secret);
+  }
+  async listSecrets(devProjectId: string) {
+    return await this.#api.get<PipelineSecretListing[]>(`/listSecrets/${encodeURIComponent(devProjectId)}`);
+  }
+  async removeSecret(devProjectId: string, secret: { scope: string; name: string }) {
+    return await this.#api.post<boolean>(`/removeSecret/${encodeURIComponent(devProjectId)}`, secret);
+  }
+  async requestUpdateUpload(devProjectId: string, upload: UpdateUploadRequest) {
+    return await this.#api.post<UpdateUploadTicket>(`/requestUpdateUpload/${encodeURIComponent(devProjectId)}`, upload);
+  }
+  // The endpoint declares ten minutes; Cloudflare cuts at 100 s anyway, which is what UpdatePackUpload's retry is for.
+  async commitUpdateUpload(devProjectId: string, uploadId: string) {
+    return await this.#api.post<CloudRecord>(
+      `/commitUpdateUpload/${encodeURIComponent(devProjectId)}`,
+      { uploadId },
+      { signal: AbortSignal.timeout(11 * 60_000) },
+    );
+  }
+  async registerAppBinary(
+    devProjectId: string,
+    binary: {
+      appName: string;
+      target: string;
+      distribution: AppBinaryDistribution;
+      bundle: Blob;
+      /** The pack staged with UpdatePackUpload.stage. */
+      packUploadId: string;
+      channel?: string;
+    },
+  ) {
+    const formData = new FormData();
+    for (const key of ["appName", "target", "distribution"] as const) formData.append(key, binary[key]);
+    if (binary.channel) formData.append("channel", binary.channel);
+    formData.append("bundle", binary.bundle, "bundle.json");
+    formData.append("packUploadId", binary.packUploadId);
+    return await this.#api.post<CloudRecord>(`/registerAppBinary/${encodeURIComponent(devProjectId)}`, formData, {
+      signal: AbortSignal.timeout(11 * 60_000),
+    });
   }
   async downloadEnv(devProjectId: string): Promise<unknown> {
     const localPath = `${this.#workspace.workspaceRoot}/local/env.tar`;

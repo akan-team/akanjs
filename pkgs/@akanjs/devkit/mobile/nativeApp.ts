@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
+import { toError } from "akanjs/common";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
@@ -17,11 +18,14 @@ import { NativeAppLine, type NativeAppLineRead } from "./nativeAppLine";
 import { NativeConfig } from "./nativeConfig";
 import { NativePluginFolders } from "./nativePluginFolders";
 import { NativeWebDir } from "./nativeWebDir";
+import { ServerBundleSecrets } from "./serverBundleSecrets";
+import { type NativeUpdatePack, UpdatePackFolder } from "./updatePackFolder";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
 type ReleaseOptions = Parameters<NativeBuildApiModule["release"]>[0];
 type AndroidSigning = Extract<ReleaseOptions, { platform: "android" }>["signing"];
+type PhoneRevocation = Pick<Parameters<NativeBuildApiModule["checkPublishUpdate"]>[0], "revoke" | "resetSequence">;
 
 export interface NativeRunOptions {
   device?: DeviceSelector;
@@ -42,6 +46,10 @@ export interface NativeBuildOptions {
   installer?: boolean;
   /** The CPU the desktop app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;
+  /** Sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names; the env alone signs nothing. */
+  sign?: boolean;
+  /** macOS: upload the signed app to Apple's notary service. */
+  notarize?: boolean;
 }
 
 export interface NativeDevOptions extends NativeRunOptions {
@@ -194,32 +202,19 @@ export class NativeApp {
 
   async build(
     platform: NativePlatform,
-    { profile = "release", server, installer = false, arch }: NativeBuildOptions = {},
+    { profile = "release", server, installer = false, arch, sign = false, notarize = false }: NativeBuildOptions = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     NativeApp.assertInstaller(platform, installer);
     await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform, server, arch);
+    const distribution = await this.#distribution(api, platform, profile, { sign, notarize }, server);
     return await api.build({
       ...this.#task(platform, config, { env: await this.#runtimeEnv(server) }),
       profile,
       ...(arch ? { arch } : {}),
-      ...(platform === "windows"
-        ? {
-            windows: {
-              ...(installer ? { installer } : {}),
-              ...(profile === "release" ? NativeApp.#windowsSigning(api) : {}),
-            },
-          }
-        : {}),
-      ...(platform === "macos"
-        ? {
-            macos: {
-              ...(profile === "release" ? api.macosDistributionFromEnv(process.env) : {}),
-              ...(installer ? { dmg: true } : {}),
-            },
-          }
-        : {}),
+      ...(platform === "windows" ? { windows: { ...(installer ? { installer } : {}), ...distribution.windows } } : {}),
+      ...(platform === "macos" ? { macos: { ...distribution.macos, ...(installer ? { dmg: true } : {}) } } : {}),
       ...(platform === "linux" && installer ? { linux: { appImage: true } } : {}),
     });
   }
@@ -306,30 +301,86 @@ export class NativeApp {
   /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */
   async publishUpdate(
     platform: NativePlatform,
-    { channel, server }: { channel?: string; server?: DesktopServerBundle } = {},
+    {
+      channel,
+      server,
+      arch,
+      sign = false,
+      notarize = false,
+      revoke,
+      resetSequence,
+    }: {
+      channel?: string;
+      server?: DesktopServerBundle;
+      arch?: DesktopArch;
+      sign?: boolean;
+      notarize?: boolean;
+    } & PhoneRevocation = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     this.#assertUpdates();
     await this.assembleWeb(platform);
-    const { api, config } = await this.prepare(platform, server);
+    const { api, config } = await this.prepare(platform, server, arch);
+    //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
+    const distribution = await this.#distribution(api, platform, "release", { sign, notarize }, server);
     return await api.publishUpdate({
       ...this.#task(platform, config, { env: await this.#runtimeEnv(server) }),
       platform,
       out: this.updatesDir,
       ...(channel ? { channel } : {}),
-      //? The updater keeps the installed app's signature, so a release is signed as the downloaded app was.
-      ...(platform === "macos" ? { macos: api.macosDistributionFromEnv(process.env) } : {}),
-      ...(platform === "windows" ? { windows: NativeApp.#windowsSigning(api) } : {}),
+      ...(arch ? { arch } : {}),
+      ...(distribution.macos ? { macos: distribution.macos } : {}),
+      ...(distribution.windows ? { windows: distribution.windows } : {}),
+      ...(revoke?.length ? { revoke } : {}),
+      ...(resetSequence ? { resetSequence } : {}),
     });
+  }
+
+  //* Only what the command asked for is signed or uploaded. A release's server is searched for the workspace's secret
+  //* values first, signed or not: an unsigned app is handed out too, and an update is published to every install. The
+  //* one line naming the identity and the service comes right before the build.
+  async #distribution(
+    api: NativeBuildApiModule,
+    platform: NativePlatform,
+    profile: "debug" | "release",
+    request: { sign: boolean; notarize: boolean },
+    server: DesktopServerBundle | undefined,
+  ) {
+    const distribution = api.requestedDistribution(platform, profile, request);
+    if (server && profile === "release") await this.#assertServerClean(server);
+    if (!distribution.notice) {
+      if (distribution.unused.length && (platform === "macos" || platform === "windows"))
+        this.app.logger.info(`${distribution.unused.join(", ")} set: this build is not signed without --sign.`);
+      return distribution;
+    }
+    this.app.logger.warn(distribution.notice);
+    return distribution;
+  }
+
+  async #assertServerClean(server: DesktopServerBundle) {
+    const unread = await new ServerBundleSecrets(this.app.workspace.workspaceRoot, this.app.cwdPath).assertClean(
+      server.dir,
+    );
+    if (unread.length)
+      throw new Error(
+        `The server this app carries was not searched for the secret values of ${unread.join(", ")}, which could not be evaluated with no app env set, so the release stops here.`,
+      );
   }
 
   /**
    * What publishing refuses once the release is built: no updates settings, an invalid config, no signing key or
-   * another app's, and a desktop release whose server presence is not its channel's previous release's.
+   * another app's, a desktop release whose server presence is not its channel's previous release's, and a phone release
+   * whose revocations no phone would take.
    */
   async assertPublishable(
     platform: NativePlatform,
-    { channel, server = false }: { channel?: string; server?: boolean } = {},
+    {
+      channel,
+      server = false,
+      arch,
+      revoke,
+      resetSequence,
+    }: { channel?: string; server?: boolean; arch?: DesktopArch } & PhoneRevocation = {},
   ) {
     this.#assertUpdates();
     const [api, { config }] = await Promise.all([
@@ -345,14 +396,14 @@ export class NativeApp {
         out: this.updatesDir,
         server,
         ...(channel ? { channel } : {}),
+        ...(arch ? { arch } : {}),
+        ...(revoke?.length ? { revoke } : {}),
+        ...(resetSequence ? { resetSequence } : {}),
       });
     } catch (error) {
-      throw new Error(
-        `Native target '${this.target.name}': ${error instanceof Error ? error.message : String(error)}`,
-        {
-          cause: error,
-        },
-      );
+      throw new Error(`Native target '${this.target.name}': ${toError(error).message}`, {
+        cause: error,
+      });
     }
   }
 
@@ -384,7 +435,7 @@ export class NativeApp {
     });
   }
 
-  /** An unsigned OTA update of this target's web bundle for `platform`, and the channel its binary follows. */
+  /** An unsigned OTA update of this target's web bundle for `platform`, and the record `pack.json` keeps of it. */
   async packUpdate(platform: MobilePlatform, { out }: { out?: string } = {}) {
     await this.assembleWeb(platform);
     const { api, config } = await this.prepare(platform);
@@ -392,12 +443,27 @@ export class NativeApp {
       throw new Error(
         `Native target '${this.target.name}' takes no updates: add native.updates: { url, publicKey } to akan.config.ts first.`,
       );
-    const packed = await api.packUpdate({
-      ...this.#task(platform, config),
+    const dir = path.resolve(out ?? path.join(this.updatesDir, platform));
+    await UpdatePackFolder.clear(dir);
+    const packed = await api.packUpdate({ ...this.#task(platform, config), platform, out: dir });
+    const channel = config.updates.channel ?? "production";
+    const bundle = await UpdatePackFolder.readBundle(path.join(packed.out, UpdatePackFolder.bundleFile));
+    const pack: NativeUpdatePack = {
+      schema: 1,
+      app: this.app.name,
+      target: this.target.name,
       platform,
-      out: out ?? path.join(this.updatesDir, platform),
-    });
-    return { ...packed, channel: config.updates.channel ?? "production" };
+      env: this.env ?? "main",
+      channel,
+      appId: packed.manifest.app,
+      appVersion: packed.manifest.version,
+      nativeApi: packed.manifest.nativeApi ?? "",
+      webHash: bundle.web.hash,
+      files: packed.manifest.files.length,
+      size: packed.manifest.files.reduce((sum, file) => sum + file.size, 0),
+      out: packed.out,
+    };
+    return { ...packed, channel, pack };
   }
 
   static async compareBundles(appDir: string, shipped: string, bundle: string) {
@@ -435,11 +501,6 @@ export class NativeApp {
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
     return `/${home.join("/")}?${params}`;
-  }
-
-  static #windowsSigning(api: NativeBuildApiModule) {
-    const signing = api.windowsSigningFromEnv(process.env);
-    return signing ? { signing } : {};
   }
 
   //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.

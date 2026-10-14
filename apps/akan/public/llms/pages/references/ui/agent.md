@@ -66,6 +66,10 @@ Name prefix
 
   - Agent.Scope: Prefixes the tools and resources below it, without opening a conversation.
 
+- Hooks
+
+  - Agent.useScreenActions: The screen's tools that need no argument, as a list a ⌘K command palette can offer.
+
 - Development
 
   - Agent.Dock: The development inspector: tools, readable state, withheld keys and the transcript.
@@ -117,6 +121,10 @@ Opening And Placement
 - open / onOpenChange (boolean / (open) => void): Open state the app controls. `open` alone draws no close button.
 
 - launcher (boolean, default true): `false` draws no launcher, for an app that opens the panel from a control of its own.
+
+- launcherPlacement ("right" | "left", default "right"): The launcher's corner, above the bottom chrome and safe area, under menus and modals; the open panel stays on top.
+
+- hideLauncherBelow ("sm" | "md" | "lg"): Draws no launcher below this breakpoint. The shortcut or a controlled `open` still opens the panel.
 
 - inline (boolean, default false): Renders in the page flow instead of floating, for a zone chat inside its own section.
 
@@ -231,6 +239,20 @@ A layout mounts it once, with a translated title and a transcript that survives 
   - kind (string): What sort of scope this is. `Agent.Zone` opens its own with `kind="zone"`.
 
   - **Scope or Zone?** Use `Agent.Scope` when a repeated subtree needs distinct tool names but shares the screen's one agent. `Agent.Zone` wraps a scope and adds a conversation of its own.
+
+- useScreenActions: The current screen's published tools that take no required argument: what a ⌘K command palette can offer, the same actions the agent can take on this screen. A card tool, which asks the user, is left out.
+
+  - surface (AgenticSurface): The surface to read. Left out, the screen's shared one, which the chat reads too.
+
+  - name / description (string / string | undefined): Each action's tool name and `.desc()`, as the agent sees them.
+
+  - label (string | undefined): The tool's `label` (`st.tool(name, { label })`, an `l()` result): what to show a person, in their language. It is never sent to the model.
+
+  - needsConfirm (boolean): `true` for a `remove*` tool or one that declares `confirm`: ask the person before `run`.
+
+  - run (() => Promise<void>): Calls the control's own handler, as its click does, and rejects where the tool's guard refuses.
+
+  - **A person's pick is theirs.** `run()` is not recorded as an agent call, and the list follows the screen as its controls mount and unmount.
 
 Development Dock
 
@@ -396,6 +418,46 @@ export const WaypointRow = ({ waypointId, name }: WaypointRowProps) => {
     <Agent.Scope id={waypointId} label={name}>
       <WaypointEditor waypointId={waypointId} />
     </Agent.Scope>
+  );
+};
+```
+
+### apps/koyo/ui/CommandList.tsx
+
+```ts
+"use client";
+import { usePage } from "@apps/koyo/client";
+import { Agent, buttonRecipe, Popconfirm } from "akanjs/ui";
+
+export const CommandList = () => {
+  const { l } = usePage();
+  const actions = Agent.useScreenActions();
+  const button = buttonRecipe({ variant: "ghost" }, "justify-start");
+  return (
+    <div className="flex flex-col">
+      {actions.map((action) =>
+        action.needsConfirm ? (
+          <Popconfirm
+            key={action.name}
+            title={l.trans({ en: "Are you sure?", ko: "진행할까요?" })}
+            onConfirm={() => void action.run()}
+          >
+            <button type="button" className={button}>
+              {action.label ?? action.name}
+            </button>
+          </Popconfirm>
+        ) : (
+          <button
+            key={action.name}
+            type="button"
+            className={button}
+            onClick={() => void action.run()}
+          >
+            {action.label ?? action.name}
+          </button>
+        ),
+      )}
+    </div>
   );
 };
 ```

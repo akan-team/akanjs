@@ -203,7 +203,8 @@ describe("RichEditor.contentFromMentionText", () => {
 
 describe("RichEditor.contentFromMarkdown", () => {
   const blocks = (markdown: string) =>
-    (RichEditor.contentFromMarkdown(markdown).root as { children: { type: string }[] }).children;
+    (RichEditor.contentFromMarkdown(markdown).root as { children: { type: string; [key: string]: unknown }[] })
+      .children;
 
   it("gives an empty document one empty paragraph", () => {
     expect(blocks("")).toEqual([

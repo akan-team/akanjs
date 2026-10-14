@@ -122,6 +122,19 @@ export default page().render(() => {
       ],
     },
     {
+      label: l.trans({ en: "Hooks", ko: "훅" }),
+      rows: [
+        {
+          name: "Agent.useScreenActions",
+          desc: l.trans({
+            en: "The screen's tools that need no argument, as a list a ⌘K command palette can offer.",
+            ko: "화면의 툴 중 인자가 필요 없는 것들을 ⌘K 명령 팔레트가 보여 줄 수 있는 목록으로 돌려줍니다.",
+          }),
+          marks: { ui: false, session: false, prefix: false },
+        },
+      ],
+    },
+    {
       label: l.trans({ en: "Development", ko: "개발용" }),
       rows: [
         {
@@ -260,6 +273,23 @@ export default page().render(() => {
       desc: l.trans({
         en: "`false` draws no launcher, for an app that opens the panel from a control of its own.",
         ko: "`false`면 런처를 그리지 않습니다. 자기 컨트롤로 패널을 여는 앱을 위한 옵션입니다.",
+      }),
+    },
+    {
+      key: "launcherPlacement",
+      type: '"right" | "left"',
+      default: '"right"',
+      desc: l.trans({
+        en: "The launcher's corner, above the bottom chrome and safe area, under menus and modals; the open panel stays on top.",
+        ko: "런처의 모서리입니다. 하단 chrome과 safe area 위, 메뉴와 modal 아래에 놓이며, 열린 패널은 맨 위에 그대로 뜹니다.",
+      }),
+    },
+    {
+      key: "hideLauncherBelow",
+      type: '"sm" | "md" | "lg"',
+      desc: l.trans({
+        en: "Draws no launcher below this breakpoint. The shortcut or a controlled `open` still opens the panel.",
+        ko: "이 breakpoint보다 좁으면 런처를 그리지 않습니다. 단축키나 제어하는 `open`으로는 여전히 패널이 열립니다.",
       }),
     },
     {
@@ -1073,6 +1103,107 @@ export const WaypointRow = ({ waypointId, name }: WaypointRowProps) => {
     <Agent.Scope id={waypointId} label={name}>
       <WaypointEditor waypointId={waypointId} />
     </Agent.Scope>
+  );
+};`,
+    },
+    {
+      name: "useScreenActions",
+      desc: l.trans({
+        en: "The current screen's published tools that take no required argument: what a ⌘K command palette can offer, the same actions the agent can take on this screen. A card tool, which asks the user, is left out.",
+        ko: "현재 화면이 공개한 툴 중 필수 인자가 없는 것들입니다. ⌘K 명령 팔레트가 보여 줄 수 있는 목록이며, 이 화면에서 에이전트가 할 수 있는 동작과 같습니다. 사용자에게 묻는 카드 툴은 뺍니다.",
+      }),
+      props: [
+        {
+          name: "surface",
+          type: "AgenticSurface",
+          desc: l.trans({
+            en: "The surface to read. Left out, the screen's shared one, which the chat reads too.",
+            ko: "읽을 표면입니다. 빼면 채팅도 읽는 화면의 공용 표면을 씁니다.",
+          }),
+        },
+        {
+          name: "name / description",
+          type: "string / string | undefined",
+          desc: l.trans({
+            en: "Each action's tool name and `.desc()`, as the agent sees them.",
+            ko: "각 동작의 툴 이름과 `.desc()`이며, 에이전트가 보는 그대로입니다.",
+          }),
+        },
+        {
+          name: "label",
+          type: "string | undefined",
+          desc: l.trans({
+            en: "The tool's `label` (`st.tool(name, { label })`, an `l()` result): what to show a person, in their language. It is never sent to the model.",
+            ko: "툴의 `label`입니다(`st.tool(name, { label })`, `l()` 결과). 사용자에게 그 사람의 언어로 보여 줄 이름이며, 모델에는 보내지 않습니다.",
+          }),
+        },
+        {
+          name: "needsConfirm",
+          type: "boolean",
+          desc: l.trans({
+            en: "`true` for a `remove*` tool or one that declares `confirm`: ask the person before `run`.",
+            ko: "`remove*` 툴이거나 `confirm`을 선언한 툴이면 `true`입니다. `run` 전에 사용자에게 물어보세요.",
+          }),
+        },
+        {
+          name: "run",
+          type: "() => Promise<void>",
+          desc: l.trans({
+            en: "Calls the control's own handler, as its click does, and rejects where the tool's guard refuses.",
+            ko: "클릭할 때처럼 컨트롤 자신의 핸들러를 부르고, 툴의 guard가 거절하면 reject합니다.",
+          }),
+        },
+      ],
+      notes: [
+        l.trans({
+          en: (
+            <>
+              <strong>A person's pick is theirs.</strong> <code>run()</code> is not recorded as an agent call, and the
+              list follows the screen as its controls mount and unmount.
+            </>
+          ),
+          ko: (
+            <>
+              <strong>사람이 고른 것은 사람의 동작입니다.</strong> <code>run()</code>은 에이전트 호출로 기록되지 않고,
+              목록은 컨트롤이 마운트되고 사라지는 대로 화면을 따라갑니다.
+            </>
+          ),
+        }),
+      ],
+      codeTitle: "apps/koyo/ui/CommandList.tsx",
+      code: `"use client";
+import { usePage } from "@apps/koyo/client";
+import { Agent, buttonRecipe, Popconfirm } from "akanjs/ui";
+
+export const CommandList = () => {
+  const { l } = usePage();
+  const actions = Agent.useScreenActions();
+  const button = buttonRecipe({ variant: "ghost" }, "justify-start");
+  return (
+    <div className="flex flex-col">
+      {actions.map((action) =>
+        action.needsConfirm ? (
+          <Popconfirm
+            key={action.name}
+            title={l.trans({ en: "Are you sure?", ko: "진행할까요?" })}
+            onConfirm={() => void action.run()}
+          >
+            <button type="button" className={button}>
+              {action.label ?? action.name}
+            </button>
+          </Popconfirm>
+        ) : (
+          <button
+            key={action.name}
+            type="button"
+            className={button}
+            onClick={() => void action.run()}
+          >
+            {action.label ?? action.name}
+          </button>
+        ),
+      )}
+    </div>
   );
 };`,
     },

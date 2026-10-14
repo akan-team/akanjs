@@ -46,6 +46,7 @@ import { SignalResolver } from "./resolver";
 import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { RoomReplay } from "./routing/roomReplay";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
 import {
   getWebConfigFromEnv,
@@ -105,6 +106,16 @@ export interface McpServerOption {
   rateLimit?: McpRateLimitOption | false;
   /** Characters a page prompt may attach before its lists are cut; 60,000 by default. `AKAN_MCP_PROMPT_BUDGET`. */
   promptBudget?: number;
+  /**
+   * MCP Apps: a `.prompt()` page is a tool as well, whose result a host speaking the extension renders from the CSR
+   * shell; an endpoint kept off the shelf by `mcp: false` stays callable by that view. `true` by default. `AKAN_MCP_APPS`.
+   */
+  apps?: boolean;
+  /**
+   * Speak the modern `2026-07-28` revision (`server/discover`) beside the legacy ones. On unless MCP Apps renders views,
+   * since claude.ai renders a view only for a server it reached through `initialize`. `AKAN_MCP_MODERN`.
+   */
+  modern?: boolean;
 }
 
 interface AkanAppPrepared {
@@ -172,6 +183,7 @@ export class AkanServer {
   #lastMetrics: AkanMetricsReport = {};
   #stopping: Promise<void> | null = null;
   #parentGone: boolean = false;
+  #schedules = true;
   #orphanExiting = false;
   constructor(
     name = "AkanServer",
@@ -188,6 +200,8 @@ export class AkanServer {
     this.logger = new Logger(name);
     this.libs = libs;
     this.env = { ...env };
+    //? An edge server runs on premises for its own screens and machines: no agent there is one to serve unasked.
+    if (AkanServer.#isEdge(this.env) && !AkanServer.#isEnvEnabled("AKAN_MCP", "AKAN_PUBLIC_MCP")) this.mcp = false;
     this.openapi = options?.openapi ?? this.openapi;
     // Each lib's `option.ts` in mount order, the app's last, and an option passed here over all of them.
     EndpointRateLimit.reset();
@@ -460,23 +474,28 @@ export class AkanServer {
     const websocket = this.#di.getWebsocketAdaptor();
     if (!websocket) throw new Error("WebSocket Redis adaptor is not registered");
     this.#binaryPubsub.setServers(server, wsServer);
+    const subscribed = (roomId: string) =>
+      (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
+    const roomReplay = new RoomReplay({ vouches: RoomReplay.vouchesFor(websocket, this.#solo), subscribed });
     const localPublish: LocalPublish = (roomId, data) => {
       if (data instanceof Uint8Array) {
+        roomReplay.unnumbered(roomId);
         this.#binaryPubsub.publish(roomId, websocketBinaryFrameContract.encode({ roomId, payload: data }), {
           coalesce: SignalResolver.coalescesRoom(roomId),
         });
         return;
       }
       const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      server?.publish(roomId, JSON.stringify(publishData));
-      wsServer?.publish(roomId, JSON.stringify(publishData));
+      const frame = roomReplay.frameOf(publishData, subscribed(roomId));
+      server?.publish(roomId, frame);
+      wsServer?.publish(roomId, frame);
     };
-    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live);
+    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
     this.#localPublish = localPublish;
 
     this.status = "running";
     this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
-    this.#di.registerSchedule(this.serverMode);
+    if (this.#schedules) this.#di.registerSchedule(this.serverMode);
     this.logger.verbose(`🚀 ${this.name} is running on ${unix ? `unix://${unix}` : `port ${port}`}`);
     const wsPort = this.#wsServer?.port;
     this.#sendReady({
@@ -489,12 +508,17 @@ export class AkanServer {
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
     });
-    await this.#di.runSchedulerInit();
+    if (this.#schedules) await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());
     return this;
   }
 
-  async start({ listen, web }: { listen?: boolean; web?: AkanWebOption } = {}) {
+  /**
+   * `listen: false` serves no HTTP and still runs the internals, as a batch replica does; `schedules: false` runs
+   * none of them (init, interval, cron, queue workers), as a test or a script wants.
+   */
+  async start({ listen, web, schedules }: { listen?: boolean; web?: AkanWebOption; schedules?: boolean } = {}) {
+    this.#schedules = schedules ?? true;
     const isNoListenCommand = process.env.AKAN_COMMAND_TYPE === "script" || process.env.AKAN_COMMAND_TYPE === "console";
     const shouldListen = (listen ?? !isNoListenCommand) && this.serverMode !== "batch";
     //? Before init: once an adaptor listens for `message`, Bun emits `disconnect` at the close only to listeners there.
@@ -509,7 +533,7 @@ export class AkanServer {
       if (!isNoListenCommand) {
         Logger.role = this.serverMode;
         this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
-        this.#di.registerSchedule(this.serverMode);
+        if (this.#schedules) this.#di.registerSchedule(this.serverMode);
         await this.#startLogTransport();
         this.#sendReady({
           type: "ready",
@@ -517,7 +541,7 @@ export class AkanServer {
           replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
           role: this.serverMode,
         });
-        await this.#di.runSchedulerInit();
+        if (this.#schedules) await this.#di.runSchedulerInit();
         ShutdownManager.register(this.logger, () => this.stop());
       }
       return this;
@@ -677,6 +701,8 @@ export class AkanServer {
             readOnly: this.mcpReadOnly,
             auth: this.mcpAuth,
             pagePrompts: webRouter?.pagePrompts(),
+            apps: this.mcpOption.apps !== false,
+            appShell: this.mcpOption.apps === false ? undefined : webRouter?.mcpAppShell(),
           })
         : null;
     const mcpRoutes: HttpRoutes = mcpRouter?.createRoutes() ?? {};
@@ -831,6 +857,10 @@ export class AkanServer {
     );
   }
 
+  static #isEdge(env: BackendEnv) {
+    return ((env as { operationMode?: string }).operationMode ?? process.env.AKAN_PUBLIC_OPERATION_MODE) === "edge";
+  }
+
   static #isEnvEnabled(...names: string[]) {
     return names.some((name) => process.env[name] === "true" || process.env[name] === "1");
   }
@@ -873,9 +903,16 @@ export class AkanServer {
       ...(Number.isInteger(promptBudget) && promptBudget > 0 ? { promptBudget } : {}),
       ...(process.env.AKAN_MCP_LANGUAGE ? { language: process.env.AKAN_MCP_LANGUAGE } : {}),
       ...(AkanServer.#isEnvOff("AKAN_MCP_LEGACY_TEXT") ? { legacyTextBlock: false } : {}),
+      ...(AkanServer.#isEnvOff("AKAN_MCP_APPS") ? { apps: false } : {}),
+      ...AkanServer.#mcpModernFromEnv(),
       ...AkanServer.#mcpOutputSchemaFromEnv(),
       ...AkanServer.#mcpRateLimitFromEnv(),
     };
+  }
+
+  static #mcpModernFromEnv(): Pick<McpServerOption, "modern"> {
+    if (AkanServer.#isEnvEnabled("AKAN_MCP_MODERN")) return { modern: true };
+    return AkanServer.#isEnvOff("AKAN_MCP_MODERN") ? { modern: false } : {};
   }
 
   static #mcpRateLimitFromEnv(): Pick<McpServerOption, "rateLimit"> {

@@ -1,6 +1,6 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { cn } from "akanjs/client";
+import { cn, router } from "akanjs/client";
 import { type DynamicRecord, isQueryEqual, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import { ConstantRegistry, labelOf, withSharedInstances } from "akanjs/constant";
@@ -170,7 +170,7 @@ function Render<RefName extends string, Light extends { id: string }>({
     onPageSelect: (page: number, option?: { scrollToTop?: boolean }) => {
       void storeDo[namesOfSlice.setPageOfModel](page);
       if (option?.scrollToTop !== false) {
-        window.parent.postMessage({ type: "pathChange", page }, "*");
+        router.postPathChange({ page });
         window.scrollTo({ top: 0, behavior: "instant" });
       }
     },

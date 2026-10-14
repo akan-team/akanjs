@@ -41,6 +41,6 @@ export const fetch = FetchClient.from(...fetchSignals) as unknown as Fetch;
 // dictionary key and data instead of answering the original caller with Internal Server Error.
 fetch.setErrorConstructor(Err);
 
-export const getSerializedSignal = () => fetch.serializedSignal
+export const getSerializedSignal = () => fetch.ownSerializedSignal
 `;
 }

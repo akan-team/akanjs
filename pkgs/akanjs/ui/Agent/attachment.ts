@@ -1,3 +1,4 @@
+import { Binary } from "akanjs/base";
 import type { MessageAttachment } from "use-agentic";
 
 /** `null` leaves the file to the built-in reader. */
@@ -34,7 +35,8 @@ export class Attachment {
     if (file.size > perFile) return "tooLarge";
     // A media type may carry parameters (`text/plain;charset=utf-8`), and a provider matches on the essence alone.
     const mimeType = file.type.split(";")[0].trim().toLowerCase();
-    if (mimeType.startsWith("image/")) return { name: file.name, mimeType, data: await Attachment.#base64(file) };
+    if (mimeType.startsWith("image/"))
+      return { name: file.name, mimeType, data: Binary.toBase64(new Uint8Array(await file.arrayBuffer())) };
     if (mimeType.startsWith("text/") || textMimes.has(mimeType))
       return { name: file.name, mimeType: mimeType || "text/plain", text: await file.text() };
     return "unsupported";
@@ -61,14 +63,5 @@ export class Attachment {
   static same(one: MessageAttachment, other: MessageAttachment): boolean {
     if (one.ref || other.ref) return one.ref === other.ref;
     return one.name === other.name && Attachment.bytesOf(one) === Attachment.bytesOf(other);
-  }
-
-  // Chunked: `String.fromCharCode(...bytes)` spreads one argument per byte, and a megabyte of them is a RangeError.
-  static async #base64(file: File): Promise<string> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const chunk = 0x8000;
-    let binary = "";
-    for (let at = 0; at < bytes.length; at += chunk) binary += String.fromCharCode(...bytes.subarray(at, at + chunk));
-    return btoa(binary);
   }
 }

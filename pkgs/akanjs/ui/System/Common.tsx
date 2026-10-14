@@ -1,6 +1,17 @@
 import "dayjs/locale/ko";
 
-import type { PageState, RootLayoutProps, WebAppManifest } from "akanjs/client";
+import { Binary } from "akanjs/base";
+import {
+  type InsetBreakpoint,
+  insetBreakpoints,
+  insetsByBreakpoint,
+  type PageState,
+  type RootLayoutProps,
+  type RouteViewport,
+  toManifestJson,
+  type WebAppManifest,
+  webManifestHref,
+} from "akanjs/client";
 import type { AkanTheme } from "akanjs/fetch";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -14,6 +25,7 @@ export interface ProviderProps {
   /** App-specific public client config (`env/env.client.ts`) merged over the framework's own `getEnv()`. */
   env?: object;
   theme?: AkanTheme;
+  viewport?: RouteViewport;
   prefix?: string;
   children: ReactNode | ReactNode[];
   layoutStyle?: "mobile" | "web";
@@ -33,52 +45,17 @@ export const Common = () => {
   return null;
 };
 
-export function ManifestLink({ manifest }: { manifest?: WebAppManifest }) {
+/** An SSR document links the URL its server answers, where `start_url`, `scope` and icons resolve; a CSR bundle,
+ *  which no server serves in a native shell, carries the manifest inline. */
+export function ManifestLink({ manifest, basePath }: { manifest?: WebAppManifest; basePath?: string | null }) {
   if (!manifest) return null;
-  return <link rel="manifest" href={createManifestDataUrl(manifest)} />;
+  const href = basePath === undefined ? createManifestDataUrl(manifest) : webManifestHref(basePath);
+  return <link rel="manifest" href={href} />;
 }
 
 export function createManifestDataUrl(manifest: WebAppManifest): string {
   const json = JSON.stringify(toManifestJson(manifest));
-  return `data:application/manifest+json;base64,${encodeBase64Utf8(json)}`;
-}
-
-export function toManifestJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toManifestJson);
-  if (!isPlainObject(value)) return value;
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== undefined)
-      .map(([key, entryValue]) => [camelToSnake(key), toManifestJson(entryValue)]),
-  );
-}
-
-function camelToSnake(key: string): string {
-  return key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
-
-function encodeBase64Utf8(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  if (typeof btoa === "function") return btoa(binary);
-
-  const buffer = (
-    globalThis as typeof globalThis & {
-      Buffer?: {
-        from: (bytes: Uint8Array) => {
-          toString: (encoding: "base64") => string;
-        };
-      };
-    }
-  ).Buffer;
-  if (buffer) return buffer.from(bytes).toString("base64");
-  throw new Error("Base64 encoding is not available in this runtime");
+  return `data:application/manifest+json;base64,${Binary.toBase64(new TextEncoder().encode(json))}`;
 }
 
 export type AkanFrameCssVarName =
@@ -87,19 +64,52 @@ export type AkanFrameCssVarName =
   | "--akan-top-inset"
   | "--akan-bottom-inset"
   | "--akan-page-padding-top"
-  | "--akan-page-padding-bottom";
+  | "--akan-page-padding-bottom"
+  | "--akan-content-height"
+  | `--akan-${"top" | "bottom"}-inset-visibility`
+  | `--akan-${"top" | "bottom"}-inset-${InsetBreakpoint}`
+  | `--akan-${"top" | "bottom"}-inset-visibility-${InsetBreakpoint}`;
 
-export type AkanFrameCssVars = CSSProperties & Record<AkanFrameCssVarName, string>;
+export type AkanFrameCssVars = CSSProperties & { [name in AkanFrameCssVarName]?: string };
 
 const px = (value: number) => `${Math.max(0, value)}px`;
+//? A slot clipped to no height still holds its controls; hidden, they leave the tab order and the accessibility tree.
+const visibility = (value: number) => (value > 0 ? "visible" : "hidden");
+const breakpointNames: InsetBreakpoint[] = ["base", ...insetBreakpoints.map(([name]) => name)];
 
-export function getFrameCssVars(pageState: PageState): AkanFrameCssVars {
-  return {
-    "--akan-top-safe-area": px(pageState.topSafeArea),
-    "--akan-bottom-safe-area": px(pageState.bottomSafeArea),
-    "--akan-top-inset": px(pageState.topInset),
-    "--akan-bottom-inset": px(pageState.bottomInset),
-    "--akan-page-padding-top": px(pageState.topSafeArea + pageState.topInset),
-    "--akan-page-padding-bottom": px(pageState.bottomSafeArea + pageState.bottomInset),
+/** Whether a frame's insets are left to the stylesheet's media rules, which key on `data-akan-frame-responsive`. */
+export const isResponsiveFrame = (pageState: PageState, { cssResolved }: { cssResolved: boolean }) =>
+  cssResolved && !!pageState.responsiveInset;
+
+/**
+ * `cssResolved` is the SSR document, whose width and safe area only CSS knows: insets per breakpoint and the web's
+ * `env()` safe area. A CSR frame lays pages out from the same numbers in script, so it gets those numbers.
+ */
+export function getFrameCssVars(pageState: PageState, { cssResolved }: { cssResolved: boolean }): AkanFrameCssVars {
+  const safeAreaEnv = cssResolved ? pageState.safeAreaEnv : undefined;
+  const vars: AkanFrameCssVars = {
+    "--akan-top-safe-area": safeAreaEnv?.top ? "env(safe-area-inset-top, 0px)" : px(pageState.topSafeArea),
+    "--akan-bottom-safe-area": safeAreaEnv?.bottom ? "env(safe-area-inset-bottom, 0px)" : px(pageState.bottomSafeArea),
+    "--akan-page-padding-top": "calc(var(--akan-top-safe-area) + var(--akan-top-inset))",
+    "--akan-page-padding-bottom": "calc(var(--akan-bottom-safe-area) + var(--akan-bottom-inset))",
+    "--akan-content-height":
+      "calc(var(--akan-viewport-height, 100dvh) - var(--akan-page-padding-top) - var(--akan-page-padding-bottom))",
   };
+  const responsive = isResponsiveFrame(pageState, { cssResolved }) ? pageState.responsiveInset : undefined;
+  if (!responsive) {
+    vars["--akan-top-inset"] = px(pageState.topInset);
+    vars["--akan-bottom-inset"] = px(pageState.bottomInset);
+    vars["--akan-top-inset-visibility"] = visibility(pageState.topInset);
+    vars["--akan-bottom-inset-visibility"] = visibility(pageState.bottomInset);
+    return vars;
+  }
+  const top = insetsByBreakpoint(responsive.top);
+  const bottom = insetsByBreakpoint(responsive.bottom);
+  for (const name of breakpointNames) {
+    vars[`--akan-top-inset-${name}`] = px(top[name]);
+    vars[`--akan-bottom-inset-${name}`] = px(bottom[name]);
+    vars[`--akan-top-inset-visibility-${name}`] = visibility(top[name]);
+    vars[`--akan-bottom-inset-visibility-${name}`] = visibility(bottom[name]);
+  }
+  return vars;
 }

@@ -3,7 +3,7 @@ import { cn } from "akanjs/client";
 import type { LauncherProps } from "akanjs/ui";
 import { JellyStar } from "./JellyStar";
 
-export const JellyLauncher = ({ className, label, hotkey, unread, onOpen, buttonRef }: LauncherProps) => {
+export const JellyLauncher = ({ className, style, label, hotkey, unread, onOpen, buttonRef }: LauncherProps) => {
   return (
     <button
       aria-expanded={false}
@@ -14,6 +14,7 @@ export const JellyLauncher = ({ className, label, hotkey, unread, onOpen, button
       data-agent-ui=""
       onClick={onOpen}
       ref={buttonRef}
+      style={style}
       type="button"
     >
       {hotkey ? (

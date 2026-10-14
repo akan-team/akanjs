@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Any, Binary, ENDPOINT_META, ID, INJECT_META, INTERNAL_META, Int, SLICE_META } from "akanjs/base";
+import {
+  Any,
+  Binary,
+  dayjs,
+  ENDPOINT_META,
+  ID,
+  INJECT_META,
+  INTERNAL_META,
+  Int,
+  SLICE_META,
+  Upload,
+} from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls } from "akanjs/document";
@@ -97,6 +108,7 @@ const SignalTestHolderInput = via((f) => ({
   label: f(String),
   related: f(SignalTestRelatedFull).optional(),
   relateds: f([SignalTestRelatedFull]),
+  optionalRelateds: f([SignalTestRelatedFull]).optional(),
   requiredRelated: f(SignalTestRelatedFull),
 }));
 const SignalTestHolderObject = via(SignalTestHolderInput, () => ({}));
@@ -118,6 +130,42 @@ ConstantRegistry.buildModel(
     SignalTestHolderFull,
     SignalTestHolderLight,
     SignalTestHolderInsight,
+  },
+);
+
+const SignalTestCachedInput = via((f) => ({
+  title: f(String),
+  counts: f(Map, { of: Int }),
+  openedAt: f(Date),
+  nested: f(SignalTestNested),
+}));
+const SignalTestCachedObject = via(SignalTestCachedInput, (f) => ({
+  memo: f.hidden(String).optional(),
+}));
+class SignalTestCachedLight extends via(SignalTestCachedObject, ["title", "counts", "openedAt"] as const, () => ({})) {
+  label() {
+    return `${this.title}@${this.openedAt.format("YYYY-MM-DD")}#${this.counts.get("views") ?? 0}`;
+  }
+}
+const SignalTestCachedFull = via(SignalTestCachedObject, SignalTestCachedLight, (r) => ({
+  summary: r(String),
+}));
+const SignalTestCachedInsight = via(SignalTestCachedFull, (f) => ({
+  total: f(Int, { default: 0, accumulate: {} }),
+}));
+ConstantRegistry.buildModel(
+  "signalTestCached",
+  SignalTestCachedInput,
+  SignalTestCachedObject,
+  SignalTestCachedFull,
+  SignalTestCachedLight,
+  SignalTestCachedInsight,
+  {
+    SignalTestCachedInput,
+    SignalTestCachedObject,
+    SignalTestCachedFull,
+    SignalTestCachedLight,
+    SignalTestCachedInsight,
   },
 );
 
@@ -264,6 +312,23 @@ class FakeCacheAdaptor {
   }
   async delete(topic: string, key: string) {
     this.store.delete(`${topic}:${key}`);
+  }
+  async setIfAbsent(topic: string, key: string, value: string | number | Buffer) {
+    if (this.store.has(`${topic}:${key}`)) return false;
+    this.store.set(`${topic}:${key}`, String(value));
+    return true;
+  }
+  async acquireLease(topic: string, key: string, owner: string) {
+    const holder = this.store.get(`${topic}:${key}`);
+    if (holder !== undefined && holder !== owner) return false;
+    this.store.set(`${topic}:${key}`, owner);
+    return true;
+  }
+  async renewLease(topic: string, key: string, owner: string) {
+    return this.store.get(`${topic}:${key}`) === owner;
+  }
+  async releaseLease(topic: string, key: string, owner: string) {
+    if (this.store.get(`${topic}:${key}`) === owner) this.store.delete(`${topic}:${key}`);
   }
 }
 
@@ -1061,6 +1126,172 @@ describe("SignalContext execution", () => {
     expect(cache.store.size).toBe(0);
   });
 
+  test("answers a cache hit exactly as the miss that filled it, resolving fields from the same model", async () => {
+    let runs = 0;
+    const parents: unknown[] = [];
+    class CachedInternal extends internal(signalTestServiceModel, (builder) => ({
+      summary: builder.resolveField(String).exec((parent) => {
+        parents.push(parent);
+        return (parent as unknown as InstanceType<typeof SignalTestCachedFull>).label();
+      }),
+    })) {}
+    const live = getDefaultLiveRegistry();
+    live.internal.set("signalTestCachedInternal", new CachedInternal() as unknown as Internal);
+    const make = (title: string, views: number) =>
+      new SignalTestCachedFull().set({
+        title,
+        counts: new Map([["views", views]]),
+        openedAt: dayjs("2026-10-14T00:00:00.000Z"),
+        nested: new SignalTestNested().set({ label: `nested:${title}` }),
+        memo: "server-only",
+      });
+    const listInfo = buildEndpoint.query([SignalTestCachedFull], { guards: [Public], cache: 60_000 }).exec(() => {
+      runs++;
+      return [make("first", 3), make("second", 0)] as never;
+    });
+    const bytesInfo = buildEndpoint.query(Binary, { guards: [Public], cache: 60_000 }).exec(() => {
+      runs++;
+      return new Uint8Array([0, 1, 254, 255]);
+    });
+    const adaptor = new (adapt("signalTestCacheRoundTripAdaptor"))();
+    const call = async (endpointInfo: EndpointInfo, cache: FakeCacheAdaptor) =>
+      (await SignalContext.try(adaptor, endpointInfo, "cached", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, live, registry: makeCacheRegistry(cache) });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    const listCache = new FakeCacheAdaptor();
+    const bytesCache = new FakeCacheAdaptor();
+
+    const miss = await call(listInfo, listCache);
+    const hit = await call(listInfo, listCache);
+    expect(hit.status).toBe(200);
+    const missBody = (await miss.json()) as Record<string, unknown>[];
+    expect(await hit.json()).toEqual(missBody);
+    expect(missBody[0]).toMatchObject({ counts: { views: 3 }, summary: "first@2026-10-14#3", memo: null });
+    expect(parents).toHaveLength(4);
+    for (const parent of parents) expect(parent).toBeInstanceOf(SignalTestCachedFull);
+    const hitParent = parents[2] as unknown as InstanceType<typeof SignalTestCachedFull>;
+    expect(hitParent.label()).toBe("first@2026-10-14#3");
+    expect(hitParent.nested).toBeInstanceOf(SignalTestNested);
+    expect(hitParent.memo).toBe("server-only");
+
+    const bytesMiss = await (await call(bytesInfo, bytesCache)).json();
+    expect(await (await call(bytesInfo, bytesCache)).json()).toEqual(bytesMiss);
+    expect(bytesMiss).toBe("AAH+/w==");
+    expect(runs).toBe(2);
+  });
+
+  test("runs a mutation once per Idempotency-Key and its caller, and refuses a repeat while the first still runs", async () => {
+    let runs = 0;
+    let release = () => undefined as void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hold = false;
+    const info = buildEndpoint.mutation(String, { guards: [Public] }).exec(async () => {
+      runs++;
+      const run = runs;
+      if (hold) await held;
+      return `run-${run}`;
+    });
+    const cache = new FakeCacheAdaptor();
+    const adaptor = new (adapt("signalTestIdempotencyAdaptor"))();
+    const call = async (headers: Record<string, string>) =>
+      (await SignalContext.try(adaptor, info, "idempotent", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          adaptor,
+          request: makeHttpRequest({ body: {}, headers }),
+          registry: makeCacheRegistry(cache),
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    const device = { authorization: "Bearer device-a", "idempotency-key": "ack-1" };
+
+    expect(await (await call(device)).json()).toBe("run-1");
+    expect(await (await call(device)).json()).toBe("run-1");
+    expect(await (await call({ ...device, authorization: "Bearer device-b" })).json()).toBe("run-2");
+    expect(await (await call({ authorization: "Bearer device-a" })).json()).toBe("run-3");
+
+    hold = true;
+    const first = call({ ...device, "idempotency-key": "ack-2" });
+    await Bun.sleep(5);
+    const repeat = await call({ ...device, "idempotency-key": "ack-2" });
+    expect(repeat.status).toBe(409);
+    expect(await repeat.json()).toMatchObject({ error: "base.error.idempotencyInFlight" });
+    release();
+    expect(await (await first).json()).toBe("run-4");
+    expect(runs).toBe(4);
+  });
+
+  test("lets a mutation that failed run again under the same Idempotency-Key", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(String, { guards: [Public] }).exec(() => {
+      runs++;
+      if (runs === 1) throw new Exception.BadRequest("first run fails");
+      return "second";
+    });
+    const cache = new FakeCacheAdaptor();
+    const adaptor = new (adapt("signalTestIdempotencyRetryAdaptor"))();
+    const call = async () =>
+      (await SignalContext.try(adaptor, info, "idempotentRetry", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          adaptor,
+          request: makeHttpRequest({
+            body: {},
+            headers: { authorization: "Bearer device-a", "idempotency-key": "retry-me" },
+          }),
+          registry: makeCacheRegistry(cache),
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    expect((await call()).status).toBe(400);
+    expect(await (await call()).json()).toBe("second");
+  });
+
+  test("reads a multipart mutation's other fields back as a JSON body would carry them", async () => {
+    let received: unknown[] = [];
+    const info = buildEndpoint
+      .mutation(Boolean, { guards: [Public], fileUpload: true })
+      .body("file", [Upload])
+      .body("capturedAt", Date)
+      .body("count", Int)
+      .body("label", String)
+      .body("kioskId", ID)
+      .body("tags", [String])
+      .exec((...args: unknown[]) => {
+        received = args;
+        return true;
+      });
+    const capturedAt = dayjs("2026-10-11T03:00:00.000Z");
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([137, 80, 78, 71])], "shot.png"));
+    form.append("capturedAt", JSON.stringify(capturedAt));
+    form.append("count", "3");
+    form.append("label", "123");
+    form.append("kioskId", "64a0000000000000000000a1");
+    form.append("tags", JSON.stringify(["a", "b"]));
+    const request = {
+      url: "http://localhost/api/addPcScreenshot",
+      params: {},
+      body: {},
+      headers: new Headers({ "content-type": "multipart/form-data; boundary=x" }),
+      formData: async () => form,
+    } as unknown as Bun.BunRequest;
+    const context = makeSignalContext({ endpointInfo: info, request });
+    await context.init();
+    await context.exec();
+
+    const [files, date, count, label, id, tags] = received;
+    expect((files as File[]).map((file) => file.name)).toEqual(["shot.png"]);
+    expect(dayjs.isDayjs(date) && date.toISOString()).toBe("2026-10-11T03:00:00.000Z");
+    expect([count, label, id, tags]).toEqual([3, "123", "64a0000000000000000000a1", ["a", "b"]]);
+  });
+
   test("reports guard and internal argument failures through HTTP responses", async () => {
     const denyInfo = buildEndpoint.query(String, { guards: [TestDeny] }).exec(() => "blocked");
     const missingInternalInfo = buildEndpoint
@@ -1521,30 +1752,78 @@ describe("SignalContext return resolution", () => {
         registry: getDefaultInjectRegistry(),
         live,
       });
+    const notFound = (id: string | null) => ({
+      statusCode: 404,
+      error: "base.error.relationNotFound",
+      data: { model: "signalTestRelated", field: "requiredRelated" },
+      details: { id },
+    });
 
-    await expect(resolveHolder({ label: "a", related: "gone", relateds: [], requiredRelated: "gone" })).rejects.toThrow(
-      "Document gone is not found",
-    );
-    await expect(resolveHolder({ label: "a", related: "gone", relateds: [], requiredRelated: null })).rejects.toThrow(
-      "Document null is not found",
-    );
+    await expect(
+      resolveHolder({ label: "a", related: "gone", relateds: [], requiredRelated: "gone" }),
+    ).rejects.toMatchObject(notFound("gone"));
+    await expect(
+      resolveHolder({ label: "a", related: "gone", relateds: [], requiredRelated: null }),
+    ).rejects.toMatchObject(notFound(null));
   });
 
-  test("loadNested handles nullable and non-nullable missing documents", async () => {
-    const missingService = {
+  test("answers an empty relation without the related model's service", async () => {
+    await expect(
+      SignalContext.resolveReturn(
+        { label: "a", related: null, relateds: [], requiredRelated: null },
+        {
+          signalContext: null,
+          returnRef: SignalTestHolderFull,
+          arrDepth: 0,
+          registry: getDefaultInjectRegistry(),
+          live: getDefaultLiveRegistry(),
+        },
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      error: "base.error.relationNotFound",
+      data: { model: "signalTestRelated", field: "requiredRelated" },
+    });
+  });
+
+  test("drops a removed document from a relation list instead of refusing the response or leaving a null", async () => {
+    const live = getDefaultLiveRegistry();
+    live.service.set("signalTestRelated", {
+      __load: async (id: string) => (id === "gone" ? null : { toJSON: () => ({ id, title: `related:${id}` }) }),
+    } as unknown as Service);
+    const holder = (await SignalContext.resolveReturn(
+      {
+        label: "a",
+        related: "gone",
+        relateds: ["rel-1", "gone", "rel-2"],
+        optionalRelateds: ["gone", "rel-2"],
+        requiredRelated: "rel-1",
+      },
+      {
+        signalContext: null,
+        returnRef: SignalTestHolderFull,
+        arrDepth: 0,
+        registry: getDefaultInjectRegistry(),
+        live,
+      },
+    )) as { related: unknown; relateds: { id: string }[]; optionalRelateds: { id: string }[] };
+
+    expect(holder.related).toBeNull();
+    expect(holder.relateds.map(({ id }) => id)).toEqual(["rel-1", "rel-2"]);
+    expect(holder.optionalRelateds.map(({ id }) => id)).toEqual(["rel-2"]);
+  });
+
+  test("loadNested reads a missing document as null and leaves it out of a list", async () => {
+    const service = {
       __load: async () => null,
-      __loadMany: async () => [null],
+      __loadMany: async (ids: string[]) => ids.map((id) => (id === "missing" ? null : { toJSON: () => ({ id }) })),
     } as unknown as DatabaseService;
 
-    await expect(SignalContext.loadNested("missing", missingService, { arrDepth: 0, nullable: false })).rejects.toThrow(
-      "Document missing is not found",
-    );
-    await expect(
-      SignalContext.loadNested("missing", missingService, { arrDepth: 0, nullable: true }),
-    ).resolves.toBeNull();
-    await expect(
-      SignalContext.loadNested(["missing"], missingService, { arrDepth: 1, nullable: false }),
-    ).rejects.toThrow("Document missing is not found");
+    await expect(SignalContext.loadNested("missing", service, { arrDepth: 0 })).resolves.toBeNull();
+    await expect(SignalContext.loadNested(["a", "missing", "b"], service, { arrDepth: 1 })).resolves.toEqual([
+      { id: "a" },
+      { id: "b" },
+    ]);
   });
 });
 

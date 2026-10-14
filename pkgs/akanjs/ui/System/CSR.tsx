@@ -7,6 +7,7 @@ import {
   Device,
   debugFrame,
   getPathInfo,
+  isMcpView,
   type PageActivity,
   type ReactFont,
   router,
@@ -14,10 +15,20 @@ import {
   type WebAppManifest,
 } from "akanjs/client";
 import { st } from "akanjs/store";
-import { Activity, type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo } from "react";
+import {
+  Activity,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
+import { EmbedApproval } from "../Agent/EmbedApproval";
 import { animated } from "../animated";
 
 import { FontFace } from "../FontFace";
@@ -41,6 +52,7 @@ const CSRProvider = ({
   manifest,
   env,
   theme,
+  viewport,
   prefix,
   children,
   fonts,
@@ -74,8 +86,16 @@ const CSRProvider = ({
           </Client.Wrapper>
           <Client.Inner />
           <CSRInner />
-          <Client.Bridge lang={lang} env={env} theme={theme} prefix={prefix} wsConnect={wsConnect} />
+          <Client.Bridge
+            lang={lang}
+            env={env}
+            theme={theme}
+            viewport={viewport}
+            prefix={prefix}
+            wsConnect={wsConnect}
+          />
           <CSRBridge lang={lang} prefix={prefix} />
+          {isMcpView() ? <EmbedApproval /> : null}
         </>
       )}
     />
@@ -119,22 +139,22 @@ const CSRWrapper = ({
     stackEntries,
   } = useCsr();
   const csrLoaded = st.use.csrLoaded({ agent: false });
-  const { router: reactRouter } = useCsr();
+  const { router: reactRouter, history } = useCsr();
   useEffect(() => {
     debugFrame("csrWrapper.mount", { appName, layoutStyle, pathCount: pathRoutes.length });
     if (layoutStyle === "mobile") {
       document.documentElement.classList.add("akan-mobile-document");
       document.body.classList.add("akan-mobile-document");
     }
-    if (!router.isInitialized)
-      router.init({
-        type: "csr",
-        lang,
-        prefix,
-        router: reactRouter,
-        routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
-        indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
-      });
+    //? Every mount, not the first: a view's reload mounts a new tree, and a router left on the old one moves nothing.
+    router.init({
+      type: "csr",
+      lang,
+      prefix,
+      router: { ...reactRouter, canGoBack: () => history.current.idx > 0 },
+      routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
+      indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
+    });
     st.do.setCsrLoaded(true);
     const onVisibilityChange = () => debugFrame("document.visibility", { visibilityState: document.visibilityState });
     const onPageHide = (event: PageTransitionEvent) => debugFrame("window.pagehide", { persisted: event.persisted });
@@ -185,14 +205,16 @@ const CSRWrapper = ({
         />
         <TopChromeLayer
           id="topInsetContainer"
-          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen bg-background")}
+          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background")}
           style={topInset?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topInset" />
         </TopChromeLayer>
         <TopChromeLayer
           id="topLeftActionContainer"
-          className={cn("akan-frame-chrome fixed top-0 isolate flex aspect-1 items-center justify-center")}
+          className={cn(
+            "akan-frame-chrome pointer-events-none fixed top-0 isolate flex aspect-1 items-center justify-center",
+          )}
           style={topLeftAction?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topLeftAction" />
@@ -308,15 +330,19 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
               ? slotInset?.prevContentStyle
               : undefined;
         const id = `${slot}Content-${key}`;
+        const { topInset: topHeight, bottomInset: bottomHeight } = location.pathRoute.pageState;
+        const collapsed = slot !== "keyboardInset" && (slot === "bottomInset" ? bottomHeight : topHeight) <= 0;
+        const hidden = pageType !== "current" || collapsed;
         return (
           <animated.div
             key={id}
             id={id}
-            inert={pageType !== "current"}
-            aria-hidden={pageType === "current" ? undefined : true}
+            inert={hidden}
+            aria-hidden={hidden ? true : undefined}
             className={cn(
               slot === "topInset" && "absolute top-0 left-0 isolate size-full",
               slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
+              slot === "topLeftAction" && pageType === "current" && "pointer-events-auto",
               (slot === "bottomInset" || slot === "keyboardInset") && "absolute inset-x-0 bottom-0 isolate h-full",
               pageType === "cached" && "hidden",
               ((slot === "topInset" && pageType !== "current") ||
@@ -327,7 +353,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
             )}
             style={
               {
-                ...getFrameCssVars(location.pathRoute.pageState),
+                ...getFrameCssVars(location.pathRoute.pageState, { cssResolved: false }),
                 ...(style ?? {}),
                 zIndex: pageType === "pending" ? -1 : zIndex,
                 ...(pageType === "pending" ? { opacity: 0 } : {}),
@@ -398,7 +424,11 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
   useEffect(() => {
     if (pageType === "current") NativeUpdates.confirm();
   }, [pageType]);
-  const pageContainers = document.getElementById("pageContainers");
+  //? The root renders in the same commit as the first page, so a tree mounted afresh finds it only after committing.
+  const [pageContainers, setPageContainers] = useState(() => document.getElementById("pageContainers"));
+  useLayoutEffect(() => {
+    if (!pageContainers) setPageContainers(document.getElementById("pageContainers"));
+  }, [pageContainers]);
   if (!pageContainers) return null;
   const { page, pageContentRef, pageClassName, pageBind } =
     pageType === "current"
@@ -459,7 +489,13 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
             location={location}
             prefix={prefix}
           >
-            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
+            <RenderLayer
+              renders={renders}
+              index={0}
+              params={location.params}
+              searchParams={location.searchParams}
+              isEmbedded={isMcpView()}
+            />
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,

@@ -78,11 +78,22 @@ export const libFacetRootAllowedFiles = new Set([
   "useServer.ts",
 ]);
 
-/** `<model>.signal.test.ts` — lib 파싯 루트에 놓이는 유일한 비생성 파일 (테스트가 배럴 전체를 부팅한다). */
-const libFacetRootTestPattern = /^[A-Za-z][A-Za-z0-9_-]*\.signal\.(test|spec)\.(ts|tsx)$/;
+export const isAllowedLibFacetRootFile = (filename: string) => libFacetRootAllowedFiles.has(filename);
 
-export const isAllowedLibFacetRootFile = (filename: string) =>
-  libFacetRootAllowedFiles.has(filename) || libFacetRootTestPattern.test(filename);
+const testSuffix = /\.(test|spec)(\.tsx?)$/;
+
+export const libFacetRootHintOf = (filename: string) =>
+  testSuffix.test(filename)
+    ? "a test beside the generated barrels; move it into the module folder it covers " +
+      "(lib/<model>/<model>.signal.test.ts), or into srvkit/ when it drives several modules"
+    : null;
+
+export const moduleTestTargetOf = (filename: string) =>
+  testSuffix.test(filename) ? filename.replace(testSuffix, "$2") : null;
+
+export const moduleTestHint =
+  "a module test is named after the one module file it covers (<model>.<role>.test.ts); add a describe block to " +
+  "that file's suite instead, or move a suite that drives several modules into srvkit/";
 
 export const barrelFacetDirs = ["ui", "webkit", "srvkit", "common", "plugin"] as const;
 

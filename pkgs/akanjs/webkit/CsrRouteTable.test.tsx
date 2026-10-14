@@ -123,3 +123,86 @@ describe("CsrRouteTable lays out a page as the SSR route tree does", () => {
     expect(csr["/:lang/oauth/consent"]).toEqual({ root: ["root"], layouts: [] });
   });
 });
+
+describe("CsrRouteTable in an MCP view", () => {
+  const context: CsrRouteContext = {
+    "./__root_layout.tsx": layout("root"),
+    "./(tab)/_layout.tsx": async () => ({ default: () => "tab", pageConfig: { bottomInset: 64, cache: true } }),
+    "./(tab)/trips.tsx": async () => ({ default: () => "trips", pageConfig: { topInset: 48 } }),
+  };
+  const tripsState = async () => {
+    const table = await CsrRouteTable.boot(context, { device, basePaths: null });
+    const trips = table.snapshot().pathRoutes.find((route) => route.path.endsWith("/trips"));
+    return { state: trips?.pageState, explicit: trips?.explicitPageConfigKeys };
+  };
+  afterEach(() => {
+    globalThis.__AKAN_EMBED__ = undefined;
+  });
+
+  test("keeps no room a layout reserves for chrome the view hides, and the page's own room and the rest", async () => {
+    const web = await tripsState();
+    expect(web.state).toMatchObject({ bottomInset: 64, topInset: 48, cache: true });
+
+    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
+    const view = await tripsState();
+    expect(view.state).toMatchObject({ bottomInset: 0, topInset: 48, cache: true });
+    expect(view.explicit?.bottomInset).toBeUndefined();
+  });
+});
+
+describe("CsrRouteTable as the window resizes", () => {
+  const context: CsrRouteContext = {
+    "./__root_layout.tsx": layout("root"),
+    "./trips.tsx": async () => ({ default: () => "trips", pageConfig: { topInset: { base: 48, lg: 64 } } }),
+    "./about.tsx": page("about"),
+  };
+  const resizeListeners = new Set<() => void>();
+  const originalWindow = globalThis.window;
+  const installWindow = (innerWidth: number) => {
+    const window = {
+      innerWidth,
+      addEventListener: (type: string, listener: () => void) => type === "resize" && resizeListeners.add(listener),
+      removeEventListener: (type: string, listener: () => void) =>
+        type === "resize" && resizeListeners.delete(listener),
+    };
+    Object.defineProperty(globalThis, "window", { value: window, configurable: true });
+    return window;
+  };
+  const resizeTo = (window: { innerWidth: number }, innerWidth: number) => {
+    window.innerWidth = innerWidth;
+    for (const listener of resizeListeners) listener();
+  };
+  afterEach(() => {
+    resizeListeners.clear();
+    Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
+  });
+
+  test("resolves a responsive inset again when the width crosses a breakpoint, and only then", async () => {
+    const window = installWindow(375);
+    const table = await CsrRouteTable.boot(context, { device, basePaths: null });
+    const stateOf = (path: string) => table.snapshot().pathRoutes.find((route) => route.path.endsWith(path))?.pageState;
+    const guided = () => table.snapshot().routeGuide.children["/:lang"]?.children["/trips"]?.pathRoute?.pageState;
+    let published = 0;
+    const unsubscribe = table.subscribe(() => {
+      published += 1;
+    });
+    const about = table.snapshot().pathRoutes.find((route) => route.path.endsWith("/about"));
+    expect(stateOf("/trips")?.topInset).toBe(48);
+
+    resizeTo(window, 1100);
+    expect(stateOf("/trips")?.topInset).toBe(64);
+    expect(guided()?.topInset).toBe(64);
+    expect(table.snapshot().pathRoutes.find((route) => route.path.endsWith("/about"))).toBe(about);
+    expect(published).toBe(1);
+
+    resizeTo(window, 1300);
+    expect(published).toBe(1);
+
+    resizeTo(window, 800);
+    expect(stateOf("/trips")?.topInset).toBe(48);
+    expect(published).toBe(2);
+
+    unsubscribe();
+    expect(resizeListeners.size).toBe(0);
+  });
+});

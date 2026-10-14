@@ -189,11 +189,13 @@ async function writeGeneratedRootLayoutFile(opts: {
     : "";
   const layoutChild = isAsyncUserLayout ? "{layout}" : userLayoutElement;
   const layoutReturn = isAsyncUserLayout ? "layout" : userLayoutElement;
+  //? Under an ancestor root boundary the route tree merges that root's head itself; merging it here would repeat it.
+  const headLayouts = opts.includeSystemProvider ? "[inheritedLayout, userLayout]" : "[userLayout]";
   const layoutExports = `export async function generateHead(props: PageProps) {
-  if (userLayout.generateHead) return userLayout.generateHead(props);
-  if (userLayout.head !== undefined) return userLayout.head;
-  if (inheritedLayout.generateHead) return inheritedLayout.generateHead(props);
-  return inheritedLayout.head;
+  const heads = await Promise.all(
+    ${headLayouts}.map((layout) => (layout.generateHead ? layout.generateHead(props) : layout.head)),
+  );
+  return RouteHead.mergeNodes(heads);
 }
 
 export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;
@@ -204,7 +206,7 @@ ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
-import { loadFonts, resolveRouteModule } from "akanjs/client";
+import { loadFonts, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 import { System } from "akanjs/ui";
 import { env } from "@apps/${opts.appName}/env/env.client";
@@ -216,15 +218,18 @@ if (defaultFonts.length > 1) throw new Error("[route-convention] only one defaul
 const defaultFont = defaultFonts[0];
 const defaultFontClassName = defaultFont ? (defaultFont.className ?? \`font-\${defaultFont.name}\`) : undefined;
 export const theme = userLayout.theme ?? inheritedLayout.theme;
+export const viewport = userLayout.viewport ?? inheritedLayout.viewport;
+export const manifest = userLayout.manifest ?? inheritedLayout.manifest;
 
 ${layoutExports}(
     <System.Provider
       of={GeneratedLayout as never}
       appName=${JSON.stringify(opts.appName)}
       ${prefix ? `prefix=${JSON.stringify(prefix)}\n      ` : ""}params={params}
-      manifest={userLayout.manifest ?? inheritedLayout.manifest}
+      manifest={manifest}
       env={env}
       theme={theme}
+      viewport={viewport}
       fonts={loadFonts(userFonts)}
       className={defaultFontClassName}
       layoutStyle={userLayout.layoutStyle ?? inheritedLayout.layoutStyle}
@@ -238,7 +243,7 @@ ${layoutExports}(
 }
 `
     : `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
-import { resolveRouteModule } from "akanjs/client";
+import { resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 ${inheritedImport}${userImport}
 ${layoutExports}${layoutReturn};

@@ -22,7 +22,7 @@ import {
   withSharedInstances,
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
-import type { FetchInitForm, FetchProxy } from "akanjs/fetch";
+import { type FetchInitForm, type FetchProxy, restoreRemoteError } from "akanjs/fetch";
 import type {
   LiveEventPayload,
   SerializedSlice,
@@ -44,6 +44,7 @@ import { DraftStore } from "./draftStore";
 import { formSetterNames } from "./formSetterNames";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 import { SliceRequest } from "./SliceRequest";
+import { servedEndpointOf } from "./servedEndpointOf";
 import { sliceKeysOf } from "./sliceKeys";
 import type { DraftState } from "./state";
 import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
@@ -510,14 +511,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const updatedAt = (model as unknown as { updatedAt?: { toISOString?: () => string } }).updatedAt;
     return typeof updatedAt?.toISOString === "function" ? updatedAt.toISOString() : null;
   };
-  // A verb whose slice guards resolve to none never reaches the client, so the action has nothing to call.
   const servedFetch = <T>(key: string) => {
-    const fn = fetch[key] as ((...args: any[]) => Promise<T>) | undefined;
-    if (typeof fn === "function") return fn;
-    throw Object.assign(new Error(`${key} is closed: the slice's guards name none that allows it`), {
-      error: "base.error.endpointClosed",
-      data: { endpoint: key },
-    });
+    const fn = servedEndpointOf<(...args: any[]) => Promise<T>>(fetch, key);
+    if (fn) return fn;
+    throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;

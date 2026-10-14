@@ -5,8 +5,15 @@ import { join } from "node:path";
 import { installMockHost, type MockHost } from "../../../packages/core/src/testing.ts";
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
 import { createLifecycle } from "../../../packages/desktop/src/lifecycle.ts";
-import desktop from "../src/desktop.ts";
-import { appWindow, createWindow, getAllWindows, getCurrentWindow, onCloseRequested } from "../src/index.ts";
+import desktop, { displayOf, placement } from "../src/desktop.ts";
+import {
+  appWindow,
+  createWindow,
+  getAllWindows,
+  getCurrentWindow,
+  onCloseRequested,
+  windowHandle,
+} from "../src/index.ts";
 
 let host: MockHost | null = null;
 afterEach(() => {
@@ -64,6 +71,50 @@ describe("window desktop implementation", () => {
       error: { code: "INVALID_ARGS" },
     });
     expect(await call("setTitle", { title: 3 })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+    expect(await call("setMinSize", { width: 640 })).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
+  });
+
+  test("places the window on a display by id or index, in that display's own logical or physical pixels", () => {
+    const rect = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+    const displays = [
+      {
+        id: 11,
+        name: "main",
+        bounds: rect(0, 0, 1920, 1080),
+        workArea: rect(0, 0, 1920, 1040),
+        scale: 1,
+        primary: true,
+      },
+      {
+        id: 22,
+        name: "led",
+        bounds: rect(1920, 0, 320, 64),
+        workArea: rect(1920, 0, 320, 64),
+        scale: 2,
+        primary: false,
+      },
+    ];
+    const led = displayOf(displays, { index: 1 });
+    expect(displayOf(displays, { display: 22 })).toBe(led);
+    expect(placement(led, { bounds: { x: 0, y: 0, width: 640, height: 128 }, unit: "physical" })).toEqual({
+      atX: 2080,
+      atY: 32,
+      x: 0,
+      y: 0,
+      width: 640,
+      height: 128,
+    });
+    expect(placement(led, { bounds: { x: 10, y: 0, width: 300, height: 64 } })).toMatchObject({
+      x: 20,
+      width: 600,
+      height: 128,
+    });
+    expect(placement(led, {})).toMatchObject({ x: 0, y: 0, width: 640, height: 128 });
+    expect(placement(led, { fullscreen: true })).toEqual({ atX: 2080, atY: 32, fullscreen: true });
+    expect(() => displayOf(displays, { display: 99 })).toThrow("no display with id 99");
+    expect(() => displayOf(displays, { index: 2 })).toThrow("no display at index 2");
+    expect(() => displayOf(displays, { display: 11, index: 0 })).toThrow("one of display");
+    expect(() => placement(led, { fullscreen: true, bounds: rect(0, 0, 1, 1) })).toThrow("do not go together");
   });
 
   test("turns native window events into plugin events", async () => {
@@ -251,6 +302,28 @@ describe("windows (SH-6)", () => {
     host.emit("window", "destroyed", { id: 2 });
     host.emit("window", "destroyed", { id: 2 }); // once
     expect(gone).toBe(1);
+  });
+
+  test("a handle's setMinSize passes on what it is given: one size alone is refused, never taken as no minimum", async () => {
+    const calls: unknown[] = [];
+    host = installMockHost({
+      platform: "macos",
+      plugins: {
+        window: {
+          methods: {
+            setMinSize: (args: unknown) => {
+              calls.push(args);
+              return { title: "t" };
+            },
+          },
+        },
+      },
+    });
+    const handle = windowHandle(2);
+    await handle.setMinSize(640);
+    await handle.setMinSize();
+    await handle.setMinSize(640, 128);
+    expect(calls).toEqual([{ width: 640, window: 2 }, { window: 2 }, { width: 640, height: 128, window: 2 }]);
   });
 
   test("one window where the host cannot open more", async () => {

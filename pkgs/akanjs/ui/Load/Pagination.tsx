@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
+import { cn, router } from "akanjs/client";
 import { type DynamicRecord, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
@@ -54,7 +54,7 @@ function Render<RefName extends string, Light>({ className, init, scrollToTop }:
     onSelect: (page) => {
       void storeDo[namesOfSlice.setPageOfModel](page);
       if (!scrollToTop) return;
-      window.parent.postMessage({ type: "pathChange", page }, "*");
+      router.postPathChange({ page });
       window.scrollTo({ top: 0, behavior: "instant" });
     },
   });

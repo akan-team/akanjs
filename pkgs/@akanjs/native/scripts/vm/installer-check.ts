@@ -14,10 +14,10 @@
 //    stops the running app; an uninstall while the lock is held fails with 2 too,
 // 5. a setup with /RUN that cannot swap the folder (another program works in it) fails with 2, leaves the installed
 //    build as it was and starts it again,
-// 6. uninstalls it silently: the folder, what updates and setups left beside it, the uninstaller, the shortcut, the
-//    entry, the launch at login, the shell's update state (a debug build's too) and an update's RunOnce recovery,
-//    the deep link scheme the app registered and its notification id are gone, and the server's data and what
-//    junctions pointed to stay,
+// 6. uninstalls it silently while a watchdog keeps starting the app again: the folder, what updates and setups left
+//    beside it, the uninstaller, the shortcut, the entry, the launch at login, the shell's update state (a debug
+//    build's too) and an update's RunOnce recovery, the deep link scheme the app registered and its notification id
+//    are gone, and the server's data and what junctions pointed to stay,
 // 7. installs it with /D= elsewhere, then again without /D=: the second setup replaces the app where it is and makes
 //    no copy in the default folder; the uninstall leaves a scheme another program took over.
 
@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import sampleConfig from "../../examples/sample/akan-native.config.ts";
 import { build, publishUpdate, updateKeygen } from "../../packages/cli/src/api.ts";
+import { powershell, until } from "./harness.ts";
 
 if (process.platform !== "win32") throw new Error("installer-check installs a Windows program: run it on Windows");
 
@@ -44,14 +45,6 @@ const aumidKey = `HKCU:\\Software\\Classes\\AppUserModelId\\${id}`;
 const schemes = sampleConfig.deepLinks?.schemes ?? [];
 const localData = join(process.env.LOCALAPPDATA ?? "", id);
 const nextVersion = version.replace(/\d+$/, (patch) => String(Number(patch) + 1));
-
-function powershell(command: string): string {
-  const p = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return p.stdout.toString().trim();
-}
 
 const quoted = (text: string) => text.replace(/'/g, "''");
 
@@ -77,14 +70,6 @@ const installedBuild = (): number | undefined => {
     return undefined; // mid-swap: the folder is being renamed
   }
 };
-
-async function until<T>(what: string, check: () => T | undefined | false, timeout = 30_000): Promise<T> {
-  for (const started = Date.now(); Date.now() - started < timeout; await Bun.sleep(250)) {
-    const value = check();
-    if (value) return value;
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
 
 async function runSetup(setup: string, args: string[], env: Record<string, string> = {}, expected = 0) {
   const p = Bun.spawn([setup, ...args], { stdout: "ignore", stderr: "ignore", env: { ...process.env, ...env } });
@@ -298,8 +283,34 @@ try {
     `New-ItemProperty -LiteralPath '${runKey}' -Name '${id}' -Value '"${quoted(exe)}"' -PropertyType String -Force | Out-Null`,
   );
   if (!startsAtLogin()) throw new Error("could not register the app to start at login");
-  await runSetup(uninstaller, ["/S"]);
-  await until("the folder to go", () => !existsSync(installDir));
+  await until("the app to run", () => runningFromInstall().length > 0);
+  // A kiosk's watchdog: whenever the exe is there and nothing runs from the folder, it starts the app again.
+  let relaunches = 0;
+  let tooLate = 0;
+  let watching = true;
+  const watchdog = (async () => {
+    while (watching) {
+      if (existsSync(exe) && runningFromInstall().length === 0) {
+        try {
+          Bun.spawn([exe], { cwd: process.env.LOCALAPPDATA, stdout: "ignore", stderr: "ignore" });
+          relaunches++;
+        } catch {
+          tooLate++; // the uninstall deleted the exe after it was seen: what it is meant to do
+        }
+      }
+      await Bun.sleep(100);
+    }
+  })();
+  try {
+    await runSetup(uninstaller, ["/S"]);
+    await until("the folder to go", () => !existsSync(installDir));
+  } finally {
+    watching = false;
+    await watchdog;
+  }
+  console.info(
+    `  while it was uninstalled a watchdog started the app ${relaunches}×, and found its exe deleted ${tooLate}×`,
+  );
   await until("the uninstaller to go", () => !existsSync(uninstaller));
   const left = leftovers.filter((dir) => existsSync(dir));
   if (left.length) throw new Error(`left next to the folder: ${left.join(", ")}`);

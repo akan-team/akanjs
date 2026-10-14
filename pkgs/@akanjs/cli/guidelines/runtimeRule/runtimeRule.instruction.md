@@ -1,4 +1,4 @@
-# Runtime Rule — Serving, Processes, Logging, Image, Native Apps, Desktop Server, Assets
+# Runtime Rule — Serving, Processes, Logging, Image, Native Apps, Desktop Server, Assets, Build Pipeline
 
 How an Akan app is built, what it serves, how many processes it runs, where its logs go, and what ends up in
 its image. Everything here is declared in `akan.config.ts` or narrowed by an env at boot; none of it is reached
@@ -255,31 +255,67 @@ const config: AppConfig = {
   other CPU of that OS: the Rust library, Bun's executable, the server's `bun install --cpu` and each `bin` file
   follow it, and a server addon with no binary for that CPU stops the build. A macOS app is Apple silicon only —
   Intel Macs are not a target, so `--arch x64` on macOS is refused.
-- **A macOS release for download is signed with a Developer ID and notarized, from the environment.**
+- **A release is signed only with `--sign` and notarized only with `--notarize`** (`build-desktop`,
+  `publish-update`); the environment names the identity and never decides to use it, so a shell exporting a Developer
+  ID signs and uploads nothing unasked. Every release build and every `publish-update` of a target that carries a
+  server, signed or not, first searches that server for every secret value of the workspace's server env files and
+  refuses with the paths; an env file it cannot evaluate stops the release too, and a debug build is not searched.
+  One line then names the identity and the service the app goes to.
+- **A macOS release for download is signed with a Developer ID and notarized.**
   `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);
-  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` turn on
-  notarization and stapling of the app and the dmg. Every Mach-O file — the server's addons and `bin` included — is
+  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` are the
+  credentials `--notarize` staples the app and the dmg with. Every Mach-O file — the server's addons and `bin` included — is
   signed inside out with the hardened runtime and a timestamp; the executable gets Bun's JIT entitlements and the
   camera's or microphone's when a usage text asks for them, and `desktop.entitlements` adds the app's own.
-  `publish-update` signs with the same identity, since the updater checks the installed app's signature. Without a
+  `publish-update --sign` signs with the same identity, since the updater checks the installed app's signature. Without a
   Developer ID the build warns, because Gatekeeper blocks a downloaded copy.
-- **A Windows release is signed with Authenticode, from the environment.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
+- **A Windows release is signed with Authenticode.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
   `_CERTIFICATE_PASSWORD` (a `.pfx`), `AKAN_NATIVE_WINDOWS_THUMBPRINT` (a certificate in the store, a token's or an
   HSM's), or `AKAN_NATIVE_WINDOWS_SIGN_COMMAND` (a JSON array run per file with `{file}`, e.g. signtool with Azure
   Trusted Signing's dlib) signs every PE file of the app — the server's `.node` and `bin` included — the setup program
   and the uninstaller it writes, SHA-256 with a timestamp (`AKAN_NATIVE_WINDOWS_TIMESTAMP_URL`).
-- **`updates: { url, publicKey }` lets an installed app update itself** — the whole app on a desktop, the web
+- **`updates: { url, publicKeys }` lets an installed app update itself** — the whole app on a desktop, the web
   bundle on a phone. `akan update-keygen <app>` makes the signing key once
-  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints the
-  `publicKey`. `akan publish-update <app>` builds and signs a release into `updates/`: upload that folder to `url`,
-  the manifests last. `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign. The
-  channel is the backend env the binary was built for unless `channel` names one, and a release that does not
-  come up is rolled back to the one before.
+  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints its public
+  key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
+  them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
+  app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
+  into `updates/`: upload that release's files to `url` and its manifest last, or let
+  `--upload s3://<bucket>/<prefix>` do it (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket
+  holds is skipped), which sends that release alone, and nothing when it is missing or fails a check. Never upload the
+  folder whole: a phone's is also where `pack-update` writes by default.
+  A phone reads only `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its
+  own fixes.
+  `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
+  `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
+  the Akan Cloud project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
+  release that hangs is rolled back while the app runs, and `report: { url }` has a phone post what became of each
+  release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
+  opens the web inspector of a release build for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
+  on a desktop, `updates.setChannel({ channel })` moves the installed app to another manifest until set back with
+  `null` — a server putting a device on a pilot channel — and never to a release older than the one running. A
+  release that does not come up is rolled back to the one before.
 - **An unattended screen** — signage, a kiosk — takes `desktop.recovery: "reload"` (a crashed page loads again,
-  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar }`,
+  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar, frameless }`,
   `desktop.screenCapture: "auto"` (Windows answers `getDisplayMedia()` with the first screen, no picker) and
-  `android.autoplay` (media plays with sound without a tap).
+  `android.autoplay` (media plays with sound without a tap). Its carried server takes `desktop.server: { restart:
+  "forever", watchdog: true }` — restarted after every crash, never given up on, and killed and restarted when its
+  health route stops answering (every 10 s, 3 misses; `{ intervalMs, failures }` to tune) — and
+  `desktop.webview2: "standalone"` puts the whole WebView2 Runtime (~200 MB) in the Windows setup for a PC offline at
+  install. `desktop.server.env` adds variables to the server's start; the build refuses a secret-named one and those
+  the stage owns. The `window` plugin places it: `placeOnDisplay({ index, bounds, unit: "physical" })` puts a window
+  on one display in that display's device pixels — a 640×128 LED panel — lowering the minimum size to fit, beside
+  `setAlwaysOnTop`, `setCursorVisible` (which hides the pointer over its external views too, on Windows) and
+  `setDecorations`. `native.backgroundColor` (or `{ light, dark }`) is what a window and an external view show before
+  their page paints, so a dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in
+  Apps & features and its executable's company (the app name when unset, never Bun's own).
+- **A third-party page shown first-party** — a scoreboard, a menu board — is the `external-view` plugin, listed in
+  `native.plugins`: a webview over the window with a browser profile of its own, its top level held to the origins it
+  was opened for while its frames load web content from anywhere, with an init script that runs in the top document
+  only, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is rebuilt, by itself;
+  the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
+  again) / `consoleMessage` events. Every method on Windows; macOS 14+ lacks `sendKey`, `setMuted` and `capture`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
@@ -340,7 +376,8 @@ const config: AppConfig = {
 - **An executable the desktop app spawns goes in `bin`** — its server's code or its native plugins, whether or not
   it carries a server — keyed by the name the code spawns and then by
   `${process.platform}-${process.arch}` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`,
-  `win32-x64`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
+  `win32-x64`) — Node's names, unlike an update feed's folder, which is `<os>-<arch>` with the OS spelled `macos`,
+  `windows` or `linux` (`windows-x64/<channel>.json`). A source is `{ url, sha256, file? }` — downloaded when the app is built, refused unless it hashes
   to `sha256` (so plain http is as safe as https), kept in `apps/<app>/.akan/cache/bin/<sha256>` — or
   `{ path, file? }`, relative to the `akan.config.ts` that declares it. `file` is the executable inside an archive
   (`.zip`, `.tar.gz`, `.tgz`, `.tar.xz`, `.tar.bz2`, `.tar`), unpacked with the OS's own `tar` (`unzip` for a zip
@@ -377,6 +414,22 @@ own process group: quitting the app ends the group, and when the app was killed 
 was still starting — the server sees its parent gone and ends the group itself, SIGTERM first and SIGKILL a second
 later for whatever ignored it. On Windows the job object ends them all with the app. A process started `detached`
 leaves the group, or the job, and keeps running.
+
+**An edge server carries no cloud secret.** The carried server runs `operationMode` edge, and the same app's cloud
+deployment runs cloud: a module whose `serve(ref, { operationMode: ["edge"] }, …)` lists the modes it belongs to mounts
+in those alone, and `modules: ["@edge"]` (or `AKAN_MODULES=@edge`) names every module that lists edge, with what they
+inject, cascade to and hold a relation to. `desktop: { server: { profile: "edge", modules: ["@edge"] } }` builds the
+carried server that way: `env/env.server.<env>.edge.ts` is bundled in place of `env/env.server.<env>.ts`, which never
+enters it, and the build evaluates the profile file with no app env and refuses one whose secret-named keys hold a
+value — a `process.env.X ?? "literal"` counts as the literal. Signing, encryption, master and session keys, `pwd`, a
+`…dsn` and a connection string are secret-named, and a URL holding a password or a secret-named query parameter is a
+secret under any key. The profile may spread `libEnv`, and the lib defaults it reaches are checked as the bundle
+carries them; a profile that imports the file it replaces is refused. Each lib's env defaults (`env.server.testing.ts`) are
+swapped the same way: for the lib's `env/env.server.testing.edge.ts`, held to the same check, or for the defaults with
+every secret-named value left out, which the build names in a warning — and a default a JSON snapshot cannot carry (a
+function, Map, Set, Date, class instance, bigint or non-finite number) is refused unless the lib has its profile file.
+`akan build <app> --profile edge` does the same for an image. A module listing only edge does not mount under `akan start` (local): list `local` too to develop
+it there.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `"file-picker"` in
 `native.plugins`, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,
@@ -508,3 +561,40 @@ const config: AppConfig = { assets: { pruneFonts: false } }; // emergency valve,
 - The phase is `assets`, between `csr` and `compress`. An api-only build (`web: false`) copies no `public/` and
   the phase finds nothing to do.
 
+## The Build Pipeline — `pipeline` In `akan.config.ts`
+
+Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`, and `ota` after them when asked. **An app's own stages go in
+`apps/<app>/akan.config.ts` under `pipeline`; stages around every app go in the workspace root's
+`akan.config.ts`**, typed `WorkspaceConfig`, under its own `pipeline` (`before`, `after`, `post`, `env`, `timeout`). Both are `import type`
+objects (or `(ctx) => …`), and `akan pipeline dry-run | validate | plan` turns them into the plan Akan Cloud runs —
+locally, running nothing.
+
+```ts
+const config: AppConfig = {
+  pipeline: { stages: [{ use: "build" }, { name: "Test", sh: "bun run akan test web" }, { use: "docker" }, { use: "deploy" }] },
+};
+const config: WorkspaceConfig = {
+  pipeline: { post: { failure: [{ name: "Notify", sh: "./scripts/notify.sh", secrets: ["DISCORD_WEBHOOK"] }] } },
+};
+```
+
+- **A declared list is the whole pipeline.** Without `pipeline` an app runs the three actions; with it, write them
+  — a list without `{ use: "deploy" }` never deploys. Each action appears at most once, in that order, and
+  `docker` needs a `build` before it (the image is made from that build).
+- **`{ use: "ota" }` ships the native web bundle over the air**, after `deploy` so the API it calls is already up.
+  It is opt-in, makes its own CSR build, and packs every native target that declares `native.updates` for iOS
+  and Android — `targets` and `platforms` narrow it, and a target without `updates` is a plan error. Akan Cloud
+  signs and publishes the packs; the plan never holds a key.
+- **A stage runs after the action before it.** Stages between two actions share a phase across apps, and a phase
+  waits for every stage of the one before; `deploy` runs the apps one at a time in `after` order.
+- **App stages stand on their own.** Never rely on what a root `before` stage left on disk: the root config never
+  travels to a subspace, so an app built there runs its own stages only. Keep the files an app stage needs inside
+  the app or its libs.
+- **Secrets are named and write-only.** `akan upload-secret <NAME>` stores one per project (`--branch` for a
+  branch-only value); a step lists it in `secrets` and reads `$NAME`. Anyone who can push to the repo can make a
+  step print it — the GitHub Actions model — so push access is secret access.
+- **`allowFailure` only means "this failure does not fail the run"**; how the run is reported is Akan Cloud's
+  call. `env` and secret names may not be `CI`, `AKAN_CI_*` or shell names such as `PATH`, and every step gets
+  `AKAN_CI_BRANCH`, `AKAN_CI_APP` and the rest of the build's facts.
+- `akan pipeline` exits 0 with a plan, 1 with an envelope of errors, and 2 for anything else (no envelope). A lib
+  config takes no `pipeline`; the root config takes no app or lib settings.

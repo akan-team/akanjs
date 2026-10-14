@@ -12,6 +12,7 @@ import {
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
+import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
 import {
@@ -23,6 +24,7 @@ import {
   type RoutesManifest,
   RoutesManifestStore,
 } from "./artifact";
+import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders } from "./assetHeaders";
 import {
   getClientFacingOrigin,
   hasRouteCacheInvalidationScope,
@@ -45,6 +47,7 @@ import { DevHmrController } from "./hmr/devHmrController";
 import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { ImageOptimizer } from "./imageOptimizer";
+import type { McpAppShellSource } from "./mcp/McpApps";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
 import { createDefaultRobotsTxt } from "./robots";
 import {
@@ -284,7 +287,7 @@ export class WebRouter {
   /** Dev only: SSR pages load their client code from the dev module registry it serves. */
   #ssrDevShell: CsrDevShell | null = null;
   #csrArmed = false;
-  #csrOnDemandBuild: Promise<unknown> | null = null;
+  readonly #builds = new Map<string, Promise<unknown>>();
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
@@ -443,7 +446,7 @@ export class WebRouter {
         }
         const cssBytes = this.renderState.cssBytesByUrl[url.pathname];
         if (!cssBytes) return new Response("Not Found", { status: 404 });
-        const headers = WebRouter.#baseAssetHeaders({
+        const headers = assetHeaders({
           contentType: "text/css; charset=utf-8",
           cacheControl: "no-store",
         });
@@ -460,6 +463,7 @@ export class WebRouter {
         return WebRouter.#fileResponse(req, filePath, {
           contentType: Bun.file(filePath).type || "font/woff2",
           cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
+          anyOrigin: true,
         });
       },
       "/_akan/image": (req) => {
@@ -568,9 +572,11 @@ export class WebRouter {
         const filePath = resolveStaticPath(publicDir, url.pathname);
         if (filePath && (await Bun.file(filePath).exists())) {
           this.#requestStats.staticAsset += 1;
+          const contentType = Bun.file(filePath).type || "application/octet-stream";
           return WebRouter.#fileResponse(req, filePath, {
-            contentType: Bun.file(filePath).type || "application/octet-stream",
+            contentType,
             cacheControl: this.#prodMode ? "public, max-age=300" : "no-store",
+            anyOrigin: contentType.startsWith("font/"),
           });
         }
 
@@ -581,6 +587,16 @@ export class WebRouter {
               "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
             },
           });
+        }
+
+        const manifestBasePath = getWebManifestBasePath(
+          url.pathname,
+          this.#artifact.basePaths,
+          this.#requestBasePath(req),
+        );
+        if (manifestBasePath !== undefined) {
+          const manifestResponse = await this.#webManifestResponse(manifestBasePath);
+          if (manifestResponse) return manifestResponse;
         }
 
         const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
@@ -657,8 +673,13 @@ export class WebRouter {
               rscResult.cancel(reason);
             },
           });
-          //? A not-found the page raised after the stream started is known here only if the host still held the response.
+          //? A not-found or redirect the page raised after the stream started is known here only if the host still held the
+          //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
           const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
+          if (lateControl?.type === "redirect") {
+            cancelStreamForHeadResponse(htmlStream, new Error("redirected before the response started"));
+            return Response.redirect(new URL(lateControl.location, url.origin), lateControl.status);
+          }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
           const responseHeaders = this.#htmlResponseHeaders(responseStatus);
           if (req.method === "HEAD") {
@@ -754,6 +775,34 @@ export class WebRouter {
     return {
       list: () => this.#rsc.listPagePrompts(),
       run: (input) => this.#rsc.runPagePrompt(input),
+    };
+  }
+
+  // Never the dev registry shell: it loads its modules from this server, which a sandboxed view cannot reach.
+  mcpAppShell(): McpAppShellSource | undefined {
+    if (!this.web.csr) return undefined;
+    const localCsrDir = path.join(process.cwd(), "csr");
+    const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
+    const getBasePaths = () => this.#artifact.basePaths;
+    //? Keyed on mtime: a single-file shell is megabytes, a dev rebuild replaces the file, and a stat costs nothing.
+    const shells = new Map<string, { stamp: number; html: string }>();
+    return {
+      get basePaths() {
+        return getBasePaths();
+      },
+      read: async (basePath) => {
+        const pathname = basePath ? `/${basePath}` : "/";
+        const csrHtml = this.#csrDevShell
+          ? await this.#mcpDevShell(csrOutputDir, pathname)
+          : await this.#resolveCsrHtml(csrOutputDir, pathname);
+        if (!csrHtml) return null;
+        const file = Bun.file(csrHtml);
+        const cached = shells.get(csrHtml);
+        if (cached?.stamp === file.lastModified) return cached.html;
+        const html = await file.text();
+        shells.set(csrHtml, { stamp: file.lastModified, html });
+        return html;
+      },
     };
   }
 
@@ -905,6 +954,27 @@ export class WebRouter {
     });
   }
 
+  async #webManifestResponse(basePath: string | null): Promise<Response | null> {
+    try {
+      const manifest = await this.#rsc.webManifest(basePath);
+      if (!manifest) return null;
+      return new Response(JSON.stringify(manifest), {
+        headers: {
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
+        },
+      });
+    } catch (err) {
+      this.#logger.warn(
+        `web manifest unavailable basePath=${basePath ?? "(root)"}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return new Response("Service Unavailable", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
+  }
+
   // A subRoutes build has no root page (routes live under `page/<basePath>`), so local dev serves a basePath picker;
   // deployed hosts never get here, HostBasePathWebProxy rewrites the root first.
   #localSubRouteIndexResponse(req: Request, url: URL): Promise<Response> | null {
@@ -993,7 +1063,7 @@ export class WebRouter {
   #htmlResponseHeaders(status: number): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
     if (status >= 400 || !this.#prodMode) headers.set("Cache-Control", "no-store");
-    return WebRouter.#applySecurityHeaders(headers, { html: true });
+    return applySecurityHeaders(headers, { html: true });
   }
   #withCsrHmr(html: string): string {
     if (this.#prodMode) return html;
@@ -1025,19 +1095,33 @@ export class WebRouter {
     const rpc = this.#builderRpc;
     // Arm once: after a build the builder keeps CSR current, so a still-missing file means an unknown basePath.
     if (this.#csrArmed || !rpc) return Promise.resolve();
-    this.#csrOnDemandBuild ??= rpc
-      .buildCsr(reason)
-      .then(() => {
-        this.#csrArmed = true;
-        this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
-      })
-      .catch((err: unknown) => {
-        this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
-      })
-      .finally(() => {
-        this.#csrOnDemandBuild = null;
-      });
-    return this.#csrOnDemandBuild;
+    return this.#singleFlight("csr", () =>
+      rpc
+        .buildCsr(reason)
+        .then(() => {
+          this.#csrArmed = true;
+          this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
+        })
+        .catch((err: unknown) => {
+          this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+    );
+  }
+  //? Awaited on every read: the builder answers at once unless a save moved its generation since its last shell build.
+  async #mcpDevShell(csrOutputDir: string, pathname: string): Promise<string | null> {
+    const rpc = this.#builderRpc;
+    if (rpc)
+      await this.#singleFlight("mcpShell", () =>
+        rpc.buildCsr("mcp app view", { shell: true }).catch((err: unknown) => {
+          this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+      );
+    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+  }
+  #singleFlight(kind: string, run: () => Promise<unknown>): Promise<unknown> {
+    const pending = this.#builds.get(kind) ?? run().finally(() => this.#builds.delete(kind));
+    this.#builds.set(kind, pending);
+    return pending;
   }
   #csrUnavailableResponse(pathname: string): Response {
     if (this.#prodMode) return new Response("Not Found", { status: 404 });
@@ -1168,12 +1252,8 @@ export class WebRouter {
     return filePath && fs.existsSync(filePath) ? filePath : null;
   }
 
-  static async #fileResponse(
-    req: Request,
-    filePath: string,
-    options: { contentType: string; cacheControl?: string },
-  ): Promise<Response> {
-    const headers = WebRouter.#baseAssetHeaders(options);
+  static async #fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
+    const headers = assetHeaders(options);
     const file = Bun.file(filePath);
     if (!(await file.exists())) return new Response("Not Found", { status: 404 });
     const stat = fs.statSync(filePath);
@@ -1232,21 +1312,6 @@ export class WebRouter {
         "Cache-Control": cacheControl,
       },
     });
-  }
-
-  // nosniff: Bun.file().type falls back to octet-stream, and a sniffing browser may run a public/ file as script.
-  // Referrer-Policy: paths carry ids. X-Frame-Options (HTML only): stops clickjacking of cookie-authenticated pages.
-  static #applySecurityHeaders(headers: Headers, { html = false } = {}): Headers {
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    if (html) headers.set("X-Frame-Options", "SAMEORIGIN");
-    return headers;
-  }
-
-  static #baseAssetHeaders(options: { contentType: string; cacheControl?: string }): Headers {
-    const headers = new Headers({ "Content-Type": options.contentType });
-    if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
-    return WebRouter.#applySecurityHeaders(headers);
   }
 
   static #isNotModified(req: Request, etag: string, lastModifiedMs: number): boolean {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
@@ -123,6 +123,12 @@ describe("ApplicationCommand", () => {
     expect(optionNames("startIos")).toEqual(expect.arrayContaining(["device", "team"]));
     expect(optionNames("startAndroid")).toContain("device");
     expect(optionNames("releaseIos")).toEqual(expect.arrayContaining(["team", "adHoc"]));
+  });
+
+  test("typecheck picks an app or a library as sync does, and never offers a package", () => {
+    const targetsOf = (key: string) => getArgMetas(ApplicationCommand, key)[2].map((meta) => meta.type);
+    expect(targetsOf("typecheck")).toEqual(["Sys"]);
+    expect(targetsOf("typecheck")).toEqual(targetsOf("sync"));
   });
 
   test("no command gives two options the same short flag", () => {
@@ -335,6 +341,40 @@ describe("ApplicationScript", () => {
       "spinner.succeed",
       "runner.test",
     ]);
+  });
+
+  test("typecheck syncs an app or a library first, and with --write false writes neither", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = Object.setPrototypeOf(
+      createFakeExecutor("app", { type: "app" }, recorder),
+      AppExecutor.prototype,
+    ) as AppExecutor;
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("lib", { type: "lib" }, recorder),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    script.libraryScript.syncLibrary = async (target: unknown) => {
+      recorder.record("syncLibrary", target);
+      return undefined as never;
+    };
+    script.applicationRunner.typecheck = async () => recorder.record("runner.typecheck");
+    script.applicationRunner.typecheckLibrary = async () => recorder.record("runner.typecheckLibrary");
+
+    await script.typecheck(lib, { write: false });
+    await script.typecheck(lib, { write: true });
+    await script.typecheck(app, { write: false });
+
+    expect(recorder.names().filter((name) => name !== "spinner.succeed" && !name.endsWith(".spinning"))).toEqual([
+      "lib.scan",
+      "runner.typecheckLibrary",
+      "syncLibrary",
+      "runner.typecheckLibrary",
+      "app.scanSync",
+      "runner.typecheck",
+    ]);
+    expect(recorder.calls).toContainEqual({ name: "lib.scan", args: [{ write: false }] });
+    expect(recorder.calls).toContainEqual({ name: "app.scanSync", args: [{ write: false }] });
   });
 
   test("blocks local Android release without explicit opt-in", async () => {
@@ -668,7 +708,7 @@ describe("ApplicationScript desktop", () => {
       args: [app, NativeApp.desktopPlatform(), { target: "default", env: "main", profile: "release", installer: true }],
     });
     const optionNames = getArgMetas(ApplicationCommand, "buildDesktop")[1].map((meta) => meta.name);
-    expect(optionNames).toEqual(["target", "env", "debug", "installer", "arch", "write"]);
+    expect(optionNames).toEqual(["target", "env", "debug", "installer", "arch", "sign", "notarize", "write"]);
   });
 });
 
@@ -801,6 +841,18 @@ describe("ApplicationRunner mobile", () => {
           target: "all",
         }),
       ).rejects.toThrow("Native target 'admin': the key at");
+      await expect(
+        new ApplicationRunner().publishUpdate(publishing({ updates }), "android", {
+          target: "all",
+          revoke: ["0123456789abcdef"],
+        }),
+      ).rejects.toThrow("Native target 'store': --revoke 0123456789abcdef: updates.publicKeys holds");
+      await expect(
+        new ApplicationRunner().publishUpdate(publishing({ updates }), "android", {
+          target: "all",
+          resetSequence: true,
+        }),
+      ).rejects.toThrow("Native target 'store': --reset-sequence counts only in a release that revokes a key");
     } finally {
       for (const [key, value] of Object.entries(saved))
         if (value === undefined) delete process.env[key];
@@ -823,18 +875,43 @@ describe("ApplicationRunner mobile", () => {
     ).toBe(false);
   });
 
-  test("the targets that carry one build's server leave the same packages out of it", () => {
-    const carrying = (name: string, server: boolean | { omit: string[] }) => ({
+  test("the targets that carry one build's server agree on its packages, env profile and modules", () => {
+    const carrying = (name: string, server: boolean | { omit?: string[]; profile?: string; modules?: string[] }) => ({
       name,
       config: { ...target(name), desktop: { server } },
     });
-    expect(ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] })], "macos")).toEqual(["rclnodejs"]);
-    expect(ApplicationRunner.serverOmit([carrying("a", true), { name: "b", config: target("b") }], "macos")).toEqual(
-      [],
+    expect(ApplicationRunner.carriedServer([carrying("a", { omit: ["rclnodejs"] })], "macos").omit).toEqual([
+      "rclnodejs",
+    ]);
+    expect(ApplicationRunner.carriedServer([carrying("a", true), { name: "b", config: target("b") }], "macos")).toEqual(
+      { omit: [], modules: [] },
     );
+    expect(ApplicationRunner.carriedServer([carrying("a", { profile: "edge", modules: ["@edge"] })], "macos")).toEqual({
+      omit: [],
+      profile: "edge",
+      modules: ["@edge"],
+    });
     expect(() =>
-      ApplicationRunner.serverOmit([carrying("a", { omit: ["rclnodejs"] }), carrying("b", true)], "macos"),
+      ApplicationRunner.carriedServer([carrying("a", { omit: ["rclnodejs"] }), carrying("b", true)], "macos"),
     ).toThrow("omit different packages (a: rclnodejs; b: none)");
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { profile: "edge" }), carrying("b", true)], "macos"),
+    ).toThrow("name different env profiles (a: edge; b: none)");
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { modules: ["@edge"] }), carrying("b", true)], "macos"),
+    ).toThrow("mount different modules (a: @edge; b: none)");
+  });
+
+  test("the targets that carry one build's server agree on an env whatever order its keys are written in", () => {
+    const carrying = (name: string, env: Record<string, string>) => ({
+      name,
+      config: { ...target(name), desktop: { server: { env } } },
+    });
+    const sameEnv = [carrying("a", { SITE: "north", LANE: "2" }), carrying("b", { LANE: "2", SITE: "north" })];
+    expect(ApplicationRunner.carriedServer(sameEnv, "macos").env).toEqual({ SITE: "north", LANE: "2" });
+    expect(() =>
+      ApplicationRunner.carriedServer([carrying("a", { SITE: "north" }), carrying("b", { SITE: "south" })], "macos"),
+    ).toThrow('set a different env (a: {"SITE":"north"}; b: {"SITE":"south"})');
   });
 
   test("a dev build runs one target at a time", async () => {
@@ -1019,4 +1096,33 @@ describe("ApplicationRunner", () => {
 
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
+});
+
+describe("runner prompts on a stdin that is not a terminal", () => {
+  const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  beforeEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
+  });
+  afterEach(() => {
+    if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  });
+
+  test("a script left unnamed is refused with the scripts there are", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "script", "seed.ts"), "");
+    await writeText(path.join(app.cwdPath, "script", "migrate.ts"), "");
+
+    await expect(new ApplicationRunner().getScriptFilename(app)).rejects.toThrow(
+      /^Missing argument 'filename': stdin is not a terminal to prompt on, so pass it on the command line \(choices: (seed, migrate|migrate, seed)\)\.$/,
+    );
+  });
+
+  test("a database mode's missing packages are named to install instead of asked about", async () => {
+    await expect(
+      new ApplicationScript().confirmDatabaseModeDependencyInstall("cluster", ["postgres@3.4.5"]),
+    ).rejects.toThrow(
+      "Database mode 'cluster' requires missing dependencies: postgres@3.4.5: stdin is not a terminal to prompt on, so install them first with `bun add postgres@3.4.5`.",
+    );
+  });
 });

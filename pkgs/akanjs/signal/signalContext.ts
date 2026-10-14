@@ -4,6 +4,7 @@ import {
   Binary,
   type Cls,
   FIELD_META,
+  ID,
   INTERNAL_META,
   PrimitiveRegistry,
   type PromiseOrObject,
@@ -17,10 +18,12 @@ import {
   deserialize,
   serialize,
 } from "akanjs/constant";
+import { Err } from "akanjs/dictionary";
 import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry } from "akanjs/service";
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import { CrossSiteGuard } from "./CrossSiteGuard";
 import { EndpointCache } from "./endpointCache";
+import { EndpointIdempotency } from "./endpointIdempotency";
 import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
 import { Exception, isExceptionLike } from "./exception";
@@ -296,13 +299,26 @@ export class SignalContext<
         );
       }
       const handle = async () => await this.endpointInfo.execFn?.call(this.adaptor, ...this.args, ...this.internalArgs);
-      return await EndpointCache.through(this, this.trace ? () => traceSpan("handler", handle) : handle);
+      const traced = this.trace ? () => traceSpan("handler", handle) : handle;
+      return await EndpointIdempotency.through(
+        this,
+        () => EndpointCache.through(this, traced),
+        async (result) => {
+          const resolved = await this.#resolve(result);
+          return await traceSpan("serialize", async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo));
+        },
+      );
     };
     const next = this.#withMiddleware(coreExec);
     const result = this.trace ? await traceSpan("execChain", () => next()) : await next();
     // A pubsub's return is not sent; a live slice's exec returns the resolved query its room is routed by.
     if (this.endpointInfo.type === "pubsub") return result;
     if (result instanceof Response) return result;
+    const resolved = await this.#resolve(result);
+    if (!this.trace) return this.ctx.makeResponse(resolved, this.endpointInfo);
+    return await traceSpan("serialize", async () => this.ctx.makeResponse(resolved, this.endpointInfo));
+  }
+  async #resolve(result: unknown) {
     const resolveOption = {
       signalContext: this,
       returnRef: this.endpointInfo.returns.returnRef,
@@ -310,12 +326,10 @@ export class SignalContext<
       registry: this.#registry,
       live: this.#live,
     };
-    if (!this.trace) {
-      const resolved = await SignalContext.resolveReturn(result, resolveOption);
-      return this.ctx.makeResponse(this.#settle(resolved), this.endpointInfo);
-    }
-    const resolved = await traceSpan("resolveReturn", () => SignalContext.resolveReturn(result, resolveOption));
-    return await traceSpan("serialize", async () => this.ctx.makeResponse(this.#settle(resolved), this.endpointInfo));
+    const resolved = this.trace
+      ? await traceSpan("resolveReturn", () => SignalContext.resolveReturn(result, resolveOption))
+      : await SignalContext.resolveReturn(result, resolveOption);
+    return this.#settle(resolved);
   }
   #settle(resolved: unknown) {
     this.#refuseBytesThroughAny(resolved);
@@ -404,6 +418,7 @@ export class SignalContext<
       registry,
       live,
       cache = new Map(),
+      path = "",
     }: {
       signalContext: SignalContext | null;
       returnRef: ConstantFieldTypeInput;
@@ -411,6 +426,8 @@ export class SignalContext<
       registry: InjectRegistry;
       live: LiveRegistry;
       cache?: ResolveCache;
+      /** The field path from the endpoint's return to `value`, named by a relation that cannot load. */
+      path?: string;
     },
   ): Promise<unknown> {
     if (value === null || value === undefined) return value;
@@ -418,7 +435,15 @@ export class SignalContext<
     else if (arrDepth)
       return await Promise.all(
         (value as unknown[]).map((v) =>
-          SignalContext.resolveReturn(v, { signalContext, returnRef, arrDepth: arrDepth - 1, registry, live, cache }),
+          SignalContext.resolveReturn(v, {
+            signalContext,
+            returnRef,
+            arrDepth: arrDepth - 1,
+            registry,
+            live,
+            cache,
+            path,
+          }),
         ),
       );
     const valueRecord = value as RuntimeRecord;
@@ -432,6 +457,7 @@ export class SignalContext<
         }),
       );
     for (const [key, field] of Object.entries((returnRef as ConstantCls)[FIELD_META])) {
+      const fieldPath = path ? `${path}.${key}` : key;
       if (field.fieldType === "hidden" || field.fieldType === "secret") continue;
       else if (field.fieldType === "resolve")
         assign(
@@ -443,6 +469,7 @@ export class SignalContext<
             registry,
             live,
             cache,
+            path: fieldPath,
           }),
         );
       else if (!field.isClass) resolvedValue[key] = valueRecord[key];
@@ -456,6 +483,7 @@ export class SignalContext<
             registry,
             live,
             cache,
+            path: fieldPath,
           }),
         );
       else
@@ -466,6 +494,7 @@ export class SignalContext<
             modelRef: field.modelRef,
             arrDepth: field.arrDepth,
             nullable: field.nullable,
+            path: fieldPath,
             registry,
             live,
             cache,
@@ -485,6 +514,7 @@ export class SignalContext<
       registry,
       live,
       cache,
+      path,
     }: {
       signalContext: SignalContext | null;
       returnRef: ConstantFieldTypeInput;
@@ -492,6 +522,7 @@ export class SignalContext<
       registry: InjectRegistry;
       live: LiveRegistry;
       cache: ResolveCache;
+      path: string;
     },
   ): Promise<unknown> {
     const refName = ConstantRegistry.getRefName(returnRef as ConstantCls);
@@ -509,6 +540,7 @@ export class SignalContext<
       registry,
       live,
       cache,
+      path,
     });
   }
   static async #resolveRelation(
@@ -518,6 +550,7 @@ export class SignalContext<
       modelRef,
       arrDepth,
       nullable,
+      path,
       registry,
       live,
       cache,
@@ -526,39 +559,41 @@ export class SignalContext<
       modelRef: ConstantFieldTypeInput;
       arrDepth: number;
       nullable: boolean;
+      path: string;
       registry: InjectRegistry;
       live: LiveRegistry;
       cache: ResolveCache;
     },
   ): Promise<unknown> {
     if (arrDepth) {
-      if (value === null || value === undefined) {
-        if (nullable) return null;
-        throw new Error(`Document ${value} is not found`);
-      }
-      return await Promise.all(
+      if (value === null || value === undefined) return nullable ? null : [];
+      const items = await Promise.all(
         (value as unknown[]).map((item) =>
           SignalContext.#resolveRelation(item, {
             signalContext,
             modelRef,
             arrDepth: arrDepth - 1,
-            nullable,
+            nullable: true,
+            path,
             registry,
             live,
             cache,
           }),
         ),
       );
+      // A removed or missing document drops out of the list, so a `T[]` never carries a `null` it does not declare.
+      return items.filter((item) => item !== null);
     }
     const refName = ConstantRegistry.getRefName(modelRef as ConstantCls);
-    const service = live.service.get(refName) as unknown as DatabaseService;
-    if (!service) throw new Error(`Service ${refName} is not registered`);
+    const isEmpty = value === null || value === undefined;
+    const service = isEmpty ? null : (live.service.get(refName) as unknown as DatabaseService | undefined);
+    if (!isEmpty && !service) throw new Error(`Service ${refName} is not registered`);
     // Cached as nullable so one entry serves every reference to the document; the refusal below is each field's own.
     const resolved =
-      value === null || value === undefined
+      isEmpty || !service
         ? null
         : await SignalContext.#resolveOnce(cache, modelRef, String(value), async () => {
-            const loaded = await SignalContext.loadNested(value, service, { arrDepth: 0, nullable: true });
+            const loaded = await SignalContext.loadNested(value, service, { arrDepth: 0 });
             return await SignalContext.resolveReturn(loaded, {
               signalContext,
               returnRef: modelRef,
@@ -566,9 +601,15 @@ export class SignalContext<
               registry,
               live,
               cache,
+              path,
             });
           });
-    if (resolved === null && !nullable) throw new Error(`Document ${value} is not found`);
+    if (resolved === null && !nullable)
+      throw new Err.NotFound(
+        "base.error.relationNotFound",
+        { model: refName, field: path },
+        { details: { id: value ?? null } },
+      );
     return resolved;
   }
   // Once per response per document; the promise is stored so rows asking together coalesce onto the first load.
@@ -586,32 +627,21 @@ export class SignalContext<
     byId.set(id, resolving);
     return resolving;
   }
+  /** What `value` references: `null` for a document that is gone or soft-removed, which an array leaves out. */
   static async loadNested(
     value: unknown,
     service: DatabaseService,
-    { arrDepth, nullable }: { arrDepth: number; nullable: boolean },
+    { arrDepth }: { arrDepth: number },
   ): Promise<unknown> {
-    if (value === null || value === undefined) {
-      if (nullable) return null;
-      throw new Error(`Document ${value} is not found`);
-    }
+    if (value === null || value === undefined) return null;
     if (arrDepth > 0 && Array.isArray(value) && value.length === 0) return [];
-    if (arrDepth === 0)
-      return await service.__load(String(value)).then((doc) => SignalContext.#loadedJson(doc, value, nullable));
+    if (arrDepth === 0) return (await service.__load(String(value)))?.toJSON() ?? null;
     if (arrDepth === 1)
-      return await service
-        .__loadMany(value as string[])
-        .then((docs) => docs.map((doc) => SignalContext.#loadedJson(doc, value, nullable)));
-    return await Promise.all(
-      (value as unknown[]).map(
-        async (v) => await SignalContext.loadNested(v, service, { arrDepth: arrDepth - 1, nullable }),
-      ),
+      return (await service.__loadMany(value as string[])).filter((doc) => doc !== null).map((doc) => doc.toJSON());
+    const items = await Promise.all(
+      (value as unknown[]).map(async (v) => await SignalContext.loadNested(v, service, { arrDepth: arrDepth - 1 })),
     );
-  }
-  static #loadedJson(doc: { toJSON: () => unknown } | null, value: unknown, nullable: boolean) {
-    if (doc !== null) return doc.toJSON();
-    if (nullable) return null;
-    throw new Error(`Document ${value} is not found`);
+    return items.filter((item) => item !== null);
   }
   getHttpContext<Appended = unknown>() {
     if (this.transport !== "http") throw new Error("Transport is not http");
@@ -755,7 +785,7 @@ export class HttpExecutionContext<Appended = unknown> {
               this.body[key] = values;
             } else this.body[key] = value;
           } else {
-            this.body[key] = value as string;
+            this.body[key] = argInfo ? HttpExecutionContext.#multipartValue(argInfo, value as string) : value;
           }
         }
       } else {
@@ -777,6 +807,17 @@ export class HttpExecutionContext<Appended = unknown> {
       }
     });
   }
+  //? A multipart field is text: the client sends a String or ID argument as it is and every other value as JSON, so a
+  //? Date arrives as `"2026-…Z"` with its quotes. Parsed back unless the argument is a plain string, which a JSON parse
+  //? could turn into a number; text that is not JSON (an enum value, an older client's) stays as it came.
+  static #multipartValue(arg: ArgInfo, text: string): unknown {
+    if (arg.arrDepth === 0 && (arg.argRef === String || arg.argRef === ID)) return text;
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return text;
+    }
+  }
   parseArg(arg: ArgInfo, raw: unknown): unknown {
     switch (arg.type) {
       case "param":
@@ -796,16 +837,18 @@ export class HttpExecutionContext<Appended = unknown> {
   }
   makeResponse(result: unknown, endpointInfo: EndpointInfo) {
     if (result instanceof Response) return result;
+    return this.res.json(HttpExecutionContext.wireOf(result, endpointInfo));
+  }
+  static wireOf(result: unknown, endpointInfo: EndpointInfo): unknown {
     if (endpointInfo.returns.arrDepth === 0 && PrimitiveRegistry.has(endpointInfo.returns.returnRef as Cls)) {
       // A JSON body carries Binary as base64, which the client's `Binary` parser turns back into bytes.
       if (endpointInfo.returns.returnRef === Binary && result instanceof Uint8Array)
-        return this.res.json(Binary.serializeValue(result));
-      return this.res.json(result);
+        return Binary.serializeValue(result);
+      return result;
     }
-    const value = serialize(endpointInfo.returns.returnRef, endpointInfo.returns.arrDepth, result, "object", {
+    return serialize(endpointInfo.returns.returnRef, endpointInfo.returns.arrDepth, result, "object", {
       nullable: endpointInfo.returns.nullable,
     });
-    return this.res.json(value);
   }
 }
 

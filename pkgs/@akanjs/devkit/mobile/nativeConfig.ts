@@ -175,10 +175,18 @@ export class NativeConfig {
     const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
       recovery: target.desktop?.recovery,
       screenCapture: target.desktop?.screenCapture,
+      webview2: target.desktop?.webview2,
+      publisher: target.desktop?.publisher,
       window: NativeConfig.#compact({ ...target.desktop?.window }),
       server: desktopServer,
       bin: desktopBin,
       dmg: NativeConfig.#dmg(target.desktop?.dmg, abs),
+    });
+    const background = target.backgroundColor;
+    const shell = NativeConfig.#compact<NonNullable<AkanNativeConfig["shell"]>>({
+      backgroundColor: typeof background === "string" ? background : background?.light,
+      backgroundColorDark: typeof background === "string" ? undefined : background?.dark,
+      devtools: target.devtools ? true : undefined,
     });
     const config: AkanNativeConfig = {
       app: {
@@ -223,6 +231,7 @@ export class NativeConfig {
       ...(desktop ? { desktop } : {}),
       ...(target.icon ? { icon: NativeConfig.#icon(target.icon, abs) } : {}),
       ...(target.splash ? { splash: NativeConfig.#splash(target.splash, abs) } : {}),
+      ...(shell ? { shell } : {}),
     };
     return { config, warnings };
   }
@@ -252,10 +261,12 @@ export class NativeConfig {
     };
   }
 
-  //? akanConfig refuses a target whose merged updates lack url or publicKey; the type still has them optional.
+  //? akanConfig refuses a target whose merged updates lack url or a key, or hold both key forms; the type still has
+  //? them optional.
   static #updates(target: AkanNativeTarget, env?: NativeEnv): NonNullable<AkanNativeConfig["updates"]> | undefined {
-    const { url, publicKey, channel = env, ...rest } = target.updates ?? {};
-    return url && publicKey ? { ...rest, url, publicKey, ...(channel ? { channel } : {}) } : undefined;
+    const { url, publicKey, publicKeys, channel = env, ...rest } = target.updates ?? {};
+    const keys = publicKeys ? { publicKeys: [...publicKeys] } : publicKey ? { publicKey } : null;
+    return url && keys ? { ...rest, url, ...keys, ...(channel ? { channel } : {}) } : undefined;
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */

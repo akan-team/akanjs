@@ -70,7 +70,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads are not merged — the nearest .head() wins, so restate what you still need (such as the favicon link). Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
 
 Chain Stages
 
@@ -104,7 +104,7 @@ Stage
 
   - .fonts: Registers app-wide fonts; optimize subsets a font and serves it from /_akan/fonts. — ([…])
 
-  - .manifest: The web app manifest (name, startUrl, icons…) for installable, PWA-like behaviour. — ({ … })
+  - .manifest: The web app manifest (name, startUrl, icons…), served at /manifest.webmanifest so the app installs. — ({ … })
 
   - .theme: The document's default theme (dark, light, system); an empty string is honoured. — (name)
 
@@ -113,6 +113,8 @@ Stage
   - .wsConnect: Connects the WebSocket on load (default true); false waits for fetch.instance.connect(). — (on)
 
   - .layoutStyle: The outer page container style, web or mobile. Use mobile for app-like shells. — (style)
+
+  - .viewport: The viewport meta: fitCover for edge-to-edge, the keyboard's interactiveWidget, and themeColor. — ({ … })
 
 - Ends the chain
 
@@ -142,7 +144,7 @@ The .notFound() and .error() stages exist on layout(), not on page(). If a layou
 
 Root Layout Stages
 
-The root _layout.tsx of an app, or of a basePath, is a rootLayout() chain. It is still a layout, but it also carries the app-wide stages for fonts, manifest, theme, realtime connection, and mobile-style rendering. The stylesheet import stays the first line of the file.
+The root _layout.tsx of an app, or of a basePath, is a rootLayout() chain. It is still a layout, but it also carries the app-wide stages for fonts, manifest, theme, viewport, realtime connection, and mobile-style rendering. The stylesheet import stays the first line of the file.
 
 Each of these is one row of the Chain Stages table above, and only .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect() and .layoutStyle() are exclusive to this file. Everything else here — .config(), .head(), .loading(), .notFound(), .error(), .render() — is the ordinary layout surface.
 

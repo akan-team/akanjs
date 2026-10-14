@@ -167,13 +167,36 @@ pub fn install(webview: &wry::WebView) {
   }
 }
 
+/// WebView2 hands a URL of a scheme another program registered to that program, after a prompt of its own, however the
+/// page asked for it: an external view's page, and every page of an app nobody attends, hands none.
+#[cfg(target_os = "windows")]
+pub fn refuse_launches(webview: &wry::WebView, label: &str) {
+  use webview2_com::{take_pwstr, LaunchingExternalUriSchemeEventHandler, Microsoft::Web::WebView2::Win32::ICoreWebView2_18};
+  use windows::core::{Interface, PWSTR};
+  use wry::WebViewExtWindows;
+  let refusing = label.to_string();
+  let handler = LaunchingExternalUriSchemeEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    let mut uri = PWSTR::null();
+    unsafe { args.Uri(&mut uri)? };
+    log!("{refusing}: refused to hand {} to another program", shown(&take_pwstr(uri)));
+    unsafe { args.SetCancel(true) }
+  }));
+  let mut token = 0;
+  let added = webview.webview().cast::<ICoreWebView2_18>().and_then(|core| unsafe { core.add_LaunchingExternalUriScheme(&handler, &mut token) });
+  if let Err(e) = added {
+    log!("{label}: WebView2's own prompt still asks before a page opens another program: {e}");
+  }
+}
+
 #[cfg(target_os = "macos")]
 pub mod mac {
-  use std::cell::Cell;
+  use std::cell::{Cell, RefCell};
   use std::sync::OnceLock;
 
   use objc2::{
     msg_send,
+    rc::Retained,
     runtime::{AnyObject, Imp, Sel},
     sel,
   };
@@ -185,11 +208,63 @@ pub mod mac {
 
   thread_local! {
     static SUB_FRAME: Cell<bool> = const { Cell::new(false) };
+    /// Frames inside the pages, by the WKFrameInfo of each one's latest navigation: a script reaches a cross-origin
+    /// frame's document through it (page_cursor.rs), which a script in the top document cannot.
+    static FRAMES: RefCell<Vec<Retained<AnyObject>>> = const { RefCell::new(Vec::new()) };
   }
+
+  /// Frames remembered, one entry each: past this the oldest is dropped.
+  const FRAMES_KEPT: usize = 256;
 
   /// Whether the request wry's handler is being asked about is for a frame inside the page.
   pub fn in_sub_frame() -> bool {
     SUB_FRAME.get()
+  }
+
+  //? A WKFrameInfo is one navigation's snapshot, but it reaches the document its frame holds now, and its private
+  //? handle is equal across the frame's navigations (both verified on macOS 26).
+  fn same_frame(a: &AnyObject, b: &AnyObject) -> bool {
+    unsafe {
+      let handled: bool = msg_send![a, respondsToSelector: sel!(_handle)];
+      if !handled {
+        return std::ptr::eq(a, b);
+      }
+      let (x, y): (*mut AnyObject, *mut AnyObject) = (msg_send![a, _handle], msg_send![b, _handle]);
+      x.as_ref().is_some_and(|x| msg_send![x, isEqual: y])
+    }
+  }
+
+  fn remember(frame: &AnyObject) {
+    // Safety: a WKFrameInfo WebKit passed the navigation delegate, alive for this call.
+    let Some(frame) = (unsafe { Retained::retain(frame as *const AnyObject as *mut AnyObject) }) else { return };
+    FRAMES.with(|frames| {
+      let mut frames = frames.borrow_mut();
+      frames.retain(|known| !same_frame(known, &frame));
+      if frames.len() >= FRAMES_KEPT {
+        frames.remove(0);
+      }
+      frames.push(frame);
+    });
+  }
+
+  /// A frame that is gone: WebKit answered a script there with WKErrorJavaScriptInvalidFrameTarget.
+  pub fn forget(frame: &AnyObject) {
+    FRAMES.with(|frames| frames.borrow_mut().retain(|known| !same_frame(known, frame)));
+  }
+
+  /// The frames remembered inside `webview`'s page, some of which may be gone since.
+  pub fn frames_of(webview: &AnyObject) -> Vec<Retained<AnyObject>> {
+    FRAMES.with(|frames| {
+      frames
+        .borrow()
+        .iter()
+        .filter(|frame| {
+          let owner: *const AnyObject = unsafe { msg_send![&***frame, webView] };
+          std::ptr::eq(owner, webview)
+        })
+        .cloned()
+        .collect()
+    })
   }
 
   /// Wraps the navigation delegate's policy method (once for its class): the call is marked as a
@@ -266,6 +341,9 @@ pub mod mac {
       match frame.as_ref() {
         Some(frame) => {
           let main: bool = msg_send![frame, isMainFrame];
+          if !main {
+            remember(frame);
+          }
           !main
         }
         None => false,

@@ -1,4 +1,3 @@
-import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import type {
@@ -16,10 +15,14 @@ import {
 } from "./frontendBuild";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
+import { ServerEnvProfile } from "./transforms/serverEnvProfile";
+import { ProjectTypecheck } from "./typecheck/projectTypecheck";
 
 export interface TypecheckOptions {
   clean?: boolean;
   incremental?: boolean;
+  /** The app's own tests and specs too (`akan typecheck`); a build leaves them out. */
+  tests?: boolean;
 }
 
 export type BuildPhaseId = "prepare" | "typecheck" | "backend" | "ssr" | "csr" | "assets" | "compress" | "metadata";
@@ -32,6 +35,8 @@ export interface ApplicationBuildRunnerOptions {
   reporter?: BuildProgressReporter;
   /** The backend env the build is for, when it is not the workspace's own (a mobile or desktop build's `--env`). */
   environment?: string;
+  /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
+  profile?: string;
 }
 export interface BuildOptions {
   spinner?: boolean;
@@ -74,21 +79,33 @@ export class ApplicationBuildRunner {
   #fast: boolean;
   #reporter?: BuildProgressReporter;
   #environment?: string;
+  #profile?: string;
   #spinner?: boolean;
   #startedAt = Date.now();
   #phases: BuildPhaseResult[] = [];
 
-  constructor(app: App, { fast = false, reporter, environment }: ApplicationBuildRunnerOptions = {}) {
+  constructor(app: App, { fast = false, reporter, environment, profile }: ApplicationBuildRunnerOptions = {}) {
     this.#app = app;
     this.#fast = fast;
     this.#reporter = reporter;
     this.#environment = environment;
+    this.#profile = profile;
+  }
+
+  get #envDir() {
+    return path.join(this.#app.cwdPath, "env");
   }
 
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
     // serial build is needed because of Bun.build is unstable for parallel build
     this.#spinner = spinner;
-    const { web, assets } = await this.#app.getConfig();
+    const { web, assets, baseDevEnv } = await this.#app.getConfig();
+    const environment = this.#environment ?? baseDevEnv.env;
+    //? Bundles bake AKAN_PUBLIC_ENV from process.env, where the shell outranks the .env that picked the server env.
+    process.env.AKAN_PUBLIC_ENV = environment;
+    //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
+    if (this.#profile)
+      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
     await this.#runPhase(
@@ -142,11 +159,31 @@ export class ApplicationBuildRunner {
   }
 
   async typecheck(options: TypecheckOptions = {}) {
-    const { clean = false, incremental = true } = options;
     await this.#app.getPageKeys({ refresh: true });
-    const { typecheckDir, tsconfigPath } = await this.#writeTypecheckTsconfig(incremental);
-    if (clean) await rm(path.join(typecheckDir, "tsconfig.tsbuildinfo"), { force: true });
-    await this.#checkProjectInChildProcess(tsconfigPath);
+    const typecheck = new ProjectTypecheck(
+      this.#app.cwdPath,
+      this.#app.workspace.workspaceRoot,
+      this.#app.getCommandEnv(),
+    );
+    //* TypeScript's `include` globs do not cross a symlink, so synced lib pages need their real path.
+    const libPageIncludes = (await this.#app.getPageRoots())
+      .filter((root) => root.keyPrefix)
+      .flatMap((root) => {
+        const rel = path.relative(typecheck.typecheckDir, root.realDir).split(path.sep).join("/");
+        return [`${rel}/**/*.ts`, `${rel}/**/*.tsx`];
+      });
+    await typecheck.run(
+      [
+        "../../main.ts",
+        "../../server.ts",
+        "../../client.ts",
+        "../../page/**/*.ts",
+        "../../page/**/*.tsx",
+        ...libPageIncludes,
+        "../../../../pkgs/akanjs/*/types/**/*.d.ts",
+      ],
+      options,
+    );
   }
 
   async #runPhase<T>(
@@ -203,6 +240,28 @@ export class ApplicationBuildRunner {
     return `${sha.stdout.toString().trim()}${suffix}`;
   }
 
+  #serverEnv: BunPlugin | null = null;
+  #warnedLibEnvs = new Set<string>();
+  //? One plugin for every server-side bundle of the build: the backend, the RSC worker and the SSR route bundle.
+  #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
+    this.#serverEnv ??= createServerEnvPlugin({
+      envDir: this.#envDir,
+      //? The root .env wins over the shell in baseDevEnv, so a `--env` build names its own; a desktop app runs it.
+      environment: this.#environment ?? baseEnv,
+      environments: ["local", "testing", ...branches],
+      profile: this.#profile,
+      onLibEnv: (file, { profileFile, stripped }) => {
+        if (profileFile || !stripped.length || this.#warnedLibEnvs.has(file)) return;
+        this.#warnedLibEnvs.add(file);
+        const lib = path.relative(this.#app.workspace.workspaceRoot, file);
+        this.#app.logger.warn(
+          `${lib}: the "${this.#profile}" build leaves out ${stripped.join(", ")}. Give the lib ${path.basename(ServerEnvProfile.profileFileOf(file, this.#profile ?? ""))} to say what this profile runs with.`,
+        );
+      },
+    });
+    return this.#serverEnv;
+  }
+
   async #buildBackend() {
     const { externalLibs, web, baseDevEnv, branches } = await this.#app.getConfig();
     const backendEntryPoints = [`${this.#app.cwdPath}/main.ts`, `${this.#app.cwdPath}/server.ts`];
@@ -217,12 +276,7 @@ export class ApplicationBuildRunner {
       // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
     } satisfies Omit<Bun.BuildConfig, "entrypoints">;
-    const serverEnvPlugin = createServerEnvPlugin({
-      envDir: path.join(this.#app.cwdPath, "env"),
-      //? The root .env wins over the shell in baseDevEnv, so a `--env` build names its own; a desktop app runs it.
-      environment: this.#environment ?? baseDevEnv.env,
-      environments: ["local", "testing", ...branches],
-    });
+    const serverEnvPlugin = this.#serverEnvPlugin(baseDevEnv.env, branches);
     const backendConfig = {
       ...sharedConfig,
       plugins: [this.#createExternalSpecifiersPlugin(externalLibs), serverEnvPlugin],
@@ -300,72 +354,12 @@ void run().catch((error) => {
       this.#app.log(`[cli] no route files under ${this.#app.cwdPath}/page — skipping SSR build`);
       return null;
     }
-    const base = await new SsrBaseArtifactBuilder(this.#app, "build").build();
+    const { baseDevEnv, branches } = await this.#app.getConfig();
+    const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
+      serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
+    }).build();
     const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build").build();
     return { base, allRoutes };
-  }
-
-  async #writeTypecheckTsconfig(incremental: boolean) {
-    const typecheckDir = path.join(this.#app.cwdPath, ".akan", "typecheck");
-    await mkdir(typecheckDir, { recursive: true });
-    //* TypeScript's `include` globs do not cross a symlink, so synced lib pages need their real path.
-    const libPageIncludes = (await this.#app.getPageRoots())
-      .filter((root) => root.keyPrefix)
-      .flatMap((root) => {
-        const rel = path.relative(typecheckDir, root.realDir).split(path.sep).join("/");
-        return [`${rel}/**/*.ts`, `${rel}/**/*.tsx`];
-      });
-    const tsconfig = {
-      extends: "../../tsconfig.json",
-      compilerOptions: {
-        noEmit: true,
-        incremental,
-        tsBuildInfoFile: "./tsconfig.tsbuildinfo",
-      },
-      include: [
-        "../../main.ts",
-        "../../server.ts",
-        "../../client.ts",
-        "../../page/**/*.ts",
-        "../../page/**/*.tsx",
-        ...libPageIncludes,
-        "../../../../pkgs/akanjs/*/types/**/*.d.ts",
-      ],
-      references: [],
-    };
-    const tsconfigPath = path.join(typecheckDir, "tsconfig.json");
-    await Bun.write(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
-    return { typecheckDir, tsconfigPath };
-  }
-
-  async #checkProjectInChildProcess(tsconfigPath: string) {
-    const entry = await this.#resolveTypecheckWorkerEntry();
-    const proc = Bun.spawn([process.execPath, entry], {
-      cwd: this.#app.workspace.workspaceRoot,
-      env: this.#app.getCommandEnv({
-        AKAN_COMMAND_TYPE: "typecheck",
-        AKAN_TYPECHECK_TSCONFIG: tsconfigPath,
-      }),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    if (exitCode !== 0) throw new Error((stderr || stdout).trim() || `Typecheck failed with exit code ${exitCode}`);
-  }
-
-  async #resolveTypecheckWorkerEntry() {
-    const candidates = [
-      path.join(this.#app.workspace.workspaceRoot, "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(this.#app.workspace.workspaceRoot, "node_modules/@akanjs/devkit/typecheck/typecheck.proc.ts"),
-      path.join(import.meta.dir, "typecheck.proc.js"),
-      path.join(import.meta.dir, "typecheck.proc.ts"),
-    ];
-    for (const candidate of candidates) if (await Bun.file(candidate).exists()) return candidate;
-    throw new Error(`[cli] typecheck worker entry not found; looked in: ${candidates.join(", ")}`);
   }
 
   async #buildOrThrow(label: string, config: Bun.BuildConfig): Promise<Bun.BuildOutput> {

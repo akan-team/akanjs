@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import preferences from "../../../plugins/preferences/src/desktop.ts";
 import { AkanNativeError } from "../../core/src/index.ts";
-import { CallIds, createDispatcher } from "../src/dispatcher.ts";
+import { CallIds, createDispatcher, GATE_TIMEOUT_MS, SETUP_TIMEOUT_MS } from "../src/dispatcher.ts";
+import { LAUNCH_TIMEOUT } from "../src/main.ts";
 import {
   type DesktopContext,
   defineDesktopPlugin,
@@ -12,6 +13,7 @@ import {
   externalOpenAllowed,
   limitExternalOpens,
 } from "../src/plugin.ts";
+import { READY_TIMEOUT } from "../src/server.ts";
 
 function setup() {
   const emitted: unknown[] = [];
@@ -460,6 +462,33 @@ describe("launch phase", () => {
       exit: 0,
     });
     expect(order).toEqual(["g1"]);
+  });
+
+  test("a gate that outlasts the setup timeout is still waited for: it decides whether the launch runs", async () => {
+    let otherSetUp = false;
+    const slowGate = defineDesktopPlugin({
+      id: "slow-gate",
+      launchPhase: "gate",
+      async setup(ctx) {
+        await Bun.sleep(80);
+        ctx.launch.exit(0);
+      },
+      methods: {},
+    });
+    const other = defineDesktopPlugin({
+      id: "other",
+      setup: () => {
+        otherSetUp = true;
+      },
+      methods: {},
+    });
+    const launch = await createDispatcher([slowGate, other], services, { setupTimeoutMs: 10 }).launched;
+    expect(launch).toEqual({ window: {}, exit: 0 });
+    expect(otherSetUp).toBe(false);
+  });
+
+  test("the main thread waits out a gate, the other setups and the carried server before it gives up", () => {
+    expect(LAUNCH_TIMEOUT).toBeGreaterThan(GATE_TIMEOUT_MS + SETUP_TIMEOUT_MS + READY_TIMEOUT);
   });
 
   test("waits for async setups, merges setWindow, keeps the first exit code", async () => {

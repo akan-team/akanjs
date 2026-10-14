@@ -73,10 +73,10 @@ export default page().render(() => {
         {
           name: "BottomSheet",
           desc: l.trans({
-            en: "A mobile panel that slides up from the bottom edge. Drawn in place, fixed to the screen.",
-            ko: "아래 가장자리에서 올라오는 모바일 패널입니다. 제자리에 그려지고 화면에 고정됩니다.",
+            en: "A mobile panel that slides up from the bottom edge, over the page's bars.",
+            ko: "아래 가장자리에서 올라오는 모바일 패널이며, 페이지의 바 위에 뜹니다.",
           }),
-          marks: { portal: false, anchor: false, slot: false },
+          marks: { portal: true, anchor: false, slot: false },
         },
       ],
     },
@@ -102,10 +102,10 @@ export default page().render(() => {
         {
           name: "Tooltip",
           desc: l.trans({
-            en: "A hover or focus hint in pure CSS. At the screen edge it is clipped, not moved.",
-            ko: "마우스를 올리거나 포커스하면 뜨는 순수 CSS 힌트입니다. 화면 가장자리에서는 옮겨지지 않고 잘립니다.",
+            en: "A hover or focus hint. It flips to the opposite side when its own has no room.",
+            ko: "마우스를 올리거나 포커스하면 뜨는 힌트입니다. 정한 쪽에 자리가 없으면 반대쪽으로 뒤집힙니다.",
           }),
-          marks: { portal: false, anchor: false, slot: true },
+          marks: { portal: true, anchor: true, slot: true },
         },
       ],
     },
@@ -181,12 +181,12 @@ export default page().render(() => {
       desc: l.trans({
         en: (
           <span>
-            <code>Layout.Navbar</code> and the other frame slots that <code>Portal</code> fills.
+            <code>Layout.Navbar</code> and the other frame slots, which <code>Portal</code> fills in a CSR build.
           </span>
         ),
         ko: (
           <span>
-            <code>Portal</code>이 채우는 <code>Layout.Navbar</code>와 나머지 프레임 슬롯이 있습니다.
+            CSR 빌드에서 <code>Portal</code>이 채우는 <code>Layout.Navbar</code>와 나머지 프레임 슬롯이 있습니다.
           </span>
         ),
       }),
@@ -266,6 +266,22 @@ export default page().render(() => {
           }),
         },
         {
+          name: "presentation",
+          type: '"dialog" | "sheet" | "auto" = "dialog"',
+          desc: l.trans({
+            en: "`sheet` fills the screen; `auto` is a full-screen sheet below `md` and a dialog above.",
+            ko: "`sheet`는 화면을 꽉 채우고, `auto`는 `md` 미만에서 전체 화면 시트, 그 이상에서 dialog입니다.",
+          }),
+        },
+        {
+          name: "placement",
+          type: '"center" | "right" = "center"',
+          desc: l.trans({
+            en: "`right` makes it a full-height side sheet from `md` up. Every modal surface (`Modal`, `Dialog.Modal`, the `Model` modals, `Model.New`) takes it and `presentation` through the exported `ModalSurfaceProps`.",
+            ko: "`right`면 `md` 이상에서 높이를 꽉 채운 오른쪽 사이드 시트가 됩니다. 모든 모달 표면(`Modal`, `Dialog.Modal`, `Model`의 모달들, `Model.New`)이 export된 `ModalSurfaceProps`로 이 값과 `presentation`을 받습니다.",
+          }),
+        },
+        {
           name: "className / bodyClassName",
           type: "string",
           desc: l.trans({
@@ -278,16 +294,32 @@ export default page().render(() => {
         l.trans({
           en: (
             <span>
-              <strong>Nothing moves.</strong> The window has no transition and no gesture, so content the user is
+              <strong>A dialog does not move.</strong> It has no transition and no gesture, so content the user is
               reading never animates. <code>LegacyModal</code> keeps the previous spring skin, with <code>open</code>{" "}
               and <code>onCancel</code> required and no <code>trigger</code> or <code>closeButton</code>.
             </span>
           ),
           ko: (
             <span>
-              <strong>움직이지 않습니다.</strong> 전환 효과도 제스처도 없어서 사용자가 읽는 내용이 흔들리지 않습니다.
-              이전의 스프링 애니메이션은 <code>LegacyModal</code>에 남아 있으며, <code>open</code>과{" "}
+              <strong>dialog는 움직이지 않습니다.</strong> 전환 효과도 제스처도 없어서 사용자가 읽는 내용이 흔들리지
+              않습니다. 이전의 스프링 애니메이션은 <code>LegacyModal</code>에 남아 있으며, <code>open</code>과{" "}
               <code>onCancel</code>이 필수이고 <code>trigger</code>와 <code>closeButton</code>은 없습니다.
+            </span>
+          ),
+        }),
+        l.trans({
+          en: (
+            <span>
+              <strong>A sheet fits a phone.</strong> It pads for the safe area, keeps the title and actions in place
+              while the body scrolls, and closes on a drag down on its handle or title. Type a wrapper's props with{" "}
+              <code>ModalPresentation</code> and <code>ModalPlacement</code>.
+            </span>
+          ),
+          ko: (
+            <span>
+              <strong>시트는 폰에 맞춰집니다.</strong> safe area만큼 여백을 두고, 본문이 스크롤되어도 제목과 버튼은
+              제자리에 있으며, 손잡이나 제목을 아래로 끌면 닫힙니다. 감싸는 컴포넌트의 prop 타입은{" "}
+              <code>ModalPresentation</code>과 <code>ModalPlacement</code>로 씁니다.
             </span>
           ),
         }),
@@ -378,10 +410,10 @@ export const Receipt = ({ open, onClose, children }: ReceiptProps) => {
         },
         {
           name: "Dialog.Modal",
-          type: "{ onCancel?, confirmClose?, closeButton?, className?, bodyClassName? }",
+          type: "{ onCancel?, confirmClose?, closeButton?, presentation?, placement?, className?, bodyClassName? }",
           desc: l.trans({
-            en: "The plain window `Modal` draws. Escape, a backdrop click and the corner button close it.",
-            ko: "`Modal`이 그리는 기본 창입니다. Escape, 배경 클릭, 모서리 버튼으로 닫힙니다.",
+            en: "The window `Modal` draws, dialog or sheet. Escape, a backdrop click and the corner button close it.",
+            ko: "`Modal`이 그리는 창이며 dialog나 시트로 그립니다. Escape, 배경 클릭, 모서리 버튼으로 닫힙니다.",
           }),
         },
         {
@@ -810,13 +842,28 @@ export const OrderActions = ({ onEdit }: OrderActionsProps) => {
             <span>
               <strong>Four ways to close it:</strong> drag a <code>half</code> sheet's handle down past a third of its
               height, tap the backdrop, press Escape, or use a <code>full</code> sheet's close row. Each one calls{" "}
-              <code>onCancel</code>.
+              <code>onCancel</code> once; mounting never does.
             </span>
           ),
           ko: (
             <span>
               <strong>닫는 길은 넷입니다.</strong> <code>half</code> 시트의 손잡이를 높이의 1/3 넘게 끌어내리기, 배경
-              누르기, Escape, <code>full</code> 시트의 닫기 행입니다. 어느 쪽이든 <code>onCancel</code>이 호출됩니다.
+              누르기, Escape, <code>full</code> 시트의 닫기 행입니다. 어느 쪽이든 <code>onCancel</code>이 한 번
+              호출되고, 마운트할 때는 호출되지 않습니다.
+            </span>
+          ),
+        }),
+        l.trans({
+          en: (
+            <span>
+              <strong>It sits above the page.</strong> The sheet opens over the frame's bars, or inside the modal it was
+              opened from, pads for the safe area and stops the page from scrolling while open.
+            </span>
+          ),
+          ko: (
+            <span>
+              <strong>페이지 위에 뜹니다.</strong> 시트는 프레임의 바 위에, 모달에서 열면 그 모달 안에 열리고, safe
+              area만큼 여백을 두며 열려 있는 동안 페이지 스크롤을 막습니다.
             </span>
           ),
         }),
@@ -848,8 +895,8 @@ export const FilterSheet = ({ children }: FilterSheetProps) => {
     {
       name: "Tooltip",
       desc: l.trans({
-        en: "A hint that appears on hover or keyboard focus, drawn in pure CSS. It is for hints only: content that must be read does not belong in a tooltip.",
-        ko: "마우스를 올리거나 키보드로 포커스하면 뜨는 힌트이며, 순수 CSS로 그립니다. 힌트 전용이라, 반드시 읽혀야 하는 내용은 툴팁에 넣지 마세요.",
+        en: "A hint that appears on hover or keyboard focus, drawn on the overlay layer. It is for hints only: content that must be read does not belong in a tooltip.",
+        ko: "마우스를 올리거나 키보드로 포커스하면 뜨는 힌트이며, 오버레이 층에 그립니다. 힌트 전용이라, 반드시 읽혀야 하는 내용은 툴팁에 넣지 마세요.",
       }),
       props: [
         {
@@ -868,7 +915,10 @@ export const FilterSheet = ({ children }: FilterSheetProps) => {
         {
           name: "side",
           type: `"top" | "right" | "bottom" | "left" = "top"`,
-          desc: l.trans({ en: "Which side of the trigger the bubble sits on.", ko: "말풍선이 놓일 방향입니다." }),
+          desc: l.trans({
+            en: "The side the bubble prefers. It flips to the opposite one when this side has no room.",
+            ko: "말풍선이 놓일 방향입니다. 그쪽에 자리가 없으면 반대쪽으로 뒤집힙니다.",
+          }),
         },
         {
           name: "variant",
@@ -888,14 +938,14 @@ export const FilterSheet = ({ children }: FilterSheetProps) => {
         l.trans({
           en: (
             <span>
-              <strong>Light, but it never moves.</strong> No state, no portal and no position pass, so it works in the
-              server-rendered HTML. The cost: near the viewport edge the bubble is clipped rather than flipped.
+              <strong>Not in the page until it opens.</strong> The bubble is drawn on the overlay layer only while
+              shown, so a scrolling list neither clips it nor grows wider for it.
             </span>
           ),
           ko: (
             <span>
-              <strong>가볍지만 움직이지 않습니다.</strong> 상태도 portal도 위치 계산도 없어서 서버가 그린 HTML만으로
-              동작합니다. 대신 뷰포트 가장자리에서는 말풍선이 뒤집히지 않고 잘립니다.
+              <strong>열리기 전에는 페이지에 없습니다.</strong> 말풍선은 보이는 동안에만 오버레이 층에 그려지므로,
+              스크롤되는 목록이 잘라내지도, 그만큼 넓어지지도 않습니다.
             </span>
           ),
         }),
@@ -903,27 +953,29 @@ export const FilterSheet = ({ children }: FilterSheetProps) => {
           en: (
             <span>
               <strong>A conditional hint needs no wrapper.</strong> Pass an empty <code>content</code> and only the
-              trigger renders. The bubble shows after 300 ms of hover, or at once on keyboard focus.
+              trigger renders. The bubble shows after 300 ms of hover (never on touch) or at once on keyboard focus, and
+              closes on leave, blur or Escape.
             </span>
           ),
           ko: (
             <span>
               <strong>조건부 힌트에 래퍼가 필요 없습니다.</strong> <code>content</code>를 비워 두면 트리거만 그립니다.
-              말풍선은 마우스를 올리고 300ms 뒤에, 키보드 포커스에는 바로 뜹니다.
+              말풍선은 마우스를 올리고 300ms 뒤에(터치에서는 뜨지 않음), 키보드 포커스에는 바로 뜨며, 벗어나거나
+              포커스를 잃거나 Escape를 누르면 닫힙니다.
             </span>
           ),
         }),
         l.trans({
           en: (
             <span>
-              <strong>Need one that flips or follows the pointer?</strong> <code>Tooltip</code> is an override slot:
-              bind your own in <code>_overrides.tsx</code> and every existing call site follows.
+              <strong>Need one that follows the pointer?</strong> <code>Tooltip</code> is an override slot: bind your
+              own in <code>_overrides.tsx</code> and every existing call site follows.
             </span>
           ),
           ko: (
             <span>
-              <strong>뒤집히거나 포인터를 따라가는 툴팁이 필요하다면</strong> <code>_overrides.tsx</code>에서 직접 만든
-              것을 연결하세요. <code>Tooltip</code>은 오버라이드 슬롯이라 기존 호출부가 모두 따라옵니다.
+              <strong>포인터를 따라가는 툴팁이 필요하다면</strong> <code>_overrides.tsx</code>에서 직접 만든 것을
+              연결하세요. <code>Tooltip</code>은 오버라이드 슬롯이라 기존 호출부가 모두 따라옵니다.
             </span>
           ),
         }),
@@ -1068,16 +1120,16 @@ export const AdminSider = ({ selected, onSelect }: AdminSiderProps) => {
     {
       name: "Portal",
       desc: l.trans({
-        en: "Renders `children` into an element the page already has, named by `id`. It is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.",
-        ko: "`children`을 페이지에 이미 있는 요소 안에 그리며, 그 요소는 `id`로 지정합니다. `Layout.Navbar`가 이것으로 동작합니다. 라우트 깊숙한 컴포넌트가 서로를 모른 채 상단 바를 채웁니다.",
+        en: "Renders `children` into an element the page already has, named by `id`. In a CSR build it is the wiring behind `Layout.Navbar`: a component deep in a route fills the top bar without either one knowing about the other.",
+        ko: "`children`을 페이지에 이미 있는 요소 안에 그리며, 그 요소는 `id`로 지정합니다. CSR 빌드에서는 `Layout.Navbar`가 이것으로 동작합니다. 라우트 깊숙한 컴포넌트가 서로를 모른 채 상단 바를 채웁니다.",
       }),
       props: [
         {
           name: "id",
           type: "string",
           desc: l.trans({
-            en: "The host element's `id`. Nothing renders until that element is mounted.",
-            ko: "호스트 요소의 `id`입니다. 그 요소가 마운트되기 전에는 아무것도 그리지 않습니다.",
+            en: "The host element's `id`, looked up after the first render: nothing renders before then, on the server included.",
+            ko: "호스트 요소의 `id`이며 첫 렌더링 뒤에 찾습니다. 그 전에는 서버에서도 아무것도 그리지 않습니다.",
           }),
         },
         {
@@ -1106,14 +1158,16 @@ export const AdminSider = ({ selected, onSelect }: AdminSiderProps) => {
         l.trans({
           en: (
             <span>
-              <strong>Frame slots are in the first HTML.</strong> During SSR their content is written into the shell
-              instead of appearing after hydration. A host of your own is filled in the browser.
+              <strong>Frame slots are in the first HTML.</strong> On an SSR page the Layout components draw their chrome
+              into the server HTML without a portal, and after hydration that same DOM moves into the slot, so text
+              typed into it before hydration survives. A host of your own is filled only after hydration.
             </span>
           ),
           ko: (
             <span>
-              <strong>프레임 슬롯은 첫 HTML에 들어 있습니다.</strong> SSR 중에 내용을 바로 써 넣으므로 hydration이 끝난
-              뒤에야 나타나는 일이 없습니다. 직접 만든 호스트는 브라우저에서 채워집니다.
+              <strong>프레임 슬롯은 첫 HTML에 들어 있습니다.</strong> SSR 페이지에서는 Layout 컴포넌트가 portal 없이
+              chrome을 서버 HTML에 그리고, hydration 뒤에 그 DOM을 그대로 슬롯으로 옮기므로 hydration 전에 입력한 글자도
+              남습니다. 직접 만든 호스트는 hydration 뒤에야 채워집니다.
             </span>
           ),
         }),
@@ -1253,16 +1307,18 @@ export const ShareLink = ({ url }: ShareLinkProps) => {
               {l.trans({
                 en: (
                   <span>
-                    <strong>A portalled overlay is never clipped.</strong> <code>Modal</code>, <code>Dropdown</code>,{" "}
-                    <code>Popconfirm</code> and <code>Select</code> render at <code>document.body</code>, so a scrolling
-                    modal body or a table's overflow container cannot cut them off.
+                    <strong>A portalled overlay is never clipped.</strong> <code>Modal</code>, <code>BottomSheet</code>,{" "}
+                    <code>Dropdown</code>, <code>Popconfirm</code>, <code>Select</code> and <code>Tooltip</code> render
+                    at <code>document.body</code>, so a scrolling modal body or a table's overflow container cannot cut
+                    them off.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>portal로 그리는 오버레이는 잘리지 않습니다.</strong> <code>Modal</code>,{" "}
-                    <code>Dropdown</code>, <code>Popconfirm</code>, <code>Select</code>는 <code>document.body</code>에
-                    그려지므로 스크롤되는 모달 본문이나 테이블의 overflow 컨테이너가 잘라내지 못합니다.
+                    <code>BottomSheet</code>, <code>Dropdown</code>, <code>Popconfirm</code>, <code>Select</code>,{" "}
+                    <code>Tooltip</code>은 <code>document.body</code>에 그려지므로 스크롤되는 모달 본문이나 테이블의
+                    overflow 컨테이너가 잘라내지 못합니다.
                   </span>
                 ),
               })}
@@ -1283,27 +1339,6 @@ export const ShareLink = ({ url }: ShareLinkProps) => {
                       <code>Portal</code>은 같은 장치에 이름을 붙인 것입니다.
                     </strong>{" "}
                     body 끝이 아니라 <code>id</code>로 고른 호스트 요소 안에 그립니다.
-                  </span>
-                ),
-              })}
-            </li>
-            <li>
-              {l.trans({
-                en: (
-                  <span>
-                    <strong>
-                      <code>Tooltip</code> does none of this on purpose.
-                    </strong>{" "}
-                    It is pure CSS, so it costs almost nothing, and near the screen edge it is clipped rather than
-                    moved.
-                  </span>
-                ),
-                ko: (
-                  <span>
-                    <strong>
-                      <code>Tooltip</code>은 일부러 이 중 어느 것도 하지 않습니다.
-                    </strong>{" "}
-                    순수 CSS라 비용이 거의 없는 대신, 화면 가장자리에서는 옮겨지지 않고 잘립니다.
                   </span>
                 ),
               })}

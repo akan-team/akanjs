@@ -142,3 +142,131 @@ describe("Dialog stacking", () => {
     unmount();
   });
 });
+
+describe("Dialog presentation", () => {
+  const panelOf = () => {
+    const panel = document.querySelector('[role="dialog"]');
+    if (!(panel instanceof HTMLElement)) throw new Error("modal did not render");
+    return panel;
+  };
+
+  test("a dialog keeps its centred box and draws no drag handle", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal>
+          <div>body</div>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    expect(panelOf().className).toContain("max-w-2xl");
+    expect(panelOf().querySelector(".touch-none")).toBeNull();
+    unmount();
+  });
+
+  test("auto is a full-screen sheet with a handle below md, and right is a side sheet from md up", async () => {
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal presentation="auto" placement="right">
+          <div>body</div>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    await settle();
+
+    const panel = panelOf();
+    expect(panel.className).toContain("h-full");
+    expect(panel.className).toContain("pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))]");
+    expect(panel.className).toContain("md:max-w-md");
+    expect(panel.parentElement?.className).toContain("md:justify-end");
+    expect(panel.querySelector(".touch-none")?.className).toContain("md:hidden");
+    unmount();
+  });
+
+  test("a sheet follows a drag down its handle, and dismisses only past its threshold", async () => {
+    const onCancel = mock(() => undefined);
+    const media = Object.getOwnPropertyDescriptor(window, "matchMedia");
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false }) });
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.Modal presentation="sheet" onCancel={onCancel}>
+          <div>body</div>
+        </Dialog.Modal>
+      </Dialog>,
+    );
+    try {
+      await settle();
+      const handle = panelOf().querySelector(".touch-none");
+      if (!handle) throw new Error("drag handle did not render");
+      const pointer = (type: string, clientY: number, buttons: number) =>
+        new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", buttons, clientX: 0, clientY });
+      const slowDragTo = async (clientY: number) => {
+        act(() => void handle.dispatchEvent(pointer("pointerdown", 0, 1)));
+        for (let y = 20; y <= clientY; y += 20) {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          act(() => void handle.dispatchEvent(pointer("pointermove", y, 1)));
+        }
+      };
+
+      await slowDragTo(100);
+      expect(Number(/translateY\((\d+)px\)/.exec(panelOf().style.transform)?.[1])).toBeGreaterThan(90);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      act(() => void handle.dispatchEvent(pointer("pointerup", 100, 0)));
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(panelOf().style.transform).toBe("");
+
+      await slowDragTo(140);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      act(() => void handle.dispatchEvent(pointer("pointerup", 140, 0)));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+      if (media) Object.defineProperty(window, "matchMedia", media);
+      else Reflect.deleteProperty(window, "matchMedia");
+    }
+  });
+
+  test("a legacy modal cuts a slow drag short and springs back, and dismisses one past half its height", async () => {
+    const onCancel = mock(() => undefined);
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    let height = 600;
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => height });
+    const { unmount } = await mountAsync(
+      <Dialog defaultOpen>
+        <Dialog.LegacyModal onCancel={onCancel}>
+          <div>body</div>
+        </Dialog.LegacyModal>
+      </Dialog>,
+    );
+    try {
+      await settle();
+      const grip = panelOf().querySelector(".touch-pan-y");
+      if (!grip) throw new Error("drag header did not render");
+      const pointer = (type: string, clientY: number, buttons: number) =>
+        new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", buttons, clientX: 0, clientY });
+      const slowDrag = async (to: number) => {
+        act(() => void grip.dispatchEvent(pointer("pointerdown", 0, 1)));
+        for (let y = 20; y <= to; y += 20) {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          act(() => void grip.dispatchEvent(pointer("pointermove", y, 1)));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        act(() => void grip.dispatchEvent(pointer("pointerup", to, 0)));
+        await settle();
+      };
+
+      await slowDrag(200);
+      expect(onCancel).not.toHaveBeenCalled();
+
+      height = 100;
+      await slowDrag(60);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await settle();
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+    }
+  });
+});

@@ -2,6 +2,7 @@ import path from "node:path";
 import { optimize } from "@tailwindcss/node";
 import type { AkanNativeAppId, AkanWebConfig } from "akanjs";
 import type { BaseBuildArtifact } from "akanjs/server";
+import type { BunPlugin } from "bun";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
@@ -29,10 +30,13 @@ export class SsrBaseArtifactBuilder {
   #artifactDir: string;
   #absArtifactDir: string;
   #started = Date.now();
+  #serverEnv: BunPlugin | undefined;
 
-  constructor(app: App, command: "build" | "start" = "start") {
+  /** `serverEnv`: the build's server env plugin, so the route bundle carries the env files the backend does and no more. */
+  constructor(app: App, command: "build" | "start" = "start", { serverEnv }: { serverEnv?: BunPlugin } = {}) {
     this.#app = app;
     this.#command = command;
+    this.#serverEnv = serverEnv;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
     this.#absArtifactDir = path.resolve(this.#artifactDir);
   }
@@ -52,7 +56,7 @@ export class SsrBaseArtifactBuilder {
 
     const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     const { cssCompiler, optimizedFonts, cssAssets } = await this.#buildStyleAssets();
-    const pagesBundle = await new PagesBundleBuilder(this.#app, this.#command, pageEntries).build();
+    const pagesBundle = await new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build();
     this.#app.verbose(
       `[base-artifact] pages bundle -> ${pagesBundle.bundlePath} (buildId=${pagesBundle.buildId}, splitting=${pagesBundle.splitting}, entry=${pagesBundle.entryBytes} bytes, outputs=${pagesBundle.outputCount}, chunks=${pagesBundle.chunkCount}, total=${pagesBundle.outputBytes} bytes)`,
     );

@@ -7,8 +7,10 @@ import type { ReactNode } from "react";
 import { AiOutlineEdit, AiOutlineSave } from "react-icons/ai";
 import { BiDotsVertical, BiTrash } from "react-icons/bi";
 
+import { servedEndpointOf } from "../../store/servedEndpointOf";
 import { agentAttrs } from "../agentAttrs";
 import { buttonRecipe } from "../Button";
+import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Dropdown } from "../Dropdown";
 import { Modal } from "../Modal";
 import Remove from "./Remove";
@@ -68,7 +70,7 @@ const SaveAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
   );
 };
 
-interface ViewEditModalProps {
+interface ViewEditModalProps extends ModalSurfaceProps {
   modalClassName?: string;
   viewClassName?: string;
   slice: SliceMeta;
@@ -82,6 +84,8 @@ interface ViewEditModalProps {
 }
 export default function ViewEditModal({
   modalClassName,
+  presentation,
+  placement,
   viewClassName,
   slice,
   renderTitle,
@@ -114,10 +118,8 @@ export default function ViewEditModal({
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modelFormId = storeSel<string, { id: string }>((state) => state[names.modelForm].id);
-  // A verb the slice's guards close is never mounted on the client, so its button would only fail.
-  const servedFetch = fetch as unknown as { [key: string]: unknown };
-  const canUpdate = typeof servedFetch[`update${ModelName}`] === "function";
-  const canRemove = typeof servedFetch[`remove${ModelName}`] === "function";
+  const canUpdate = !!servedEndpointOf(fetch, `update${ModelName}`);
+  const canRemove = !!servedEndpointOf(fetch, `remove${ModelName}`);
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return <></>;
@@ -136,6 +138,8 @@ export default function ViewEditModal({
       open={isModalOpen}
       onCancel={closeView}
       className={modalClassName}
+      presentation={presentation}
+      placement={placement}
       title={
         <div className="flex w-full items-center justify-between">
           <Title />

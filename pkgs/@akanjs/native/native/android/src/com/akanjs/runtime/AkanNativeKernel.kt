@@ -3,6 +3,12 @@ package com.akanjs.runtime
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.security.MessageDigest
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Base64
+import java.util.Locale
 
 /*
  * Decisions every akan-native host makes the same way (docs/architecture.md §5): a port of
@@ -20,6 +26,42 @@ sealed class AkanNativeRoute {
     data class Asset(val path: String) : AkanNativeRoute()
     object NotFound : AkanNativeRoute()
 }
+
+/** kernel.ts UpdateDecision: what a verified web bundle manifest means to this binary (updates protocol v2). */
+data class AkanNativeUpdateDecision(val kind: Kind, val baseline: Double = 0.0, val revoke: List<String> = emptyList()) {
+    enum class Kind(val wire: String) { UNTRUSTED("untrusted"), REVOKED("revoked"), SELF_REVOKE("self-revoke"), REVOKE_LATER("revoke-later"), TAKE("take"), STALE("stale") }
+
+    val wire: String get() = if (kind == Kind.TAKE || kind == Kind.STALE) "${kind.wire}:${baseline.toLong()}:${revoke.joinToString(",")}" else kind.wire
+}
+
+/** kernel.ts EnvelopeVerdict: whether a phone takes an envelope's manifest, or why not. */
+enum class AkanNativeEnvelopeVerdict(val wire: String) {
+    OPEN("open"), UNTRUSTED("untrusted"), REVOKED("revoked"), ENCODING("encoding"), TOO_LARGE("too-large"), SIGNATURE("signature")
+}
+
+/** An envelope's verdict, and its manifest bytes when it is [AkanNativeEnvelopeVerdict.OPEN]. */
+class AkanNativeEnvelopeCheck(val verdict: AkanNativeEnvelopeVerdict, val manifest: ByteArray? = null)
+
+/** kernel.ts UpdateReportEvent: what became of a release on a phone (updates.report.url). */
+enum class AkanNativeUpdateEvent(val wire: String) {
+    DOWNLOADED("downloaded"), APPLIED("applied"), CONFIRMED("confirmed"), ROLLED_BACK("rolledBack"), FAILED("failed");
+
+    companion object {
+        fun of(wire: Any?): AkanNativeUpdateEvent? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** kernel.ts UpdateReportReason. */
+enum class AkanNativeUpdateReason(val wire: String) {
+    TIMEOUT("timeout"), RELAUNCH("relaunch"), HANG("hang"), VERIFY("verify"), DOWNLOAD("download"), DISK("disk"), SIGNATURE("signature"), MANIFEST("manifest");
+
+    companion object {
+        fun of(wire: Any?): AkanNativeUpdateReason? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** kernel.ts UpdateReportOutcome: what the answer to a report request does to its batch. */
+enum class AkanNativeReportOutcome(val wire: String) { SENT("sent"), DROPPED("dropped"), KEPT("kept") }
 
 sealed class AkanNativeRangeAnswer {
     object Whole : AkanNativeRangeAnswer()
@@ -321,4 +363,103 @@ object AkanNativeKernel {
         if (!topLevel) return if (scheme in AkanNativeContract.FRAME_SCHEMES) AkanNativeNavigation.LOAD else AkanNativeNavigation.DROP
         return if (scheme in externalSchemes(extra)) AkanNativeNavigation.OPEN else AkanNativeNavigation.DROP
     }
+
+    /**
+     * kernel.ts updateDecision: a key revokes only keys listed before it (a leaked online key, listed first, cannot
+     * revoke the spares that recover from it), and resetSequence counts only when it newly revokes a key.
+     */
+    fun updateDecision(
+        ring: List<String>, revoked: List<String>, signer: String, revokeKeys: List<String>, resetSequence: Boolean,
+        sequence: Double, embedded: Double, running: Pair<Double, String>?,
+    ): AkanNativeUpdateDecision {
+        val index = ring.indexOf(signer)
+        if (index < 0) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.UNTRUSTED)
+        if (signer in revoked) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.REVOKED)
+        if (signer in revokeKeys) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.SELF_REVOKE)
+        if (revokeKeys.any { ring.indexOf(it) > index }) return AkanNativeUpdateDecision(AkanNativeUpdateDecision.Kind.REVOKE_LATER)
+        val revoke = ring.filter { it in revokeKeys && it !in revoked }
+        val bar = running?.takeIf { it.second !in revoked && it.second !in revoke }?.first ?: 0.0
+        val baseline = if (resetSequence && revoke.isNotEmpty()) embedded else maxOf(embedded, bar)
+        val kind = if (sequence > baseline) AkanNativeUpdateDecision.Kind.TAKE else AkanNativeUpdateDecision.Kind.STALE
+        return AkanNativeUpdateDecision(kind, baseline, revoke)
+    }
+
+    /** kernel.ts updateManifestUrl: one envelope per channel and native API. */
+    fun updateManifestUrl(url: String, platform: String, channel: String, nativeApi: String): String = "$url/$platform/$channel/$nativeApi.json"
+
+    /** The first 8 bytes of the raw public key's SHA-256, in hex: what an envelope names its signer by. */
+    fun updateKeyId(publicKey: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(publicKey).take(8).joinToString("") { "%02x".format(it) }
+
+    fun isUpdateKeyId(s: String): Boolean = s.length == 16 && s.all { it in '0'..'9' || it in 'a'..'f' }
+
+    /** kernel.ts MAX_REVOKE_KEYS: the most keys a manifest may revoke. */
+    const val MAX_REVOKE_KEYS = 16
+
+    /** kernel.ts MAX_UPDATE_MANIFEST: the largest manifest an envelope may carry, in bytes. */
+    const val MAX_UPDATE_MANIFEST = 1 shl 20
+
+    /**
+     * kernel.ts isStrictBase64: the standard alphabet, padded, no whitespace. android.util.Base64 also takes line
+     * breaks and java.util.Base64 a missing padding, which iOS refuses.
+     */
+    fun isStrictBase64(s: String): Boolean {
+        if (s.length % 4 != 0) return false
+        val pad = if (s.endsWith("==")) 2 else if (s.endsWith("=")) 1 else 0
+        for (i in 0 until s.length - pad) {
+            val c = s[i]
+            if (c !in 'A'..'Z' && c !in 'a'..'z' && c !in '0'..'9' && c != '+' && c != '/') return false
+        }
+        return true
+    }
+
+    /** The bytes of strict base64, null for anything else. */
+    fun strictBase64(s: String): ByteArray? = if (isStrictBase64(s)) Base64.getDecoder().decode(s) else null
+
+    /**
+     * kernel.ts checkUpdateEnvelope: in this order, a signer of [ring] not [revoked], both fields in strict base64, a
+     * manifest of at most MAX_UPDATE_MANIFEST bytes, and [verify] (Ed25519 by the signer's key) over the decoded bytes.
+     */
+    fun checkUpdateEnvelope(
+        manifest: String, keyId: String, signature: String, ring: List<String>, revoked: List<String>,
+        verify: (manifest: ByteArray, signature: ByteArray, keyId: String) -> Boolean,
+    ): AkanNativeEnvelopeCheck {
+        if (keyId !in ring) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.UNTRUSTED)
+        if (keyId in revoked) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.REVOKED)
+        if (!isStrictBase64(manifest) || !isStrictBase64(signature)) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.ENCODING)
+        val pad = if (manifest.endsWith("==")) 2 else if (manifest.endsWith("=")) 1 else 0
+        if (manifest.length / 4 * 3 - pad > MAX_UPDATE_MANIFEST) return AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.TOO_LARGE)
+        val bytes = Base64.getDecoder().decode(manifest)
+        return if (verify(bytes, Base64.getDecoder().decode(signature), keyId)) AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.OPEN, bytes)
+        else AkanNativeEnvelopeCheck(AkanNativeEnvelopeVerdict.SIGNATURE)
+    }
+
+    /** kernel.ts UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH: the events kept waiting, and those one request carries. */
+    const val UPDATE_REPORT_LIMIT = 100
+    const val UPDATE_REPORT_BATCH = 20
+
+    /** kernel.ts updateReportKey: an event is kept once per release and reason. */
+    fun updateReportKey(event: AkanNativeUpdateEvent, bundle: String, reason: AkanNativeUpdateReason?): String = "${event.wire}|$bundle|${reason?.wire ?: ""}"
+
+    /** kernel.ts updateReportOutcome: a 2xx sends the batch, a 400, 413 or 422 drops it, anything else keeps it. */
+    fun updateReportOutcome(status: Int): AkanNativeReportOutcome = when (status) {
+        in 200..299 -> AkanNativeReportOutcome.SENT
+        400, 413, 422 -> AkanNativeReportOutcome.DROPPED
+        else -> AkanNativeReportOutcome.KEPT
+    }
+
+    /** kernel.ts updateReportRetryAt: [now] plus a Retry-After of delay-seconds (digits only), else null. */
+    fun updateReportRetryAt(retryAfter: String?, now: Double): Double? {
+        val value = retryAfter?.trim(' ', '\t') ?: return null
+        if (value.isEmpty() || !value.all { it in '0'..'9' }) return null
+        return value.toDouble().takeIf { it.isFinite() }?.let { now + it }
+    }
+
+    /** kernel.ts updateReportWaits: a wait of more than a day is a clock that moved, so it ends. */
+    fun updateReportWaits(retryAt: Double?, now: Double): Boolean = retryAt != null && retryAt > now && retryAt < now + 86_400
+
+    private val reportTime = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
+
+    /** kernel.ts updateReportTime: UTC, always three fraction digits (Instant.toString() leaves out a fraction of zero). */
+    fun updateReportTime(ms: Long): String = reportTime.format(Instant.ofEpochMilli(ms))
 }

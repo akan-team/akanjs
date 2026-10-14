@@ -30,7 +30,7 @@ const input = {
   space: { install: 150 * MIB + 1, unpack: 160 * MIB },
   schemes: ["board", "board-dev"],
   icon: "C:\\build\\gen\\app.ico",
-  bootstrapper: "C:\\cache\\MicrosoftEdgeWebview2Setup.exe",
+  webview2Setup: "C:\\cache\\MicrosoftEdgeWebview2Setup.exe",
   stopScript: "C:\\build\\gen\\stop-app.ps1",
   outFile: "C:\\build\\board-1.2.0-x64-setup.exe",
 };
@@ -75,9 +75,7 @@ describe("the Windows installer script", () => {
       `System::Call 'kernel32::SetEnvironmentVariable(t "AKAN_NATIVE_REMOVE", t R9)'\n  nsExec::Exec '"$SYSDIR\\cmd.exe" /d /c rmdir /s /q "%AKAN_NATIVE_REMOVE%"'`,
     );
     const removeApp = section("!macro RemoveApp", "!macro RenameRetry");
-    expect(removeApp).toContain(
-      '${If} ${FileExists} "$INSTDIR\\${EXE}"\n    !insertmacro RemoveTree "$INSTDIR"\n  ${Else}',
-    );
+    expect(removeApp).toContain('${If} $R6 == 1\n    !insertmacro RemoveTree "$INSTDIR"\n  ${Else}');
     expect(section("!macro RemoveSiblings", "!macro CheckStaged")).toContain(
       '${If} ${FileExists} "$INSTDIR\\..\\$R1\\*.*"\n      !insertmacro RemoveTree "$INSTDIR\\..\\$R1"\n    ${Else}\n      Delete "$INSTDIR\\..\\$R1"',
     );
@@ -153,6 +151,14 @@ describe("the Windows installer script", () => {
     const plain = installerScript({ ...input, schemes: [] });
     expect(plain).not.toContain("shell\\open\\command");
     expect(plain).toContain('"akan-native-update ${APP_ID}"\n  DeleteRegKey HKCU "${AUMID_KEY}"');
+  });
+
+  test("names the publisher in Apps & features and the setup's version info only when the config has one", () => {
+    expect(script).not.toContain('"Publisher"');
+    expect(script).not.toContain('"CompanyName"');
+    const published = installerScript({ ...input, publisher: "Leading Flight" });
+    expect(published).toContain('WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "Leading Flight"');
+    expect(published).toContain('VIAddVersionKey "CompanyName" "Leading Flight"');
   });
 
   test("signs the uninstaller it writes only when the build signs, before makensis checks the result", () => {
@@ -283,15 +289,75 @@ describe("the Windows installer script", () => {
   });
 
   test("stops a running copy by its path and installs WebView2 only when missing", () => {
-    expect(script.match(/stop-app\.ps1" "\$INSTDIR"/g)).toHaveLength(2);
+    expect(script.match(/stop-app\.ps1" "\$INSTDIR"/g)).toHaveLength(3);
     expect(script).toContain("{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}");
     expect(script).toContain(`ExecWait '"$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" /silent /install' $1`);
     expect(script).toContain('!define MUI_ICON "C:\\build\\gen\\app.ico"');
   });
 
-  test("the stop script answers 1 when a copy is still running or the processes cannot be listed", () => {
+  test("the stop script answers 1 when a copy, or the exe it was given, is left or the processes cannot be listed", () => {
     expect(STOP_SCRIPT).toContain("$ErrorActionPreference = 'Stop'");
-    expect(STOP_SCRIPT.trimEnd().split("\n").at(-1)).toBe("if (& $running) { exit 1 }");
+    expect(STOP_SCRIPT.trimEnd().split("\n").at(-1)).toBe(
+      "if ((& $running) -or ($Exe -and (Test-Path -LiteralPath $Exe))) { exit 1 }",
+    );
+  });
+
+  test("the stop script stops again what started meanwhile, and deletes the exe in the pass that finds none", () => {
+    const loop = STOP_SCRIPT.slice(STOP_SCRIPT.indexOf("for ($i"), STOP_SCRIPT.lastIndexOf("if ((& $running)"));
+    expect(loop).toContain("$left = @(& $running)");
+    expect(loop).toContain("Stop-Process -Id $_.ProcessId -Force");
+    const idle = loop.slice(loop.indexOf("if ($left.Count -eq 0)"), loop.indexOf("$left | ForEach-Object"));
+    expect(idle).toContain("if (-not $Exe) { exit 0 }");
+    expect(idle).toContain("Remove-Item -LiteralPath $Exe -Force");
+  });
+
+  test("the uninstaller names the exe to the stop script, after deciding the folder is the app's, and says when it stays", () => {
+    const decide = uninstall.indexOf('${If} ${FileExists} "$INSTDIR\\${EXE}"\n    StrCpy $R6 1');
+    const stop = uninstall.indexOf('stop-app.ps1" "$INSTDIR" "$INSTDIR\\${EXE}"');
+    expect(decide).toBeGreaterThan(-1);
+    expect(stop).toBeGreaterThan(decide);
+    expect(uninstall).toContain("${If} $0 != 0");
+    expect(uninstall).toContain("SetErrorLevel 2");
+    expect(section("!macro RemoveApp", "!macro RenameRetry")).toContain("${If} $R6 == 1");
+    expect(uninstall).not.toMatch(/^\s*(Delete|RMDir)\b[^\n]*\/REBOOTOK/m);
+  });
+
+  test("a stop script that hangs is ended after a minute and counts as a stop that failed", () => {
+    const stops = script.split("\n").filter((line) => line.includes('stop-app.ps1" "$INSTDIR"'));
+    expect(stops).toHaveLength(3);
+    for (const line of stops) expect(line.trimStart()).toStartWith("nsExec::Exec /TIMEOUT=60000 'powershell.exe");
+    expect(install).toContain("Pop $0\n  ${If} $0 == 0\n    StrCpy $AppStopped 1");
+  });
+
+  test("the setup moves the app's folder aside in the stop's pass that finds nothing running", () => {
+    const decide = install.indexOf(
+      'StrCpy $AppInFolder 0\n  ${If} ${FileExists} "$INSTDIR\\${EXE}"\n    StrCpy $AppInFolder 1',
+    );
+    const moving = install.indexOf(`stop-app.ps1" "$INSTDIR" -MoveTo "$INSTDIR.setup-old"'`);
+    expect(decide).toBeGreaterThan(-1);
+    expect(moving).toBeGreaterThan(decide);
+    expect(uninstall).not.toContain("-MoveTo");
+    expect(install.slice(moving)).toContain(
+      '${If} $AppInFolder == 1\n    ; Still in place when the script could not list the processes, or something kept the folder in use.\n    ${IfNot} ${FileExists} "$INSTDIR.setup-old\\${EXE}"\n      !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"',
+    );
+    const idle = STOP_SCRIPT.slice(
+      STOP_SCRIPT.indexOf("if ($left.Count -eq 0)"),
+      STOP_SCRIPT.indexOf("$left | ForEach-Object"),
+    );
+    expect(STOP_SCRIPT).toStartWith("param([string]$Dir, [string]$Exe = '', [string]$MoveTo = '')");
+    expect(idle).toContain("if ($MoveTo) {\n      try { [IO.Directory]::Move($Dir, $MoveTo); exit 0 } catch { }");
+  });
+
+  test("a check that fails after the stop moved the folder aside puts the app back first", () => {
+    expect(section("!macro CheckStaged", "!macroend")).toContain("!insertmacro PutBack\n    !insertmacro Fail");
+    expect(section("!macro PutBack", "!macroend")).toContain(
+      '${If} $AppInFolder == 1\n  ${AndIf} ${FileExists} "$INSTDIR.setup-old\\${EXE}"\n    !insertmacro RenameRetry "$INSTDIR.setup-old" "$INSTDIR"\n    ${If} $R2 != "done"\n      !insertmacro Fail',
+    );
+    expect(script.indexOf("!macro PutBack")).toBeGreaterThan(script.indexOf("!macro RenameRetry"));
+  });
+
+  test("a setup run with /S shows no verification window: the CRC check is off", () => {
+    expect(script).toContain("\nCRCCheck off\n");
   });
 
   test("finds makensis where it was named, else says there is none", () => {

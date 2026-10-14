@@ -8,13 +8,14 @@
 //   exits 2 when the new build did not take the folder's place, and 0 when it did.
 // - WebView2: Windows 11 has it, and so does almost every Windows 10; LTSC editions do not. The installer
 //   runs Microsoft's Evergreen Bootstrapper (embedded, 2 MB, it downloads the runtime) only when neither
-//   the machine nor the user has one (docs: "Detect if a WebView2 Runtime is already installed").
+//   the machine nor the user has one (docs: "Detect if a WebView2 Runtime is already installed");
+//   `desktop.webview2: "standalone"` embeds the whole runtime for the CPU instead, for a PC offline at install.
 // - One setup or uninstall of the app runs at a time: another one exits with 2 before it touches anything.
 // - Whatever can fail without touching the installed app runs before it is stopped: free space, WebView2, the
 //   new files, unpacked beside the folder (`<folder>.setup-new`), and the uninstaller
 //   (`<folder>.setup-uninstall.exe`). The running copy is stopped by its path, so an unrelated program with the
-//   same file name is left alone, and the folder is swapped by two renames; a failed swap puts the old folder
-//   back, and with /RUN the app in place is started again.
+//   same file name is left alone, and the folder is swapped by two renames, the first in the stop's pass that finds
+//   nothing running; a failed swap puts the old folder back, and with /RUN the app in place is started again.
 // - The folder is the app's: updates replace it whole, so the uninstaller lives beside it
 //   (`<folder>.uninstall.exe`) and a reinstall or an uninstall removes all of it, but never what a junction in
 //   it points to. A `/D=` folder must be empty or hold the app already; without the app's executable in it only
@@ -34,6 +35,11 @@ import { windowsVersion } from "./windows.ts";
 
 /** Microsoft's permanent link to the Evergreen Bootstrapper (MicrosoftEdgeWebview2Setup.exe). */
 export const WEBVIEW2_BOOTSTRAPPER_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+/** The Evergreen Standalone Installer per CPU (MicrosoftEdgeWebView2RuntimeInstaller<X64|ARM64>.exe). */
+export const WEBVIEW2_STANDALONE_URLS = {
+  x64: "https://go.microsoft.com/fwlink/?linkid=2124701",
+  arm64: "https://go.microsoft.com/fwlink/?linkid=2099616",
+} as const;
 /** The WebView2 Runtime's EdgeUpdate client id; its `pv` value is the installed version. */
 const WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 /** MAX_PATH less its NUL: what a PC without long paths enabled (the Windows default) can open or unpack. */
@@ -56,12 +62,15 @@ export interface InstallerInput {
   folder: string;
   /** Its top-level files and folders: what an update or uninstall removes. */
   entries: { name: string; dir: boolean }[];
-  /** Bytes the app folder takes on disk, and bytes the setup unpacks in all (the folder and the WebView2 bootstrapper). */
+  /** Bytes the app folder takes on disk, and bytes the setup unpacks in all (the folder and the WebView2 setup). */
   space: { install: number; unpack: number };
   /** deepLinks.schemes: the uninstaller removes those the app registered for its own executable. */
   schemes: string[];
   icon?: string;
-  bootstrapper: string;
+  /** desktop.publisher: the Publisher Apps & features lists, and the setup program's company name. */
+  publisher?: string;
+  /** desktop.webview2's setup the installer runs where no WebView2 Runtime is: the bootstrapper or the whole runtime. */
+  webview2Setup: string;
   stopScript: string;
   outFile: string;
   /** A command that signs the uninstaller makensis writes into the setup program, `%1` its path. */
@@ -102,6 +111,9 @@ ManifestDPIAware true
 ManifestLongPathAware true
 SetCompressor /SOLID lzma
 RequestExecutionLevel user
+; /S does not hide NSIS's "Verifying installer" window (only a script's SilentInstall does), and a large setup takes
+; over a second to verify, so the window painted over a kiosk. A truncated setup still fails to unpack into .setup-new.
+CRCCheck off
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
@@ -130,7 +142,7 @@ VIAddVersionKey "ProductName" "\${APP_NAME}"
 VIAddVersionKey "ProductVersion" "${nsis(input.version)}"
 VIAddVersionKey "FileVersion" "${version}"
 VIAddVersionKey "FileDescription" "\${APP_NAME} Setup"
-
+${input.publisher ? `VIAddVersionKey "CompanyName" "${nsis(input.publisher)}"\n` : ""}
 ${icon}!define MUI_FINISHPAGE_RUN "$INSTDIR\\\${EXE}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -141,6 +153,7 @@ ${icon}!define MUI_FINISHPAGE_RUN "$INSTDIR\\\${EXE}"
 
 Var AppStopped
 Var RunAfter
+Var AppInFolder
 
 Function RunApp
   \${If} \${FileExists} "$INSTDIR\\\${EXE}"
@@ -203,8 +216,9 @@ FunctionEnd
 ${removal(input.entries)}
 !macroend
 
+; $R6 is 1 when the folder held the app's exe before the uninstall stopped the app and deleted it.
 !macro RemoveApp
-  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+  \${If} $R6 == 1
     !insertmacro RemoveTree "$INSTDIR"
   \${Else}
     !insertmacro RemoveEntries
@@ -240,9 +254,21 @@ ${removal(input.entries)}
   FindClose $R0
 !macroend
 
+; The installed app goes back to its folder from where the stop moved it; past that, the next setup puts it back.
+!macro PutBack
+  \${If} $AppInFolder == 1
+  \${AndIf} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+    !insertmacro RenameRetry "$INSTDIR.setup-old" "$INSTDIR"
+    \${If} $R2 != "done"
+      !insertmacro Fail "\${APP_NAME} could not be moved back to $INSTDIR: it is in $INSTDIR.setup-old, which the next setup puts back."
+    \${EndIf}
+  \${EndIf}
+!macroend
+
 !macro CheckStaged
   \${IfNot} \${FileExists} "$INSTDIR.setup-new\\\${EXE}"
   \${OrIfNot} \${FileExists} "$INSTDIR.setup-new\\resources\\boot.json"
+    !insertmacro PutBack
     !insertmacro Fail "The files unpacked into $INSTDIR.setup-new are incomplete: another program removed some, or an antivirus took one. \${APP_NAME} is left as it was."
   \${EndIf}
 !macroend
@@ -310,7 +336,7 @@ Function EnsureWebView2
     Return
   \${EndIf}
   DetailPrint "Installing the WebView2 Runtime"
-  File "/oname=$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" "${nsis(input.bootstrapper)}"
+  File "/oname=$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" "${nsis(input.webview2Setup)}"
   ExecWait '"$PLUGINSDIR\\MicrosoftEdgeWebview2Setup.exe" /silent /install' $1
   DetailPrint "WebView2 Runtime setup exited with $1"
   Call WebView2Version
@@ -373,16 +399,29 @@ Section "Install"
     !insertmacro Fail "The uninstaller could not be written to $INSTDIR.setup-uninstall.exe. \${APP_NAME} is left as it was."
   \${EndIf}
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  ; nsExec waits forever by default: a stop script that hung once kept a setup waiting 16 minutes. Past the deadline it
+  ; is ended and answers "timeout", which counts as a failed stop.
+  ; With the app in the folder, the script moves the folder aside in the pass that finds nothing running: a watchdog
+  ; that started the app again between a stop and a later rename kept the folder in use, and the setup failed.
+  StrCpy $AppInFolder 0
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    StrCpy $AppInFolder 1
+    nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" -MoveTo "$INSTDIR.setup-old"'
+  \${Else}
+    nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  \${EndIf}
   Pop $0
   \${If} $0 == 0
     StrCpy $AppStopped 1
   \${EndIf}
   !insertmacro CheckStaged
-  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
-    !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"
-    \${If} $R2 != "done"
-      !insertmacro Fail "$INSTDIR is in use and could not be replaced; \${APP_NAME} is left as it was."
+  \${If} $AppInFolder == 1
+    ; Still in place when the script could not list the processes, or something kept the folder in use.
+    \${IfNot} \${FileExists} "$INSTDIR.setup-old\\\${EXE}"
+      !insertmacro RenameRetry "$INSTDIR" "$INSTDIR.setup-old"
+      \${If} $R2 != "done"
+        !insertmacro Fail "$INSTDIR is in use and could not be replaced; \${APP_NAME} is left as it was."
+      \${EndIf}
     \${EndIf}
     !insertmacro RenameRetry "$INSTDIR.setup-new" "$INSTDIR"
     \${If} $R2 != "done"
@@ -421,7 +460,7 @@ ${moveIn(input.entries)}
   CreateShortcut "$SMPROGRAMS\\\${APP_NAME}.lnk" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayName" "\${APP_NAME}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayVersion" "${nsis(input.version)}"
-  WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\\\${EXE}"
+${input.publisher ? `  WriteRegStr HKCU "\${UNINSTALL_KEY}" "Publisher" "${nsis(input.publisher)}"\n` : ""}  WriteRegStr HKCU "\${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\\\${EXE}"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR.uninstall.exe"'
   WriteRegStr HKCU "\${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR.uninstall.exe" /S'
@@ -453,9 +492,19 @@ FunctionEnd
 
 Section "Uninstall"
   InitPluginsDir
+  StrCpy $R6 0
+  \${If} \${FileExists} "$INSTDIR\\\${EXE}"
+    StrCpy $R6 1
+  \${EndIf}
   File "/oname=$PLUGINSDIR\\stop-app.ps1" "${nsis(input.stopScript)}"
-  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR"'
+  ; With the exe named, the script deletes it in the pass that finds nothing running: a watchdog that starts the app
+  ; again between a stop and a later delete kept the exe, and Delete /REBOOTOK needs an administrator.
+  nsExec::Exec /TIMEOUT=60000 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\stop-app.ps1" "$INSTDIR" "$INSTDIR\\\${EXE}"'
   Pop $0
+  \${If} $0 != 0
+    DetailPrint "$INSTDIR\\\${EXE} is still running and stays behind."
+    SetErrorLevel 2
+  \${EndIf}
   Delete "$SMPROGRAMS\\\${APP_NAME}.lnk"
   !insertmacro RemoveTree "$INSTDIR.previous"
   !insertmacro RemoveSiblings "update-"
@@ -480,17 +529,32 @@ SectionEnd
 }
 
 /**
- * Stops every process running from the install folder, waits (up to 10 s) until they are gone, and exits 1 when
- * one is left or cannot be seen. Through WMI: the installer is a 32-bit program, so its PowerShell is too, and a
- * 32-bit process cannot read a 64-bit one's path (Get-Process's Path comes back empty).
+ * Stops every process running from the install folder, again for one started meanwhile, until none is left (up to
+ * 10 s); given the app's exe, deletes it in the pass that finds none, so nothing can start it again, and given
+ * `-MoveTo`, moves the folder there in that pass instead. Exits 1 when a process (or the exe) is left or cannot be
+ * seen; a folder it could not move is left where it is, for the setup to try again. Through WMI: the installer is a
+ * 32-bit program, so its PowerShell is too, and a 32-bit process cannot read a 64-bit one's path (Get-Process's Path
+ * comes back empty).
  */
-export const STOP_SCRIPT = `param([string]$Dir)
+export const STOP_SCRIPT = `param([string]$Dir, [string]$Exe = '', [string]$MoveTo = '')
 $ErrorActionPreference = 'Stop'
 $prefix = [IO.Path]::GetFullPath($Dir).TrimEnd('\\') + '\\'
 $running = { Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } }
-& $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-for ($i = 0; $i -lt 50 -and (& $running); $i++) { Start-Sleep -Milliseconds 200 }
-if (& $running) { exit 1 }
+for ($i = 0; $i -lt 50; $i++) {
+  $left = @(& $running)
+  if ($left.Count -eq 0) {
+    if ($MoveTo) {
+      try { [IO.Directory]::Move($Dir, $MoveTo); exit 0 } catch { }
+    } else {
+      if (-not $Exe) { exit 0 }
+      Remove-Item -LiteralPath $Exe -Force -ErrorAction SilentlyContinue
+      if (-not (Test-Path -LiteralPath $Exe)) { exit 0 }
+    }
+  }
+  $left | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Milliseconds 200
+}
+if ((& $running) -or ($Exe -and (Test-Path -LiteralPath $Exe))) { exit 1 }
 `;
 
 /** The longest path under `folder`, relative and with Windows separators. Links are not followed. */
@@ -547,16 +611,22 @@ export function findMakensis(env: Record<string, string | undefined> = process.e
   return null;
 }
 
-/** The Evergreen Bootstrapper, downloaded once into the akan-native cache and checked. */
-async function webview2Bootstrapper(): Promise<string> {
-  const file = join(akanNativeHome(), "cache", "webview2", "MicrosoftEdgeWebview2Setup.exe");
+/** The WebView2 setup the installer embeds, downloaded once into the akan-native cache and checked. */
+async function cachedWebview2Setup(mode: "bootstrapper" | "standalone", arch: "x64" | "arm64"): Promise<string> {
+  const [name, url, minBytes] =
+    mode === "standalone"
+      ? [`MicrosoftEdgeWebView2RuntimeInstaller${arch.toUpperCase()}.exe`, WEBVIEW2_STANDALONE_URLS[arch], 50_000_000]
+      : ["MicrosoftEdgeWebview2Setup.exe", WEBVIEW2_BOOTSTRAPPER_URL, 100_000];
+  const file = join(akanNativeHome(), "cache", "webview2", name);
   if (!existsSync(file)) {
-    log.info(`downloading the WebView2 Evergreen Bootstrapper (${WEBVIEW2_BOOTSTRAPPER_URL})`);
-    const response = await fetch(WEBVIEW2_BOOTSTRAPPER_URL, { redirect: "follow" });
-    if (!response.ok) throw new CliError(`the WebView2 bootstrapper download answered ${response.status}`);
+    log.info(
+      `downloading the WebView2 ${mode === "standalone" ? `Runtime for ${arch}` : "Evergreen Bootstrapper"} (${url})`,
+    );
+    const response = await fetch(url, { redirect: "follow" });
+    if (!response.ok) throw new CliError(`the WebView2 ${mode} download answered ${response.status}`);
     const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length < 100_000 || bytes[0] !== 0x4d || bytes[1] !== 0x5a)
-      throw new CliError("the WebView2 bootstrapper download is not a Windows program");
+    if (bytes.length < minBytes || bytes[0] !== 0x4d || bytes[1] !== 0x5a)
+      throw new CliError(`the WebView2 ${mode} download is not a Windows program`);
     mkdirSync(join(file, ".."), { recursive: true });
     writeFileSync(file, bytes);
   }
@@ -614,7 +684,7 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
     log.warn(
       `${deepest} reaches about ${longest} characters under %LOCALAPPDATA%\\Programs while an update unpacks: Windows refuses paths over ${WINDOWS_MAX_PATH} unless long paths are enabled, so the installer or an update fails on such a PC. Shorten app.name or that path.`,
     );
-  const bootstrapper = await webview2Bootstrapper();
+  const webview2Setup = await cachedWebview2Setup(config.desktop.webview2, ctx.arch ?? hostArch());
   const size = folderSize(folder);
   writeFileSync(
     script,
@@ -626,10 +696,11 @@ export async function buildWindowsInstaller(ctx: BuildContext, folder: string): 
       build: config.app.build,
       folder,
       entries: readdirSync(folder).map((name) => ({ name, dir: statSync(join(folder, name)).isDirectory() })),
-      space: { install: size.disk, unpack: size.bytes + statSync(bootstrapper).size },
+      space: { install: size.disk, unpack: size.bytes + statSync(webview2Setup).size },
       schemes: config.deepLinks.schemes,
       ...(existsSync(icon) ? { icon } : {}),
-      bootstrapper,
+      ...(config.desktop.publisher ? { publisher: config.desktop.publisher } : {}),
+      webview2Setup,
       stopScript,
       outFile,
       ...(ctx.windows?.signing ? { signUninstaller: uninstallerSigner(gen, `${config.app.name} Uninstall`) } : {}),

@@ -2,16 +2,25 @@
 
 import { relative } from "node:path";
 import { checkFlags, type ParsedArgs, parseArgs, stringFlag } from "../lib/args.ts";
+import { requestedDistribution } from "../lib/distribution.ts";
 import { bold, CliError, dim, log } from "../lib/log.ts";
-import { macosDistributionFromEnv } from "../lib/macossigning.ts";
 import { type BuildContext, type BuildProfile, prepare } from "../lib/prepare.ts";
 import { findAppDir, loadProject } from "../lib/project.ts";
 import type { DesktopArch } from "../lib/updates.ts";
-import { windowsSigningFromEnv } from "../lib/windowssigning.ts";
 import { PLATFORM_TARGETS, TARGETS, type TargetPlatform } from "../platforms/index.ts";
 import { physicalIosDevice } from "../platforms/ios.ts";
 
-export const BOOLEAN_FLAGS = ["skip-web-build", "open", "release", "debug", "headless", "aab", "installer"];
+export const BOOLEAN_FLAGS = [
+  "skip-web-build",
+  "open",
+  "release",
+  "debug",
+  "headless",
+  "aab",
+  "installer",
+  "sign",
+  "notarize",
+];
 
 /** Flags of every build: the app, the env mode (.env.<mode>), the profile, the web build. */
 export const BUILD_FLAGS = [
@@ -25,11 +34,13 @@ export const BUILD_FLAGS = [
   "device",
   "build",
   "arch",
+  "sign",
+  "notarize",
 ];
 /** Flags of launching a build (web server, simulators, emulators). */
 export const LAUNCH_FLAGS = ["port", "host", "open", "headless", "device", "avd"];
 
-export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--installer] [--device] [--build <n>] [--arch <arm64|x64>]`;
+export const BUILD_USAGE = `akan-native build <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--debug] [--skip-web-build] [--aab] [--installer] [--device] [--build <n>] [--arch <arm64|x64>] [--sign] [--notarize]`;
 export const RUN_USAGE = `akan-native run <${TARGETS.join("|")}> [--app <dir>] [--mode <mode>] [--release] [--skip-web-build] [--port <n>] [--open] [--headless] [--device <name>] [--avd <name>] [--start <path>]`;
 
 export interface BuildDefaults {
@@ -77,6 +88,15 @@ export async function buildFromArgs(
   const device = args.flags.device;
   const iphone = platform === "ios" && typeof device === "string" ? await physicalIosDevice(device) : null;
   const iosDevice = platform === "ios" && (device === true || iphone !== null);
+  const distribution = requestedDistribution(platform, profile, {
+    sign: args.flags.sign === true,
+    notarize: args.flags.notarize === true,
+  });
+  if (distribution.notice) log.warn(distribution.notice);
+  else if (distribution.unused.length && profile === "release" && (platform === "macos" || platform === "windows"))
+    log.warn(
+      `${distribution.unused.join(", ")} set, but the env never signs alone: pass --sign to sign this build with it`,
+    );
   const ctx = await prepare(project, platform, {
     mode: stringFlag(args, "mode") ?? defaults.mode,
     profile,
@@ -89,16 +109,14 @@ export async function buildFromArgs(
       ? {
           windows: {
             ...(args.flags.installer === true ? { installer: true } : {}),
-            // CLI-9: Authenticode from AKAN_NATIVE_WINDOWS_* (lib/windowssigning.ts); release builds only.
-            ...(profile === "release" ? { signing: windowsSigningFromEnv() } : {}),
+            ...distribution.windows,
           },
         }
       : {}),
-    // CLI-9: Developer ID signing and notarization from AKAN_NATIVE_MACOS_* (lib/macossigning.ts); release builds only.
     ...(platform === "macos"
       ? {
           macos: {
-            ...(profile === "release" ? macosDistributionFromEnv() : {}),
+            ...distribution.macos,
             ...(args.flags.installer === true ? { dmg: true } : {}),
           },
         }

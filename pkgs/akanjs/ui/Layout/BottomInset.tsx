@@ -1,9 +1,15 @@
 "use client";
-import { getEnv } from "akanjs/base";
-import { cn, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import {
+  cn,
+  DEFAULT_BOTTOM_INSET,
+  debugFrame,
+  type FrameSlotRegistration,
+  useInHiddenLayout,
+  usePathCtx,
+} from "akanjs/client";
+import { type ReactNode, useLayoutEffect, useState } from "react";
 
-import { Portal } from "../Portal";
+import { FrameSlotPortal } from "./FrameSlotPortal";
 
 export interface BottomInsetProps {
   className?: string;
@@ -29,18 +35,18 @@ export const BottomInset = ({
   frameCache,
 }: BottomInsetProps) => {
   const [measuredHeight, setMeasuredHeight] = useState<number>();
-  const contentRef = useRef<HTMLDivElement>(null);
+  //? State, not a ref: in a CSR frame the content mounts a render later, once its portal has found the slot.
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const pathCtx = usePathCtx();
+  const isHidden = useInHiddenLayout();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
-  const suffix = getEnv().renderMode === "csr" && path ? `-${pathCtx.pageKey ?? path}` : "";
   const frameRole = !role && keyboardSticky ? "keyboardAccessory" : (role ?? "bottomChrome");
-  const portalId = frameRole === "keyboardAccessory" ? `keyboardInsetContent${suffix}` : `bottomInsetContent${suffix}`;
   const resolvedEstimatedHeight = estimatedHeight ?? pathRoute?.pageState.bottomInset ?? DEFAULT_BOTTOM_INSET;
   const useDeclaredHeight = pathRoute?.explicitPageConfigKeys?.bottomInset === true;
   const readContentHeight = () => {
-    const element = contentRef.current;
+    const element = contentElement;
     if (!element) return undefined;
     const height = Math.ceil(element.getBoundingClientRect().height);
     return height > 0 ? height : undefined;
@@ -59,7 +65,7 @@ export const BottomInset = ({
     return () => debugFrame("bottomInset.unmount", { path, frameSource });
   }, [path, keyboardSticky, contentAnchor, frameRole, frameScope, frameSource]);
   useLayoutEffect(() => {
-    if (!path) return;
+    if (!path || isHidden) return;
     const height = useDeclaredHeight ? resolvedEstimatedHeight : (measuredHeight ?? readContentHeight());
     return registerFrameSlot({
       type: "bottomInset",
@@ -82,9 +88,10 @@ export const BottomInset = ({
     frameCache,
     path,
     useDeclaredHeight,
+    isHidden,
   ]);
   useLayoutEffect(() => {
-    const element = contentRef.current;
+    const element = contentElement;
     if (!element || typeof ResizeObserver === "undefined") return;
     const update = () => {
       const height = readContentHeight();
@@ -99,18 +106,17 @@ export const BottomInset = ({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
-
+  }, [contentElement]);
   return (
-    <Portal id={portalId}>
+    <FrameSlotPortal slot={frameRole === "keyboardAccessory" ? "keyboardInset" : "bottomInset"}>
       <div
-        ref={contentRef}
+        ref={setContentElement}
         data-akan-frame-slot="bottomInset"
         data-akan-frame-role={frameRole}
         className={cn("pointer-events-auto w-full", className)}
       >
         {children}
       </div>
-    </Portal>
+    </FrameSlotPortal>
   );
 };

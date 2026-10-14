@@ -37,7 +37,6 @@ export interface RequestStorage {
 
 declare global {
   var __AKAN_REQUEST_STORAGE__: RequestStorage | undefined;
-  var __AKAN_REQUEST_FALLBACK_STACK__: AkanRequestStore[] | undefined;
 }
 
 let _requestStorage: RequestStorage | null = null;
@@ -102,22 +101,11 @@ export function getRequestFrameState<FrameState = unknown>(): FrameState | undef
   return getRequestStore()?.frameState as FrameState | undefined;
 }
 
-export function pushRequestFallback(storeOrRequest: Request | AkanRequestStore): () => void {
-  globalThis.__AKAN_REQUEST_FALLBACK_STACK__ ??= [];
-  const stack = globalThis.__AKAN_REQUEST_FALLBACK_STACK__;
-  const store = normalizeRequestStore(storeOrRequest);
-  stack.push(store);
-  return () => {
-    const index = stack.lastIndexOf(store);
-    if (index >= 0) stack.splice(index, 1);
-  };
-}
-
 // Here, free of client deps, so the RSC worker reads request headers/cookies without `akanjs/client`'s macro chain.
+// Security: no fallback outside the ALS scope; with renders in flight any guess can be another visitor's request.
 export function getRequestStore(): AkanRequestStore | undefined {
   const store = requestStorage?.getStore() as Request | AkanRequestStore | undefined;
-  if (store) return normalizeRequestStore(store);
-  return globalThis.__AKAN_REQUEST_FALLBACK_STACK__?.at(-1);
+  return store ? normalizeRequestStore(store) : undefined;
 }
 
 export function getRequest(options: { trackDynamic?: boolean } = {}): Request | undefined {

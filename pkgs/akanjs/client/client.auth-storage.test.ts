@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
+import { bearerTokenOf } from "../common/bearerTokenOf";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
 import { parseCookieHeader } from "../fetch/requestStorage";
@@ -65,6 +66,7 @@ beforeAll(() => {
   }));
   mock.module("akanjs/common", () => ({
     Logger: { log: () => undefined, verbose: () => undefined, warn: () => undefined, error: () => undefined },
+    bearerTokenOf,
     decodeJwtPayload: (jwt: string) => JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")),
     legacyAuthTokenKey,
     authTokenKey: () => `${legacyAuthTokenKey}:${envState.appName}`,
@@ -393,6 +395,20 @@ describe("cookies, headers, and auth", () => {
     // No guard accepts a bare `jwt` header, so honouring it would claim a session the endpoint treats as anonymous.
     requestState.request = new Request("https://example.test", { headers: { jwt } });
     expect(getAccount() as unknown).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("getAccount reads the Authorization header with the server's one bearer grammar", async () => {
+    envState.side = "server";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u9" });
+    const { getAccount } = await import("./cookie");
+    const accountWith = (authorization: string) => {
+      requestState.request = new Request("https://example.test", { headers: { authorization } });
+      return getAccount<{ userId?: string }>().userId;
+    };
+
+    expect(accountWith(`bearer   ${jwt}`)).toBe("u9");
+    expect(accountWith(jwt)).toBeUndefined();
+    expect(accountWith(`Bearer ${jwt} extra`)).toBeUndefined();
   });
 
   test("getAccount rejects mismatched app or environment jwt", async () => {

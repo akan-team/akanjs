@@ -46,6 +46,25 @@ describe("DesktopServerStage", () => {
     });
     expect(env.PORT).toBeUndefined();
     expect(env.AKAN_LOG_TO_FILE).toBeUndefined();
+    expect(env.AKAN_MODULES).toBeUndefined();
+    expect(DesktopServerStage.env(appConfig(), "main", { modules: ["@edge", "edgeAgent"] }).AKAN_MODULES).toBe(
+      "@edge,edgeAgent",
+    );
+    const withEnv = DesktopServerStage.env(appConfig(), "main", { env: { CLOUD_ORIGIN: "https://cloud.example" } });
+    expect(withEnv).toMatchObject({ CLOUD_ORIGIN: "https://cloud.example", AKAN_PUBLIC_OPERATION_MODE: "edge" });
+  });
+
+  test("every key the stage sets over desktop.server.env is one the config refuses there, never silently replaced", () => {
+    const config = appConfig();
+    const run = { modules: ["@edge"] };
+    const owned = Object.keys(DesktopServerStage.env(config, "main", run)).filter(
+      (key) => DesktopServerStage.env(config, "main", { ...run, env: { [key]: "mine" } })[key] !== "mine",
+    );
+    expect(owned).toEqual(expect.arrayContaining(["AKAN_MCP", "AKAN_SHUTDOWN_TIMEOUT_MS", "AKAN_MODULES"]));
+    for (const key of owned)
+      expect(() => appConfig({ native: { desktop: { server: { env: { [key]: "mine" } } } } })).toThrow(
+        `sets ${key}, which the carried server's stage owns`,
+      );
   });
 
   test("installs what the image does, minus the RSC renderer and the other modes' drivers", () => {

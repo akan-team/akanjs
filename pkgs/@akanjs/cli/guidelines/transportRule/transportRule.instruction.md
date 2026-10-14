@@ -21,21 +21,43 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   `null` rather than a placeholder when genuinely unknown — a loopback-looking address for an unknown caller
   is the failure this replaced. The gateway also forwards the client port (`x-forwarded-port`, read with
   `context.getClientPort()`) along with host and protocol.
+- **A device or another server proves itself with a machine token.** `MachineToken.issue({ kind, id, version },
+  { expiresAt? })` in `akanjs/server` signs an EdDSA JWT (`typ: akan-machine+jwt`, `aud: <app>/<environment>`) with
+  `AKAN_MACHINE_PRIVATE_KEY`; it never expires unless asked. `akan machine-keygen <file>` writes that key to a file
+  and prints only the public one. A server with either key verifies the bearer of every call — HTTP, and the
+  websocket's auth frame — after every lib middleware, and sets `account.machine = { kind, id, version }` from a
+  verified token; it takes off a `machine` any other middleware or a session's claims put there, so a staff token
+  can never pass for one, and a session middleware already reads the EdDSA token as anonymous. `.with(Machine)` hands
+  the identity (401 without one; `{ nullable: true }` takes `null`), and a pubsub room's guards see it on subscribe
+  and on every credential change. Revocation is the app's: a guard compares `machine.version` with the record's
+  `tokenVersion`, which a removal or a reinstall bumps. An endpoint taking `.with(Machine)` on a server with no key
+  is an error at boot. The calling side is `fetch.clone({ origin, jwt: token, connect: true })`.
 - **Every socket carries a `socketId`, and only the framework mints one.** `AppWsData` assigns it at the handshake, and a `message` / `pubsub` handler reads it off the `Ws` internal arg — `.with(Ws)` hands `{ ws, socketId, subscribe, on, off }`. Never mint your own from `ws.data`: the room bookkeeping keys on the framework's id, and a second one fails to match it silently. It identifies a **connection**, not a caller — a reconnect gets a new id and the federation gateway's own socket is a different one — so per-user state keys on the account, never on this.
 
+- **A socket that dropped comes back on a backoff, and asks for what it missed.** The client waits 1 s doubling to
+  30 s, cut at random so a deploy's dropped clients return apart; `fetch.clone({ ws: { reconnect: { min, max, jitter,
+  maxAttempts } | false, headers, tls, onStateChange, onRevoked, onError } })` (or `fetch.instance.configureWs(…)`)
+  tunes it, and a server-side client sends `headers` and its token with the upgrade. A server numbers the JSON frames
+  each room delivers (`seq`); a client drops a repeat, and a hole — a frame dropped under backpressure — calls the
+  room's `onResync`. A resubscribe names its last frame (`since`): a server that saw every publish (a solo process)
+  replays what followed it ahead of the ack, and otherwise answers a gap, which calls `onResync` as before. Binary
+  rooms are not numbered.
 - **A cleanup registered with `ws.on("disconnect" | "unsubscribe", fn)` is scoped to the call that registered it.**
   From a `pubsub` subscribe it belongs to that room — `unsubscribe` runs when the client leaves it or a credential
   change revokes it, `disconnect` when the socket closes while still subscribed — so a room already left runs
   neither again, and cleanup that must happen either way registers for both. From a `message` handler it belongs to
   the socket and runs at close. A handler that throws is logged and never blocks the rest of the teardown.
+- **A subscribe the client leaves before it finishes joins nothing.** When an `unsubscribe` for the room, or the
+  socket's close, arrives while the subscribe is still running, the subscribe answers `subscribe: false` and runs its
+  `unsubscribe` cleanup (and its `disconnect` one when the socket closed) instead of joining the room.
 
 ## Request Deadlines
 
 - **`{ timeout: <ms> }` in an endpoint's signal option is the whole configuration surface**, and it reaches both
   ends of the call. Server side, the `Timeout` middleware races the handler against it and answers
   `base.error.gatewayTimeout` (504) once it is spent. Client side, `FetchSerializer` ships the value on the
-  serialized endpoint and `fetch.<endpoint>()` uses it as that request's `AbortSignal.timeout` budget, so the
-  browser does not abandon a call the server is still allowed to be working on.
+  serialized endpoint and `fetch.<endpoint>()` uses it as that call's deadline — every retry of the call and every
+  wait between them included — so the browser does not abandon a call the server is still allowed to be working on.
 - **The middleware is registered by default and has no default of its own.** An endpoint that declares no
   `timeout` is passed straight through — a default here would put a deadline on every endpoint in the app that
   nobody asked for, which is why the middleware used to be opt-in and, being opt-in, made the declared value
@@ -73,12 +95,32 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
 - **The entry is the handler's result, not the response.** The lookup wraps the handler only, so `resolveReturn`
   still runs per call on the cached value — field masking, `hidden`/`secret` stripping and relation resolution are
   never cached, and a relation still costs its own load. The cache saves the handler, not the serialization.
+- **A hit hands `resolveReturn` an instance of the declared return model**, rebuilt from an entry that keeps its
+  `Map`s, bytes and dates, so a `resolveField` reads the same methods and `Dayjs` values on a hit as on a miss. It is
+  the declared model, not the service's document: a method only the document has is not there on a hit, and a return
+  declared as a `Light` model shows `resolveField` its light fields only. The entry still holds `hidden` and `secret`
+  values for its TTL, as the handler returned them.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
 - The default middleware chain is `Logging → Timeout → <lib middlewares>`, and the call inside it runs an
   `account` rate limit → account guards → argument parse → resource guards → internal arguments → cache →
   handler: a hung cache backend is bounded by the same deadline as the handler it stands in for. **`Retry` was removed** — an automatic re-run of an endpoint
   whose failure it cannot classify replays whatever the first attempt already did.
+
+## Repeated Mutations
+
+- **A mutation sent again under the same `Idempotency-Key` header runs once.** The key is checked after the
+  resource guards and the internal arguments, and it is scoped to the endpoint, the caller and a digest of the
+  arguments, so one caller's key never hands another caller its answer. A repeat while the first run is still going
+  answers 409 `base.error.idempotencyInFlight`.
+- **A repeat answers the first response as it was sent** — resolved, masked and serialized — for 24 hours. What
+  is kept is that wire form, never the handler's result, so no `hidden` or `secret` field reaches the cache.
+- A handler that throws frees the key, so a repeat runs it again. A failure after the handler returned is kept and
+  replayed instead, for the same 24 hours and a transient one (a relation read during a database blip) included:
+  the handler's writes stand, so running it again would repeat them.
+- **Only an HTTP call is deduplicated.** A signed-out call, one whose handler returns a `Response` (whose headers,
+  such as a session's `Set-Cookie`, cannot be replayed), a websocket call, and a call through MCP all run every
+  time.
 
 ## Rate Limits
 
@@ -88,9 +130,9 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   checked after the middlewares and before the guards, keyed by `accountKey(account)`; a caller it names nothing
   for — an anonymous one — is counted by address. Leaving a pubsub room is never counted.
 - **The answer is 429 `base.error.tooManyRequests` with `data: { seconds }`** and a `Retry-After` header; a WS
-  call gets the same payload as its error frame, and the HTTP client restores a proxy's own non-JSON 429 under the
-  same key (seconds from its `Retry-After`, else 60). The first refusal per endpoint per process is warned once;
-  later ones log at `debug`, so a flood does not become a log flood.
+  call gets the same payload as its error frame, and the HTTP client restores a proxy's own 429 — a page, or JSON
+  naming no error key of ours — under the same key (seconds from its `Retry-After`, `0` included, else 60). The first
+  refusal per endpoint per process is warned once; later ones log at `debug`, so a flood does not become a log flood.
 - **Keys and addresses.** The address is `context.getClientIp()` — the trusted-proxy answer, never a raw header
   from an untrusted peer. Callers whose address is unknown share one `unknown` budget (fail closed), and the first
   such call is warned about, since it usually means the proxy in front records no `X-Real-IP`/`X-Forwarded-For`

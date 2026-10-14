@@ -29,6 +29,12 @@ import { buildWindowsInstaller } from "./windows-installer.ts";
 
 /** Characters left for the app id under C:\Users\<name>\AppData\Local\ before WebView2's own paths reach MAX_PATH. */
 const WEBVIEW2_ID_BUDGET = 40;
+/** An external view's profile, `\ev\<8 hex digits>` below the app's own (native/desktop external.rs). */
+const EXTERNAL_VIEW_DEPTH = "\\ev\\".length + 8;
+
+export function webview2IdBudget(pluginIds: readonly string[]): number {
+  return WEBVIEW2_ID_BUDGET - (pluginIds.includes("external-view") ? EXTERNAL_VIEW_DEPTH : 0);
+}
 
 /** The version resource wants four numbers: major.minor.patch.build. */
 export function windowsVersion(version: string, build: number): string {
@@ -41,6 +47,19 @@ export function windowsVersion(version: string, build: number): string {
   return [...parts, Math.max(0, Math.floor(build))].join(".");
 }
 
+export function windowsVersionInfo(
+  app: { name: string; version: string; build: number },
+  publisher?: string,
+): string[] {
+  return [
+    `--windows-title=${app.name}`,
+    `--windows-description=${app.name}`,
+    `--windows-version=${windowsVersion(app.version, app.build)}`,
+    //? Left out, the company name stays Bun's own ("Oven"), which Explorer and the firewall prompt show for the app.
+    `--windows-publisher=${publisher ?? app.name}`,
+  ];
+}
+
 const exePath = (ctx: BuildContext, dir: string) => join(dir, `${ctx.project.config.app.fileName}.exe`);
 
 export async function buildWindows(ctx: BuildContext): Promise<string> {
@@ -50,9 +69,10 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   const lib = await buildNativeLibrary("windows", !ctx.dev, targetArch(ctx));
   // WebView2 keeps its profile in %LOCALAPPDATA%\<app id>\WebView2, and Chromium's own paths below
   // it run to about 160 characters (service worker caches): a long id can pass MAX_PATH (260).
-  if (config.app.id.length > WEBVIEW2_ID_BUDGET) {
+  const budget = webview2IdBudget(ctx.project.plugins.map((p) => p.manifest.id));
+  if (config.app.id.length > budget) {
     log.warn(
-      `app.id is ${config.app.id.length} characters: WebView2's deepest paths under %LOCALAPPDATA%\\${config.app.id} may pass Windows' 260-character limit (keep it under ${WEBVIEW2_ID_BUDGET + 1})`,
+      `app.id is ${config.app.id.length} characters: WebView2's deepest paths under %LOCALAPPDATA%\\${config.app.id} may pass Windows' 260-character limit (keep it under ${budget + 1}${budget < WEBVIEW2_ID_BUDGET ? `; an external view keeps its profile ${EXTERNAL_VIEW_DEPTH} characters deeper` : ""})`,
     );
   }
 
@@ -64,9 +84,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
   const flags = [
     // A GUI program: no console window of its own. Log lines still reach the pipes `akan-native run` gives it.
     "--windows-hide-console",
-    `--windows-title=${config.app.name}`,
-    `--windows-description=${config.app.name}`,
-    `--windows-version=${windowsVersion(config.app.version, config.app.build)}`,
+    ...windowsVersionInfo(config.app, config.desktop.publisher),
   ];
   if (art) {
     const icon = join(outDir, "gen", "app.ico");
@@ -87,7 +105,7 @@ export async function buildWindows(ctx: BuildContext): Promise<string> {
     ctx.signedAs = "distribution";
   } else if (!ctx.dev)
     log.warn(
-      "not signed: SmartScreen warns on a downloaded copy (set AKAN_NATIVE_WINDOWS_CERTIFICATE, _THUMBPRINT or _SIGN_COMMAND)",
+      "not signed: SmartScreen warns on a downloaded copy (pass --sign with AKAN_NATIVE_WINDOWS_CERTIFICATE, _THUMBPRINT or _SIGN_COMMAND set)",
     );
   if (ctx.windows?.installer) ctx.artifacts.push({ kind: "installer", path: await buildWindowsInstaller(ctx, dir) });
   return dir;

@@ -37,7 +37,7 @@ const hash = new Bun.CryptoHasher("sha256")
   .slice(0, 16);
 const built = Bun.spawnSync(
   ["docker", "image", "inspect", "-f", '{{index .Config.Labels "akan-native.dockerfile"}}', IMAGE],
-  { stdout: "pipe", stderr: "ignore" },
+  { stdout: "pipe", stderr: "ignore", timeout: 60_000 },
 );
 if (built.exitCode !== 0 || built.stdout.toString().trim() !== hash) {
   console.error(`building ${IMAGE} (a few minutes, once per Dockerfile change)`);

@@ -67,7 +67,7 @@ class FakeHead {
 
   insertBefore(fragment: FakeFragment, anchor: FakeElement): void {
     const index = this.nodes.indexOf(anchor);
-    if (index < 0) return;
+    if (index < 0) throw new Error("NotFoundError: the anchor is not a child of this node");
     for (const child of fragment.children) child.parentNode = this;
     this.nodes.splice(index, 0, ...fragment.children);
   }
@@ -80,6 +80,7 @@ class FakeHead {
   remove(element: FakeElement): void {
     const index = this.nodes.indexOf(element);
     if (index >= 0) this.nodes.splice(index, 1);
+    element.parentNode = undefined;
   }
 }
 
@@ -168,5 +169,46 @@ describe("RSC head snapshot patch", () => {
       }),
     ).toBe(false);
     expect(head.nodes).toEqual([oldTitle]);
+  });
+
+  test("anchors on a route node still in the head when the first one has gone", () => {
+    const head = new FakeHead();
+    const oldTitle = new FakeElement("title");
+    oldTitle.setAttribute("data-akan-head", "route");
+    const oldMeta = new FakeElement("meta");
+    oldMeta.setAttribute("data-akan-head", "route");
+    head.append(oldTitle);
+    head.append(oldMeta);
+    installFakeDocument(head);
+    const prepared = prepareAkanHeadSnapshotPatch({ version: 1, nodes: [{ tag: "title", text: "API" }] });
+    if (!prepared) throw new Error("head patch was not prepared");
+    oldTitle.remove();
+
+    expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(true);
+    expect(head.nodes.map((node) => node.textContent)).toEqual(["API"]);
+  });
+
+  test("leaves a route node that has moved out of the head where it is now", () => {
+    const head = new FakeHead();
+    const elsewhere = new FakeHead();
+    const oldTitle = new FakeElement("title");
+    oldTitle.setAttribute("data-akan-head", "route");
+    const oldMeta = new FakeElement("meta");
+    oldMeta.setAttribute("data-akan-head", "route");
+    head.append(oldTitle);
+    head.append(oldMeta);
+    installFakeDocument(head);
+    const prepared = prepareAkanHeadSnapshotPatch({ version: 1, nodes: [{ tag: "title", text: "API" }] });
+    if (!prepared) throw new Error("head patch was not prepared");
+    oldMeta.remove();
+    elsewhere.append(oldMeta);
+
+    expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(true);
+    expect(head.nodes.map((node) => node.textContent)).toEqual(["API"]);
+    expect(elsewhere.nodes).toEqual([oldMeta]);
+
+    rollbackPreparedAkanHeadSnapshotPatch(prepared);
+    expect(head.nodes).toEqual([oldTitle]);
+    expect(elsewhere.nodes).toEqual([oldMeta]);
   });
 });

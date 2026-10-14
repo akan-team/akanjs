@@ -23,6 +23,7 @@ import {
 } from "./argMeta";
 import { camelToKebabCase } from "./camelToKebabCase";
 import { CommandContainer } from "./dependencyBuilder";
+import { ExitCodeError } from "./exitCodeError";
 import { formatCommandHelp, formatHelp } from "./helpFormatter";
 import { type CommandCls, getTargetCommandNames, getTargetMetas } from "./targetMeta";
 
@@ -102,6 +103,9 @@ const confirm = ((config, context) => prompts().then((m) => m.confirm(config, co
 const input = ((config, context) => prompts().then((m) => m.input(config, context))) as typeof inquirerInput;
 const checkbox = ((config, context) => prompts().then((m) => m.checkbox(config, context))) as typeof inquirerCheckbox;
 
+const argLabelOf = (argMeta: ArgMeta) =>
+  argMeta.type === "Option" ? `option '--${camelToKebabCase(argMeta.name)}'` : `argument '${argMeta.name}'`;
+
 // A DynamicEnum is not checked: it resolves against a context the internal args have not populated yet.
 // Compared as strings: the value is still commander's raw string while a numeric choice list holds numbers.
 const assertEnumChoice = (argMeta: ArgMeta, value: unknown) => {
@@ -109,10 +113,19 @@ const assertEnumChoice = (argMeta: ArgMeta, value: unknown) => {
   if (!enumChoices || typeof enumChoices === "function") return;
   const choices = normalizeEnumChoices(enumChoices);
   if (choices.some((choice) => String(choice.value) === String(value))) return;
-  const label =
-    argMeta.type === "Option" ? `option '--${camelToKebabCase(argMeta.name)}'` : `argument '${argMeta.name}'`;
   throw new Error(
-    `${label} argument '${String(value)}' is invalid. Allowed choices are ${choices.map((choice) => choice.name).join(", ")}.`,
+    `${argLabelOf(argMeta)} argument '${String(value)}' is invalid. Allowed choices are ${choices.map((choice) => choice.name).join(", ")}.`,
+  );
+};
+
+// On a piped stdin a prompt takes the pipe as its answer and echoes it: a piped secret printed as the secret's name.
+export const assertPromptable = (
+  problem: string,
+  { choices = [], remedy = "pass it on the command line" }: { choices?: readonly unknown[]; remedy?: string } = {},
+) => {
+  if (process.stdin.isTTY) return;
+  throw new Error(
+    `${problem}: stdin is not a terminal to prompt on, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`,
   );
 };
 
@@ -136,8 +149,11 @@ export const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unkno
       (typeof enumChoices === "function" ? await enumChoices(context) : enumChoices) ?? [],
     );
     if (choices.length === 1) return choices[0]?.value;
+    assertPromptable(`Missing ${argLabelOf(argMeta)}`, { choices: choices.map((choice) => choice.value) });
     return await select({ message: ask ?? desc ?? `Select the ${name} value`, choices });
-  } else if (type === "boolean") {
+  }
+  assertPromptable(`Missing ${argLabelOf(argMeta)}`);
+  if (type === "boolean") {
     const message = ask ?? desc ?? `Do you want to set ${name}? ${desc ? ` (${desc})` : ""}: `;
     return await confirm({ message });
   } else return convertArgValue(await input({ message: inputMessageOf(argMeta) }), type ?? "string");
@@ -150,6 +166,13 @@ export const getArgumentValue = async (argMeta: ArgMeta, value: string | undefin
     return convertArgValue(value, type ?? "string");
   } else if (defaultValue !== undefined) return defaultValue;
   else if (nullable) return null;
+  const { enum: enumChoices } = argMeta.argsOption;
+  assertPromptable(`Missing ${argLabelOf(argMeta)}`, {
+    choices:
+      enumChoices && typeof enumChoices !== "function"
+        ? normalizeEnumChoices(enumChoices).map(({ value }) => value)
+        : [],
+  });
   return convertArgValue(await input({ message: inputMessageOf(argMeta) }), type ?? "string");
 };
 
@@ -205,6 +228,7 @@ export const getAppsArgumentValue = async (
     return [...new Set(requested)].map((name) => AppExecutor.from(workspace, name));
   }
   if (appNames.length === 1 && appNames[0]) return [AppExecutor.from(workspace, appNames[0])];
+  assertPromptable("Missing apps", { choices: [...appNames, "all"] });
   const remembered = new Set(await AppSelectionMemory.read(workspace.workspaceRoot));
   const picked = await checkbox<string>({
     message: "Select the apps to run (space to toggle, enter to confirm)",
@@ -224,6 +248,7 @@ export const getInternalArgumentValue = async (
   if (argMeta.type === "Workspace") return workspace;
   const sysType = argMeta.type.toLowerCase();
   const [appNames, libNames, pkgNames] = await workspace.getExecs();
+  const problemOf = (kind: string) => (value ? `Unknown ${kind} '${value}'` : `Missing ${kind}`);
   if (sysType === "sys" || sysType === "exec") {
     const pkgChoices = sysType === "exec" ? pkgNames : [];
     const execOf = (name: string) => {
@@ -234,6 +259,11 @@ export const getInternalArgumentValue = async (
     };
     const found = value ? execOf(value) : null;
     if (found) return found;
+    if (!value && argMeta.option?.onlyApp && appNames.length === 1 && appNames[0])
+      return AppExecutor.from(workspace, appNames[0]);
+    assertPromptable(problemOf(sysType === "exec" ? "app, lib or pkg" : "app or lib"), {
+      choices: [...appNames, ...libNames, ...pkgChoices],
+    });
     const name = await select<string>({
       message: sysType === "exec" ? `Select the App or Lib or Pkg name` : `Select the App or Lib name`,
       choices: [...appNames, ...libNames, ...pkgChoices],
@@ -244,15 +274,18 @@ export const getInternalArgumentValue = async (
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
     if (!value && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
+    assertPromptable(problemOf("app"), { choices: appNames });
     const appName = await select<string>({ message: `Select the ${sysType} name`, choices: appNames });
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {
     if (value && libNames.includes(value)) return LibExecutor.from(workspace, value);
+    assertPromptable(problemOf("lib"), { choices: libNames });
     const libName = await select<string>({ message: `Select the ${sysType} name`, choices: libNames });
     return LibExecutor.from(workspace, libName);
   } else if (sysType === "pkg") {
     const pkgs = await workspace.getPkgs();
     if (value && pkgs.includes(value)) return PkgExecutor.from(workspace, value);
+    assertPromptable(problemOf("pkg"), { choices: pkgs });
     const pkgName = await select<string>({ message: `Select the ${sysType} name`, choices: pkgs });
     return PkgExecutor.from(workspace, pkgName);
   } else if (sysType === "module") {
@@ -270,6 +303,7 @@ export const getInternalArgumentValue = async (
         if (modules.includes(moduleName)) return ModuleExecutor.from(lib, moduleName);
       } else throw new Error(`Invalid system name: ${sysName}`);
     }
+    assertPromptable(problemOf("module"));
     const { type, name } = await select<{ type: "app" | "lib"; name: string }>({
       message: `select the App or Lib name`,
       choices: [
@@ -288,9 +322,10 @@ export const getInternalArgumentValue = async (
 };
 
 export const runCommands = async (...commands: CommandCls[]) => {
+  let failureExitCode = 1;
   process.on("unhandledRejection", (error) => {
     printCliError(error);
-    process.exit(1);
+    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
   });
   const __dirname = getDirname(import.meta.url);
   const packageJsonCandidates = [`${path.dirname(Bun.main)}/package.json`, `${__dirname}/../package.json`];
@@ -335,6 +370,10 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
         let programCommand = program.command(commandName, {
           hidden: targetMeta.targetOption.devOnly,
         });
+        const targetFailureExitCode = targetMeta.targetOption.failureExitCode;
+        //? commander exits 1 on a flag or argument it refuses, before any action runs.
+        if (targetFailureExitCode !== undefined)
+          programCommand.exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : targetFailureExitCode));
         const [allArgMetas] = getArgMetas(command, targetMeta.key);
         for (const argMeta of allArgMetas) {
           if (argMeta.type === "Option") programCommand = handleOption(programCommand, argMeta);
@@ -364,6 +403,7 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
         };
 
         programCommand.action(async (...args: unknown[]) => {
+          failureExitCode = targetFailureExitCode ?? 1;
           if (!targetMeta.targetOption.stdio) Logger.rawLog();
           const cmdArgs = args.slice(0, args.length - 2);
           const opt = args[args.length - 2] as Record<string, unknown>;
@@ -413,6 +453,6 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
   // Handled here, not by the handler above: a rejection reaching the entry's top-level await prints Bun's own trace.
   await program.parseAsync(process.argv).catch((error: unknown) => {
     printCliError(error);
-    process.exit(1);
+    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
   });
 };

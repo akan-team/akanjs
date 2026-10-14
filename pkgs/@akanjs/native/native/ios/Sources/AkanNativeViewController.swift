@@ -54,7 +54,7 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
         let app = AkanNativeAppServices.shared
         app.start() // done at launch; kept for a view controller made before it
         app.windows += 1
-        schemeHandler = AkanNativeSchemeHandler(root: app.bundleRoot ?? AkanNativeResources.url("app"), devServer: config.devServer) { [weak self] in self?.initScript() ?? Data() }
+        schemeHandler = AkanNativeSchemeHandler(root: app.bundleRoot() ?? AkanNativeResources.url("app"), devServer: config.devServer) { [weak self] in self?.initScript() ?? Data() }
 
         let configuration = WKWebViewConfiguration()
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "app")
@@ -185,6 +185,9 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
     // MARK: web bundle updates (UP-2)
 
     private var readyTimer: Timer?
+    private var rendererAnswered = false
+    private var rendererProbe: DispatchWorkItem?
+    private static let rendererProbeTimeout: TimeInterval = 2
 
     /// A bundle on trial must call notifyReady() within updates.readyTimeout of loading.
     private func startReadyTimer() {
@@ -194,15 +197,41 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
         readyTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, AkanNativeUpdates.onTrial else { return }
-                self.serveBundle(AkanNativeUpdates.rollback())
+                self.rollBackTrial()
             }
         }
         #endif
     }
 
+    #if AKAN_NATIVE_UPDATES
+    /// A web content process stuck in a script never runs the next load: one that does not answer is left behind with
+    /// its window, and a new window serves the bundle the rollback made active.
+    private func rollBackTrial() {
+        let (root, report) = AkanNativeUpdates.rollback()
+        rendererAnswered = false
+        webView.evaluateJavaScript("0") { [weak self] _, _ in self?.rendererAnswered = true }
+        let probe = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.rendererAnswered { return self.serveBundle(root) }
+                if let report { AkanNativeUpdateReports.amend(report, reason: .hang) }
+                if let scene = self.view.window?.windowScene?.delegate as? AkanNativeSceneDelegate {
+                    AkanNativeLog.info("updates: the page on trial does not answer; making the window again")
+                    scene.recreate()
+                } else {
+                    self.serveBundle(root)
+                }
+            }
+        }
+        rendererProbe = probe
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rendererProbeTimeout, execute: probe)
+    }
+    #endif
+
     /// Serves another web bundle (nil: the app's own) and loads it from the start.
     func serveBundle(_ root: URL?) {
         readyTimer?.invalidate()
+        rendererProbe?.cancel()
         schemeHandler.root = root ?? AkanNativeResources.url("app")
         webView.load(URLRequest(url: Self.origin))
     }
@@ -296,17 +325,19 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
     /// fail or turn into a download and leave the page in place.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         bridge.endDocument()
+        // Armed at commit, not at didFinish: a bundle stuck in a script never finishes loading.
+        startReadyTimer()
     }
 
     /// The window is going away (the scene disconnected, or $host.recreate): its page's document ends.
     func windowEnded() {
         readyTimer?.invalidate()
+        rendererProbe?.cancel()
         bridge.windowEnded()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if config.splashAutoHide { hideSplash(fadeOut: 0.2) }
-        startReadyTimer()
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PromiseOrObject } from "akanjs/base";
+import { bearerTokenOf, decodeJwtPayload } from "akanjs/common";
 import { SignalContext } from "../../signal/signalContext";
 import type { HttpRoutes } from "../types";
 
@@ -177,18 +178,17 @@ export class McpAuth {
     return typeof id === "string" ? `token:${id}` : `token:${createHash("sha256").update(token).digest("base64url")}`;
   }
 
-  // Case-insensitive (RFC 7235), split on spaces and unanchored like the account layer's own parse: a token that
-  // layer accepts but this one missed would skip the expiry, audience and scope checks.
+  // The account layer (`resolveJwt`) reads the header with the same parse: a token it accepts but this one missed
+  // would skip the expiry, audience and scope checks.
   static #bearer(req: Request): string | null {
-    return /^Bearer +([^ ]+)/i.exec(req.headers.get("authorization") ?? "")?.[1] ?? null;
+    return bearerTokenOf(req.headers.get("authorization"));
   }
 
   static #claims(token: string): Record<string, unknown> | null {
-    const segments = token.split(".");
     // Opaque tokens carry nothing to read; judging them on shape would lock out deployments without JWTs.
-    if (segments.length !== 3) return null;
+    if (token.split(".").length !== 3) return null;
     try {
-      const claims: unknown = JSON.parse(Buffer.from(segments[1], "base64url").toString("utf8"));
+      const claims = decodeJwtPayload(token);
       return claims && typeof claims === "object" ? (claims as Record<string, unknown>) : null;
     } catch {
       return null;

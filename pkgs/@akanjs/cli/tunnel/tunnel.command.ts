@@ -1,4 +1,3 @@
-import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { TunnelScript } from "./tunnel.script";
 
@@ -7,7 +6,10 @@ export class TunnelCommand extends command("tunnel", [TunnelScript], ({ public: 
     .arg("app", String, { desc: "app to share", nullable: true })
     .option("list", Boolean, { desc: "list the shares this account is holding", default: false })
     .option("stop", String, { desc: "stop the share with this code", default: "" })
-    .option("host", String, { desc: "host of the cloud", default: GlobalConfig.akanCloudHost })
+    .option("host", String, {
+      desc: "host of the cloud (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
+      nullable: true,
+    })
     .option("port", Number, { desc: "local port to share (default: the app's dev port)", nullable: true })
     .option("ttl", Number, { desc: "minutes before the share expires", nullable: true })
     .with(Workspace)

@@ -1,0 +1,120 @@
+{
+  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL]. envelopeKeys: the binary's updates.publicKeys for the envelopes, the public keys of RFC 8032 §7.1 TEST 1 and 2 (TEST 3 signs as a stranger), so the rows can be signed again. envelopes: [the manifest field, or [a base64 group, how many times it repeats, the base64 after them] for a large one, keyId, signature, keyIds state.json has revoked, the verdict, why] for an envelope's three fields; the verdict is open | untrusted | revoked | encoding | too-large | signature, checked in that order. limits: kernel.ts MAX_REVOKE_KEYS, MAX_UPDATE_MANIFEST, UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH. reports (what a phone posts to updates.report.url): events and reasons, the vocabulary in order; outcomes: [HTTP status, 0 for no answer, what it does to the batch: sent | dropped | kept]; retryAfter: [the header or null, now in seconds, when the batch may go again or null, why]; waits: [retryAt or null, now, whether a send waits]; keys: [event, bundle, reason or null, the key an event is kept once by]; times: [milliseconds since the epoch, the event's at].",
+  "keyIds": [
+    ["BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=", "4bb06f8e4e3a7715"],
+    ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "21fe31dfa154a261"],
+    ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "66687aadf862bd77"]
+  ],
+  "decisions": [
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "take:100:", "signed by the first key, nothing running but the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "d4d4d4d4d4d4d4d4", [], false, 200, 100, null, "untrusted", "a key the binary does not carry"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "revoked", "a key revoked earlier signs nothing"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["b2b2b2b2b2b2b2b2"], false, 200, 100, null, "self-revoke", "a key never revokes itself"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", ["b2b2b2b2b2b2b2b2"], false, 200, 100, null, "revoke-later", "a key revokes only keys listed before it"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], false, 300, 100, [500, "a1a1a1a1a1a1a1a1"], "take:100:a1a1a1a1a1a1a1a1", "the bundle a revoked key signed no longer sets the bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], true, 300, 100, [500, "b2b2b2b2b2b2b2b2"], "take:100:a1a1a1a1a1a1a1a1", "resetSequence with a new revocation compares with the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1"], true, 300, 100, [500, "b2b2b2b2b2b2b2b2"], "stale:500:", "replayed: nothing new revoked, so the reset does not apply"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1", "d4d4d4d4d4d4d4d4"], false, 200, 100, null, "take:100:a1a1a1a1a1a1a1a1", "an id this binary does not carry is ignored"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 100, 100, null, "stale:100:", "no newer than the app's own bundle"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 150, 100, [150, "a1a1a1a1a1a1a1a1"], "stale:150:", "the bundle already running"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "c3c3c3c3c3c3c3c3", ["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"], false, 120, 100, null, "take:100:a1a1a1a1a1a1a1a1,b2b2b2b2b2b2b2b2", "the last key revokes both before it"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "b2b2b2b2b2b2b2b2", ["a1a1a1a1a1a1a1a1", "a1a1a1a1a1a1a1a1"], false, 200, 100, null, "take:100:a1a1a1a1a1a1a1a1", "listed twice, revoked once"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], false, 160, 100, [150, "b2b2b2b2b2b2b2b2"], "take:150:", "another trusted key's bundle sets the bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], ["a1a1a1a1a1a1a1a1"], "c3c3c3c3c3c3c3c3", ["b2b2b2b2b2b2b2b2"], false, 200, 100, [900, "a1a1a1a1a1a1a1a1"], "take:100:b2b2b2b2b2b2b2b2", "a bundle of a key revoked before still runs this session but sets no bar"],
+    [["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2", "c3c3c3c3c3c3c3c3"], [], "a1a1a1a1a1a1a1a1", [], true, 300, 100, [500, "a1a1a1a1a1a1a1a1"], "stale:500:", "resetSequence without a revocation does nothing"],
+    [["a1a1a1a1a1a1a1a1"], [], "a1a1a1a1a1a1a1a1", [], false, 200, 100, null, "take:100:", "a ring of one"]
+  ],
+  "urls": [
+    ["https://updates.example.com/ota/inst1/pathA", "ios", "main", "0123456789abcdef", "https://updates.example.com/ota/inst1/pathA/ios/main/0123456789abcdef.json"],
+    ["http://10.0.2.2:8790", "android", "pilot", "fedcba9876543210", "http://10.0.2.2:8790/android/pilot/fedcba9876543210.json"]
+  ],
+  "envelopeKeys": ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw="],
+  "envelopes": [
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "open", "signed by the first key of the ring"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "39f713d0a644253f", "mb60H7iHaPNUibNEqW8zQhjgKsBLzG+KYRMdzl2ff+85P53mN2vaxPAIQNgn1/Jlzdbq/AXnefAZWzrkE/H3Cw==", ["21fe31dfa154a261"], "open", "signed by a spare while another key is revoked"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAi\nOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "encoding", "a line break in the manifest, which Android's and Node's decoders skip"],
+    [" eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "encoding", "a space before the manifest"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "encoding", "the manifest without its padding, which Java's decoder takes"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw", [], "encoding", "the signature without its padding"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==\n", [], "encoding", "a line break after the signature"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8_Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "encoding", "the URL-safe alphabet"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg===", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "encoding", "padding past a whole group"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "dac073e0123bdea5", "I7/d6jhC6KeFCv7j+YuixrcfOb8ntwwTHoE2QgydDikU7UtjZQCYeMorhsHIZVHq6ZE8lB/VicrkRa9gctotDQ==", [], "untrusted", "signed by a key the binary does not carry"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21FE31DFA154A261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "untrusted", "a keyId in capitals names no key"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", ["21fe31dfa154a261"], "revoked", "signed by a key this binary revoked"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJzZXF1ZW5jZSI6MTc2MDAwMDAwMX0K", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "signature", "another manifest's signature"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Cg==", "21fe31dfa154a261", "", [], "signature", "an empty signature is valid base64 and verifies nothing"],
+    ["eyJzY2hlbWEiOjIsImtpbmQiOiJ3ZWIiLCJhcHAiOiJjb20uZXhhbXBsZS5hcHAiLCJub3RlIjoiPz8/Iiwic2VxdWVuY2UiOjE3NjAwMDAwMDB9Ch==", "21fe31dfa154a261", "Bg+Wf8BJBRZYUR4PV4WAtWfLIbhWWG8okiE/IlIVE3MBajiv5m5ACbW22rZ+IIBidbFMhe4a6dOeCkQsp1NpDw==", [], "open", "bits under the padding that are not zero decode to the same bytes everywhere"],
+    [["ICAg", 349525, "IA=="], "21fe31dfa154a261", "IUchV4XAdHEn1ESSH0DbXfYOVQ78Gm93eQKV4hWfxn4kNXEh+9faU3vWv9dUsBk45qT7V3NsmIcNK1ZznqqhBA==", [], "open", "a manifest of exactly 1 MiB"],
+    [["ICAg", 349525, "ICA="], "21fe31dfa154a261", "e9fDKQYlS4lwXSSd65/MSvo5VUkY+7vniYsnzY7styt5OkZsN/c+CZFBNXSohjGM1YyLZcmcoNjoNhcrNwQOAg==", [], "too-large", "one byte over 1 MiB, signed all the same"]
+  ],
+  "limits": {
+    "revokeKeys": 16,
+    "manifestBytes": 1048576,
+    "reportEvents": 100,
+    "reportBatch": 20
+  },
+  "reports": {
+    "events": ["downloaded", "applied", "confirmed", "rolledBack", "failed"],
+    "reasons": ["timeout", "relaunch", "hang", "verify", "download", "disk", "signature", "manifest"],
+    "outcomes": [
+      [200, "sent"],
+      [201, "sent"],
+      [204, "sent"],
+      [299, "sent"],
+      [0, "kept"],
+      [100, "kept"],
+      [301, "kept"],
+      [304, "kept"],
+      [400, "dropped"],
+      [401, "kept"],
+      [403, "kept"],
+      [404, "kept"],
+      [408, "kept"],
+      [413, "dropped"],
+      [422, "dropped"],
+      [429, "kept"],
+      [500, "kept"],
+      [502, "kept"],
+      [503, "kept"]
+    ],
+    "retryAfter": [
+      ["120", 1000, 1120, "delay-seconds"],
+      ["0", 1000, 1000, "go at once"],
+      [" 30\t", 1000, 1030, "spaces and tabs around it"],
+      [null, 1000, null, "no header"],
+      ["", 1000, null, "an empty header"],
+      ["-5", 1000, null, "a sign is not delay-seconds"],
+      ["+5", 1000, null, "a sign is not delay-seconds"],
+      ["1.5", 1000, null, "a fraction is not delay-seconds"],
+      ["1e3", 1000, null, "an exponent is not delay-seconds"],
+      ["0x10", 1000, null, "hexadecimal is not delay-seconds"],
+      ["12a", 1000, null, "trailing letters"],
+      ["NaN", 1000, null, "not a number"],
+      ["Infinity", 1000, null, "not a number"],
+      ["Wed, 21 Oct 2026 07:28:00 GMT", 1000, null, "an HTTP date is not read"],
+      ["10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 1000, null, "past what a double holds"]
+    ],
+    "waits": [
+      [null, 1000, false],
+      [1500, 1000, true],
+      [1000, 1000, false],
+      [900, 1000, false],
+      [87399, 1000, true],
+      [87400, 1000, false]
+    ],
+    "keys": [
+      ["failed", "1760000000-abcdef12", "signature", "failed|1760000000-abcdef12|signature"],
+      ["applied", "1760000000-abcdef12", null, "applied|1760000000-abcdef12|"],
+      ["rolledBack", "b", "hang", "rolledBack|b|hang"]
+    ],
+    "times": [
+      [0, "1970-01-01T00:00:00.000Z"],
+      [1760428800000, "2025-10-14T08:00:00.000Z"],
+      [1760428800007, "2025-10-14T08:00:00.007Z"],
+      [1760428859999, "2025-10-14T08:00:59.999Z"],
+      [951782400123, "2000-02-29T00:00:00.123Z"],
+      [4102444799999, "2099-12-31T23:59:59.999Z"]
+    ]
+  }
+}

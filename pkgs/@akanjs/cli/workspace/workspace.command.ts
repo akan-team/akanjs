@@ -1,4 +1,3 @@
-import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
 import { defaultMaxDiagnostics } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
@@ -82,6 +81,16 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .exec(async function (fix, maxDiagnostics, workspace) {
       await this.workspaceScript.lintAll(workspace, { fix, maxDiagnostics });
     }),
+  machineKeygen: target({
+    desc: "Make an Ed25519 key for machine tokens: write the private key to a file, print the public key",
+  })
+    .arg("out", String, {
+      desc: "file the private key is written to (mode 600; on Windows, its folder's permissions); an existing one is refused",
+    })
+    .with(Workspace)
+    .exec(async function (out, workspace) {
+      await this.workspaceScript.machineKeygen(workspace, out);
+    }),
   syncAll: target({ desc: "Sync dependencies and configuration for all apps and libraries" })
     .with(Workspace)
     .exec(async function (workspace) {
@@ -89,7 +98,10 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     }),
   init: target({ desc: "Initialize the workspace", runsOnWorkspaceRoot: false })
     .arg("devProjectId", String, { desc: "the ID of the workspace" })
-    .option("host", String, { desc: "host of the cloud to target", default: GlobalConfig.akanCloudHost })
+    .option("host", String, {
+      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
+      nullable: true,
+    })
     .with(Workspace)
     .exec(async function (devProjectId, host, workspace) {
       await this.workspaceScript.init(devProjectId, workspace, { host });

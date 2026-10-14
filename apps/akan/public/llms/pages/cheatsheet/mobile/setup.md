@@ -326,7 +326,7 @@ Displays, windows, volume, global shortcuts, keep-awake and launch at login are 
 
 An app nobody attends
 
-A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone.
+A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone. With `"reload"` its pages also open nothing outside the window: no print or file dialog, no share sheet, no download on Windows, no link handed to the OS, and on macOS no text service such as Search With Google in the right-click menu. The app's own `opener` and `file-picker` plugin calls still work, so open what it needs through them.
 
 Updates
 
@@ -339,6 +339,8 @@ An installed app updates itself from releases you sign. `akan update-keygen` pri
 **Upload the manifest last.** `<channel>.json` and its `.sig` go up together after `app/` and `files/`, uncached behind a CDN: a manifest paired with another release's signature stops every app updating.
 
 **`updates.url` is public.** The updater sends no credentials, and a desktop release is the whole app, carried server included.
+
+**If a phone update key leaks, revoke it.** A key revokes only those listed before it in `updates.publicKeys`, so keep spares after the signing key. Point `AKAN_NATIVE_UPDATE_KEY` at a spare's file and publish iOS and Android on every channel with `--revoke <keyId>` (`akan update-keygen` prints a key's keyId). Then add the keyId to `updates.revokedKeys`, so every later release, signed with the spare, keeps revoking it, and keep it there after a new binary drops the key: older binaries still need it. A phone build already trusts none of the keys it lists. A desktop app trusts only the first key and takes no revocation: a desktop release signed with a revoked first key warns, and only a new binary with another first key ends that trust.
 
 Signing, notarization, the dmg, Windows setup and AppImage people download, and a CI recipe are on Desktop Release.
 

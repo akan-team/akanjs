@@ -7,8 +7,10 @@ import {
   facetIndexShadowOf,
   isAllowedLibFacetRootFile,
   isScannedRootEntry,
+  libFacetRootHintOf,
   libRootAllowedDirs,
   libRootAllowedFiles,
+  moduleTestTargetOf,
   rootEntryHintOf,
 } from "./workspaceLayout";
 
@@ -104,16 +106,37 @@ describe("hand-written facet index", () => {
 });
 
 describe("lib facet root allowlist", () => {
-  test("admits the generated support facets and a root signal test", () => {
+  test("admits the generated support facets", () => {
     expect(isAllowedLibFacetRootFile("cnst.ts")).toBe(true);
     expect(isAllowedLibFacetRootFile("option.ts")).toBe(true);
-    expect(isAllowedLibFacetRootFile("user.signal.test.ts")).toBe(true);
-    expect(isAllowedLibFacetRootFile("user.signal.spec.ts")).toBe(true);
   });
 
   test("rejects a hand-written file beside the barrels", () => {
     expect(isAllowedLibFacetRootFile("helper.ts")).toBe(false);
     expect(isAllowedLibFacetRootFile("user.test.ts")).toBe(false);
+  });
+
+  test("rejects a test at the lib root and points it at its module folder or srvkit", () => {
+    for (const filename of ["cloud.signal.test.ts", "user.signal.spec.ts", "release.test.tsx"]) {
+      expect(isAllowedLibFacetRootFile(filename)).toBe(false);
+      expect(libFacetRootHintOf(filename)).toContain("lib/<model>/<model>.signal.test.ts");
+      expect(libFacetRootHintOf(filename)).toContain("srvkit/");
+    }
+    expect(libFacetRootHintOf("helper.ts")).toBeNull();
+  });
+});
+
+describe("module test target", () => {
+  test("names the module file a test covers", () => {
+    expect(moduleTestTargetOf("chatMessage.signal.test.ts")).toBe("chatMessage.signal.ts");
+    expect(moduleTestTargetOf("chatMessage.signal.spec.ts")).toBe("chatMessage.signal.ts");
+    expect(moduleTestTargetOf("ChatMessage.Zone.test.tsx")).toBe("ChatMessage.Zone.tsx");
+    expect(moduleTestTargetOf("chatMessage.trim.signal.test.ts")).toBe("chatMessage.trim.signal.ts");
+  });
+
+  test("leaves a file that is not a test alone", () => {
+    expect(moduleTestTargetOf("chatMessage.signal.ts")).toBeNull();
+    expect(moduleTestTargetOf("chatMessage.testing.ts")).toBeNull();
   });
 });
 

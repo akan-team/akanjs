@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState, validatePageConfig } from "./frameConfig";
+import { readFileSync } from "node:fs";
+import {
+  breakpointQuery,
+  getExplicitPageConfigKeys,
+  insetAt,
+  insetBreakpoints,
+  insetsByBreakpoint,
+  mergePageConfigs,
+  resolvePageState,
+  validatePageConfig,
+} from "./frameConfig";
 
 describe("frameConfig", () => {
   test("applies platform profiles and route roles as auto defaults", () => {
@@ -130,7 +140,7 @@ describe("frameConfig", () => {
       'unsupported pageConfig.transition "slide"',
     );
     expect(() => validatePageConfig("bad.tsx", { topInset: -1 })).toThrow(
-      "pageConfig.topInset in bad.tsx must be a boolean or non-negative px number.",
+      "pageConfig.topInset in bad.tsx must be a boolean, a non-negative px number",
     );
   });
 
@@ -170,5 +180,72 @@ describe("frameConfig", () => {
       "pageConfig.devOnly in bad.tsx must be a boolean.",
     );
     expect(mergePageConfigs([{ devOnly: true }, { cache: true }])).toEqual({ cache: true });
+  });
+});
+
+describe("responsive insets and the web safe area", () => {
+  const web = { path: "/office/inbox", platform: "web", deviceSafeArea: { top: 0, bottom: 0 } } as const;
+
+  test("a per-breakpoint inset resolves at the width it is given and keeps its spec for CSS", () => {
+    const configChain = [{ topInset: { base: 48, md: 0 }, bottomInset: 64 }];
+
+    expect(resolvePageState({ ...web, configChain })).toMatchObject({
+      topInset: 48,
+      bottomInset: 64,
+      responsiveInset: { top: { base: 48, md: 0 }, bottom: { base: 64 } },
+    });
+    expect(resolvePageState({ ...web, configChain, width: 1024 }).topInset).toBe(0);
+    expect(insetsByBreakpoint({ base: 48, md: 0, xl: 12 })).toEqual({
+      base: 48,
+      sm: 48,
+      md: 0,
+      lg: 0,
+      xl: 12,
+      "2xl": 12,
+    });
+    expect(insetAt({ base: 48, md: 0 }, 767)).toBe(48);
+    expect(insetAt({ base: 48, md: 0 }, 768)).toBe(0);
+  });
+
+  test("a responsive inset is validated like a plain one", () => {
+    expect(() => validatePageConfig("./a.tsx", { topInset: { base: 48, md: 0 } })).not.toThrow();
+    expect(() => validatePageConfig("./a.tsx", { topInset: { md: 0 } as never })).toThrow();
+    expect(() => validatePageConfig("./a.tsx", { topInset: { base: 48, tablet: 0 } as never })).toThrow();
+    expect(() => validatePageConfig("./a.tsx", { topInset: { base: -1 } })).toThrow();
+  });
+
+  test("on the web a declared safe area is left to env(), and a page that declares none has none", () => {
+    expect(resolvePageState({ ...web, configChain: [{ safeArea: true }] }).safeAreaEnv).toEqual({
+      top: true,
+      bottom: true,
+    });
+    expect(resolvePageState({ ...web, configChain: [{ safeArea: "bottom" }] }).safeAreaEnv).toEqual({
+      top: false,
+      bottom: true,
+    });
+    expect(resolvePageState({ ...web, configChain: [] }).safeAreaEnv).toBeUndefined();
+    expect(
+      resolvePageState({ ...web, platform: "ios", configChain: [{ safeArea: true }] }).safeAreaEnv,
+    ).toBeUndefined();
+  });
+});
+
+describe("breakpoints", () => {
+  test("queries the width a Tailwind variant matches from, or the widths below it", () => {
+    expect(breakpointQuery("md")).toBe("(width >= 48rem)");
+    expect(breakpointQuery("sm", { below: true })).toBe("(width < 40rem)");
+  });
+
+  test("ui/styles.css switches a responsive frame's insets at exactly these widths, in this order", () => {
+    const css = readFileSync(new URL("../ui/styles.css", import.meta.url), "utf8");
+    const switches = [
+      ...css.matchAll(
+        /@media \(width >= (\d+)rem\) \{\s*\[data-akan-frame-responsive\] \{\s*--akan-top-inset: var\(--akan-top-inset-([\w-]+)\);/g,
+      ),
+    ];
+
+    expect(switches.map(([, rem, name]) => [name, Number(rem)])).toEqual(
+      insetBreakpoints.map(([name, rem]) => [name, rem]),
+    );
   });
 });

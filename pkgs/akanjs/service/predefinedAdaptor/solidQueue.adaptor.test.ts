@@ -47,10 +47,15 @@ const rowsOf = (filePath: string) => {
   }
 };
 
-const runOne = async (queue: SolidQueue, name: string, handler: (job: AkanJob) => Promise<unknown>) => {
+const runOne = async (
+  queue: SolidQueue,
+  name: string,
+  handler: (job: AkanJob) => Promise<unknown>,
+  options: Parameters<SolidQueue["runJob"]>[2] = {},
+) => {
   const job = queue.claimJob(name);
   if (!job) throw new Error(`no job to claim for ${name}`);
-  await queue.runJob(job, handler);
+  await queue.runJob(job, handler, options);
 };
 
 const succeed = async () => "ok";
@@ -84,11 +89,13 @@ describe("SolidQueue job retention", () => {
   test("keeps only the newest N completed jobs when removeOnComplete is a number", async () => {
     const filePath = newFilePath();
     const queue = await openQueue(filePath);
+    let at = 1_000_000;
+    queue.now = () => at;
     const ids: string[] = [];
     for (const arg of ["a", "b", "c"]) {
       ids.push((await queue.registerProcessQueue("mail", [arg], { removeOnComplete: 2 })).id);
       await runOne(queue, "mail", succeed);
-      await Bun.sleep(2);
+      at += 1;
     }
     expect(rowsOf(filePath).map(({ id }) => id)).toEqual(ids.slice(1));
   });
@@ -117,6 +124,34 @@ describe("SolidQueue job retention", () => {
     expect(rowsOf(filePath)).toEqual([{ id, status: "pending" }]);
     await runOne(queue, "mail", succeed);
     expect(rowsOf(filePath)).toEqual([]);
+  });
+
+  test("hands a job to onFailed once, after its last attempt, and not when a retry is left", async () => {
+    const queue = await openQueue(newFilePath());
+    const dead: string[] = [];
+    const onFailed = (job: AkanJob, error: unknown) => {
+      dead.push(`${job.name}:${error instanceof Error ? error.message : error}`);
+    };
+    await queue.registerProcessQueue("mail", ["a"], { attempts: 2 });
+    await runOne(queue, "mail", fail, { onFailed });
+    expect(dead).toEqual([]);
+    await runOne(queue, "mail", fail, { onFailed });
+    expect(dead).toEqual(["mail:job failed on purpose"]);
+  });
+
+  test("waits no longer than backoff.maxDelay before the next attempt", async () => {
+    const queue = await openQueue(newFilePath());
+    let at = 1_000_000;
+    queue.now = () => at;
+    await queue.registerProcessQueue("mail", ["a"], {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 60_000, maxDelay: 2_000 },
+    });
+    await runOne(queue, "mail", fail);
+    at += 1_999;
+    expect(queue.claimJob("mail")).toBeNull();
+    at += 1;
+    expect(queue.claimJob("mail")).toMatchObject({ attemptsMade: 2 });
   });
 
   test("boot cleanup drops completed rows from earlier versions and expired failures", async () => {

@@ -63,30 +63,71 @@ describe("RouteTreeBuilder implicit locale", () => {
     expect(matched?.pathRoute.renderRootLayouts).toHaveLength(1);
   });
 
-  test("uses the nearest route head without merging parents", async () => {
+  test("merges a basePath root's head over the app root's, keeping what the deeper one does not write", async () => {
     const prevBasePaths = process.env.AKAN_PUBLIC_BASE_PATHS;
     process.env.AKAN_PUBLIC_BASE_PATHS = "foo";
     try {
       const routes = new RouteTreeBuilder({
         "./__root_layout.tsx": async () => ({
           default: ({ children }: { children: ReactNode }) => children,
-          head: "root",
+          head: (
+            <>
+              <title>Root</title>
+              <link rel="manifest" href="/root.webmanifest" />
+            </>
+          ),
         }),
         "./foo/__root_layout.tsx": async () => ({
           default: ({ children }: { children: ReactNode }) => children,
-          head: "foo-root",
+          head: <title>Foo</title>,
         }),
         "./foo/bar.tsx": async () => ({ default: () => null }),
-        "./foo/baz.tsx": async () => ({ default: () => null, head: "baz-page" }),
+        "./foo/baz.tsx": async () => ({ default: () => null, head: <meta name="description" content="Baz" /> }),
       }).build();
-
       const bar = RouteTreeBuilder.match("/ko/foo/bar", routes);
       const baz = RouteTreeBuilder.match("/ko/foo/baz", routes);
-      expect(bar && (await RouteElementComposer.resolveHead(pageInput(bar)))).toBe("foo-root");
-      expect(baz && (await RouteElementComposer.resolveHead(pageInput(baz)))).toBe("baz-page");
+      if (!bar || !baz) throw new Error("route did not match");
+
+      const barHtml = await renderToText(await RouteElementComposer.resolveHead(pageInput(bar)));
+      const bazHtml = await renderToText(await RouteElementComposer.resolveHead(pageInput(baz)));
+
+      expect(barHtml).toContain("Foo</title>");
+      expect(barHtml).not.toContain("Root</title>");
+      expect(barHtml).toContain("/root.webmanifest");
+      expect(bazHtml).toContain("Foo</title>");
+      expect(bazHtml).toContain("/root.webmanifest");
+      expect(bazHtml).toContain('content="Baz"');
     } finally {
       process.env.AKAN_PUBLIC_BASE_PATHS = prevBasePaths;
     }
+  });
+
+  test("renders without a head that throws, so the layout's own gate still answers; a redirect from a head routes", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        head: <title>Root</title>,
+      }),
+      "./org/_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        generateHead: async () => {
+          throw new Error("Access denied by guard: User");
+        },
+      }),
+      "./org/home.tsx": async () => ({ default: () => null }),
+      "./moved.tsx": async () => ({
+        default: () => null,
+        generateHead: () => {
+          throw Object.assign(new Error("Redirect to /en/new"), { digest: "AKAN_REDIRECT" });
+        },
+      }),
+    }).build();
+    const org = RouteTreeBuilder.match("/en/org/home", routes);
+    const moved = RouteTreeBuilder.match("/en/moved", routes);
+    if (!org || !moved) throw new Error("route did not match");
+
+    expect(await renderToText(await RouteElementComposer.resolveHead(pageInput(org)))).toContain("Root</title>");
+    await expect(RouteElementComposer.resolveHead(pageInput(moved))).rejects.toThrow("Redirect to /en/new");
   });
 
   test("allows wsConnect export on internal root layouts", async () => {
@@ -150,7 +191,7 @@ describe("RouteTreeBuilder implicit locale", () => {
     await expect(renderToText(head)).resolves.toBe("");
   });
 
-  test("uses the nearest head without merging parent heads", async () => {
+  test("merges heads root first, a deeper level taking over each tag it writes", async () => {
     const routes = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({
         default: ({ children }: { children: ReactNode }) => children,
@@ -186,13 +227,58 @@ describe("RouteTreeBuilder implicit locale", () => {
     const referenceHtml = await renderToText(await RouteElementComposer.resolveHead(pageInput(reference)));
 
     expect(guideHtml).toContain("Guide</title>");
-    expect(guideHtml).not.toContain("Docs layout description");
-    expect(guideHtml).not.toContain("/root.ico");
+    expect(guideHtml).not.toContain("Docs Layout</title>");
+    expect(guideHtml).toContain("Docs layout description");
+    expect(guideHtml).toContain("/root.ico");
+    expect(guideHtml.match(/<title>/g)).toHaveLength(1);
     expect(referenceHtml).toContain("Docs Layout</title>");
+    expect(referenceHtml).not.toContain("Root</title>");
     expect(referenceHtml).toContain("Docs layout description");
-    expect(referenceHtml).not.toContain("/root.ico");
+    expect(referenceHtml).toContain("/root.ico");
   });
-  test("supports route groups, repeated search params, and cached lazy modules", async () => {
+
+  test("keeps a layout's canonical and og:url off every page below it, which names its own URL or none", async () => {
+    const routes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({
+        default: ({ children }: { children: ReactNode }) => children,
+        head: (
+          <>
+            <title>Root</title>
+            <link rel="canonical" href="https://example.com" />
+            <meta property="og:url" content="https://example.com" />
+            <meta property="og:title" content="Root" />
+          </>
+        ),
+      }),
+      "./docs/guide.tsx": async () => ({ default: () => null, head: <title>Guide</title> }),
+      "./docs/api.tsx": async () => ({
+        default: () => null,
+        head: <link rel="canonical" href="https://example.com/docs/api" />,
+      }),
+      "./about.tsx": async () => ({ default: () => null }),
+    }).build();
+    const headHtml = async (pathname: string) => {
+      const matched = RouteTreeBuilder.match(pathname, routes);
+      if (!matched) throw new Error(`route did not match: ${pathname}`);
+      return await renderToText(await RouteElementComposer.resolveHead(pageInput(matched)));
+    };
+
+    const guideHtml = await headHtml("/en/docs/guide");
+    const apiHtml = await headHtml("/en/docs/api");
+    const aboutHtml = await headHtml("/en/about");
+
+    expect(guideHtml).toContain("Guide</title>");
+    expect(guideHtml).toContain('content="Root"');
+    expect(guideHtml).not.toContain("canonical");
+    expect(guideHtml).not.toContain("og:url");
+    expect(apiHtml).toContain('href="https://example.com/docs/api"');
+    expect(apiHtml.match(/canonical/g)).toHaveLength(1);
+    expect(apiHtml).not.toContain("og:url");
+    expect(aboutHtml).toContain("Root</title>");
+    expect(aboutHtml).not.toContain("canonical");
+    expect(aboutHtml).not.toContain("og:url");
+  });
+  test("supports route groups and cached lazy modules", async () => {
     let loadCount = 0;
     const routes = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
@@ -204,19 +290,15 @@ describe("RouteTreeBuilder implicit locale", () => {
     const matched = RouteTreeBuilder.match("/ko/about", routes);
 
     expect(matched?.pathRoute.path).toBe("/:lang/about");
-    expect(RouteTreeBuilder.parseSearchParams("?tag=a&tag=b&sort=latest")).toEqual({
-      tag: ["a", "b"],
-      sort: "latest",
-    });
-
     expect(matched && (await RouteElementComposer.resolveHead(pageInput(matched)))).toBe("about");
     expect(matched && (await RouteElementComposer.resolveHead(pageInput(matched)))).toBe("about");
     expect(loadCount).toBe(1);
+    // The root layout loads too: its head is a level of the merge even when it writes none.
     expect(RouteTreeBuilder.getCacheStats()).toMatchObject({
       moduleCount: 2,
-      loadedModuleCount: 1,
-      cacheHits: 1,
-      cacheMisses: 1,
+      loadedModuleCount: 2,
+      cacheHits: 2,
+      cacheMisses: 2,
     });
   });
 

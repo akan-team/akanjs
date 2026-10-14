@@ -1,6 +1,7 @@
 import type { AkanWebConfig } from "akanjs";
 import type { PromiseOrObject } from "akanjs/base";
 import type { AkanI18nConfig } from "akanjs/common";
+import type { WebsocketRoomCursor } from "akanjs/signal";
 import type { ClientManifest } from "./artifact";
 import type { SsrManifest } from "./ssrTypes";
 
@@ -8,6 +9,7 @@ export type WebsocketRoute = (
   ws: Bun.ServerWebSocket<unknown>,
   data: unknown[],
   event?: "message" | "subscribe" | "unsubscribe",
+  request?: { since?: WebsocketRoomCursor },
 ) => PromiseOrObject<unknown>;
 
 export type WebsocketRoutes = Record<string, WebsocketRoute>;

@@ -1,6 +1,6 @@
-import { INJECT_META } from "akanjs/base";
+import { FIELD_META, INJECT_META } from "akanjs/base";
 import { lowerlize, toError } from "akanjs/common";
-import { ConstantRegistry } from "akanjs/constant";
+import { ConstantRegistry, type FieldObject } from "akanjs/constant";
 import type { InjectInfo } from "akanjs/service";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
 
@@ -65,6 +65,28 @@ export const getModuleDependencyRefNames = (mod: DatabaseModule | ServiceModule)
       else if (injectInfo.type === "signal") dependencies.add(normalizeInjectedSignalRefName(propKey));
     }
   }
+  return dependencies;
+};
+
+// A relation resolves through its target's service on every read, so a selection that left the target out fails there.
+export const getModuleRelationRefNames = (mod: DatabaseModule | ServiceModule) => {
+  const dependencies = new Set<string>();
+  if (!("constant" in mod)) return dependencies;
+  const visited = new Set<unknown>();
+  const visit = (modelRef: unknown) => {
+    if (visited.has(modelRef)) return;
+    visited.add(modelRef);
+    const fields = (modelRef as { [FIELD_META]?: FieldObject })[FIELD_META] ?? {};
+    for (const field of Object.values(fields)) {
+      if (!field.isClass) continue;
+      if (field.isScalar) visit(field.modelRef);
+      else {
+        const refName = ConstantRegistry.getRefName(field.modelRef, { allowEmpty: true });
+        if (refName) dependencies.add(refName);
+      }
+    }
+  };
+  visit(mod.constant.full);
   return dependencies;
 };
 

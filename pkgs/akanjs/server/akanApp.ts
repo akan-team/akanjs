@@ -8,6 +8,7 @@ import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
+import { type AssetHeaderOptions, assetHeaders } from "./assetHeaders";
 import { compressResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
@@ -636,7 +637,7 @@ export class AkanApp {
   static readonly #immutableArtifacts = [
     { prefix: "/_akan/client/", root: "client", strip: "/_akan/client/".length, type: "application/javascript" },
     { prefix: "/_akan/styles/", root: "", strip: "/_akan/".length, type: "text/css; charset=utf-8" },
-    { prefix: "/_akan/fonts/", root: "", strip: "/_akan/".length, type: "font/woff2" },
+    { prefix: "/_akan/fonts/", root: "", strip: "/_akan/".length, type: "font/woff2", anyOrigin: true },
   ] as const;
 
   async #serveImmutableArtifact(req: Request, url: URL): Promise<Response | null> {
@@ -650,6 +651,7 @@ export class AkanApp {
     return this.#fileResponse(req, filePath, {
       contentType: file.type || artifact.type,
       cacheControl: "public, max-age=31536000, immutable",
+      anyOrigin: "anyOrigin" in artifact,
     });
   }
 
@@ -988,16 +990,8 @@ export class AkanApp {
     }
   }
 
-  async #fileResponse(
-    req: Request,
-    filePath: string,
-    options: { contentType: string; cacheControl?: string },
-  ): Promise<Response> {
-    const headers = new Headers({ "Content-Type": options.contentType });
-    if (options.cacheControl) headers.set("Cache-Control", options.cacheControl);
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    return await encodedFileResponse(req, filePath, options.contentType, headers);
+  async #fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
+    return await encodedFileResponse(req, filePath, options.contentType, assetHeaders(options));
   }
 
   #pickFederationChild() {

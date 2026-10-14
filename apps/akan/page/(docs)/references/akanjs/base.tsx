@@ -44,6 +44,14 @@ export default page().render(() => {
       }),
     },
     {
+      name: "ImageResult",
+      href: "#ImageResult",
+      desc: l.trans({
+        en: "A picture a signal returns: JSON over HTTP, an image block over MCP.",
+        ko: "signal이 반환하는 그림입니다. HTTP에서는 JSON으로, MCP에서는 image block으로 갑니다.",
+      }),
+    },
+    {
       name: "Upload",
       href: "#Upload",
       desc: l.trans({
@@ -120,6 +128,11 @@ export default page().render(() => {
           name: "Binary",
           desc: l.trans({ en: "Keep stored bytes in a `File` model.", ko: "저장할 바이트는 `File` model에 둡니다." }),
           marks: { arg: true, ret: true },
+        },
+        {
+          name: "ImageResult",
+          desc: l.trans({ en: "A picture for an agent to see.", ko: "에이전트에게 보여 줄 그림입니다." }),
+          marks: { ret: true },
         },
         {
           name: "Upload",
@@ -921,6 +934,28 @@ export class StreamEndpoint extends endpoint(srv.stream, ({ pubsub }) => ({
                 ),
               })}
             </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>Binary.toBase64(bytes)</code> and <code>Binary.fromBase64(text)</code> are its wire codec.
+                    </strong>{" "}
+                    They use <code>Buffer</code> where the runtime has one and <code>btoa</code> / <code>atob</code> in
+                    a browser, so code on either side that needs base64 calls them instead of keeping its own copy.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>Binary.toBase64(bytes)</code>와 <code>Binary.fromBase64(text)</code>가 그 wire 코덱입니다.
+                    </strong>{" "}
+                    런타임에 <code>Buffer</code>가 있으면 그것을, 브라우저에서는 <code>btoa</code> / <code>atob</code>를
+                    쓰므로, 어느 쪽에서든 base64가 필요하면 따로 구현하지 말고 이것을 부릅니다.
+                  </span>
+                ),
+              })}
+            </li>
           </ul>
           <Docs.Alert type="warning">
             {l.trans({
@@ -938,6 +973,108 @@ export class StreamEndpoint extends endpoint(srv.stream, ({ pubsub }) => ({
               ),
             })}
           </Docs.Alert>
+        </Docs.Description>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="ImageResult" title="ImageResult">
+        <Docs.Title>ImageResult</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: "`ImageResult` is a picture an endpoint returns as `{ data, mimeType, caption? }`. `data` is padded base64 without a `data:` prefix, and `mimeType` is `image/png`, `image/jpeg`, `image/webp` or `image/gif`, the types Anthropic and OpenAI models take.",
+              ko: "`ImageResult`는 endpoint가 `{ data, mimeType, caption? }`으로 반환하는 그림입니다. `data`는 `data:` 접두사가 없는 padding된 base64이고, `mimeType`은 Anthropic과 OpenAI 모델이 받는 `image/png`, `image/jpeg`, `image/webp`, `image/gif` 중 하나입니다.",
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="apps/myapp/lib/_screen/screen.signal.ts"
+          language="typescript"
+          code={`import { Every } from "@libs/shared/srvkit";
+import { ImageResult } from "akanjs/base";
+import { endpoint } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class ScreenEndpoint extends endpoint(srv.screen, ({ query }) => ({
+  screenShot: query(ImageResult, { guards: [Every] }).exec(async function () {
+    const png = await this.screenService.capture();
+    return { data: png.toString("base64"), mimeType: "image/png", caption: "The current screen" };
+  }),
+})) {}`}
+        />
+        <Docs.Description>
+          <ul className={bulletList}>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A model sees the picture.</strong> <code>tools/call</code> answers the caption as a text
+                    block and the picture as an image block, one pair per picture for <code>[ImageResult]</code>, with
+                    no <code>outputSchema</code>, <code>structuredContent</code> or JSON text block to repeat the
+                    base64.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>모델은 그림을 봅니다.</strong> <code>tools/call</code>은 caption을 text block으로, 그림을
+                    image block으로 답하고, <code>[ImageResult]</code>면 그림마다 한 쌍씩 보냅니다. base64를 반복하는{" "}
+                    <code>outputSchema</code>, <code>structuredContent</code>, JSON text block은 없습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Everyone else reads JSON.</strong> Over HTTP, and in an MCP App view, the endpoint answers
+                    the JSON object. A page prompt or the in-page agent reads only its <code>mimeType</code> and{" "}
+                    <code>caption</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>나머지는 JSON을 읽습니다.</strong> HTTP와 MCP App view에서는 JSON 객체로 답합니다. page
+                    prompt와 in-page agent는 <code>mimeType</code>과 <code>caption</code>만 읽습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A malformed value is not sent.</strong> A <code>data:</code> URL or an unlisted type answers
+                    the generic failure, and the log names what an <code>ImageResult</code> needs.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>모양이 틀린 값은 보내지 않습니다.</strong> <code>data:</code> URL이나 목록에 없는 타입이면
+                    일반 실패로 답하고, 로그에 <code>ImageResult</code>에 필요한 모양을 남깁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>It is not storable.</strong> Like <code>Binary</code>, <code>field(ImageResult)</code> fails
+                    the class build; keep a stored picture in a <code>File</code> model.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>저장할 수 없습니다.</strong> <code>Binary</code>처럼 <code>field(ImageResult)</code>는 class
+                    build에서 실패합니다. 저장할 그림은 <code>File</code> model에 둡니다.
+                  </span>
+                ),
+              })}
+            </li>
+          </ul>
         </Docs.Description>
       </Scroll.Slide>
       <Divider />

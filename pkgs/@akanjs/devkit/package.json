@@ -33,6 +33,7 @@
     "./frontendBuild": "./frontendBuild/index.ts",
     "./incrementalBuilder": "./incrementalBuilder/index.ts",
     "./mobile": "./mobile/index.ts",
+    "./pipeline": "./pipeline/index.ts",
     "./transforms": "./transforms/index.ts",
     "./workflow": "./workflow/index.ts",
     "./*.ts": "./*.ts",

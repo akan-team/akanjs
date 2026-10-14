@@ -18,6 +18,8 @@
 - Images And Public Env (#images-env)
 - Secret Files (#secret-files)
 - Build And Runtime (#build-runtime)
+- Pipeline (#pipeline)
+- Workspace Config (#workspace-config)
 - Defaults And Rules (#defaults)
 
 ## Content
@@ -49,6 +51,8 @@ This is the whole key set. Every one of them has a default that a working app ca
 - syncPageLibs (string[] | boolean, default false): Which library page folders this app mounts as its own routes.
 
 - plugins (AkanPlugin[], default []): Akan plugins this app contributes, read live by the CLI.
+
+- pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
 
 - docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
@@ -178,6 +182,8 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - splash (string | { image?, backgroundColor?, autoHide?, timeout? }): A PNG shown centered at launch, or the launch screen's image, color and when it hides.
 
+- backgroundColor (string | { light, dark }, default white / black): What a window and an external view show before their page paints, and the splash's default color.
+
 - permissions (camera | contacts | location | push | speech, default []): Native permission hints; each activates the matching plugin's native configuration.
 
 - plugins (string[], default []): Runtime plugins beyond the ones the permissions bring, by builtin id (iap) or absolute folder.
@@ -186,15 +192,21 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- updates ({ url, publicKey, channel?, readyTimeout? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
+- updates ({ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
-- updates.publicKey (string): The public key akan update-keygen prints; an app takes no release it cannot verify with it.
+- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.
+
+- updates.revokedKeys (string[]): Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 
 - updates.readyTimeout (number, default 10000): How long, in ms, a release on trial has to mount its first page before it is rolled back.
+
+- updates.report ({ url: string }): Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.
+
+- devtools (boolean, default false): The web inspector in a release build too: internal test targets only.
 
 - ios.teamId (string): Apple Developer Team ID for apple-app-site-association; universal links need it.
 
@@ -222,13 +234,29 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - android.files (Record<string, string>): Files copied into the app, keyed res/<type>/<file> or assets/<path>; the value is app-relative.
 
-- desktop.server (boolean | { omit?: string[] }, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.
+- desktop.server (boolean | { omit?, profile?, modules?, env?, restart?, watchdog? }, default false): Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. The object form carries it with some changes, the keys below.
 
-- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.
+- desktop.server.omit (string[]): Packages only the image needs, left out with what only they pull in; the server's own bundle must not import them.
 
-- desktop.window ({ fullscreen?, skipTaskbar? }): Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.
+- desktop.server.profile (string): Bundles env/env.server.<env>.<profile>.ts in place of the environment's own file; the build refuses one holding a secret-named value.
+
+- desktop.server.modules (string[]): What the server mounts, as AKAN_MODULES: module names, or @edge for every module whose serve() lists edge.
+
+- desktop.server.env (Record<string, string>): Variables the server starts with over the image's, readable by anyone on the computer; secret-named ones and the stage's own are refused.
+
+- desktop.server.restart ("forever" | number, default 5): Crashes in a row before the app gives up on its server; "forever" for a screen nobody attends.
+
+- desktop.server.watchdog (boolean | { intervalMs?, failures? }, default false): Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.
+
+- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time, relaunches the app and opens no dialog, share sheet, download or link for a page; "errorPage" shows an error page.
+
+- desktop.window ({ fullscreen?, skipTaskbar?, frameless? }): Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).
 
 - desktop.screenCapture ("picker" | "auto", default "picker"): "auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.
+
+- desktop.webview2 ("bootstrapper" | "standalone", default "bootstrapper"): Windows setup: "bootstrapper" downloads the WebView2 Runtime where none is installed; "standalone" carries the whole runtime (~200 MB) for a PC offline at install.
+
+- desktop.publisher (string, default the app name): Windows: who publishes the app, as the installed app's Publisher and its executable's company name.
 
 - targets (Record<string, AkanNativeSettings>, default { default: {} }): Several native apps from one Akan app; each takes the fields above, without targets.
 
@@ -289,6 +317,176 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 **A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
 
 A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.
+
+Pipeline
+
+`pipeline` lists the stages Akan Cloud runs for this app, in order. Without it the app runs `build`, `docker` and `deploy`; once you declare it, the list is the whole pipeline, so write those actions in it too.
+
+- stages (AppPipelineStageInput[]): This app's stages in order, the built-in actions included.
+
+- env (Record<string, string>): Environment for every step of this app.
+
+- after (string[]): Apps whose deploy comes before this one's; apps outside the build are ignored.
+
+**A stage runs after the action before it.** A stage written before any action runs before the apps build, and one after `build` runs once every app's build is done.
+
+**Actions keep their order.** `docker` needs a `build` before it, since the image is made from that build. When an app's action is skipped or fails, its later actions do not run.
+
+**A function sees the build.** `pipeline: (ctx) => ({ … })` reads `ctx.app`, `ctx.branch`, `ctx.trigger` and the build's other facts.
+
+Stage Keys
+
+A stage is a built-in action (`use`) or a shell stage (`name` with `sh` or `steps`). The tags say which kind takes each key.
+
+- use ("build" | "docker" | "deploy" | "ota", use): A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.
+
+- targets (string[], use): `ota` only: native targets to pack. Default: every target with `native.updates`.
+
+- platforms (("ios" | "android")[], use): `ota` only: phones to pack for. Default: both.
+
+- name (string, shell, use): The name shown for the stage; a shell stage needs one.
+
+- sh (string, shell): A bash script run as one step. Give `sh` or `steps`, not both.
+
+- steps ((string | PipelineStepInput)[], shell): Commands run one after another, each its own step.
+
+- env (Record<string, string>, shell): Environment for this stage's steps, over the app's and the workspace's.
+
+- secrets (string[], shell): Pipeline secrets the steps receive as environment variables of the same name.
+
+- when (PipelineWhen, shell, use): Run the stage only when every condition given holds.
+
+- timeout (PipelineDuration, shell, use): Time limit for the whole stage: seconds, or `30s`, `10m`, `2h`.
+
+- retry (number | { attempts, delay? }, shell): Total attempts for each step without a `retry` of its own, with an optional `delay` between them.
+
+- retry (number, use): Total attempts of the action; a number only, with no `delay`.
+
+- allowFailure (boolean, default false, shell, use): A failure of this stage does not fail the build.
+
+- milestone (PipelineMilestone, shell, use): Progress label: prepare, build, verify, package, deploy or finish.
+
+- id (string, shell, use): A stable id; it defaults to a slug of the name, or to the action.
+
+- description (string, shell, use): A longer note shown with the stage.
+
+Step Keys
+
+An entry of `steps` is a command string or an object with these keys:
+
+- sh (string): The bash command; a plain string in `steps` is this alone.
+
+- name (string): The name shown for the step.
+
+- cwd (string): Directory to run in, relative to the workspace root and never above it.
+
+- env (Record<string, string>): Environment for this step, over the stage's.
+
+- secrets (string[]): Secrets this step receives on top of the stage's.
+
+- timeout (PipelineDuration): Time limit for this step.
+
+- retry (number | { attempts, delay? }): Total attempts, with an optional `delay` between them.
+
+- allowFailure (boolean, default false): A failure of this step does not fail its stage.
+
+- skipExitCodes (number[]): Exit codes that end the step as skipped, along with the rest of its stage.
+
+- id (string): A stable id within the stage.
+
+When A Stage Runs
+
+- branch (string | string[]): Patterns the build's branch must match.
+
+- trigger (PipelineTrigger | PipelineTrigger[]): What may have started the build: push, redeploy, initial, rebuild or manual.
+
+- changed (string | string[]): Path patterns, one of which changed since the branch's last good build.
+
+**Patterns.** `*` matches within one path segment, `**` across segments and `?` one character. A leading `!` excludes, and case matters.
+
+**When each is decided.** `branch` and `trigger` are decided when the plan is made, and `changed` just before the stage runs. With no earlier good build to compare against, every path counts as changed.
+
+Environment Every Step Gets
+
+Variable
+
+- AKAN_CI_BRANCH, AKAN_CI_ENV, AKAN_CI_TRIGGER, AKAN_CI_BUILD_NUM, AKAN_CI_COMMIT: The build's branch, env, trigger, number and commit.
+
+- AKAN_CI_APPS, AKAN_CI_APP: The apps the build covers, and the app a stage runs for.
+
+- AKAN_CI_PHASE, AKAN_CI_STAGE, AKAN_CI_STEP: The ids of what is running.
+
+- AKAN_CI_RESULT: How the build ended, for a `post` step.
+
+- CI, AKAN_CI: Set on every step, so a script can tell it runs in a build.
+
+**The narrower value wins.** A step's `env` beats its stage's, which beats the app's, which beats the workspace's.
+
+**Some names are reserved.** `CI`, every `AKAN_CI_*` and shell names such as `PATH` or `HOME` cannot be set in `env` or used for a secret.
+
+Workspace Config
+
+The `akan.config.ts` at the workspace root holds what spans every app: stages around all of them, the steps that close a build, the cloud the CLI talks to, and the repositories it mirrors apps to (`subspace`). It is typed `WorkspaceConfig`, and app or library settings stay in their own files.
+
+- before (WorkspacePipelineStageInput[]): Stages that run before any app stage, one phase each.
+
+- after (WorkspacePipelineStageInput[]): Stages that run after every app's last stage.
+
+- post ({ success, failure, canceled, always }): Steps that close the build, picked by how it ended; `always` runs last.
+
+- env (Record<string, string>): Environment for every step of the build, app stages included.
+
+- timeout (PipelineDuration): Time limit for the whole build.
+
+Like an app's, the root `pipeline` may be a function of the build, `(ctx) => ({ … })`, without `ctx.app`.
+
+- cloud.host (string, default Akan Cloud): The cloud every cloud command talks to when it names no --host, such as a self-hosted one.
+
+- subspace.pushableBranches (string[], default main, develop, debug): Branches akan subspace push mirrors from; another is refused, so a feature branch never reaches a mirrored repo.
+
+Root Stage Kinds
+
+Shape
+
+Runs
+
+- { name, sh | steps } — A shell stage, run once, as in an app.
+
+- { name, parallel: [...] } — Shell stages side by side; `maxParallel` caps them, `failFast` stops the rest on a failure.
+
+- { name, matrix: "apps", sh } — One copy per app of the build with `AKAN_CI_APP` set; `when.app` narrows the apps.
+
+Built-in actions belong to apps, so a root stage never takes `use`.
+
+Order Of A Build
+
+Phases run one after another, and each waits until every stage of the one before has ended:
+
+- before — Each root `before` stage, one phase apiece.
+
+- before-build — App stages written before `build`.
+
+- build — Every app's build, side by side.
+
+- after-build — App stages written between `build` and `docker`.
+
+- docker — Every app's image.
+
+- after-docker — App stages written between `docker` and `deploy`.
+
+- deploy — Every app's deploy, one at a time, in `after` order.
+
+- after-deploy — App stages written after `deploy`.
+
+- ota — Over-the-air packs of apps that list `ota`.
+
+- after-ota — App stages written after `ota`.
+
+- after — Each root `after` stage.
+
+- post — The steps for how the build ended, then `always`.
+
+**App stages must stand on their own.** Never rely on what a root `before` stage left on disk: an app built from a repository mirrored out of this workspace (a subspace) carries only its own `akan.config.ts`, so the root stages never run there.
 
 Defaults And Rules
 
@@ -546,6 +744,75 @@ const config: AppConfig = {
     command: ["bun", "main.js"],
   },
 };
+```
+
+### apps/web/akan.config.ts
+
+```ts
+import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  pipeline: {
+    after: ["api"],
+    stages: [
+      { use: "build" },
+      {
+        name: "Test",
+        sh: "bun run akan test web",
+        when: { changed: ["apps/web/**", "libs/**"] },
+      },
+      { use: "docker" },
+      { use: "deploy" },
+      {
+        name: "Smoke",
+        sh: "curl -fsS https://web.example.com/en",
+        allowFailure: true,
+      },
+    ],
+  },
+};
+
+export default config;
+```
+
+### akan.config.ts
+
+```ts
+import type { WorkspaceConfig } from "akanjs";
+
+const config: WorkspaceConfig = {
+  pipeline: {
+    timeout: "1h",
+    before: [
+      {
+        name: "Checks",
+        parallel: [
+          { name: "Lint", sh: "bun run lint" },
+          { name: "Test", sh: "bun run test" },
+        ],
+      },
+    ],
+    after: [
+      {
+        name: "E2E",
+        matrix: "apps",
+        sh: "bun run e2e $AKAN_CI_APP",
+        allowFailure: true,
+      },
+    ],
+    post: {
+      failure: [
+        {
+          name: "Notify",
+          sh: "./scripts/notify.sh",
+          secrets: ["DISCORD_WEBHOOK"],
+        },
+      ],
+    },
+  },
+};
+
+export default config;
 ```
 
 ## Agent Notes

@@ -11,11 +11,11 @@
 // - a launch that sees the lock taken never runs: it hands over its message, or exits anyway
 // - the running instance acknowledges, so the second launch only exits once it was heard
 
-import { dlopen, FFIType } from "bun:ffi";
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, constants, openSync, rmSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type { SecondInstance } from "./index.ts";
 
@@ -23,6 +23,52 @@ const FORMAT = 1;
 const ACK = "ok\n";
 /** One message is a few KiB of arguments; anything larger is not from us. */
 const MAX_MESSAGE = 256 * 1024;
+
+// Only where the token cannot be read. An account without a profile (some service accounts) has no folder to read.
+const profileFolder = (env: Record<string, string | undefined>) => {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return env.USERPROFILE ?? env.USERNAME ?? "";
+  }
+};
+
+//? Windows 8 and later: GetCurrentProcessToken() is this constant, a pseudo-handle that may query and is never closed.
+const CURRENT_PROCESS_TOKEN = -4;
+const TOKEN_USER = 1;
+
+/** A binary SID as S-1-<authority>-<sub authorities>; null for bytes that are not one. */
+export function sidText(sid: Uint8Array): string | null {
+  const count = sid[1] ?? 16;
+  if (sid[0] !== 1 || count > 15 || sid.length < 8 + 4 * count) return null;
+  const view = new DataView(sid.buffer, sid.byteOffset, sid.byteLength);
+  const authority = view.getUint16(2) * 2 ** 32 + view.getUint32(4);
+  return ["S-1", authority, ...Array.from({ length: count }, (_, i) => view.getUint32(8 + 4 * i, true))].join("-");
+}
+
+const queryTokenUser = (info: Uint8Array) => {
+  const { symbols } = dlopen("advapi32.dll", {
+    GetTokenInformation: {
+      args: [FFIType.i64, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+  });
+  return symbols.GetTokenInformation(CURRENT_PROCESS_TOKEN, TOKEN_USER, info, info.length, new Uint32Array(1)) !== 0;
+};
+
+/** The account the process token names, which no environment variable changes; null where it cannot be read. */
+export function tokenSid(query: (info: Uint8Array) => boolean = queryTokenUser): string | null {
+  try {
+    //? Over its own ArrayBuffer: a small Uint8Array's bytes are copied elsewhere when its .buffer is first read.
+    const info = new Uint8Array(new ArrayBuffer(256));
+    if (!query(info)) return null;
+    //? TOKEN_USER starts with a pointer to the SID, which the call wrote after it in the same buffer.
+    const at = Number(new DataView(info.buffer).getBigUint64(0, true)) - ptr(info);
+    return at >= 16 && at < info.length ? sidText(info.subarray(at)) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * sun_path is 104 bytes on macOS, so the name is a short hash, not the app id. Windows pipe names
@@ -33,12 +79,13 @@ export function socketPath(
   appId: string,
   env: Record<string, string | undefined> = process.env,
   platform: NodeJS.Platform = process.platform,
+  account = platform === "win32" ? (tokenSid() ?? profileFolder(env)) : "",
 ): string {
   if (platform === "win32") {
-    const hash = createHash("sha256")
-      .update(`${env.USERDOMAIN ?? ""}\\${env.USERNAME ?? ""}\0${appId}`)
-      .digest("hex")
-      .slice(0, 16);
+    //? The user is the token's account, never an environment variable: USERDOMAIN reads WORKGROUP in an SSH or
+    //? service-started session and the PC's name on the desktop, and Bun's userInfo().homedir is USERPROFILE when set,
+    //? so launches that differed in either missed each other's pipe and both ran.
+    const hash = createHash("sha256").update(`${account.toLowerCase()}\0${appId}`).digest("hex").slice(0, 16);
     return `\\\\.\\pipe\\akan-native-${hash}`;
   }
   const dir = env.XDG_RUNTIME_DIR || env.TMPDIR || tmpdir();

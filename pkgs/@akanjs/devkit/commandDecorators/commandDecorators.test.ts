@@ -1,7 +1,21 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { AppExecutor, WorkspaceExecutor } from "../executors";
-import { App, type ArgMeta, type ArgsOption, getArgMetas, Lib, Module, Pkg, Sys, Workspace } from "./argMeta";
-import { getArgumentValue, getInternalArgumentValue, getOptionValue } from "./command";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import path from "node:path";
+import { AppExecutor, LibExecutor, WorkspaceExecutor } from "../executors";
+import { makeCliTempWorkspace, tempRoots, writeText } from "../testHelpers";
+import {
+  App,
+  type ArgMeta,
+  type ArgsOption,
+  getArgMetas,
+  type InternalArgMeta,
+  Lib,
+  Module,
+  Pkg,
+  Sys,
+  SysOrOnlyApp,
+  Workspace,
+} from "./argMeta";
+import { getAppsArgumentValue, getArgumentValue, getInternalArgumentValue, getOptionValue } from "./command";
 import { command } from "./commandBuilder";
 import {
   assertUniqueDependencies,
@@ -289,6 +303,89 @@ describe("enum arg choices", () => {
   });
 });
 
+describe("prompts on a stdin that is not a terminal", () => {
+  const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  beforeEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
+  });
+  afterEach(() => {
+    if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  });
+  const metaOf = (type: "Argument" | "Option", name: string, argsOption: ArgsOption = {}): ArgMeta => ({
+    name,
+    argsOption: { type: "string", ...argsOption },
+    key: "run",
+    idx: 0,
+    type,
+  });
+  const context = { values: {} };
+  const workspaceWith = (appNames: string[]) => {
+    const workspace = new WorkspaceExecutor({ workspaceRoot: "/workspace", repoName: "repo" });
+    workspace.getExecs = async () => [appNames, ["util"], []];
+    workspace.getApps = async () => appNames;
+    return workspace;
+  };
+
+  test("a missing positional is refused by name instead of read from the pipe", async () => {
+    await expect(getArgumentValue(metaOf("Argument", "name", { desc: "secret name" }), undefined)).rejects.toThrow(
+      "Missing argument 'name': stdin is not a terminal to prompt on, so pass it on the command line.",
+    );
+    await expect(getArgumentValue(metaOf("Argument", "action", { enum: ["scan", "ssr"] }), undefined)).rejects.toThrow(
+      "Missing argument 'action': stdin is not a terminal to prompt on, so pass it on the command line (choices: scan, ssr).",
+    );
+  });
+
+  test("a missing option names its flag and the values it takes", async () => {
+    await expect(
+      getOptionValue(metaOf("Option", "platform", { enum: ["ios", "android"] }), {}, context),
+    ).rejects.toThrow(
+      "Missing option '--platform': stdin is not a terminal to prompt on, so pass it on the command line (choices: ios, android).",
+    );
+    await expect(
+      getOptionValue(
+        metaOf("Option", "format", { enum: [{ label: "JSON output", value: "json" }, "text"] }),
+        {},
+        context,
+      ),
+    ).rejects.toThrow("(choices: json, text)");
+    await expect(getOptionValue(metaOf("Option", "assembleType"), {}, context)).rejects.toThrow(
+      "Missing option '--assemble-type'",
+    );
+    await expect(getOptionValue(metaOf("Option", "force", { type: "boolean" }), {}, context)).rejects.toThrow(
+      "Missing option '--force'",
+    );
+  });
+
+  test("a value given, defaulted, nullable or the only choice still resolves without a prompt", async () => {
+    expect(await getArgumentValue(metaOf("Argument", "name"), "NPM_TOKEN")).toBe("NPM_TOKEN");
+    expect(await getOptionValue(metaOf("Option", "env", { default: "main" }), {}, context)).toBe("main");
+    expect(await getOptionValue(metaOf("Option", "host", { nullable: true }), {}, context)).toBe(null);
+    expect(await getOptionValue(metaOf("Option", "target", { enum: async () => ["default"] }), {}, context)).toBe(
+      "default",
+    );
+    const [app] = await getAppsArgumentValue(undefined, workspaceWith(["web"]));
+    expect(app?.name).toBe("web");
+  });
+
+  test("an app that is missing or unknown is refused with the workspace's apps", async () => {
+    const workspace = workspaceWith(["web", "admin"]);
+    await expect(getInternalArgumentValue({ key: "", idx: 0, type: "App" }, undefined, workspace)).rejects.toThrow(
+      "Missing app: stdin is not a terminal to prompt on, so pass it on the command line (choices: web, admin).",
+    );
+    await expect(getInternalArgumentValue({ key: "", idx: 0, type: "App" }, "globex", workspace)).rejects.toThrow(
+      "Unknown app 'globex'",
+    );
+    await expect(getInternalArgumentValue({ key: "", idx: 0, type: "Sys" }, "globex", workspace)).rejects.toThrow(
+      "Unknown app or lib 'globex': stdin is not a terminal to prompt on, so pass it on the command line (choices: web, admin, util).",
+    );
+    await expect(getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, undefined, workspace)).rejects.toThrow(
+      "Missing module",
+    );
+    await expect(getAppsArgumentValue(undefined, workspace)).rejects.toThrow("(choices: web, admin, all)");
+  });
+});
+
 describe("enum arg type inference", () => {
   afterEach(() => {
     CommandContainer.clear();
@@ -333,4 +430,108 @@ describe("enum arg type inference", () => {
       "dynamic",
     ]);
   });
+});
+
+describe("a Sys that defaults to the only app", () => {
+  const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  const asked: unknown[] = [];
+  let answer = "";
+  const setTTY = (isTTY: boolean | undefined) =>
+    Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
+  beforeEach(() => {
+    asked.length = 0;
+    mock.module("@inquirer/prompts", () => ({
+      select: async ({ choices }: { choices: unknown[] }) => {
+        asked.push(choices);
+        return answer;
+      },
+    }));
+  });
+  afterEach(() => {
+    CommandContainer.clear();
+    if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
+    else Reflect.deleteProperty(process.stdin, "isTTY");
+  });
+  const workspaceWith = (appNames: string[]) => {
+    const workspace = new WorkspaceExecutor({ workspaceRoot: "/workspace", repoName: "repo" });
+    workspace.getExecs = async () => [appNames, ["util"], []];
+    return workspace;
+  };
+  const sysMetaOf = (key: "typecheck" | "sync") => {
+    class OnlyAppCommand extends command("onlyApp", ({ public: target }) => ({
+      typecheck: target({ desc: "opted in" })
+        .with(SysOrOnlyApp)
+        .exec((sys) => sys),
+      sync: target({ desc: "plain" })
+        .with(Sys)
+        .exec((sys) => sys),
+    })) {}
+    const meta = getArgMetas(OnlyAppCommand, key)[0].find((arg): arg is InternalArgMeta => arg.type === "Sys");
+    if (!meta) throw new Error(`no Sys meta on ${key}`);
+    return meta;
+  };
+
+  test("the opted-in command takes a one-app workspace's app without asking, even on a piped stdin", async () => {
+    setTTY(undefined);
+    const meta = sysMetaOf("typecheck");
+    expect(meta.option).toEqual({ onlyApp: true });
+
+    const app = await getInternalArgumentValue(meta, undefined, workspaceWith(["web"]));
+    expect(app instanceof AppExecutor ? app.name : null).toBe("web");
+    expect(asked).toEqual([]);
+  });
+
+  test("a plain Sys command still asks app or library in a one-app workspace", async () => {
+    setTTY(true);
+    answer = "util";
+    const meta = sysMetaOf("sync");
+    expect(meta.option).toBeUndefined();
+
+    const lib = await getInternalArgumentValue(meta, undefined, workspaceWith(["web"]));
+    expect(lib instanceof LibExecutor ? lib.name : null).toBe("util");
+    expect(asked).toEqual([["web", "util"]]);
+  });
+
+  test("the opted-in command still asks when the workspace has two apps", async () => {
+    setTTY(true);
+    answer = "admin";
+    const app = await getInternalArgumentValue(sysMetaOf("typecheck"), undefined, workspaceWith(["web", "admin"]));
+    expect(app instanceof AppExecutor ? app.name : null).toBe("admin");
+    expect(asked).toEqual([["web", "admin", "util"]]);
+  });
+});
+
+describe("the exit code of a command that failed", () => {
+  const track = tempRoots();
+  const run = async (failure: string) => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { command, ExitCodeError, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class VerdictRunner extends runner("verdict") {}',
+        'class VerdictScript extends script("verdict", [VerdictRunner]) {}',
+        'class VerdictCommand extends command("verdict", [VerdictScript], ({ public: target }) => ({',
+        '  verdict: target({ desc: "fails" }).exec(async function () {',
+        `    throw ${failure};`,
+        "  }),",
+        "})) {}",
+        "await runCommands(VerdictCommand);",
+        "",
+      ].join("\n"),
+    );
+    const proc = Bun.spawn(["bun", entry, "verdict"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return { stdout, code };
+  };
+
+  test("is the one an ExitCodeError carries, and 1 for any other error", async () => {
+    const verdict = await run('new ExitCodeError("needs a new store build", 2)');
+    expect(verdict.stdout).toContain("needs a new store build");
+    expect(verdict.code).toBe(2);
+    expect((await run('new Error("broke")')).code).toBe(1);
+  }, 30_000);
 });

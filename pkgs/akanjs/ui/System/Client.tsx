@@ -10,6 +10,7 @@ import {
   getCookie,
   getPathInfo,
   initAuth,
+  isMcpView,
   type Location,
   navigateRsc,
   type PageActivity,
@@ -17,17 +18,21 @@ import {
   type PathRoute,
   pageActivityContext,
   pathContext,
+  type RouteViewport,
   refreshRsc,
   router,
   setCookie,
   type TransitionStyle,
   Translator,
   useCsr,
+  ViewportMeta,
 } from "akanjs/client";
-import { Logger } from "akanjs/common";
+import { isNativeApp } from "akanjs/client/native";
+import { Logger, parseSearchParams } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import { DraftStore, getBaseSearchParam, st } from "akanjs/store";
+import { useVisualViewportFrame } from "akanjs/webkit";
 import {
   Children,
   type HTMLAttributes,
@@ -41,8 +46,9 @@ import {
   useState,
 } from "react";
 import { AgentActivity } from "use-agentic";
+import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { animated } from "../animated";
-import { getFrameCssVars } from "./Common";
+import { getFrameCssVars, isResponsiveFrame } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
 
@@ -83,7 +89,7 @@ export const ClientWrapper = ({
   return (
     <>
       {Children.toArray(children)}
-      {reconnect ? <Reconnect key="reconnect" /> : null}
+      {reconnect && !isMcpView() ? <Reconnect key="reconnect" /> : null}
     </>
   );
 };
@@ -160,7 +166,13 @@ export const ClientPathWrapper = ({
   //? A page that became current is focused once its entrance settles; one leaving loses focus as it starts to go.
   const focused = activity === "current" && csr.phase !== "transitioning";
   const pageActivity = useMemo(() => ({ activity, focused }), [activity, focused]);
-  const frameCssVars = getFrameCssVars(pathRoute.pageState);
+  const cssResolved = getEnv().renderMode !== "csr";
+  const frameCssVars = getFrameCssVars(pathRoute.pageState, { cssResolved });
+  const responsiveFrame = isResponsiveFrame(pathRoute.pageState, { cssResolved });
+  const frameCssKey = JSON.stringify(frameCssVars);
+  useLayoutEffect(() => {
+    if (activity === "current") FrameRootVars.mirror(frameCssVars, responsiveFrame);
+  }, [activity, frameCssKey, responsiveFrame]);
   const bindProps = bind && pageType !== "pending" && pathRoute.pageState.gesture && gestureEnabled ? bind() : {};
   useEffect(() => {
     debugFrame("pathWrapper.mount", { path: pathRoute.path, pageType, href });
@@ -179,6 +191,7 @@ export const ClientPathWrapper = ({
           searchParams,
           search,
           pathRoute,
+          ...(location?.entryId ? { entryId: location.entryId } : {}),
         },
         prefix,
         gestureEnabled,
@@ -196,6 +209,7 @@ export const ClientPathWrapper = ({
           data-lang={lang}
           data-basepath={prefix}
           data-firstpath={firstPath}
+          data-akan-frame-responsive={responsiveFrame ? "" : undefined}
         >
           <AgentActivity active={activity === "current"}>{children}</AgentActivity>
         </animated.div>
@@ -208,11 +222,12 @@ interface ClientBridgeProps {
   env?: object;
   lang?: string;
   theme?: AkanTheme;
+  viewport?: RouteViewport;
   prefix?: string;
   wsConnect?: boolean;
 }
 
-export const ClientBridge = ({ env, lang, theme, prefix, wsConnect = true }: ClientBridgeProps) => {
+export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect = true }: ClientBridgeProps) => {
   // Base env is recomputed here rather than taken from the app's `env/env.client.ts`: that file is imported
   // by a server component, so its `getEnv()` would resolve to the server's own hosts and ship them to the browser.
   (globalThis as typeof globalThis & { __AKAN_CLIENT_ENV__?: ClientEnv }).__AKAN_CLIENT_ENV__ = {
@@ -220,6 +235,7 @@ export const ClientBridge = ({ env, lang, theme, prefix, wsConnect = true }: Cli
     ...env,
   };
   const uiOperation = st.use.uiOperation({ agent: false });
+  const documentTheme = st.use.theme({ agent: false });
   const pathname = st.use.pathname({ agent: false });
   const params = st.use.params({ agent: false });
   const searchParams = st.use.searchParams({ agent: false });
@@ -244,6 +260,27 @@ export const ClientBridge = ({ env, lang, theme, prefix, wsConnect = true }: Cli
   useLayoutEffect(() => {
     restoreDocumentTheme(theme);
   }, [theme, pathname]);
+
+  //? The CSR artifact ships a plain viewport, and the server cannot read the theme cookie into a cacheable render.
+  useLayoutEffect(() => {
+    ViewportMeta.applyContent(viewport, { native: isNativeApp() });
+  }, [viewport]);
+  useLayoutEffect(() => {
+    ViewportMeta.applyThemeColor(viewport, documentTheme);
+  }, [viewport, documentTheme]);
+
+  //? A native shell reports the keyboard through its plugin and a CSR frame reads the visual viewport itself; an SSR
+  //? page in a browser has neither, so the keyboard reaches the store and the frame from here.
+  const viewportFrame = useVisualViewportFrame();
+  useLayoutEffect(() => {
+    if (getEnv().renderMode === "csr" || isNativeApp()) return;
+    const root = document.documentElement.style;
+    root.setProperty("--akan-keyboard-inset", `${viewportFrame.keyboardHeight}px`);
+    root.setProperty("--akan-viewport-height", `${viewportFrame.height}px`);
+    //? iOS pans the page under the keyboard instead of shrinking it, carrying the fixed top bars off the screen.
+    root.setProperty("--akan-viewport-offset-top", `${viewportFrame.offsetTop}px`);
+    st.set({ keyboardHeight: viewportFrame.keyboardHeight });
+  }, [viewportFrame]);
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent) => {
@@ -299,16 +336,6 @@ function resolveThemePolicy(theme: AkanTheme): string | null {
   return theme;
 }
 
-function buildSearchParams(entries: Iterable<[string, string]>): Record<string, string | string[]> {
-  const params: Record<string, string | string[]> = {};
-  for (const [key, value] of entries) {
-    const current = params[key];
-    if (current === undefined) params[key] = value;
-    else params[key] = Array.isArray(current) ? [...current, value] : [current, value];
-  }
-  return params;
-}
-
 export const ClientInner = () => {
   const uiOperation = st.use.uiOperation({ agent: false });
   return (
@@ -359,7 +386,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     const syncHref = (href: string) => {
       const url = new URL(href, window.location.origin);
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
-      const searchParams = buildSearchParams(url.searchParams.entries());
+      const searchParams = parseSearchParams(url.search);
       st.set({
         pathname: url.pathname,
         path,
@@ -401,7 +428,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     const sync = () => {
       const { pathname, search, hash } = window.location;
       const { path } = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
-      const searchParams = buildSearchParams(new URLSearchParams(search).entries());
+      const searchParams = parseSearchParams(search);
       st.set({
         pathname: window.location.pathname,
         path,

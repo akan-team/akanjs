@@ -1,30 +1,22 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
-import { App, Apps, command, Exec, Sys, Workspace } from "@akanjs/devkit/commandDecorators";
-import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
-
+import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
 import { ApplicationScript } from "./application.script";
+import { allowLocalOption, nativeTargetOption, releaseEnvOption, writeOption } from "./commandOptions";
 
-const mobileTargetOption = {
-  desc: "native target name (a key of native.targets) or all",
-  ask: "Select native target",
-  enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
-};
 const deviceOption = {
   desc: "simulator, emulator or device to run on: its id or name (e.g. 'iPhone 17' or 'Pixel_10')",
   default: "",
 };
 const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to", default: "" };
+const signDesc =
+  "sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names (without it the env signs nothing)";
+const notarizeDesc = "macOS: upload the signed app to Apple's notary service (takes --sign)";
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = {
   enum: devEnvs,
   desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
   default: "local",
-} as const;
-const releaseEnvOption = {
-  enum: ["debug", "develop", "main", "local"],
-  desc: "backend environment",
-  default: "main",
 } as const;
 
 export class ApplicationCommand extends command("application", [ApplicationScript], ({ public: target }) => ({
@@ -110,47 +102,52 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     ),
   build: target({ short: true, desc: "Build the application for production (frontend + backend)" })
     .with(App)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .option("fast", Boolean, { desc: "fast build", default: false })
     .option("quiet", Boolean, { desc: "hide build progress output", default: false })
-    .exec(async function (app, write, fast, quiet) {
-      await this.applicationScript.build(app, { write, fast, quiet });
+    .option("profile", String, {
+      desc: "server env profile: bundle env/env.server.<env>.<profile>.ts in place of the environment's own file",
+      nullable: true,
+    })
+    .exec(async function (app, write, fast, quiet, profile) {
+      await this.applicationScript.build(app, { write, fast, quiet, profile: profile ?? undefined });
     }),
-  typecheck: target({ short: true, desc: "Typecheck the application" })
-    .with(App)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+  typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
+    .with(SysOrOnlyApp)
+    .option("write", Boolean, writeOption)
     .option("clean", Boolean, { desc: "clear typecheck cache before running", default: false })
     .option("incremental", Boolean, { desc: "reuse TypeScript incremental cache", default: true })
-    .exec(async function (app, write, clean, incremental) {
-      await this.applicationScript.typecheck(app, { write, clean, incremental });
+    .option("tests", Boolean, { desc: "check its *.test.ts / *.spec.ts too, which nothing imports", default: true })
+    .exec(async function (sys, write, clean, incremental, tests) {
+      await this.applicationScript.typecheck(sys, { write, clean, incremental, tests });
     }),
   test: target({ desc: "Prepare and test an app, library, or package" })
     .with(Exec)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (exec, write) {
       await this.applicationScript.test(exec, { write });
     }),
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (app, target, env, debug, write) {
       await this.applicationScript.buildIos(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
   buildAndroid: target({ short: true, desc: "Build the Android app (apk) on the native runtime" })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (app, target, env, debug, write) {
       await this.applicationScript.buildAndroid(app, { target, env, profile: debug ? "debug" : "release", write });
     }),
   buildDesktop: target({ short: true, desc: "Build the desktop app for this computer (macOS, Windows or Linux)" })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("installer", Boolean, {
@@ -162,14 +159,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       enum: ["arm64", "x64"] as const,
       nullable: true,
     })
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .exec(async function (app, target, env, debug, installer, arch, write) {
+    .option("sign", Boolean, { desc: signDesc, default: false })
+    .option("notarize", Boolean, { desc: notarizeDesc, default: false })
+    .option("write", Boolean, writeOption)
+    .exec(async function (app, target, env, debug, installer, arch, sign, notarize, write) {
       await this.applicationScript.buildDesktop(app, {
         target,
         env,
         profile: debug ? "debug" : "release",
         installer,
         write,
+        ...(sign ? { sign } : {}),
+        ...(notarize ? { notarize } : {}),
         ...(arch ? { arch } : {}),
       });
     }),
@@ -184,18 +185,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("dbup", Boolean, { desc: "start the local database first", default: true })
     .option("open", Boolean, { desc: "open web browser?", default: false })
     .option("share", Boolean, { desc: "also share each app on a public URL through an akan tunnel", default: false })
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (apps, plain, kill, concurrency, dbup, open, share, write) {
       await this.applicationScript.start(apps, { plain, kill, concurrency, dbup, open, share, write });
     }),
   startIos: target({ short: true, desc: "Run the iOS app in a simulator or on an iPhone, following `akan start`" })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
     .option("device", String, deviceOption)
     .option("team", String, teamOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (app, target, env, release, device, team, write) {
       await this.applicationScript.startIos(app, {
         target,
@@ -211,11 +212,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     desc: "Run the Android app in an emulator or on a device, following `akan start`",
   })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
     .option("device", String, deviceOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (app, target, env, release, device, write) {
       await this.applicationScript.startAndroid(app, {
         target,
@@ -230,10 +231,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     desc: "Run the desktop app on this computer (macOS, Windows or Linux), following `akan start`",
   })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, startEnvOption)
     .option("release", Boolean, { desc: "run a release build of its own bundle instead", default: false })
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .exec(async function (app, target, env, release, write) {
       await this.applicationScript.startDesktop(app, {
         target,
@@ -244,12 +245,12 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, releaseEnvOption)
     .option("team", String, teamOption)
     .option("adHoc", Boolean, { desc: "sign with an ad-hoc profile instead of app-store", default: false })
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
+    .option("write", Boolean, writeOption)
+    .option("allowLocalRelease", Boolean, allowLocalOption("release"))
     .exec(async function (app, target, env, team, adHoc, write, allowLocalRelease) {
       await this.applicationScript.releaseIos(app, {
         target,
@@ -263,10 +264,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   releaseAndroid: target({ desc: "Build and sign the Android app for the Play Store (aab, or apk)" })
     .with(App)
     .option("assembleType", String, { enum: ["aab", "apk"], default: "aab" })
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, releaseEnvOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
+    .option("write", Boolean, writeOption)
+    .option("allowLocalRelease", Boolean, allowLocalOption("release"))
     .exec(async function (app, assembleType, target, env, write, allowLocalRelease) {
       await this.applicationScript.releaseAndroid(app, assembleType as "aab" | "apk", {
         target,
@@ -276,11 +277,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       });
     }),
   packUpdate: target({
-    desc: "Pack an unsigned over-the-air update of the mobile web bundle, for the signer to publish",
+    desc: "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure",
   })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, releaseEnvOption)
     .option("out", String, {
       desc: "output folder (default: dist/native/<app>/<target>/updates/<platform>)",
@@ -290,8 +291,8 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "bundle.json of the store build it must run in; fails when it needs a new one",
       nullable: true,
     })
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow packing with --env local", default: false })
+    .option("write", Boolean, writeOption)
+    .option("allowLocalRelease", Boolean, allowLocalOption("packing"))
     .exec(async function (app, platform, target, env, out, against, write, allowLocalRelease) {
       await this.applicationScript.packUpdate(app, platform as "ios" | "android", {
         target,
@@ -309,7 +310,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       default: "desktop",
       desc: "the platform whose app id the key signs for (an appId may differ per platform)",
     })
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .exec(async function (app, platform, target) {
       await this.applicationScript.updateKeygen(app, platform as "desktop" | "android" | "ios", { target });
     }),
@@ -320,23 +321,72 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       default: "desktop",
       desc: "desktop is this computer's OS and CPU; android and ios publish the web bundle",
     })
-    .option("target", String, mobileTargetOption)
+    .option("target", String, nativeTargetOption)
     .option("env", String, releaseEnvOption)
     .option("channel", String, {
       desc: "the manifest to publish to (default: the target's updates.channel, else --env)",
       nullable: true,
     })
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, platform, target, env, channel, write, allowLocalRelease) {
-      await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+    .option("upload", String, {
+      desc: "s3://<bucket>/<prefix> the release goes to, its manifests last (credentials: S3_* or AWS_* env)",
+      nullable: true,
+    })
+    .option("arch", String, {
+      desc: "desktop: the CPU of the apps it updates, arm64 or x64 of this OS (default this computer's)",
+      enum: ["arm64", "x64"] as const,
+      nullable: true,
+    })
+    .option("sign", Boolean, {
+      desc: `${signDesc}; a signed app takes only a release signed the same way`,
+      default: false,
+    })
+    .option("notarize", Boolean, { desc: notarizeDesc, default: false })
+    .option("revoke", String, {
+      desc: "android, ios: keyIds of updates.publicKeys this release starts revoking, comma-separated (update-keygen prints a key's); it is signed with a key listed after them",
+      nullable: true,
+    })
+    .option("resetSequence", Boolean, {
+      flag: "R",
+      desc: "android, ios: with --revoke, phones compare the release with their own bundle instead of the running one",
+      default: false,
+    })
+    .option("write", Boolean, writeOption)
+    .option("allowLocalRelease", Boolean, allowLocalOption("release"))
+    .exec(
+      async function (
+        app,
+        platform,
         target,
         env,
-        ...(channel ? { channel } : {}),
+        channel,
+        upload,
+        arch,
+        sign,
+        notarize,
+        revoke,
+        resetSequence,
         write,
         allowLocalRelease,
-      });
-    }),
+      ) {
+        const revoked = revoke
+          ?.split(",")
+          .map((keyId) => keyId.trim())
+          .filter(Boolean);
+        await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+          target,
+          env,
+          ...(sign ? { sign } : {}),
+          ...(notarize ? { notarize } : {}),
+          ...(channel ? { channel } : {}),
+          ...(upload ? { upload } : {}),
+          ...(arch ? { arch } : {}),
+          ...(revoked?.length ? { revoke: revoked } : {}),
+          ...(resetSequence ? { resetSequence } : {}),
+          write,
+          allowLocalRelease,
+        });
+      },
+    ),
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
     .option("mode", String, {

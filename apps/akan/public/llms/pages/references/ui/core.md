@@ -61,9 +61,11 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - disabled (boolean, default false): Blocks navigation and renders the same `div`, so the layout does not move.
 
-- activeClassName (string): Class added while the current path starts with `href`.
+- activeClassName (string): Class added while the current page is `href` or below it. The locale and the basePath are ignored.
 
 - activeExact (boolean): Adds `activeClassName` only on the exact path, not on its sub-paths.
+
+- activeMatch (string[]): More paths under which the link counts as active, such as a tab lit on its detail pages.
 
 - scrollToTop (boolean): Scrolls to the top after client-side navigation.
 
@@ -73,7 +75,7 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - target / rel / aria-* (AnchorHTMLAttributes): Pass through to `<a>` on server-rendered pages. The CSR bundle drops them.
 
-- Link.Back ({ className?, children? }): Calls `router.back()` on click. It is a plain `div`, so it wraps any mark you give it.
+- Link.Back ({ className?, children?, fallback? }): A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history.
 
 - Link.Close ({ className?, children? }): Calls `window.close()` on click, for a route opened in its own tab such as an OAuth popup.
 
@@ -83,7 +85,7 @@ Example
 
 A product card that links to its page and stays highlighted while that page is open:
 
-**Active is a prefix match.** `/product/1/edit` also counts as the card's page; add `activeExact` to stop that.
+**Active matches by path segment.** `/product/1/edit` also counts as the card's page and `/product/10` does not; add `activeExact` to stop the first. `/` matches only itself.
 
 **No client boundary needed.** `Link` works in a server component, so this Unit carries no `"use client"`.
 
@@ -131,13 +133,13 @@ Content containers
 
 Top and bottom chrome
 
-Navbar, TopInset, BottomInset and BottomTab register their height with the route, so the scrolling body is never hidden behind them.
+Chrome is in the server HTML in its slot's place, so nothing pops in, and after hydration that same DOM moves into the slot: text typed into it, the focus and the caret survive. The route reserves its space with `topInset` / `bottomInset` in `.config()`; in the app, an inset the route leaves out takes the height of the chrome it renders.
 
-- Layout.Navbar ({ className?, children?, height?, back? }, default height 48): Portals `children` into the top inset. `back` is `true` for the default chevron, or your node.
+- Layout.Navbar ({ className?, title?, left?, right?, children?, back?, backFallback?, height? }, default height 48): Fills the top inset. `title` truncates to fill the bar, `right` is pushed to the end, `back` adds a back button.
 
 - Layout.TopInset ({ className?, children, estimatedHeight? }, default estimatedHeight 48): Top chrome that is not a navbar. `estimatedHeight` is the space reserved for it.
 
-- Layout.TopLeftAction ({ className?, children }): The inset's top-left corner, where the navbar's `back` lands. Other corner controls go here.
+- Layout.TopLeftAction ({ className?, children }): The inset's top-left corner, fixed while the page scrolls: where `back` lands and other corner controls go.
 
 - Layout.BottomInset ({ className?, children, keyboardSticky?, role?, estimatedHeight? }, default estimatedHeight 60): Bottom chrome. `keyboardSticky` rides above the keyboard; `role` is chrome or keyboard accessory.
 
@@ -155,17 +157,17 @@ These four draw over the page and register no height.
 
 - Layout.RightSider ({ open, onCancel, children, title?, width?, close?, className? }): Controlled right drawer, with a `title` slot the left one lacks.
 
+**Back with nowhere to go.** `back` is `true` for the default button or a node of your own. With no history, as after a deep link, the default button goes to `backFallback`.
+
 **Close glyph.** With `back`, the navbar draws ✕ instead of the chevron when the route's transition is `bottomUp`, `scaleOut` or `fade`.
 
 **`renderTab` draws the whole tab body,** badge included. The framework keeps only the link and the active match, so draw `notiCount` yourself.
 
-**Layout.Navbar ignores title, left and right.** They are in its prop type, but only `children` and `back` reach the screen. Build the title and the trailing controls inside `children`.
-
 A detail page with a back button and an edit link in the navbar:
 
-**Anywhere in the tree.** The navbar portals its content into the top inset, so the page renders it right beside the body.
+**Anywhere in the tree.** The navbar moves its content into the top inset, so the page renders it right beside the body.
 
-**The page stays on the server.** `children` and `back` are plain props, so the page needs no `"use client"`.
+**The page stays on the server.** `title`, `right` and `back` are plain props, so the page needs no `"use client"`.
 
 A list row that opens the order when tapped:
 
@@ -269,7 +271,7 @@ Create, edit, view and remove shells wired to a model's generated store. Use the
 
 A trigger and its modal in one line
 
-- Model.New ({ slice, children, trigger?, partial?, renderTitle?, modal?, namespace?, draft? }): `children` is the form body, `partial` seeds it, `trigger` replaces the default New button.
+- Model.New ({ slice, children, trigger?, partial?, renderTitle?, modal?, namespace?, draft?, presentation?, placement? }): `children` is the form body, `partial` seeds it, `trigger` replaces the default New button.
 
 - Model.Edit ({ slice, modelId, children, trigger?, renderTitle?, modal?, draft? }): The same pair for one record; `trigger` defaults to the framework's Edit button.
 
@@ -285,11 +287,11 @@ Wrappers: your element becomes the trigger
 
 Modals and bodies with no trigger
 
-- Model.EditModal ({ slice, children, edit?, type?, id?, renderTitle?, submitText?, renderSubmit?, onSubmit?, onCancel?, draft?, draftBarClassName?, … }): The edit shell with no trigger. `onSubmit` / `onCancel`: `"back"`, `"reset"`, a path, or a callback.
+- Model.EditModal ({ slice, children, edit?, type?, id?, renderTitle?, submitText?, renderSubmit?, onSubmit?, onCancel?, draft?, presentation?, placement?, … }): The edit shell with no trigger. `onSubmit` / `onCancel`: `"back"`, `"reset"`, a path, or a callback.
 
-- Model.ViewModal ({ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName? }): The detail view in a modal, with title and action slots.
+- Model.ViewModal ({ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }): The detail view in a modal, with title and action slots.
 
-- Model.ViewEditModal ({ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel? }): One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.
+- Model.ViewEditModal ({ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel?, presentation?, placement? }): One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.
 
 - Model.View ({ model, render, modelLoading?, loading?, empty?, loadingWrapper?, className? }, default modelLoading true): The store-side `Load.View`: loaded, loading or empty from one model. Pass the store's loading flag.
 
@@ -310,6 +312,8 @@ Edit and remove buttons for one product, and a create button with its own label:
 **Only `trigger` replaces the opener.** `Model.New` and `Model.Edit` spend `children` on the form body and take no `className`; `Model.SureToRemove` takes no children at all.
 
 **A second create button for the same slice needs `namespace`.** It suffixes the tool name the button publishes to the in-page agent.
+
+**`presentation` and `placement` reach the `Modal`.** `presentation="auto"` opens the form as a full-screen sheet on a phone; see `Modal` in Overlays UI.
 
 **`AdminPanel` uses each role's `General` export,** falling back to the first export (`Card` first for `Unit`). A role with no export is skipped.
 
@@ -361,6 +365,7 @@ import { Layout, Link } from "akanjs/ui";
 
 export default page()
   .param("orderId", ID)
+  .config({ topInset: true })
   .render(async ({ orderId }) => {
     const { l } = usePage();
     const [{ order, orderView }] = await Promise.all([
@@ -368,12 +373,12 @@ export default page()
     ]);
     return (
       <>
-        <Layout.Navbar back>
-          <div className="flex w-full items-center justify-between">
-            <div className="font-bold">{order.name}</div>
-            <Link href={`/order/${orderId}/edit`}>{l("base.edit")}</Link>
-          </div>
-        </Layout.Navbar>
+        <Layout.Navbar
+          back
+          backFallback="/order"
+          title={order.name}
+          right={<Link href={`/order/${orderId}/edit`}>{l("base.edit")}</Link>}
+        />
         <Order.Zone.View view={orderView} />
       </>
     );

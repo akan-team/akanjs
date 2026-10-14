@@ -7,6 +7,8 @@ export {
   legacyAuthTokenKey,
   readAuthToken,
 } from "./authToken";
+export { Backoff, type BackoffPolicy } from "./backoff";
+export { bearerTokenOf } from "./bearerTokenOf";
 export { CodeAgentClient, type CodeAgentTransport } from "./CodeAgentClient";
 export { CodeTranscript, type CodeTranscriptPart } from "./CodeTranscript";
 export { capitalize, lowerlize } from "./capitalize";
@@ -127,7 +129,44 @@ export {
 } from "./mcpExposure";
 export { deepObjectify, objectify, plainFieldsOf } from "./objectify";
 export { pathGet, pathGetLoose, pathSet, toPathSegments } from "./objectPath";
+export { PipelineNames } from "./PipelineNames";
+export { PipelinePattern } from "./PipelinePattern";
+export { PipelinePlanSchema } from "./PipelinePlanSchema";
+export { type PipelineValueProblem, PipelineValueReader } from "./PipelineValueReader";
+export { parseSearchParams } from "./parseSearchParams";
 export { formatPhone, isPhoneNumber } from "./phone";
+export {
+  type PipelineActionName,
+  type PipelineDiagnostic,
+  type PipelineMilestone,
+  type PipelineOtaPlatform,
+  type PipelinePlan,
+  type PipelinePlanActionStep,
+  type PipelinePlanAppActionStep,
+  type PipelinePlanContext,
+  type PipelinePlanOtaStep,
+  type PipelinePlanPhase,
+  type PipelinePlanPost,
+  type PipelinePlanResult,
+  type PipelinePlanRetry,
+  type PipelinePlanShellStep,
+  type PipelinePlanSlot,
+  type PipelinePlanSource,
+  type PipelinePlanStage,
+  type PipelinePlanStep,
+  type PipelineSkip,
+  type PipelineTrigger,
+  pipelineActionNames,
+  pipelineActions,
+  pipelineMilestones,
+  pipelineOtaPlatforms,
+  pipelinePlanLimits,
+  pipelinePlanSlots,
+  pipelinePlanVersion,
+  pipelineReservedEnv,
+  pipelineRuntimeEnv,
+  pipelineTriggers,
+} from "./pipelinePlan";
 export { type RouteLayer, RouteLayering } from "./RouteLayering";
 export { randomPick, randomPicks } from "./randomPick";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";

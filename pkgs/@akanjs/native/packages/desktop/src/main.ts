@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInitScript } from "../../core/src/protocol.ts";
+import { GATE_TIMEOUT_MS, SETUP_TIMEOUT_MS } from "./dispatcher.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
 import { appLocalDataDir, webviewDataDir } from "./paths.ts";
 import type { Launch, LaunchWindow } from "./plugin.ts";
@@ -14,8 +15,11 @@ import { READY_TIMEOUT } from "./server.ts";
 
 const ENV_OVERRIDE_PREFIX = "AKAN_NATIVE_PUBLIC_";
 
-/** How long the main thread waits for the launch phase: the plugins' setups, then the carried server. */
-const LAUNCH_TIMEOUT = 10_000 + READY_TIMEOUT;
+/**
+ * How long the main thread waits for the launch phase: a gate plugin's setup, the other setups, then the carried
+ * server, and a few seconds for the Worker's own start. Shorter, it ends a launch a gate is still deciding.
+ */
+export const LAUNCH_TIMEOUT = GATE_TIMEOUT_MS + SETUP_TIMEOUT_MS + READY_TIMEOUT + 4_000;
 
 /**
  * env.runtime.json, overlaid with what the launch phase learned (the carried server's URL), then with
@@ -53,6 +57,7 @@ interface ShellConfig {
   /** desktop.window: the main window from its first frame, unless the launch phase says otherwise. */
   fullscreen?: boolean;
   skipTaskbar?: boolean;
+  frameless?: boolean;
 }
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -66,6 +71,7 @@ export function launchBounds(window: LaunchWindow): LaunchWindow {
   if (window.maximized === true) out.maximized = true;
   if (typeof window.fullscreen === "boolean") out.fullscreen = window.fullscreen;
   if (typeof window.skipTaskbar === "boolean") out.skipTaskbar = window.skipTaskbar;
+  if (typeof window.frameless === "boolean") out.frameless = window.frameless;
   return out;
 }
 
@@ -159,6 +165,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     height: shell.height ?? 720,
     fullscreen: shell.fullscreen === true,
     skipTaskbar: shell.skipTaskbar === true,
+    frameless: shell.frameless === true,
     ...bounds,
     appDir: paths.appDir,
     initJs,

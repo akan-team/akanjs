@@ -132,6 +132,13 @@ export default page().render(() => {
       }),
     },
     {
+      name: "useVisualViewportFrame()",
+      desc: l.trans({
+        en: "`{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.",
+        ko: "화면 키보드가 올라온 동안 보이는 페이지 영역의 `{ keyboardHeight, height, offsetTop }`입니다.",
+      }),
+    },
+    {
       name: ["usePageTool", "useScreenScope"],
       desc: l.trans({
         en: "Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.",

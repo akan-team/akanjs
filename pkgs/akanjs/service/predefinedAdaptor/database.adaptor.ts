@@ -55,6 +55,7 @@ export type {
   SqlDialect,
   SqliteDatabaseConfig,
   SqlResultRows,
+  UpsertByIdOptions,
 } from "./sql/types";
 
 const searchConfigOf = (env: SqliteEnv): Required<SearchConfig> => ({

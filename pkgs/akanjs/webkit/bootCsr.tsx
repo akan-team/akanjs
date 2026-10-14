@@ -1,9 +1,14 @@
 "use client";
-import { csrContext, Device, getStoredAuthToken, initAuth } from "akanjs/client";
-import { Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
+import { csrContext, csrLocation, Device, getStoredAuthToken, initAuth, isMcpView } from "akanjs/client";
+import { Logger, parseAkanI18nEnv, parseBasePaths, parseSearchParams } from "akanjs/common";
+import { FetchClient } from "akanjs/fetch";
+import { st } from "akanjs/store";
 import { useSyncExternalStore } from "react";
 import * as ReactDOM from "react-dom/client";
 import { type CsrRouteContext, CsrRouteTable } from "./CsrRouteTable";
+import { McpAppAgent } from "./McpAppAgent";
+import { McpAppBridge } from "./McpAppBridge";
+import { McpAppView } from "./McpAppView";
 import { RenderLayer } from "./RenderLayer";
 import { useCsrValues } from "./useCsrValues";
 
@@ -18,8 +23,15 @@ export const bootCsr = async (context: CsrRouteContext) => {
   window.document.body.style.overflow = "hidden";
   initializeMobileTargetFromSearch();
   if (window.location.pathname === "/404") return;
+  //* An MCP host's view: no network, no storage, no URL of its own. The host's credential rides every call it relays.
+  let remount: () => void = () => undefined;
+  const embedded = isMcpView() ? await bootMcpApp(i18n.locales, () => remount()) : false;
+  if (embedded === null) return;
 
-  const [device, jwt] = await Promise.all([Device.load({ supportLanguages: i18n.locales }), getStoredAuthToken()]);
+  const [device, jwt] = await Promise.all([
+    Device.load({ supportLanguages: i18n.locales }),
+    embedded ? undefined : getStoredAuthToken(),
+  ]);
   const mobileTarget = window.__AKAN_MOBILE_TARGET__;
   // A native shell opens its bundle at `/`, but every route sits under `/:lang`; a reload would parse the bundle twice.
   if (mobileTarget && window.location.pathname === "/")
@@ -28,8 +40,8 @@ export const bootCsr = async (context: CsrRouteContext) => {
       "",
       `${mobileHomePath(device.lang, mobileTarget)}${window.location.search}${window.location.hash}`,
     );
-  const pathname = window.location.pathname;
-  if (!mobileTarget && !pathname.startsWith(`/${device.lang}`))
+  const pathname = csrLocation.pathname;
+  if (!mobileTarget && !embedded && !pathname.startsWith(`/${device.lang}`))
     window.location.replace(`/${device.lang}${pathname}${window.location.search}${window.location.hash}`);
 
   if (jwt) initAuth({ jwt });
@@ -63,10 +75,21 @@ export const bootCsr = async (context: CsrRouteContext) => {
     );
   };
 
+  //? CSR.Bridge writes the store after a page renders; seeded here, the first page's first effect reads the URL's query.
+  st.set({ searchParams: parseSearchParams(csrLocation.search) });
   const el = document.getElementById("root");
   if (!el) throw new Error("No root element");
-  const root = ReactDOM.createRoot(el);
+  let root = ReactDOM.createRoot(el);
   root.render(<RouterProvider />);
+  //? A view cannot reload its document — the host sends the tool result once — so a reload renders the route afresh,
+  //? on the next task: a refresh called from an effect would otherwise unmount the tree React is committing.
+  remount = () => {
+    setTimeout(() => {
+      root.unmount();
+      root = ReactDOM.createRoot(el);
+      root.render(<RouterProvider />);
+    }, 0);
+  };
 };
 
 /**
@@ -74,6 +97,26 @@ export const bootCsr = async (context: CsrRouteContext) => {
  * changed. History, mounted pages and stores stay; `false` means the set of routes changed and the page must reload.
  */
 export const replacePages = async (context: CsrRouteContext) => (await CsrRouteTable.active?.replace(context)) ?? false;
+
+// `null` when the result names no screen to start on: the view says so instead of booting the router onto nothing.
+async function bootMcpApp(locales: readonly string[], reload: () => void) {
+  const bridge = new McpAppBridge();
+  const view = new McpAppView(bridge);
+  const start = await bridge.connect();
+  if (!start.ok) {
+    view.showUnavailable(start.message);
+    return null;
+  }
+  if (globalThis.__AKAN_EMBED__) globalThis.__AKAN_EMBED__.account = start.account;
+  csrLocation.useMemory(McpAppView.localize(start.href, bridge.hostContext.locale, locales), {
+    leave: () => view.showUnavailable("This screen is not available here."),
+    reload,
+  });
+  FetchClient.setBridge(bridge.fetchBridge(start.snapshot));
+  view.mount();
+  new McpAppAgent(bridge).start();
+  return true;
+}
 
 function initializeMobileTargetFromSearch() {
   if (window.__AKAN_MOBILE_TARGET__) return;

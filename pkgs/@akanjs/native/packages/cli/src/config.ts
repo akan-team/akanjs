@@ -86,6 +86,8 @@ export interface AkanNativeConfig {
     /** Painted before the page loads, to avoid a white flash (SH-3). */
     backgroundColor?: string;
     backgroundColorDark?: string;
+    /** The web inspector in a release build too (a debug build always has it): internal test builds only. */
+    devtools?: boolean;
   };
   /** Overrides for permission usage texts, e.g. { NSCameraUsageDescription: "..." }. */
   usageDescriptions?: Record<string, string>;
@@ -112,10 +114,26 @@ export interface AkanNativeConfig {
   permissions?: { camera?: string | true; microphone?: string | true; location?: string | true };
   /**
    * Over-the-air updates (UP-2 web bundles on iOS / Android, UP-1 app updates on macOS), used by
-   * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints `publicKey`;
-   * `akan-native update publish <platform>` writes signed releases for `url`.
+   * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints its public key;
+   * `akan-native update publish <platform>` writes signed releases for `url`. `publicKeys` lists the keys a phone
+   * trusts, the online signing key first and offline spares after (a key revokes only keys before it); `publicKey` is
+   * the one-key form, and a desktop app trusts the first. `report.url` is where a phone posts what became of each
+   * release, at its next launch or return to the foreground.
    */
-  updates?: { url: string; publicKey: string; channel?: string; readyTimeout?: number };
+  updates?: {
+    url: string;
+    publicKey?: string;
+    publicKeys?: string[];
+    /**
+     * keyIds every phone release revokes (`update keygen` prints a key's), kept here so a release published from a fresh
+     * folder still revokes them; `update publish --revoke` starts a revocation. A key may revoke only keys listed
+     * before it in publicKeys, so a release is signed with one listed after them.
+     */
+    revokedKeys?: string[];
+    channel?: string;
+    readyTimeout?: number;
+    report?: { url: string };
+  };
   /** Links that open the app, delivered through the app plugin's urlOpen (and getLaunchUrl). */
   deepLinks?: {
     /** Custom URL schemes (myapp://...). */
@@ -250,10 +268,10 @@ export interface AkanNativeConfig {
     recovery?: "errorPage" | "reload";
     /**
      * The main window from its first frame: `fullscreen` (borderless, on the display the window opens on)
-     * and `skipTaskbar` (no taskbar button; Windows and Linux). A plugin's launch phase may still decide
-     * otherwise (DesktopContext.launch.setWindow). Default false for both.
+     * `skipTaskbar` (no taskbar button; Windows and Linux) and `frameless` (no title bar or border). A plugin's
+     * launch phase may still decide otherwise (DesktopContext.launch.setWindow). Default false for all three.
      */
-    window?: { fullscreen?: boolean; skipTaskbar?: boolean };
+    window?: { fullscreen?: boolean; skipTaskbar?: boolean; frameless?: boolean };
     /**
      * Windows: "auto" answers the page's getDisplayMedia() with the first screen at once, without the picker or a
      * user gesture: a remote-support session on an unattended screen. It is Chromium's switch for automated media
@@ -263,12 +281,28 @@ export interface AkanNativeConfig {
      */
     screenCapture?: "picker" | "auto";
     /**
+     * Windows installer: "bootstrapper" (default) carries Microsoft's 2 MB setup that downloads the WebView2
+     * Runtime when the PC has none; "standalone" carries the whole runtime (~200 MB), for a PC that is offline or
+     * behind a proxy at install. Either runs only where no runtime is installed.
+     */
+    webview2?: "bootstrapper" | "standalone";
+    /** Windows: the installed app's Publisher (Apps & features) and its executable's company name (default: the app name). */
+    publisher?: string;
+    /**
      * A server the app starts beside its window (akanjs `native.desktop.server`). `dir` is copied to
      * the app's resources (`server/`), and `entry` there runs on the app's own Bun with `env`, bound to
      * a loopback port picked at launch; the page reads its URL as PUBLIC_AKAN_SERVER_URL. The launcher
      * sets PORT, JWT_SECRET, the data folders (`<app local data>/server`) and the listen host itself.
+     * `restart`: crashes in a row before it gives up (5), or "forever"; `watchdog`: its health route asked every
+     * `intervalMs`, `failures` missed in a row restarting it.
      */
-    server?: { dir: string; entry: string; env?: Record<string, string> };
+    server?: {
+      dir: string;
+      entry: string;
+      env?: Record<string, string>;
+      restart?: number | "forever";
+      watchdog?: { intervalMs: number; failures: number };
+    };
     /**
      * A folder of executables the app carries (akanjs `bin`): copied to the app's resources (`bin/`) and put
      * first on the app's PATH at launch, so its plugins and its server find them by name before the computer's.

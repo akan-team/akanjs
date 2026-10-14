@@ -1,3 +1,11 @@
+import type { BackoffPolicy } from "./backoff";
+
+/** Its first wait is 500 ms unless `min` names one. */
+export interface RetryPolicy extends BackoffPolicy {
+  /** Tries in all, the first one included; 4 unless named. */
+  attempts?: number;
+}
+
 export interface FetchPolicy<Returns = unknown> {
   cache?: boolean | number;
   crystalize?: boolean;
@@ -9,6 +17,14 @@ export interface FetchPolicy<Returns = unknown> {
   timeout?: number | false;
   /** `pubsub` only: called after a resubscribe, since whatever was published while the socket was down is gone. */
   onResync?: () => void;
+  /**
+   * Tries again when the server is unreachable, restarting (502/503), too slow (504) or limiting (429, after its
+   * Retry-After). A mutation retries under one `Idempotency-Key`, which the server runs once; `false` turns a client's
+   * default off.
+   */
+  retry?: RetryPolicy | false;
+  /** Sent as `Idempotency-Key` on a mutation: a server that already ran it with this key answers that run's result. */
+  idempotencyKey?: string;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;

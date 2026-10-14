@@ -122,6 +122,10 @@ Props
 
 - launcher (boolean, default true): `false` draws no floating button, for a shell that already has its own entry point.
 
+- launcherPlacement ("right" | "left", default "right"): The button's corner, kept above a tab bar or composer and the safe area, and under menus and modals.
+
+- hideLauncherBelow ("sm" | "md" | "lg"): Hides the button below this breakpoint; ⌘L / Ctrl+L or a controlled `open` still opens the panel.
+
 - intro (ReactNode): Replaces the empty-state line while the transcript is empty, where starter questions go.
 
 - header (ReactNode): Extra controls in the header bar, left of the built-in clear and close buttons.
@@ -180,7 +184,7 @@ Description and default export
 
 - AgentChat: The whole panel (launcher, transcript, cards and composer), so reach for it last.
 
-- AgentLauncher: The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge. — DefaultLauncher
+- AgentLauncher: The closed-state button, given `label`, `hotkey`, `unread` for a new-message badge, and `style` carrying its layer, which it spreads onto its root as it does `className`. — DefaultLauncher
 
 - AgentBubble: One message; wrap yours in `memo()`, since the transcript re-renders on every delta. — DefaultBubble
 

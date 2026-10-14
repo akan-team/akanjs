@@ -81,6 +81,13 @@ const configKeys = [
     ko: "이 앱이 등록하는 Akan 플러그인이며, CLI가 실행 시점에 읽습니다.",
   },
   {
+    key: "pipeline",
+    type: "AppPipelineConfig",
+    default: "build → docker → deploy",
+    en: "The stages Akan Cloud runs to build and deploy this app, in order.",
+    ko: "Akan Cloud가 이 앱을 빌드하고 배포할 때 순서대로 실행하는 stage입니다.",
+  },
+  {
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1-slim",
@@ -193,6 +200,13 @@ const nativeFields = [
     ko: "실행할 때 가운데에 보이는 PNG이거나, 시작 화면의 이미지, 색, 숨기는 시점입니다.",
   },
   {
+    key: "backgroundColor",
+    type: "string | { light, dark }",
+    default: "white / black",
+    en: "What a window and an external view show before their page paints, and the splash's default color.",
+    ko: "창과 external view가 페이지를 그리기 전에 보이는 색이며, splash의 기본 색입니다.",
+  },
+  {
     key: "permissions",
     type: "camera | contacts | location | push | speech",
     default: "[]",
@@ -220,7 +234,7 @@ const nativeFields = [
   },
   {
     key: "updates",
-    type: "{ url, publicKey, channel?, readyTimeout? }",
+    type: "{ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report? }",
     en: "Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.",
     ko: "설치된 앱이 새 릴리스를 찾는 곳이며, 폰은 스스로, 데스크톱 앱은 updates를 부를 때 업데이트합니다.",
   },
@@ -231,10 +245,16 @@ const nativeFields = [
     ko: "akan publish-update가 쓴 파일을 두는 정적 기본 URL(스토리지 버킷 등)이며, 릴리스 빌드에서는 https입니다.",
   },
   {
-    key: "updates.publicKey",
-    type: "string",
-    en: "The public key akan update-keygen prints; an app takes no release it cannot verify with it.",
-    ko: "akan update-keygen이 출력한 공개 키이며, 앱은 이 키로 검증되지 않는 릴리스를 받지 않습니다.",
+    key: "updates.publicKeys",
+    type: "string[]",
+    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.",
+    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기하고, 데스크톱 앱은 첫 키만 믿습니다. 키가 하나면 publicKey로 쓰며, 둘을 함께 쓰지는 않습니다.",
+  },
+  {
+    key: "updates.revokedKeys",
+    type: "string[]",
+    en: "Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.",
+    ko: "모든 폰 릴리스가 폐기할 keyId(최대 16개)이며, 여기 두어 새 체크아웃에서 게시한 릴리스도 폐기를 이어 갑니다. 폰 빌드는 이 키들을 믿지 않습니다.",
   },
   {
     key: "updates.channel",
@@ -249,6 +269,19 @@ const nativeFields = [
     default: "10000",
     en: "How long, in ms, a release on trial has to mount its first page before it is rolled back.",
     ko: "시험 실행 중인 릴리스가 첫 페이지를 마운트하기까지의 시간(ms)이며, 넘기면 되돌립니다.",
+  },
+  {
+    key: "updates.report",
+    type: "{ url: string }",
+    en: "Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.",
+    ko: "폰이 릴리스마다 어떻게 됐는지(되돌림 등) 보내는 주소이며, 되돌림 비율을 볼 수 있습니다. 적지 않으면 보내지 않습니다.",
+  },
+  {
+    key: "devtools",
+    type: "boolean",
+    default: "false",
+    en: "The web inspector in a release build too: internal test targets only.",
+    ko: "릴리스 빌드에서도 웹 인스펙터를 엽니다. 내부 테스트 타깃에만 씁니다.",
   },
   {
     key: "ios.teamId",
@@ -331,23 +364,61 @@ const nativeFields = [
   },
   {
     key: "desktop.server",
-    type: "boolean | { omit?: string[] }",
+    type: "boolean | { omit?, profile?, modules?, env?, restart?, watchdog? }",
     default: "false",
-    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. omit leaves out packages only the image needs, with what only they pull in.",
-    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다. omit은 이미지에만 필요한 패키지와, 그것만 끌어오는 패키지를 뺍니다.",
+    en: "Carries the app's server on loopback, the only backend its pages call; switching takes a reinstall. The object form carries it with some changes, the keys below.",
+    ko: "앱의 서버를 loopback으로 싣고, 페이지는 그 서버만 부릅니다. 켜고 끄려면 다시 설치해야 합니다. 객체로 주면 아래 키대로 바꿔서 싣습니다.",
+  },
+  {
+    key: "desktop.server.omit",
+    type: "string[]",
+    en: "Packages only the image needs, left out with what only they pull in; the server's own bundle must not import them.",
+    ko: "이미지에만 필요한 패키지이며, 그것만 끌어오는 패키지와 함께 뺍니다. 서버 번들 자체가 이 패키지를 import하면 안 됩니다.",
+  },
+  {
+    key: "desktop.server.profile",
+    type: "string",
+    en: "Bundles env/env.server.<env>.<profile>.ts in place of the environment's own file; the build refuses one holding a secret-named value.",
+    ko: "환경 자신의 파일 대신 env/env.server.<env>.<profile>.ts를 번들합니다. 비밀 이름의 값이 든 파일은 빌드가 거부합니다.",
+  },
+  {
+    key: "desktop.server.modules",
+    type: "string[]",
+    en: "What the server mounts, as AKAN_MODULES: module names, or @edge for every module whose serve() lists edge.",
+    ko: "서버가 마운트할 것이며 AKAN_MODULES로 전달됩니다. 모듈 이름이나, serve()에 edge를 적은 모든 모듈을 뜻하는 @edge를 씁니다.",
+  },
+  {
+    key: "desktop.server.env",
+    type: "Record<string, string>",
+    en: "Variables the server starts with over the image's, readable by anyone on the computer; secret-named ones and the stage's own are refused.",
+    ko: "이미지의 값보다 우선해 서버가 시작할 때 받는 환경 변수이며, 그 컴퓨터의 누구나 읽을 수 있습니다. 비밀 이름의 변수와 stage가 정하는 변수는 거부합니다.",
+  },
+  {
+    key: "desktop.server.restart",
+    type: '"forever" | number',
+    default: "5",
+    en: 'Crashes in a row before the app gives up on its server; "forever" for a screen nobody attends.',
+    ko: '앱이 서버를 포기하기 전까지 연달아 허용하는 크래시 횟수입니다. 아무도 지켜보지 않는 화면이면 "forever"를 씁니다.',
+  },
+  {
+    key: "desktop.server.watchdog",
+    type: "boolean | { intervalMs?, failures? }",
+    default: "false",
+    en: "Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.",
+    ko: "intervalMs(10000)마다 서버의 health route에 묻고, failures(3)번 답이 없으면 서버를 다시 띄웁니다.",
   },
   {
     key: "desktop.recovery",
     type: '"errorPage" | "reload"',
     default: '"errorPage"',
-    en: '"reload" reloads a crashed page every time and relaunches the app; "errorPage" shows an error page.',
-    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄웁니다. "errorPage"는 오류 화면을 보여 줍니다.',
+    en: '"reload" reloads a crashed page every time, relaunches the app and opens no dialog, share sheet, download or link for a page; "errorPage" shows an error page.',
+    ko: '"reload"는 멈춘 페이지를 매번 다시 불러오고 앱을 다시 띄우며, 페이지가 대화상자·공유 시트·다운로드·링크를 열지 못하게 합니다. "errorPage"는 오류 화면을 보여 줍니다.',
   },
   {
     key: "desktop.window",
-    type: "{ fullscreen?, skipTaskbar? }",
-    en: "Opens the main window fullscreen, and without a taskbar button (Windows, Linux), from its first frame.",
-    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux) 엽니다.",
+    type: "{ fullscreen?, skipTaskbar?, frameless? }",
+    en: "Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).",
+    ko: "주 창을 첫 프레임부터 전체화면으로, 작업 표시줄 버튼 없이(Windows, Linux), 또는 제목 표시줄과 테두리 없이(frameless) 엽니다.",
   },
   {
     key: "desktop.screenCapture",
@@ -355,6 +426,20 @@ const nativeFields = [
     default: '"picker"',
     en: '"auto" (Windows) shares the first screen without a picker; leave it off in an app that asks for a camera.',
     ko: '"auto"(Windows)는 선택 창 없이 첫 화면을 공유합니다. 카메라를 요청하는 앱에서는 켜지 않습니다.',
+  },
+  {
+    key: "desktop.webview2",
+    type: '"bootstrapper" | "standalone"',
+    default: '"bootstrapper"',
+    en: 'Windows setup: "bootstrapper" downloads the WebView2 Runtime where none is installed; "standalone" carries the whole runtime (~200 MB) for a PC offline at install.',
+    ko: 'Windows 설치 프로그램입니다. "bootstrapper"는 WebView2 Runtime이 없는 PC에서 내려받고, "standalone"은 설치 때 오프라인인 PC를 위해 런타임 전체(약 200 MB)를 싣습니다.',
+  },
+  {
+    key: "desktop.publisher",
+    type: "string",
+    default: "the app name",
+    en: "Windows: who publishes the app, as the installed app's Publisher and its executable's company name.",
+    ko: "Windows에서 앱을 배포하는 주체이며, 설치된 앱의 게시자와 실행 파일의 회사 이름으로 쓰입니다.",
   },
   {
     key: "targets",
@@ -442,6 +527,362 @@ const buildFields = [
     default: "oven/bun:1-slim",
     en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
     ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
+  },
+];
+
+const pipelineKeys = [
+  {
+    key: "stages",
+    type: "AppPipelineStageInput[]",
+    en: "This app's stages in order, the built-in actions included.",
+    ko: "이 앱의 stage를 순서대로 적으며, 내장 액션도 여기에 넣습니다.",
+  },
+  {
+    key: "env",
+    type: "Record<string, string>",
+    en: "Environment for every step of this app.",
+    ko: "이 앱의 모든 step에 줄 환경변수입니다.",
+  },
+  {
+    key: "after",
+    type: "string[]",
+    en: "Apps whose deploy comes before this one's; apps outside the build are ignored.",
+    ko: "이 앱보다 먼저 배포할 앱입니다. 빌드에 없는 앱은 무시합니다.",
+  },
+];
+
+const stageKeys = [
+  {
+    key: "use",
+    type: '"build" | "docker" | "deploy" | "ota"',
+    tags: ["use"],
+    en: "A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.",
+    ko: "내장 액션입니다. 앱마다 각각 한 번까지, 이 순서로 씁니다. `ota`는 적었을 때만 돕니다.",
+  },
+  {
+    key: "targets",
+    type: "string[]",
+    tags: ["use"],
+    en: "`ota` only: native targets to pack. Default: every target with `native.updates`.",
+    ko: "`ota` 전용: 업데이트를 묶을 네이티브 타깃입니다. 기본값은 `native.updates`가 있는 타깃 전부입니다.",
+  },
+  {
+    key: "platforms",
+    type: '("ios" | "android")[]',
+    tags: ["use"],
+    en: "`ota` only: phones to pack for. Default: both.",
+    ko: "`ota` 전용: 업데이트를 묶을 휴대폰 플랫폼입니다. 기본값은 둘 다입니다.",
+  },
+  {
+    key: "name",
+    type: "string",
+    tags: ["shell", "use"],
+    en: "The name shown for the stage; a shell stage needs one.",
+    ko: "stage에 표시할 이름으로, 셸 stage에는 꼭 필요합니다.",
+  },
+  {
+    key: "sh",
+    type: "string",
+    tags: ["shell"],
+    en: "A bash script run as one step. Give `sh` or `steps`, not both.",
+    ko: "step 하나로 실행할 bash 스크립트입니다. `sh`와 `steps` 중 하나만 씁니다.",
+  },
+  {
+    key: "steps",
+    type: "(string | PipelineStepInput)[]",
+    tags: ["shell"],
+    en: "Commands run one after another, each its own step.",
+    ko: "차례로 실행할 명령으로, 각각이 step 하나입니다.",
+  },
+  {
+    key: "env",
+    type: "Record<string, string>",
+    tags: ["shell"],
+    en: "Environment for this stage's steps, over the app's and the workspace's.",
+    ko: "이 stage의 step에 줄 환경변수로, 앱과 워크스페이스의 값보다 우선합니다.",
+  },
+  {
+    key: "secrets",
+    type: "string[]",
+    tags: ["shell"],
+    en: "Pipeline secrets the steps receive as environment variables of the same name.",
+    ko: "step이 같은 이름의 환경변수로 받을 파이프라인 시크릿입니다.",
+  },
+  {
+    key: "when",
+    type: "PipelineWhen",
+    tags: ["shell", "use"],
+    en: "Run the stage only when every condition given holds.",
+    ko: "적은 조건이 모두 맞을 때만 stage를 실행합니다.",
+  },
+  {
+    key: "timeout",
+    type: "PipelineDuration",
+    tags: ["shell", "use"],
+    en: "Time limit for the whole stage: seconds, or `30s`, `10m`, `2h`.",
+    ko: "stage 전체의 제한 시간으로, 초 단위 숫자나 `30s`, `10m`, `2h`로 씁니다.",
+  },
+  {
+    key: "retry",
+    type: "number | { attempts, delay? }",
+    tags: ["shell"],
+    en: "Total attempts for each step without a `retry` of its own, with an optional `delay` between them.",
+    ko: "자기 `retry`가 없는 step마다 적용하는 총 시도 횟수이며, 시도 사이의 `delay`를 줄 수 있습니다.",
+  },
+  {
+    key: "retry",
+    type: "number",
+    tags: ["use"],
+    en: "Total attempts of the action; a number only, with no `delay`.",
+    ko: "액션의 총 시도 횟수입니다. 숫자만 받고 `delay`는 없습니다.",
+  },
+  {
+    key: "allowFailure",
+    type: "boolean",
+    default: "false",
+    tags: ["shell", "use"],
+    en: "A failure of this stage does not fail the build.",
+    ko: "이 stage가 실패해도 빌드를 실패로 만들지 않습니다.",
+  },
+  {
+    key: "milestone",
+    type: "PipelineMilestone",
+    tags: ["shell", "use"],
+    en: "Progress label: prepare, build, verify, package, deploy or finish.",
+    ko: "진행 표시용 이름으로 prepare, build, verify, package, deploy, finish 중 하나입니다.",
+  },
+  {
+    key: "id",
+    type: "string",
+    tags: ["shell", "use"],
+    en: "A stable id; it defaults to a slug of the name, or to the action.",
+    ko: "고정 id로, 기본값은 이름을 바꾼 slug나 액션 이름입니다.",
+  },
+  {
+    key: "description",
+    type: "string",
+    tags: ["shell", "use"],
+    en: "A longer note shown with the stage.",
+    ko: "stage와 함께 보여 줄 긴 설명입니다.",
+  },
+];
+
+const stepKeys = [
+  {
+    key: "sh",
+    type: "string",
+    en: "The bash command; a plain string in `steps` is this alone.",
+    ko: "실행할 bash 명령입니다. `steps`에 문자열만 쓰면 이것만 적은 것과 같습니다.",
+  },
+  {
+    key: "name",
+    type: "string",
+    en: "The name shown for the step.",
+    ko: "step에 표시할 이름입니다.",
+  },
+  {
+    key: "cwd",
+    type: "string",
+    en: "Directory to run in, relative to the workspace root and never above it.",
+    ko: "실행할 디렉터리로, 워크스페이스 루트 기준이며 루트 밖으로 나갈 수 없습니다.",
+  },
+  {
+    key: "env",
+    type: "Record<string, string>",
+    en: "Environment for this step, over the stage's.",
+    ko: "이 step의 환경변수로, stage의 값보다 우선합니다.",
+  },
+  {
+    key: "secrets",
+    type: "string[]",
+    en: "Secrets this step receives on top of the stage's.",
+    ko: "stage의 시크릿에 더해 이 step이 받을 시크릿입니다.",
+  },
+  {
+    key: "timeout",
+    type: "PipelineDuration",
+    en: "Time limit for this step.",
+    ko: "이 step의 제한 시간입니다.",
+  },
+  {
+    key: "retry",
+    type: "number | { attempts, delay? }",
+    en: "Total attempts, with an optional `delay` between them.",
+    ko: "총 시도 횟수이며, 시도 사이의 `delay`를 줄 수 있습니다.",
+  },
+  {
+    key: "allowFailure",
+    type: "boolean",
+    default: "false",
+    en: "A failure of this step does not fail its stage.",
+    ko: "이 step이 실패해도 stage를 실패로 만들지 않습니다.",
+  },
+  {
+    key: "skipExitCodes",
+    type: "number[]",
+    en: "Exit codes that end the step as skipped, along with the rest of its stage.",
+    ko: "이 코드로 끝나면 step을 건너뜀으로 처리하고, stage의 나머지도 건너뜁니다.",
+  },
+  {
+    key: "id",
+    type: "string",
+    en: "A stable id within the stage.",
+    ko: "stage 안에서 쓰는 고정 id입니다.",
+  },
+];
+
+const whenKeys = [
+  {
+    key: "branch",
+    type: "string | string[]",
+    en: "Patterns the build's branch must match.",
+    ko: "빌드 브랜치가 맞아야 하는 패턴입니다.",
+  },
+  {
+    key: "trigger",
+    type: "PipelineTrigger | PipelineTrigger[]",
+    en: "What may have started the build: push, redeploy, initial, rebuild or manual.",
+    ko: "빌드를 시작한 계기로 push, redeploy, initial, rebuild, manual 중에서 고릅니다.",
+  },
+  {
+    key: "changed",
+    type: "string | string[]",
+    en: "Path patterns, one of which changed since the branch's last good build.",
+    ko: "브랜치의 마지막 성공 빌드 이후 바뀐 경로 중 하나가 맞아야 하는 패턴입니다.",
+  },
+];
+
+const workspacePipelineKeys = [
+  {
+    key: "before",
+    type: "WorkspacePipelineStageInput[]",
+    en: "Stages that run before any app stage, one phase each.",
+    ko: "어느 앱 stage보다 먼저 실행할 stage로, 각각이 phase 하나입니다.",
+  },
+  {
+    key: "after",
+    type: "WorkspacePipelineStageInput[]",
+    en: "Stages that run after every app's last stage.",
+    ko: "모든 앱의 마지막 stage 뒤에 실행할 stage입니다.",
+  },
+  {
+    key: "post",
+    type: "{ success, failure, canceled, always }",
+    en: "Steps that close the build, picked by how it ended; `always` runs last.",
+    ko: "빌드를 마무리하는 step으로, 끝난 결과에 따라 고르고 `always`는 마지막에 실행합니다.",
+  },
+  {
+    key: "env",
+    type: "Record<string, string>",
+    en: "Environment for every step of the build, app stages included.",
+    ko: "앱 stage를 포함해 빌드의 모든 step에 줄 환경변수입니다.",
+  },
+  {
+    key: "timeout",
+    type: "PipelineDuration",
+    en: "Time limit for the whole build.",
+    ko: "빌드 전체의 제한 시간입니다.",
+  },
+];
+
+const workspaceCloudKeys = [
+  {
+    key: "cloud.host",
+    type: "string",
+    default: "Akan Cloud",
+    en: "The cloud every cloud command talks to when it names no --host, such as a self-hosted one.",
+    ko: "--host 없이 실행한 클라우드 명령이 연결할 클라우드입니다. 직접 운영하는 클라우드 등을 씁니다.",
+  },
+];
+
+const workspaceSubspaceKeys = [
+  {
+    key: "subspace.pushableBranches",
+    type: "string[]",
+    default: "main, develop, debug",
+    en: "Branches akan subspace push mirrors from; another is refused, so a feature branch never reaches a mirrored repo.",
+    ko: "akan subspace push가 미러링하는 브랜치입니다. 다른 브랜치는 거부하므로 기능 브랜치가 미러 저장소로 가지 않습니다.",
+  },
+];
+
+const workspaceStageKinds = [
+  {
+    shape: "{ name, sh | steps }",
+    en: "A shell stage, run once, as in an app.",
+    ko: "앱의 것과 같은 셸 stage로, 한 번 실행합니다.",
+  },
+  {
+    shape: "{ name, parallel: [...] }",
+    en: "Shell stages side by side; `maxParallel` caps them, `failFast` stops the rest on a failure.",
+    ko: "셸 stage를 나란히 실행합니다. `maxParallel`로 수를 제한하고, `failFast`면 하나가 실패할 때 나머지를 멈춥니다.",
+  },
+  {
+    shape: '{ name, matrix: "apps", sh }',
+    en: "One copy per app of the build with `AKAN_CI_APP` set; `when.app` narrows the apps.",
+    ko: "빌드의 앱마다 하나씩 `AKAN_CI_APP`을 정해 실행합니다. `when.app`으로 앱을 좁힙니다.",
+  },
+];
+
+const phaseRows = [
+  {
+    phase: "before",
+    en: "Each root `before` stage, one phase apiece.",
+    ko: "루트 `before`의 stage마다 phase 하나입니다.",
+  },
+  { phase: "before-build", en: "App stages written before `build`.", ko: "`build`보다 앞에 적은 앱 stage입니다." },
+  { phase: "build", en: "Every app's build, side by side.", ko: "모든 앱의 빌드를 나란히 실행합니다." },
+  {
+    phase: "after-build",
+    en: "App stages written between `build` and `docker`.",
+    ko: "`build`와 `docker` 사이에 적은 앱 stage입니다.",
+  },
+  { phase: "docker", en: "Every app's image.", ko: "모든 앱의 이미지를 만듭니다." },
+  {
+    phase: "after-docker",
+    en: "App stages written between `docker` and `deploy`.",
+    ko: "`docker`와 `deploy` 사이에 적은 앱 stage입니다.",
+  },
+  {
+    phase: "deploy",
+    en: "Every app's deploy, one at a time, in `after` order.",
+    ko: "모든 앱을 `after` 순서에 따라 하나씩 배포합니다.",
+  },
+  { phase: "after-deploy", en: "App stages written after `deploy`.", ko: "`deploy` 뒤에 적은 앱 stage입니다." },
+  { phase: "ota", en: "Over-the-air packs of apps that list `ota`.", ko: "`ota`를 적은 앱의 OTA 업데이트를 묶습니다." },
+  { phase: "after-ota", en: "App stages written after `ota`.", ko: "`ota` 뒤에 적은 앱 stage입니다." },
+  { phase: "after", en: "Each root `after` stage.", ko: "루트 `after`의 stage입니다." },
+  {
+    phase: "post",
+    en: "The steps for how the build ended, then `always`.",
+    ko: "끝난 결과에 맞는 step을 실행하고, 이어서 `always`를 실행합니다.",
+  },
+];
+
+const ciEnvRows = [
+  {
+    name: ["AKAN_CI_BRANCH", "AKAN_CI_ENV", "AKAN_CI_TRIGGER", "AKAN_CI_BUILD_NUM", "AKAN_CI_COMMIT"],
+    en: "The build's branch, env, trigger, number and commit.",
+    ko: "빌드의 브랜치, env, 계기, 번호, 커밋입니다.",
+  },
+  {
+    name: ["AKAN_CI_APPS", "AKAN_CI_APP"],
+    en: "The apps the build covers, and the app a stage runs for.",
+    ko: "빌드가 다루는 앱들과, stage가 실행되는 앱입니다.",
+  },
+  {
+    name: ["AKAN_CI_PHASE", "AKAN_CI_STAGE", "AKAN_CI_STEP"],
+    en: "The ids of what is running.",
+    ko: "지금 실행 중인 것의 id입니다.",
+  },
+  {
+    name: "AKAN_CI_RESULT",
+    en: "How the build ended, for a `post` step.",
+    ko: "`post` step에 알려 주는 빌드 결과입니다.",
+  },
+  {
+    name: ["CI", "AKAN_CI"],
+    en: "Set on every step, so a script can tell it runs in a build.",
+    ko: "모든 step에 있어서, 스크립트가 빌드 안에서 실행되는지 알 수 있습니다.",
   },
 ];
 
@@ -1149,6 +1590,405 @@ const config: AppConfig = {
           {l.trans({
             en: "A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.",
             ko: "docker를 문자열로 쓰면 그것이 Dockerfile 전체이며 그대로 사용됩니다. 아무것도 병합되지 않습니다. 라이브러리가 선언한 preRuns와 postRuns도 포함이며, 적용되지 않은 채 남지 않고 아예 버려집니다.",
+          })}
+        </Docs.Alert>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="pipeline" title={l.trans({ en: "Pipeline", ko: "파이프라인" })}>
+        <Docs.Title>{l.trans({ en: "Pipeline", ko: "파이프라인" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  <code>pipeline</code> lists the stages Akan Cloud runs for this app, in order. Without it the app runs{" "}
+                  <code>build</code>, <code>docker</code> and <code>deploy</code>; once you declare it, the list is the
+                  whole pipeline, so write those actions in it too.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>pipeline</code>은 Akan Cloud가 이 앱에 대해 순서대로 실행할 stage 목록입니다. 선언하지 않으면{" "}
+                  <code>build</code>, <code>docker</code>, <code>deploy</code>를 실행합니다. 선언하면 그 목록이
+                  파이프라인 전부이므로 이 액션들도 목록에 적습니다.
+                </span>
+              ),
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="apps/web/akan.config.ts"
+          code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  pipeline: {
+    after: ["api"],
+    stages: [
+      { use: "build" },
+      {
+        name: "Test",
+        sh: "bun run akan test web",
+        when: { changed: ["apps/web/**", "libs/**"] },
+      },
+      { use: "docker" },
+      { use: "deploy" },
+      {
+        name: "Smoke",
+        sh: "curl -fsS https://web.example.com/en",
+        allowFailure: true,
+      },
+    ],
+  },
+};
+
+export default config;`}
+        />
+        <Docs.OptionTable
+          items={pipelineKeys.map(({ key, type, en, ko }) => ({ key, type, desc: l.trans({ en, ko }) }))}
+        />
+        <ul className="my-4 list-disc space-y-2 pl-5">
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>A stage runs after the action before it.</strong> A stage written before any action runs
+                  before the apps build, and one after <code>build</code> runs once every app's build is done.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>stage는 바로 앞 액션 뒤에 실행됩니다.</strong> 어떤 액션보다 앞에 적은 stage는 앱들이 빌드하기
+                  전에, <code>build</code> 뒤에 적은 stage는 모든 앱의 빌드가 끝난 뒤에 실행됩니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>Actions keep their order.</strong> <code>docker</code> needs a <code>build</code> before it,
+                  since the image is made from that build. When an app's action is skipped or fails, its later actions
+                  do not run.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>액션은 순서를 지킵니다.</strong> 이미지는 그 빌드 결과로 만들기 때문에 <code>docker</code>{" "}
+                  앞에는 <code>build</code>가 있어야 합니다. 앱의 액션 하나가 건너뛰어지거나 실패하면 그 뒤의 액션은
+                  실행하지 않습니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>A function sees the build.</strong> <code>{"pipeline: (ctx) => ({ … })"}</code> reads{" "}
+                  <code>ctx.app</code>, <code>ctx.branch</code>, <code>ctx.trigger</code> and the build's other facts.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>함수형은 빌드 정보를 받습니다.</strong> <code>{"pipeline: (ctx) => ({ … })"}</code>는{" "}
+                  <code>ctx.app</code>, <code>ctx.branch</code>, <code>ctx.trigger</code> 같은 빌드 정보를 읽습니다.
+                </span>
+              ),
+            })}
+          </li>
+        </ul>
+
+        <Docs.SubSubTitle>{l.trans({ en: "Stage Keys", ko: "stage 키" })}</Docs.SubSubTitle>
+        <div>
+          {l.trans({
+            en: (
+              <span>
+                A stage is a built-in action (<code>use</code>) or a shell stage (<code>name</code> with <code>sh</code>{" "}
+                or <code>steps</code>). The tags say which kind takes each key.
+              </span>
+            ),
+            ko: (
+              <span>
+                stage는 내장 액션(<code>use</code>)이거나 셸 stage(<code>name</code>과 <code>sh</code> 또는{" "}
+                <code>steps</code>)입니다. 태그는 각 키를 어느 쪽이 받는지 나타냅니다.
+              </span>
+            ),
+          })}
+        </div>
+        <Docs.OptionTable
+          items={stageKeys.map(({ key, type, default: fallback, tags, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            tags,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
+
+        <Docs.SubSubTitle>{l.trans({ en: "Step Keys", ko: "step 키" })}</Docs.SubSubTitle>
+        <div>
+          {l.trans({
+            en: (
+              <span>
+                An entry of <code>steps</code> is a command string or an object with these keys:
+              </span>
+            ),
+            ko: (
+              <span>
+                <code>steps</code>의 항목은 명령 문자열이거나, 아래 키를 가진 객체입니다:
+              </span>
+            ),
+          })}
+        </div>
+        <Docs.OptionTable
+          items={stepKeys.map(({ key, type, default: fallback, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
+
+        <Docs.SubSubTitle>{l.trans({ en: "When A Stage Runs", ko: "stage를 실행하는 조건" })}</Docs.SubSubTitle>
+        <Docs.OptionTable items={whenKeys.map(({ key, type, en, ko }) => ({ key, type, desc: l.trans({ en, ko }) }))} />
+        <ul className="my-4 list-disc space-y-2 pl-5">
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>Patterns.</strong> <code>*</code> matches within one path segment, <code>**</code> across
+                  segments and <code>?</code> one character. A leading <code>!</code> excludes, and case matters.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>패턴.</strong> <code>*</code>는 경로 한 마디 안에서, <code>**</code>는 여러 마디에 걸쳐,{" "}
+                  <code>?</code>는 한 글자에 맞습니다. 앞에 <code>!</code>를 붙이면 제외하고, 대소문자를 구분합니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>When each is decided.</strong> <code>branch</code> and <code>trigger</code> are decided when
+                  the plan is made, and <code>changed</code> just before the stage runs. With no earlier good build to
+                  compare against, every path counts as changed.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>판정 시점.</strong> <code>branch</code>와 <code>trigger</code>는 plan을 만들 때,{" "}
+                  <code>changed</code>는 stage를 실행하기 직전에 판정합니다. 비교할 이전 성공 빌드가 없으면 모든 경로가
+                  바뀐 것으로 봅니다.
+                </span>
+              ),
+            })}
+          </li>
+        </ul>
+
+        <Docs.SubSubTitle>
+          {l.trans({ en: "Environment Every Step Gets", ko: "모든 step이 받는 환경변수" })}
+        </Docs.SubSubTitle>
+        <Docs.IntroTable
+          type={l.trans({ en: "Variable", ko: "변수" })}
+          items={ciEnvRows.map(({ name, en, ko }) => ({ name, desc: l.trans({ en, ko }) }))}
+        />
+        <ul className="my-4 list-disc space-y-2 pl-5">
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>The narrower value wins.</strong> A step's <code>env</code> beats its stage's, which beats the
+                  app's, which beats the workspace's.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>좁은 쪽 값이 이깁니다.</strong> step의 <code>env</code>가 stage보다, stage가 앱보다, 앱이
+                  워크스페이스보다 우선합니다.
+                </span>
+              ),
+            })}
+          </li>
+          <li>
+            {l.trans({
+              en: (
+                <span>
+                  <strong>Some names are reserved.</strong> <code>CI</code>, every <code>AKAN_CI_*</code> and shell
+                  names such as <code>PATH</code> or <code>HOME</code> cannot be set in <code>env</code> or used for a
+                  secret.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <strong>예약된 이름이 있습니다.</strong> <code>CI</code>, 모든 <code>AKAN_CI_*</code>,{" "}
+                  <code>PATH</code>나 <code>HOME</code> 같은 셸 이름은 <code>env</code>에 쓰거나 시크릿 이름으로 쓸 수
+                  없습니다.
+                </span>
+              ),
+            })}
+          </li>
+        </ul>
+      </Scroll.Slide>
+      <Divider />
+
+      <Scroll.Slide id="workspace-config" title={l.trans({ en: "Workspace Config", ko: "워크스페이스 설정" })}>
+        <Docs.Title>{l.trans({ en: "Workspace Config", ko: "워크스페이스 설정" })}</Docs.Title>
+        <Docs.Description>
+          <div>
+            {l.trans({
+              en: (
+                <span>
+                  The <code>akan.config.ts</code> at the workspace root holds what spans every app: stages around all of
+                  them, the steps that close a build, the cloud the CLI talks to, and the repositories it mirrors apps
+                  to (<code>subspace</code>). It is typed <code>WorkspaceConfig</code>, and app or library settings stay
+                  in their own files.
+                </span>
+              ),
+              ko: (
+                <span>
+                  워크스페이스 루트의 <code>akan.config.ts</code>에는 모든 앱에 걸치는 설정, 곧 모든 앱의 앞뒤에 실행할
+                  stage, 빌드를 마무리할 step, CLI가 연결할 클라우드, 앱을 미러링할 저장소(<code>subspace</code>)를
+                  둡니다. 타입은 <code>WorkspaceConfig</code>이고, 앱과 라이브러리 설정은 각자의 파일에 둡니다.
+                </span>
+              ),
+            })}
+          </div>
+        </Docs.Description>
+        <Code.Snippet
+          className="w-full"
+          title="akan.config.ts"
+          code={`import type { WorkspaceConfig } from "akanjs";
+
+const config: WorkspaceConfig = {
+  pipeline: {
+    timeout: "1h",
+    before: [
+      {
+        name: "Checks",
+        parallel: [
+          { name: "Lint", sh: "bun run lint" },
+          { name: "Test", sh: "bun run test" },
+        ],
+      },
+    ],
+    after: [
+      {
+        name: "E2E",
+        matrix: "apps",
+        sh: "bun run e2e $AKAN_CI_APP",
+        allowFailure: true,
+      },
+    ],
+    post: {
+      failure: [
+        {
+          name: "Notify",
+          sh: "./scripts/notify.sh",
+          secrets: ["DISCORD_WEBHOOK"],
+        },
+      ],
+    },
+  },
+};
+
+export default config;`}
+        />
+        <Docs.OptionTable
+          items={workspacePipelineKeys.map(({ key, type, en, ko }) => ({ key, type, desc: l.trans({ en, ko }) }))}
+        />
+        <div>
+          {l.trans({
+            en: (
+              <span>
+                Like an app's, the root <code>pipeline</code> may be a function of the build,{" "}
+                <code>{"(ctx) => ({ … })"}</code>, without <code>ctx.app</code>.
+              </span>
+            ),
+            ko: (
+              <span>
+                앱의 것처럼 루트 <code>pipeline</code>도 빌드 정보를 받는 함수 <code>{"(ctx) => ({ … })"}</code>로 쓸 수
+                있으며, <code>ctx.app</code>만 없습니다.
+              </span>
+            ),
+          })}
+        </div>
+
+        <Docs.OptionTable
+          items={workspaceCloudKeys.map(({ key, type, default: fallback, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
+        <Docs.OptionTable
+          items={workspaceSubspaceKeys.map(({ key, type, default: fallback, en, ko }) => ({
+            key,
+            type,
+            default: fallback,
+            desc: l.trans({ en, ko }),
+          }))}
+        />
+
+        <Docs.SubSubTitle>{l.trans({ en: "Root Stage Kinds", ko: "루트 stage의 종류" })}</Docs.SubSubTitle>
+        <Docs.Table
+          columns={[
+            { key: "shape", label: l.trans({ en: "Shape", ko: "모양" }), code: true },
+            { key: "runs", label: l.trans({ en: "Runs", ko: "실행" }) },
+          ]}
+          rows={workspaceStageKinds.map(({ shape, en, ko }) => ({ shape, runs: l.trans({ en, ko }) }))}
+        />
+        <div>
+          {l.trans({
+            en: (
+              <span>
+                Built-in actions belong to apps, so a root stage never takes <code>use</code>.
+              </span>
+            ),
+            ko: (
+              <span>
+                내장 액션은 앱의 것이므로, 루트 stage는 <code>use</code>를 받지 않습니다.
+              </span>
+            ),
+          })}
+        </div>
+
+        <Docs.SubSubTitle>{l.trans({ en: "Order Of A Build", ko: "빌드 순서" })}</Docs.SubSubTitle>
+        <div>
+          {l.trans({
+            en: "Phases run one after another, and each waits until every stage of the one before has ended:",
+            ko: "phase는 차례로 실행되며, 각 phase는 앞 phase의 stage가 모두 끝날 때까지 기다립니다:",
+          })}
+        </div>
+        <Docs.Table
+          columns={[
+            { key: "phase", label: "phase", code: true },
+            { key: "runs", label: l.trans({ en: "Runs", ko: "실행" }) },
+          ]}
+          rows={phaseRows.map(({ phase, en, ko }) => ({ phase, runs: l.trans({ en, ko }) }))}
+        />
+        <Docs.Alert type="warning">
+          {l.trans({
+            en: (
+              <>
+                <strong>App stages must stand on their own.</strong> Never rely on what a root <code>before</code> stage
+                left on disk: an app built from a repository mirrored out of this workspace (a subspace) carries only
+                its own <code>akan.config.ts</code>, so the root stages never run there.
+              </>
+            ),
+            ko: (
+              <>
+                <strong>앱 stage는 스스로 완결돼야 합니다.</strong> 루트 <code>before</code> stage가 디스크에 남긴 것에
+                기대지 마세요. 이 워크스페이스에서 미러링한 저장소(subspace)에서 빌드하는 앱은 자기{" "}
+                <code>akan.config.ts</code>만 가져가므로, 그곳에서는 루트 stage가 실행되지 않습니다.
+              </>
+            ),
           })}
         </Docs.Alert>
       </Scroll.Slide>
