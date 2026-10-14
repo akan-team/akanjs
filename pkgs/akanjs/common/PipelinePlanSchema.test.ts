@@ -282,6 +282,13 @@ describe("PipelinePlanSchema", () => {
     refused((plan) => Object.assign(testStep(plan), { env: { AKAN_CI_APP: "web" } }), "reserved for the executor");
     refused((plan) => Object.assign(testStep(plan), { env: { "BAD-NAME": "x" } }), "not an environment variable");
     refused((plan) => Object.assign(testStep(plan), { secrets: ["PATH"] }), "reserved for the executor");
+    const pasted = (plan: PipelinePlan) => Object.assign(testStep(plan), { secrets: ["NPM_TOKEN", "npm_live_value"] });
+    refused(pasted, "steps[0].secrets[1]: the name is not a secret name");
+    expect(() => {
+      const plan = fullPlan();
+      pasted(plan);
+      PipelinePlanSchema.parse(plan);
+    }).not.toThrow("npm_live_value");
     refused((plan) => Object.assign(testStep(plan), { retry: { attempts: 11, delaySeconds: 0 } }), "between 1 and 10");
     refused((plan) => Object.assign(testStep(plan), { skipExitCodes: [0] }), "between 1 and 255");
     refused((plan) => Object.assign(testStep(plan), { skipExitCodes: [3, 3] }), "lists a code twice");

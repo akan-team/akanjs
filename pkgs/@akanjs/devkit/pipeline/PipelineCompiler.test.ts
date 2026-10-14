@@ -592,6 +592,10 @@ describe("PipelineCompiler", () => {
       expect(codes(appResult({ stages: [{ name: "x", sh: "x", secrets: ["lower"] }] }))).toContain(
         "pipeline.secret.name",
       );
+      const pasted = appResult({ stages: [{ name: "x", sh: "x", secrets: ["NPM_TOKEN", "npm_live_value"] }] });
+      const secretName = pasted.diagnostics.find((diagnostic) => diagnostic.code === "pipeline.secret.name");
+      expect(secretName?.path).toEndWith(".secrets[1]");
+      expect(secretName?.message).not.toContain("npm_live_value");
       expect(codes(appResult({ stages: [{ name: "x", steps: [{ sh: "x", cwd: "../up" }] }] }))).toContain(
         "pipeline.cwd.outside",
       );

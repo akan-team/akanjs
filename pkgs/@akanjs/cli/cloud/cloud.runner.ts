@@ -19,7 +19,7 @@ import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
 import { confirm, input, password, select } from "@inquirer/prompts";
-import { Logger, PipelineNames, sleep } from "akanjs/common";
+import { capitalize, Logger, PipelineNames, sleep } from "akanjs/common";
 import chalk from "chalk";
 import * as QRcode from "qrcode";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
@@ -795,7 +795,7 @@ export class CloudRunner extends runner("cloud") {
 
   static assertSecretName(name: string) {
     const problem = PipelineNames.secretNameError(name);
-    if (problem) throw new Error(problem);
+    if (problem) throw new Error(`${capitalize(problem)}.`);
   }
 
   static assertSecretBranch(branch: string | null) {

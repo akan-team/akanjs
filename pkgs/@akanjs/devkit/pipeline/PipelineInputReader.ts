@@ -454,9 +454,9 @@ export class PipelineInputReader {
 
   #secrets(value: unknown, path: string): string[] {
     const names = value === undefined ? [] : this.#strings(value, path);
-    const valid = names.filter((name) => {
+    const valid = names.filter((name, idx) => {
       const problem = PipelineNames.secretNameError(name);
-      if (problem) this.#report("pipeline.secret.name", problem, path);
+      if (problem) this.#report("pipeline.secret.name", problem, `${path}[${idx}]`);
       return !problem;
     });
     return [...new Set(valid)];

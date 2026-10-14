@@ -556,6 +556,11 @@ describe("pipeline secrets", () => {
     await expect(new CloudRunner().removeSecret(api, "project-1", { name: "lower", branch: null })).rejects.toThrow(
       "not a secret name",
     );
+    const pasted = await new CloudRunner()
+      .uploadSecret(api, "project-1", { name: "npm_live_value", branch: null, value: "t" })
+      .catch((error: Error) => error.message);
+    expect(pasted).toStartWith("The name is not a secret name");
+    expect(pasted).not.toContain("npm_live_value");
     log.mockRestore();
     expect(recorder.calls).toEqual([
       { name: "uploadSecret", args: ["project-1", { scope: "*", name: "NPM_TOKEN", value: "t" }] },

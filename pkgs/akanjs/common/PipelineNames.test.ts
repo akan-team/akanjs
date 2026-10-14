@@ -13,6 +13,7 @@ describe("PipelineNames", () => {
     expect(PipelineNames.secretNameError("DISCORD_WEBHOOK")).toBeNull();
     expect(PipelineNames.secretNameError("discord")).toContain("not a secret name");
     expect(PipelineNames.secretNameError("1TOKEN")).toContain("not a secret name");
+    expect(PipelineNames.secretNameError("sk-live-51Hxyz")).not.toContain("sk-live");
     expect(PipelineNames.secretNameError("CI")).toContain("reserved");
     expect(PipelineNames.secretNameError("AKAN_CI_BRANCH")).toContain("reserved");
     expect(PipelineNames.secretNameError("AKAN_CI_SOMETHING_NEW")).toContain("reserved");
