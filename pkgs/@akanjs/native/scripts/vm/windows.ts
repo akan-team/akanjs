@@ -29,7 +29,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ServerEnvProfile } from "../../../devkit/transforms/serverEnvProfile";
 import { treeFiles as listTree, type TreeFiles } from "./tree-files.ts";
 
 const PACKAGE = resolve(import.meta.dir, "../..");
@@ -127,8 +126,21 @@ const treeFiles = (): TreeFiles =>
     keep: process.env.AKAN_NATIVE_VM_KEEP,
   });
 
+interface EnvProfile {
+  evaluate(file: string, cwd: string): Promise<unknown>;
+  strip(value: unknown): { value: unknown };
+}
+
+//? Through the workspace's devkit, loaded by a specifier the type program does not follow: this package depends on no
+//? devkit, and devkit's imports would bring akanjs into its typecheck.
+async function envProfile(): Promise<EnvProfile> {
+  const specifier = "@akanjs/devkit/transforms/serverEnvProfile";
+  return ((await import(specifier)) as { ServerEnvProfile: EnvProfile }).ServerEnvProfile;
+}
+
 /** Writes the stubs under `stage`: an env file's values without the secret-named ones, the root `.env`'s public lines. */
 async function writeStubs(stubs: string[], stage: string): Promise<number> {
+  const ServerEnvProfile = await envProfile();
   let written = 0;
   for (const path of stubs) {
     const source = join(REPO, path);
