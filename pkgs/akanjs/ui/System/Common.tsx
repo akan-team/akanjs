@@ -1,5 +1,6 @@
 import "dayjs/locale/ko";
 
+import { Binary } from "akanjs/base";
 import {
   type InsetBreakpoint,
   insetBreakpoints,
@@ -54,26 +55,7 @@ export function ManifestLink({ manifest, basePath }: { manifest?: WebAppManifest
 
 export function createManifestDataUrl(manifest: WebAppManifest): string {
   const json = JSON.stringify(toManifestJson(manifest));
-  return `data:application/manifest+json;base64,${encodeBase64Utf8(json)}`;
-}
-
-function encodeBase64Utf8(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  if (typeof btoa === "function") return btoa(binary);
-
-  const buffer = (
-    globalThis as typeof globalThis & {
-      Buffer?: {
-        from: (bytes: Uint8Array) => {
-          toString: (encoding: "base64") => string;
-        };
-      };
-    }
-  ).Buffer;
-  if (buffer) return buffer.from(bytes).toString("base64");
-  throw new Error("Base64 encoding is not available in this runtime");
+  return `data:application/manifest+json;base64,${Binary.toBase64(new TextEncoder().encode(json))}`;
 }
 
 export type AkanFrameCssVarName =
