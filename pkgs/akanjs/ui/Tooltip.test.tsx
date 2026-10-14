@@ -141,4 +141,52 @@ describe("Tooltip", () => {
       if (width) Object.defineProperty(HTMLElement.prototype, "offsetWidth", width);
     }
   });
+
+  test("a bubble above its trigger that grows taller moves up, so its bottom edge stays on the trigger", async () => {
+    Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+    Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+    const observers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+    const OriginalResizeObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      targets: Element[] = [];
+      constructor(public callback: ResizeObserverCallback) {
+        observers.push(this);
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    let bubbleHeight = 24;
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => bubbleHeight });
+    const { container, unmount } = mount(
+      <DefaultTooltip content="Saved" side="top">
+        <button type="button">save</button>
+      </DefaultTooltip>,
+    );
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const trigger = container.querySelector<HTMLElement>("span");
+      const button = container.querySelector("button");
+      if (!trigger || !button) throw new Error("trigger did not render");
+      trigger.getBoundingClientRect = () => rect(300, 100, 40, 20);
+      act(() => button.focus());
+      const bubble = document.body.querySelector<HTMLElement>('[role="tooltip"]');
+      if (!bubble) throw new Error("bubble did not open");
+      expect(Number.parseFloat(bubble.style.top)).toBe(270);
+
+      const observer = observers.find((entry) => entry.targets.includes(bubble));
+      bubbleHeight = 60;
+      act(() => observer?.callback([], observer as unknown as ResizeObserver));
+      expect(Number.parseFloat(bubble.style.top)).toBe(234);
+    } finally {
+      unmount();
+      globalThis.ResizeObserver = OriginalResizeObserver;
+      if (height) Object.defineProperty(HTMLElement.prototype, "offsetHeight", height);
+    }
+  });
 });

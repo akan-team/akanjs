@@ -15,6 +15,24 @@ export interface OverlayPosition {
   anchorWidth: number;
 }
 
+const useMeasureWhileOpen = (opened: boolean, measure: () => void, panelRef: RefObject<HTMLElement | null>) => {
+  useEffect(() => {
+    if (!opened) return;
+    // Capture phase: the trigger may sit in a scroll container, whose scroll never reaches window by bubbling.
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    // A panel placed above is anchored by its bottom edge, so its top moves whenever it resizes.
+    const panel = panelRef.current;
+    const observer = panel ? new ResizeObserver(measure) : null;
+    if (panel && observer) observer.observe(panel);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [opened, measure, panelRef]);
+};
+
 // Placed here, not by CSS: in its own tree a panel is clipped by every `overflow` ancestor, and `fixed` in place is
 // clipped by the modal surface's transform.
 export const useOverlayPosition = ({
@@ -72,22 +90,7 @@ export const useOverlayPosition = ({
   useLayoutEffect(() => {
     if (opened) measure();
   }, [opened, measure]);
-
-  useEffect(() => {
-    if (!opened) return;
-    // Capture phase: the trigger may sit in a scroll container, whose scroll never reaches window by bubbling.
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    // A panel placed above is anchored by its bottom edge, so its top moves whenever it resizes.
-    const panel = panelRef.current;
-    const observer = panel ? new ResizeObserver(measure) : null;
-    if (panel && observer) observer.observe(panel);
-    return () => {
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-      observer?.disconnect();
-    };
-  }, [opened, measure, panelRef]);
+  useMeasureWhileOpen(opened, measure, panelRef);
 
   return position;
 };
@@ -168,20 +171,7 @@ export const useAnchoredPosition = ({
     if (opened) measure();
     else setPosition(null);
   }, [opened, measure]);
-
-  useEffect(() => {
-    if (!opened) return;
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    const panel = panelRef.current;
-    const observer = panel ? new ResizeObserver(measure) : null;
-    if (panel && observer) observer.observe(panel);
-    return () => {
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-      observer?.disconnect();
-    };
-  }, [opened, measure, panelRef]);
+  useMeasureWhileOpen(opened, measure, panelRef);
 
   return position;
 };
