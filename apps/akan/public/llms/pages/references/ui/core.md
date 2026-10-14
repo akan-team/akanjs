@@ -289,7 +289,7 @@ Modals and bodies with no trigger
 
 - Model.ViewModal ({ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName? }): The detail view in a modal, with title and action slots.
 
-- Model.ViewEditModal ({ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel? }): One modal that flips between view and form; `menu={false}` drops the kebab and its remove entry.
+- Model.ViewEditModal ({ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel? }): One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.
 
 - Model.View ({ model, render, modelLoading?, loading?, empty?, loadingWrapper?, className? }, default modelLoading true): The store-side `Load.View`: loaded, loading or empty from one model. Pass the store's loading flag.
 

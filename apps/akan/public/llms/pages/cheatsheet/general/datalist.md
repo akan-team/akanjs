@@ -86,9 +86,7 @@ Member
 
 - refName: The name you passed to `enumOf`, here `postStatus`.
 
-A control that takes label/value pairs, such as `Select`, needs the labels mapped in:
-
-**`Select` shows raw values.** `options={cnst.PostStatus}` works, but the list reads `draft`, not the translated label.
+`Select` takes the class itself, as `options={cnst.PostStatus}`, and lists each value under its dictionary name. A control that takes only label/value pairs needs the labels mapped in:
 
 DataList
 

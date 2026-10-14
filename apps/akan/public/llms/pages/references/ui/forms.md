@@ -166,7 +166,7 @@ Related pages
 
   - onChange ((value, prev) => void): Receives the next value and the previous one.
 
-  - options (T[] | { label, value }[] | enumOf class): The choices. An enum shows its raw values; pass pairs for translated labels.
+  - options (T[] | { label, value }[] | enumOf class): The choices. An enum is listed under its dictionary's names; a value the dictionary does not name shows as is.
 
   - label / desc (ReactNode): An optional label row above the field, with `desc` as a help tooltip.
 
