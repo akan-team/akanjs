@@ -1,5 +1,5 @@
 import type { NativeEnv } from "@akanjs/devkit/akanConfig";
-import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
+import { type AppBinaryDistribution, CloudApi, GlobalConfig, PipelineSecrets } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
 import { type MobilePlatform, UpdatePackFolder } from "@akanjs/devkit/mobile";
@@ -63,8 +63,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host: given,
     }: { name: string; branch: string | null; file: string | null; subspace: string | null; host?: string | null },
   ) {
-    CloudRunner.assertSecretName(name);
-    CloudRunner.assertSecretBranch(branch);
+    PipelineSecrets.assertName(name);
+    PipelineSecrets.assertBranch(branch);
     const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
     const value = await this.cloudRunner.readSecretValue(name, file);
     await this.cloudRunner.uploadSecret(await this.#cloudApi(workspace, given), devProjectId, { name, branch, value });
@@ -73,7 +73,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     workspace: Workspace,
     { branch, subspace, host: given }: { branch: string | null; subspace: string | null; host?: string | null },
   ) {
-    CloudRunner.assertSecretBranch(branch);
+    PipelineSecrets.assertBranch(branch);
     const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
     await this.cloudRunner.listSecrets(await this.#cloudApi(workspace, given), devProjectId, branch);
   }
@@ -86,8 +86,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       host: given,
     }: { name: string; branch: string | null; subspace: string | null; host?: string | null },
   ) {
-    CloudRunner.assertSecretName(name);
-    CloudRunner.assertSecretBranch(branch);
+    PipelineSecrets.assertName(name);
+    PipelineSecrets.assertBranch(branch);
     const devProjectId = await this.cloudRunner.projectOf(workspace, subspace);
     await this.cloudRunner.removeSecret(await this.#cloudApi(workspace, given), devProjectId, { name, branch });
   }

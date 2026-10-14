@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CloudApi, CloudHttpError, GlobalConfig } from "@akanjs/devkit/cloud";
+import { CloudApi, CloudHttpError, GlobalConfig, PipelineSecrets } from "@akanjs/devkit/cloud";
 import { CommandContainer, ExitCodeError, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
@@ -578,7 +578,7 @@ describe("pipeline secrets", () => {
   });
 
   test("lists names and scopes only, a branch narrowing to its own and the every-branch ones", () => {
-    const rows = CloudRunner.formatSecrets([
+    const rows = PipelineSecrets.format([
       { name: "NPM_TOKEN", scope: "*", updatedAt: "2026-10-09", updatedBy: "kim" },
       { name: "DISCORD_WEBHOOK", scope: "main", updatedAt: "2026-10-10", updatedBy: "lee" },
     ]).split("\n");
@@ -587,12 +587,12 @@ describe("pipeline secrets", () => {
       "DISCORD_WEBHOOK  main          2026-10-10  lee",
       "NPM_TOKEN        every branch  2026-10-09  kim",
     ]);
-    expect(CloudRunner.formatSecrets([])).toBe("No pipeline secrets.");
+    expect(PipelineSecrets.format([])).toBe("No pipeline secrets.");
   });
 
   test("a secret whose last writer is gone lists with a dash instead of failing the listing", () => {
     expect(
-      CloudRunner.formatSecrets([{ name: "NPM_TOKEN", scope: "main", updatedAt: "2026-10-09", updatedBy: null }]).split(
+      PipelineSecrets.format([{ name: "NPM_TOKEN", scope: "main", updatedAt: "2026-10-09", updatedBy: null }]).split(
         "\n",
       ),
     ).toEqual(["NAME       SCOPE  UPDATED     BY", "NPM_TOKEN  main   2026-10-09  -"]);
