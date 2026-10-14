@@ -22,6 +22,7 @@ import {
   SessionContext,
   type SessionHistory,
 } from "use-agentic";
+import { overlayZ } from "../overlayLayer";
 import { createOverridable } from "../UiOverride";
 import Approval from "./Approval";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
@@ -112,18 +113,17 @@ const isApplePlatform = () => {
 };
 
 // Portalled to the body: `#pageContainers` is `isolation: isolate`, so a z-index inside it never tops a body overlay.
-// The open panel tops every overlay a page opens and stays under Reconnect, which blocks on purpose; the launcher
-// sits under every menu and modal. It reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar
-// and the home indicator.
+// The launcher reads the page's frame off `<html>` (FrameRootVars), so it clears the tab bar and the home indicator.
 const launcherLayer =
-  "fixed bottom-[calc(var(--akan-bottom-inset,0px)+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))+1rem)] z-[80]";
+  "fixed bottom-[calc(var(--akan-bottom-inset,0px)+max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))+1rem)]";
+const launcherStyle = { zIndex: overlayZ.agentLauncher } as const;
 const launcherSides = {
   right: "right-[calc(env(safe-area-inset-right,0px)+1rem)]",
   left: "left-[calc(env(safe-area-inset-left,0px)+1rem)]",
 } as const;
 const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
-const panelLayer = "fixed inset-0 z-[150] sm:inset-auto sm:right-4 sm:bottom-4";
+const panelLayer = "fixed inset-0 sm:inset-auto sm:right-4 sm:bottom-4";
 const panelSize =
   "h-dvh w-screen rounded-none sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box";
 
@@ -433,6 +433,7 @@ export const DefaultChat = ({
               className,
               launcherClassName,
             )}
+            style={inline ? undefined : launcherStyle}
             hotkey={hotkey}
             label={l("base.agent")}
             buttonRef={launcherRef}
@@ -454,7 +455,7 @@ export const DefaultChat = ({
         panelClassName,
       )}
       role="dialog"
-      style={inline ? undefined : keyboardFrame}
+      style={inline ? undefined : { zIndex: overlayZ.agentPanel, ...keyboardFrame }}
       {...files.dropProps}
     >
       {chrome ? (
