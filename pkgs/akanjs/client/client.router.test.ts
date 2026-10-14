@@ -344,6 +344,31 @@ describe("router", () => {
     expect(posted()).toEqual(["/b", "/a"]);
   });
 
+  test("tells the embedding frame about a path or a list page, and an MCP host's view nothing at all", async () => {
+    envState.side = "client";
+    installClientWindow("/en/admin/c");
+    installHistory();
+    const { router } = await import("./router");
+    router.init({ type: "csr", lang: "en", prefix: "admin", router: recordingRouter([]) });
+
+    router.push("/users#bio");
+    router.postPathChange({ page: 3 });
+    expect(messages).toEqual([
+      { type: "pathChange", path: "/users", pathname: "/en/admin/users", hash: "bio" },
+      { type: "pathChange", page: 3 },
+    ]);
+
+    messages.length = 0;
+    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
+    try {
+      router.push("/users");
+      router.postPathChange({ page: 4 });
+    } finally {
+      globalThis.__AKAN_EMBED__ = undefined;
+    }
+    expect(messages).toEqual([]);
+  });
+
   test("a shallow replace reaches the navigation as such, with the query it writes", async () => {
     envState.side = "client";
     installClientWindow("/en/org");

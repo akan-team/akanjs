@@ -1,6 +1,7 @@
 import { getEnv } from "akanjs/base";
 import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { csrLocation } from "./csrLocation";
+import { isMcpView } from "./mcpView";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
@@ -214,7 +215,7 @@ class Router {
     const navigate = (method: "push" | "replace") => (href: string, routeOptions?: RouteOptions) => {
       const pathInfo = this.#getPathInfo(href);
       const navigationPathInfo = this.#getNavigationPathInfo(href);
-      this.#postPathChange(pathInfo);
+      this.postPathChange(pathInfo);
       return options.router[method](navigationPathInfo.href, routeOptions);
     };
     this.#instance = {
@@ -227,7 +228,7 @@ class Router {
       refresh: () => {
         const router = options.router;
         const pathInfo = this.#getPathInfo(location.pathname);
-        this.#postPathChange(pathInfo);
+        this.postPathChange(pathInfo);
         router.refresh();
       },
     };
@@ -237,12 +238,12 @@ class Router {
     this.#instance = {
       push: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
-        this.#postPathChange({ path, pathname, hash });
+        this.postPathChange({ path, pathname, hash });
         return options.router.push(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
       },
       replace: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
-        this.#postPathChange({ path, pathname, hash });
+        this.postPathChange({ path, pathname, hash });
         // for avoiding set state while rendering in redirect
         setTimeout(() => {
           options.router.replace(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
@@ -254,7 +255,7 @@ class Router {
       },
       refresh: () => {
         const { path, pathname, hash } = this.#getPathInfo(csrLocation.pathname);
-        this.#postPathChange({ path, pathname, hash });
+        this.postPathChange({ path, pathname, hash });
         options.router.refresh();
       },
       canGoBack: options.router.canGoBack,
@@ -279,7 +280,7 @@ class Router {
       if (Number.isInteger(nextState.idx)) this.#historyIdx = nextState.idx as number;
       if (this.#backsAwaitingPopstate === 0) return;
       this.#backsAwaitingPopstate -= 1;
-      this.#postPathChange(this.#getPathInfo(csrLocation.href));
+      this.postPathChange(this.#getPathInfo(csrLocation.href));
     });
   }
 
@@ -322,11 +323,16 @@ class Router {
   #postPathAfterBack() {
     if (this.canGoBack()) this.#backsAwaitingPopstate += 1;
   }
-  #postPathChange({ path, pathname, hash }: { path: string; pathname: string; hash: string }) {
-    Logger.info(`pathChange-start:${path}${hash ? `#${hash}` : ""}`);
+  /** Tells the frame embedding this page where it went: a new path, or a page of a paginated list. */
+  postPathChange(change: { path: string; pathname: string; hash: string } | { page: number }) {
+    const message =
+      "page" in change
+        ? { type: "pathChange", page: change.page }
+        : { type: "pathChange", path: change.path, pathname: change.pathname, hash: change.hash };
+    if (!("page" in change)) Logger.info(`pathChange-start:${change.path}${change.hash ? `#${change.hash}` : ""}`);
     //? An MCP host reads every message from its view as JSON-RPC; this one would arrive as a malformed request.
-    if (globalThis.__AKAN_EMBED__) return;
-    window.parent.postMessage({ type: "pathChange", path, pathname, hash }, "*");
+    if (isMcpView()) return;
+    window.parent.postMessage(message, "*");
   }
   #postDevSyncNavigation(kind: "push" | "replace", href: string) {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;

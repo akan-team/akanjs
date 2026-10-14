@@ -1,5 +1,5 @@
 "use client";
-import { csrContext, csrLocation, Device, getStoredAuthToken, initAuth } from "akanjs/client";
+import { csrContext, csrLocation, Device, getStoredAuthToken, initAuth, isMcpView } from "akanjs/client";
 import { Logger, parseAkanI18nEnv, parseBasePaths, parseSearchParams } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -25,7 +25,7 @@ export const bootCsr = async (context: CsrRouteContext) => {
   if (window.location.pathname === "/404") return;
   //* An MCP host's view: no network, no storage, no URL of its own. The host's credential rides every call it relays.
   let remount: () => void = () => undefined;
-  const embedded = globalThis.__AKAN_EMBED__ ? await bootMcpApp(i18n.locales, () => remount()) : false;
+  const embedded = isMcpView() ? await bootMcpApp(i18n.locales, () => remount()) : false;
   if (embedded === null) return;
 
   const [device, jwt] = await Promise.all([
