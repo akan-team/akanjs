@@ -425,9 +425,9 @@ export class PipelinePlanSchema {
 
   #secretList(value: unknown, path: string) {
     const names = this.#stringList(value, path);
-    for (const name of names) {
+    for (const [idx, name] of names.entries()) {
       const nameError = PipelineNames.secretNameError(name);
-      if (nameError) this.#fail(path, nameError);
+      if (nameError) this.#fail(`${path}[${idx}]`, nameError);
     }
     if (new Set(names).size !== names.length) this.#fail(path, "lists a secret twice");
     return names;

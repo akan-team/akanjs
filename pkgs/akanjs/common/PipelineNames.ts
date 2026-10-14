@@ -15,9 +15,10 @@ export class PipelineNames {
     return `"${id}" is not an id: up to 64 lowercase letters, digits and "-", starting with a letter or digit`;
   }
 
+  //? A malformed name is not echoed: it is often a value pasted where the name goes, and the message reaches CI logs.
   static secretNameError(name: string): string | null {
     if (!PipelineNames.#secretNamePattern.test(name))
-      return `"${name}" is not a secret name: up to 64 uppercase letters, digits and "_", starting with a letter`;
+      return 'the name is not a secret name (up to 64 uppercase letters, digits and "_", starting with a letter)';
     if (PipelineNames.isReservedEnv(name)) return `"${name}" is reserved for the executor`;
     return null;
   }
