@@ -1,4 +1,5 @@
 import type { Workspace } from "../commandDecorators";
+import { CloudHttpError } from "./cloudHttpError";
 import type { AccessToken, AccessTokenDto, HostConfig } from "./constants";
 import { GlobalConfig } from "./globalConfig";
 
@@ -25,7 +26,7 @@ class HttpClient {
     const response = await fetch(`${this.baseUrl}${url}`, {
       headers: { ...this.headers, ...headers },
     });
-    if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+    if (!response.ok) throw await CloudHttpError.of(response, url);
     await Bun.write(localPath, response);
   }
   async post<T>(url: string, data: unknown, { headers, signal }: HttpRequestOptions = {}): Promise<T> {
@@ -42,9 +43,8 @@ class HttpClient {
   }
   // A missing route answers an HTML error page, so the status is read before the body is parsed as JSON.
   static async #body<T>(response: Response, url: string): Promise<T> {
-    const text = await response.text();
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText} from ${url}: ${text.slice(0, 200)}`);
-    return JSON.parse(text) as T;
+    if (!response.ok) throw await CloudHttpError.of(response, url);
+    return JSON.parse(await response.text()) as T;
   }
   setHeaders(headers: Record<string, string>) {
     Object.assign(this.headers, headers);
@@ -113,10 +113,19 @@ export interface TunnelSummary {
 }
 
 export class CloudApi {
-  /** The HTTP status an error from this client carries, or null for one without (a dropped connection, a timeout). */
-  static statusOf(error: unknown) {
-    const status = Number(/(?:^|: )(\d{3}) /.exec(error instanceof Error ? error.message : String(error))?.[1]);
-    return Number.isNaN(status) ? null : status;
+  //* The project's guards answer by status: 401 no sign-in it accepts, 403 not allowed, 400 a refused request.
+  static refusal(error: unknown, who: string, { unavailable }: { unavailable?: string } = {}) {
+    if (!(error instanceof CloudHttpError)) return error;
+    if (error.status === 401)
+      return new Error("The server did not accept your sign-in: run `akan login`, then try again.", { cause: error });
+    if (error.status === 403) return new Error(`The project refused: ${who}.`, { cause: error });
+    if (error.status === 400)
+      return new Error(`The project refused the request${error.error ? `: ${error.error}` : ""}.`, { cause: error });
+    //? A proxy, or the gateway with no replica ready, answers 503 too; only the server's own names a domain Err key.
+    const { errKey } = error;
+    if (error.status === 503 && unavailable && errKey && errKey !== "base.error.serverUnavailable")
+      return new Error(`${unavailable}: ${errKey}.`, { cause: error });
+    return error;
   }
   readonly #api: HttpClient;
   #accessToken: AccessToken | null = null;

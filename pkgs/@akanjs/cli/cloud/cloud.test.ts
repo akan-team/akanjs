@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
+import { CloudApi, CloudHttpError, GlobalConfig } from "@akanjs/devkit/cloud";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
@@ -30,6 +30,14 @@ afterEach(() => {
   mock.restore();
 });
 const track = tempRoots();
+const statusTexts: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  503: "Service Unavailable",
+};
+const httpError = (status: number, body: string) =>
+  new CloudHttpError(status, statusTexts[status] ?? "", "/uploadSecret/project-1", body);
 const makeTempRoot = async () => track(await makeCliTempWorkspace()).root;
 
 describe("CloudCommand", () => {
@@ -659,40 +667,35 @@ describe("pipeline secrets", () => {
   });
 
   test("each refusal status reads as what to do about it", async () => {
-    const failing = (message: string) =>
+    const failing = (error: Error) =>
       ({
         uploadSecret: async () => {
-          throw new Error(message);
+          throw error;
         },
       }) as unknown as CloudApi;
     const upload = (api: CloudApi) =>
       new CloudRunner().uploadSecret(api, "project-1", { name: "NPM_TOKEN", branch: null, value: "t" });
-    await expect(upload(failing("401 Unauthorized from /uploadSecret/project-1: no token"))).rejects.toThrow(
-      "run `akan login`",
-    );
+    await expect(upload(failing(httpError(401, "no token")))).rejects.toThrow("run `akan login`");
     await expect(
-      upload(
-        failing(
-          '400 Bad Request from /uploadSecret/project-1: {"error":"pipelineSecret.error.tooMany","statusCode":400}',
-        ),
-      ),
+      upload(failing(httpError(400, '{"error":"pipelineSecret.error.tooMany","statusCode":400}'))),
     ).rejects.toThrow("The project refused the request: pipelineSecret.error.tooMany.");
     await expect(
       upload(
-        failing(
-          '503 Service Unavailable from /uploadSecret/project-1: {"error":"pipelineSecret.error.unconfigured","statusCode":503}',
-        ),
+        failing(httpError(400, JSON.stringify({ details: "x".repeat(400), error: "pipelineSecret.error.tooMany" }))),
       ),
+    ).rejects.toThrow("The project refused the request: pipelineSecret.error.tooMany.");
+    await expect(
+      upload(failing(httpError(503, '{"error":"pipelineSecret.error.unconfigured","statusCode":503}'))),
     ).rejects.toThrow("The server is not configured for pipeline secrets yet: pipelineSecret.error.unconfigured.");
-    await expect(upload(failing("socket hang up"))).rejects.toThrow("socket hang up");
+    await expect(upload(failing(new Error("socket hang up")))).rejects.toThrow("socket hang up");
   });
 
   test("only the server's own 503 reads as no pipeline secrets; a proxy's or a restarting gateway's keeps its cause", async () => {
-    const answering = (message: string) =>
+    const answering = (body: string) =>
       new CloudRunner().uploadSecret(
         {
           uploadSecret: async () => {
-            throw new Error(message);
+            throw httpError(503, body);
           },
         } as unknown as CloudApi,
         "project-1",
@@ -704,8 +707,7 @@ describe("pipeline secrets", () => {
       '{"error":"base.error.serverUnavailable","statusCode":503,"data":{"status":503}}',
       "{}",
     ]) {
-      const message = `503 Service Unavailable from /uploadSecret/project-1: ${body}`;
-      await expect(answering(message)).rejects.toThrow(message);
+      await expect(answering(body)).rejects.toThrow(`503 Service Unavailable from /uploadSecret/project-1: ${body}`);
     }
   });
 
@@ -720,7 +722,7 @@ describe("pipeline secrets", () => {
   test("a 403 from the project's guard says who may make the call", async () => {
     const api = {
       uploadSecret: async () => {
-        throw new Error("403 Forbidden from /uploadSecret/project-1: denied");
+        throw httpError(403, "denied");
       },
     } as unknown as CloudApi;
     await expect(
@@ -822,7 +824,7 @@ describe("OTA uploads", () => {
 
       const refused = {
         requestUpdateUpload: async () => {
-          throw new Error("401 Unauthorized from /requestUpdateUpload/project-1: {}");
+          throw new CloudHttpError(401, "Unauthorized", "/requestUpdateUpload/project-1", "{}");
         },
       } as unknown as CloudApi;
       await expect(

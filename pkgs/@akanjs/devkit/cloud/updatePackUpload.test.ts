@@ -19,7 +19,7 @@ class FakeAkasys {
   readonly puts: Put[] = [];
   readonly commits: string[] = [];
   readonly registrations: Record<string, string>[] = [];
-  putStatuses: number[] = [];
+  putStatuses: (number | Response)[] = [];
   stallPuts: boolean = false;
   commitAnswers: (number | [number, string] | Response)[] = [];
   release: Record<string, unknown> = { id: "release-1", status: "published", problems: [] };
@@ -64,7 +64,8 @@ class FakeAkasys {
         body: new Uint8Array(await request.arrayBuffer()),
       });
       if (this.stallPuts) return await new Promise<Response>(() => undefined);
-      return new Response(null, { status: this.putStatuses.shift() ?? 200 });
+      const answer = this.putStatuses.shift() ?? 200;
+      return answer instanceof Response ? answer : new Response(null, { status: answer });
     }
     if (url.pathname === "/api/commitUpdateUpload/project-1") {
       const { uploadId } = (await request.json()) as { uploadId: string };
@@ -272,6 +273,25 @@ describe("UpdatePackUpload", () => {
       bundle: "<file>",
       packUploadId: "upload-1",
     });
+  });
+
+  test("waits as long as storage's Retry-After asks before trying a PUT again", async () => {
+    const archive = await archiveOf("pack");
+    akasys.putStatuses = [new Response(null, { status: 429, headers: { "Retry-After": "1" } })];
+    const startedAt = performance.now();
+
+    await new UpdatePackUpload(api, "project-1", quick).send(archive, fields);
+
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(950);
+    expect(akasys.puts).toHaveLength(2);
+  });
+
+  test("never asks again sooner than the server's Retry-After, nor past the limit it would wait to", async () => {
+    const archive = await archiveOf("pack");
+    akasys.commitAnswers = [new Response("busy", { status: 503, headers: { "Retry-After": "120" } })];
+
+    await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("503");
+    expect(akasys.commits).toEqual(["upload-1"]);
   });
 
   test("refuses an empty archive before asking for a ticket", async () => {
