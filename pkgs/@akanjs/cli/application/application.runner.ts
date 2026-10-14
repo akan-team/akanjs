@@ -1,5 +1,4 @@
 import { realpathSync } from "node:fs";
-import { rm } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
@@ -16,6 +15,7 @@ import {
   type ResolvedMobileTarget,
   resolveAppId,
   resolveMobileTargets,
+  UpdatePackFolder,
   UpdateUploader,
 } from "@akanjs/devkit/mobile";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
@@ -487,20 +487,21 @@ try {
       throw new Error("pack-update packs one native target at a time; pass --target <name>.");
     const nativeApp = new NativeApp(app, mobileTarget, env);
     //? Before the web build: a pack failing anywhere leaves push-update --pack no record of the previous one to ship.
-    const dir = path.resolve(out ?? path.join(nativeApp.updatesDir, platform));
-    await Promise.all(["pack.json", "compat.json"].map((name) => rm(path.join(dir, name), { force: true })));
+    await UpdatePackFolder.clear(path.resolve(out ?? path.join(nativeApp.updatesDir, platform)));
     await this.#buildMobileCsr(app, env);
     const { pack } = await nativeApp.packUpdate(platform, { out });
     app.logger.info(
       `packed ${mobileTarget.name} ${platform} for channel '${pack.channel}' to ${pack.out}: ${pack.files} files, ${(pack.size / 1024).toFixed(0)} KiB, native API ${pack.nativeApi}`,
     );
     if (against) {
-      const compat = await NativeApp.compareBundles(app.cwdPath, against, path.join(pack.out, "bundle.json"));
-      pack.compat = { against, ...compat };
-      await Bun.write(path.join(pack.out, "compat.json"), `${JSON.stringify(pack.compat, null, 2)}\n`);
+      const bundle = path.join(pack.out, UpdatePackFolder.bundleFile);
+      await UpdatePackFolder.writeCompat(pack, {
+        against,
+        ...(await NativeApp.compareBundles(app.cwdPath, against, bundle)),
+      });
     }
-    await NativeApp.writePack(pack);
-    const verdict = NativeApp.storeBuildVerdict(pack);
+    await UpdatePackFolder.write(pack);
+    const verdict = UpdatePackFolder.storeBuildVerdict(pack);
     if (verdict) throw verdict;
     if (pack.compat) app.logger.info(`runs in the store build of ${against}`);
     return pack;
