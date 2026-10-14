@@ -352,21 +352,52 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       default: false,
     })
     .option("notarize", Boolean, { desc: notarizeDesc, default: false })
+    .option("revoke", String, {
+      desc: "android, ios: keyIds of updates.publicKeys this release starts revoking, comma-separated (update-keygen prints a key's); it is signed with a key listed after them",
+      nullable: true,
+    })
+    .option("resetSequence", Boolean, {
+      flag: "R",
+      desc: "android, ios: with --revoke, phones compare the release with their own bundle instead of the running one",
+      default: false,
+    })
     .option("write", Boolean, { desc: "write code generation", default: true })
     .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow release with --env local", default: false })
-    .exec(async function (app, platform, target, env, channel, upload, arch, sign, notarize, write, allowLocalRelease) {
-      await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+    .exec(
+      async function (
+        app,
+        platform,
         target,
         env,
-        ...(sign ? { sign } : {}),
-        ...(notarize ? { notarize } : {}),
-        ...(channel ? { channel } : {}),
-        ...(upload ? { upload } : {}),
-        ...(arch ? { arch } : {}),
+        channel,
+        upload,
+        arch,
+        sign,
+        notarize,
+        revoke,
+        resetSequence,
         write,
         allowLocalRelease,
-      });
-    }),
+      ) {
+        const revoked = revoke
+          ?.split(",")
+          .map((keyId) => keyId.trim())
+          .filter(Boolean);
+        await this.applicationScript.publishUpdate(app, platform as "desktop" | "android" | "ios", {
+          target,
+          env,
+          ...(sign ? { sign } : {}),
+          ...(notarize ? { notarize } : {}),
+          ...(channel ? { channel } : {}),
+          ...(upload ? { upload } : {}),
+          ...(arch ? { arch } : {}),
+          ...(revoked?.length ? { revoke: revoked } : {}),
+          ...(resetSequence ? { resetSequence } : {}),
+          write,
+          allowLocalRelease,
+        });
+      },
+    ),
   dbup: target({ desc: "Start local database services for a database mode" })
     .with(Workspace)
     .option("mode", String, {

@@ -841,6 +841,18 @@ describe("ApplicationRunner mobile", () => {
           target: "all",
         }),
       ).rejects.toThrow("Native target 'admin': the key at");
+      await expect(
+        new ApplicationRunner().publishUpdate(publishing({ updates }), "android", {
+          target: "all",
+          revoke: ["0123456789abcdef"],
+        }),
+      ).rejects.toThrow("Native target 'store': --revoke 0123456789abcdef: updates.publicKeys holds");
+      await expect(
+        new ApplicationRunner().publishUpdate(publishing({ updates }), "android", {
+          target: "all",
+          resetSequence: true,
+        }),
+      ).rejects.toThrow("Native target 'store': --reset-sequence counts only in a release that revokes a key");
     } finally {
       for (const [key, value] of Object.entries(saved))
         if (value === undefined) delete process.env[key];
