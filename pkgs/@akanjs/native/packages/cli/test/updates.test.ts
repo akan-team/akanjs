@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AkanNativeConfig } from "../src/config.ts";
 import { readBundleInfo } from "../src/lib/compat.ts";
+import { type LogEvent, withLogSink } from "../src/lib/log.ts";
 import type { BuildContext } from "../src/lib/prepare.ts";
 import { projectFromConfig } from "../src/lib/project.ts";
-import { assertSigningKey, channelRevocations, nextSequence, publishRelease } from "../src/lib/publish.ts";
+import { assertSigningKey, nextSequence, publishRelease, releaseRevocations } from "../src/lib/publish.ts";
 import {
   assertChannel,
   generateUpdateKey,
@@ -23,7 +24,7 @@ import {
 } from "../src/lib/updates.ts";
 
 /** A phone's release build as publishRelease reads it: the config, bundle.json and the web files. */
-const phoneBuild = (root: string, publicKeys: string[]) => {
+const phoneBuild = (root: string, publicKeys: string[], revokedKeys: string[] = []) => {
   const outDir = join(root, "build");
   const webDir = join(root, "web");
   mkdirSync(outDir, { recursive: true });
@@ -37,7 +38,13 @@ const phoneBuild = (root: string, publicKeys: string[]) => {
       web: { hash: "fedcba98", files: 1 },
     }),
   );
-  const updates = { url: "https://updates.example.com", publicKeys, channel: "main", readyTimeout: 10_000 };
+  const updates = {
+    url: "https://updates.example.com",
+    publicKeys,
+    revokedKeys,
+    channel: "main",
+    readyTimeout: 10_000,
+  };
   return {
     project: { config: { app: { id: "dev.test.revoke", version: "1.0.0" }, updates: { ...updates, reportUrl: null } } },
     outDir,
@@ -54,6 +61,7 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(validateUpdates({ url: "https://example.com/u/", publicKey: key }, problems)).toEqual({
       url: "https://example.com/u",
       publicKeys: [key],
+      revokedKeys: [],
       channel: "production",
       readyTimeout: 10_000,
       reportUrl: null,
@@ -106,6 +114,23 @@ describe("updates config (UP-1, UP-2)", () => {
       expect(problems).toEqual(["updates.url must be an http(s) URL without a query or fragment"]);
     }
     expect(keyIdOf(Buffer.alloc(32, 7).toString("base64"))).toBe("4bb06f8e4e3a7715");
+  });
+
+  test("updates.revokedKeys lists keyIds, each once, no more than a manifest may revoke", () => {
+    const check = (revokedKeys: unknown) => {
+      const problems: string[] = [];
+      const key = Buffer.alloc(32, 7).toString("base64");
+      return { config: validateUpdates({ url: "https://u", publicKey: key, revokedKeys }, problems), problems };
+    };
+    expect(check(["4bb06f8e4e3a7715"]).config?.revokedKeys).toEqual(["4bb06f8e4e3a7715"]);
+    for (const loose of ["4bb06f8e4e3a7715", ["4BB06F8E4E3A7715"], ["4bb06f8e"], [7]])
+      expect(check(loose).problems).toEqual([
+        "updates.revokedKeys must list keyIds: 16 lowercase hex characters, as `update keygen` prints them",
+      ]);
+    expect(check(["4bb06f8e4e3a7715", "4bb06f8e4e3a7715"]).problems).toEqual(["updates.revokedKeys lists a key twice"]);
+    const many = Array.from({ length: 17 }, (_, i) => i.toString(16).padStart(16, "0"));
+    expect(check(many).problems).toEqual(["updates.revokedKeys lists more than the 16 keys a manifest may revoke"]);
+    expect(check(many.slice(0, 16)).problems).toEqual([]);
   });
 
   test("a phone's envelope carries the manifest, its signer and the signature in one object", () => {
@@ -202,7 +227,14 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(updateKeyPath("dev.x", { AKAN_NATIVE_UPDATE_KEY: "/k/key.pem" })).toBe("/k/key.pem");
     const resource = JSON.parse(
       updatesResource(
-        { url: "https://u", publicKeys: ["k", "s"], channel: "beta", readyTimeout: 3000, reportUrl: "https://r/p" },
+        {
+          url: "https://u",
+          publicKeys: ["k", "s"],
+          revokedKeys: [],
+          channel: "beta",
+          readyTimeout: 3000,
+          reportUrl: "https://r/p",
+        },
         { id: "dev.x", version: "1.2.0" },
         "ios",
         "abc",
@@ -237,7 +269,7 @@ describe("updates config (UP-1, UP-2)", () => {
       };
       writeFileSync(join(out, "bundle.json"), JSON.stringify(bundle));
       const key = Buffer.alloc(32, 7).toString("base64");
-      const updates = { url: "https://u", publicKeys: [key], channel: "main", readyTimeout: 20_000 };
+      const updates = { url: "https://u", publicKeys: [key], revokedKeys: [], channel: "main", readyTimeout: 20_000 };
       const write = (reportUrl: string | null) =>
         writePhoneUpdates({
           updatesJson: join(out, "updates.json"),
@@ -332,59 +364,201 @@ describe("publishing a release", () => {
     expect(nextSequence(dir, "main", 1000)).toBe(1501);
   });
 
-  test("carries on what the channel's releases revoke, and never signs with a key they revoke", async () => {
+  type KeyName = "online" | "spare" | "last" | "stranger";
+  interface Keyring {
+    home: string;
+    key: Record<KeyName, string>;
+    id: Record<KeyName, string>;
+    /** online, spare and last, in that order. */
+    ring: string[];
+    out: string;
+    signWith: (name: KeyName) => void;
+  }
+  const keyring = async (run: (keys: Keyring) => Promise<void>) => {
     const home = mkdtempSync(join(tmpdir(), "akan-native-revoke-"));
     const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
-    const signWith = (name: string) => {
-      process.env.AKAN_NATIVE_UPDATE_KEY = join(home, `${name}.key`);
-    };
+    const make = (name: KeyName) => generateUpdateKey(join(home, `${name}.key`)).publicKey;
     try {
-      const [online, spare, last, stranger] = ["online", "spare", "last", "stranger"].map(
-        (name) => generateUpdateKey(join(home, `${name}.key`)).publicKey,
-      ) as [string, string, string, string];
-      const ring = [online, spare, last];
-      const ctx = phoneBuild(home, ring);
-      const { config } = ctx.project;
-      const out = join(home, "out");
-      const write = (channel: string, nativeApi: string, signer: string, manifest: object, keys = ring) => {
-        mkdirSync(join(out, "android", channel), { recursive: true });
-        const bytes = new TextEncoder().encode(JSON.stringify({ schema: 2, kind: "web", channel, ...manifest }));
-        const envelope = sealManifest(bytes, join(home, `${signer}.key`), keys);
-        writeFileSync(join(out, "android", channel, `${nativeApi}.json`), JSON.stringify(envelope));
-      };
-      //? An external signer recovered with the spare: its manifest for this binary's native API revokes the leaked key.
-      write("main", "0123456789abcdef", "spare", { sequence: 500, revokeKeys: [keyIdOf(online)] });
-      //? Neither a key the binaries do not trust nor one listed before the spare makes a publish revoke the spare.
-      write("main", "1111111111111111", "stranger", { sequence: 450, revokeKeys: [keyIdOf(spare)] }, [stranger]);
-      write("main", "2222222222222222", "online", { sequence: 400, revokeKeys: [keyIdOf(spare)] });
-
-      signWith("spare");
-      expect(channelRevocations(config, "android", out, "main")).toEqual([keyIdOf(online)]);
-      const { manifest, file } = await publishRelease(ctx, "android", "", out, "main");
-      expect(manifest.revokeKeys).toEqual([keyIdOf(online)]);
-      const opened = openEnvelope(readFileSync(file, "utf8"), ring);
-      expect(opened.keyId).toBe(keyIdOf(spare));
-      expect(JSON.parse(new TextDecoder().decode(opened.manifest)).revokeKeys).toEqual([keyIdOf(online)]);
-      //? The external signer's envelope was replaced by that release, which keeps the revocation going.
-      expect((await publishRelease(ctx, "android", "", out, "main")).manifest.revokeKeys).toEqual([keyIdOf(online)]);
-      expect(channelRevocations(config, "ios", out, "main")).toEqual([]);
-      expect(channelRevocations(config, "macos", out, "main")).toEqual([]);
-
-      signWith("online");
-      expect(() => channelRevocations(config, "android", out, "main")).toThrow("sign with a key listed after it");
-      await expect(publishRelease(ctx, "android", "", out, "main")).rejects.toThrow("the key at");
-
-      //? The last key revoked the spare alone: the online key, listed before the spare, may not sign that on.
-      write("pilot", "0123456789abcdef", "last", { sequence: 700, revokeKeys: [keyIdOf(spare)] });
-      expect(() => channelRevocations(config, "android", out, "pilot")).toThrow("so sign with one after them");
-      signWith("last");
-      expect(channelRevocations(config, "android", out, "pilot")).toEqual([keyIdOf(spare)]);
-      expect(channelRevocations(config, "android", out, "main")).toEqual([keyIdOf(online)]);
+      const key = { online: make("online"), spare: make("spare"), last: make("last"), stranger: make("stranger") };
+      await run({
+        home,
+        key,
+        id: {
+          online: keyIdOf(key.online),
+          spare: keyIdOf(key.spare),
+          last: keyIdOf(key.last),
+          stranger: keyIdOf(key.stranger),
+        },
+        ring: [key.online, key.spare, key.last],
+        out: join(home, "out"),
+        signWith: (name) => {
+          process.env.AKAN_NATIVE_UPDATE_KEY = join(home, `${name}.key`);
+        },
+      });
     } finally {
       if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
       else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
       rmSync(home, { recursive: true, force: true });
     }
+  };
+  /** An envelope an external signer put in the publish folder. */
+  const writeEnvelope = (
+    { home, out, ring }: Keyring,
+    channel: string,
+    nativeApi: string,
+    signer: string,
+    manifest: object,
+    keys = ring,
+  ) => {
+    mkdirSync(join(out, "android", channel), { recursive: true });
+    const bytes = new TextEncoder().encode(JSON.stringify({ schema: 2, kind: "web", channel, ...manifest }));
+    const envelope = sealManifest(bytes, join(home, `${signer}.key`), keys);
+    writeFileSync(join(out, "android", channel, `${nativeApi}.json`), JSON.stringify(envelope));
+  };
+  const warningsOf = async (run: () => Promise<unknown>) => {
+    const events: LogEvent[] = [];
+    await withLogSink((event) => events.push(event), run);
+    return events.filter((event) => event.level === "warn").map((event) => event.message);
+  };
+
+  test("carries on what the channel's releases revoke, and never signs with a key they revoke", async () => {
+    await keyring(async (keys) => {
+      const { id, key, ring, out, signWith } = keys;
+      const ctx = phoneBuild(keys.home, ring);
+      const { config } = ctx.project;
+      //? An external signer recovered with the spare: its manifest for this binary's native API revokes the leaked key.
+      writeEnvelope(keys, "main", "0123456789abcdef", "spare", { sequence: 500, revokeKeys: [id.online] });
+      //? Neither a key the binaries do not trust nor one listed before the spare makes a publish revoke the spare.
+      writeEnvelope(keys, "main", "1111111111111111", "stranger", { sequence: 450, revokeKeys: [id.spare] }, [
+        key.stranger,
+      ]);
+      writeEnvelope(keys, "main", "2222222222222222", "online", { sequence: 400, revokeKeys: [id.spare] });
+
+      signWith("spare");
+      expect(releaseRevocations(config, "android", out, "main")).toEqual({
+        revokeKeys: [id.online],
+        resetSequence: false,
+      });
+      const { manifest, file } = await publishRelease(ctx, "android", "", out, "main");
+      expect(manifest.revokeKeys).toEqual([id.online]);
+      expect(manifest.resetSequence).toBeUndefined();
+      const opened = openEnvelope(readFileSync(file, "utf8"), ring);
+      expect(opened.keyId).toBe(id.spare);
+      expect(JSON.parse(new TextDecoder().decode(opened.manifest)).revokeKeys).toEqual([id.online]);
+      //? The external signer's envelope was replaced by that release, which keeps the revocation going.
+      expect((await publishRelease(ctx, "android", "", out, "main")).manifest.revokeKeys).toEqual([id.online]);
+      expect(releaseRevocations(config, "ios", out, "main").revokeKeys).toEqual([]);
+      expect(releaseRevocations(config, "macos", out, "main").revokeKeys).toEqual([]);
+
+      signWith("online");
+      expect(() => releaseRevocations(config, "android", out, "main")).toThrow(
+        `the release revokes ${id.online} (the main releases in ${join(out, "android")}), the key it would be signed with`,
+      );
+      await expect(publishRelease(ctx, "android", "", out, "main")).rejects.toThrow(`sign with ${id.spare}`);
+
+      //? The last key revoked the spare alone: the online key, listed before the spare, may not sign that on.
+      writeEnvelope(keys, "pilot", "0123456789abcdef", "last", { sequence: 700, revokeKeys: [id.spare] });
+      expect(() => releaseRevocations(config, "android", out, "pilot")).toThrow(
+        `listed after ${id.online}, the key it would be signed with`,
+      );
+      signWith("last");
+      expect(releaseRevocations(config, "android", out, "pilot").revokeKeys).toEqual([id.spare]);
+      expect(releaseRevocations(config, "android", out, "main").revokeKeys).toEqual([id.online]);
+    });
+  });
+
+  test("--revoke starts a revocation, signed with a key listed after it, and resets the sequence on request", async () => {
+    await keyring(async (keys) => {
+      const { id, ring, out, signWith } = keys;
+      const ctx = phoneBuild(keys.home, ring);
+      signWith("spare");
+      const warnings = await warningsOf(async () => {
+        const { manifest, file } = await publishRelease(ctx, "android", "", out, "main", {
+          revoke: [id.online],
+          resetSequence: true,
+        });
+        expect(manifest).toMatchObject({ revokeKeys: [id.online], resetSequence: true });
+        const opened = openEnvelope(readFileSync(file, "utf8"), ring);
+        expect(opened.keyId).toBe(id.spare);
+        expect(JSON.parse(new TextDecoder().decode(opened.manifest))).toMatchObject({
+          revokeKeys: [id.online],
+          resetSequence: true,
+        });
+      });
+      expect(warnings).toEqual([
+        `this release revokes ${id.online}, which updates.revokedKeys does not list: add it, or a release published from another folder stops revoking it`,
+      ]);
+      //? The next routine publish from this folder carries the revocation on, without the reset.
+      const next = await publishRelease(ctx, "android", "", out, "main");
+      expect(next.manifest.revokeKeys).toEqual([id.online]);
+      expect(next.manifest.resetSequence).toBeUndefined();
+    });
+  });
+
+  test("refuses a revocation no phone would take, before anything is signed", async () => {
+    await keyring(async (keys) => {
+      const { id, ring, out, signWith } = keys;
+      const { config } = phoneBuild(keys.home, ring).project;
+      const refuse = (
+        request: { revoke?: string[]; resetSequence?: boolean },
+        platform: "android" | "macos" = "android",
+      ) => expect(() => releaseRevocations(config, platform, out, "main", request));
+
+      signWith("spare");
+      refuse({ revoke: [id.stranger] }).toThrow(
+        `--revoke ${id.stranger}: updates.publicKeys holds ${id.online}, ${id.spare}, ${id.last} only`,
+      );
+      refuse({ revoke: ["not-a-key-id"] }).toThrow("--revoke not-a-key-id: updates.publicKeys holds");
+      //? A key revokes only keys listed before it: the spare may not revoke the last key, nor itself.
+      refuse({ revoke: [id.last] }).toThrow(
+        `the release revokes ${id.last} (--revoke), listed after ${id.spare}, the key it would be signed with`,
+      );
+      refuse({ revoke: [id.spare] }).toThrow(
+        `the release revokes ${id.spare} (--revoke), the key it would be signed with`,
+      );
+      refuse({ revoke: [id.spare] }).toThrow(`sign with ${id.last}, the key listed after every key it revokes`);
+      signWith("last");
+      refuse({ revoke: [id.last] }).toThrow("so the phones need a new binary with another key");
+      refuse({ resetSequence: true }).toThrow("--reset-sequence counts only in a release that revokes a key");
+      refuse({ revoke: [id.online] }, "macos").toThrow("are for a phone's release");
+      refuse({ resetSequence: true }, "macos").toThrow("are for a phone's release");
+      expect(releaseRevocations(config, "android", out, "main", { revoke: [id.online, id.spare] })).toEqual({
+        revokeKeys: [id.online, id.spare].sort(),
+        resetSequence: false,
+      });
+
+      const full = Array.from({ length: 16 }, (_, i) => i.toString(16).padStart(16, "0"));
+      const crowded = phoneBuild(keys.home, ring, full).project.config;
+      expect(() => releaseRevocations(crowded, "android", out, "main", { revoke: [id.online] })).toThrow(
+        "the release would revoke 17 keys, more than the 16 a manifest may",
+      );
+    });
+  });
+
+  test("updates.revokedKeys rides every phone release with what the channel's releases revoke", async () => {
+    await keyring(async (keys) => {
+      const { id, ring, out, signWith } = keys;
+      const elsewhere = "0123456789abcdef";
+      const ctx = phoneBuild(keys.home, ring, [id.online, elsewhere]);
+      writeEnvelope(keys, "main", "0123456789abcdef", "last", { sequence: 500, revokeKeys: [id.spare] });
+      signWith("last");
+      let revokeKeys: string[] | undefined;
+      const warnings = await warningsOf(async () => {
+        ({ revokeKeys } = (await publishRelease(ctx, "android", "", out, "main")).manifest);
+      });
+      expect(revokeKeys).toEqual([elsewhere, id.online, id.spare].sort());
+      expect(warnings).toEqual([
+        `this release revokes ${id.spare}, which updates.revokedKeys does not list: add it, or a release published from another folder stops revoking it`,
+        `updates.revokedKeys lists ${elsewhere}, which updates.publicKeys does not hold: only binaries built with an earlier ring act on it`,
+      ]);
+      //? From a fresh folder the config alone carries the revocations.
+      const fresh = await publishRelease(ctx, "android", "", join(keys.home, "fresh"), "main");
+      expect(fresh.manifest.revokeKeys).toEqual([elsewhere, id.online].sort());
+      signWith("online");
+      await expect(publishRelease(ctx, "android", "", join(keys.home, "fresh"), "main")).rejects.toThrow(
+        `the release revokes ${id.online} (updates.revokedKeys), the key it would be signed with`,
+      );
+    });
   });
 });
 

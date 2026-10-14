@@ -3,7 +3,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isUpdateKeyId, updateDecision } from "../../../core/src/kernel.ts";
+import { isUpdateKeyId, MAX_REVOKE_KEYS, updateDecision } from "../../../core/src/kernel.ts";
 import { assertSameServer, publishAppUpdate } from "../platforms/desktop-update.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
 import { CliError, log } from "./log.ts";
@@ -23,9 +23,6 @@ import {
   webManifest,
   writeWebBundle,
 } from "./updates.ts";
-
-//? Phones refuse a manifest whose revokeKeys lists more (UpdatesPlugin).
-const MAX_REVOKE_KEYS = 16;
 
 export type ReleasePlatform = "macos" | "windows" | "linux" | "ios" | "android";
 
@@ -143,43 +140,110 @@ function publishedRevocations(dir: string, channel: string, publicKeys: readonly
   return revoked.sort((a, b) => a.localeCompare(b));
 }
 
+export interface RevocationRequest {
+  /** keyIds of updates.publicKeys this release starts revoking (`update publish --revoke`). */
+  revoke?: readonly string[];
+  /** With a revocation, a phone compares the release with its own bundle instead of the running one. */
+  resetSequence?: boolean;
+}
+
+interface RevocationConfig {
+  app: { id: string };
+  updates?: { publicKeys: string[]; revokedKeys?: readonly string[] } | null;
+}
+
 /**
- * The revokeKeys of a phone release of `channel` under `out`: those of the channel's releases, since a phone that never
- * saw a revocation (a new install, cleared data) learns it only from a later manifest. Refuses a signing key they
- * revoke, or one listed before a key they revoke: every phone would refuse its manifest.
+ * The revokeKeys and resetSequence of a phone release of `channel` under `out`: updates.revokedKeys, what the channel's
+ * releases revoke, and `revoke`, since a phone that never saw a revocation (a new install, cleared data) learns it only
+ * from a later manifest. Refuses a `revoke` the ring does not hold, more keys than a manifest may revoke, a reset that
+ * revokes nothing, and a signing key the release revokes or that is listed before a key it revokes: every phone would
+ * refuse that manifest, since a key may revoke only keys listed before it.
  */
-export function channelRevocations(
-  config: { app: { id: string }; updates?: { publicKeys: string[] } | null },
+export function releaseRevocations(
+  config: RevocationConfig,
   platform: ReleasePlatform,
   out: string,
   channel: string,
-): string[] {
-  if ((platform !== "ios" && platform !== "android") || !config.updates) return [];
-  const { publicKeys } = config.updates;
+  { revoke = [], resetSequence = false }: RevocationRequest = {},
+): { revokeKeys: string[]; resetSequence: boolean } {
+  if (platform !== "ios" && platform !== "android") {
+    if (revoke.length || resetSequence)
+      throw new CliError(
+        "--revoke and --reset-sequence are for a phone's release: a desktop app trusts the first of updates.publicKeys only",
+      );
+    return { revokeKeys: [], resetSequence: false };
+  }
+  if (!config.updates) return { revokeKeys: [], resetSequence: false };
+  const { publicKeys, revokedKeys: listed = [] } = config.updates;
+  const ring = publicKeys.map(keyIdOf);
+  const unknown = revoke.filter((id) => !ring.includes(id));
+  if (unknown.length)
+    throw new CliError(`--revoke ${unknown.join(", ")}: updates.publicKeys holds ${ring.join(", ")} only`);
   const dir = releaseDir(out, platform);
-  const revokeKeys = publishedRevocations(dir, channel, publicKeys);
-  if (!revokeKeys.length) return [];
+  const published = publishedRevocations(dir, channel, publicKeys);
+  const revokeKeys = [...new Set([...listed, ...published, ...revoke])].sort((a, b) => a.localeCompare(b));
+  if (revokeKeys.length > MAX_REVOKE_KEYS)
+    throw new CliError(
+      `the release would revoke ${revokeKeys.length} keys, more than the ${MAX_REVOKE_KEYS} a manifest may`,
+    );
+  if (resetSequence && !revokeKeys.length)
+    throw new CliError("--reset-sequence counts only in a release that revokes a key: pass --revoke");
+  if (!revokeKeys.length) return { revokeKeys, resetSequence };
   const keyPath = updateKeyPath(config.app.id);
+  const signer = signingKey(keyPath, publicKeys).keyId;
   const { kind } = updateDecision({
-    ring: publicKeys.map(keyIdOf),
+    ring,
     revoked: [],
-    signer: signingKey(keyPath, publicKeys).keyId,
+    signer,
     revokeKeys,
     resetSequence: false,
     sequence: 1,
     embedded: 0,
     running: null,
   });
-  const by = `the ${channel} releases in ${dir} revoke ${revokeKeys.join(", ")}`;
-  if (kind === "self-revoke")
-    throw new CliError(`${by}, the key at ${keyPath}: sign with a key listed after it in updates.publicKeys`);
-  if (kind === "revoke-later")
-    throw new CliError(
-      `${by}, listed after the key at ${keyPath} in updates.publicKeys: a key revokes only keys before it, so sign with one after them`,
+  if (kind !== "self-revoke" && kind !== "revoke-later") return { revokeKeys, resetSequence };
+  const origin = (id: string) =>
+    revoke.includes(id)
+      ? "--revoke"
+      : listed.includes(id)
+        ? "updates.revokedKeys"
+        : `the ${channel} releases in ${dir}`;
+  const blocking =
+    kind === "self-revoke" ? [signer] : revokeKeys.filter((id) => ring.indexOf(id) > ring.indexOf(signer));
+  const named = blocking.map((id) => `${id} (${origin(id)})`).join(", ");
+  const position =
+    kind === "self-revoke"
+      ? "the key it would be signed with"
+      : `listed after ${signer}, the key it would be signed with`;
+  const next = ring[Math.max(...revokeKeys.map((id) => ring.indexOf(id))) + 1];
+  const advice = next
+    ? `sign with ${next}, the key listed after every key it revokes (AKAN_NATIVE_UPDATE_KEY names its key file)`
+    : "no key of updates.publicKeys is listed after every key it revokes, so the phones need a new binary with another key";
+  throw new CliError(
+    `the release revokes ${named}, ${position} (${keyPath}), and a key revokes only keys listed before it in updates.publicKeys: ${advice}`,
+  );
+}
+
+/**
+ * A revocation only the release's folder or `--revoke` carries ends with a publish from another folder (a fresh CI
+ * checkout), and one of a key the ring does not hold reaches only binaries built with another ring.
+ */
+function warnRevocations(
+  updates: { publicKeys: string[]; revokedKeys?: readonly string[] },
+  revokeKeys: string[],
+): void {
+  const listed = updates.revokedKeys ?? [];
+  const unlisted = revokeKeys.filter((id) => !listed.includes(id));
+  if (unlisted.length)
+    log.warn(
+      `this release revokes ${unlisted.join(", ")}, which updates.revokedKeys does not list: add ${unlisted.length > 1 ? "them" : "it"}, or a release published from another folder stops revoking ${unlisted.length > 1 ? "them" : "it"}`,
     );
-  if (revokeKeys.length > MAX_REVOKE_KEYS)
-    throw new CliError(`${by}: more than the ${MAX_REVOKE_KEYS} keys a manifest may revoke`);
-  return revokeKeys;
+  const ring = updates.publicKeys.map(keyIdOf);
+  const elsewhere = listed.filter((id) => !ring.includes(id));
+  if (elsewhere.length)
+    log.warn(
+      `updates.revokedKeys lists ${elsewhere.join(", ")}, which updates.publicKeys does not hold: only binaries built with an earlier ring act on ${elsewhere.length > 1 ? "them" : "it"}`,
+    );
 }
 
 /**
@@ -210,6 +274,7 @@ export async function publishRelease(
   artifact: string,
   out: string,
   channel: string,
+  request: RevocationRequest = {},
 ): Promise<PublishedRelease> {
   const { config } = ctx.project;
   if (!config.updates)
@@ -219,7 +284,8 @@ export async function publishRelease(
   const dir = releaseDir(out, platform, ctx.arch);
   assertChannel(channel);
   assertSigningKey(config, platform);
-  const revokeKeys = channelRevocations(config, platform, out, channel);
+  const { revokeKeys, resetSequence } = releaseRevocations(config, platform, out, channel, request);
+  warnRevocations(config.updates, revokeKeys);
   const keyPath = updateKeyPath(config.app.id);
   const sequence = nextSequence(dir, channel);
 
@@ -238,6 +304,7 @@ export async function publishRelease(
       bundle: `${sequence}-${info.web.hash.slice(0, 8)}`,
       files: writeWebBundle(dir, ctx.webDir, ctx.html, ctx.env),
       revokeKeys,
+      resetSequence,
     });
   }
   const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
