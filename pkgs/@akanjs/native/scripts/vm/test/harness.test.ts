@@ -15,7 +15,8 @@ const pageAnswering = (answer: Answer) => {
     port: 0,
     hostname: "127.0.0.1",
     fetch: (request, server) => {
-      if (new URL(request.url).pathname === "/page") return server.upgrade(request) ? undefined : new Response(null);
+      if (new URL(request.url).pathname === "/page")
+        return server.upgrade(request, { data: undefined }) ? undefined : new Response(null);
       return Response.json([
         { type: "page", url: "devtools://devtools/bundled/x", webSocketDebuggerUrl: "ws://127.0.0.1:1/none" },
         { type: "page", url: "https://app.localhost/", webSocketDebuggerUrl: `ws://127.0.0.1:${server.port}/page` },
