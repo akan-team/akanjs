@@ -211,7 +211,9 @@ const CSRWrapper = ({
         </TopChromeLayer>
         <TopChromeLayer
           id="topLeftActionContainer"
-          className={cn("akan-frame-chrome fixed top-0 isolate flex aspect-1 items-center justify-center")}
+          className={cn(
+            "akan-frame-chrome pointer-events-none fixed top-0 isolate flex aspect-1 items-center justify-center",
+          )}
           style={topLeftAction?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topLeftAction" />
@@ -339,6 +341,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
             className={cn(
               slot === "topInset" && "absolute top-0 left-0 isolate size-full",
               slot === "topLeftAction" && "absolute left-0 isolate flex h-full items-center justify-center",
+              slot === "topLeftAction" && pageType === "current" && "pointer-events-auto",
               (slot === "bottomInset" || slot === "keyboardInset") && "absolute inset-x-0 bottom-0 isolate h-full",
               pageType === "cached" && "hidden",
               ((slot === "topInset" && pageType !== "current") ||
