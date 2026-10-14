@@ -1075,7 +1075,7 @@ describe("SignalResolver declaration contracts", () => {
   test("a machine token reaches a pubsub room's guards, and the room goes once the socket drops it", async () => {
     const saved = { ...process.env };
     Object.assign(process.env, {
-      AKAN_PUBLIC_APP_NAME: "dcms",
+      AKAN_PUBLIC_APP_NAME: "fleet",
       AKAN_PUBLIC_REPO_NAME: "akan",
       AKAN_PUBLIC_SERVE_DOMAIN: "example.com",
       AKAN_PUBLIC_ENV: "main",
@@ -1083,16 +1083,16 @@ describe("SignalResolver declaration contracts", () => {
     });
     resetEnvCache();
     try {
-      class CourtPcOnly {
-        static name = "CourtPcOnly";
+      class KioskOnly {
+        static name = "KioskOnly";
         static scope = "account" as const;
         canPass(context: SignalContext): boolean {
-          return context.get<{ machine?: MachineIdentity }>("account")?.machine?.kind === "courtPc";
+          return context.get<{ machine?: MachineIdentity }>("account")?.machine?.kind === "kiosk";
         }
       }
       class MachineRoomEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
         commandOfPc: builder
-          .pubsub(String, { guards: [CourtPcOnly] })
+          .pubsub(String, { guards: [KioskOnly] })
           .room("pcId", ID)
           .exec(() => undefined),
       })) {}
@@ -1103,7 +1103,7 @@ describe("SignalResolver declaration contracts", () => {
         { registry, middleware: new Map([[MachineAccount.refName, MachineAccount]]) },
       );
       const roomId = `commandOfPc-${validId}`;
-      const token = MachineToken.issue({ kind: "courtPc", id: validId, version: 1 });
+      const token = MachineToken.issue({ kind: "kiosk", id: validId, version: 1 });
 
       const device = makeWs();
       device.data.headers = new Headers({ authorization: `Bearer ${token}` });
@@ -1115,9 +1115,9 @@ describe("SignalResolver declaration contracts", () => {
 
       const claimed = makeWs();
       claimed.data.headers = new Headers();
-      claimed.data.account = { machine: { kind: "courtPc", id: validId, version: 1 } };
+      claimed.data.account = { machine: { kind: "kiosk", id: validId, version: 1 } };
       await expect(resolved.wsRoutes?.commandOfPc?.(claimed, [validId], "subscribe")).rejects.toThrow(
-        "Access denied by guard: CourtPcOnly",
+        "Access denied by guard: KioskOnly",
       );
     } finally {
       for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];

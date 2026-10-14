@@ -1261,7 +1261,7 @@ describe("SignalContext execution", () => {
       .body("capturedAt", Date)
       .body("count", Int)
       .body("label", String)
-      .body("courtPcId", ID)
+      .body("kioskId", ID)
       .body("tags", [String])
       .exec((...args: unknown[]) => {
         received = args;
@@ -1273,7 +1273,7 @@ describe("SignalContext execution", () => {
     form.append("capturedAt", JSON.stringify(capturedAt));
     form.append("count", "3");
     form.append("label", "123");
-    form.append("courtPcId", "64a0000000000000000000a1");
+    form.append("kioskId", "64a0000000000000000000a1");
     form.append("tags", JSON.stringify(["a", "b"]));
     const request = {
       url: "http://localhost/api/addPcScreenshot",

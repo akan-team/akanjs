@@ -51,7 +51,7 @@ describe("AkanWorkspaceConfig", () => {
     expect(hostOf(undefined)).toBeNull();
     expect(hostOf({})).toBeNull();
     expect(hostOf({ host: "https://cloud.example.com/" })).toBe("https://cloud.example.com");
-    expect(hostOf({ host: "https://example.com/akasys//" })).toBe("https://example.com/akasys");
+    expect(hostOf({ host: "https://example.com/control//" })).toBe("https://example.com/control");
     expect(hostOf({ host: "http://localhost:8283" })).toBe("http://localhost:8283");
     expect(() => hostOf({ host: "http://cloud.example.com" })).toThrow("https only");
     expect(() => hostOf({ host: "cloud.example.com" })).toThrow("is not a URL");
@@ -59,11 +59,11 @@ describe("AkanWorkspaceConfig", () => {
     expect(() => hostOf({ host: "https://cloud.example.com", token: "x" })).toThrow("keys it does not take: token");
 
     const workspace = (cloudHost: string | null) => ({ getConfig: async () => ({ cloudHost }) });
-    expect(await GlobalConfig.hostFor(workspace("https://akasys.example.com"), "https://given.example.com")).toBe(
+    expect(await GlobalConfig.hostFor(workspace("https://control.example.com"), "https://given.example.com")).toBe(
       "https://given.example.com",
     );
-    expect(await GlobalConfig.hostFor(workspace("https://akasys.example.com"), null)).toBe(
-      "https://akasys.example.com",
+    expect(await GlobalConfig.hostFor(workspace("https://control.example.com"), null)).toBe(
+      "https://control.example.com",
     );
     expect(await GlobalConfig.hostFor(workspace(null))).toBe(GlobalConfig.akanCloudHost);
   });
