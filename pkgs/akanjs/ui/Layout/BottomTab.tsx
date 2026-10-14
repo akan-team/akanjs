@@ -1,10 +1,9 @@
 "use client";
 import { cn, usePage, usePathCtx } from "akanjs/client";
-import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 
 import { Link } from "../Link";
-import { isActiveHref } from "../Link/activePath";
+import { isActiveHref, useCurrentPathname } from "../Link/activePath";
 import { BottomInset } from "./BottomInset";
 
 interface TabType {
@@ -34,11 +33,8 @@ export interface BottomTabProps {
 
 export const BottomTab = ({ className, tabs, height = 64, label, renderTab }: BottomTabProps) => {
   const { lang } = usePage();
-  const pathCtx = usePathCtx();
-  const statePathname = st.use.pathname({ agent: false });
-  //? The store follows every client navigation but knows nothing on the server; the request's own path does.
-  const pathname = typeof window === "undefined" ? (pathCtx.location?.pathname ?? statePathname) : statePathname;
-  const prefix = pathCtx.prefix;
+  const { prefix } = usePathCtx();
+  const pathname = useCurrentPathname();
   const isActiveTab = ({ href, exact, match }: TabType) =>
     isActiveHref({ pathname, href, lang, prefix: prefix ?? "", exact, match });
 

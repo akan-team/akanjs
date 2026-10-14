@@ -5,7 +5,7 @@ import { openExternalUrl } from "akanjs/client/native";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";
-import { isActiveHref } from "./activePath";
+import { isActiveHref, useCurrentPathname } from "./activePath";
 
 export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
   /** Omitted, or with `disabled`, Link renders a plain div around the same children. */
@@ -74,12 +74,9 @@ export const SsrLink = ({
   noCache,
   ...props
 }: AnchorProps) => {
-  const pathCtx = usePathCtx();
-  const prefix = pathCtx.prefix ?? "";
+  const prefix = usePathCtx().prefix ?? "";
   const { lang } = usePage();
-  const statePathname = st.use.pathname({ agent: false });
-  //? The store follows every client navigation but knows nothing on the server; the request's own path does.
-  const pathname = typeof window === "undefined" ? (pathCtx.location?.pathname ?? statePathname) : statePathname;
+  const pathname = useCurrentPathname();
   const currentPath = getPathInfo(pathname, lang, prefix).path;
   const isExternal = href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:");
   const internalPathInfo = getPathInfo(href, lang, prefix);

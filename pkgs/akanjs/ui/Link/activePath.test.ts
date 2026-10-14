@@ -1,5 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { isActiveHref } from "./activePath";
+import { beforeAll, describe, expect, test } from "bun:test";
+import { setTestEnv } from "../testHelpers.fixture";
+
+let isActiveHref: typeof import("./activePath").isActiveHref;
+
+beforeAll(async () => {
+  setTestEnv("activepathtest");
+  ({ isActiveHref } = await import("./activePath"));
+});
 
 describe("isActiveHref", () => {
   test("strips the locale and the basePath from both sides before comparing", () => {
