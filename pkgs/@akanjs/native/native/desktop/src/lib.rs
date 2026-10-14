@@ -1232,88 +1232,6 @@ fn is_dark() -> bool {
   false
 }
 
-fn monitors(target: &EventLoopWindowTarget<UserEvent>) -> Vec<placement::Rect> {
-  target.available_monitors().map(|m| logical_rect(&m)).collect()
-}
-
-fn logical_rect(m: &tao::monitor::MonitorHandle) -> placement::Rect {
-  let scale = m.scale_factor();
-  let (p, s) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
-  placement::Rect { x: p.x, y: p.y, width: s.width, height: s.height }
-}
-
-/// The display holding a logical point.
-fn monitor_at(target: &EventLoopWindowTarget<UserEvent>, x: f64, y: f64) -> Option<tao::monitor::MonitorHandle> {
-  target.available_monitors().find(|m| {
-    let r = logical_rect(m);
-    x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
-  })
-}
-
-/// window.placeOnDisplay: `(x, y, width, height)` in the display's device pixels from its corner, filled by a decorated
-/// window's frame (title bar included) or by a frameless window's content. Returns the minimum size, lowered to fit.
-fn place_on_display(window: &tao::window::Window, webview: &WebView, monitor: &tao::monitor::MonitorHandle, (x, y, w, h): (f64, f64, f64, f64), min_size: (f64, f64)) -> (f64, f64) {
-  let scale = monitor.scale_factor();
-  let lowered = |size: LogicalSize<f64>| (min_size.0.min(size.width), min_size.1.min(size.height));
-  //? AppKit and GTK lay every display out in logical units; tao's physical ones are each display's own (and a window's).
-  #[cfg(not(target_os = "windows"))]
-  let min = {
-    let origin = monitor.position().to_logical::<f64>(scale);
-    #[cfg(target_os = "macos")]
-    let deco = if window.is_decorated() {
-      let (frame, content) = (window.outer_size().to_logical::<f64>(window.scale_factor()), inner_size(window, Some(webview)));
-      ((frame.width - content.width).max(0.0).round(), (frame.height - content.height).max(0.0).round())
-    } else {
-      (0.0, 0.0)
-    };
-    #[cfg(target_os = "linux")]
-    let deco = {
-      let _ = webview;
-      (0.0, 0.0)
-    };
-    let size = LogicalSize::new((w / scale - deco.0).max(1.0), (h / scale - deco.1).max(1.0));
-    let min = lowered(size);
-    window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
-    //? AppKit keeps a borderless window's bottom edge where its size changes (a titled one's top): the size goes first.
-    window.set_inner_size(size);
-    window.set_outer_position(tao::dpi::LogicalPosition::new(origin.x + x / scale, origin.y + y / scale));
-    min
-  };
-  #[cfg(target_os = "windows")]
-  let min = {
-    use tao::dpi::{PhysicalPosition, PhysicalSize};
-    let _ = webview;
-    let origin = monitor.position();
-    let corner = PhysicalPosition::new(origin.x + x as i32, origin.y + y as i32);
-    let decorated = window.is_decorated();
-    let mut size = PhysicalSize::new(w as u32, h as u32);
-    //? Off while placing: a minimum in logical pixels would clamp the size at the scale of the display the window leaves.
-    window.set_min_inner_size(None::<LogicalSize<f64>>);
-    //? Windows rescales a window that comes onto a display of another scale to keep its logical size (WM_DPICHANGED),
-    //? on the move or on the resize that leaves it there: a second pass sets the size again at that display's scale.
-    for _ in 0..2 {
-      window.set_outer_position(corner);
-      let (frame, content) = (window.outer_size(), window.inner_size());
-      let deco = if decorated { (frame.width.saturating_sub(content.width), frame.height.saturating_sub(content.height)) } else { (0, 0) };
-      size = PhysicalSize::new((w as u32).saturating_sub(deco.0).max(1), (h as u32).saturating_sub(deco.1).max(1));
-      window.set_inner_size(size);
-      //? tao keeps an invisible shadow inset (about 8 px) around a frameless window's content: the content fills the bounds.
-      let inset = match (window.inner_position(), window.outer_position()) {
-        (Ok(content), Ok(frame)) if !decorated => (content.x - frame.x, content.y - frame.y),
-        _ => (0, 0),
-      };
-      window.set_outer_position(PhysicalPosition::new(corner.x - inset.0, corner.y - inset.1));
-      if window.inner_size() == size {
-        break;
-      }
-    }
-    let min = lowered(size.to_logical::<f64>(scale));
-    window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
-    min
-  };
-  min
-}
-
 /// desktop.recovery "reload": how long to wait before loading a page again after `streak` ends in a
 /// row. The first end reloads at once; then 1 s, doubling to a minute.
 fn recovery_wait(streak: u32) -> Option<std::time::Duration> {
@@ -1454,7 +1372,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   let mut placed = None;
   if let Some((x, y)) = opts.position {
     let wanted = placement::Rect { x, y, width, height };
-    match placement::place(wanted, &monitors(target), MIN_INNER) {
+    match placement::place(wanted, &placement::monitors(target), MIN_INNER) {
       Some(r) => {
         builder = builder.with_inner_size(LogicalSize::new(r.width, r.height));
         outer_position = Some(tao::dpi::LogicalPosition::new(r.x, r.y));
@@ -1465,7 +1383,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   }
   if opts.fullscreen {
     // Set before the first frame, on the display the window was placed on (else the primary one).
-    let monitor = placed.and_then(|r| monitor_at(target, r.x + r.width / 2.0, r.y + r.height / 2.0));
+    let monitor = placed.and_then(|r| placement::monitor_at(target, r.x + r.width / 2.0, r.y + r.height / 2.0));
     builder = builder.with_fullscreen(Some(tao::window::Fullscreen::Borderless(monitor)));
   }
   #[cfg(target_os = "windows")]
@@ -1671,18 +1589,6 @@ fn window_arg(cmd: &json::V) -> Result<Option<u32>, String> {
   }
 }
 
-/// Two logical numbers a window op takes together (`width` and `height`, `x` and `y`): both, or neither.
-fn logical_pair(cmd: &json::V, a: &str, b: &str) -> Result<Option<(f64, f64)>, String> {
-  match (cmd.get(a), cmd.get(b)) {
-    (None, None) => Ok(None),
-    (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
-      (Some(x), Some(y)) => Ok(Some((placement::logical(a, x)?, placement::logical(b, y)?))),
-      _ => Err(format!("{a} and {b} must be numbers")),
-    },
-    _ => Err(format!("give both {a} and {b}")),
-  }
-}
-
 /// window.create's `path`: an absolute path on the app origin.
 fn app_path(cmd: &json::V) -> Result<String, String> {
   let Some(v) = cmd.get("path") else { return Ok("/".into()) };
@@ -1727,7 +1633,7 @@ impl Windows {
   }
 
   fn create(&mut self, target: &EventLoopWindowTarget<UserEvent>, cmd: &json::V) -> Result<String, String> {
-    let size = logical_pair(cmd, "width", "height")?;
+    let size = placement::logical_pair(cmd, "width", "height")?;
     if size.is_some_and(|(w, h)| !(w >= 1.0 && h >= 1.0)) {
       return Err("width and height must be positive".into());
     }
@@ -1740,7 +1646,7 @@ impl Windows {
       Some(v) => v.as_bool().ok_or("frameless must be a boolean")?,
     };
     // Without a position, cascade from the focused window like AppKit does for new documents.
-    let position = match logical_pair(cmd, "x", "y")? {
+    let position = match placement::logical_pair(cmd, "x", "y")? {
       Some(p) => Some(p),
       None => self.focus.iter().rev().find_map(|id| self.map.get(id)).and_then(|w| {
         let scale = w.window.scale_factor();
@@ -1991,30 +1897,12 @@ impl Windows {
       win.webview.print().map_err(|e| e.to_string())?;
       return Ok("null".into());
     }
-    if op == "window.placeOnDisplay" {
-      let num = |k: &str| cmd.get(k).and_then(|v| v.as_f64()).ok_or_else(|| format!("{k} must be a number"));
-      let monitors: Vec<tao::monitor::MonitorHandle> = target.available_monitors().collect();
-      let rects: Vec<placement::Rect> = monitors.iter().map(logical_rect).collect();
-      let at = placement::display_at(&rects, num("atX")?, num("atY")?);
-      let monitor = at.and_then(|i| monitors.into_iter().nth(i)).ok_or("NOT_FOUND: no display is there now")?;
-      if cmd.get("fullscreen").and_then(|v| v.as_bool()) == Some(true) {
-        win.window.set_fullscreen(Some(tao::window::Fullscreen::Borderless(Some(monitor))));
-        return Ok(window_state(&win.window, Some(&win.webview)));
-      }
-      let bounds = placement::device_bounds(num("x")?, num("y")?, num("width")?, num("height")?)?;
-      win.window.set_fullscreen(None);
-      let min = place_on_display(&win.window, &win.webview, &monitor, bounds, win.min_size);
-      let state = window_state(&win.window, Some(&win.webview));
-      self.map.get_mut(&id).expect("looked up above").min_size = min;
-      return Ok(state);
-    }
-    if op == "window.setMinSize" {
-      let min = match logical_pair(&cmd, "width", "height")? {
-        Some((w, h)) if w >= 1.0 && h >= 1.0 => (w, h),
-        None => (1.0, 1.0),
-        Some(_) => return Err("width and height must be positive, or both left out for no minimum".into()),
+    if op == "window.placeOnDisplay" || op == "window.setMinSize" {
+      let min = if op == "window.setMinSize" {
+        placement::set_min_size(&cmd, &win.window)?
+      } else {
+        placement::place_on_display(&cmd, target, &win.window, &win.webview, win.min_size)?
       };
-      win.window.set_min_inner_size(Some(LogicalSize::new(min.0, min.1)));
       let state = window_state(&win.window, Some(&win.webview));
       self.map.get_mut(&id).expect("looked up above").min_size = min;
       return Ok(state);
@@ -2536,18 +2424,7 @@ mod range_tests {
 
 #[cfg(test)]
 mod window_arg_tests {
-  use super::{app_path, json, logical_pair, parse_config, window_arg};
-
-  #[test]
-  fn sizes_and_positions_come_in_pairs_and_in_range() {
-    let pair = |s: &str| logical_pair(&json::parse(s).unwrap(), "width", "height");
-    assert_eq!(pair(r#"{}"#), Ok(None));
-    assert_eq!(pair(r#"{"width":640,"height":128.5}"#), Ok(Some((640.0, 128.5))));
-    assert_eq!(pair(r#"{"width":640}"#), Err("give both width and height".into()));
-    for bad in [r#"{"width":"640","height":128}"#, r#"{"width":1e7,"height":128}"#, r#"{"width":640,"height":-3e9}"#, r#"{"width":1e999,"height":1}"#] {
-      assert!(pair(bad).is_err(), "{bad}");
-    }
-  }
+  use super::{app_path, json, parse_config, window_arg};
 
   #[test]
   fn window_ids() {
