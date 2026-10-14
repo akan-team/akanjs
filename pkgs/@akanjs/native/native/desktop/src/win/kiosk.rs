@@ -13,9 +13,6 @@ use webview2_com::{
 use windows::core::{Interface, HSTRING};
 use wry::WebViewExtWindows;
 
-/// Added to the webview's builder: it must run in the first document too.
-pub const SCRIPT: &str = include_str!("kiosk.js");
-
 pub fn lock(webview: &wry::WebView, label: &str) {
   let core = webview.webview();
   let intercepting = label.to_string();
