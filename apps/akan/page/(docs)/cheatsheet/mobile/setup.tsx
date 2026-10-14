@@ -906,6 +906,29 @@ export default page().render(() => {
         </>
       ),
     }),
+    l.trans({
+      en: (
+        <>
+          <strong>If a phone update key leaks, revoke it.</strong> A key revokes only those listed before it in{" "}
+          <code>updates.publicKeys</code>, so keep spares after the signing key. Point{" "}
+          <code>AKAN_NATIVE_UPDATE_KEY</code> at a spare's file and publish iOS and Android on every channel with{" "}
+          <code>--revoke &lt;keyId&gt;</code> (<code>akan update-keygen</code> prints a key's keyId). Then add the keyId
+          to <code>updates.revokedKeys</code>, so every later release, signed with the spare, keeps revoking it, and
+          keep it there after a new binary drops the key: older binaries still need it. A desktop app trusts only the
+          first key and takes no revocation.
+        </>
+      ),
+      ko: (
+        <>
+          <strong>폰 업데이트 키가 새면 폐기합니다.</strong> 키는 <code>updates.publicKeys</code>에서 자기보다 앞에 있는
+          키만 폐기하므로, 예비 키를 서명 키 뒤에 둡니다. <code>AKAN_NATIVE_UPDATE_KEY</code>로 예비 키 파일을 고르고
+          모든 채널에서 iOS와 Android를 <code>--revoke &lt;keyId&gt;</code>로 게시합니다(keyId는{" "}
+          <code>akan update-keygen</code>이 출력합니다). 그다음 그 keyId를 <code>updates.revokedKeys</code>에 넣어, 예비
+          키로 서명하는 이후 릴리스가 모두 폐기를 이어 가게 하고, 새 바이너리에서 그 키를 뺀 뒤에도 남겨 둡니다. 옛
+          바이너리는 계속 폐기를 받아야 합니다. 데스크톱 앱은 첫 키만 믿으므로 폐기를 받지 않습니다.
+        </>
+      ),
+    }),
   ];
 
   const symptomRows = [
