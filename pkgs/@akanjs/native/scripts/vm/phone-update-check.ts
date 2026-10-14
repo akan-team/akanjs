@@ -18,6 +18,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
+import { keyIdOf, type UpdateReportBody } from "../../packages/cli/src/api.ts";
 import { readZip } from "../../packages/cli/src/lib/apk.ts";
 import { androidTools } from "../../packages/cli/src/platforms/android.ts";
 
@@ -55,8 +56,6 @@ const keygen = (key: keyof typeof keyPath) => {
   if (!publicKey) throw new Error("no public key from keygen");
   return publicKey;
 };
-const keyIdOf = (publicKey: string) =>
-  new Bun.CryptoHasher("sha256").update(Buffer.from(publicKey, "base64")).digest("hex").slice(0, 16);
 
 const configPath = join(sample, "akan-native.config.ts");
 const original = readFileSync(configPath, "utf8");
@@ -159,24 +158,14 @@ function writeEnvelope(manifest: object, path: string, publicKey: string, native
   );
 }
 
-interface ReportBody {
-  app: string;
-  platform: string;
-  channel: string;
-  installId: string;
-  nativeApi: string;
-  appVersion: string;
-  os: string;
-  events: { id: number; event: string; bundle: string; sequence: number | null; reason: string | null; at: string }[];
-}
-const reports: ReportBody[] = [];
+const reports: UpdateReportBody[] = [];
 const receiver = Bun.serve({
   port: 8791,
   hostname: "127.0.0.1",
   fetch: async (request) => {
     if (request.method !== "POST" || new URL(request.url).pathname !== "/report/pathidpathidpath")
       return new Response(null, { status: 404 });
-    const body = (await request.json()) as ReportBody;
+    const body = (await request.json()) as UpdateReportBody;
     reports.push(body);
     for (const e of body.events)
       console.info(`  report #${e.id} ${e.event} ${e.bundle}${e.reason ? ` (${e.reason})` : ""}`);
