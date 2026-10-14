@@ -318,6 +318,30 @@ describe("CloudRunner", () => {
     ]);
   });
 
+  test("writes each package.json it versions as the formatter prints it, ending in a newline", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ "dist-tags": { rc: "2.1.0-rc.3" } }))) as never;
+    const { root, workspace } = track(await makeCliTempWorkspace());
+    for (const dir of ["pkgs/akanjs", "dist/pkgs/akanjs"])
+      await writeJson(path.join(root, dir, "package.json"), { name: "akanjs", version: "2.1.0-rc.3" });
+    spyOn(workspace, "spawn").mockResolvedValue("");
+
+    try {
+      await new CloudRunner().deployAkan(workspace, ["akanjs"], {
+        registryUrl: "http://127.0.0.1:4873/",
+        confirmPublish: false,
+        tag: "rc",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    for (const dir of ["pkgs/akanjs", "dist/pkgs/akanjs"])
+      expect(await readFile(path.join(root, dir, "package.json"), "utf8")).toBe(
+        `${JSON.stringify({ name: "akanjs", version: "2.1.0-rc.4" }, null, 2)}\n`,
+      );
+  });
+
   const createEnvWorkspace = (
     root: string,
     recorder = createCallRecorder(),

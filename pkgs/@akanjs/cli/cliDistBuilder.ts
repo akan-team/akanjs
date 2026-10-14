@@ -139,7 +139,7 @@ export class CliDistBuilder {
         "./package.json": "./package.json",
       },
     };
-    await Bun.write(`${this.#outDir}/package.json`, JSON.stringify(distPackageJson, null, 2));
+    await Bun.write(`${this.#outDir}/package.json`, `${JSON.stringify(distPackageJson, null, 2)}\n`);
     // Generated here, not at first run: a dev sandbox may run `akan start` only once.
     const { CommandManifest } = await import("./commandManifest");
     await Bun.write(`${this.#outDir}/${CommandManifest.fileName}`, JSON.stringify(await CommandManifest.generate()));
