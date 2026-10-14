@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CloudApi, CloudHttpError, GlobalConfig } from "@akanjs/devkit/cloud";
-import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
+import { CommandContainer, ExitCodeError, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
@@ -814,12 +814,16 @@ describe("OTA uploads", () => {
       expect(announced[0]?.size).toBe(stored[0]?.byteLength);
       expect(readdirSync(scratch)).toEqual([]);
 
-      const exitCode = process.exitCode;
       const rejected = { id: "release-2", status: "rejected", problems: ["deepLinks differ from the app's"] };
-      await new CloudRunner().pushUpdate(apiAnswering(rejected), "project-1", pack, { channel: "pilot", notes: null });
-      expect(process.exitCode).toBe(2);
-      //? Bun ignores `process.exitCode = undefined`, so restoring an unset code needs the 0.
-      process.exitCode = exitCode ?? 0;
+      const refusal = await new CloudRunner()
+        .pushUpdate(apiAnswering(rejected), "project-1", pack, { channel: "pilot", notes: null })
+        .catch((error: unknown) => error);
+      expect(refusal).toBeInstanceOf(ExitCodeError);
+      expect(refusal).toMatchObject({
+        exitCode: 2,
+        message:
+          "The project rejected lu default android on channel pilot: release release-2:\n  - deepLinks differ from the app's",
+      });
       expect(announced[1]).toMatchObject({ channel: "pilot", notes: null });
 
       const refused = {
@@ -1027,6 +1031,23 @@ describe("push-update", () => {
     expect(recorder.calls[1]?.args[2]).toMatchObject({ app: "lu", target: "default", platform: "android" });
   });
 
+  test("a --pack folder its --against check refused exits 2 without uploading", async () => {
+    const root = await makeTempRoot();
+    const compat = { against: "store/bundle.json", compatible: false, problems: ["deepLinks differ"] };
+    const pack = await packFixture(path.join(root, "pack"), { compat });
+    const { script, recorder } = stubPush(pack);
+
+    const refusal = await script
+      .pushUpdate(createFakeExecutor("workspace") as never, appOf(root), { ...options, pack: pack.out })
+      .catch((error: unknown) => error);
+
+    expect(refusal).toMatchObject({
+      exitCode: 2,
+      message: `The pack in ${pack.out} needs a new store build; it differs from the one store/bundle.json came from:\n- deepLinks differ`,
+    });
+    expect(recorder.names()).toEqual(["secretProject"]);
+  });
+
   test("without --pack, a missing --platform is named instead of asked for", async () => {
     const root = await makeTempRoot();
     const { script, recorder } = stubPush(await packFixture(path.join(root, "pack")));
@@ -1086,9 +1107,11 @@ describe("register-binary", () => {
       .registerBinary(uploadless, "project-1", appOf(root), pack, { distribution: "playStore", env: "main" })
       .catch((error: unknown) => error);
 
-    expect(String(refusal)).toContain(
-      `The store build at ${bundlePath} differs from this commit's pack:\n- deep link schemes [lu] vs [] in the app\n${rebuild}`,
-    );
+    expect(refusal).toBeInstanceOf(ExitCodeError);
+    expect(refusal).toMatchObject({
+      exitCode: 2,
+      message: `The pack in ${pack.out} needs a new store build; it differs from the one ${bundlePath} came from:\n- deep link schemes [lu] vs [] in the app\n${rebuild}`,
+    });
     expect(String(refusal)).not.toContain("provides native API");
     expect(compare).toHaveBeenCalledWith(path.join(root, "apps", "lu"), bundlePath, path.join(pack.out, "bundle.json"));
   });

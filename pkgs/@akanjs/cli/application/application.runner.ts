@@ -500,16 +500,9 @@ try {
       await Bun.write(path.join(pack.out, "compat.json"), `${JSON.stringify(pack.compat, null, 2)}\n`);
     }
     await NativeApp.writePack(pack);
-    if (!pack.compat) return pack;
-    if (pack.compat.compatible) {
-      app.logger.info(`runs in the store build of ${against}`);
-      return pack;
-    }
-    //* Exit 2, not a thrown 1: a CI tells "this needs a new store build" apart from a pack that broke.
-    app.logger.error(
-      `This bundle needs a new store build; it differs from the one ${against} came from:\n- ${pack.compat.problems.join("\n- ")}`,
-    );
-    process.exitCode = 2;
+    const verdict = NativeApp.storeBuildVerdict(pack);
+    if (verdict) throw verdict;
+    if (pack.compat) app.logger.info(`runs in the store build of ${against}`);
     return pack;
   }
 

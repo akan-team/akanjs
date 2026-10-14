@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import path from "node:path";
 import { AppExecutor, LibExecutor, WorkspaceExecutor } from "../executors";
+import { makeCliTempWorkspace, tempRoots, writeText } from "../testHelpers";
 import {
   App,
   type ArgMeta,
@@ -497,4 +499,39 @@ describe("a Sys that defaults to the only app", () => {
     expect(app instanceof AppExecutor ? app.name : null).toBe("admin");
     expect(asked).toEqual([["web", "admin", "util"]]);
   });
+});
+
+describe("the exit code of a command that failed", () => {
+  const track = tempRoots();
+  const run = async (failure: string) => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { command, ExitCodeError, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class VerdictRunner extends runner("verdict") {}',
+        'class VerdictScript extends script("verdict", [VerdictRunner]) {}',
+        'class VerdictCommand extends command("verdict", [VerdictScript], ({ public: target }) => ({',
+        '  verdict: target({ desc: "fails" }).exec(async function () {',
+        `    throw ${failure};`,
+        "  }),",
+        "})) {}",
+        "await runCommands(VerdictCommand);",
+        "",
+      ].join("\n"),
+    );
+    const proc = Bun.spawn(["bun", entry, "verdict"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return { stdout, code };
+  };
+
+  test("is the one an ExitCodeError carries, and 1 for any other error", async () => {
+    const verdict = await run('new ExitCodeError("needs a new store build", 2)');
+    expect(verdict.stdout).toContain("needs a new store build");
+    expect(verdict.code).toBe(2);
+    expect((await run('new Error("broke")')).code).toBe(1);
+  }, 30_000);
 });

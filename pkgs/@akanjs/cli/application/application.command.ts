@@ -288,7 +288,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       });
     }),
   packUpdate: target({
-    desc: "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json, exits 2 when --against needs a new store build",
+    desc: "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure",
   })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })

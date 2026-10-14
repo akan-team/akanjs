@@ -2,7 +2,7 @@ import type { NativeEnv } from "@akanjs/devkit/akanConfig";
 import { type AppBinaryDistribution, CloudApi, GlobalConfig } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
-import type { MobilePlatform } from "@akanjs/devkit/mobile";
+import { type MobilePlatform, NativeApp } from "@akanjs/devkit/mobile";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
@@ -131,14 +131,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
   ) {
     const devProjectId = await this.cloudRunner.secretProject(workspace, subspace, app.name);
     const pack = await this.#packToPush(app, { platform, target, env, write, allowLocalRelease, packDir });
-    if (pack.compat && !pack.compat.compatible) {
-      //* Exit 2 as pack-update's own verdict does, so a CI reads "needs a new store build" the same from both commands.
-      Logger.error(
-        `The pack in ${pack.out} needs a new store build; it differs from the one ${pack.compat.against} came from:\n- ${pack.compat.problems.join("\n- ")}`,
-      );
-      process.exitCode = 2;
-      return null;
-    }
+    const verdict = NativeApp.storeBuildVerdict(pack);
+    if (verdict) throw verdict;
     const host = await GlobalConfig.hostFor(workspace, given);
     await this.login(workspace, host);
     return await this.cloudRunner.pushUpdate(await CloudApi.fromHost(workspace, host), devProjectId, pack, {

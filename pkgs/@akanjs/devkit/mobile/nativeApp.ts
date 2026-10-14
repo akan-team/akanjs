@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
 import type { App } from "../commandDecorators";
+import { ExitCodeError } from "../commandDecorators/exitCodeError";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
 import type { DesktopServerBundle } from "./desktopServerStage";
@@ -502,6 +503,15 @@ export class NativeApp {
     const pack = (await file.json()) as NativeUpdatePack;
     if (pack.schema !== 1) throw new Error(`${dir}/pack.json is schema ${pack.schema}, and this akan reads schema 1.`);
     return { ...pack, out: path.resolve(dir) };
+  }
+
+  //* Exit 2, not a thrown 1: a CI tells "this needs a new store build" apart from a pack that broke.
+  static storeBuildVerdict({ out, compat }: Pick<NativeUpdatePack, "out" | "compat">, then?: string) {
+    if (!compat || compat.compatible) return null;
+    return new ExitCodeError(
+      `The pack in ${out} needs a new store build; it differs from the one ${compat.against} came from:\n- ${compat.problems.join("\n- ")}${then ? `\n${then}` : ""}`,
+      2,
+    );
   }
 
   static async compareBundles(appDir: string, shipped: string, bundle: string) {
