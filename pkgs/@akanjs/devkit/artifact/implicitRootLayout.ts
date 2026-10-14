@@ -201,6 +201,7 @@ async function writeGeneratedRootLayoutFile(opts: {
 export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;
 export const Error = userLayout.Error ?? inheritedLayout.Error;
 export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;
+export const Loading = userLayout.Loading;
 
 ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;

@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { Friend, JellyKicker, jellyButtonRecipe, panelRecipe } from "@apps/akan/ui";
+import { Friend, JellyKicker, JellyLoader, jellyButtonRecipe, panelRecipe } from "@apps/akan/ui";
 import { cn, page } from "akanjs/client";
 import { badgeRecipe, Image, Link } from "akanjs/ui";
 
@@ -233,6 +233,7 @@ export default page()
       </>
     );
   })
+  .loading(() => <JellyLoader className="min-h-[100svh]" />)
   .render(({ category }) => {
     const { l } = usePage();
     const activeKey = categoryKeys.find((key) => key === category);

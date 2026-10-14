@@ -1,5 +1,5 @@
 import { usePage } from "@apps/akan/client";
-import { JellyKicker, jellyButtonRecipe, panelRecipe, RoadmapTrajectory, StudioStar } from "@apps/akan/ui";
+import { JellyKicker, JellyLoader, jellyButtonRecipe, panelRecipe, RoadmapTrajectory, StudioStar } from "@apps/akan/ui";
 import { cn, page } from "akanjs/client";
 import { Link } from "akanjs/ui";
 
@@ -221,6 +221,7 @@ export default page()
       </>
     );
   })
+  .loading(() => <JellyLoader className="min-h-[100svh]" />)
   .render(() => {
     const { l } = usePage();
     const waypoints = [

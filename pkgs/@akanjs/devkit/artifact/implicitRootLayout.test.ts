@@ -46,6 +46,8 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain("export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;");
     expect(generatedSource).toContain("export const Error = userLayout.Error ?? inheritedLayout.Error;");
     expect(generatedSource).toContain("export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;");
+    // The ancestor root is its own level of the stack, so inheriting its loading would nest it inside itself.
+    expect(generatedSource).toContain("export const Loading = userLayout.Loading;");
     expect(generatedSource).toContain(
       "<UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>",
     );
