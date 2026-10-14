@@ -141,6 +141,14 @@ export default page().render(() => {
       example: 'bearerTokenOf("bearer abc"); // "abc"',
     },
     {
+      name: "parseSearchParams",
+      desc: l.trans({
+        en: "A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included.",
+        ko: "query string을 record로 바꿉니다. 한 번 나온 key는 문자열, 여러 번 나온 key는 빈 값까지 포함한 모든 값의 배열입니다.",
+      }),
+      example: 'parseSearchParams("?tag=&tag=b&q=x"); // { tag: ["", "b"], q: "x" }',
+    },
+    {
       name: "isThenable",
       desc: l.trans({ en: "Tells whether a value can be awaited.", ko: "값을 await할 수 있는지 알려 줍니다." }),
     },

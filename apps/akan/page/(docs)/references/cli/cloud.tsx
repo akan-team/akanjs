@@ -195,13 +195,15 @@ export default page().render(() => {
         <>
           <strong>Without a terminal, a missing argument is an error.</strong> When stdin is piped or closed, as in CI,
           a missing argument or option is not asked for: the command fails at once with an error that says which is
-          missing.
+          missing. A question a command asks while it runs — which script to run, a confirmation, which env server to
+          copy to — fails the same way, naming the option that answers it.
         </>
       ),
       ko: (
         <>
           <strong>터미널이 없으면 빠진 인자는 오류입니다.</strong> CI처럼 stdin이 파이프로 이어졌거나 닫혀 있으면 빠진
-          인자나 옵션을 묻지 않고, 무엇이 빠졌는지 알리는 오류로 바로 멈춥니다.
+          인자나 옵션을 묻지 않고, 무엇이 빠졌는지 알리는 오류로 바로 멈춥니다. 실행 중에 묻는 질문(실행할 스크립트,
+          확인, 복사할 env 서버 등)도 같은 방식으로, 답이 되는 옵션을 알려 주며 멈춥니다.
         </>
       ),
     }),
@@ -494,8 +496,8 @@ akan upload-env --host https://cloud.example.com`,
           type: "String",
           required: "yes",
           desc: l.trans({
-            en: "Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`.",
-            ko: "대문자, 숫자, `_`로 된 64자 이하의 이름으로, 글자로 시작합니다. 예: `DISCORD_WEBHOOK`.",
+            en: "Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`. A name outside that is refused without being echoed back, since a mistyped name may be the value itself.",
+            ko: "대문자, 숫자, `_`로 된 64자 이하의 이름으로, 글자로 시작합니다. 예: `DISCORD_WEBHOOK`. 이 형식이 아니면 이름을 되풀이하지 않고 거부합니다. 잘못 친 이름이 값 자체일 수 있기 때문입니다.",
           }),
         },
       ],

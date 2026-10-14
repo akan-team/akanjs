@@ -70,7 +70,7 @@ Does not connect
 
 **One sign-in per host, per machine.** The session lives in `~/.akan/config.json`, so every workspace on this machine shares it. `--host` and `cloud.host` are both read as the URL's origin and path without a trailing slash, so a trailing slash, an uppercase host or a default port still names the same session.
 
-**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing.
+**Without a terminal, a missing argument is an error.** When stdin is piped or closed, as in CI, a missing argument or option is not asked for: the command fails at once with an error that says which is missing. A question a command asks while it runs — which script to run, a confirmation, which env server to copy to — fails the same way, naming the option that answers it.
 
 Where Env Values Are Kept
 
@@ -190,7 +190,7 @@ Upload the env values of every app and library to where `download-env` reads fro
 
 Save a named secret for the pipeline steps of the project `AKAN_WORKSPACE_ID` names, or a subspace's with `--subspace`. The value is write-only: no command shows it again, so keep the original where you keep other credentials.
 
-- name (String, required): Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`.
+- name (String, required): Up to 64 uppercase letters, digits and `_`, starting with a letter, such as `DISCORD_WEBHOOK`. A name outside that is refused without being echoed back, since a mistyped name may be the value itself.
 
 - --branch (String, default every branch, debug | develop | main): Use this value only in builds of that branch, over the every-branch value.
 

@@ -184,7 +184,7 @@ Description and default export
 
 - AgentChat: The whole panel (launcher, transcript, cards and composer), so reach for it last.
 
-- AgentLauncher: The closed-state button, given `label`, `hotkey` and `unread` for a new-message badge. — DefaultLauncher
+- AgentLauncher: The closed-state button, given `label`, `hotkey`, `unread` for a new-message badge, and `style` carrying its layer, which it spreads onto its root as it does `className`. — DefaultLauncher
 
 - AgentBubble: One message; wrap yours in `memo()`, since the transcript re-renders on every delta. — DefaultBubble
 

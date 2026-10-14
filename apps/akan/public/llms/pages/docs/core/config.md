@@ -198,7 +198,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.
 
-- updates.revokedKeys (string[]): Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too.
+- updates.revokedKeys (string[]): Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 
@@ -248,7 +248,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - desktop.server.watchdog (boolean | { intervalMs?, failures? }, default false): Asks the server's health route every intervalMs (10000) and restarts it after failures (3) missed answers.
 
-- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time, relaunches the app and opens no dialog, download or link for a page; "errorPage" shows an error page.
+- desktop.recovery ("errorPage" | "reload", default "errorPage"): "reload" reloads a crashed page every time, relaunches the app and opens no dialog, share sheet, download or link for a page; "errorPage" shows an error page.
 
 - desktop.window ({ fullscreen?, skipTaskbar?, frameless? }): Opens the main window from its first frame fullscreen, without a taskbar button (Windows, Linux), or without a title bar and border (frameless).
 

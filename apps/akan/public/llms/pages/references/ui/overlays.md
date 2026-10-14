@@ -102,7 +102,7 @@ Related pages
 
   - presentation ("dialog" | "sheet" | "auto" = "dialog"): `sheet` fills the screen; `auto` is a full-screen sheet below `md` and a dialog above.
 
-  - placement ("center" | "right" = "center"): `right` makes it a full-height side sheet from `md` up.
+  - placement ("center" | "right" = "center"): `right` makes it a full-height side sheet from `md` up. Every modal surface (`Modal`, `Dialog.Modal`, the `Model` modals, `Model.New`) takes it and `presentation` through the exported `ModalSurfaceProps`.
 
   - className / bodyClassName (string): Classes for the window and for its scrolling body.
 

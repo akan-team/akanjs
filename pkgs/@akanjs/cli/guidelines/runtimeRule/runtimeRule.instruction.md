@@ -284,7 +284,7 @@ const config: AppConfig = {
   into `updates/`: upload that release's files to `url` and its manifest last, or let
   `--upload s3://<bucket>/<prefix>` do it (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket
   holds is skipped), which sends that release alone, and nothing when it is missing or fails a check. Never upload the
-  folder whole: a phone's is where `pack-update` writes by default, and its `pack.json` holds this machine's paths.
+  folder whole: a phone's is also where `pack-update` writes by default.
   A phone reads only `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its
   own fixes.
   `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in

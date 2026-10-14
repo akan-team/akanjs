@@ -75,7 +75,7 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - target / rel / aria-* (AnchorHTMLAttributes): Pass through to `<a>` on server-rendered pages. The CSR bundle drops them.
 
-- Link.Back ({ className?, children?, fallback? }): Calls `router.back()` on click. With `fallback`, a button that goes there when there is no history.
+- Link.Back ({ className?, children?, fallback? }): A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history.
 
 - Link.Close ({ className?, children? }): Calls `window.close()` on click, for a route opened in its own tab such as an OAuth popup.
 

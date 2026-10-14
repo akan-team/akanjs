@@ -277,8 +277,8 @@ export default page().render(() => {
           name: "placement",
           type: '"center" | "right" = "center"',
           desc: l.trans({
-            en: "`right` makes it a full-height side sheet from `md` up.",
-            ko: "`right`면 `md` 이상에서 높이를 꽉 채운 오른쪽 사이드 시트가 됩니다.",
+            en: "`right` makes it a full-height side sheet from `md` up. Every modal surface (`Modal`, `Dialog.Modal`, the `Model` modals, `Model.New`) takes it and `presentation` through the exported `ModalSurfaceProps`.",
+            ko: "`right`면 `md` 이상에서 높이를 꽉 채운 오른쪽 사이드 시트가 됩니다. 모든 모달 표면(`Modal`, `Dialog.Modal`, `Model`의 모달들, `Model.New`)이 export된 `ModalSurfaceProps`로 이 값과 `presentation`을 받습니다.",
           }),
         },
         {

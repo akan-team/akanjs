@@ -88,6 +88,27 @@ export default page().render(() => {
       }),
     },
     {
+      name: "isMcpView",
+      desc: l.trans({
+        en: "True when the page runs as an MCP App view inside an agent host's chat, where it posts nothing to its parent frame.",
+        ko: "페이지가 agent 호스트 채팅 안의 MCP App view로 실행 중이면 true입니다. 이때는 부모 프레임에 아무 메시지도 보내지 않습니다.",
+      }),
+    },
+    {
+      name: ["breakpointQuery", "TailwindBreakpoint"],
+      desc: l.trans({
+        en: "The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.",
+        ko: "Tailwind의 `md:`(또는 `{ below: true }`이면 `max-md:`)가 맞추는 media query입니다. 컴포넌트에서 `matchMedia`에 씁니다.",
+      }),
+    },
+    {
+      name: ["transitionTypes", "viewTransitionClassOf"],
+      desc: l.trans({
+        en: "The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.",
+        ko: "`.config({ transition })`가 받는 페이지 전환 목록과, 각 전환이 push나 pop될 때 그리는 view transition class입니다.",
+      }),
+    },
+    {
       name: ["resolveRouteModule", "isRouteDefinition"],
       desc: l.trans({
         en: "Used by route loaders. App code never calls them.",
@@ -114,6 +135,13 @@ export default page().render(() => {
     {
       name: "back()",
       desc: l.trans({ en: "Goes back one entry. Browser only.", ko: "한 단계 뒤로 갑니다. 브라우저에서만 됩니다." }),
+    },
+    {
+      name: "postPathChange(change)",
+      desc: l.trans({
+        en: "Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.",
+        ko: "이 페이지를 embed한 프레임에 어디로 갔는지 알립니다. 새 경로나 페이지 목록의 `{ page }`입니다. MCP App view에서는 아무것도 보내지 않습니다.",
+      }),
     },
     {
       name: "backOrFallback(href?)",
