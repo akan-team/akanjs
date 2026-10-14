@@ -56,6 +56,7 @@ import type {
 import { MachineToken } from "../machine/machineToken";
 import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
+import { PendingSubscribes } from "./PendingSubscribes";
 
 type LiveChangeListener = (doc: unknown, type: unknown, previous?: unknown) => void;
 type LiveRoute = (next: Record<string, unknown>, previous?: Record<string, unknown>) => Promise<LiveDelivery[]>;
@@ -583,6 +584,7 @@ export class SignalResolver {
   }
   //? A call still running when its socket closes finishes after `handleWsClose`, which ran every cleanup it knew of.
   static #closedWs = new WeakSet<Bun.ServerWebSocket<unknown>>();
+  static #pendingSubscribes = new PendingSubscribes();
   static #liveWsPubsubRoomCtx = new WeakMap<
     Bun.ServerWebSocket<unknown>,
     Map<string, SignalContext<WebSocketExecutionContext>>
@@ -710,81 +712,95 @@ export class SignalResolver {
           );
           break;
         case "pubsub":
-          wsRoutes[key] = async (ws, message, event, request) =>
-            await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
-              const websocket = SignalResolver.#getWebsocket(registry);
-              const context = await new SignalContext(
-                key,
-                { ws, data: message, eventType: event ?? "unsubscribe" },
-                { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
-              ).init();
-              const subscribe = event === "subscribe";
-              const liveOption = endpointInfo.signalOption.live;
-              // The client-built id the ack is matched against; for every room but a live one it is also the room.
-              const requestRoomId = context.getRoomId(key);
-              if (subscribe) {
-                // Checked here too: a client bundle older than the pauseOn declaration would still subscribe.
-                if (liveOption) SignalResolver.#assertNotPaused(key, liveOption, endpointInfo, context);
-                const query = await context.exec();
-                const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
-                //? Its rooms were already left, so a room joined now would stay joined for good.
-                if (SignalResolver.#closedWs.has(ws)) {
-                  await SignalResolver.#runLifecycleHandlers(
-                    [context as SignalContext<WebSocketExecutionContext>],
-                    ["unsubscribe", "disconnect"],
-                  );
-                  const unsubscribed: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe: false };
-                  return unsubscribed;
-                }
-                const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
-                if (liveOption && !roomCtxMap.has(roomId))
-                  live.syncHub.join({
-                    refName: liveOption.refName,
+          wsRoutes[key] = async (ws, message, event, request) => {
+            const subscribe = event === "subscribe";
+            const arrival = SignalResolver.#pendingSubscribes.arrive(ws, subscribe);
+            try {
+              return await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
+                const websocket = SignalResolver.#getWebsocket(registry);
+                const context = await new SignalContext(
+                  key,
+                  { ws, data: message, eventType: event ?? "unsubscribe" },
+                  { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
+                ).init();
+                const liveOption = endpointInfo.signalOption.live;
+                // The client-built id the ack is matched against; for every room but a live one it is also the room.
+                const requestRoomId = context.getRoomId(key);
+                if (subscribe) {
+                  // Checked here too: a client bundle older than the pauseOn declaration would still subscribe.
+                  if (liveOption) SignalResolver.#assertNotPaused(key, liveOption, endpointInfo, context);
+                  const query = await context.exec();
+                  const isClosed = SignalResolver.#closedWs.has(ws);
+                  //? The close or the unsubscribe already left what it found, so a room joined now would stay joined.
+                  if (isClosed || SignalResolver.#pendingSubscribes.isLeft(ws, requestRoomId, arrival)) {
+                    await SignalResolver.#runLifecycleHandlers(
+                      [context as SignalContext<WebSocketExecutionContext>],
+                      isClosed ? ["unsubscribe", "disconnect"] : ["unsubscribe"],
+                    );
+                    //? The request id, as no room was joined: a live room's id would drop the alias a resubscribe set.
+                    const unsubscribed: WebsocketSubscribeAck = {
+                      type: "sub",
+                      roomId: requestRoomId,
+                      requestRoomId,
+                      subscribe: false,
+                    };
+                    return unsubscribed;
+                  }
+                  const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
+                  const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
+                  if (liveOption && !roomCtxMap.has(roomId))
+                    live.syncHub.join({
+                      refName: liveOption.refName,
+                      roomId,
+                      query: query as never,
+                      fallback: liveOption.fallback,
+                      payload: liveOption.payload,
+                      fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
+                    });
+                  //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
+                  const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
+                  const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
+                  replay?.watch(roomId);
+                  ws.subscribe(roomId);
+                  //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
+                  const missed = request?.since && replay ? replay.since(roomId, request.since) : null;
+                  for (const frame of missed ?? []) ws.send(frame);
+                  roomCtxMap.set(roomId, context);
+                  SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
+                  websocket.joinRoom(ws, roomId);
+                  SignalResolver.logger.verbose(`WebSocket subscribed to room ${roomId}`);
+                  const cursor = replay?.cursor(roomId);
+                  const ack: WebsocketSubscribeAck = {
+                    type: "sub",
                     roomId,
-                    query: query as never,
-                    fallback: liveOption.fallback,
-                    payload: liveOption.payload,
-                    fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
-                  });
-                //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
-                const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
-                const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
-                replay?.watch(roomId);
-                ws.subscribe(roomId);
-                //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
-                const missed = request?.since && replay ? replay.since(roomId, request.since) : null;
-                for (const frame of missed ?? []) ws.send(frame);
-                roomCtxMap.set(roomId, context);
-                SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
-                websocket.joinRoom(ws, roomId);
-                SignalResolver.logger.verbose(`WebSocket subscribed to room ${roomId}`);
-                const cursor = replay?.cursor(roomId);
-                const ack: WebsocketSubscribeAck = {
-                  type: "sub",
-                  roomId,
-                  requestRoomId,
-                  subscribe,
-                  ...(cursor ? { cursor } : {}),
-                  ...(request?.since ? { replayed: !!missed } : {}),
-                };
+                    requestRoomId,
+                    subscribe,
+                    ...(cursor ? { cursor } : {}),
+                    ...(request?.since ? { replayed: !!missed } : {}),
+                  };
+                  return ack;
+                }
+                SignalResolver.#pendingSubscribes.leave(ws, requestRoomId, arrival);
+                if (liveOption) await context.resolveInternalArgs();
+                const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
+                ws.unsubscribe(roomId);
+                const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
+                const roomCtx = roomCtxMap?.get(roomId);
+                if (roomCtxMap && roomCtx) {
+                  await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
+                  roomCtxMap.delete(roomId);
+                  if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+                  SignalResolver.#leaveRoom(roomId, liveOption ? live : undefined);
+                  websocket.leaveRoom(ws, roomId);
+                  SignalResolver.logger.verbose(`WebSocket unsubscribed from room ${roomId}`);
+                }
+                const ack: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe };
                 return ack;
-              }
-              if (liveOption) await context.resolveInternalArgs();
-              const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
-              ws.unsubscribe(roomId);
-              const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
-              const roomCtx = roomCtxMap?.get(roomId);
-              if (roomCtxMap && roomCtx) {
-                await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
-                roomCtxMap.delete(roomId);
-                if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
-                SignalResolver.#leaveRoom(roomId, liveOption ? live : undefined);
-                websocket.leaveRoom(ws, roomId);
-                SignalResolver.logger.verbose(`WebSocket unsubscribed from room ${roomId}`);
-              }
-              const ack: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe };
-              return ack;
-            });
+              });
+            } finally {
+              if (subscribe) SignalResolver.#pendingSubscribes.settle(ws);
+            }
+          };
           break;
         case "message":
           wsRoutes[key] = async (ws, message) =>

@@ -1308,6 +1308,51 @@ describe("SignalResolver declaration contracts", () => {
     expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
   });
 
+  test("runs the unsubscribe cleanup of a subscribe its client unsubscribed while its handler ran", async () => {
+    const cleaned: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    class UnsubscribedEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      leftRoom: builder
+        .pubsub(ServerResolverTestLight, { guards: [Public] })
+        .room("roomId", ID)
+        .with(Ws)
+        .exec(async (roomId, ws) => {
+          ws.on("unsubscribe", () => {
+            cleaned.push(`unsubscribe:${roomId as string}`);
+          });
+          ws.on("disconnect", () => {
+            cleaned.push(`disconnect:${roomId as string}`);
+          });
+          await held;
+        }),
+    })) {}
+    const { registry, websocket } = withFakeWebsocket();
+    const resolved = resolveWith(UnsubscribedEndpoint, new UnsubscribedEndpoint(), { registry });
+
+    const ws = makeWs();
+    const subscribing = resolved.wsRoutes?.leftRoom?.(ws, [validId], "subscribe");
+    await Bun.sleep(1);
+    await resolved.wsRoutes?.leftRoom?.(ws, [validId], "unsubscribe");
+    expect(cleaned).toEqual([]);
+    release();
+    expect(await subscribing).toMatchObject({ type: "sub", subscribe: false });
+    expect(cleaned).toEqual([`unsubscribe:${validId}`]);
+    expect(ws.subscribed).toEqual([]);
+    expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
+    await SignalResolver.handleWsClose(ws, registry);
+    expect(cleaned).toEqual([`unsubscribe:${validId}`]);
+
+    const eager = makeWs();
+    const eagerSubscribing = resolved.wsRoutes?.leftRoom?.(eager, [validId], "subscribe");
+    await resolved.wsRoutes?.leftRoom?.(eager, [validId], "unsubscribe");
+    await eagerSubscribing;
+    await SignalResolver.handleWsClose(eager, registry);
+    expect(cleaned).toEqual([`unsubscribe:${validId}`, `unsubscribe:${validId}`]);
+  });
+
   test("runs a cleanup registered for both endings once when the socket closes subscribed", async () => {
     const cleaned: string[] = [];
     class SharedCleanupEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
@@ -1537,6 +1582,47 @@ describe("SignalResolver declaration contracts", () => {
     expect(live.syncHub.roomIds()).toEqual([]);
     expect(ws.subscribed).toEqual([]);
     expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
+  });
+
+  test("joins no live room for a subscribe its client unsubscribed while it ran, and joins one sent again", async () => {
+    let gate: Promise<void> | null = null;
+    const hold = () => {
+      let open: () => void = () => undefined;
+      gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return open;
+    };
+    const { live, route, websocket } = resolveLiveCategoryRoute({
+      queryInCategory: async (category) => {
+        const waiting = gate;
+        gate = null;
+        if (waiting) await waiting;
+        return { category };
+      },
+    });
+    const ws = makeWs();
+    const open = hold();
+    const subscribing = route(ws, ["news"], "subscribe");
+    while (gate) await Bun.sleep(1);
+    expect(await route(ws, ["news"], "unsubscribe")).toMatchObject({ type: "sub", subscribe: false });
+    open();
+    expect(await subscribing).toMatchObject({ type: "sub", subscribe: false });
+    expect(live.syncHub.roomIds()).toEqual([]);
+    expect(ws.subscribed).toEqual([]);
+    expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
+
+    const resubscribing = makeWs();
+    const openFirst = hold();
+    const first = route(resubscribing, ["news"], "subscribe");
+    while (gate) await Bun.sleep(1);
+    await route(resubscribing, ["news"], "unsubscribe");
+    const again = (await route(resubscribing, ["news"], "subscribe")) as { roomId: string; subscribe: boolean };
+    openFirst();
+    expect(await first).toMatchObject({ type: "sub", subscribe: false });
+    expect(again.subscribe).toBe(true);
+    expect(live.syncHub.roomIds()).toEqual([again.roomId]);
+    expect(resubscribing.subscribed).toEqual([again.roomId]);
   });
 
   test("lets a live room go when a socket that subscribed to it twice closes", async () => {
