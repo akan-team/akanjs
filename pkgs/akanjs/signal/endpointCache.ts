@@ -1,6 +1,7 @@
 import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
 import dayjs from "dayjs";
 import type { SignalContext } from "./signalContext";
+import { TaggedJson } from "./TaggedJson";
 import { traceCache } from "./trace";
 
 // Not a middleware: it runs after the guards (which a lib's account middleware feeds), so a hit reaches only an
@@ -41,7 +42,8 @@ export class EndpointCache {
     try {
       const cached = await cache.get<string>(EndpointCache.#topic, key);
       if (cached == null) return undefined;
-      return JSON.parse(cached) as unknown;
+      const { returnRef, arrDepth } = context.endpointInfo.returns;
+      return TaggedJson.parse(cached, { ref: returnRef, arrDepth });
     } catch (error) {
       context.adaptor.logger.warn(`Cache read failed for ${context.key}: ${String(error)}`);
       await cache.delete(EndpointCache.#topic, key).catch(() => undefined);
@@ -49,10 +51,10 @@ export class EndpointCache {
     }
   }
   static async #write(context: SignalContext, cache: CacheAdaptor, key: string, result: unknown, ttl: number) {
-    const serialized = JSON.stringify(result);
-    // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
-    if (serialized === undefined) return;
     try {
+      const serialized = TaggedJson.stringify(result);
+      // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
+      if (serialized === undefined) return;
       await cache.set(EndpointCache.#topic, key, serialized, { expireAt: dayjs().add(ttl, "millisecond") });
     } catch (error) {
       context.adaptor.logger.warn(`Cache write failed for ${context.key}: ${String(error)}`);

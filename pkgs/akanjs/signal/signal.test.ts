@@ -133,6 +133,42 @@ ConstantRegistry.buildModel(
   },
 );
 
+const SignalTestCachedInput = via((f) => ({
+  title: f(String),
+  counts: f(Map, { of: Int }),
+  openedAt: f(Date),
+  nested: f(SignalTestNested),
+}));
+const SignalTestCachedObject = via(SignalTestCachedInput, (f) => ({
+  memo: f.hidden(String).optional(),
+}));
+class SignalTestCachedLight extends via(SignalTestCachedObject, ["title", "counts", "openedAt"] as const, () => ({})) {
+  label() {
+    return `${this.title}@${this.openedAt.format("YYYY-MM-DD")}#${this.counts.get("views") ?? 0}`;
+  }
+}
+const SignalTestCachedFull = via(SignalTestCachedObject, SignalTestCachedLight, (r) => ({
+  summary: r(String),
+}));
+const SignalTestCachedInsight = via(SignalTestCachedFull, (f) => ({
+  total: f(Int, { default: 0, accumulate: {} }),
+}));
+ConstantRegistry.buildModel(
+  "signalTestCached",
+  SignalTestCachedInput,
+  SignalTestCachedObject,
+  SignalTestCachedFull,
+  SignalTestCachedLight,
+  SignalTestCachedInsight,
+  {
+    SignalTestCachedInput,
+    SignalTestCachedObject,
+    SignalTestCachedFull,
+    SignalTestCachedLight,
+    SignalTestCachedInsight,
+  },
+);
+
 class SignalTestFilter extends from(SignalTestFull, (filter) => ({
   query: {
     byOwner: filter()
@@ -1088,6 +1124,62 @@ describe("SignalContext execution", () => {
     expect(await call(mutationInfo)).toBe("mutation-2");
     expect(await call(perCallerInfo)).toBe("internal-value");
     expect(cache.store.size).toBe(0);
+  });
+
+  test("answers a cache hit exactly as the miss that filled it, resolving fields from the same model", async () => {
+    let runs = 0;
+    const parents: unknown[] = [];
+    class CachedInternal extends internal(signalTestServiceModel, (builder) => ({
+      summary: builder.resolveField(String).exec((parent) => {
+        parents.push(parent);
+        return (parent as unknown as InstanceType<typeof SignalTestCachedFull>).label();
+      }),
+    })) {}
+    const live = getDefaultLiveRegistry();
+    live.internal.set("signalTestCachedInternal", new CachedInternal() as unknown as Internal);
+    const make = (title: string, views: number) =>
+      new SignalTestCachedFull().set({
+        title,
+        counts: new Map([["views", views]]),
+        openedAt: dayjs("2026-10-14T00:00:00.000Z"),
+        nested: new SignalTestNested().set({ label: `nested:${title}` }),
+        memo: "server-only",
+      });
+    const listInfo = buildEndpoint.query([SignalTestCachedFull], { guards: [Public], cache: 60_000 }).exec(() => {
+      runs++;
+      return [make("first", 3), make("second", 0)] as never;
+    });
+    const bytesInfo = buildEndpoint.query(Binary, { guards: [Public], cache: 60_000 }).exec(() => {
+      runs++;
+      return new Uint8Array([0, 1, 254, 255]);
+    });
+    const adaptor = new (adapt("signalTestCacheRoundTripAdaptor"))();
+    const call = async (endpointInfo: EndpointInfo, cache: FakeCacheAdaptor) =>
+      (await SignalContext.try(adaptor, endpointInfo, "cached", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, live, registry: makeCacheRegistry(cache) });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    const listCache = new FakeCacheAdaptor();
+    const bytesCache = new FakeCacheAdaptor();
+
+    const miss = await call(listInfo, listCache);
+    const hit = await call(listInfo, listCache);
+    expect(hit.status).toBe(200);
+    const missBody = (await miss.json()) as Record<string, unknown>[];
+    expect(await hit.json()).toEqual(missBody);
+    expect(missBody[0]).toMatchObject({ counts: { views: 3 }, summary: "first@2026-10-14#3", memo: null });
+    expect(parents).toHaveLength(4);
+    for (const parent of parents) expect(parent).toBeInstanceOf(SignalTestCachedFull);
+    const hitParent = parents[2] as unknown as InstanceType<typeof SignalTestCachedFull>;
+    expect(hitParent.label()).toBe("first@2026-10-14#3");
+    expect(hitParent.nested).toBeInstanceOf(SignalTestNested);
+    expect(hitParent.memo).toBe("server-only");
+
+    const bytesMiss = await (await call(bytesInfo, bytesCache)).json();
+    expect(await (await call(bytesInfo, bytesCache)).json()).toEqual(bytesMiss);
+    expect(bytesMiss).toBe("AAH+/w==");
+    expect(runs).toBe(2);
   });
 
   test("runs a mutation once per Idempotency-Key and its caller, and refuses a repeat while the first still runs", async () => {
