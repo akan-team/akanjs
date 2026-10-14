@@ -145,9 +145,10 @@ export class EndpointIdempotency {
   static #callerOf(context: SignalContext, req: Request & { cookies?: Bun.CookieMap }) {
     const principal = EndpointIdempotency.#principalOf(context.get("account"));
     if (principal) return EndpointIdempotency.#digest(`account:${principal}`);
-    const cookie = readAuthToken((name) => req.cookies?.get(name) ?? undefined);
+    const header = req.headers.get("authorization");
+    const cookie = header === null ? readAuthToken((name) => req.cookies?.get(name) ?? undefined) : undefined;
     //? As the account layer reads it: a header wins over the cookie whatever it holds, and only a bearer token counts.
-    const credential = bearerTokenOf(req.headers.get("authorization") ?? (cookie ? `Bearer ${cookie}` : null));
+    const credential = bearerTokenOf(header ?? (cookie ? `Bearer ${cookie}` : null));
     return credential ? EndpointIdempotency.#digest(`credential:${credential}`) : null;
   }
 
