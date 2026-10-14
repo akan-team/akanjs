@@ -448,30 +448,33 @@ export default page().render(() => {
     {
       key: "getRequest()",
       type: "Request | undefined",
-      desc: l.trans({ en: "The request being rendered.", ko: "지금 렌더링 중인 요청입니다." }),
+      desc: l.trans({
+        en: "The request being rendered; `undefined` outside a render.",
+        ko: "지금 렌더링 중인 요청입니다. 렌더링 밖에서는 `undefined`입니다.",
+      }),
     },
     {
       key: "headers()",
       type: "Map<string, string>",
       desc: l.trans({
-        en: "The request headers, keys in lower case. A new Map on every call.",
-        ko: "요청 헤더이며 key는 소문자입니다. 부를 때마다 새 Map을 만듭니다.",
+        en: "The request headers, keys in lower case. A new Map on every call, empty outside a render.",
+        ko: "요청 헤더이며 key는 소문자입니다. 부를 때마다 새 Map을 만들고, 렌더링 밖에서는 비어 있습니다.",
       }),
     },
     {
       key: "cookies()",
       type: "Map<string, { name, value }>",
       desc: l.trans({
-        en: "The parsed `Cookie` header. A `j:` value is decoded as JSON.",
-        ko: "`Cookie` 헤더를 파싱한 값입니다. `j:`로 시작하는 값은 JSON으로 풀어 줍니다.",
+        en: "The parsed `Cookie` header, empty outside a render. A `j:` value is decoded as JSON.",
+        ko: "`Cookie` 헤더를 파싱한 값이며, 렌더링 밖에서는 비어 있습니다. `j:`로 시작하는 값은 JSON으로 풀어 줍니다.",
       }),
     },
     {
       key: "getRequestStore()",
       type: "AkanRequestStore | undefined",
       desc: l.trans({
-        en: "The whole per-request store: the request, its theme and its query cache.",
-        ko: "요청마다 하나인 store 전체입니다. 요청, theme, query cache가 들어 있습니다.",
+        en: "The whole per-request store: the request, its theme and its query cache. `undefined` outside a render.",
+        ko: "요청마다 하나인 store 전체입니다. 요청, theme, query cache가 들어 있으며, 렌더링 밖에서는 `undefined`입니다.",
       }),
     },
   ];
@@ -1237,13 +1240,15 @@ export default page().render(() => {
                 en: (
                   <span>
                     <strong>They see a request only while a page renders.</strong> Anywhere else the maps are empty and{" "}
-                    <code>getRequest()</code> is <code>undefined</code>.
+                    <code>getRequest()</code> is <code>undefined</code>. There is no fallback to a recent request: with
+                    several renders in flight, it could be another visitor's.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>page를 렌더링하는 동안에만 요청이 보입니다.</strong> 그 밖에서는 Map이 비어 있고{" "}
-                    <code>getRequest()</code>는 <code>undefined</code>입니다.
+                    <code>getRequest()</code>는 <code>undefined</code>입니다. 최근 요청으로 대신하지 않습니다. 여러
+                    렌더링이 동시에 돌 때 그것은 다른 방문자의 요청일 수 있습니다.
                   </span>
                 ),
               })}

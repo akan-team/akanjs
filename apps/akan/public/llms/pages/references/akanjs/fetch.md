@@ -282,17 +282,17 @@ getRequest / headers / cookies
 
 These read the request a page is being rendered for. `akanjs/fetch` pulls in no client code, so a server component can import them freely.
 
-- getRequest() (Request | undefined): The request being rendered.
+- getRequest() (Request | undefined): The request being rendered; `undefined` outside a render.
 
-- headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call.
+- headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call, empty outside a render.
 
-- cookies() (Map<string, { name, value }>): The parsed `Cookie` header. A `j:` value is decoded as JSON.
+- cookies() (Map<string, { name, value }>): The parsed `Cookie` header, empty outside a render. A `j:` value is decoded as JSON.
 
-- getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache.
+- getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache. `undefined` outside a render.
 
 A page can read them while it renders:
 
-**They see a request only while a page renders.** Anywhere else the maps are empty and `getRequest()` is `undefined`.
+**They see a request only while a page renders.** Anywhere else the maps are empty and `getRequest()` is `undefined`. There is no fallback to a recent request: with several renders in flight, it could be another visitor's.
 
 **Endpoints read the caller another way:** `.with(Self)` in the signal, or `context.get("account")` in a guard.
 
