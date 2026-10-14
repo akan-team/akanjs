@@ -323,4 +323,16 @@ describe("a pack read back from its folder", () => {
     await writeText(path.join(refused, "pack.json"), JSON.stringify({ ...pack, compat }));
     expect((await NativeApp.readPack(refused)).compat).toEqual(compat);
   });
+
+  test("is written without the folder it was packed to, which holds this machine's paths", async () => {
+    const out = path.join(await makeTempRoot(), "updates", "android");
+    const pack = { schema: 1, app: "lu", target: "default", platform: "android", files: 1, out } as const;
+
+    await NativeApp.writePack(pack as never);
+
+    const written = await Bun.file(path.join(out, "pack.json")).text();
+    expect(written).not.toContain(out);
+    expect(JSON.parse(written)).toEqual({ schema: 1, app: "lu", target: "default", platform: "android", files: 1 });
+    expect((await NativeApp.readPack(out)).out).toBe(out);
+  });
 });

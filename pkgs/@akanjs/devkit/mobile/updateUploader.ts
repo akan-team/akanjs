@@ -46,8 +46,8 @@ export class UpdateUploader {
     };
   }
 
-  //* Never the whole folder: pack-update's records sit there too (pack.json holds this machine's paths), and so do
-  //* manifests of other channels and native APIs, which a later publish from another machine may have replaced.
+  //* Never the whole folder: pack-update's records sit there too, and so do manifests of other channels and native
+  //* APIs, which a later publish from another machine may have replaced.
   static async releaseFiles(updatesDir: string, { dir, channel, bundle }: PublishedUpdate): Promise<string[]> {
     const keyOf = (file: unknown) => UpdateUploader.#keyOf(updatesDir, dir, file);
     const desktop = await UpdateUploader.#read(path.join(dir, `${channel}.json`));

@@ -72,6 +72,7 @@ export interface NativeUpdatePack {
   webHash: string;
   files: number;
   size: number;
+  /** The folder it was read from or packed to; pack.json leaves it out. */
   out: string;
   compat?: { against: string; compatible: boolean; problems: string[] };
 }
@@ -488,8 +489,9 @@ export class NativeApp {
     return { ...packed, channel, pack };
   }
 
-  static async writePack(pack: NativeUpdatePack) {
-    await Bun.write(path.join(pack.out, "pack.json"), `${JSON.stringify(pack, null, 2)}\n`);
+  //? Without `out`: the record travels in the pack's archive, and the folder is wherever it is read from.
+  static async writePack({ out, ...record }: NativeUpdatePack) {
+    await Bun.write(path.join(out, "pack.json"), `${JSON.stringify(record, null, 2)}\n`);
   }
 
   /** A pack `packUpdate` wrote, read back from its folder wherever it was moved. */
