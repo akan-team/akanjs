@@ -192,11 +192,13 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- updates ({ url, publicKeys, channel?, readyTimeout?, report? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
+- updates ({ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
 - updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.
+
+- updates.revokedKeys (string[]): Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 

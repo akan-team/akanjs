@@ -444,13 +444,13 @@ Build and sign the Android app for a Play Store release, as an AAB or an APK. Li
 
 `akan update-keygen <app> [--platform <platform>] [--target <target>]`
 
-Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for.
+Make, once per app id, the Ed25519 key update releases are signed with, and print its public key for `native.updates.publicKeys`. Run again, it reads the key it made. The key lives in `~/.akan/native/keys/<app id>.update.key`, or where `AKAN_NATIVE_UPDATE_KEY` points: keep it in the secret store the release machine reads, since an installed app takes no release it cannot verify. An `appId` that differs per platform has a key per id, so name the `--platform` you publish for. It also prints the key's keyId, the name `publish-update --revoke` and `native.updates.revokedKeys` call it by.
 
 - --platform (String, default desktop, desktop | android | ios): The platform whose app id the key signs for.
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
-`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
+`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
 
 Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default, and its `pack.json` holds this machine's paths. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.
 
@@ -470,6 +470,10 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 - --notarize (Boolean, default false): macOS: upload the signed app to Apple's notary service and staple the ticket. It takes `--sign` and the notary credentials (`AKAN_NATIVE_MACOS_NOTARY_*`).
 
+- --revoke (String): Android and iOS: keyIds of `updates.publicKeys` this release starts revoking, comma-separated.
+
+- --reset-sequence (Boolean, default false, -R): With `--revoke`, phones compare the release with their binary's own bundle instead of the running one.
+
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
@@ -483,6 +487,14 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 - server change: Refused before it builds when the channel's last release differs in carrying a server, as installed apps would refuse it: publish on another channel (`updates.channel`) or remove its `<channel>.json` from the output folder to start over.
 
 - readable: Anyone who reaches `updates.url` can read the release; the updater sends no credentials. A desktop release is the whole app, the carried server's `private/` and env file included.
+
+- revocation: A phone release revokes `updates.revokedKeys`, the channel's published revocations and `--revoke` together, and is signed by a key listed after them all.
+
+- refused: Before the build: a keyId the ring lacks, over 16 revoked keys, `-R` revoking nothing, either flag on a desktop, a signer not listed after them.
+
+- leaked key: Sign with a spare (`AKAN_NATIVE_UPDATE_KEY`), `--revoke` the key on every phone platform and channel, then list it in `updates.revokedKeys`.
+
+- native API: The CLI needs the native build API 0.12.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.
 
 `akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>]`
 
@@ -779,6 +791,7 @@ akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main
 akan publish-update myapp --env main --sign true --notarize true --upload s3://releases/myapp
 akan publish-update myapp --platform android --env main
+AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform ios --env main --revoke 0123456789abcdef
 ```
 
 ### pack-update

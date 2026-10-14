@@ -340,6 +340,8 @@ An installed app updates itself from releases you sign. `akan update-keygen` pri
 
 **`updates.url` is public.** The updater sends no credentials, and a desktop release is the whole app, carried server included.
 
+**If a phone update key leaks, revoke it.** A key revokes only those listed before it in `updates.publicKeys`, so keep spares after the signing key. Point `AKAN_NATIVE_UPDATE_KEY` at a spare's file and publish iOS and Android on every channel with `--revoke <keyId>` (`akan update-keygen` prints a key's keyId). Then add the keyId to `updates.revokedKeys`, so every later release, signed with the spare, keeps revoking it, and keep it there after a new binary drops the key: older binaries still need it. A desktop app trusts only the first key and takes no revocation.
+
 Signing, notarization, the dmg, Windows setup and AppImage people download, and a CI recipe are on Desktop Release.
 
 Verify Setup
