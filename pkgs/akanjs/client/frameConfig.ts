@@ -22,7 +22,7 @@ export interface ResolvePageStateOptions {
   width?: number;
 }
 
-/** Tailwind's default breakpoints in rem, the widths a `ResponsiveInset` keys on. */
+/** Tailwind's default breakpoints in rem, the widths a `ResponsiveInset` keys on; `ui/styles.css` repeats them. */
 export const insetBreakpoints = [
   ["sm", 40],
   ["md", 48],
@@ -30,7 +30,14 @@ export const insetBreakpoints = [
   ["xl", 80],
   ["2xl", 96],
 ] as const;
-export type InsetBreakpoint = "base" | (typeof insetBreakpoints)[number][0];
+export type TailwindBreakpoint = (typeof insetBreakpoints)[number][0];
+export type InsetBreakpoint = "base" | TailwindBreakpoint;
+
+const breakpointRem = Object.fromEntries(insetBreakpoints) as { [name in TailwindBreakpoint]: number };
+
+/** The media query Tailwind's `<name>:` variant matches, or with `below` its `max-<name>:` one. */
+export const breakpointQuery = (name: TailwindBreakpoint, { below = false }: { below?: boolean } = {}) =>
+  `(width ${below ? "<" : ">="} ${breakpointRem[name]}rem)`;
 
 const pageConfigKeys = new Set<keyof PageConfig>([
   "transition",
