@@ -1,41 +1,28 @@
 import { App, command, Workspace } from "@akanjs/devkit/commandDecorators";
-import { getMobileTargetChoices } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
+import {
+  allowLocalOption,
+  hostOption,
+  nativeEnvs,
+  oneNativeTargetOption,
+  releaseEnvOption,
+  subspaceOption,
+  writeOption,
+} from "../application/commandOptions";
 import { CloudScript } from "./cloud.script";
 
 const localRegistryUrl = () => process.env.AKAN_NPM_REGISTRY ?? "http://127.0.0.1:4873";
-const hostOption = {
-  desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-  nullable: true,
-} as const;
-const targetOption = {
-  desc: "native target name (a key of native.targets)",
-  ask: "Select native target",
-  enum: async ({ app }: { app: App }) => await getMobileTargetChoices(app),
-};
-const envChoices = ["debug", "develop", "main", "local"] as const;
-const envOption = {
-  enum: envChoices,
-  desc: "backend environment",
-  default: "main",
-} as const;
 const resolveRegistryUrl = (registry: "npm" | "local") => (registry === "local" ? localRegistryUrl() : undefined);
 
 export class CloudCommand extends command("cloud", [CloudScript], ({ public: target }) => ({
   login: target({ desc: "Login to Akan Cloud services" })
-    .option("host", String, {
-      desc: "host of the cloud (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
       await this.cloudScript.login(workspace, host);
     }),
   logout: target({ desc: "Logout from Akan Cloud services" })
-    .option("host", String, {
-      desc: "host of the cloud (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
       await this.cloudScript.logout(workspace, host);
@@ -118,15 +105,15 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       nullable: true,
     })
     .option("env", String, {
-      enum: envChoices,
+      enum: nativeEnvs,
       desc: "backend environment (default: main; with --pack, the pack's)",
       nullable: true,
     })
     .option("channel", String, { desc: "the channel (default: the target's updates.channel)", nullable: true })
     .option("notes", String, { desc: "release notes shown in the project", nullable: true })
-    .option("subspace", String, { desc: "the subspace whose project gets it", nullable: true })
+    .option("subspace", String, subspaceOption("gets it"))
     .option("host", String, hostOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
+    .option("write", Boolean, writeOption)
     .option("allowLocalRelease", Boolean, {
       flag: "l",
       desc: "allow packing, or uploading a pack made, with --env local",
@@ -176,12 +163,12 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       enum: ["appStore", "testFlight", "playStore", "playTesting", "direct"],
       desc: "where the binary ships",
     })
-    .option("target", String, targetOption)
-    .option("env", String, envOption)
-    .option("subspace", String, { desc: "the subspace whose project gets it", nullable: true })
+    .option("target", String, oneNativeTargetOption)
+    .option("env", String, releaseEnvOption)
+    .option("subspace", String, subspaceOption("gets it"))
     .option("host", String, hostOption)
-    .option("write", Boolean, { desc: "write code generation", default: true })
-    .option("allowLocalRelease", Boolean, { flag: "l", desc: "allow packing with --env local", default: false })
+    .option("write", Boolean, writeOption)
+    .option("allowLocalRelease", Boolean, allowLocalOption("packing"))
     .with(Workspace)
     .exec(
       async function (app, platform, distribution, target, env, subspace, host, write, allowLocalRelease, workspace) {
@@ -209,11 +196,8 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       desc: "read the value from this file instead of stdin or a hidden prompt",
       nullable: true,
     })
-    .option("subspace", String, { desc: "the subspace whose project gets it", nullable: true })
-    .option("host", String, {
-      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("subspace", String, subspaceOption("gets it"))
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (name, branch, file, subspace, host, workspace) {
       await this.cloudScript.uploadSecret(workspace, { name, branch, file, subspace, host });
@@ -223,11 +207,8 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       desc: "only the secrets builds of this branch use: debug, develop or main",
       nullable: true,
     })
-    .option("subspace", String, { desc: "the subspace whose project to list", nullable: true })
-    .option("host", String, {
-      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("subspace", String, subspaceOption("to list"))
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (branch, subspace, host, workspace) {
       await this.cloudScript.listSecrets(workspace, { branch, subspace, host });
@@ -238,29 +219,20 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       desc: "the branch override to remove: debug, develop or main (default: the every-branch value)",
       nullable: true,
     })
-    .option("subspace", String, { desc: "the subspace whose project holds it", nullable: true })
-    .option("host", String, {
-      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("subspace", String, subspaceOption("holds it"))
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (name, branch, subspace, host, workspace) {
       await this.cloudScript.removeSecret(workspace, { name, branch, subspace, host });
     }),
   downloadEnv: target({ desc: "Download environment variables from cloud or SCP server" })
-    .option("host", String, {
-      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
       await this.cloudScript.downloadEnv(workspace, undefined, { host });
     }),
   uploadEnv: target({ desc: "Upload environment variables to cloud or SCP server" })
-    .option("host", String, {
-      desc: "host of the cloud to target (default: cloud.host of the root akan.config.ts, else Akan Cloud)",
-      nullable: true,
-    })
+    .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
       await this.cloudScript.uploadEnv(workspace, { host });

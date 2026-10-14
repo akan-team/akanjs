@@ -601,7 +601,7 @@ describe("pipeline secrets", () => {
   test("upload-secret and remove-secret refuse a bad name or branch before reading a value or signing in", async () => {
     const script = CommandContainer.get(CloudScript);
     const recorder = createCallRecorder();
-    script.cloudRunner.secretProject = async (...args) => recorder.record<string>("secretProject", ...args);
+    script.cloudRunner.projectOf = async (...args) => recorder.record<string>("projectOf", ...args);
     script.cloudRunner.readSecretValue = async (...args) => recorder.record<string>("readSecretValue", ...args);
     script.cloudRunner.login = async (...args) => recorder.record<boolean>("login", ...args);
     const workspace = createFakeExecutor("workspace") as never;
@@ -656,12 +656,10 @@ describe("pipeline secrets", () => {
     );
     const { WorkspaceExecutor } = await import("@akanjs/devkit/executors");
     const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
-    expect(await new CloudRunner().secretProject(workspace as never, "acme")).toBe("acme-project");
-    await expect(new CloudRunner().secretProject(workspace as never, "bare")).rejects.toThrow(
-      "declares no workspaceId",
-    );
-    expect(await new CloudRunner().secretProject(workspace as never, "acme", "web")).toBe("acme-project");
-    await expect(new CloudRunner().secretProject(workspace as never, "acme", "api")).rejects.toThrow(
+    expect(await new CloudRunner().projectOf(workspace as never, "acme")).toBe("acme-project");
+    await expect(new CloudRunner().projectOf(workspace as never, "bare")).rejects.toThrow("declares no workspaceId");
+    expect(await new CloudRunner().projectOf(workspace as never, "acme", "web")).toBe("acme-project");
+    await expect(new CloudRunner().projectOf(workspace as never, "acme", "api")).rejects.toThrow(
       'Subspace "acme" declares no app api in subspace in the workspace root akan.config.ts; it serves web.',
     );
   });
@@ -982,8 +980,8 @@ describe("push-update", () => {
   const stubPush = (pack: NativeUpdatePack) => {
     const script = CommandContainer.get(CloudScript);
     const recorder = createCallRecorder();
-    script.cloudRunner.secretProject = async (...args) => {
-      recorder.record("secretProject", ...args);
+    script.cloudRunner.projectOf = async (...args) => {
+      recorder.record("projectOf", ...args);
       return "project-1";
     };
     script.applicationScript.packUpdate = async (...args) => {
@@ -1011,7 +1009,7 @@ describe("push-update", () => {
       target: "admin",
     });
 
-    expect(recorder.names()).toEqual(["secretProject", "packUpdate", "pushUpdate"]);
+    expect(recorder.names()).toEqual(["projectOf", "packUpdate", "pushUpdate"]);
     expect(recorder.calls[0]?.args.slice(1)).toEqual([null, "lu"]);
     expect(recorder.calls[1]?.args.slice(1)).toEqual([
       "android",
@@ -1027,7 +1025,7 @@ describe("push-update", () => {
 
     await script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), { ...options, pack: pack.out });
 
-    expect(recorder.names()).toEqual(["secretProject", "pushUpdate"]);
+    expect(recorder.names()).toEqual(["projectOf", "pushUpdate"]);
     expect(recorder.calls[1]?.args[2]).toMatchObject({ app: "lu", target: "default", platform: "android" });
   });
 
@@ -1045,7 +1043,7 @@ describe("push-update", () => {
       exitCode: 2,
       message: `The pack in ${pack.out} needs a new store build; it differs from the one store/bundle.json came from:\n- deepLinks differ`,
     });
-    expect(recorder.names()).toEqual(["secretProject"]);
+    expect(recorder.names()).toEqual(["projectOf"]);
   });
 
   test("without --pack, a missing --platform is named instead of asked for", async () => {
@@ -1054,7 +1052,7 @@ describe("push-update", () => {
     await expect(script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), options)).rejects.toThrow(
       "push-update needs --platform ios or android to pack, or --pack <dir>",
     );
-    expect(recorder.names()).toEqual(["secretProject"]);
+    expect(recorder.names()).toEqual(["projectOf"]);
   });
 });
 
