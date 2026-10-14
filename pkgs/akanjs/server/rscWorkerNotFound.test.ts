@@ -11,7 +11,9 @@ interface Rendered {
 
 const notFoundErrorRow = /^[0-9a-z]+:E\{[^\n]*AKAN_NOT_FOUND/m;
 
-const withNotFoundWorker = async (run: (render: (url: string) => Promise<Rendered>) => Promise<void>) => {
+const withNotFoundWorker = async (
+  run: (render: (url: string, headers?: Record<string, string>) => Promise<Rendered>) => Promise<void>,
+) => {
   const vars: Record<string, string> = {
     AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
     AKAN_PUBLIC_APP_NAME: "notfound",
@@ -30,8 +32,8 @@ const withNotFoundWorker = async (run: (render: (url: string) => Promise<Rendere
   } as unknown as BaseBuildArtifact);
   try {
     await rsc.ready;
-    await run(async (url) => {
-      const result = await rsc.renderWithMeta(new Request(url));
+    await run(async (url, headers = {}) => {
+      const result = await rsc.renderWithMeta(new Request(url, { headers }));
       if (result.type === "not-found") return { status: "not-found", body: "", lateNotFound: false };
       if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
       const body = await new Response(result.stream).text();
@@ -72,6 +74,24 @@ describe("RscWorker not-found raised by a route", () => {
         expect(rendered.body).not.toMatch(notFoundErrorRow);
         expect(rendered.status === 404 || rendered.lateNotFound).toBe(true);
       }
+    });
+  }, 20_000);
+});
+
+describe("RscWorker fallback document request scope", () => {
+  test("renders a fallback raised before any byte under its own request while another render is in flight", async () => {
+    await withNotFoundWorker(async (render) => {
+      const slow = render("http://localhost/en/slowread", { cookie: "theme=bee", "x-base-path": "bee" });
+      await Bun.sleep(200);
+      const refused = await render("http://localhost/en/drawing/not-an-id", {
+        cookie: "theme=ant",
+        "x-base-path": "ant",
+      });
+      const slowRendered = await slow;
+
+      expect(refused.status).toBe(404);
+      expect(refused.body).toContain("root missing /en/drawing/not-an-id theme=ant base=ant");
+      expect(slowRendered.body).toContain("slow theme=bee base=bee");
     });
   }, 20_000);
 });

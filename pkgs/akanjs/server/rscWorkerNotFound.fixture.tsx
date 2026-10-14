@@ -2,12 +2,23 @@ import { ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
+import { untrackedCookies, untrackedHeaders } from "../fetch";
 import type { PagesContext } from "./routeTreeBuilder";
+
+const requestTag = () =>
+  `theme=${untrackedCookies().get("theme")?.value ?? "-"} base=${untrackedHeaders().get("x-base-path") ?? "-"}`;
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
     default: ({ children }: { children: ReactNode }) => <main>root:{children}</main>,
-    NotFound: ({ pathname }: { pathname: string }) => <p>root missing {pathname}</p>,
+    NotFound: ({ pathname }: { pathname: string }) => <p>{`root missing ${pathname} ${requestTag()}`}</p>,
+  }),
+  "./slowread/_index.tsx": async () => ({
+    default: page().render(async () => {
+      const tag = requestTag();
+      await Bun.sleep(1000);
+      return <p>{`slow ${tag}`}</p>;
+    }),
   }),
   "./nfprobesync/_index.tsx": async () => ({ default: page().render(() => router.notFound()) }),
   "./nfprobe/_index.tsx": async () => ({
