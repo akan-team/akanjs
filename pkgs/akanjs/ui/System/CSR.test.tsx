@@ -12,7 +12,7 @@ beforeAll(async () => {
   client = await import("akanjs/client");
 });
 
-const frameOf = (name: string, calls: string[], idx: number) => {
+const frameOf = (name: string, calls: string[], idx: number, stackEntries: unknown[] = []) => {
   const router: RouterInstance = {
     push: (href) => void calls.push(`${name} push ${href}`),
     replace: (href) => void calls.push(`${name} replace ${href}`),
@@ -23,7 +23,7 @@ const frameOf = (name: string, calls: string[], idx: number) => {
     router,
     history: { current: { idx } },
     pathRoutes: [],
-    stackEntries: [],
+    stackEntries,
     frameRootRef: { current: null },
     topSafeAreaRef: { current: null },
     bottomSafeAreaRef: { current: null },
@@ -51,5 +51,23 @@ describe("CSR.Wrapper", () => {
     expect(calls).toEqual(["second push /en/next"]);
     expect(client.router.canGoBack()).toBe(true);
     second.unmount();
+  });
+
+  test("an empty top-left slot lets a click through to the chrome under it, and a filled one takes it", () => {
+    const pathRoute = {
+      path: "/:lang/a",
+      pageState: { ...client.defaultPageState, topInset: 48 },
+      renderLayouts: [],
+      renderPage: { kind: "page", render: () => null },
+    };
+    const location = { href: "/en/a", pathname: "/en/a", params: {}, searchParams: {}, pathRoute };
+    const entries = [{ key: "a", location, pageType: "current", zIndex: 1 }];
+    const frame = mount(frameOf("frame", [], 0, entries));
+    const container = document.getElementById("topLeftActionContainer");
+    const target = document.getElementById("topLeftActionContent-a");
+
+    expect(container?.className).toContain("pointer-events-none");
+    expect(target?.className).toContain("pointer-events-auto");
+    frame.unmount();
   });
 });
