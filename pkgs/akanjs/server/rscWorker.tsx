@@ -492,18 +492,11 @@ export class RscRenderer {
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
-        const targetFrame = match
-          ? await RouteElementComposer.resolveSsrFramePathRoute({
-              pathRoute: match.pathRoute,
-              basePath: this.#getBasePath(urlObj),
-            })
-          : null;
         const targetRouterState = match
           ? createAkanRouterState({
               pathRoute: match.pathRoute,
               href: urlObj.href,
               buildId: this.#pagesBundleBuildId,
-              transition: targetFrame?.pageState.transition,
             })
           : null;
         const searchParams = parseSearchParams(urlObj.search);

@@ -51,17 +51,6 @@ const makeSiblingPair = () => ({
 });
 
 describe("RSC route state helpers", () => {
-  test("carries a route's transition for the browser to play, and leaves a still route without one", () => {
-    const pathRoute = makeRoute("/:lang/docs/:slug", ["/", "/:lang", "/docs", "/:slug"], 2, 1);
-    const moving = createAkanRouterState({ pathRoute, href: "https://example.test/en/docs/a", transition: "stack" });
-    const still = createAkanRouterState({ pathRoute, href: "https://example.test/en/docs/a", transition: "none" });
-
-    expect(moving.transition).toBe("stack");
-    expect(still).not.toHaveProperty("transition");
-    expect(decodeAkanRouterState(encodeAkanRouterState(moving))?.transition).toBe("stack");
-    expect(decodeAkanRouterState(encodeAkanRouterState({ ...moving, transition: 1 as never }))).toBeNull();
-  });
-
   test("creates stable segment keys from the route render stack", () => {
     const state = createAkanRouterState({
       pathRoute: makeRoute("/:lang/docs/:slug", ["/", "/:lang", "/docs", "/:slug"], 2, 1),

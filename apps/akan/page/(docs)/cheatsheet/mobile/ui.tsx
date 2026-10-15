@@ -325,13 +325,13 @@ export default page()
                 en: (
                   <span>
                     Give the page a <code>transition</code> in <code>.config()</code>. The mobile app shell then
-                    animates the change the way a native app does, and a browser plays it as a view transition.
+                    animates the change the way a native app does.
                   </span>
                 ),
                 ko: (
                   <span>
                     페이지의 <code>.config()</code>에 <code>transition</code>을 적으세요. 그러면 모바일 앱 셸이 네이티브
-                    앱처럼 화면 전환을 애니메이션으로 보여 주고, 브라우저는 view transition으로 재생합니다.
+                    앱처럼 화면 전환을 애니메이션으로 보여 줍니다.
                   </span>
                 ),
               })}
@@ -392,24 +392,6 @@ export default page()
                     <>
                       <strong>값이 드래그 동작도 정합니다.</strong> 실제 뒤로 가기 제스처가 달린 것은 <code>stack</code>
                       과 <code>bottomUp</code> 둘뿐입니다.
-                    </>
-                  ),
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: (
-                    <>
-                      <strong>The web plays it too.</strong> On a client navigation between SSR pages, a push plays the
-                      target route's transition and going back plays the one being left in reverse, while the chrome
-                      holds still. Reduced motion, or a browser without view transitions, just swaps.
-                    </>
-                  ),
-                  ko: (
-                    <>
-                      <strong>웹에서도 재생됩니다.</strong> SSR 페이지 사이를 클라이언트에서 이동하면 push는 도착할
-                      route의 전환을, 뒤로 가기는 떠나는 route의 전환을 거꾸로 재생하고, chrome은 그대로 있습니다. 동작
-                      줄이기 설정이나 view transition이 없는 브라우저에서는 그냥 바뀝니다.
                     </>
                   ),
                 })}

@@ -104,7 +104,7 @@ export const AkanjsHeader = ({
 
   return (
     <>
-      <div className={cn("akanjs-header fixed top-0 z-50 w-full", className)}>
+      <div className={cn("fixed top-0 z-50 w-full", className)}>
         <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/6 border-b bg-background/70 px-6 text-foreground backdrop-blur-xl backdrop-saturate-150 md:h-20 lg:grid-cols-[1fr_auto_1fr]">
           <div className="block lg:hidden">
             <button

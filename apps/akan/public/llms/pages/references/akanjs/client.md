@@ -58,7 +58,7 @@ Export
 
 - breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
 
-- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+- transitionTypes, TransitionType: The page transitions `.config({ transition })` takes.
 
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
@@ -290,7 +290,7 @@ PageConfig
 
 `PageConfig` is the object `.config()` takes. It sets how a route enters, how much room it keeps for the device edges, and how the server sends it.
 
-- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default by platform): Enter animation, a view transition on the web. Nested routes default to `stack` on iOS, `scaleOut` on Android.
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut", default by platform): Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.
 
 - safeArea (boolean | "top" | "bottom" | { top, bottom, android }, default on in the app, off on the web): Pads the page for the notch and the home bar. The web needs `.viewport({ fitCover: true })`.
 

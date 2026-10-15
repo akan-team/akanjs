@@ -2457,21 +2457,3 @@ html:has([data-akanjs-notice]) {
     }
   }
 }
-
-/* A named element is left out of an ancestor's view-transition snapshot, so this fixed bar stays while .akan-page slides. */
-.akanjs-header {
-  view-transition-name: akan-header;
-}
-
-html[data-akan-vt]::view-transition-group(akan-header) {
-  animation: none;
-  z-index: 1;
-}
-
-html[data-akan-vt]::view-transition-old(akan-header) {
-  display: none;
-}
-
-html[data-akan-vt]::view-transition-new(akan-header) {
-  animation: none;
-}

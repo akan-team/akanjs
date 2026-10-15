@@ -81,7 +81,7 @@ Inside the native shell, Akan uses the CSR router and mobile page frame. Page tr
 
 The frame settings a page can declare in .config():
 
-- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut"): Page motion that makes navigation in the native shell feel native; a browser plays it as a view transition.
+- transition ("none" | "fade" | "bottomUp" | "stack" | "scaleOut"): Controls CSR page motion so navigation inside the native shell can feel closer to a native app.
 
 - safeArea (boolean | "top" | "bottom" | { top, bottom }): Handles OS system areas such as notches, home indicators, and Android system bars.
 

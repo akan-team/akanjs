@@ -1410,7 +1410,7 @@ Export
 
 - breakpointQuery, TailwindBreakpoint: The media query Tailwind's `md:` (or, with `{ below: true }`, `max-md:`) matches, for `matchMedia` in a component.
 
-- transitionTypes, viewTransitionClassOf: The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.
+- transitionTypes, TransitionType: The page transitions `.config({ transition })` takes.
 
 - resolveRouteModule, isRouteDefinition: Used by route loaders. App code never calls them.
 
@@ -6131,7 +6131,7 @@ Page Transitions
 
 Your app runs inside a native shell, yet every screen change lands like a web page swap. The user cannot tell whether they went deeper or sideways, and the back button is the only way out.
 
-Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does, and a browser plays it as a view transition.
+Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does.
 
 Words used on this page
 

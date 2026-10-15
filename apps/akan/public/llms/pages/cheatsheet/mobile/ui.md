@@ -22,7 +22,7 @@ Page Transitions
 
 Your app runs inside a native shell, yet every screen change lands like a web page swap. The user cannot tell whether they went deeper or sideways, and the back button is the only way out.
 
-Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does, and a browser plays it as a view transition.
+Give the page a `transition` in `.config()`. The mobile app shell then animates the change the way a native app does.
 
 Words used on this page
 
@@ -43,8 +43,6 @@ A detail page that slides in over its list:
 **Five values.** `stack`, `bottomUp`, `fade`, `scaleOut` and `none`.
 
 **The value also picks the drag.** Only `stack` and `bottomUp` come with a real back gesture.
-
-**The web plays it too.** On a client navigation between SSR pages, a push plays the target route's transition and going back plays the one being left in reverse, while the chrome holds still. Reduced motion, or a browser without view transitions, just swaps.
 
 What each one looks like
 

@@ -119,10 +119,10 @@ export default page()
         }),
       },
       {
-        name: ["transitionTypes", "viewTransitionClassOf"],
+        name: ["transitionTypes", "TransitionType"],
         desc: l.trans({
-          en: "The page transitions `.config({ transition })` takes, and the view-transition class each draws when pushed or popped.",
-          ko: "`.config({ transition })`가 받는 페이지 전환 목록과, 각 전환이 push나 pop될 때 그리는 view transition class입니다.",
+          en: "The page transitions `.config({ transition })` takes.",
+          ko: "`.config({ transition })`가 받는 페이지 전환 목록입니다.",
         }),
       },
       {
@@ -565,8 +565,8 @@ export default page()
         type: '"none" | "fade" | "bottomUp" | "stack" | "scaleOut"',
         default: l.trans({ en: "by platform", ko: "플랫폼별" }),
         desc: l.trans({
-          en: "Enter animation, a view transition on the web. Nested routes default to `stack` on iOS, `scaleOut` on Android.",
-          ko: "들어올 때의 애니메이션이며 웹에서는 view transition입니다. 하위 route 기본값은 iOS `stack`, Android `scaleOut`입니다.",
+          en: "Enter animation. Nested routes use `stack` on iOS, `scaleOut` on Android, `none` elsewhere.",
+          ko: "들어올 때의 애니메이션입니다. 하위 route는 iOS에서 `stack`, Android에서 `scaleOut`, 그 밖에는 `none`입니다.",
         }),
       },
       {

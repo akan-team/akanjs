@@ -10,15 +10,7 @@ import {
   usePage,
 } from "akanjs/client";
 import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
-import {
-  Children,
-  type CSSProperties,
-  Fragment,
-  type ReactNode,
-  Suspense,
-  type ViewTransitionClassPerType,
-} from "react";
-import { ViewTransition } from "../../client/viewTransition";
+import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
 import { FontCss } from "../fontCss";
 import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
 import { Load } from "../Load";
@@ -125,10 +117,6 @@ const ServerFontFace = ({ fonts }: { fonts: ReactFont[] }) => {
   );
 };
 
-// One type for every navigation. React concatenates types left over from an entangled navigation, so a direction
-// carried by the type plays the next push backwards; `rscClient` puts this navigation's direction on `data-akan-vt`.
-const pageViewTransition: ViewTransitionClassPerType = { default: "none", "akan-nav": "akan-page" };
-
 interface SSRWrapperProps {
   className?: string;
   appName: string;
@@ -213,19 +201,7 @@ const SSRWrapper = ({
                   layoutStyle === "mobile" && "left-1/2 h-screen w-full max-w-[600px] -translate-x-1/2",
                 )}
               >
-                {ViewTransition ? (
-                  <ViewTransition
-                    default="none"
-                    enter={pageViewTransition}
-                    exit={pageViewTransition}
-                    update={pageViewTransition}
-                  >
-                    {/* React names every host child of a ViewTransition on its own, so a fragment slides in pieces. */}
-                    <div>{children}</div>
-                  </ViewTransition>
-                ) : (
-                  Children.toArray(children)
-                )}
+                {Children.toArray(children)}
               </div>
             </div>
           </div>

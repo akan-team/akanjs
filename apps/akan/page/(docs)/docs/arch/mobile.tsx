@@ -94,8 +94,8 @@ export default page()
         key: "transition",
         type: '"none" | "fade" | "bottomUp" | "stack" | "scaleOut"',
         desc: l.trans({
-          en: "Page motion that makes navigation in the native shell feel native; a browser plays it as a view transition.",
-          ko: "네이티브 shell 안의 내비게이션을 네이티브 앱처럼 느끼게 하는 page motion이며, 브라우저는 view transition으로 재생합니다.",
+          en: "Controls CSR page motion so navigation inside the native shell can feel closer to a native app.",
+          ko: "CSR page motion을 제어해 네이티브 shell 안의 내비게이션이 네이티브 앱에 가깝게 느껴지도록 합니다.",
         }),
       },
       {
