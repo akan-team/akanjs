@@ -16,7 +16,7 @@ export const formatFeatures = {
   strikethrough: "strikethrough",
   code: "inlineCode",
   highlight: "highlight",
-} as const satisfies Record<string, EditorFeatureKey>;
+} as const satisfies { [format: string]: EditorFeatureKey };
 
 export type GuardedFormat = keyof typeof formatFeatures;
 

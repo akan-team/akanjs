@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { Me } from "@libs/shared/common";
 import type { Account } from "akanjs/fetch";
 import { sample } from "akanjs/test";
 import * as adminSpec from "./admin.signal.spec";
@@ -27,11 +26,14 @@ describe("Admin Signal", () => {
       adminAgent.admin = await rootAdminAgent.fetch.admin(adminAgent.admin.id);
       expect(adminAgent.admin.accountId).toEqual(adminAgent.adminInput.accountId);
 
-      // 3. Admin 권한부여
+      // 3. Admin 권한부여 — a demotion ends the admin's sessions, so the old refresh token is refused
       adminAgent.admin = await rootAdminAgent.fetch.subAdminRole(adminAgent.admin.id, "admin");
       expect(adminAgent.admin.roles).not.toContain("admin");
+      await expect(adminAgent.fetch.refreshAdminJwt(adminAgent.accessToken.refreshToken)).rejects.toThrow();
       adminAgent.admin = await rootAdminAgent.fetch.addAdminRole(adminAgent.admin.id, "admin");
       expect(adminAgent.admin.roles).toContain("admin");
+      adminAgent.accessToken = await adminAgent.fetch.signinAdmin(adminAgent.adminInput.accountId, adminAgent.password);
+      adminAgent.fetch = adminAgent.fetch.clone({ jwt: adminAgent.accessToken.jwt }) as typeof adminAgent.fetch;
     });
 
     it("finds an admin to mention by any word of the account id, and by its start", async () => {
@@ -48,9 +50,9 @@ describe("Admin Signal", () => {
 
     it("can signout admin", async () => {
       // 1. Admin 로그인
-      const decodedAdminJwt = decodeJwtPayload<(Account<{ me?: Me }> & { exp?: number; tokenType?: string }) | null>(
-        adminAgent.accessToken.jwt,
-      );
+      const decodedAdminJwt = decodeJwtPayload<
+        (Account<{ me?: { id: string } }> & { exp?: number; tokenType?: string }) | null
+      >(adminAgent.accessToken.jwt);
       expect(decodedAdminJwt?.me).toBeTruthy();
       expect(decodedAdminJwt?.exp).toBeTruthy();
       expect(decodedAdminJwt?.tokenType).toBe("access");
@@ -61,12 +63,14 @@ describe("Admin Signal", () => {
       expect(refreshedToken.jwt).toBeTruthy();
       expect(refreshedToken.refreshToken).toBeTruthy();
       expect(refreshedToken.refreshToken).not.toBe(adminAgent.accessToken.refreshToken);
-      await expect(adminAgent.fetch.refreshAdminJwt(adminAgent.accessToken.refreshToken)).rejects.toThrow();
 
-      // 3. Admin 로그아웃
-      const { jwt: updatedAdminJwt } = await adminAgent.fetch.signoutAdmin();
+      // 3. Admin 로그아웃: the signed-out session's access token stops carrying the admin at once
+      const refreshedFetch = adminAgent.fetch.clone({ jwt: refreshedToken.jwt }) as typeof adminAgent.fetch;
+      const { jwt: updatedAdminJwt } = await refreshedFetch.signoutAdmin();
       expect(updatedAdminJwt).toBe("");
-      await expect(adminAgent.fetch.refreshAdminJwt(refreshedToken.refreshToken)).rejects.toThrow();
+      expect(await refreshedFetch.me()).toBeNull();
+      await expect(refreshedFetch.refreshAdminJwt(refreshedToken.refreshToken)).rejects.toThrow();
+      await expect(adminAgent.fetch.refreshAdminJwt(adminAgent.accessToken.refreshToken)).rejects.toThrow();
     });
 
     it("runs a read-only statement for a superAdmin, and refuses anyone else", async () => {

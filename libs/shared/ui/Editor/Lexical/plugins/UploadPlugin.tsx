@@ -1,19 +1,46 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { mergeRegister } from "@lexical/utils";
-import { COMMAND_PRIORITY_LOW, DRAGOVER_COMMAND, DROP_COMMAND, PASTE_COMMAND, type PasteCommandType } from "lexical";
+import { Err } from "@libs/shared/client";
+import {
+  $createRangeSelection,
+  $setSelection,
+  COMMAND_PRIORITY_LOW,
+  DRAGOVER_COMMAND,
+  DROP_COMMAND,
+  PASTE_COMMAND,
+} from "lexical";
 import { useEffect } from "react";
 
-import { insertFile, insertImage, insertVideo } from "../media";
+import type { EditorFeatureKey } from "../feature";
+import { insertUploaded, uploadKindOf } from "../media";
 import { useEditorUpload } from "../UploadContext";
 
+interface UploadPluginProps {
+  features: ReadonlySet<EditorFeatureKey>;
+}
+
+interface CaretPositionDocument {
+  caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  caretRangeFromPoint?: (x: number, y: number) => Range | null;
+}
+
+// Firefox only has the standard `caretPositionFromPoint`; Safari only the older `caretRangeFromPoint`.
+const rangeAtPoint = (x: number, y: number): Range | null => {
+  const doc = document as unknown as CaretPositionDocument;
+  const position = doc.caretPositionFromPoint?.(x, y);
+  if (!position) return doc.caretRangeFromPoint?.(x, y) ?? null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
+};
+
 /**
- * Uploads files dropped onto, or images pasted into, the editor and inserts the
- * matching media node. Replaces the Yoopta `onDropCapture`/paste handlers. Only
- * active when uploads are configured; each file goes through the context's
- * `uploadFile` (which validates + tracks the attachment) before insertion.
+ * Uploads files dropped onto, or images pasted into, the editor and inserts the matching media node — each
+ * kind only where the field's `features` offer it, so a field without files never grows one from a drop.
  */
-export const UploadPlugin = () => {
+export const UploadPlugin = ({ features }: UploadPluginProps) => {
   const [editor] = useLexicalComposerContext();
   const upload = useEditorUpload();
 
@@ -22,34 +49,9 @@ export const UploadPlugin = () => {
 
     const uploadAndInsert = async (files: File[]) => {
       for (const file of files) {
-        try {
-          if (file.type.startsWith("image/")) {
-            const uploaded = await upload.uploadFile(file, "image/*");
-            const [width = 0, height = 0] = uploaded.imageSize ?? [];
-            insertImage(editor, {
-              fileId: uploaded.id,
-              src: uploaded.url,
-              alt: uploaded.filename,
-              width,
-              height,
-            });
-          } else if (file.type.startsWith("video/")) {
-            const uploaded = await upload.uploadFile(file, "video/*");
-            const [width = 0, height = 0] = uploaded.imageSize ?? [];
-            insertVideo(editor, { fileId: uploaded.id, src: uploaded.url, width, height });
-          } else {
-            const uploaded = await upload.uploadFile(file);
-            insertFile(editor, {
-              fileId: uploaded.id,
-              src: uploaded.url,
-              name: uploaded.filename,
-              size: uploaded.size,
-              format: uploaded.filename?.split(".").pop(),
-            });
-          }
-        } catch (error) {
-          upload.onError(error as Error);
-        }
+        const kind = uploadKindOf(file);
+        if (features.has(kind)) await insertUploaded(editor, upload, file, kind);
+        else upload.onError(new Err("shared.error.fileTypeNotAllowed", { fileType: file.type || file.name }));
       }
     };
 
@@ -69,19 +71,24 @@ export const UploadPlugin = () => {
         DROP_COMMAND,
         (event: DragEvent) => {
           const files = event.dataTransfer?.files;
-          if (files && files.length > 0) {
-            event.preventDefault();
-            void uploadAndInsert([...files]);
-            return true;
+          if (!files?.length) return false;
+          event.preventDefault();
+          // The node lands at the caret once its upload finishes, so the caret moves to the drop point now.
+          const range = rangeAtPoint(event.clientX, event.clientY);
+          if (range && editor.getRootElement()?.contains(range.startContainer)) {
+            const selection = $createRangeSelection();
+            selection.applyDOMRange(range);
+            $setSelection(selection);
           }
-          return false;
+          void uploadAndInsert([...files]);
+          return true;
         },
         COMMAND_PRIORITY_LOW,
       ),
       editor.registerCommand(
         PASTE_COMMAND,
-        (event: PasteCommandType) => {
-          const files = "clipboardData" in event ? event.clipboardData?.files : undefined;
+        (event: ClipboardEvent) => {
+          const files = event.clipboardData?.files;
           const images = files ? [...files].filter((file) => file.type.startsWith("image/")) : [];
           if (images.length > 0) {
             event.preventDefault();
@@ -93,7 +100,7 @@ export const UploadPlugin = () => {
         COMMAND_PRIORITY_LOW,
       ),
     );
-  }, [editor, upload]);
+  }, [editor, upload, features]);
 
   return null;
 };

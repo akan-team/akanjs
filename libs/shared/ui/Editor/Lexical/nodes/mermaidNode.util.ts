@@ -17,11 +17,8 @@ export interface MermaidPayload {
 
 export type SerializedMermaidNode = Spread<{ code: string; width: number; align: MediaAlign }, SerializedLexicalNode>;
 
-/** The width (px) a "reset size" restores a diagram to, and the initial cap. */
-export const RESET_WIDTH = 650;
-
 /** Seed diagram for a freshly inserted block, so the node renders something on insert. */
-export const DEFAULT_MERMAID_CODE = `graph TD
+export const defaultMermaidCode = `graph TD
   A[Start] --> B{Ready?}
   B -- Yes --> C[Ship]
   B -- No --> A`;

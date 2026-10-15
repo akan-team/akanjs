@@ -7,16 +7,15 @@ import {
   LINK,
   type Transformer,
 } from "@lexical/markdown";
-import { $getRoot, createEditor, type LexicalEditor } from "lexical";
+import { $getRoot, createEditor, type LexicalEditor, type SerializedEditorState } from "lexical";
 import { RichEditor } from "../../../common/richEditor";
 
 import { MENTION, mentionToken } from "./markdownMention";
 import { rememberMention } from "./mentionCache";
 import { MentionNode } from "./nodes/MentionNode";
-import { isSerializedEditorState } from "./softGuard";
 
-// `lexical` core plus `@lexical/{markdown,link}` only — see `markdownTable.test.ts` for why the real
-// `AKAN_TRANSFORMERS` cannot be imported. MENTION before LINK is the ordering `AKAN_FEATURES` encodes.
+// `lexical` core plus `@lexical/{markdown,link}` only: the real `akanTransformers` reaches MermaidNode and
+// through it the util store. MENTION before LINK is the ordering `akanFeatures` encodes.
 const transformers: Transformer[] = [ITALIC_STAR, MENTION, LINK];
 
 const makeEditor = () =>
@@ -107,6 +106,45 @@ describe("markdown mention", () => {
     });
   });
 
+  // A stored document is anyone's to write, so reading one must not lend its chip's link to a later token.
+  it("takes no link from a chip it only read", () => {
+    makeEditor().parseEditorState({
+      root: {
+        type: "root",
+        version: 1,
+        direction: null,
+        format: "",
+        indent: 0,
+        children: [
+          {
+            type: "paragraph",
+            version: 1,
+            direction: null,
+            format: "",
+            indent: 0,
+            children: [
+              {
+                type: "akan-mention",
+                version: 1,
+                text: "Read only",
+                refName: "user",
+                refId: "u-read-only",
+                label: "Read only",
+                href: "/somewhere/else",
+                imageUrl: null,
+                format: 0,
+                detail: 1,
+                mode: "token",
+                style: "",
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as SerializedEditorState);
+    expect(mentionIn(importMarkdown("@[Read only](mention:user/u-read-only)"))?.href).toBeNull();
+  });
+
   describe("export", () => {
     it("round-trips the token unchanged", () => {
       const markdown = "cc @[Kangmin](mention:user/u1) please review";
@@ -125,12 +163,9 @@ describe("markdown mention", () => {
    * `writeOnVideoCut` rather than through the editor's own setter. Both directions have to agree with the
    * transformer, or a token the agent pasted would come back as literal text.
    */
-  describe("RichEditor.contentFromMentionText", () => {
-    const fromStore = (markdown: string) => {
-      const content = RichEditor.contentFromMentionText(markdown);
-      if (!isSerializedEditorState(content)) throw new Error("contentFromMentionText built no editor state");
-      return makeEditor().parseEditorState(content);
-    };
+  describe("RichEditor.contentFromMarkdown", () => {
+    const fromStore = (markdown: string) =>
+      makeEditor().parseEditorState(RichEditor.contentFromMarkdown(markdown) as unknown as SerializedEditorState);
 
     it("parses to the same markdown the transformer writes", () => {
       const markdown = "cc @[Kangmin](mention:user/u1) please review";

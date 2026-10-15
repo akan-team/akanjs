@@ -3,7 +3,7 @@ import { via } from "akanjs/constant";
 
 import { DeviceToken } from "../deviceToken/deviceToken.constant";
 
-export class NotiSetting extends enumOf("notiSetting", ["disagree", "fewer", "normal", "block"]) {}
+export class NotiSetting extends enumOf("notiSetting", ["disagree", "fewer", "normal", "block"] as const) {}
 
 export class NotiInfo extends via((field) => ({
   setting: field(NotiSetting, { default: "normal" }),

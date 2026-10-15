@@ -26,10 +26,9 @@ import { MENTION } from "./markdownMention";
 import { MentionNode } from "./nodes/MentionNode";
 
 /*
- * `AKAN_TRANSFORMERS` cannot be imported here — it reaches MermaidNode and through it the util store, the
- * same reason `markdownTable.test.ts` rebuilds its own list. So this set is the subset of the editor's
- * vocabulary that core plus `@lexical/{markdown,link,list,rich-text,code}` can express. The horizontal
- * rule is the app's own transformer and is therefore covered by the unit test, not by this one.
+ * `akanTransformers` cannot be imported here — it reaches MermaidNode and through it the util store. So
+ * this set is the subset of the editor's vocabulary that core plus `@lexical/{markdown,link,list,rich-text,code}`
+ * can express. The horizontal rule is the app's own transformer and is therefore covered by the unit test.
  */
 const transformers: Transformer[] = [
   HEADING,

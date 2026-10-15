@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import type { EditorFeature } from "./feature";
 import type { MentionSource } from "./mention.type";
 
-/** Slash-menu section a plugin option is filed under (mirrors the built-in groups). */
-export type EditorSlashGroup = "text" | "list" | "media" | "structure" | "reference";
+/** The slash menu's sections, in the order it draws them. */
+export const editorSlashGroups = ["text", "list", "media", "structure", "reference"] as const;
+export type EditorSlashGroup = (typeof editorSlashGroups)[number];
 
 /** A slash-menu entry contributed by an {@link EditorPlugin}. */
 export interface EditorSlashOption {

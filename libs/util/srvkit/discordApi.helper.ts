@@ -1,42 +1,23 @@
-import type * as discord from "discord.js";
-
-export interface DiscordToken {
-  token: string;
-  serverId: string;
+export interface DiscordEmbedField {
+  name: string;
+  value: string;
+  inline?: boolean;
 }
 
-export interface DiscordBot {
-  id: string;
-  client: discord.Client;
-  server: discord.Guild;
-  serverId: string;
-  token: string;
-}
-
-export type DiscordEmbed = discord.APIEmbed;
-export type DiscordMessage = discord.MessageCreateOptions;
-export type DiscordButton = discord.APIActionRowComponent<discord.APIComponentInMessageActionRow>;
-export type DiscordMember = discord.GuildMember;
-
-export interface DiscordBotInfo {
-  id: string;
-  serverId: string;
-  accessToken: string;
-}
-export interface DiscordReactEventInfo {
-  id: string;
-  messageId: string;
-}
-
-export interface SendMessageWithEmbedType {
-  botId: string;
-  channelId: string;
-  message: string;
-  embed: discord.APIEmbed;
-  button?: DiscordButton[];
+export interface DiscordEmbed {
+  title?: string;
+  description?: string;
+  url?: string;
+  color?: number;
+  timestamp?: string;
+  fields?: DiscordEmbedField[];
+  footer?: { text: string; icon_url?: string };
+  image?: { url: string };
+  thumbnail?: { url: string };
+  author?: { name: string; url?: string; icon_url?: string };
 }
 
 export interface SendWebhookMessageWithEmbedType {
   message: string;
-  embed: discord.APIEmbed;
+  embed: DiscordEmbed;
 }

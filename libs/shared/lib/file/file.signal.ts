@@ -1,5 +1,5 @@
-import { Every } from "@libs/shared/srvkit";
-import { Any, dayjs, ID, Upload } from "akanjs/base";
+import { Admin, Every } from "@libs/shared/srvkit";
+import { dayjs, ID, Upload } from "akanjs/base";
 import { endpoint, internal, None, Public, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
@@ -12,7 +12,7 @@ export class FileInternal extends internal(srv.file, ({ interval }) => ({
   }),
 })) {}
 
-export class FileSlice extends slice(srv.file, { guards: { root: None, get: Public, cru: None } }, (init) => ({
+export class FileSlice extends slice(srv.file, { guards: { root: Admin, get: Public, cru: None } }, (init) => ({
   inIds: init({ guards: [Public], mcp: false })
     .search("ids", [ID])
     .exec(async function (ids) {
@@ -27,16 +27,25 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
     .body("type", String, { example: "user" })
     .body("parentId", ID, { nullable: true })
     .exec(async function (files, metas, type, parentId) {
-      // Only the two fields the upload client sends are read: `generateFile` overwrites any File whose id is passed.
+      // Only the two fields the upload client sends are read, so a client-sent `fileId` never names the row it writes.
       const parsedMetas = (global.JSON.parse(metas) as Partial<db.FileMeta>[]).map((meta) => ({
         lastModifiedAt: dayjs(meta.lastModifiedAt),
         size: Number.isFinite(Number(meta.size)) ? Math.max(0, Math.floor(Number(meta.size))) : 0,
       }));
       return await this.fileService.addFiles(files, parsedMetas, type, parentId);
     }),
-  generatePdf: mutation(Any, { guards: [Every] })
-    .body("url", String)
-    .exec(async function (url) {
-      return await this.fileService.generatePdf(url);
+  requestFileUpload: mutation(cnst.FileUploadTicket, { guards: [Every] })
+    .body("type", String)
+    .body("parentId", ID, { nullable: true })
+    .exec(async function (type, parentId) {
+      return await this.fileService.requestFileUpload(type, parentId ?? undefined);
+    }),
+  // The ticket is the credential, so a caller with no session passes here and the service spends it or refuses.
+  //? No `fileUpload: true`: the store's upload action binds to the one endpoint carrying it, which is addFiles.
+  addFilesByTicket: mutation([cnst.File], { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
+    .body("files", [Upload])
+    .body("ticket", String)
+    .exec(async function (files, ticket) {
+      return await this.fileService.addFilesByTicket(files, ticket);
     }),
 })) {}

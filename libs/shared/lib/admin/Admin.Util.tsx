@@ -1,11 +1,10 @@
 "use client";
-import { type cnst, fetch, st, usePage } from "@libs/shared/client";
+import { type cnst, st, usePage } from "@libs/shared/client";
 import { buttonRecipe, Icon } from "@libs/util/ui";
 import { ID } from "akanjs/base";
 import { cn } from "akanjs/client";
-// import { client } from "akanjs/signal";
 import { Dropdown, Input, Link, Modal, System } from "akanjs/ui";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AiFillGithub, AiOutlineMenu, AiOutlinePoweroff } from "react-icons/ai";
 
 interface AuthProps {
@@ -17,15 +16,6 @@ interface AuthProps {
 export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => {
   const adminForm = st.use.adminForm();
   const { l } = usePage();
-  useEffect(() => {
-    const handleEnter = (e: KeyboardEvent) => {
-      if (e.key === "Enter") void st.do.signinAdmin({ redirect });
-    };
-    window.addEventListener("keydown", handleEnter);
-    return () => {
-      window.removeEventListener("keydown", handleEnter);
-    };
-  }, []);
   const ssoButtons: { [key in cnst.SsoType["value"]]: ReactNode } = {
     github: (
       <button
@@ -125,6 +115,7 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
                 inputClassName="h-11 border-white/10 bg-white/5 text-white focus:border-white/40"
                 value={adminForm.password ?? ""}
                 onChange={st.do.setPasswordOnAdmin}
+                onPressEnter={() => void st.do.signinAdmin({ redirect })}
                 validate={(value) => value.length > 0}
               />
             </label>
@@ -146,9 +137,9 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
         {ssos.length ? (
           <div className="mt-6 flex flex-col gap-2.5">
             {ssos.map((sso) => (
-              <Link href={`${fetch.origin}/user/${sso}`} key={sso}>
+              <div key={sso} onClick={() => void st.do.ssoSigninAdmin(sso, { redirect })}>
                 {ssoButtons[sso]}
-              </Link>
+              </div>
             ))}
           </div>
         ) : null}
@@ -156,6 +147,9 @@ export const Auth = ({ logo, password, ssoTypes = [], redirect }: AuthProps) => 
     </div>
   );
 };
+
+const menuItemClass =
+  "flex w-full cursor-pointer items-center justify-start gap-2 whitespace-nowrap rounded-field border-0 px-3 py-2 text-left text-base hover:bg-muted";
 
 interface ToolMenuProps {
   themes?: string[];
@@ -166,17 +160,17 @@ export const ToolMenu = ({ themes = ["light", "dark"] }: ToolMenuProps) => {
   return (
     <Dropdown
       buttonClassName={buttonRecipe({ variant: "ghost" })}
-      dropdownClassName="z-[1] w-32 rounded-box p-2 shadow-sm border border-foreground/10 gap-4 py-4"
+      dropdownClassName="z-[1] w-32 rounded-box p-2 shadow-sm border border-foreground/10"
       value={<AiOutlineMenu className="mt-0.5" />}
       content={
         <>
-          <li className="flex items-center justify-center">
+          <li className="flex items-center justify-start px-3 py-2">
             <System.ThemeToggle themes={themes} />
           </li>
           <li onClick={() => void st.do.signoutAdmin()}>
-            <a className="flex cursor-pointer items-center justify-center gap-2 text-foreground">
-              <AiOutlinePoweroff className="mt-0.5" /> Logout
-            </a>
+            <div className={menuItemClass}>
+              <AiOutlinePoweroff /> Logout
+            </div>
           </li>
         </>
       }

@@ -6,9 +6,5 @@ interface GeneralProps {
 }
 
 export const General = ({ className }: GeneralProps) => {
-  return (
-    <Layout.Template className={className}>
-      {/* <Field label={l("modelName.fieldName")} desc={l("modelName.fieldName.desc")} /> */}
-    </Layout.Template>
-  );
+  return <Layout.Template className={className} />;
 };

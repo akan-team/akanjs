@@ -1,11 +1,13 @@
 "use client";
-import { DecoratorNode, type DOMExportOutput, type NodeKey } from "lexical";
+import { RichUrl } from "@libs/shared/common";
+import type { DOMConversionMap, DOMConversionOutput, DOMExportOutput, NodeKey } from "lexical";
 import type { JSX } from "react";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import { ImageComponent } from "./ImageComponent";
 import { $createImageNode, type ImagePayload, type SerializedImageNode } from "./imageNode.util";
 import type { ImageFit, MediaAlign } from "./shared.type";
 
-export class ImageNode extends DecoratorNode<JSX.Element> {
+export class ImageNode extends BlockDecoratorNode {
   __fileId?: string;
   __src: string;
   __alt: string;
@@ -37,6 +39,26 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
 
   static override importJSON(serialized: SerializedImageNode): ImageNode {
     return $createImageNode(serialized);
+  }
+
+  // Pasted web HTML keeps its pictures, as long as the source is one a stored document may carry.
+  static override importDOM(): DOMConversionMap {
+    return { img: () => ({ conversion: ImageNode.#fromImg, priority: 0 }) };
+  }
+
+  static #fromImg(dom: HTMLElement): DOMConversionOutput {
+    const src = RichUrl.media(dom.getAttribute("src"));
+    if (!src) return { node: null };
+    const width = Number.parseInt(dom.getAttribute("width") ?? "", 10);
+    const height = Number.parseInt(dom.getAttribute("height") ?? "", 10);
+    return {
+      node: $createImageNode({
+        src,
+        alt: dom.getAttribute("alt") ?? "",
+        width: Number.isFinite(width) ? width : 0,
+        height: Number.isFinite(height) ? height : 0,
+      }),
+    };
   }
 
   constructor(payload: ImagePayload = { src: "" }, key?: NodeKey) {
@@ -74,19 +96,6 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     if (this.__width) img.setAttribute("width", String(this.__width));
     if (this.__height) img.setAttribute("height", String(this.__height));
     return { element: img };
-  }
-
-  override createDOM(): HTMLElement {
-    // A bare block host; all visuals live in the decorate() component (MediaFrame).
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
   }
 
   setAlign(align: MediaAlign): void {

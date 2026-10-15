@@ -1,4 +1,5 @@
 "use client";
+import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
 import { cn, resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
@@ -16,6 +17,7 @@ interface FileComponentProps {
 
 export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponentProps) => {
   const { editable, isSelected, removeNode } = useMediaNode(nodeKey);
+  const { l } = usePage();
   const sizeLabel = formatSize(size);
 
   return (
@@ -42,7 +44,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
             rel="noreferrer"
             download={name}
             className={buttonRecipe({ size: "xs", variant: "ghost" }, "min-h-7")}
-            title="Download"
+            title={l("shared.editor-download")}
             onMouseDown={(event) => event.preventDefault()}
           >
             <AiOutlineDownload />
@@ -50,7 +52,7 @@ export const FileComponent = ({ nodeKey, src, name, size, format }: FileComponen
           {editable ? (
             <button
               type="button"
-              title="Delete"
+              title={l("shared.editor-delete")}
               className={buttonRecipe({ size: "xs", variant: "ghost" }, "min-h-7")}
               onMouseDown={(event) => event.preventDefault()}
               onClick={removeNode}

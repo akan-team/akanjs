@@ -1,7 +1,11 @@
 "use client";
+import type { CollaborationPlugin } from "@lexical/react/LexicalCollaborationPlugin";
 import { YJS_DOC_FRAME, YJS_PRESENCE_FRAME, yjsFrameOf } from "@libs/shared/common";
-import { useEffect, useMemo, useState } from "react";
-import { applyUpdate, Doc, encodeStateAsUpdate, encodeStateVector, type Transaction } from "yjs";
+import { Logger } from "akanjs/common";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import { applyUpdate, Doc, encodeStateAsUpdate, encodeStateVector, mergeUpdates } from "yjs";
+
+import { YjsRelayRoom } from "./yjsRelayRoom";
 
 /** How the page's own endpoints reach the relay. Kept as props so this hook belongs to no one model. */
 export interface YjsRelayTransport {
@@ -10,33 +14,9 @@ export interface YjsRelayTransport {
   subscribe: (id: string, onFrame: (frame: Uint8Array) => void) => () => void;
 }
 
-interface UserState {
-  [key: string]: unknown;
-}
-
-type ProviderAwareness = {
-  getLocalState: () => UserState | null;
-  getStates: () => Map<number, UserState>;
-  off: (type: "update", cb: () => void) => void;
-  on: (type: "update", cb: () => void) => void;
-  setLocalState: (state: UserState | null) => void;
-  setLocalStateField: (field: string, value: unknown) => void;
-};
-
-/** A frame this client sent comes back from its own room; yjs is idempotent but the bandwidth is not free. */
-const REMOTE_ORIGIN = "akan-relay";
-/** Updates are batched because every message frame re-runs the endpoint's guards. */
-const UPDATE_BATCH_MS = 200;
-const AWARENESS_HEARTBEAT_MS = 10_000;
-/** A peer that has not spoken for this long is gone: a closed tab sends no goodbye a browser can rely on. */
-const AWARENESS_TIMEOUT_MS = 30_000;
-
-const decodeBase64 = (state: string) => {
-  const binary = atob(state);
-  const bytes = new Uint8Array(binary.length);
-  for (let idx = 0; idx < binary.length; idx += 1) bytes[idx] = binary.charCodeAt(idx);
-  return bytes;
-};
+type ProviderFactory = ComponentProps<typeof CollaborationPlugin>["providerFactory"];
+type ProviderAwareness = ReturnType<ProviderFactory>["awareness"];
+type UserState = NonNullable<ReturnType<ProviderAwareness["getLocalState"]>>;
 
 /**
  * A `@lexical/yjs` provider over an akan websocket room.
@@ -51,10 +31,21 @@ const decodeBase64 = (state: string) => {
  * reliable way to say goodbye.
  */
 class RelayProvider {
+  /** A frame this client sent comes back from its own room; yjs is idempotent but the bandwidth is not free. */
+  static readonly #remoteOrigin = "akan-relay";
+  /** Updates are batched because every message frame re-runs the endpoint's guards. */
+  static readonly #updateBatchMs = 200;
+  static readonly #presenceThrottleMs = 200;
+  static readonly #heartbeatMs = 10_000;
+  /** A peer that has not spoken for this long is gone: a closed tab sends no goodbye a browser can rely on. */
+  static readonly #peerTimeoutMs = 30_000;
+  static readonly #logger = new Logger("RelayProvider");
+
   readonly awareness: ProviderAwareness;
   readonly #doc: Doc;
   readonly #id: string;
   readonly #transport: YjsRelayTransport;
+  readonly #room: YjsRelayRoom;
   readonly #initialState: string;
   readonly #handlers = new Map<string, Set<(payload: never) => void>>();
   readonly #awarenessHandlers = new Set<() => void>();
@@ -63,14 +54,17 @@ class RelayProvider {
   #localState: UserState | null = null;
   #pending: Uint8Array[] = [];
   #batchTimer: ReturnType<typeof setTimeout> | null = null;
+  #presenceTimer: ReturnType<typeof setTimeout> | null = null;
   #heartbeat: ReturnType<typeof setInterval> | null = null;
-  #unsubscribe: (() => void) | null = null;
   #connected = false;
+  #changedLocally = false;
+  #repairedTo: Uint8Array | undefined = undefined;
 
-  constructor(doc: Doc, id: string, transport: YjsRelayTransport, initialState: string) {
+  constructor(doc: Doc, id: string, transport: YjsRelayTransport, room: YjsRelayRoom, initialState: string) {
     this.#doc = doc;
     this.#id = id;
     this.#transport = transport;
+    this.#room = room;
     this.#initialState = initialState;
     this.awareness = {
       getLocalState: () => this.#localState,
@@ -79,13 +73,20 @@ class RelayProvider {
       off: (_type, cb) => this.#awarenessHandlers.delete(cb),
       setLocalState: (state) => {
         this.#localState = state;
-        this.#publishAwareness();
+        this.#announce();
       },
       setLocalStateField: (field, value) => {
-        this.#localState = { ...(this.#localState ?? {}), [field]: value };
-        this.#publishAwareness();
+        this.#localState = { ...this.#localState, [field]: value } as UserState;
+        this.#announce();
       },
     };
+  }
+
+  static #decodeBase64(state: string) {
+    const binary = atob(state);
+    const bytes = new Uint8Array(binary.length);
+    for (let idx = 0; idx < binary.length; idx += 1) bytes[idx] = binary.charCodeAt(idx);
+    return bytes;
   }
 
   on(type: string, cb: (payload: never) => void) {
@@ -101,21 +102,24 @@ class RelayProvider {
   connect() {
     if (this.#connected) return;
     this.#connected = true;
-    this.#unsubscribe = this.#transport.subscribe(this.#id, (frame) => {
-      this.#receive(frame);
-    });
     this.#doc.on("update", this.#onLocalUpdate);
     // Apply what the server holds before announcing the sync: `CollaborationPlugin` bootstraps only when
     // the root is still empty at that moment, so a document with stored state skips it on its own.
-    if (this.#initialState) applyUpdate(this.#doc, decodeBase64(this.#initialState), REMOTE_ORIGIN);
+    if (this.#initialState) this.#apply(RelayProvider.#decodeBase64(this.#initialState));
+    this.#repairedTo = encodeStateVector(this.#doc);
     this.#emit("status", { status: "connected" });
     this.#emit("sync", true);
+    // Held frames land after the sync: a peer's edit applied first could make a seeder skip its bootstrap.
+    this.#room.attach((frame) => {
+      this.#receive(frame);
+    });
+    // `CollaborationPlugin` sets the local state before it connects, when there was no room to send it to.
+    if (this.#localState) this.#publishAwareness();
     this.#heartbeat = setInterval(() => {
       this.#expirePeers();
       if (this.#localState) this.#publishAwareness();
-      // The whole state, not a delta: a flush that lost a race is repaired by the next one of these.
-      this.#send(yjsFrameOf(YJS_DOC_FRAME, encodeStateAsUpdate(this.#doc)));
-    }, AWARENESS_HEARTBEAT_MS);
+      this.#repair();
+    }, RelayProvider.#heartbeatMs);
   }
 
   get clientId() {
@@ -132,28 +136,25 @@ class RelayProvider {
     // The whole state on the way out: a flush that lost a read-modify-write race is repaired by this,
     // and the last editor leaving is exactly when an unrepaired one would be lost for good.
     this.#send(yjsFrameOf(YJS_DOC_FRAME, encodeStateAsUpdate(this.#doc)));
-    this.#connected = false;
+    // The goodbye goes out while the room is still open: sent after, it is dropped, and the peers keep
+    // counting this client — and waiting on it as the leader — until its presence times out.
     this.#localState = null;
     this.#publishAwareness();
+    this.#connected = false;
     this.#doc.off("update", this.#onLocalUpdate);
     if (this.#heartbeat) clearInterval(this.#heartbeat);
-    this.#unsubscribe?.();
-    this.#unsubscribe = null;
+    this.#room.close();
     this.#emit("status", { status: "disconnected" });
   }
 
-  /** The state vector of everything this client holds, so a leaving editor can hand over a full snapshot. */
-  snapshot() {
-    return encodeStateAsUpdate(this.#doc, encodeStateVector(new Doc()));
-  }
-
-  #onLocalUpdate = (update: Uint8Array, origin: unknown, _doc: Doc, _transaction: Transaction) => {
-    if (origin === REMOTE_ORIGIN) return;
+  #onLocalUpdate = (update: Uint8Array, origin: unknown) => {
+    if (origin === RelayProvider.#remoteOrigin) return;
+    this.#changedLocally = true;
     this.#pending.push(update);
     if (this.#batchTimer) return;
     this.#batchTimer = setTimeout(() => {
       this.#flush();
-    }, UPDATE_BATCH_MS);
+    }, RelayProvider.#updateBatchMs);
   };
 
   #flush() {
@@ -162,7 +163,16 @@ class RelayProvider {
     if (!this.#pending.length) return;
     const pending = this.#pending;
     this.#pending = [];
-    for (const update of pending) this.#send(yjsFrameOf(YJS_DOC_FRAME, update));
+    this.#send(yjsFrameOf(YJS_DOC_FRAME, pending.length === 1 ? pending[0] : mergeUpdates(pending)));
+  }
+
+  // Everything this document gained since the last repair, sent only by a client that changed it: that also
+  // re-sends a flush in between that lost the server's read-modify-write race, which is what this is for.
+  #repair() {
+    if (!this.#changedLocally) return;
+    this.#changedLocally = false;
+    this.#send(yjsFrameOf(YJS_DOC_FRAME, encodeStateAsUpdate(this.#doc, this.#repairedTo)));
+    this.#repairedTo = encodeStateVector(this.#doc);
   }
 
   #send(frame: Uint8Array) {
@@ -173,14 +183,18 @@ class RelayProvider {
   #receive(frame: Uint8Array) {
     if (!frame.length) return;
     const payload = frame.subarray(1);
-    if (frame[0] === YJS_DOC_FRAME) {
-      // REMOTE_ORIGIN keeps this out of #onLocalUpdate, so a received frame is never echoed back upstream.
-      applyUpdate(this.#doc, payload, REMOTE_ORIGIN);
-      this.#emit("update", payload);
-      return;
+    if (frame[0] === YJS_DOC_FRAME) this.#apply(payload);
+    else if (frame[0] === YJS_PRESENCE_FRAME) this.#receiveAwareness(payload);
+  }
+
+  // A peer's frame is input like any other, and one that does not decode must cost that frame, not the room.
+  #apply(update: Uint8Array) {
+    try {
+      // The remote origin keeps this out of #onLocalUpdate, so a received frame is never echoed back upstream.
+      applyUpdate(this.#doc, update, RelayProvider.#remoteOrigin);
+    } catch (error) {
+      RelayProvider.#logger.warn(`Dropped a document frame that does not apply: ${error}`);
     }
-    if (frame[0] !== YJS_PRESENCE_FRAME) return;
-    this.#receiveAwareness(payload);
   }
 
   #receiveAwareness(payload: Uint8Array) {
@@ -192,14 +206,32 @@ class RelayProvider {
     }
     const clientId = parsed.clientId;
     if (typeof clientId !== "number" || clientId === this.#doc.clientID) return;
-    if (parsed.state) {
+    if (parsed.state && typeof parsed.state === "object") {
+      const joined = !this.#states.has(clientId);
       this.#states.set(clientId, parsed.state);
       this.#seenAt.set(clientId, Date.now());
+      // A newcomer counts the room — and picks the leader — from what it hears, so it hears from us now.
+      if (joined && this.#localState) this.#announce();
     } else {
       this.#states.delete(clientId);
       this.#seenAt.delete(clientId);
     }
     this.#notifyAwareness();
+  }
+
+  // A cursor moves with every keystroke, so the latest position goes out on a trailing timer. A goodbye never waits.
+  #announce() {
+    if (!this.#localState) {
+      if (this.#presenceTimer) clearTimeout(this.#presenceTimer);
+      this.#presenceTimer = null;
+      this.#publishAwareness();
+      return;
+    }
+    if (this.#presenceTimer) return;
+    this.#presenceTimer = setTimeout(() => {
+      this.#presenceTimer = null;
+      this.#publishAwareness();
+    }, RelayProvider.#presenceThrottleMs);
   }
 
   #publishAwareness() {
@@ -209,7 +241,7 @@ class RelayProvider {
   }
 
   #expirePeers() {
-    const cutoff = Date.now() - AWARENESS_TIMEOUT_MS;
+    const cutoff = Date.now() - RelayProvider.#peerTimeoutMs;
     let dropped = false;
     for (const [clientId, seenAt] of this.#seenAt) {
       if (seenAt >= cutoff) continue;
@@ -242,8 +274,7 @@ export interface YjsRelay {
    * server: when that client leaves, the next lowest takes over on its own.
    */
   isLeader: boolean;
-  /** Typed as `never` to match `EditorCollab`: `@lexical/yjs`'s `Provider` is not exported as a value. */
-  providerFactory: (id: string, docMap: Map<string, Doc>) => never;
+  providerFactory: ProviderFactory;
   /** Peers currently on this document, by their yjs client id. */
   peers: UserState[];
   /**
@@ -263,7 +294,7 @@ export interface YjsRelay {
  * per document may say yes — so the join happens here rather than inside the provider's `connect`.
  */
 export const useYjsRelay = (id: string, transport: YjsRelayTransport, enabled = true): YjsRelay => {
-  const [joined, setJoined] = useState<{ id: string; state: string; seed: boolean } | null>(null);
+  const [joined, setJoined] = useState<{ id: string; state: string; seed: boolean; room: YjsRelayRoom } | null>(null);
   const [failed, setFailed] = useState(false);
   const [peers, setPeers] = useState<UserState[]>([]);
   const [isLeader, setIsLeader] = useState(true);
@@ -272,34 +303,39 @@ export const useYjsRelay = (id: string, transport: YjsRelayTransport, enabled = 
   useEffect(() => {
     if (!enabled || !id) return;
     let cancelled = false;
+    const room = new YjsRelayRoom(id, transport);
     void (async () => {
       try {
-        const { state, seed } = await transport.join(id);
-        if (!cancelled) setJoined({ id, state, seed });
+        const { state, seed } = await room.join();
+        if (!cancelled) setJoined({ id, state, seed, room });
       } catch {
+        room.close();
         if (!cancelled) setFailed(true);
       }
     })();
     return () => {
       cancelled = true;
+      room.close();
       setJoined(null);
       setFailed(false);
     };
   }, [id, enabled]);
 
-  const providerFactory = useMemo(() => {
-    return (docId: string, docMap: Map<string, Doc>) => {
+  const providerFactory = useMemo<ProviderFactory>(() => {
+    return (docId, docMap) => {
       const sharedDoc = docMap.get(docId) ?? new Doc();
       docMap.set(docId, sharedDoc);
       setDoc(sharedDoc);
-      const provider = new RelayProvider(sharedDoc, docId, transport, joined?.id === docId ? joined.state : "");
+      const ownJoin = joined?.id === docId ? joined : null;
+      const room = ownJoin?.room ?? new YjsRelayRoom(docId, transport);
+      const provider = new RelayProvider(sharedDoc, docId, transport, room, ownJoin?.state ?? "");
       provider.awareness.on("update", () => {
         setPeers([...provider.awareness.getStates().values()]);
         setIsLeader(provider.peerIds().every((peerId) => provider.clientId < peerId));
       });
-      return provider as unknown as never;
+      return provider;
     };
-  }, [joined?.id, joined?.state]);
+  }, [joined?.id, joined?.state, joined?.room]);
 
   return {
     ready: !!joined && joined.id === id,

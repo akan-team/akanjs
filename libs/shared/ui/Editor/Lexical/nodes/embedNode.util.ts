@@ -1,3 +1,4 @@
+import type { EmbedProvider } from "@libs/shared/common";
 import {
   $applyNodeReplacement,
   type LexicalNode,
@@ -5,14 +6,13 @@ import {
   type SerializedLexicalNode,
   type Spread,
 } from "lexical";
-import type { EmbedProviderType } from "../embed";
 import { EmbedNode } from "./EmbedNode";
 import type { MediaAlign } from "./shared.type";
 
 export interface EmbedPayload {
   url?: string;
   embedUrl?: string;
-  provider?: EmbedProviderType;
+  provider?: EmbedProvider;
   width?: number;
   height?: number;
   align?: MediaAlign;
@@ -23,7 +23,7 @@ export type SerializedEmbedNode = Spread<
   {
     url: string;
     embedUrl: string;
-    provider?: EmbedProviderType;
+    provider?: EmbedProvider;
     width: number;
     height: number;
     align: MediaAlign;
@@ -31,8 +31,8 @@ export type SerializedEmbedNode = Spread<
   SerializedLexicalNode
 >;
 
-export const DEFAULT_WIDTH = 650;
-export const DEFAULT_HEIGHT = 400;
+export const defaultEmbedWidth = 650;
+export const defaultEmbedHeight = 400;
 
 export const $createEmbedNode = (payload: EmbedPayload): EmbedNode => $applyNodeReplacement(new EmbedNode(payload));
 

@@ -1,11 +1,10 @@
 "use client";
 import { Admin, type cnst, st, usePage } from "@libs/shared/client";
-import { cn, type DataMenuItem, router } from "akanjs/client";
-import { useInterval } from "akanjs/webkit";
+import { cn, type DataMenuItem } from "akanjs/client";
+import { Link } from "akanjs/ui";
 import type { ComponentType, ReactNode } from "react";
 
 interface AdministratorProps {
-  defaultMenu?: string;
   pageMenus: { key: string; title: string; menus: DataMenuItem[] | DataMenuItem }[];
   password?: boolean;
   ssoTypes?: cnst.SsoType["value"][];
@@ -15,7 +14,6 @@ interface AdministratorProps {
 }
 
 export const Administrator = ({
-  defaultMenu = "admin",
   password,
   ssoTypes,
   logo,
@@ -26,7 +24,6 @@ export const Administrator = ({
   const searchParams = st.use.searchParams();
   const topMenu = Array.isArray(searchParams.topMenu) ? searchParams.topMenu[0] : searchParams.topMenu;
   const subMenu = Array.isArray(searchParams.subMenu) ? searchParams.subMenu[0] : searchParams.subMenu;
-  const storeDo = st.do as unknown as { [key: string]: ((...args: unknown[]) => Promise<void>) | undefined };
   const { l } = usePage();
   const pageMenu = pageMenus.find((pageMenu) => pageMenu.key === topMenu) ?? pageMenus[0];
   const menuItems = pageMenu.menus;
@@ -36,9 +33,6 @@ export const Administrator = ({
   const Render: ComponentType = activeMenu.render;
   const labelOf = (menuItem: DataMenuItem) =>
     menuItem.label ?? l((menuItem.key.includes(".") ? menuItem.key : `${menuItem.key}.modelName`) as `admin.id`);
-  useInterval(() => {
-    if (me.id) void storeDo.getActiveSummary?.();
-  }, 2000);
   if (!me.id || ["signup", "signin"].includes(topMenu ?? ""))
     return <Admin.Util.Auth ssoTypes={ssoTypes} password={password} logo={logo} />;
   return (
@@ -50,18 +44,18 @@ export const Administrator = ({
         </div>
         <nav className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-full bg-muted p-1">
           {pageMenus.map((menu) => (
-            <button
+            <Link
               key={menu.key}
+              href={`/admin?topMenu=${menu.key}`}
               className={cn(
                 "whitespace-nowrap rounded-full px-3.5 py-1.5 font-medium text-sm duration-200",
                 menu.key === pageMenu.key
                   ? "bg-foreground text-background"
                   : "text-foreground/60 hover:bg-foreground/10 hover:text-foreground",
               )}
-              onClick={() => router.push(`/admin?topMenu=${menu.key}`)}
             >
               {menu.title}
-            </button>
+            </Link>
           ))}
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-4">
@@ -75,13 +69,13 @@ export const Administrator = ({
             {menuItems.map((menuItem) => {
               const isActive = menuItem.key === (subMenu ?? menuItems[0].key);
               return (
-                <button
+                <Link
                   key={menuItem.key}
+                  href={`/admin?topMenu=${pageMenu.key}&subMenu=${menuItem.key}`}
                   className={cn(
                     "relative flex h-11 w-56 shrink-0 items-center gap-3 rounded-xl px-3 duration-200",
                     isActive ? "bg-muted text-foreground" : "text-foreground/50 hover:bg-muted hover:text-foreground",
                   )}
-                  onClick={() => router.push(`/admin?topMenu=${pageMenu.key}&subMenu=${menuItem.key}`)}
                 >
                   <span
                     className={cn(
@@ -93,13 +87,13 @@ export const Administrator = ({
                   <span className="truncate text-left text-sm opacity-0 duration-200 group-hover:opacity-100">
                     {labelOf(menuItem)}
                   </span>
-                </button>
+                </Link>
               );
             })}
           </nav>
         </aside>
       ) : null}
-      <main className={cn("pt-14", isArray ? "pl-16" : "")}>
+      <main className={cn("pt-14", isArray && "pl-16")}>
         <div className="p-4 md:p-6">
           <div className="mb-4 flex items-center gap-1.5 text-foreground/40 text-xs">
             <span>{pageMenu.title}</span>

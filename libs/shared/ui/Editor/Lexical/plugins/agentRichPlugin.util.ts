@@ -1,43 +1,36 @@
-import { RichEditor } from "@libs/shared/common";
+import { RichEditor, RichNode } from "@libs/shared/common";
 import type { LexicalEditor } from "lexical";
 
-import type { EditorLosses, EditorNodeLike } from "../feature";
+import type { EditorNodeLabels, EditorNodeLike } from "../feature";
 
-type ContentNode = EditorNodeLike;
-
-export interface RichLoss {
+export interface RichNodeCount {
   label: string;
   count: number;
 }
 
-const tally = (node: ContentNode, losses: EditorLosses, counts: Map<string, number>) => {
-  const loss = node.type ? losses[node.type] : undefined;
-  if (loss && (loss.when?.(node) ?? true)) counts.set(loss.label, (counts.get(loss.label) ?? 0) + 1);
-  for (const child of Array.isArray(node.children) ? node.children : []) tally(child, losses, counts);
+const tally = (value: unknown, labels: EditorNodeLabels, counts: Map<string, number>, depth: number) => {
+  if (!RichNode.isNode(value) || depth > RichNode.maxDepth) return;
+  const node = value as EditorNodeLike;
+  const label = node.type ? labels[node.type] : undefined;
+  if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
+  for (const child of Array.isArray(node.children) ? node.children : []) tally(child, labels, counts, depth + 1);
 };
 
-/**
- * What overwriting this content from markdown would destroy, most numerous first.
- *
- * A node outside the transformer set is not merely unconverted: `$exportTopLevelElements`
- * (`@lexical/markdown`) falls back to `$exportChildren` for an element and `getTextContent()` for a
- * decorator — so a decorator vanishes outright, a container keeps only its text, and a mention keeps
- * its text but loses the `refId` that `collectMentions` reads.
- */
-export const lossyNodesOf = (content: unknown, losses: EditorLosses): RichLoss[] => {
+/** The labelled nodes this content holds, most numerous first — what an overwrite would take with it. */
+export const labelledNodesOf = (content: unknown, labels: EditorNodeLabels): RichNodeCount[] => {
   if (!content || typeof content !== "object") return [];
   const counts = new Map<string, number>();
-  const roots = Array.isArray(content) ? (content as ContentNode[]) : [(content as { root?: ContentNode }).root];
-  for (const root of roots) if (root) tally(root, losses, counts);
+  const roots = Array.isArray(content) ? content : [(content as { root?: unknown }).root];
+  for (const root of roots) tally(root, labels, counts, 0);
   return [...counts].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
 };
 
-/** Nothing a person would miss: no text, and none of the blocks that carry meaning without text. */
-export const isEmptyRichContent = (content: unknown, losses: EditorLosses) =>
-  !RichEditor.extractTextFromContent(content).trim() && !lossyNodesOf(content, losses).length;
+/** Nothing a person would miss: no text, and none of the nodes that carry meaning without text. */
+export const isEmptyRichContent = (content: unknown, labels: EditorNodeLabels) =>
+  !RichEditor.extractTextFromContent(content).trim() && !labelledNodesOf(content, labels).length;
 
-export const lossSentence = (losses: RichLoss[]) =>
-  losses.map(({ label, count }) => `${count} ${label}${count > 1 ? "s" : ""}`).join(", ");
+export const countSentence = (counts: RichNodeCount[]) =>
+  counts.map(({ label, count }) => `${count} ${label}${count > 1 ? "s" : ""}`).join(", ");
 
 export interface RichBlock {
   index: number;
@@ -45,19 +38,20 @@ export interface RichBlock {
   text: string;
 }
 
-const LISTING_BUDGET = 6000;
-const BLOCK_TEXT_LIMIT = 160;
+const listingBudget = 6000;
+const blockTextLimit = 160;
 
-const blockText = (node: ContentNode & { text?: string }): string => {
-  if (typeof node.text === "string") return node.text;
-  return (Array.isArray(node.children) ? node.children : []).map(blockText).join("");
+const blockText = (value: unknown): string => {
+  if (!RichNode.isNode(value)) return "";
+  if (typeof value.text === "string") return value.text;
+  return (Array.isArray(value.children) ? value.children : []).map(blockText).join("");
 };
 
-const rootChildrenOf = (content: unknown): ContentNode[] => {
+const rootChildrenOf = (content: unknown): EditorNodeLike[] => {
   if (!content || typeof content !== "object") return [];
-  if (Array.isArray(content)) return content as ContentNode[];
-  const children = (content as { root?: ContentNode }).root?.children;
-  return Array.isArray(children) ? children : [];
+  if (Array.isArray(content)) return content.filter(RichNode.isNode);
+  const children = (content as { root?: EditorNodeLike }).root?.children;
+  return Array.isArray(children) ? children.filter(RichNode.isNode) : [];
 };
 
 /**
@@ -80,8 +74,8 @@ export const richBlockListing = (content: unknown): string => {
   const lines = [`${blocks.length} block${blocks.length > 1 ? "s" : ""}:`];
   let listed = 0;
   for (const { index, type, text } of blocks) {
-    const line = `${index} ${type} ${text.slice(0, BLOCK_TEXT_LIMIT) || "(no text)"}`;
-    if (lines.join("\n").length + line.length > LISTING_BUDGET) break;
+    const line = `${index} ${type} ${text.slice(0, blockTextLimit) || "(no text)"}`;
+    if (lines.join("\n").length + line.length > listingBudget) break;
     lines.push(line);
     listed += 1;
   }

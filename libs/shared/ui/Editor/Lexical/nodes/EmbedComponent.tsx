@@ -1,39 +1,41 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
+import { usePage } from "@libs/shared/client";
+import { RichUrl } from "@libs/shared/common";
 import { buttonRecipe, inputRecipe } from "@libs/util/ui";
 import type { NodeKey } from "lexical";
 import { useState } from "react";
-import type { EmbedProviderType } from "../embed";
-import { resolveEmbed } from "../embed";
 import { useEditorUpload } from "../UploadContext";
-import { $isEmbedNode, DEFAULT_HEIGHT, DEFAULT_WIDTH } from "./embedNode.util";
+import { $isEmbedNode, defaultEmbedHeight, defaultEmbedWidth } from "./embedNode.util";
 import { MediaFrame } from "./shared";
 import type { MediaAlign } from "./shared.type";
-import { updateNodeByKey, useMediaNode } from "./shared.util";
+import { updateNodeByKey } from "./shared.util";
 
 interface EmbedComponentProps {
   nodeKey: NodeKey;
   embedUrl: string;
-  provider?: EmbedProviderType;
   width: number;
   height: number;
   align: MediaAlign;
 }
 
-export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, align }: EmbedComponentProps) => {
+export const EmbedComponent = ({ nodeKey, embedUrl, width, height, align }: EmbedComponentProps) => {
   const [editor] = useLexicalComposerContext();
-  const { editable } = useMediaNode(nodeKey);
+  const editable = useLexicalEditable();
+  const { policy } = useEditorUpload();
+  const { l } = usePage();
+  // The stored url is checked again here: a document also arrives from an agent, a script or a peer.
+  const player = RichUrl.embed(embedUrl, policy.allowedEmbedProviders);
 
-  if (!embedUrl) {
-    // No source yet: prompt for a URL (edit mode) or render an inert placeholder.
+  if (!player)
     return editable ? (
       <EmbedUrlForm nodeKey={nodeKey} />
     ) : (
       <div className="my-2 flex w-full justify-center" contentEditable={false}>
-        <div className="rounded-md bg-muted p-6 text-foreground/50">Embed URL is not configured.</div>
+        <div className="rounded-md bg-muted p-6 text-foreground/50">{l("shared.editor-embedUnavailable")}</div>
       </div>
     );
-  }
 
   const setSize = (nextWidth: number, nextHeight: number, merge = false) =>
     updateNodeByKey(editor, nodeKey, (node) => $isEmbedNode(node) && node.setSize(nextWidth, nextHeight), merge);
@@ -49,31 +51,36 @@ export const EmbedComponent = ({ nodeKey, embedUrl, provider, width, height, ali
         updateNodeByKey(editor, nodeKey, (node) => $isEmbedNode(node) && node.setAlign(nextAlign))
       }
       onResize={(nextWidth, nextHeight) => setSize(nextWidth, nextHeight, true)}
-      onReset={() => setSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)}
+      onReset={() => setSize(defaultEmbedWidth, defaultEmbedHeight)}
     >
       <iframe
-        title={provider ?? "embed"}
-        src={embedUrl}
+        title={player.type}
+        src={player.embedUrl}
         width={width}
         height={height}
         allowFullScreen
+        // The players need scripts and their own origin; navigating this page and forms are what is withheld.
+        sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+        // YouTube refuses to play for an embedder that sends no referrer at all.
+        referrerPolicy="strict-origin-when-cross-origin"
         className="block max-w-full rounded-md bg-muted"
       />
     </MediaFrame>
   );
 };
 
-/** Inline URL entry shown inside an empty embed node (edit mode only). */
 export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
   const [editor] = useLexicalComposerContext();
   const { policy } = useEditorUpload();
+  const { l } = usePage();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const providers = policy.allowedEmbedProviders.join(", ");
 
   const submit = () => {
-    const resolved = resolveEmbed(value.trim(), policy.allowedEmbedProviders);
+    const resolved = RichUrl.embed(value.trim(), policy.allowedEmbedProviders);
     if (!resolved) {
-      setError(`Unsupported URL. Allowed: ${policy.allowedEmbedProviders.join(", ")}`);
+      setError(l("shared.editor-embedUnsupported", { providers }));
       return;
     }
     setError(null);
@@ -85,9 +92,7 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
   return (
     <div className="my-2 flex w-full justify-center" contentEditable={false}>
       <div className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-foreground/15 bg-muted/60 p-3">
-        <span className="font-medium text-foreground/70 text-sm">
-          Paste a {policy.allowedEmbedProviders.join(" / ")} URL
-        </span>
+        <span className="font-medium text-foreground/70 text-sm">{l("shared.editor-embedPaste", { providers })}</span>
         <div className="flex gap-2">
           <input
             type="url"
@@ -104,7 +109,7 @@ export const EmbedUrlForm = ({ nodeKey }: { nodeKey: NodeKey }) => {
             }}
           />
           <button type="button" className={buttonRecipe({ size: "sm", variant: "primary" })} onClick={submit}>
-            Embed
+            {l("shared.editor-embed")}
           </button>
         </div>
         {error ? <span className="text-destructive text-xs">{error}</span> : null}

@@ -59,7 +59,7 @@ const routeOf = (path: string) => {
 /**
  * The issuer is the one string an MCP client compares byte for byte: it fetches
  * `<issuer>/.well-known/oauth-authorization-server` and refuses the document unless `issuer` inside repeats the
- * URL it used. So it is fixed here from configuration, like the SSO callback host, and never read off a request
+ * URL it used. So it is fixed here from configuration and never read off a request
  * whose `Host` a proxy may have rewritten. Locally the dev host hands the child its public port.
  */
 export const resolveOAuthOptions = (options: BackendEnv & { oauth?: OAuthOptions }): ResolvedOAuthOptions => {

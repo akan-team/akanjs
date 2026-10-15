@@ -1,38 +1,35 @@
 "use client";
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { $findMatchingParent } from "@lexical/utils";
+import { usePage } from "@libs/shared/client";
+import { RichUrl } from "@libs/shared/common";
 import { buttonRecipe, inputRecipe } from "@libs/util/ui";
-import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
+import { cn } from "akanjs/client";
 import {
   $getSelection,
   $isRangeSelection,
   COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
   KEY_MODIFIER_COMMAND,
-  SELECTION_CHANGE_COMMAND,
   type TextFormatType,
 } from "lexical";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EditorFeatureKey } from "../feature";
+import { editorOverlayLayer, useSelectionAnchor } from "../selectionAnchor";
 import { formatFeatures, type GuardedFormat } from "../textFormat";
-import { safeExternalUrl } from "../url";
 import type { ToolbarState } from "./floatingToolbarPlugin.type";
 
-interface Mark {
-  format: GuardedFormat;
-  label: string;
-  title: string;
-}
+const marks = [
+  { format: "bold", label: "B", title: "shared.editor-bold" },
+  { format: "italic", label: "I", title: "shared.editor-italic" },
+  { format: "underline", label: "U", title: "shared.editor-underline" },
+  { format: "strikethrough", label: "S", title: "shared.editor-strike" },
+  { format: "code", label: "</>", title: "shared.editor-inlineCode" },
+] as const satisfies readonly { format: GuardedFormat; label: string; title: string }[];
 
-const MARKS: Mark[] = [
-  { format: "bold", label: "B", title: "Bold (⌘B)" },
-  { format: "italic", label: "I", title: "Italic (⌘I)" },
-  { format: "underline", label: "U", title: "Underline (⌘U)" },
-  { format: "strikethrough", label: "S", title: "Strikethrough" },
-  { format: "code", label: "</>", title: "Inline code" },
-];
+type Mark = (typeof marks)[number];
 
 /**
  * Selection-anchored formatting toolbar. Appears above a non-empty text
@@ -45,20 +42,16 @@ const MARKS: Mark[] = [
  */
 export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<EditorFeatureKey> }) => {
   const [editor] = useLexicalComposerContext();
-  const portal = useOverlayPortal();
-  const [state, setState] = useState<ToolbarState | null>(null);
   const [linkEditing, setLinkEditing] = useState(false);
-  const marks = useMemo(() => MARKS.filter((mark) => features.has(formatFeatures[mark.format])), [features]);
+  const shownMarks = useMemo(() => marks.filter((mark) => features.has(formatFeatures[mark.format])), [features]);
   const canLink = features.has("link");
 
-  const updateToolbar = useCallback(() => {
+  const state = useSelectionAnchor<ToolbarState>(() => {
     // Never surface the toolbar while a composition is in flight.
-    if (editor.isComposing()) return;
-
+    if (editor.isComposing()) return undefined;
     const selection = $getSelection();
     const nativeSelection = window.getSelection();
     const rootElement = editor.getRootElement();
-
     if (
       !$isRangeSelection(selection) ||
       selection.isCollapsed() ||
@@ -67,39 +60,22 @@ export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<Edit
       !rootElement ||
       !rootElement.contains(nativeSelection.anchorNode) ||
       selection.getTextContent().trim() === ""
-    ) {
-      setState(null);
-      setLinkEditing(false);
-      return;
-    }
-
-    const domRange = nativeSelection.getRangeAt(0);
-    const rect = domRange.getBoundingClientRect();
-
+    )
+      return null;
     const formats = new Set<TextFormatType>();
-    for (const { format } of marks) if (selection.hasFormat(format)) formats.add(format);
-
-    // Detect an enclosing link on either endpoint node.
-    const node = selection.anchor.getNode();
-    const linkParent = $findMatchingParent(node, $isLinkNode);
+    for (const { format } of shownMarks) if (selection.hasFormat(format)) formats.add(format);
+    const linkParent = $findMatchingParent(selection.anchor.getNode(), $isLinkNode);
     const linkUrl = linkParent && $isLinkNode(linkParent) ? linkParent.getURL() : null;
-
-    setState({ rect, formats, linkUrl });
-  }, [editor, marks]);
+    return { rect: nativeSelection.getRangeAt(0).getBoundingClientRect(), formats, linkUrl };
+  });
 
   useEffect(() => {
-    const onUpdate = () => editor.getEditorState().read(updateToolbar);
-    return mergeRegister(
-      editor.registerUpdateListener(onUpdate),
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          editor.getEditorState().read(updateToolbar);
-          return false;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      // ⌘K / Ctrl+K opens inline link editing when there's a selection.
+    if (!state) setLinkEditing(false);
+  }, [state]);
+
+  // ⌘K / Ctrl+K opens inline link editing when there's a selection.
+  useEffect(
+    () =>
       editor.registerCommand(
         KEY_MODIFIER_COMMAND,
         (event: KeyboardEvent) => {
@@ -112,34 +88,22 @@ export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<Edit
         },
         COMMAND_PRIORITY_LOW,
       ),
-    );
-  }, [editor, updateToolbar, canLink]);
+    [editor, canLink],
+  );
 
-  // Reposition/hide on scroll & resize since the rect is viewport-relative.
-  useEffect(() => {
-    if (!state) return;
-    const recompute = () => editor.getEditorState().read(updateToolbar);
-    window.addEventListener("scroll", recompute, true);
-    window.addEventListener("resize", recompute);
-    return () => {
-      window.removeEventListener("scroll", recompute, true);
-      window.removeEventListener("resize", recompute);
-    };
-  }, [editor, state, updateToolbar]);
-
-  if (!state || !portal || (!marks.length && !canLink)) return null;
+  if (!state || (!shownMarks.length && !canLink)) return null;
 
   return createPortal(
     <FloatingToolbar
       state={state}
-      marks={marks}
+      marks={shownMarks}
       canLink={canLink}
       linkEditing={linkEditing}
       onToggleMark={(format) => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)}
       onStartLinkEdit={() => setLinkEditing(true)}
       onCancelLinkEdit={() => setLinkEditing(false)}
       onSubmitLink={(url) => {
-        const safe = safeExternalUrl(url);
+        const safe = RichUrl.typedLink(url);
         if (!safe) return false;
         editor.dispatchCommand(TOGGLE_LINK_COMMAND, safe);
         setLinkEditing(false);
@@ -150,13 +114,13 @@ export const FloatingToolbarPlugin = ({ features }: { features: ReadonlySet<Edit
         setLinkEditing(false);
       }}
     />,
-    portal,
+    document.body,
   );
 };
 
 interface FloatingToolbarProps {
   state: ToolbarState;
-  marks: Mark[];
+  marks: readonly Mark[];
   canLink: boolean;
   linkEditing: boolean;
   onToggleMark: (format: TextFormatType) => void;
@@ -166,8 +130,8 @@ interface FloatingToolbarProps {
   onRemoveLink: () => void;
 }
 
-const TOOLBAR_HEIGHT = 40;
-const TOOLBAR_GAP = 8;
+const toolbarHeight = 40;
+const toolbarGap = 8;
 
 export const FloatingToolbar = ({
   state,
@@ -182,16 +146,29 @@ export const FloatingToolbar = ({
 }: FloatingToolbarProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const [invalid, setInvalid] = useState(false);
+  const { l } = usePage();
 
-  // Position above the selection, clamped into the viewport horizontally.
-  const top = Math.max(TOOLBAR_GAP, state.rect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP);
-  const left = Math.max(TOOLBAR_GAP, state.rect.left + state.rect.width / 2);
+  // Above the selection, or below it when the selection sits at the top of the viewport.
+  const above = state.rect.top - toolbarHeight - toolbarGap;
+  const top = above >= toolbarGap ? above : state.rect.bottom + toolbarGap;
+  const center = state.rect.left + state.rect.width / 2;
+
+  // Its width is known only once drawn, so the horizontal clamp lands after layout and before paint.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const half = element.offsetWidth / 2;
+    element.style.left = `${Math.min(Math.max(center, toolbarGap + half), window.innerWidth - toolbarGap - half)}px`;
+  });
 
   return (
     <div
       ref={ref}
-      className="fixed flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg"
-      style={{ top, left, transform: "translateX(-50%)", zIndex: overlayZ.select }}
+      className={cn(
+        "fixed flex items-center gap-1 rounded-md border border-foreground/10 bg-background p-1 shadow-lg",
+        editorOverlayLayer,
+      )}
+      style={{ top, left: center, transform: "translateX(-50%)" }}
       onMouseDown={(event) => event.preventDefault()}
     >
       {linkEditing ? (
@@ -210,7 +187,7 @@ export const FloatingToolbar = ({
             <button
               key={mark.format}
               type="button"
-              title={mark.title}
+              title={l(mark.title)}
               className={buttonRecipe({ variant: "ghost", size: "xs" }, [
                 "min-h-7 px-2 font-mono",
                 state.formats.has(mark.format) && "bg-muted text-foreground",
@@ -225,25 +202,25 @@ export const FloatingToolbar = ({
               {marks.length ? <span className="mx-1 h-5 w-px bg-foreground/20" /> : null}
               <button
                 type="button"
-                title="Link (⌘K)"
+                title={l("shared.editor-linkShortcut")}
                 className={buttonRecipe({ variant: "ghost", size: "xs" }, [
                   "min-h-7 px-2",
                   state.linkUrl && "bg-muted text-foreground",
                 ])}
                 onClick={onStartLinkEdit}
               >
-                Link
+                {l("shared.editor-link")}
               </button>
             </>
           ) : null}
           {canLink && state.linkUrl ? (
             <button
               type="button"
-              title="Remove link"
+              title={l("shared.editor-removeLink")}
               className={buttonRecipe({ variant: "ghost", size: "xs" }, "min-h-7 px-2")}
               onClick={onRemoveLink}
             >
-              Unlink
+              {l("shared.editor-unlink")}
             </button>
           ) : null}
         </>
@@ -263,10 +240,10 @@ interface LinkInputProps {
 /** Inline URL input replacing the old `window.prompt` link flow. */
 export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: LinkInputProps) => {
   const [url, setUrl] = useState(initial);
+  const { l } = usePage();
   return (
     <div className="flex items-center gap-1">
       <input
-        // eslint-disable-next-line jsx-a11y/no-autofocus -- opened by explicit user action; focus is expected.
         autoFocus
         type="url"
         value={url}
@@ -292,7 +269,7 @@ export const LinkInput = ({ initial, invalid, onSubmit, onCancel, onChange }: Li
         className={buttonRecipe({ variant: "primary", size: "xs" }, "min-h-7")}
         onClick={() => onSubmit(url.trim())}
       >
-        OK
+        {l("shared.editor-ok")}
       </button>
     </div>
   );

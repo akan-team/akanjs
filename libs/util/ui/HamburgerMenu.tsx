@@ -1,55 +1,34 @@
 "use client";
+import { usePage } from "@libs/util/client";
 import { cn } from "akanjs/client";
 
 interface HamburgerMenuProps {
+  className?: string;
+  barClassName?: string;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  className?: string;
-  color?: string;
 }
 
-export const HamburgerMenu = ({ isOpen, setIsOpen, className, color }: HamburgerMenuProps) => {
-  const toggleMenu = () => {
-    setIsOpen(!isOpen);
-  };
+export const HamburgerMenu = ({ className, barClassName, isOpen, setIsOpen }: HamburgerMenuProps) => {
+  const { l } = usePage();
+  const barBaseClassName = "absolute left-0 h-1 w-full rounded-md bg-foreground transition-all ease-in-out";
   return (
     <button
+      type="button"
+      aria-label={l("util.menu")}
+      aria-expanded={isOpen}
       className={cn(
         "isolate flex flex-col items-center justify-center rounded-md transition-all duration-100",
         className,
       )}
-      onClick={toggleMenu}
+      onClick={() => {
+        setIsOpen(!isOpen);
+      }}
     >
       <div data-open={isOpen} className="group relative h-6 w-8">
-        {/* 상단 바 */}
-        <span
-          style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            isOpen && "top-2.5 rotate-45",
-            !isOpen && "top-0",
-          )}
-        ></span>
-
-        {/* 중간 바 */}
-        <span
-          style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            !isOpen && "top-2.5 opacity-100",
-            isOpen && "top-0 opacity-0",
-          )}
-        ></span>
-
-        {/* 하단 바 */}
-        <span
-          style={{ backgroundColor: color }}
-          className={cn(
-            "absolute left-0 h-1 w-full rounded-md bg-black transition-all ease-in-out",
-            isOpen && "top-2.5 -rotate-45",
-            !isOpen && "top-5",
-          )}
-        ></span>
+        <span className={cn(barBaseClassName, barClassName, isOpen ? "top-2.5 rotate-45" : "top-0")} />
+        <span className={cn(barBaseClassName, barClassName, isOpen ? "top-0 opacity-0" : "top-2.5 opacity-100")} />
+        <span className={cn(barBaseClassName, barClassName, isOpen ? "top-2.5 -rotate-45" : "top-5")} />
       </div>
     </button>
   );

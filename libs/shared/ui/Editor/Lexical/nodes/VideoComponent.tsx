@@ -4,8 +4,8 @@ import { resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import { MediaFrame } from "./shared";
 import type { MediaAlign } from "./shared.type";
-import { updateNodeByKey } from "./shared.util";
-import { $isVideoNode, RESET_WIDTH } from "./videoNode.util";
+import { mediaResetWidth, updateNodeByKey } from "./shared.util";
+import { $isVideoNode } from "./videoNode.util";
 
 interface VideoComponentProps {
   nodeKey: NodeKey;
@@ -33,7 +33,7 @@ export const VideoComponent = ({ nodeKey, src, poster, width, height, align }: V
         updateNodeByKey(editor, nodeKey, (node) => $isVideoNode(node) && node.setAlign(nextAlign))
       }
       onResize={(nextWidth, nextHeight) => setSize(nextWidth, nextHeight, true)}
-      onReset={() => setSize(RESET_WIDTH, height && width ? Math.round((RESET_WIDTH / width) * height) : 0)}
+      onReset={() => setSize(mediaResetWidth, height && width ? Math.round((mediaResetWidth / width) * height) : 0)}
     >
       <video
         src={resolveServerUrl(src)}

@@ -1,4 +1,4 @@
-import { type cnst, fetch } from "@libs/shared/client";
+import { type cnst, Err, fetch } from "@libs/shared/client";
 import { sleep } from "akanjs/common";
 import type { ProtoFile } from "akanjs/constant";
 
@@ -12,6 +12,7 @@ export const addFileUntilActive = async (
 ) => {
   onProgress?.({ loaded: 1, total: 100, percentage: 1 });
   let [file] = await addFilesGql([fileData] as unknown as FileList);
+  if (!file) throw new Err("shared.error.fileUploadFailed", { filename: fileData.name });
   onProgress?.({ loaded: file.progress ?? 10, total: 100, percentage: file.progress ?? 10 });
   const deadline = Date.now() + pollDeadlineMs;
   while (file.status === "uploading" && Date.now() < deadline) {
@@ -19,6 +20,7 @@ export const addFileUntilActive = async (
     file = await fetch.file(file.id);
     onProgress?.({ loaded: file.progress ?? 90, total: 100, percentage: file.progress ?? 90 });
   }
+  if (file.status !== "active") throw new Err("shared.error.fileUploadFailed", { filename: fileData.name });
   onProgress?.({ loaded: 100, total: 100, percentage: 100 });
   return file;
 };

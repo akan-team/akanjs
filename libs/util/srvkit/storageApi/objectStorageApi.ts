@@ -208,6 +208,27 @@ export class ObjectStorageApi implements StorageBackend {
   presignUpload(path: string, expiresInSec: number) {
     return this.#s3.file(`${this.root}/${path}`).presign({ method: "PUT", expiresIn: expiresInSec });
   }
+  presignDownload(path: string, expiresInSec: number, { filename }: { filename?: string } = {}) {
+    return this.#s3.file(`${this.root}/${path}`).presign({
+      method: "GET",
+      expiresIn: expiresInSec,
+      ...(filename ? { contentDisposition: ObjectStorageApi.#attachment(filename) } : {}),
+    });
+  }
+  // The name lands in a signed response header, so quotes, backslashes and control characters (CR/LF) are dropped
+  // to rule out header injection, and a non-ASCII name travels RFC 5987-encoded beside an ASCII fallback.
+  static #attachment(filename: string) {
+    const name = Array.from(filename)
+      .filter((char) => char >= " " && char !== "\u007f" && char !== '"' && char !== "\\")
+      .join("");
+    const ascii = Array.from(name, (char) => (char <= "~" ? char : "_")).join("");
+    if (ascii === name) return `attachment; filename="${ascii}"`;
+    const encoded = encodeURIComponent(name).replace(
+      /['()*]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+  }
   // Listed, not stat()ed: R2 answers HEAD for a compressible type (application/json) gzip-encoded with no
   // Content-Length, so stat() reports 0 for an object that is there.
   async getDataSize(path: string) {

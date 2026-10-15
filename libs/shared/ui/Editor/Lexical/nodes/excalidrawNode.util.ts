@@ -40,9 +40,6 @@ export type SerializedExcalidrawNode = Spread<
   SerializedLexicalNode
 >;
 
-/** The width (px) a "reset size" restores a drawing to. */
-export const RESET_WIDTH = 650;
-
 export const createEmptyExcalidrawScene = (): ExcalidrawScene => ({
   elements: [],
   appState: { viewBackgroundColor: "#ffffff" },

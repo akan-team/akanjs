@@ -8,7 +8,7 @@ const NICE_DISTANCES = [
   1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
 ];
 
-function computeScale(zoom: number, lat: number) {
+export function computeScale(zoom: number, lat: number) {
   const metersPerPixel = (EARTH_CIRCUMFERENCE * Math.cos((lat * Math.PI) / 180)) / (TILE_SIZE * 2 ** zoom);
   const maxMeters = metersPerPixel * MAX_BAR_WIDTH;
 

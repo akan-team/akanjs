@@ -3,20 +3,21 @@ import { badgeRecipe, cardRecipe } from "@libs/util/ui";
 import { cn, type ModelProps } from "akanjs/client";
 import { Link, RecentTime } from "akanjs/ui";
 
+const roleBadgeClass: { [key in cnst.AdminRole["value"]]: string } = {
+  viewer: badgeRecipe({ variant: "neutral", size: "sm" }),
+  manager: badgeRecipe({ variant: "neutral", size: "sm" }),
+  admin: badgeRecipe({ variant: "info", size: "sm" }),
+  superAdmin: badgeRecipe({ variant: "warning", size: "sm" }),
+} as const;
+const avatarClass: { [key in cnst.AdminRole["value"]]: string } = {
+  viewer: "bg-muted text-muted-foreground",
+  manager: "bg-muted text-muted-foreground",
+  admin: "bg-info/15 text-info",
+  superAdmin: "bg-warning/15 text-warning",
+} as const;
+
 export const Card = ({ className, admin, href }: ModelProps<"admin", cnst.LightAdmin>) => {
   const { l } = usePage();
-  const roleBadgeClass: { [key in cnst.AdminRole["value"]]: string } = {
-    viewer: badgeRecipe({ variant: "neutral", size: "sm" }),
-    manager: badgeRecipe({ variant: "neutral", size: "sm" }),
-    admin: badgeRecipe({ variant: "info", size: "sm" }),
-    superAdmin: badgeRecipe({ variant: "warning", size: "sm" }),
-  };
-  const avatarClass: { [key in cnst.AdminRole["value"]]: string } = {
-    viewer: "bg-muted text-muted-foreground",
-    manager: "bg-muted text-muted-foreground",
-    admin: "bg-info/15 text-info",
-    superAdmin: "bg-warning/15 text-warning",
-  };
   const body = (
     <div
       className={cardRecipe({ surface: "bordered" }, [
@@ -55,18 +56,6 @@ export const Card = ({ className, admin, href }: ModelProps<"admin", cnst.LightA
 
 export const Row = ({ className, admin }: ModelProps<"admin", cnst.LightAdmin>) => {
   const { l } = usePage();
-  const roleBadgeClass: { [key in cnst.AdminRole["value"]]: string } = {
-    viewer: badgeRecipe({ variant: "neutral", size: "sm" }),
-    manager: badgeRecipe({ variant: "neutral", size: "sm" }),
-    admin: badgeRecipe({ variant: "info", size: "sm" }),
-    superAdmin: badgeRecipe({ variant: "warning", size: "sm" }),
-  };
-  const avatarClass: { [key in cnst.AdminRole["value"]]: string } = {
-    viewer: "bg-muted text-muted-foreground",
-    manager: "bg-muted text-muted-foreground",
-    admin: "bg-info/15 text-info",
-    superAdmin: "bg-warning/15 text-warning",
-  };
   return (
     <div
       className={cn(

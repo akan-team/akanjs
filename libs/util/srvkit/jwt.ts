@@ -23,6 +23,6 @@ export const jwtSign = async (
 };
 
 export const jwtVerify = async (message: string, secret: string): Promise<Record<string, unknown>> => {
-  const { payload } = await joseVerify(message, encodeSecret(secret));
+  const { payload } = await joseVerify(message, encodeSecret(secret), { algorithms: ["HS256"] });
   return payload;
 };

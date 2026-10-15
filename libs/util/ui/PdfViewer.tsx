@@ -1,9 +1,13 @@
 "use client";
-// import "react-pdf/dist/esm/Page/AnnotationLayer.css";
-// import "react-pdf/dist/esm/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 
+import { usePage } from "@libs/util/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { BiChevronLeft, BiChevronRight } from "react-icons/bi";
+
+//? Served from libs/util/public: the bundler emits no worker file, and pdf.js refuses a worker of another version.
+const pdfWorkerSrc = "/libs/util/pdf.worker.min.mjs";
 
 export interface PdfViewerProps {
   className?: string;
@@ -14,6 +18,7 @@ export interface PdfViewerProps {
 }
 
 export const PdfViewer = ({ className, file, navigation, loadSuccess, renderSuccess }: PdfViewerProps) => {
+  const { l } = usePage();
   const [numPages, setNumPages] = useState<number>(1);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const divRef = useRef<HTMLDivElement>(null);
@@ -25,7 +30,7 @@ export const PdfViewer = ({ className, file, navigation, loadSuccess, renderSucc
 
   useEffect(() => {
     import("react-pdf").then(({ Document, Page, pdfjs }) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
       setPdfComponents({ Document, Page });
     });
   }, []);
@@ -71,6 +76,8 @@ export const PdfViewer = ({ className, file, navigation, loadSuccess, renderSucc
       ) : (
         <div className="my-4 flex w-full items-center justify-center gap-4">
           <button
+            type="button"
+            aria-label={l("util.back")}
             onClick={() => {
               setCurrentPage(currentPage - 1);
             }}
@@ -83,6 +90,8 @@ export const PdfViewer = ({ className, file, navigation, loadSuccess, renderSucc
             {currentPage} / {numPages}
           </span>
           <button
+            type="button"
+            aria-label={l("util.next")}
             onClick={() => {
               setCurrentPage(currentPage + 1);
             }}

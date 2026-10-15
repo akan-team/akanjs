@@ -1,28 +1,31 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { dayjs } from "akanjs/base";
 
 import type {
   GithubAccessToken,
   GithubAccessTokenDto,
-  GithubApiError,
   GithubInfo,
   GithubInfoDto,
   GithubInstallationAccessToken,
   GithubInstallationAccessTokenDto,
-  GithubInstallationDto,
-  GithubInstallationRepositoriesDto,
+  GithubOAuthErrorDto,
   GithubRepository,
   GithubRepositoryDto,
-  GithubUserInstallationsDto,
 } from "./githubTypes";
 
-export const execAsync = promisify(exec);
+//? GitHub's own lifetime for an expiring user token, applied to one that never expires so it is not cached forever.
+const unexpiringTokenSeconds = 8 * 60 * 60;
+
+export const isGithubAccessTokenDto = (
+  dto: GithubAccessTokenDto | GithubOAuthErrorDto | null,
+): dto is GithubAccessTokenDto => {
+  return !!dto && "access_token" in dto && typeof dto.access_token === "string" && dto.access_token.length > 0;
+};
 
 export const toGithubAccessToken = (dto: GithubAccessTokenDto): GithubAccessToken => {
+  const expiresIn = dto.expires_in && dto.expires_in > 0 ? dto.expires_in : unexpiringTokenSeconds;
   return {
     accessToken: dto.access_token,
-    expiresAt: dayjs().add(dto.expires_in, "seconds"),
+    expiresAt: dayjs().add(expiresIn, "seconds"),
     refreshToken: dto.refresh_token,
   };
 };
@@ -35,28 +38,6 @@ export const toGithubInstallationAccessToken = (
     accessToken: dto.token,
     expiresAt: dayjs(dto.expires_at),
   };
-};
-
-export const isGithubInstallationAccessTokenDto = (
-  dto: GithubInstallationAccessTokenDto | GithubApiError,
-): dto is GithubInstallationAccessTokenDto => {
-  return "token" in dto && "expires_at" in dto;
-};
-
-export const isGithubInstallationRepositoriesDto = (
-  dto: GithubInstallationRepositoriesDto | GithubApiError,
-): dto is { repositories: GithubRepositoryDto[] } => {
-  return "repositories" in dto && Array.isArray(dto.repositories);
-};
-
-export const isGithubUserInstallationsDto = (
-  dto: GithubUserInstallationsDto | GithubApiError,
-): dto is { installations: GithubInstallationDto[] } => {
-  return "installations" in dto && Array.isArray(dto.installations);
-};
-
-export const isGithubInstallationDto = (dto: GithubInstallationDto | GithubApiError): dto is GithubInstallationDto => {
-  return "id" in dto;
 };
 
 export const toGithubRepository = (dto: GithubRepositoryDto): GithubRepository => {
@@ -86,5 +67,3 @@ export const toGithubInfo = (dto: GithubInfoDto): GithubInfo => {
     email: dto.email,
   };
 };
-
-export const githubShellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;

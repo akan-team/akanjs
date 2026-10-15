@@ -3,7 +3,13 @@ import type { Dayjs } from "akanjs/base";
 
 export type GithubPushEvent = PushEvent;
 
-export type GithubRepositoryDto = {
+export interface GithubRepoRef {
+  owner: string;
+  repo: string;
+  accessToken: string;
+}
+
+export interface GithubRepositoryDto {
   id: number;
   name: string;
   full_name: string;
@@ -11,21 +17,26 @@ export type GithubRepositoryDto = {
   html_url: string;
   description: string;
   created_at: string;
-};
+}
 
-export type GithubContentDto = {
+export interface GithubContentDto {
   name: string;
   type: "file" | "dir" | "symlink" | "submodule";
   /** Present only for `type: "file"`, and only under the contents API's size limit. */
   content?: string;
   encoding?: string;
-};
-export type GithubWebhookDto = {
+}
+export interface GithubCompareDto {
+  /** `ahead` when base is an ancestor of head, the only status whose files are the whole difference between them. */
+  status?: "ahead" | "behind" | "diverged" | "identical";
+  files?: { filename: string; previous_filename?: string }[];
+}
+export interface GithubWebhookDto {
   id: number;
   active?: boolean;
   config?: { url?: string };
-};
-export type GithubRepository = {
+}
+export interface GithubRepository {
   id: number;
   name: string;
   fullName: string;
@@ -33,51 +44,56 @@ export type GithubRepository = {
   htmlUrl: string;
   description: string;
   createdAt: string;
-};
+}
 
-export type GithubAccessTokenDto = {
+export interface GithubAccessTokenDto {
   access_token: string;
-  expires_in: number;
-  refresh_token: string;
-  refresh_token_expires_in: number;
-};
-export type GithubAccessToken = {
+  //? Absent when the app does not expire user tokens.
+  expires_in?: number;
+  refresh_token?: string;
+  refresh_token_expires_in?: number;
+}
+export interface GithubOAuthErrorDto {
+  error?: string;
+  error_description?: string;
+}
+export interface GithubAccessToken {
   accessToken: string;
   expiresAt: Dayjs;
-  refreshToken: string;
-};
+  refreshToken?: string;
+}
 
-export type GithubInstallationAccessTokenDto = {
+export interface GithubInstallationAccessTokenDto {
   token?: string;
   expires_at?: string;
-};
+}
 
-export type GithubInstallationRepositoriesDto = {
+export interface GithubInstallationRepositoriesDto {
   repositories?: GithubRepositoryDto[];
-};
+}
 
-export type GithubInstallationDto = {
+export interface GithubInstallationDto {
   id: number;
   account?: {
     login?: string;
   };
-};
+}
 
-export type GithubUserInstallationsDto = {
+export interface GithubUserInstallationsDto {
   installations?: GithubInstallationDto[];
-};
+}
 
-export type GithubInstallationAccessToken = {
+export interface GithubInstallationAccessToken {
   accessToken: string;
   expiresAt: Dayjs;
-};
+}
 
-export type GithubInstallation = {
+export interface GithubInstallation {
   id: string;
   accountLogin: string;
-};
+}
 
-export type GithubInfoDto = {
+export interface GithubInfoDto {
   id: number;
   login: string;
   node_id: string;
@@ -89,9 +105,9 @@ export type GithubInfoDto = {
   blog: string;
   location: string;
   email: string;
-};
+}
 
-export type GithubInfo = {
+export interface GithubInfo {
   id: string;
   login: string;
   nodeId: string;
@@ -103,13 +119,13 @@ export type GithubInfo = {
   blog: string;
   location: string;
   email: string;
-};
+}
 
-export type GithubApiError = {
+export interface GithubApiError {
   message?: string;
   errors?: { resource?: string; field?: string; code?: string; message?: string }[];
   documentation_url?: string;
-};
+}
 
 export interface GithubOptions {
   id: string;

@@ -1,5 +1,5 @@
 export interface CropRef {
-  getCropImage: () => Promise<string | null | undefined>;
+  getCropImage: () => Promise<Blob | null>;
   getFileStream: () => Promise<File | undefined>;
   downloadCroppedImage: () => Promise<void>;
 }

@@ -8,6 +8,7 @@ import { useState } from "react";
 
 import { createEditorConfig } from "./config";
 import { CodeHighlightPlugin } from "./plugins/CodeHighlightPlugin";
+import { ExternalValuePlugin } from "./plugins/ExternalValuePlugin";
 import { HrefGuardPlugin } from "./plugins/HrefGuardPlugin";
 import { MentionLinkPlugin } from "./plugins/MentionLinkPlugin";
 
@@ -28,6 +29,7 @@ export default function Content({ content, className = "", disableHref = false }
           ErrorBoundary={LexicalErrorBoundary}
         />
         <CodeHighlightPlugin />
+        <ExternalValuePlugin value={content} />
         {disableHref ? <HrefGuardPlugin /> : <MentionLinkPlugin />}
       </div>
     </LexicalComposer>

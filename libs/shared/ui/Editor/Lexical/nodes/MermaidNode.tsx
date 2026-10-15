@@ -1,6 +1,7 @@
 "use client";
-import { DecoratorNode, type NodeKey } from "lexical";
+import type { NodeKey } from "lexical";
 import type { JSX } from "react";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import { MermaidComponent } from "./MermaidComponent";
 import { $createMermaidNode, type MermaidPayload, type SerializedMermaidNode } from "./mermaidNode.util";
 import type { MediaAlign } from "./shared.type";
@@ -13,7 +14,7 @@ import type { MediaAlign } from "./shared.type";
  * reset-size / delete plus left/right resize handles) and a full-screen source
  * editor with live preview.
  */
-export class MermaidNode extends DecoratorNode<JSX.Element> {
+export class MermaidNode extends BlockDecoratorNode {
   __code: string;
   __width: number;
   __align: MediaAlign;
@@ -46,19 +47,6 @@ export class MermaidNode extends DecoratorNode<JSX.Element> {
       width: this.__width,
       align: this.__align,
     };
-  }
-
-  override createDOM(): HTMLElement {
-    // Block host; the diagram/controls live in the decorate() component.
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
   }
 
   getCode(): string {

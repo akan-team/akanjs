@@ -86,6 +86,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     adminSystemAlreadyInitialized: ["Admin system already initialized", "관리자 시스템이 이미 초기화되었습니다"],
     passwordNotMatched: ["Password does not match", "비밀번호가 일치하지 않습니다"],
     noAdminAccount: ["No admin account", "관리자 계정이 없습니다"],
+    adminSsoNotAllowed: [
+      "This account cannot sign in — ask an administrator to register it.",
+      "이 계정은 로그인할 수 없습니다 — 관리자에게 등록을 요청하세요.",
+    ],
     noAccessToSetPassword: ["No access to set password", "비밀번호를 설정할 권한이 없습니다"],
     noRefreshToken: ["No refresh token", "리프레시 토큰이 없습니다"],
     notAllowed: ["Not allowed", "허용되지 않습니다"],

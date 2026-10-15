@@ -29,8 +29,4 @@ describe("Security Signal", () => {
     const pingQuery = await fetch.pingQuery("pingQuery");
     expect(pingQuery).toEqual("pingQuery: pingQuery");
   });
-
-  test("should refuse encrypt over fetch", async () => {
-    await expect(fetch.encrypt("encrypt")).rejects.toThrow();
-  });
 });

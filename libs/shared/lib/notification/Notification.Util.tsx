@@ -78,7 +78,7 @@ export const PushSetting = ({ className, notiSetting: initialNotiSetting }: Push
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <p className="font-gaegu text-lg">{l("notification.pushOnThisDevice")}</p>
+          <p className="text-lg">{l("notification.pushOnThisDevice")}</p>
           <p className="mt-1 text-muted-foreground text-sm">{l("notification.pushOnThisDeviceDesc")}</p>
         </div>
         <Switch checked={checked} disabled={isSupported === false || isBusy} onChange={toggle} />

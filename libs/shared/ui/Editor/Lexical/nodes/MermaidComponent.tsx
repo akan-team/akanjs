@@ -1,26 +1,20 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
+import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
 import { cn } from "akanjs/client";
 import type { NodeKey } from "lexical";
-import type { JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AiOutlineEdit, AiOutlinePartition } from "react-icons/ai";
-import {
-  $isMermaidNode,
-  DEFAULT_MERMAID_CODE,
-  type MermaidRender,
-  RESET_WIDTH,
-  renderMermaid,
-} from "./mermaidNode.util";
+import { $isMermaidNode, defaultMermaidCode, type MermaidRender, renderMermaid } from "./mermaidNode.util";
 import { MediaFrame, MediaMenuButton } from "./shared";
 import type { MediaAlign } from "./shared.type";
-import { updateNodeByKey, useDarkTheme } from "./shared.util";
+import { adoptByKey, mediaResetWidth, updateNodeByKey, useDarkTheme } from "./shared.util";
 
 /** Debounce for the modal's live preview, so every keystroke isn't a full mermaid parse. */
-const PREVIEW_DEBOUNCE_MS = 300;
+const previewDebounceMs = 300;
 
 interface MermaidComponentProps {
   nodeKey: NodeKey;
@@ -31,6 +25,7 @@ interface MermaidComponentProps {
 
 export const MermaidComponent = ({ nodeKey, code, width, align }: MermaidComponentProps) => {
   const [editor] = useLexicalComposerContext();
+  const { l } = usePage();
   const editable = useLexicalEditable();
   const dark = useDarkTheme();
   const [open, setOpen] = useState(false);
@@ -82,9 +77,10 @@ export const MermaidComponent = ({ nodeKey, code, width, align }: MermaidCompone
   // the previous diagram is still on screen, and adopting *its* width is exactly
   // how a wide diagram ends up pinned at the old narrow one's size.
   useEffect(() => {
-    if (width || !render?.width || render.code !== code) return;
-    setWidth(Math.min(render.width, RESET_WIDTH), true);
-  }, [width, render, code, setWidth]);
+    if (!editable || width || !render?.width || render.code !== code) return;
+    const adopted = Math.min(render.width, mediaResetWidth);
+    adoptByKey(editor, nodeKey, (node) => $isMermaidNode(node) && node.setWidth(adopted));
+  }, [editable, width, render, code, editor, nodeKey]);
 
   const saveCode = (next: string) => {
     updateNodeByKey(editor, nodeKey, (node) => {
@@ -112,14 +108,14 @@ export const MermaidComponent = ({ nodeKey, code, width, align }: MermaidCompone
           })
         }
         onResize={(nextWidth) => setWidth(nextWidth, true)}
-        // Reset to `0`, not `RESET_WIDTH`: that re-arms the adoption effect below,
+        // Reset to `0`, not `mediaResetWidth`: that re-arms the adoption effect below,
         // so the diagram snaps back to its own natural size. Matters after an edit
         // swaps a narrow flowchart for a wide sequence diagram — the stale width
         // would otherwise keep squeezing it.
         onReset={() => setWidth(0)}
         extraActions={
           editable ? (
-            <MediaMenuButton title="Edit" onClick={() => setOpen(true)}>
+            <MediaMenuButton title={l("shared.editor-edit")} onClick={() => setOpen(true)}>
               <AiOutlineEdit />
             </MediaMenuButton>
           ) : null
@@ -153,6 +149,7 @@ interface MermaidFigureProps {
  * `securityLevel: "strict"`, which sanitizes every label it emits.
  */
 const MermaidFigure = ({ render, error, width, empty, editable, onEdit }: MermaidFigureProps) => {
+  const { l } = usePage();
   if (empty)
     return (
       <button
@@ -163,14 +160,16 @@ const MermaidFigure = ({ render, error, width, empty, editable, onEdit }: Mermai
         className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-foreground/20 border-dashed bg-muted/40 text-foreground/50"
       >
         <AiOutlinePartition className="text-3xl" />
-        <span className="text-sm">{editable ? "Click to write a diagram" : "No diagram"}</span>
+        <span className="text-sm">
+          {editable ? l("shared.editor-clickToWriteDiagram") : l("shared.editor-noDiagram")}
+        </span>
       </button>
     );
 
   if (error)
     return (
       <div className="max-w-full rounded-md border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
-        <div className="font-semibold">Mermaid syntax error</div>
+        <div className="font-semibold">{l("shared.editor-mermaidError")}</div>
         <pre className="mt-1 whitespace-pre-wrap font-mono text-xs leading-5">{error}</pre>
       </div>
     );
@@ -178,13 +177,13 @@ const MermaidFigure = ({ render, error, width, empty, editable, onEdit }: Mermai
   if (!render)
     return (
       <div className="flex h-40 w-80 max-w-full items-center justify-center rounded-md bg-muted/40 text-foreground/50 text-sm">
-        Rendering diagram…
+        {l("shared.editor-renderingDiagram")}
       </div>
     );
 
   return (
     <div
-      style={{ width: width || Math.min(render.width || RESET_WIDTH, RESET_WIDTH) }}
+      style={{ width: width || Math.min(render.width || mediaResetWidth, mediaResetWidth) }}
       className="max-w-full [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: mermaid output, sanitized by its strict security level
       dangerouslySetInnerHTML={{ __html: render.svg }}
@@ -204,8 +203,9 @@ interface MermaidModalProps {
  * same reason as the Excalidraw modal: a transformed or overflow-clipped
  * ancestor would otherwise trap `position: fixed` and shrink the overlay.
  */
-export const MermaidModal = ({ code, dark, onCancel, onSave }: MermaidModalProps): JSX.Element | null => {
-  const [draft, setDraft] = useState(code.trim() ? code : DEFAULT_MERMAID_CODE);
+export const MermaidModal = ({ code, dark, onCancel, onSave }: MermaidModalProps) => {
+  const { l } = usePage();
+  const [draft, setDraft] = useState(code.trim() ? code : defaultMermaidCode);
   const [preview, setPreview] = useState<MermaidRender | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -223,7 +223,7 @@ export const MermaidModal = ({ code, dark, onCancel, onSave }: MermaidModalProps
           setError(reason.message);
         },
       );
-    }, PREVIEW_DEBOUNCE_MS);
+    }, previewDebounceMs);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -234,17 +234,17 @@ export const MermaidModal = ({ code, dark, onCancel, onSave }: MermaidModalProps
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground">
       <div className="flex items-center justify-between border-foreground/10 border-b px-4 py-3">
-        <div className="font-semibold">Edit Mermaid</div>
+        <div className="font-semibold">{l("shared.editor-editMermaid")}</div>
         <div className="flex gap-2">
           <button type="button" className={buttonRecipe({ size: "sm", variant: "ghost" })} onClick={onCancel}>
-            Cancel
+            {l("shared.editor-cancel")}
           </button>
           <button
             type="button"
             className={buttonRecipe({ size: "sm", variant: "primary" })}
             onClick={() => onSave(draft)}
           >
-            Save
+            {l("shared.editor-save")}
           </button>
         </div>
       </div>
@@ -263,20 +263,20 @@ export const MermaidModal = ({ code, dark, onCancel, onSave }: MermaidModalProps
               error ? "bg-destructive/10 text-destructive" : "text-foreground/50",
             )}
           >
-            {error ?? "Flowchart, sequence, class, state, ER, gantt, pie — any Mermaid diagram type."}
+            {error ?? l("shared.editor-mermaidHint")}
           </div>
         </div>
         <div className="min-h-0 overflow-auto p-6">
           {preview ? (
             <div
               className="mx-auto max-w-full [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
-              style={{ width: Math.min(preview.width || RESET_WIDTH, RESET_WIDTH) }}
+              style={{ width: Math.min(preview.width || mediaResetWidth, mediaResetWidth) }}
               // biome-ignore lint/security/noDangerouslySetInnerHtml: mermaid output, sanitized by its strict security level
               dangerouslySetInnerHTML={{ __html: preview.svg }}
             />
           ) : (
             <div className="flex size-full items-center justify-center text-foreground/50">
-              {error ? "Fix the syntax to see a preview." : "Rendering preview…"}
+              {error ? l("shared.editor-fixSyntax") : l("shared.editor-renderingPreview")}
             </div>
           )}
         </div>

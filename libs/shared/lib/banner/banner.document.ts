@@ -4,9 +4,16 @@ import * as cnst from "../cnst";
 
 export class BannerFilter extends from(cnst.Banner, (filter) => ({
   query: {
-    inCategory: filter()
+    onDisplay: filter()
       .opt("category", String)
-      .query((category) => (category ? { category } : {})),
+      .query((category, q) => {
+        const now = new Date();
+        return q.all(
+          ...(category ? [{ category }] : []),
+          { from: q.lte(now) },
+          q.any(q.empty("to"), { to: q.gte(now) }),
+        );
+      }),
   },
   sort: {},
 })) {}

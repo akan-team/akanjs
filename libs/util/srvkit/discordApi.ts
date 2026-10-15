@@ -1,156 +1,39 @@
 import { adapt } from "akanjs/service";
-import type * as discord from "discord.js";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
-import type {
-  DiscordBot,
-  DiscordButton,
-  DiscordToken,
-  SendMessageWithEmbedType,
-  SendWebhookMessageWithEmbedType,
-} from "./discordApi.helper";
+import type { DiscordEmbed, SendWebhookMessageWithEmbedType } from "./discordApi.helper";
+import { SignalTestHarness } from "./signalTestHarness";
 
 export interface DiscordApiOptions {
-  tokens: DiscordToken[];
+  tokens?: unknown; //? bot tokens are no longer read; env files outside git still set them
   webhook: string;
 }
 
 export class DiscordApi extends adapt("discordApi", ({ env }) => ({
   options: env((options: ModulesOptions) => options.discord),
 })) {
-  static #discordLoad: Promise<typeof import("discord.js")> | null = null;
-  #webhookLoad: Promise<discord.WebhookClient> | null = null;
-  #bots: Map<string, DiscordBot> = new Map<string, DiscordBot>();
-
-  static #loadDiscord() {
-    DiscordApi.#discordLoad ??= import("discord.js");
-    return DiscordApi.#discordLoad;
-  }
   get configured() {
     return !!this.options;
   }
-  #getWebhook(): Promise<discord.WebhookClient> {
+  async #post(body: { content: string; embeds?: DiscordEmbed[] }) {
     if (!this.options) throw new Err("util.error.adaptorNotConfigured", { adaptor: "DiscordApi", option: "discord" });
-    const { webhook } = this.options;
-    this.#webhookLoad ??= DiscordApi.#loadDiscord().then(({ WebhookClient }) => new WebhookClient({ url: webhook }));
-    return this.#webhookLoad;
-  }
-  static async makeDiscordBot({ token, serverId }: DiscordToken): Promise<DiscordBot> {
-    const discord = await DiscordApi.#loadDiscord();
-    const client = new discord.Client({
-      intents: [
-        discord.IntentsBitField.Flags.Guilds,
-        discord.IntentsBitField.Flags.GuildMessages,
-        discord.IntentsBitField.Flags.GuildPresences,
-        discord.IntentsBitField.Flags.GuildMembers,
-        discord.IntentsBitField.Flags.GuildMessageReactions,
-        discord.IntentsBitField.Flags.GuildIntegrations,
-        discord.IntentsBitField.Flags.DirectMessages,
-        discord.IntentsBitField.Flags.DirectMessageReactions,
-        discord.IntentsBitField.Flags.DirectMessageTyping,
-      ],
+    if (SignalTestHarness.isRunning()) {
+      this.logger.debug(`webhook post suppressed in the signal-test harness: ${body.embeds?.length ?? 0} embed(s)`);
+      return;
+    }
+    const response = await fetch(this.options.webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      //? No mentions are parsed, so text that reaches a message can never ping @everyone or a role.
+      body: JSON.stringify({ ...body, allowed_mentions: { parse: [] } }),
+      signal: AbortSignal.timeout(20_000),
     });
-    await client.login(token);
-    const server = client.guilds.cache.get(serverId);
-    if (!server) throw new Err("util.error.discordGuildNotFound", { serverId });
-    return new Promise((resolve, reject) => {
-      client.on("ready", (client) => {
-        resolve({ client, token, id: client.user.id, server, serverId });
-      });
-      client.on("error", (error) => {
-        reject(error);
-      });
-    });
-  }
-  static async makeDiscordBots(tokens: DiscordToken[]): Promise<Map<string, DiscordBot>> {
-    const bots = new Map<string, DiscordBot>();
-    await Promise.all(
-      tokens.map(async (token) => {
-        const bot = await DiscordApi.makeDiscordBot(token);
-        bots.set(bot.id, bot);
-      }),
-    );
-    return bots;
+    if (!response.ok) throw new Err("util.error.discordWebhookFailed", { status: response.status });
   }
   async log(message: string) {
-    const webhook = await this.#getWebhook();
-    return await webhook.send(message);
+    await this.#post({ content: message });
   }
   async sendWebhookMessageWithEmbed({ message, embed }: SendWebhookMessageWithEmbedType) {
-    const webhook = await this.#getWebhook();
-    return await webhook.send({
-      content: message,
-      embeds: [embed],
-    });
-  }
-  async login(token: DiscordToken): Promise<DiscordBot> {
-    const bot = await DiscordApi.makeDiscordBot(token);
-    this.#bots.set(bot.id, bot);
-    return bot;
-  }
-  logout(botId: string) {
-    this.#bots.delete(botId);
-  }
-  bot(botId: string) {
-    const bot = this.#bots.get(botId);
-    if (!bot) throw new Err("util.error.discordBotNotFound", { botId });
-    return bot;
-  }
-  clientEvent<K extends keyof discord.ClientEvents>(
-    botId: string,
-    event: K,
-    listener: (...args: discord.ClientEvents[K]) => discord.Awaitable<void>,
-  ) {
-    this.bot(botId).client.on(event, listener);
-  }
-  async fetchChannelMessage(botId: string, channelId: string) {
-    const channel = this.bot(botId).client.channels.cache.get(channelId);
-    return await (channel as discord.TextChannel).messages.fetch();
-  }
-  async onlineUsers(botId: string, filterBot = true) {
-    await this.bot(botId).server.members.fetch();
-    return this.bot(botId).server.members.cache.filter(
-      (m) => !!(m.presence && (filterBot ? !m.user.bot : true) && m.presence.status === "online"),
-    );
-  }
-  async users(botId: string) {
-    await this.bot(botId).server.members.fetch();
-    return this.bot(botId).server.members.cache;
-  }
-  findUser(botId: string, id: string) {
-    return this.bot(botId).server.members.cache.get(id);
-  }
-  async banUser(botId: string, userId: string) {
-    return this.bot(botId).server.members.ban(userId);
-  }
-  async sendMessage(botId: string, channelId: string, message: string) {
-    return await (this.bot(botId).server.channels.cache.get(channelId) as discord.TextChannel).send(message);
-  }
-  async addRole(botId: string, userId: string, roleName: string) {
-    const role = this.bot(botId).server.roles.cache.find((r) => r.id === roleName);
-    const user = this.bot(botId).server.members.cache.get(userId);
-    if (!role || !user) throw new Err("util.error.discordRoleOrUserNotFound");
-    return await user.roles.add(role);
-  }
-  async removeRole(botId: string, userId: string, roleName: string) {
-    const role = this.bot(botId).server.roles.cache.find((r) => r.id === roleName);
-    const user = this.bot(botId).server.members.cache.get(userId);
-    if (!role || !user) throw new Err("util.error.discordRoleOrUserNotFound");
-    return await user.roles.remove(role);
-  }
-  async sendEmbed(botId: string, channelId: string, embed: discord.APIEmbed, button?: DiscordButton[]) {
-    const channel = this.bot(botId).server.channels.cache.get(channelId);
-    return await (channel as discord.TextChannel).send({
-      embeds: [embed],
-      components: button,
-    });
-  }
-  async sendMessageWithEmbed({ botId, channelId, message, embed, button }: SendMessageWithEmbedType) {
-    const channel = this.bot(botId).server.channels.cache.get(channelId);
-    return await (channel as discord.TextChannel).send({
-      content: message,
-      embeds: [embed],
-      components: button,
-    });
+    await this.#post({ content: message, embeds: [embed] });
   }
 }

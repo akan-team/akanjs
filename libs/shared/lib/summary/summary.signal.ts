@@ -1,5 +1,5 @@
 import { Admin } from "@libs/shared/srvkit";
-import { endpoint, internal, None, Public, slice } from "akanjs/signal";
+import { endpoint, internal, None, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import * as srv from "../srv";
@@ -10,8 +10,9 @@ export class SummaryInternal extends internal(srv.summary, ({ cron }) => ({
   }),
 })) {}
 
-export class SummarySlice extends slice(srv.summary, { guards: { root: Admin, get: Public, cru: None } }, (init) => ({
-  inPeriod: init()
+// Every read is `Admin`: a summary is the service's own user counts and activity, and only the admin console shows it.
+export class SummarySlice extends slice(srv.summary, { guards: { root: Admin, get: Admin, cru: None } }, (init) => ({
+  inPeriod: init({ guards: [Admin], mcp: false })
     .param("from", Date)
     .param("to", Date)
     .search("periodTypes", [cnst.PeriodType])
@@ -21,7 +22,7 @@ export class SummarySlice extends slice(srv.summary, { guards: { root: Admin, ge
 })) {}
 
 export class SummaryEndpoint extends endpoint(srv.summary, ({ mutation, query }) => ({
-  getActiveSummary: query(cnst.Summary, { cache: 1000 }).exec(async function () {
+  getActiveSummary: query(cnst.Summary, { guards: [Admin], cache: 1000, mcp: false }).exec(async function () {
     return await this.summaryService.getActiveSummary();
   }),
   /** The cron only runs on the hour, and only in the cloud — an operator has to be able to ask for the count now. */

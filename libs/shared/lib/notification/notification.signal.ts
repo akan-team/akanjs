@@ -8,7 +8,7 @@ export class NotificationInternal extends internal(srv.notification, () => ({}))
 
 export class NotificationSlice extends slice(
   srv.notification,
-  // `cru: false`: a notification is content that goes out to readers; composing one is a console action.
+  // `mcp: { cru: false }`: a notification is content that goes out to readers; composing one is a console action.
   // `get: Admin`: the full record names the user it was addressed to, and the field is not secret — a public
   // read would tell anyone who was sent what.
   { guards: { root: Admin, get: Admin, cru: Admin }, mcp: { cru: false } },

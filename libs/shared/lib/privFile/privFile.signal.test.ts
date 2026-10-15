@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { dayjs } from "akanjs/base";
 import { AkanServer } from "akanjs/server";
 
+import "../cnst";
 import type * as srv from "../srv";
+import { PrivFileService } from "./privFile.service";
 
 const joinPath = (...paths: string[]) => paths.join("/").replaceAll(/\/+/g, "/");
 
@@ -87,12 +90,81 @@ describe("PrivFile Service", () => {
       expect(privFile.privatePath).toMatch(/^private\/secret\/env\//);
       expect(await privFileService.readJson<{ secret: string }>(privFile)).toEqual({ secret: "value" });
 
-      const publicProbe = Bun.file(joinPath(tmp, "local/shared/backend", privFile.privatePath ?? ""));
-      const privateProbe = Bun.file(joinPath(tmp, "local/shared/server-private", privFile.privatePath ?? ""));
+      const blobStorageApi = server.get((await import("@libs/util/srvkit")).BlobStorageApi);
+      const publicProbe = Bun.file(joinPath(blobStorageApi.root, privFile.privatePath ?? ""));
+      const privateProbe = Bun.file(joinPath(blobStorageApi.privateRoot, privFile.privatePath ?? ""));
       expect(await publicProbe.exists()).toBe(false);
       expect(await privateProbe.exists()).toBe(true);
     } finally {
       await cleanup();
     }
+  });
+});
+
+describe("PrivFile Upload Failures", () => {
+  const backup = { filename: "dump.db.gz", mimetype: "application/gzip", encoding: "7bit" };
+
+  it("removes the row of an upload that fails instead of leaving it uploading", async () => {
+    const { server, cleanup } = await makeTestServer();
+    try {
+      const privFileService = server.getService<srv.PrivFileService>("privFile");
+      const before = await privFileService.privFileModel.countAny();
+      const failing = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(new Error("connection reset"));
+        },
+      });
+
+      await expect(privFileService.addPrivFileFromStream(failing, backup, "dbBackup", "x")).rejects.toThrow();
+      expect(await privFileService.privFileModel.countAny()).toBe(before);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("creates no row when the storage cannot issue an upload URL", async () => {
+    const { server, cleanup } = await makeTestServer();
+    try {
+      const privFileService = server.getService<srv.PrivFileService>("privFile");
+      const before = await privFileService.privFileModel.countAny();
+
+      await expect(privFileService.createUploadTarget(backup, "dbBackup", "x")).rejects.toThrow();
+      expect(await privFileService.privFileModel.countAny()).toBe(before);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("sweeps an upload left unfinished for a day and keeps a fresh one", async () => {
+    const { server, cleanup } = await makeTestServer();
+    try {
+      const privFileService = server.getService<srv.PrivFileService>("privFile");
+      const stale = await privFileService.privFileModel.createPrivFile({
+        alias: "stale",
+        mimetype: "application/gzip",
+        encoding: "7bit",
+        status: "uploading",
+        createdAt: dayjs().subtract(2, "day"),
+      });
+      const fresh = await privFileService.privFileModel.createPrivFile({
+        alias: "fresh",
+        mimetype: "application/gzip",
+        encoding: "7bit",
+        status: "uploading",
+      });
+
+      expect(await privFileService.removeStaleUploads()).toBe(1);
+      expect(await privFileService.privFileModel.loadPrivFile(stale.id)).toBeNull();
+      expect((await privFileService.privFileModel.loadPrivFile(fresh.id))?.alias).toBe("fresh");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("keeps a private path inside its purpose and group whatever the caller passes", () => {
+    expect(PrivFileService.privatePathOf("abc", "../../etc/passwd", "../dbBackup", "a/b")).toBe(
+      "private/dbBackup/ab/abc",
+    );
+    expect(PrivFileService.privatePathOf("abc", "backup.tar.gz", "", null)).toBe("private/default/default/abc.gz");
   });
 });

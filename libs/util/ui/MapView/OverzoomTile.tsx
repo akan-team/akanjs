@@ -139,7 +139,6 @@ export const OverzoomTile: TileComponent = ({ tile, tileLoaded }) => {
   };
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       srcSet={src === tile.url ? tile.srcSet : undefined}

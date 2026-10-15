@@ -9,9 +9,9 @@ export class NotiLevel extends enumOf("notiLevel", [
   "essential",
   "suggestion",
   "advertise",
-]) {}
+] as const) {}
 
-export class NotificationType extends enumOf("notificationType", ["user", "all"]) {}
+export class NotificationType extends enumOf("notificationType", ["user", "all"] as const) {}
 
 export class NotificationInput extends via((field) => ({
   userId: field(ID).optional(), // the one recipient of a `user` notification; an `all` one reaches every active user

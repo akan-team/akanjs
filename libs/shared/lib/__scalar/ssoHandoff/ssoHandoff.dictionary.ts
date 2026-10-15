@@ -37,6 +37,10 @@ export const dictionary = scalarDictionary(["en", "ko"])
       "SSO 제공자가 확인해 준 계정",
     ]),
     nickname: t(["Nickname", "닉네임"]).desc(["Display name from the provider", "SSO 제공자의 표시 이름"]),
+    legacyAccountId: t(["Legacy Account ID", "이전 계정 아이디"]).desc([
+      "The id the provider's account was stored under before",
+      "이 제공자 계정이 이전에 저장되던 아이디",
+    ]),
     expiresAt: t(["Expires At", "만료 시각"]).desc([
       "When the handoff stops being usable",
       "핸드오프를 더 쓸 수 없게 되는 시각",

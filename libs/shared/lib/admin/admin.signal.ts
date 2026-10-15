@@ -1,14 +1,16 @@
 import {
   Account,
   Admin as AdminGuard,
+  adminRolePolicy,
   Me,
   makeAdminAccessTokenResponse as makeAccessTokenResponse,
   makeAdminSignoutResponse as makeSignoutResponse,
   readRefreshTokenCookie,
+  Staff,
   SuperAdmin,
 } from "@libs/shared/srvkit";
 import { ID, Int } from "akanjs/base";
-import { endpoint, internal, Req, slice } from "akanjs/signal";
+import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
 import { Err } from "../dict";
 import * as srv from "../srv";
@@ -21,11 +23,11 @@ export class AdminInternal extends internal(srv.admin, ({ initialize, process, r
 
 export class AdminSlice extends slice(
   srv.admin,
-  // `cru: false`: creating or re-roling an operator account is the escalation every other guard is measured
+  // `mcp: { cru: false }`: creating or re-roling an operator account is the escalation every other guard is measured
   // against. It stays a deliberate act in the admin console.
   { guards: { root: AdminGuard, get: AdminGuard, cru: SuperAdmin }, mcp: { cru: false } },
   (init) => ({
-    inMention: init()
+    inMention: init({ guards: [Staff], mcp: false })
       .search("text", String)
       .exec(function (text) {
         return this.adminService.queryBySearch(text);
@@ -34,7 +36,7 @@ export class AdminSlice extends slice(
 ) {}
 
 export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsub, message }) => ({
-  isAdminSystemInitialized: query(Boolean).exec(async function () {
+  isAdminSystemInitialized: query(Boolean, { guards: [Public], mcp: false }).exec(async function () {
     return await this.adminService.isAdminSystemInitialized();
   }),
   // The root admin is seeded at boot from env, so adding the next one is a superAdmin act; left open, this call
@@ -44,12 +46,12 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (data) {
       return await this.adminService.createAdminWithInitialize(data);
     }),
-  me: query(cnst.Admin, { nullable: true })
+  me: query(cnst.Admin, { guards: [Public], nullable: true, mcp: false })
     .with(Me, { nullable: true })
     .exec(async function (me) {
       return me ? await this.adminService.getAdmin(me.id) : null;
     }),
-  setAdminPassword: mutation(Boolean)
+  setAdminPassword: mutation(Boolean, { guards: [Staff], mcp: false })
     .body("adminId", ID)
     .body("password", String)
     .with(Me, { nullable: false })
@@ -58,18 +60,18 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
       await this.adminService.setPassword(adminId, password);
       return true;
     }),
-  signinAdmin: mutation(cnst.util.AccessToken)
+  signinAdmin: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .body("password", String)
     .exec(async function (accountId, password) {
       return makeAccessTokenResponse(await this.adminService.signinAdmin(accountId, password)) as never;
     }),
-  signoutAdmin: mutation(cnst.util.AccessToken)
+  signoutAdmin: mutation(cnst.util.AccessToken, { guards: [Staff], mcp: false })
     .with(Account)
     .exec(async function (account) {
       return makeSignoutResponse(await this.adminService.signoutAdmin(account)) as never;
     }),
-  refreshAdminJwt: mutation(cnst.util.AccessToken)
+  refreshAdminJwt: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("refreshToken", String, { nullable: true })
     .with(Account)
     .with(Req)
@@ -98,24 +100,34 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (sql, limit) {
       return await this.adminService.runInsight(sql, limit);
     }),
-  addAdminRole: mutation(cnst.Admin)
+  addAdminRole: mutation(cnst.Admin, { guards: [AdminGuard], mcp: false })
     .body("adminId", ID)
     .body("role", cnst.AdminRole)
     .with(Me)
     .exec(async function (adminId, role, me) {
+      const { canChange, onChange } = adminRolePolicy();
       const level = cnst.AdminRole.indexOf(role);
-      if ((me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level))
-        throw new Err("admin.error.notAllowed");
-      return await this.adminService.addRole(adminId, role);
+      const isRefused = canChange
+        ? !canChange(me.roles, role)
+        : (me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level);
+      if (isRefused) throw new Err("admin.error.notAllowed");
+      const admin = await this.adminService.addRole(adminId, role);
+      await onChange?.({ actor: me.accountId, adminId, role, verb: "add" });
+      return admin;
     }),
-  subAdminRole: mutation(cnst.Admin)
+  subAdminRole: mutation(cnst.Admin, { guards: [AdminGuard], mcp: false })
     .body("adminId", ID)
     .body("role", cnst.AdminRole)
     .with(Me)
     .exec(async function (adminId, role, me) {
+      const { canChange, onChange } = adminRolePolicy();
       const level = cnst.AdminRole.indexOf(role);
-      if ((me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level))
-        throw new Err("admin.error.notAllowed");
-      return await this.adminService.subRole(adminId, role);
+      const isRefused = canChange
+        ? !canChange(me.roles, role)
+        : (me.roles as cnst.AdminRole["value"][]).every((adminRole) => cnst.AdminRole.indexOf(adminRole) < level);
+      if (isRefused) throw new Err("admin.error.notAllowed");
+      const admin = await this.adminService.subRole(adminId, role);
+      await onChange?.({ actor: me.accountId, adminId, role, verb: "sub" });
+      return admin;
     }),
 })) {}

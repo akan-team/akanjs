@@ -1,17 +1,15 @@
 import type { QueryMeta } from "@libs/shared/common";
-import { type Cls, dayjs, FIELD_META, Float, Int, type NestedKeysWithAllowed } from "akanjs/base";
-import { ConstantRegistry, type QueryOf } from "akanjs/constant";
+import { type Cls, type Dayjs, dayjs, FIELD_META, Float, Int, type NestedKeysWithAllowed } from "akanjs/base";
+import type { QueryOf } from "akanjs/constant";
 import {
   by,
   DatabaseRegistry,
-  DocumentSchema,
-  documentQueryHelper,
   fillMissingFilterArgs,
   from,
   getFilterInfoByKey,
   into,
+  documentQueryHelper as q,
 } from "akanjs/document";
-import type { DatabaseAdaptor } from "akanjs/service";
 import * as cnst from "../cnst";
 import type * as db from "../db";
 import { Err } from "../dict";
@@ -52,28 +50,32 @@ export class SummaryModel extends into(Summary, SummaryFilter, cnst.summary, () 
     if (!filterInfo.queryFn) throw new Err("summary.error.queryFnNotDefined", { key });
     const args = queryMeta.queryArgs;
     const buildQuery = filterInfo.queryFn as (...args: unknown[]) => QueryOf<unknown>;
-    return buildQuery(
-      ...fillMissingFilterArgs(filterInfo, typeof args === "function" ? args() : args),
-      documentQueryHelper,
-    );
+    return buildQuery(...fillMissingFilterArgs(filterInfo, typeof args === "function" ? args() : args), q);
   }
+  //? Hour plus type as the id: a second writer of the same hour hits the primary key instead of storing it twice.
+  static archivedIdOf(type: cnst.PeriodType["value"], at: Dayjs) {
+    const hourHex = Math.floor(at.valueOf() / 1000)
+      .toString(16)
+      .padStart(8, "0");
+    return `${hourHex}${"0".repeat(10)}${cnst.PeriodType.indexOf(type).toString(16).padStart(6, "0")}`;
+  }
+  // active rows collapse into the newest, rewritten as type `active`; a periodic call also upserts this hour's archive.
   async archive(archiveType: "periodic" | "non-periodic", data: Omit<db.SummaryInput, "type">) {
     const [type, at] = cnst.Summary.getPeriodicType();
     const periodAt = dayjs(at);
-    if ((await this.Summary.countDocuments({ status: "active" })) > 1) {
-      const summary = await this.Summary.pickOne({ status: "active" });
-      const q = documentQueryHelper;
-      await this.Summary.removeMany(q.all({ status: "active" }, { id: q.ne(summary.id) }));
-    }
-    const active = await this.Summary.findOne({ status: "active", type: "active" });
+    const [active, ...duplicates] = await this.Summary.find({ status: "active" });
+    if (active && duplicates.length)
+      await this.Summary.removeMany(q.all({ status: "active" }, { id: q.ne(active.id) }));
     await (active
-      ? active.set({ ...data, at: periodAt, status: "active" }).save()
+      ? active.set({ ...data, type: "active", at: periodAt, status: "active" }).save()
       : new this.Summary({ ...data, type: "active", at: periodAt, status: "active" }).save());
     if (archiveType === "non-periodic") return await new this.Summary(data).save();
-    const archived = await this.Summary.findOne({ status: "archived", type, at: periodAt });
+    const id = SummaryModel.archivedIdOf(type, periodAt);
+    const archived =
+      (await this.Summary.findById(id)) ?? (await this.Summary.findOne({ status: "archived", type, at: periodAt }));
     return await (archived
       ? archived.set({ ...data, at: periodAt, status: "archived" }).save()
-      : new this.Summary({ ...data, type, at: periodAt, status: "archived" }).save());
+      : this.createSummary({ ...data, id, type, at: periodAt, status: "archived" }));
   }
   async moveValue(
     decField: NestedKeysWithAllowed<cnst.Summary, number>,
@@ -94,21 +96,12 @@ export class SummaryModel extends into(Summary, SummaryFilter, cnst.summary, () 
   }
   async decValue(field: NestedKeysWithAllowed<cnst.Summary, number>, value = 1) {
     const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, ({ inc }) => ({
-      [field]: inc(value),
+      [field]: inc(-value),
     }));
     return !!modifiedCount;
   }
   async setValue(field: NestedKeysWithAllowed<cnst.Summary, number>, value: number) {
     const { modifiedCount } = await this.Summary.updateOne({ status: "active" }, { [field]: value });
     return !!modifiedCount;
-  }
-  async countWithQuery(refName: string, query: QueryOf<unknown>) {
-    const database = DatabaseRegistry.getDatabase(refName);
-    const schema = new DocumentSchema();
-    database.model._onSchema(schema);
-    database.model._libsOnSchema(schema);
-    const { __database } = this as unknown as { __database: DatabaseAdaptor };
-    const store = __database.getStore(ConstantRegistry.getDatabase(refName), database, schema);
-    return await store.count(query);
   }
 }

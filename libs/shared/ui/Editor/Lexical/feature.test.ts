@@ -1,14 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Transformer } from "@lexical/markdown";
-import {
-  type EditorFeature,
-  type EditorNodeLike,
-  featuresOf,
-  isPlainOnly,
-  lossesOf,
-  syntaxOf,
-  transformersOf,
-} from "./feature";
+import { type EditorFeature, featuresOf, isPlainOnly, nodeLabelsOf, syntaxOf, transformersOf } from "./feature";
 
 // The real table lives in `markdown.ts`, which reaches MermaidNode → `@libs/util/ui` → the util store
 // and cannot be imported here. These fixtures stand in for it; what is under test is the derivation.
@@ -37,32 +29,22 @@ describe("editor features", () => {
     });
   });
 
-  describe("lossesOf", () => {
-    it("names only what no transformer carries", () => {
-      expect(lossesOf(features)).toEqual({ "akan-image": { label: "image" }, table: { label: "table" } });
-    });
-
-    it("cannot report a carried feature as a loss even when it also carries a label", () => {
-      expect(lossesOf([{ nodeType: "quote", label: "quote", transformers: [QUOTE] }])).toEqual({});
-    });
-
-    it("keeps a carried feature that narrows its loss, so a merged table cell is still reported", () => {
-      const when = (node: EditorNodeLike) => node.type === "table";
-      expect(
-        lossesOf([{ nodeType: "table", label: "merged table cell", transformers: [QUOTE], lossyWhen: when }]),
-      ).toEqual({ table: { label: "merged table cell", when } });
+  describe("nodeLabelsOf", () => {
+    it("names every node a feature labels, and nothing else", () => {
+      expect(nodeLabelsOf(features)).toEqual({ "akan-image": "image", table: "table" });
     });
 
     it("skips a text format, which is no node of its own", () => {
-      expect(lossesOf([{ label: "emphasis" }])).toEqual({});
+      expect(nodeLabelsOf([{ label: "emphasis" }])).toEqual({});
     });
 
     it("lets a later feature override an earlier one of the same node type", () => {
-      const overridden = lossesOf([
-        { nodeType: "akan-image", label: "image" },
-        { nodeType: "akan-image", label: "picture" },
-      ]);
-      expect(overridden).toEqual({ "akan-image": { label: "picture" } });
+      expect(
+        nodeLabelsOf([
+          { nodeType: "akan-image", label: "image" },
+          { nodeType: "akan-image", label: "picture" },
+        ]),
+      ).toEqual({ "akan-image": "picture" });
     });
   });
 
@@ -112,8 +94,8 @@ describe("editor features", () => {
       expect(syntaxOf(features)).toBe("`#` headings, `>` quotes, **bold**");
     });
 
-    it("leaves out a clause on a feature nothing carries", () => {
-      expect(syntaxOf([{ nodeType: "table", label: "table", syntax: "`| a |` tables" }])).toBe("");
+    it("needs no transformer — the agent's markdown is read by the common codec, not by the shortcuts", () => {
+      expect(syntaxOf([{ nodeType: "table", syntax: "`| a |` tables" }])).toBe("`| a |` tables");
     });
   });
 });

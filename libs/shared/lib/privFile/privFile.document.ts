@@ -1,14 +1,11 @@
-import { by, from, into, type SchemaOf } from "akanjs/document";
+import type { Dayjs } from "akanjs/base";
+import { by, from, into, documentQueryHelper as q, type SchemaOf } from "akanjs/document";
 
 import * as cnst from "../cnst";
 import type * as db from "../db";
 
 export class PrivFileFilter extends from(cnst.PrivFile, (filter) => ({
-  query: {
-    byAlias: filter()
-      .arg("alias", String)
-      .query((alias) => ({ alias })),
-  },
+  query: {},
   sort: {},
 })) {}
 
@@ -17,22 +14,15 @@ export class PrivFile extends by(cnst.PrivFile) {}
 export class PrivFileModel extends into(PrivFile, PrivFileFilter, cnst.privFile, () => ({})) {
   static override _onSchema(schema: SchemaOf<PrivFileModel, PrivFile>) {
     schema.index({ alias: "text" });
-  }
-
-  async progressUpload(id: string, loadSize: number | undefined, totalSize: number) {
-    await this.PrivFile.updateOne({ id }, { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) });
+    schema.index({ status: 1, createdAt: 1 });
   }
 
   async finishUpload(id: string, privatePath: string, data: Partial<db.PrivFileInput> = {}) {
     return this.PrivFile.updateOne({ id }, { ...data, privatePath, progress: 100, status: "active" });
   }
 
-  async generatePrivFile(data: Partial<db.PrivFile>): Promise<db.PrivFile> {
-    if (data.id) {
-      const existingFile = await this.PrivFile.findById(data.id);
-      const doc = existingFile?.set(data) ?? new this.PrivFile({ id: data.id, ...data } as unknown as db.PrivFileInput);
-      return await doc.save();
-    }
-    return await new this.PrivFile(data).save();
+  // uploading -> removed: a day unfinished means its uploader died mid-stream or its presigned URL expired unused.
+  async listStaleUploads(createdBefore: Dayjs) {
+    return await this.PrivFile.find({ status: "uploading", createdAt: q.lt(createdBefore.toDate()) }).limit(100);
   }
 }

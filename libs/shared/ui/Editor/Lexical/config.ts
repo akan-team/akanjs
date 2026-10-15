@@ -8,7 +8,9 @@ import { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import type { Klass, LexicalEditor, LexicalNode } from "lexical";
 
 import { CalloutNode } from "./nodes/CalloutNode";
-import { CollapsibleContainerNode, CollapsibleContentNode, CollapsibleTitleNode } from "./nodes/Collapsible";
+import { CollapsibleContainerNode } from "./nodes/CollapsibleContainerNode";
+import { CollapsibleContentNode } from "./nodes/CollapsibleContentNode";
+import { CollapsibleTitleNode } from "./nodes/CollapsibleTitleNode";
 import { EmbedNode } from "./nodes/EmbedNode";
 import { ExcalidrawNode } from "./nodes/ExcalidrawNode";
 import { FileNode } from "./nodes/FileNode";
@@ -41,7 +43,7 @@ export { hasEditorContent, isSerializedEditorState, toSerializedEditorState } fr
 // Every node here must survive `new klass()`: @lexical/yjs default-constructs each registered node once to
 // learn which properties to sync, in one update whose first throw skips every node after it (silently, through
 // onError). A payload-taking constructor needs a default, or its whole tail of the list stops syncing.
-export const AKAN_EDITOR_NODES: readonly Klass<LexicalNode>[] = [
+export const akanEditorNodes: readonly Klass<LexicalNode>[] = [
   HeadingNode,
   QuoteNode,
   ListNode,
@@ -67,7 +69,7 @@ export const AKAN_EDITOR_NODES: readonly Klass<LexicalNode>[] = [
   MentionNode,
 ];
 
-const EDITOR_NAMESPACE = "akan";
+const editorNamespace = "akan";
 
 export interface CreateEditorConfigOptions {
   /** Whether the editor accepts input. `false` yields a read-only render. */
@@ -94,10 +96,10 @@ export const createEditorConfig = ({
   extraNodes,
   onError,
 }: CreateEditorConfigOptions): InitialConfigType => ({
-  namespace: EDITOR_NAMESPACE,
+  namespace: editorNamespace,
   editable,
   theme: akanEditorTheme,
-  nodes: [...AKAN_EDITOR_NODES, ...(extraNodes ?? [])],
+  nodes: [...akanEditorNodes, ...(extraNodes ?? [])],
   editorState: resolveEditorState(initialJson),
   onError: (error) => {
     // Surface for telemetry but keep the editor mounted (fail-safe philosophy).

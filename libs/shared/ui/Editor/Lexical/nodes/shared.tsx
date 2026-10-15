@@ -1,4 +1,5 @@
 "use client";
+import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
 import { cn } from "akanjs/client";
 import type { NodeKey } from "lexical";
@@ -11,7 +12,7 @@ import {
   AiOutlineExpand,
 } from "react-icons/ai";
 import type { ImageFit, MediaAlign } from "./shared.type";
-import { ALIGN_TO_JUSTIFY, useMediaNode } from "./shared.util";
+import { alignToJustify, useMediaNode } from "./shared.util";
 
 interface MediaFrameProps {
   nodeKey: NodeKey;
@@ -53,6 +54,7 @@ export const MediaFrame = ({
   children,
 }: MediaFrameProps) => {
   const { editable, isSelected, removeNode } = useMediaNode(nodeKey);
+  const { l } = usePage();
   const resizingRef = useRef<{ x: number; width: number } | null>(null);
   const aspectRatio = width && height ? width / height : 16 / 9;
   const resizable = editable && !!onResize && width > 0;
@@ -83,7 +85,7 @@ export const MediaFrame = ({
   );
 
   return (
-    <div className={cn("my-2 flex w-full", ALIGN_TO_JUSTIFY[align])} contentEditable={false}>
+    <div className={cn("my-2 flex w-full", alignToJustify[align])} contentEditable={false}>
       <div
         className={cn(
           "group/media relative inline-block max-w-full rounded-md",
@@ -96,13 +98,25 @@ export const MediaFrame = ({
             className="absolute top-2 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
             onMouseDown={(event) => event.preventDefault()}
           >
-            <MediaMenuButton active={align === "left"} title="Align left" onClick={() => onSetAlign("left")}>
+            <MediaMenuButton
+              active={align === "left"}
+              title={l("shared.editor-alignLeft")}
+              onClick={() => onSetAlign("left")}
+            >
               <AiOutlineAlignLeft />
             </MediaMenuButton>
-            <MediaMenuButton active={align === "center"} title="Align center" onClick={() => onSetAlign("center")}>
+            <MediaMenuButton
+              active={align === "center"}
+              title={l("shared.editor-alignCenter")}
+              onClick={() => onSetAlign("center")}
+            >
               <AiOutlineAlignCenter />
             </MediaMenuButton>
-            <MediaMenuButton active={align === "right"} title="Align right" onClick={() => onSetAlign("right")}>
+            <MediaMenuButton
+              active={align === "right"}
+              title={l("shared.editor-alignRight")}
+              onClick={() => onSetAlign("right")}
+            >
               <AiOutlineAlignRight />
             </MediaMenuButton>
             {extraActions ? (
@@ -114,24 +128,32 @@ export const MediaFrame = ({
             {fit && onSetFit ? (
               <>
                 <span className="mx-0.5 h-5 w-px bg-foreground/15" />
-                <MediaMenuButton active={fit === "contain"} title="Fit" onClick={() => onSetFit("contain")}>
-                  Fit
+                <MediaMenuButton
+                  active={fit === "contain"}
+                  title={l("shared.editor-fit")}
+                  onClick={() => onSetFit("contain")}
+                >
+                  {l("shared.editor-fit")}
                 </MediaMenuButton>
-                <MediaMenuButton active={fit === "cover"} title="Fill" onClick={() => onSetFit("cover")}>
-                  Fill
+                <MediaMenuButton
+                  active={fit === "cover"}
+                  title={l("shared.editor-fill")}
+                  onClick={() => onSetFit("cover")}
+                >
+                  {l("shared.editor-fill")}
                 </MediaMenuButton>
               </>
             ) : null}
             {onReset ? (
               <>
                 <span className="mx-0.5 h-5 w-px bg-foreground/15" />
-                <MediaMenuButton title="Reset size" onClick={onReset}>
+                <MediaMenuButton title={l("shared.editor-resetSize")} onClick={onReset}>
                   <AiOutlineExpand />
                 </MediaMenuButton>
               </>
             ) : null}
             <span className="mx-0.5 h-5 w-px bg-foreground/15" />
-            <MediaMenuButton title="Delete" onClick={removeNode}>
+            <MediaMenuButton title={l("shared.editor-delete")} onClick={removeNode}>
               <AiOutlineDelete className="text-destructive" />
             </MediaMenuButton>
           </div>
@@ -140,13 +162,13 @@ export const MediaFrame = ({
           <>
             <button
               type="button"
-              aria-label="Resize from left"
+              aria-label={l("shared.editor-resizeLeft")}
               className={cn(handleClassName, "left-1")}
               {...createResizeHandlers("left")}
             />
             <button
               type="button"
-              aria-label="Resize from right"
+              aria-label={l("shared.editor-resizeRight")}
               className={cn(handleClassName, "right-1")}
               {...createResizeHandlers("right")}
             />

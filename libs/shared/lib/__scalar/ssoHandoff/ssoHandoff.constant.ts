@@ -12,5 +12,6 @@ export class SsoHandoff extends via((field) => ({
   returnPage: field(Boolean, { default: false }), // desktop: the browser tab outlives the callback, so it gets a page
   accountId: field(String).optional(), // set once the provider answered, which is what makes the code exchangeable
   nickname: field(String).optional(),
+  legacyAccountId: field(String).optional(), // the id the provider's account was stored under before, migrated on exchange
   expiresAt: field(Date),
 })) {}

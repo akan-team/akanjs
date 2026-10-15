@@ -23,9 +23,8 @@ import {
 import type { LexicalNode } from "lexical";
 import { type EditorFeature, transformersOf } from "./feature";
 import { MENTION } from "./markdownMention";
-import { isLossyTable, tableTransformer } from "./markdownTable";
 import { MermaidNode } from "./nodes/MermaidNode";
-import { $createMermaidNode, $isMermaidNode, DEFAULT_MERMAID_CODE } from "./nodes/mermaidNode.util";
+import { $createMermaidNode, $isMermaidNode, defaultMermaidCode } from "./nodes/mermaidNode.util";
 
 /**
  * Horizontal-rule markdown transformer (`---`, `***`, `___`). `@lexical/markdown`
@@ -78,7 +77,7 @@ const MERMAID: MultilineElementTransformer = {
       ?.map((child) => child.getTextContent())
       .join("")
       .trim();
-    const diagram = $createMermaidNode({ code: typed || DEFAULT_MERMAID_CODE });
+    const diagram = $createMermaidNode({ code: typed || defaultMermaidCode });
     // If it's the last block, insert before so the trailing paragraph stays; else replace.
     if (parentNode.getNextSibling() != null) parentNode.replace(diagram);
     else parentNode.insertBefore(diagram);
@@ -88,40 +87,30 @@ const MERMAID: MultilineElementTransformer = {
 };
 
 /**
- * Every capability of the Akan editor, against the markdown that carries it.
- *
- * A feature with `transformers` survives a markdown round-trip; one without is destroyed by it, and
- * its `label` is the word the agent hears in the refusal. `underline` carries neither, because it has
- * no markdown form at all (use ⌘U) — it is in the table only for its `key`. `AKAN_TRANSFORMERS`, the
- * loss labels, the agent's syntax cheat-sheet and everything the editor's `features` prop switches off
- * are all read off this one table — see `feature.ts` for why that matters.
+ * Every capability of the Akan editor: the shortcuts a person types it with, the clause of the agent's markdown
+ * dialect that writes it, and — for a node that means something with no text of its own — the word the agent's
+ * overwrite guard counts it by. Everything the editor's `features` prop switches off is read off this one table.
+ * `underline` has neither shortcut nor markdown (use ⌘U); it is here only for its `key`.
  *
  * **Order is load-bearing, twice over.** Element and multiline transformers must precede text-format,
  * which must precede text-match; and within a kind the earlier entry wins a tie — MERMAID before CODE
  * because `CODE`'s start pattern also matches a `mermaid` info string, and MENTION before LINK because
  * `@[x](mention:…)` and `[x](…)` end at the same index, where `findOutermostTextMatchTransformer` falls
  * back to array position.
- *
- * The lossy tail lists only nodes that can appear as a document's own child. `tablerow` / `tablecell`
- * and the collapsible title/content are absent because they only ever sit under a parent already
- * counted. A node contributed through `plugins` declares its own entry — see `EditorPlugin.features`.
  */
-export const AKAN_FEATURES: readonly EditorFeature[] = [
+export const akanFeatures: readonly EditorFeature[] = [
   { key: "divider", nodeType: "horizontalrule", transformers: [HR], syntax: "`---` dividers" },
   { key: "heading", nodeType: "heading", transformers: [HEADING], syntax: "`#` headings" },
   { key: "quote", nodeType: "quote", transformers: [QUOTE], syntax: "`>` quotes" },
-  { key: "mermaid", nodeType: "akan-mermaid", transformers: [MERMAID], syntax: "```mermaid diagrams" },
-  { key: "code", nodeType: "code", transformers: [CODE], syntax: "``` code fences" },
-  // After CODE so a pipe inside a fence is never read as a row: `$importMultiline` consumes a fence
-  // whole and skips its lines, and the multiline transformers are tried in this order.
   {
-    key: "table",
-    nodeType: "table",
-    label: "merged table cell",
-    transformers: [tableTransformer(() => AKAN_TRANSFORMERS)],
-    lossyWhen: isLossyTable,
-    syntax: "`| a | b |` tables over a `| --- | --- |` row",
+    key: "mermaid",
+    nodeType: "akan-mermaid",
+    label: "diagram",
+    transformers: [MERMAID],
+    syntax: "```mermaid diagrams",
   },
+  { key: "code", nodeType: "code", transformers: [CODE], syntax: "``` code fences" },
+  { key: "table", nodeType: "table", syntax: "`| a | b |` tables over a `| --- | --- |` row" },
   {
     key: "list",
     nodeType: "list",
@@ -143,8 +132,6 @@ export const AKAN_FEATURES: readonly EditorFeature[] = [
   { key: "strikethrough", transformers: [STRIKETHROUGH], syntax: "~~strikethrough~~" },
   { key: "inlineCode", transformers: [INLINE_CODE], syntax: "`inline code`" },
   { key: "highlight", transformers: [HIGHLIGHT], syntax: "==highlight==" },
-  // Carried by no transformer and no node — it is here only so `features` can switch ⌘U and its
-  // toolbar button off with the same word as everything else.
   { key: "underline" },
   // Before LINK — the two end at the same index and the outermost-match tie-break falls back to array
   // order, so behind it every mention would import as a link to `mention:…`. See `markdownMention.ts`.
@@ -156,13 +143,13 @@ export const AKAN_FEATURES: readonly EditorFeature[] = [
     syntax: "`@[label](mention:model/id)` mentions, whose ids come from `searchMentions`",
   },
   { key: "link", nodeType: "link", transformers: [LINK], syntax: "[links](url)" },
-  { key: "image", nodeType: "akan-image", label: "image" },
+  { key: "image", nodeType: "akan-image", label: "image", syntax: "`![alt](url)` images on a line of their own" },
   { key: "video", nodeType: "akan-video", label: "video" },
   { key: "file", nodeType: "akan-file", label: "file" },
   { key: "embed", nodeType: "akan-embed", label: "embed" },
   { key: "excalidraw", nodeType: "akan-excalidraw", label: "drawing" },
-  { key: "callout", nodeType: "akan-callout", label: "callout" },
-  { key: "collapsible", nodeType: "akan-collapsible", label: "toggle" },
+  { key: "callout", nodeType: "akan-callout" },
+  { key: "collapsible", nodeType: "akan-collapsible" },
 ];
 
-export const AKAN_TRANSFORMERS: Transformer[] = transformersOf(AKAN_FEATURES);
+export const akanTransformers: Transformer[] = transformersOf(akanFeatures);

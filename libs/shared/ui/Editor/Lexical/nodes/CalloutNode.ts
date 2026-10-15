@@ -1,6 +1,6 @@
 import { $createParagraphNode, ElementNode, type LexicalNode, type RangeSelection } from "lexical";
 
-import { CALLOUT_VARIANTS, type CalloutVariant } from "../theme";
+import { type CalloutVariant, calloutVariants } from "../theme";
 import { $createCalloutNode, type SerializedCalloutNode } from "./calloutNode.util";
 
 /**
@@ -22,11 +22,7 @@ export class CalloutNode extends ElementNode {
   }
 
   static override importJSON(serialized: SerializedCalloutNode): CalloutNode {
-    const node = $createCalloutNode(serialized.variant);
-    node.setFormat(serialized.format);
-    node.setIndent(serialized.indent);
-    node.setDirection(serialized.direction);
-    return node;
+    return $createCalloutNode(serialized.variant).updateFromJSON(serialized);
   }
 
   constructor(variant: CalloutVariant = "info", key?: string) {
@@ -40,12 +36,12 @@ export class CalloutNode extends ElementNode {
 
   override createDOM(): HTMLElement {
     const div = document.createElement("div");
-    div.className = CALLOUT_VARIANTS[this.__variant];
+    div.className = calloutVariants[this.__variant];
     return div;
   }
 
   override updateDOM(prevNode: CalloutNode, dom: HTMLElement): boolean {
-    if (prevNode.__variant !== this.__variant) dom.className = CALLOUT_VARIANTS[this.__variant];
+    if (prevNode.__variant !== this.__variant) dom.className = calloutVariants[this.__variant];
     return false;
   }
 

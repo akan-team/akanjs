@@ -1,20 +1,27 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as adminSpec from "@libs/shared/lib/admin/admin.signal.spec";
 import * as fileSpec from "@libs/shared/lib/file/file.signal.spec";
-import { configureSignalTest } from "akanjs/test";
+import { dayjs } from "akanjs/base";
+import { DictionaryLookup } from "akanjs/dictionary";
+import { McpDocument, type SerializedSignal } from "akanjs/signal";
+import { configureSignalTest, getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type * as cnst from "../cnst";
 import type { AdminAgent } from "../user/user.signal.spec";
+import type { fetch as sharedFetch } from "../useServer";
+
+type SharedFetch = typeof sharedFetch;
 
 configureSignalTest({ storage: "tempFile" });
 
 describe("File Signal", () => {
+  let adminAgent: AdminAgent;
+  beforeAll(async () => {
+    adminAgent = await adminSpec.getAdminAgentWithInitialize();
+  });
+
   describe("File Service", () => {
     let file: cnst.LightFile;
-    let adminAgent: AdminAgent;
-    beforeAll(async () => {
-      adminAgent = await adminSpec.getAdminAgentWithInitialize();
-    });
 
     it("can upload file", async () => {
       [file] = await fileSpec.getActiveFiles(1, adminAgent.fetch);
@@ -51,5 +58,52 @@ describe("File Signal", () => {
     //   const file = await fileService.addFileFromUri(uri, "test", "test");
     //   expect(file).toHaveProperty("_id");
     // });
+  });
+
+  describe("File Upload Ticket", () => {
+    let fileTicket: cnst.FileUploadTicket;
+
+    it("publishes the ticket request to agents and keeps the upload itself off MCP", async () => {
+      const fetch = await getOrSetupSignalTestFetch<SharedFetch>();
+      const lookup = new DictionaryLookup("en");
+      const serializedSignal = (fetch as unknown as { serializedSignal: Record<string, SerializedSignal> })
+        .serializedSignal;
+      const mcp = new McpDocument(serializedSignal, { resolveDescription: (key) => lookup.text(key) });
+      expect(mcp.findTool("requestFileUpload")).toBeDefined();
+      expect(mcp.undescribed.map(({ key }) => key)).not.toContain("requestFileUpload");
+      expect(mcp.findTool("addFilesByTicket")).toBeUndefined();
+    });
+    it("refuses a ticket request without a session", async () => {
+      const fetch = await getOrSetupSignalTestFetch<SharedFetch>();
+      await expect(fetch.requestFileUpload("banner", null)).rejects.toThrow();
+    });
+    it("issues a ticket to a signed-in account", async () => {
+      fileTicket = await adminAgent.fetch.requestFileUpload("banner", null);
+      expect(fileTicket.ticket.length).toBeGreaterThan(0);
+      expect(new URL(fileTicket.uploadUrl).pathname).toEndWith("/file/addFilesByTicket");
+      expect(fileTicket.expiresAt.isAfter(dayjs())).toBe(true);
+    });
+    it("uploads files from a plain multipart POST carrying the ticket", async () => {
+      const [fileList] = fileSpec.getFileInputSamples(2);
+      const response = await fileSpec.postFilesWithTicket(fileTicket, fileList);
+      expect(response.status).toBe(200);
+      const uploaded = (await response.json()) as { id: string }[];
+      expect(uploaded).toHaveLength(2);
+      const files = await Promise.all(uploaded.map(({ id }) => fileSpec.waitUploadedFile(id)));
+      for (const file of files) {
+        expect(file.status).toBe("active");
+        expect(file.url).toContain("/banner/default/");
+      }
+    });
+    it("refuses a ticket that was already spent", async () => {
+      const [fileList] = fileSpec.getFileInputSamples(1);
+      const response = await fileSpec.postFilesWithTicket(fileTicket, fileList);
+      expect(response.status).toBe(401);
+    });
+    it("refuses a ticket it never issued", async () => {
+      const fetch = await getOrSetupSignalTestFetch<SharedFetch>();
+      const [fileList] = fileSpec.getFileInputSamples(1);
+      await expect(fetch.addFilesByTicket(fileList, "not-a-ticket")).rejects.toThrow();
+    });
   });
 });

@@ -4,12 +4,7 @@ import { importPKCS8, SignJWT } from "jose";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
 import {
-  execAsync,
-  githubShellQuote,
-  isGithubInstallationAccessTokenDto,
-  isGithubInstallationDto,
-  isGithubInstallationRepositoriesDto,
-  isGithubUserInstallationsDto,
+  isGithubAccessTokenDto,
   toGithubAccessToken,
   toGithubInfo,
   toGithubInstallationAccessToken,
@@ -19,6 +14,7 @@ import type {
   GithubAccessToken,
   GithubAccessTokenDto,
   GithubApiError,
+  GithubCompareDto,
   GithubContentDto,
   GithubInfo,
   GithubInfoDto,
@@ -27,18 +23,53 @@ import type {
   GithubInstallationAccessTokenDto,
   GithubInstallationDto,
   GithubInstallationRepositoriesDto,
+  GithubOAuthErrorDto,
   GithubOptions,
+  GithubRepoRef,
   GithubRepository,
   GithubRepositoryDto,
   GithubUserInstallationsDto,
   GithubWebhookDto,
 } from "./githubTypes";
 
+type UtilErrorKey = ConstructorParameters<typeof Err>[0];
+
+interface GithubRequest {
+  token?: string;
+  method?: "POST" | "PATCH";
+  body?: object;
+  failure?: UtilErrorKey;
+}
+
+interface GithubPageRequest<Page, Item> {
+  token: string;
+  failure?: UtilErrorKey;
+  itemsOf: (page: Page) => Item[] | undefined;
+}
+
+type GithubPermissionLevel = "read" | "write";
+
+export interface GithubInstallationTokenScope {
+  repositories?: string[];
+  permissions?: { [permission: string]: GithubPermissionLevel };
+}
+
+interface GithubInstallationGrantDto extends GithubInstallationAccessTokenDto {
+  permissions?: { [permission: string]: string };
+  repository_selection?: "all" | "selected";
+}
+
+interface GithubWebhookTarget extends GithubRepoRef {
+  webhookUrl: string;
+  webhookSecret?: string;
+}
+
 export class GithubApp extends adapt("githubApp", ({ env }) => ({
   options: env((options: ModulesOptions) => options.githubAppInfo),
 })) {
-  readonly #baseUrl = "https://api.github.com";
-  readonly #headers = { Accept: "application/json" };
+  static readonly #baseUrl = "https://api.github.com";
+  static readonly #pageSize = 100;
+  static readonly #compareFilesLimit = 300;
 
   get configured() {
     return !!this.options;
@@ -49,88 +80,103 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     return this.options;
   }
 
-  async #api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-    const url = path.startsWith("http") ? path : `${this.#baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...init,
-      headers: { ...this.#headers, ...init?.headers },
+  async #api<T, AllowNotFound extends boolean = false>(
+    path: string,
+    {
+      token,
+      method,
+      body,
+      failure = "util.error.githubApiFailed",
+      allowNotFound,
+    }: GithubRequest & { allowNotFound?: AllowNotFound } = {},
+  ): Promise<AllowNotFound extends true ? T | null : T> {
+    const response = await fetch(path.startsWith("https://") ? path : `${GithubApp.#baseUrl}${path}`, {
+      method,
+      headers: {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(20_000),
     });
-    return (await response.json()) as T;
+    if (allowNotFound && response.status === 404) return null as AllowNotFound extends true ? T | null : T;
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const reason = GithubApp.#describeFailure(`${method ?? "GET"} ${path}`, response.status, data);
+      throw new Err(failure, { status: response.status, reason });
+    }
+    return data as AllowNotFound extends true ? T | null : T;
+  }
+
+  async #paginate<Page, Item>(path: string, { token, failure, itemsOf }: GithubPageRequest<Page, Item>) {
+    const items: Item[] = [];
+    const separator = path.includes("?") ? "&" : "?";
+    for (let page = 1; ; page += 1) {
+      const pageUrl = `${path}${separator}per_page=${GithubApp.#pageSize}&page=${page}`;
+      const pageItems = itemsOf(await this.#api<Page>(pageUrl, { token, failure }));
+      if (!Array.isArray(pageItems))
+        throw new Err(failure ?? "util.error.githubApiFailed", { reason: `GET ${pageUrl} returned no list` });
+      items.push(...pageItems);
+      if (pageItems.length < GithubApp.#pageSize) break;
+    }
+    return items;
   }
 
   async getAccessToken(code: string): Promise<GithubAccessToken> {
     const { clientId, clientSecret } = this.#requireOptions();
-    const data = await this.#api<GithubAccessTokenDto>("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-    });
+    const data = await this.#api<GithubAccessTokenDto | GithubOAuthErrorDto | null>(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        body: { client_id: clientId, client_secret: clientSecret, code },
+        failure: "util.error.githubAccessTokenExchangeFailed",
+      },
+    );
+    //? A rejected code is still answered with 200, carrying an `error` body instead of a token.
+    if (!isGithubAccessTokenDto(data))
+      throw new Err("util.error.githubAccessTokenExchangeFailed", {
+        reason: data?.error_description ?? data?.error ?? "no access token in the response",
+      });
     return toGithubAccessToken(data);
   }
 
   async getGithubInfo(accessToken: string): Promise<GithubInfo> {
-    const data = await this.#api<GithubInfoDto>(`/user`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    return toGithubInfo(data);
-  }
-
-  async listPullRequestFiles({
-    owner,
-    repo,
-    pullNumber,
-    accessToken,
-  }: {
-    owner: string;
-    repo: string;
-    pullNumber: number;
-    accessToken: string;
-  }) {
-    return await this.#api<string[]>(`/repos/${owner}/${repo}/pulls/${pullNumber}/files`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    return toGithubInfo(await this.#api<GithubInfoDto>("/user", { token: accessToken }));
   }
 
   async createRepository(accessToken: string, repo: string, owner?: string) {
-    if (owner) {
-      const existing = await this.getRepository({ owner, repo, accessToken });
-      if (existing?.id) return existing;
+    const repoRef = owner ? { owner, repo, accessToken } : null;
+    const existing = repoRef ? await this.getRepository(repoRef) : null;
+    if (existing) return existing;
+    try {
+      return await this.#api<{ id: number }>("/user/repos", {
+        token: accessToken,
+        method: "POST",
+        body: { name: repo, private: true },
+        failure: "util.error.githubRepositoryCreateFailed",
+      });
+    } catch (error) {
+      const created = repoRef ? await this.getRepository(repoRef) : null;
+      if (created) return created;
+      if (error instanceof Err && String(error.data?.reason).includes("Resource not accessible by integration"))
+        throw new Err("util.error.githubRepositoryCreateForbidden", error.data);
+      throw error;
     }
-
-    const result = await this.#api<{ id?: number } & GithubApiError>(`/user/repos`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: repo, private: true }),
-    });
-    if (result.id) return result as { id: number };
-    if (owner) {
-      const existing = await this.getRepository({ owner, repo, accessToken });
-      if (existing?.id) return existing;
-    }
-
-    throw new Err("util.error.githubRepositoryCreateFailed", { reason: this.#formatCreateRepositoryError(result) });
   }
 
-  async getRepository({ owner, repo, accessToken }: { owner: string; repo: string; accessToken: string }) {
-    const result = await this.#api<{ id?: number } & GithubApiError>(`/repos/${owner}/${repo}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  async getRepository({ owner, repo, accessToken }: GithubRepoRef) {
+    return await this.#api<{ id: number }, true>(`/repos/${owner}/${repo}`, {
+      token: accessToken,
+      allowNotFound: true,
     });
-    return result.id ? (result as { id: number }) : null;
   }
 
   async listAllUserRepositories(accessToken: string): Promise<GithubRepository[]> {
-    const repositories: GithubRepositoryDto[] = [];
-    for (let page = 1; ; page += 1) {
-      const pageItems = await this.#api<GithubRepositoryDto[]>(
-        `/user/repos?visibility=all&affiliation=owner&sort=updated&per_page=100&page=${page}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
-      repositories.push(...pageItems);
-      if (pageItems.length < 100) break;
-    }
+    const repositories = await this.#paginate("/user/repos?visibility=all&affiliation=owner&sort=updated", {
+      token: accessToken,
+      itemsOf: (page: GithubRepositoryDto[]) => page,
+    });
     return repositories.map(toGithubRepository);
   }
 
@@ -141,85 +187,56 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     org: string;
     accessToken: string;
   }): Promise<GithubRepository[]> {
-    const repositories: GithubRepositoryDto[] = [];
-    for (let page = 1; ; page += 1) {
-      const pageItems = await this.#api<GithubRepositoryDto[] | GithubApiError>(
-        `/orgs/${org}/repos?type=all&sort=updated&per_page=100&page=${page}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
-      if (!Array.isArray(pageItems)) {
-        throw new Err("util.error.githubOrganizationRepositoriesListFailed", {
-          reason: this.#formatApiError(pageItems),
-        });
-      }
-
-      repositories.push(...pageItems);
-      if (pageItems.length < 100) break;
-    }
+    const repositories = await this.#paginate(`/orgs/${org}/repos?type=all&sort=updated`, {
+      token: accessToken,
+      failure: "util.error.githubOrganizationRepositoriesListFailed",
+      itemsOf: (page: GithubRepositoryDto[]) => page,
+    });
     return repositories.map(toGithubRepository);
   }
 
-  async createInstallationAccessToken(installationId: string): Promise<GithubInstallationAccessToken> {
-    const appJwt = await this.#createAppJwt();
-    const result = await this.#api<GithubInstallationAccessTokenDto | GithubApiError>(
-      `/app/installations/${installationId}/access_tokens`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${appJwt}`, "Content-Type": "application/json" },
-      },
-    );
-    if (isGithubInstallationAccessTokenDto(result)) {
-      const token = toGithubInstallationAccessToken(result);
-      if (token) return token;
-    }
-
-    throw new Err("util.error.githubInstallationAccessTokenCreateFailed", { reason: this.#formatApiError(result) });
+  //? Unscoped, GitHub grants every repository and permission of the installation; a token bound for a build pod must
+  //? name its repository and permissions.
+  async createInstallationAccessToken(
+    installationId: string,
+    { repositories, permissions }: GithubInstallationTokenScope = {},
+  ): Promise<GithubInstallationAccessToken> {
+    const scoped = !!repositories || !!permissions;
+    const result = await this.#api<GithubInstallationGrantDto>(`/app/installations/${installationId}/access_tokens`, {
+      token: await this.#createAppJwt(),
+      method: "POST",
+      ...(scoped
+        ? { body: { ...(repositories ? { repositories } : {}), ...(permissions ? { permissions } : {}) } }
+        : {}),
+      failure: "util.error.githubInstallationAccessTokenCreateFailed",
+    });
+    const token = toGithubInstallationAccessToken(result);
+    if (!token)
+      throw new Err("util.error.githubInstallationAccessTokenCreateFailed", { reason: "no token in the response" });
+    const overGrant = GithubApp.#overGrant(result, { repositories, permissions });
+    if (overGrant) throw new Err("util.error.githubInstallationAccessTokenCreateFailed", { reason: overGrant });
+    return token;
   }
 
   async listInstallationRepositories(accessToken: string): Promise<GithubRepository[]> {
-    const repositories: GithubRepositoryDto[] = [];
-    for (let page = 1; ; page += 1) {
-      const pageItems = await this.#api<GithubInstallationRepositoriesDto | GithubApiError>(
-        `/installation/repositories?per_page=100&page=${page}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
-      if (!isGithubInstallationRepositoriesDto(pageItems)) {
-        throw new Err("util.error.githubInstallationRepositoriesListFailed", {
-          reason: this.#formatApiError(pageItems),
-        });
-      }
-
-      repositories.push(...pageItems.repositories);
-      if (pageItems.repositories.length < 100) break;
-    }
+    const repositories = await this.#paginate("/installation/repositories", {
+      token: accessToken,
+      failure: "util.error.githubInstallationRepositoriesListFailed",
+      itemsOf: (page: GithubInstallationRepositoriesDto) => page.repositories,
+    });
     return repositories.map(toGithubRepository);
   }
 
   async listUserInstallations(accessToken: string): Promise<GithubInstallation[]> {
-    const installations: GithubInstallationDto[] = [];
-    for (let page = 1; ; page += 1) {
-      const pageItems = await this.#api<GithubUserInstallationsDto | GithubApiError>(
-        `/user/installations?per_page=100&page=${page}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
-      if (!isGithubUserInstallationsDto(pageItems)) {
-        throw new Err("util.error.githubUserInstallationsListFailed", { reason: this.#formatApiError(pageItems) });
-      }
-
-      installations.push(...pageItems.installations);
-      if (pageItems.installations.length < 100) break;
-    }
-    const result = installations.map((installation) => ({
+    const installations = await this.#paginate("/user/installations", {
+      token: accessToken,
+      failure: "util.error.githubUserInstallationsListFailed",
+      itemsOf: (page: GithubUserInstallationsDto) => page.installations,
+    });
+    return installations.map((installation) => ({
       id: installation.id.toString(),
       accountLogin: installation.account?.login ?? "",
     }));
-    return result;
   }
 
   async getRepositoryInstallation({
@@ -229,39 +246,20 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     owner: string;
     repo: string;
   }): Promise<GithubInstallation | null> {
-    const appJwt = await this.#createAppJwt();
-    const result = await this.#api<GithubInstallationDto | GithubApiError>(`/repos/${owner}/${repo}/installation`, {
-      headers: { Authorization: `Bearer ${appJwt}` },
+    const installation = await this.#api<GithubInstallationDto, true>(`/repos/${owner}/${repo}/installation`, {
+      token: await this.#createAppJwt(),
+      allowNotFound: true,
     });
-    if (!isGithubInstallationDto(result)) return null;
-    return { id: result.id.toString(), accountLogin: result.account?.login ?? owner };
+    return installation ? { id: installation.id.toString(), accountLogin: installation.account?.login ?? owner } : null;
   }
 
-  async listRepositoryAppNames({
-    owner,
-    repo,
-    accessToken,
-    ref,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    ref?: string;
-  }) {
-    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
-    const contents = await this.#api<GithubContentDto[] | GithubApiError>(
-      `/repos/${owner}/${repo}/contents/apps${query}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
+  async listRepositoryAppNames({ owner, repo, accessToken, ref }: GithubRepoRef & { ref?: string }) {
+    const contents = await this.#api<GithubContentDto[] | GithubContentDto>(
+      `/repos/${owner}/${repo}/contents/apps${GithubApp.#refQuery(ref)}`,
+      { token: accessToken, failure: "util.error.githubRepositoryAppsListFailed" },
     );
-    if (!Array.isArray(contents)) {
-      const reason = this.#formatApiError(contents);
-      this.logger.error(
-        `[GithubApp] listRepositoryAppNames failed owner=${owner} repo=${repo} ref=${ref ?? "(default)"} reason=${reason} body=${JSON.stringify(contents)}`,
-      );
-      throw new Err("util.error.githubRepositoryAppsListFailed", { reason });
-    }
+    if (!Array.isArray(contents))
+      throw new Err("util.error.githubRepositoryAppsListFailed", { reason: `apps is a ${contents.type}` });
     return contents.filter((item) => item.type === "dir").map((item) => item.name);
   }
 
@@ -270,52 +268,23 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
    * which is fine at build time (the folder set is already known-good) but lets a non-Akan repository be
    * imported as a project that can never build.
    */
-  async listRepositoryAkanAppNames({
-    owner,
-    repo,
-    accessToken,
-    ref,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    ref?: string;
-  }) {
-    const appNames = await this.listRepositoryAppNames({ owner, repo, accessToken, ref });
+  async listRepositoryAkanAppNames({ ref, ...repoRef }: GithubRepoRef & { ref?: string }) {
+    const appNames = await this.listRepositoryAppNames({ ...repoRef, ref });
     const checked = await Promise.all(
       appNames.map(async (appName) => ({
         appName,
-        isAkanApp: await this.hasRepositoryFile({
-          owner,
-          repo,
-          accessToken,
-          ref,
-          path: `apps/${appName}/akan.config.ts`,
-        }),
+        isAkanApp: await this.hasRepositoryFile({ ...repoRef, ref, path: `apps/${appName}/akan.config.ts` }),
       })),
     );
     return checked.filter((item) => item.isAkanApp).map((item) => item.appName);
   }
 
-  async hasRepositoryFile({
-    owner,
-    repo,
-    accessToken,
-    path,
-    ref,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    path: string;
-    ref?: string;
-  }) {
-    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
-    const content = await this.#api<GithubContentDto | GithubApiError>(
-      `/repos/${owner}/${repo}/contents/${path}${query}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+  async hasRepositoryFile({ owner, repo, accessToken, path, ref }: GithubRepoRef & { path: string; ref?: string }) {
+    const content = await this.#api<GithubContentDto | GithubContentDto[], true>(
+      `/repos/${owner}/${repo}/contents/${path}${GithubApp.#refQuery(ref)}`,
+      { token: accessToken, allowNotFound: true },
     );
-    return (content as GithubContentDto).type === "file";
+    return !!content && !Array.isArray(content) && content.type === "file";
   }
 
   /**
@@ -329,61 +298,59 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     accessToken,
     path,
     ref,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    path: string;
-    ref?: string;
-  }): Promise<string | null> {
-    const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
-    const content = await this.#api<GithubContentDto | GithubApiError>(
-      `/repos/${owner}/${repo}/contents/${path}${query}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+  }: GithubRepoRef & { path: string; ref?: string }): Promise<string | null> {
+    const file = await this.#api<GithubContentDto | GithubContentDto[], true>(
+      `/repos/${owner}/${repo}/contents/${path}${GithubApp.#refQuery(ref)}`,
+      { token: accessToken, allowNotFound: true },
     );
-    const file = content as GithubContentDto;
-    if (file.type !== "file" || !file.content) return null;
+    if (!file || Array.isArray(file) || file.type !== "file" || !file.content) return null;
     if (file.encoding && file.encoding !== "base64") return null;
     return Buffer.from(file.content, "base64").toString("utf8");
   }
 
-  async registerWebhook({
-    owner,
-    repo,
-    accessToken,
-    webhookUrl,
-    webhookSecret,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    webhookUrl: string;
-    webhookSecret?: string;
-  }) {
-    const hook = await this.#api<GithubWebhookDto | GithubApiError>(`/repos/${owner}/${repo}/hooks`, {
+  /**
+   * Paths changed from `base` to `head`, renamed files under both names, or null when the answer would not be the
+   * whole difference: an unknown commit, a head that is not ahead of base (a force push or a revert to an older
+   * commit), or a full page of files, which is all the compare API ever lists and says nothing when it stops there.
+   */
+  async compareFiles({ owner, repo, accessToken, base, head }: GithubRepoRef & { base: string; head: string }) {
+    const comparison = await this.#api<GithubCompareDto, true>(
+      `/repos/${owner}/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
+      { token: accessToken, allowNotFound: true },
+    );
+    if (comparison?.status === "identical") return [];
+    if (comparison?.status !== "ahead" || !comparison.files) return null;
+    if (comparison.files.length >= GithubApp.#compareFilesLimit) return null;
+    return [
+      ...new Set(
+        comparison.files.flatMap((file) => [
+          file.filename,
+          ...(file.previous_filename ? [file.previous_filename] : []),
+        ]),
+      ),
+    ];
+  }
+
+  async registerWebhook({ owner, repo, accessToken, webhookUrl, webhookSecret }: GithubWebhookTarget) {
+    return await this.#api<GithubWebhookDto>(`/repos/${owner}/${repo}/hooks`, {
+      token: accessToken,
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         name: "web",
         active: true,
         events: ["push"],
         config: { url: webhookUrl, content_type: "json", secret: webhookSecret },
-      }),
+      },
+      failure: "util.error.githubWebhookRegisterFailed",
     });
-    // #api resolves the error body instead of throwing, so an unvalidated return reported a failed
-    // registration as a success.
-    if (typeof (hook as GithubWebhookDto).id !== "number")
-      throw new Err("util.error.githubWebhookRegisterFailed", { reason: this.#formatApiError(hook) });
-    return hook as GithubWebhookDto;
   }
 
-  async listWebhooks({ owner, repo, accessToken }: { owner: string; repo: string; accessToken: string }) {
-    const hooks = await this.#api<GithubWebhookDto[] | GithubApiError>(`/repos/${owner}/${repo}/hooks`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  async listWebhooks({ owner, repo, accessToken }: GithubRepoRef) {
+    return await this.#paginate(`/repos/${owner}/${repo}/hooks`, {
+      token: accessToken,
+      failure: "util.error.githubWebhookListFailed",
+      itemsOf: (page: GithubWebhookDto[]) => page,
     });
-    if (!Array.isArray(hooks))
-      throw new Err("util.error.githubWebhookListFailed", { reason: this.#formatApiError(hooks) });
-    return hooks;
   }
 
   async updateWebhookConfig({
@@ -393,24 +360,13 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     hookId,
     webhookUrl,
     webhookSecret,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    hookId: number;
-    webhookUrl: string;
-    webhookSecret?: string;
-  }) {
-    const config = await this.#api<{ url?: string } | GithubApiError>(
-      `/repos/${owner}/${repo}/hooks/${hookId}/config`,
-      {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ url: webhookUrl, content_type: "json", secret: webhookSecret }),
-      },
-    );
-    if ((config as { url?: string }).url !== webhookUrl)
-      throw new Err("util.error.githubWebhookUpdateFailed", { reason: this.#formatApiError(config) });
+  }: GithubWebhookTarget & { hookId: number }) {
+    await this.#api(`/repos/${owner}/${repo}/hooks/${hookId}/config`, {
+      token: accessToken,
+      method: "PATCH",
+      body: { url: webhookUrl, content_type: "json", secret: webhookSecret },
+      failure: "util.error.githubWebhookUpdateFailed",
+    });
   }
 
   /**
@@ -421,82 +377,21 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
    * An existing hook still gets its config rewritten: GitHub never returns a hook's secret, so the only way to
    * know it matches the one the receiver verifies with is to set it, and a rotated secret has no other way in.
    */
-  async ensureWebhook({
-    owner,
-    repo,
-    accessToken,
-    webhookUrl,
-    webhookSecret,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    webhookUrl: string;
-    webhookSecret?: string;
-  }): Promise<{ id: number; created: boolean }> {
-    const existing = (await this.listWebhooks({ owner, repo, accessToken })).find(
-      (hook) => hook.config?.url === webhookUrl,
-    );
+  async ensureWebhook(target: GithubWebhookTarget): Promise<{ id: number; created: boolean }> {
+    const existing = (await this.listWebhooks(target)).find((hook) => hook.config?.url === target.webhookUrl);
     if (existing) {
-      await this.updateWebhookConfig({ owner, repo, accessToken, hookId: existing.id, webhookUrl, webhookSecret });
+      await this.updateWebhookConfig({ ...target, hookId: existing.id });
       return { id: existing.id, created: false };
     }
-    const created = await this.registerWebhook({ owner, repo, accessToken, webhookUrl, webhookSecret });
+    const created = await this.registerWebhook(target);
     return { id: created.id, created: true };
   }
 
-  async hasWebhook({
-    owner,
-    repo,
-    accessToken,
-    webhookUrl,
-  }: {
-    owner: string;
-    repo: string;
-    accessToken: string;
-    webhookUrl: string;
-  }) {
-    const hooks = await this.listWebhooks({ owner, repo, accessToken });
+  async hasWebhook({ webhookUrl, ...repoRef }: GithubRepoRef & { webhookUrl: string }) {
+    const hooks = await this.listWebhooks(repoRef);
     return hooks.some((hook) => hook.config?.url === webhookUrl);
   }
 
-  async publishWorkspace({
-    id,
-    login,
-    accessToken,
-    repo,
-    projectPath,
-    branch = "main",
-    message,
-  }: {
-    id: string;
-    login: string;
-    accessToken: string;
-    repo: string;
-    projectPath: string;
-    branch?: string;
-    message?: string;
-  }) {
-    const authorEmail = `${id}+${login}@users.noreply.github.com`;
-    const commitMessage = message ?? `Deploy by ${login}`;
-    const projectPathArg = githubShellQuote(projectPath);
-    const remoteUrlArg = `"https://x-access-token:${accessToken}@github.com/${login}/${repo}.git"`;
-
-    await this.#execGit(`git -C ${projectPathArg} add .`);
-
-    const hasChanges = await this.#hasStagedChanges(projectPathArg);
-    if (hasChanges) {
-      await this.#execGit(
-        `git -C ${projectPathArg} -c user.name=${githubShellQuote(login)} -c user.email=${githubShellQuote(
-          authorEmail,
-        )} commit -m ${githubShellQuote(commitMessage)}`,
-      );
-    }
-
-    await this.#execGit(`git -C ${projectPathArg} push ${remoteUrlArg} HEAD:${githubShellQuote(branch)}`, {
-      GITHUB_TOKEN: accessToken,
-    });
-  }
   async getInstallationToken(owner: string, accessToken: string, { installationId }: { installationId?: string } = {}) {
     const installId = (await this.listUserInstallations(accessToken)).find(
       (item) => item.accountLogin.toLowerCase() === owner.toLowerCase(),
@@ -512,22 +407,6 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     }
 
     return undefined;
-  }
-
-  async #hasStagedChanges(projectPathArg: string) {
-    try {
-      await this.#execGit(`git -C ${projectPathArg} diff --cached --quiet`);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
-  async #execGit(command: string, env: Record<string, string> = {}) {
-    return await execAsync(command, {
-      env: { ...process.env, ...env },
-      maxBuffer: 1024 * 1024 * 10,
-    });
   }
 
   async #createAppJwt() {
@@ -554,23 +433,34 @@ export class GithubApp extends adapt("githubApp", ({ env }) => ({
     }) as string;
   }
 
-  #formatApiError(error: unknown) {
-    const apiError = error as GithubApiError;
-    const errors =
-      apiError.errors
-        ?.map((item) => [item.resource, item.field, item.code, item.message].filter(Boolean).join("/"))
-        .join(", ") ?? "";
-    return (
-      [apiError.message, errors, apiError.documentation_url].filter(Boolean).join(" - ") || "Unknown GitHub API error"
-    );
+  //? A token that came back wider than asked is refused rather than handed on. `metadata: read` rides on every App
+  //? token whatever was requested.
+  static #overGrant(grant: GithubInstallationGrantDto, { repositories, permissions }: GithubInstallationTokenScope) {
+    if (repositories && grant.repository_selection !== "selected")
+      return `token covers ${grant.repository_selection ?? "unknown"} repositories, not the ones requested`;
+    if (!permissions) return null;
+    if (!grant.permissions) return "token permissions are not reported";
+    const wider = Object.entries(grant.permissions).filter(([permission, level]) => {
+      if (permission === "metadata" && level === "read") return false;
+      const requested = permissions[permission];
+      return !requested || (requested === "read" && level !== "read");
+    });
+    return wider.length
+      ? `token grants more than requested: ${wider.map(([permission, level]) => `${permission}=${level}`).join(", ")}`
+      : null;
   }
 
-  #formatCreateRepositoryError(error: unknown) {
-    const message = this.#formatApiError(error);
-    const apiError = error as GithubApiError;
-    if (apiError.message === "Resource not accessible by integration") {
-      return `${message}. GitHub repository creation requires Repository Administration write permission. Update the GitHub App permissions and reconnect GitHub, or use a token that can create private repositories.`;
-    }
-    return message;
+  static #refQuery(ref?: string) {
+    return ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  }
+
+  static #describeFailure(request: string, status: number, body: unknown) {
+    const apiError = (body ?? {}) as GithubApiError;
+    const errors = apiError.errors
+      ?.map((item) => [item.resource, item.field, item.code, item.message].filter(Boolean).join("/"))
+      .join(", ");
+    return [`${request} -> ${status}`, apiError.message, errors, apiError.documentation_url]
+      .filter(Boolean)
+      .join(" - ");
   }
 }

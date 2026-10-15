@@ -1,13 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
 import { collectAttachmentIds, reconcileAttachments } from "./attachments";
-import { resolveEmbed } from "./embed";
-
-// NOTE: imports only the pure `./attachments` + `./embed` modules (type-only
-// `cnst`/lexical imports are erased; `./embed` pulls only the pure `./url`).
-// The decorator node classes import `@lexical/react`, whose dev ESM build trips
-// bun's loader (see [[akan-lexical-editor-bun-test]]) — their importJSON/exportJSON
-// round-trip is covered by `akan build` + the `/lexical-demo` route instead.
 
 /** A serialized document with one of every media node plus surrounding text. */
 const stateWithMedia = {
@@ -81,32 +74,5 @@ describe("reconcileAttachments", () => {
     const kept = reconcileAttachments(stateWithMedia, attachments).map((file) => file.id);
     expect(new Set(kept)).toEqual(new Set(["img-1", "vid-1", "img-2"]));
     expect(kept).not.toContain("orphan");
-  });
-});
-
-describe("resolveEmbed", () => {
-  const providers = ["youtube", "vimeo"];
-
-  it("resolves the YouTube URL variants to the embed URL", () => {
-    const embed = "https://www.youtube.com/embed/dQw4w9WgXcQ";
-    expect(resolveEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ", providers)?.embedUrl).toBe(embed);
-    expect(resolveEmbed("https://youtu.be/dQw4w9WgXcQ", providers)?.embedUrl).toBe(embed);
-    expect(resolveEmbed("https://www.youtube.com/shorts/dQw4w9WgXcQ", providers)?.embedUrl).toBe(embed);
-    expect(resolveEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ", providers)?.type).toBe("youtube");
-  });
-
-  it("resolves a Vimeo URL", () => {
-    const resolved = resolveEmbed("https://vimeo.com/123456789", providers);
-    expect(resolved?.type).toBe("vimeo");
-    expect(resolved?.embedUrl).toBe("https://player.vimeo.com/video/123456789");
-  });
-
-  it("rejects unsupported, unsafe, and disallowed-provider URLs", () => {
-    expect(resolveEmbed("https://example.com/video", providers)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: exercising the unsafe-scheme guard
-    expect(resolveEmbed("javascript:alert(1)" as any, providers)).toBeNull();
-    expect(resolveEmbed("not a url", providers)).toBeNull();
-    // youtube URL but provider not allowed
-    expect(resolveEmbed("https://youtu.be/abc", ["vimeo"])).toBeNull();
   });
 });

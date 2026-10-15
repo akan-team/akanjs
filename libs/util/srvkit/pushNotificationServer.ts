@@ -29,7 +29,15 @@ const multicastBatchSize = 500;
 const apnsConcurrency = 100;
 
 // FCM answers with one of these when the device has uninstalled the app or cleared its site data.
-const goneTokenCodes = ["messaging/registration-token-not-registered", "messaging/invalid-argument"];
+const goneTokenCodes = ["messaging/registration-token-not-registered", "messaging/invalid-registration-token"];
+
+// FCM v1 sends this for a bad token and a bad payload alike: only a batch that also succeeded blames the token.
+const ambiguousTokenCode = "messaging/invalid-argument";
+
+interface FcmSendResponse {
+  success: boolean;
+  error?: { code: string };
+}
 
 export interface PushNotificationServerOptions {
   // Android and the web.
@@ -49,6 +57,27 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
   apns: env((env: ModulesOptions) => env.pushNoti?.apns),
 })) {
   #apnsClient: ApnsClient | null = null;
+
+  static classifyFcmBatch(batch: string[], responses: FcmSendResponse[]) {
+    const isPayloadAccepted = responses.some(({ success }) => success);
+    const goneTokens: string[] = [];
+    const failureCounts = new Map<string, number>();
+    responses.forEach(({ error }, idx) => {
+      if (!error) return;
+      const token = batch[idx];
+      const isGone = goneTokenCodes.includes(error.code) || (isPayloadAccepted && error.code === ambiguousTokenCode);
+      if (token && isGone) goneTokens.push(token);
+      else failureCounts.set(error.code, (failureCounts.get(error.code) ?? 0) + 1);
+    });
+    return { goneTokens, failureCounts };
+  }
+
+  #warnFailures(provider: string, failureCounts: Map<string, number>, batchSize: number) {
+    if (!failureCounts.size) return;
+    const failedNum = [...failureCounts.values()].reduce((sum, count) => sum + count, 0);
+    const summary = [...failureCounts].map(([key, count]) => `${key} x${count}`).join(", ");
+    this.logger.warn(`${provider} push failed for ${failedNum}/${batchSize} tokens: ${summary}`);
+  }
 
   override async onInit() {
     if (this.apns) this.#apnsClient = new ApnsClient(this.apns);
@@ -143,13 +172,9 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
           .sendEachForMulticast({ ...payload, tokens: batch } as MulticastMessage);
         result.successCount += response.successCount;
         result.failureCount += response.failureCount;
-        response.responses.forEach((each, idx) => {
-          const code = each.error?.code;
-          if (!code) return;
-          const token = batch[idx];
-          if (token && goneTokenCodes.includes(code)) result.invalidTokens.push(token);
-          else this.logger.warn(`Push failed for a token: ${code}`);
-        });
+        const { goneTokens, failureCounts } = PushNotificationServer.classifyFcmBatch(batch, response.responses);
+        result.invalidTokens.push(...goneTokens);
+        this.#warnFailures("FCM", failureCounts, batch.length);
       } catch (error) {
         result.failureCount += batch.length;
         this.logger.error(`Error sending multicast push notification: ${error}`);
@@ -168,6 +193,7 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
     for (let offset = 0; offset < tokens.length; offset += apnsConcurrency) {
       const batch = tokens.slice(offset, offset + apnsConcurrency);
       const responses = await Promise.all(batch.map((token) => client.send(token, message)));
+      const failureCounts = new Map<string, number>();
       responses.forEach((response, idx) => {
         if (response.ok) {
           result.successCount += 1;
@@ -176,8 +202,12 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
         result.failureCount += 1;
         const token = batch[idx];
         if (token && ApnsClient.isGone(response)) result.invalidTokens.push(token);
-        else this.logger.warn(`APNs push failed for a token: ${response.status} ${response.reason}`);
+        else {
+          const key = `${response.status} ${response.reason}`;
+          failureCounts.set(key, (failureCounts.get(key) ?? 0) + 1);
+        }
       });
+      this.#warnFailures("APNs", failureCounts, batch.length);
     }
   }
 }

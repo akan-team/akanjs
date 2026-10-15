@@ -1,48 +1,71 @@
 "use client";
-import { usePage } from "@libs/util/client";
+import { msg, usePage } from "@libs/util/client";
 import { cn, Device } from "akanjs/client";
 import type { ProtoLightFile } from "akanjs/constant";
 import { BottomSheet, type BottomSheetRef, Image } from "akanjs/ui";
 import { useCamera } from "akanjs/webkit";
-import { type ChangeEvent, useRef, useState } from "react";
+import { Fragment, type ReactNode, useRef, useState } from "react";
 import { AiFillFileImage, AiFillFileText, AiOutlineDelete, AiOutlineLoading } from "react-icons/ai";
 import { GiFiles } from "react-icons/gi";
 import { TbDragDrop } from "react-icons/tb";
 
+import { formatBytes } from "../common/formatBytes";
+import { useFileDrop } from "../webkit/useFileDrop";
 import { CropImage, type CropRef } from "./CropImage";
 import { badgeRecipe, buttonRecipe, tableRecipe } from "./Recipe";
 
+const imageAccept = "image/jpeg, image/png, image/gif, image/webp, image/avif";
+
+const uploadStatusKeys = {
+  active: "util.uploadStatusActive",
+  uploading: "util.uploadStatusUploading",
+  failed: "util.uploadStatusFailed",
+} as const;
+
+const warnRejected = () => {
+  msg.warning("util.uploadTypeNotAllowed");
+};
+
+const readAsDataUrl = (file: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const fileFromDataUrl = async (dataUrl: string) => {
+  const blob = await (await fetch(dataUrl)).blob();
+  const extension = blob.type.split("/")[1] ?? "jpeg";
+  return new globalThis.File([blob], `photo-${Date.now()}.${extension}`, { type: blob.type });
+};
+
 interface UploadProps {
+  className?: string;
   onChange?: (fileList: FileList) => void;
   multiple?: boolean;
   accept?: string;
-  className?: string;
-  uploadClassName?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   disabled?: boolean;
 }
 
-export const Upload = ({ onChange, multiple, accept, className, uploadClassName, children, disabled }: UploadProps) => {
-  const inputFileRef = useRef<HTMLInputElement | null>(null);
-
-  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (fileList) onChange?.(fileList);
-  };
-
-  if (disabled) {
-    return <>{children}</>;
-  }
-
+export const Upload = ({ className, onChange, multiple, accept, children, disabled }: UploadProps) => {
+  const { inputRef, openPicker, onInputChange } = useFileDrop({
+    accept,
+    multiple,
+    disabled,
+    onFiles: (files) => onChange?.(files),
+  });
+  if (disabled) return <>{children}</>;
   return (
-    <div className={className} onClick={() => inputFileRef.current?.click()}>
+    <div className={className} onClick={openPicker}>
       <input
-        ref={inputFileRef}
+        ref={inputRef}
         type="file"
         accept={accept}
         multiple={multiple}
         className="hidden"
-        onChange={handleFileSelect}
+        onChange={onInputChange}
       />
       {children}
     </div>
@@ -50,123 +73,84 @@ export const Upload = ({ onChange, multiple, accept, className, uploadClassName,
 };
 
 interface FileProps {
-  multiple?: boolean;
-  file: ProtoLightFile | null;
-  render?: (file: ProtoLightFile) => React.ReactNode;
-  onChange?: (e: File | FileList) => void | Promise<void>;
-  onRemove?: (file: ProtoLightFile) => void;
-  children?: React.ReactNode;
-  disabled?: boolean;
-  maxCount?: number;
   className?: string;
   uploadClassName?: string;
+  file: ProtoLightFile | null;
+  render?: (file: ProtoLightFile) => ReactNode;
+  onChange?: (e: File | FileList) => void | Promise<void>;
+  onRemove?: (file: ProtoLightFile) => void;
+  disabled?: boolean;
   accept?: string;
 }
 
-export const File = ({
-  multiple,
-  file,
-  render,
-  onChange,
-  onRemove,
-  children,
-  disabled,
-  maxCount,
-  className,
-  uploadClassName,
-  accept,
-}: FileProps) => {
+export const File = ({ className, uploadClassName, file, render, onChange, onRemove, disabled, accept }: FileProps) => {
   const { l } = usePage();
-  const [isDragging, setIsDragging] = useState(false);
-  const inputFileRef = useRef<HTMLInputElement | null>(null);
   const isUploading = file?.status === "uploading";
-
-  const onFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    if (isUploading) return;
-    const files = e.target.files;
-    if (files) void onChange?.(files[0]);
-  };
+  const { isDragging, inputRef, openPicker, onInputChange, dropProps } = useFileDrop({
+    accept,
+    disabled: disabled || isUploading,
+    onFiles: (files) => {
+      const picked = files.item(0);
+      if (picked) void onChange?.(picked);
+    },
+    onReject: warnRejected,
+  });
 
   return (
     <div className={cn("relative flex flex-wrap gap-2", className)}>
-      <div
+      <input ref={inputRef} type="file" className="hidden" accept={accept} onChange={onInputChange} />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={openPicker}
+        {...dropProps}
         className={cn(
-          buttonRecipe({ variant: "default" }, "flex size-full flex-col items-center border-2 py-5"),
+          buttonRecipe({ variant: "default" }, "group relative flex size-full flex-col items-center border-2 py-5"),
           uploadClassName,
           isDragging && !isUploading && "border-2 border-success border-dashed",
           isUploading && "hover:bg-muted",
           file?.id && "bg-background",
         )}
       >
-        <button
-          className={cn("group w-full rounded-md")}
-          onClick={(e) => {
-            // e.preventDefault();
-            // e.stopPropagation();
-            inputFileRef.current?.click();
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(true);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(false);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(false);
-            if (isUploading) return;
-            const files = e.dataTransfer.files;
-            if (files.length > 0) void onChange?.(files[0]);
-          }}
-        >
-          <input
-            ref={inputFileRef}
-            type="file"
-            className="hidden"
-            accept={accept}
-            multiple={multiple}
-            onChange={onFileSelect}
-          />
-          {file?.id ? (
-            <div key={file.id} className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <AiFillFileText className="text-[75px]" />
-              <div>
-                <div className="text-sm">{file.filename}</div>
-              </div>
-            </div>
+        {file?.id ? (
+          render ? (
+            render(file)
           ) : (
-            <EmptyUpload
-              isDragging={isDragging}
-              type="file"
-              desc={l("util.uploadFileClick")}
-              dndDesc={l("util.uploadFileDrop")}
-            />
-          )}
-
-          <div
-            className={cn(
-              "absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center rounded-md backdrop-blur-lg duration-100",
-              !isUploading && "opacity-0",
-              isUploading && "opacity-100",
-            )}
-          >
+            <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <AiFillFileText className="text-[75px]" />
+              <div className="text-sm">{file.filename}</div>
+            </div>
+          )
+        ) : (
+          <EmptyUpload
+            isDragging={isDragging}
+            type="file"
+            desc={l("util.uploadFileClick")}
+            dndDesc={l("util.uploadFileDrop")}
+          />
+        )}
+        {isUploading ? (
+          <div className="absolute inset-0 flex items-center justify-center rounded-md backdrop-blur-lg">
             <div className="flex w-[30%] flex-col items-center justify-center gap-2">
               <AiOutlineLoading className="animate-spin text-info text-lg" />
-              <Progress value={file?.progress ? (file.status !== "uploading" ? 0 : file.progress) : 0} max={100} />
+              <Progress value={file.progress ?? 0} max={100} />
             </div>
           </div>
+        ) : null}
+      </button>
+      {file?.id && onRemove && !disabled && !isUploading ? (
+        <button
+          type="button"
+          aria-label={l("base.remove")}
+          className={buttonRecipe(
+            { size: "xs", variant: "destructive", shape: "square", outline: true },
+            "absolute top-2 right-2",
+          )}
+          onClick={() => onRemove(file)}
+        >
+          <AiOutlineDelete />
         </button>
-      </div>
+      ) : null}
     </div>
   );
 };
@@ -174,133 +158,99 @@ export const File = ({
 Upload.File = File;
 
 interface FileListProps {
-  multiple?: boolean;
-  fileList?: ProtoLightFile[];
-  render?: (file: ProtoLightFile) => React.ReactNode;
-  onChange?: (e: File | File[]) => void | Promise<void>;
-  onRemove?: (file: ProtoLightFile) => void;
-  children?: React.ReactNode;
-  disabled?: boolean;
-  maxCount?: number;
   className?: string;
   uploadClassName?: string;
+  multiple?: boolean;
+  fileList?: ProtoLightFile[];
+  render?: (file: ProtoLightFile) => ReactNode;
+  onChange?: (e: File | File[]) => void | Promise<void>;
+  onRemove?: (file: ProtoLightFile) => void;
+  disabled?: boolean;
+  maxCount?: number;
   accept?: string;
 }
 
 export const FileList = ({
+  className,
+  uploadClassName,
   multiple,
-  fileList,
+  fileList = [],
   render,
   onChange,
   onRemove,
-  children,
   disabled,
   maxCount,
-  className,
-  uploadClassName,
   accept,
 }: FileListProps) => {
   const { l } = usePage();
-  const inputFileRef = useRef<HTMLInputElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploading] = useState(false);
-
-  const onFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    if (isUploading) return;
-    const files = e.target.files;
-    if (!files) return;
-    if (files.length > 1) void onChange?.(files as unknown as File[]);
-    else {
-      void onChange?.(files[0]);
-    }
-  };
-
-  const formatSize = (size: number) => {
-    const newSize = size / 1000;
-    if (newSize < 1000) return `${newSize.toFixed(2)} Kb`;
-    else if (newSize < 1000 * 1000) return `${(newSize / 1000).toFixed(2)} Mb`;
-    else if (newSize < 1000 * 1000 * 1000) return `${(newSize / 1000 / 1000).toFixed(2)} Gb`;
-    else return `${(newSize / 1000 / 1000 / 1000).toFixed(2)} Tb`;
-  };
-
-  const onDrop = (e: React.DragEvent<HTMLTableElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (isUploading) return;
-    const files = e.dataTransfer.files;
-    if (files.length > 1) {
-      void onChange?.(files as unknown as File[]);
-    } else {
-      const file = files[0];
-      void onChange?.(file);
-    }
-  };
+  const remaining = maxCount === undefined ? undefined : Math.max(0, maxCount - fileList.length);
+  const canAdd = !disabled && remaining !== 0;
+  const { isDragging, inputRef, openPicker, onInputChange, dropProps } = useFileDrop({
+    accept,
+    multiple,
+    limit: remaining,
+    disabled: !canAdd,
+    onFiles: (files) => {
+      const first = files.item(0);
+      //? Several files stay a FileList: Field.Files tells a multi-pick apart with `instanceof FileList`.
+      if (files.length > 1) void onChange?.(files as unknown as File[]);
+      else if (first) void onChange?.(first);
+    },
+    onReject: warnRejected,
+  });
 
   return (
     <>
-      <div className={cn("relative flex size-full flex-wrap gap-2", className)}>
-        {fileList && fileList.length > 0 ? (
+      <div className={cn("relative flex size-full flex-wrap gap-2", className)} {...dropProps}>
+        {fileList.length > 0 ? (
           <div
             className={cn(
               "relative size-full rounded-md border-2 border-border duration-200",
-              isDragging && !isUploading && "border-2 border-success border-dashed",
+              isDragging && "border-2 border-success border-dashed",
             )}
           >
-            <div className={cn("relative size-full overflow-x-auto")}>
-              <table
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(true);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(false);
-                }}
-                onDrop={onDrop}
-                className={cn(tableRecipe({}, "size-full"))}
-              >
+            <div className="relative size-full overflow-x-auto">
+              <table className={tableRecipe({}, "size-full")}>
                 <tbody className="w-full rounded-md">
                   <tr className="w-full">
-                    <td className="w-[70%] font-semibold text-sm md:w-[50%] md:text-base">filename</td>
-                    <td className="text-center font-semibold text-sm md:text-base">size</td>
-                    <td className="text-center font-semibold text-sm md:text-base">status</td>
+                    <td className="w-[70%] font-semibold text-sm md:w-[50%] md:text-base">
+                      {l("util.uploadFileName")}
+                    </td>
+                    <td className="text-center font-semibold text-sm md:text-base">{l("util.uploadFileSize")}</td>
+                    <td className="text-center font-semibold text-sm md:text-base">{l("util.uploadFileStatus")}</td>
                     <td className="text-center font-semibold text-sm md:text-base">-</td>
                   </tr>
                   {fileList.map((file) => {
                     const isUploading = file.status === "uploading";
-                    // const isUploading = true;
+                    const statusKey = uploadStatusKeys[file.status as keyof typeof uploadStatusKeys];
                     return (
-                      <tr key={file.id} className={cn("", isUploading && "opacity-50", !isUploading && "opacity-100")}>
-                        <td className="w-[70%] truncate text-xs md:w-[50%] md:text-sm">{file.filename}</td>
-                        <td className="text-center text-xs md:text-sm">{formatSize(file.size)}</td>
+                      <tr key={file.id} className={cn(isUploading ? "opacity-50" : "opacity-100")}>
+                        <td className="w-[70%] truncate text-xs md:w-[50%] md:text-sm">
+                          {render ? render(file) : file.filename}
+                        </td>
+                        <td className="text-center text-xs md:text-sm">{formatBytes(file.size)}</td>
                         <td className="text-center align-middle text-xs md:text-sm">
-                          <div className={badgeRecipe({ variant: "info" })}>
-                            {file.status}
-                            <div
-                              className={cn("size-5 animate-spin", !isUploading && "hidden", isUploading && "block")}
-                            />
+                          <div className={badgeRecipe({ variant: "info" }, "gap-1")}>
+                            {statusKey ? l(statusKey) : file.status}
+                            {isUploading ? <AiOutlineLoading className="size-3 animate-spin" /> : null}
                           </div>
                         </td>
                         <td className="text-center align-middle text-sm">
-                          <div
-                            className={buttonRecipe({
-                              size: "xs",
-                              variant: "destructive",
-                              shape: "square",
-                              outline: true,
-                            })}
-                            onClick={() => onRemove?.(file)}
-                          >
-                            <AiOutlineDelete />
-                          </div>
+                          {onRemove && !disabled ? (
+                            <button
+                              type="button"
+                              aria-label={l("base.remove")}
+                              className={buttonRecipe({
+                                size: "xs",
+                                variant: "destructive",
+                                shape: "square",
+                                outline: true,
+                              })}
+                              onClick={() => onRemove(file)}
+                            >
+                              <AiOutlineDelete />
+                            </button>
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -308,44 +258,28 @@ export const FileList = ({
                 </tbody>
               </table>
             </div>
-            <div className="mx-2 border-border border-t-2 p-4">
-              <button
-                onClick={() => {
-                  inputFileRef.current?.click();
-                }}
-                className={buttonRecipe({ variant: "outline" }, "w-full px-2")}
-              >
-                {l("util.uploadFilesClick")}
-              </button>
-            </div>
+            {canAdd ? (
+              <div className="mx-2 border-border border-t-2 p-4">
+                <button
+                  type="button"
+                  onClick={openPicker}
+                  className={buttonRecipe({ variant: "outline" }, "w-full px-2")}
+                >
+                  {l("util.uploadFilesClick")}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
-          <div
+          <button
+            type="button"
+            disabled={!canAdd}
+            onClick={openPicker}
             className={cn(
               buttonRecipe({ variant: "default" }, "group flex size-full flex-col items-center border-2 py-5"),
               uploadClassName,
-              isDragging && !isUploading && "border-2 border-success border-dashed",
-              isUploading && "hover:bg-muted",
+              isDragging && "border-2 border-success border-dashed",
             )}
-            onClick={() => {
-              inputFileRef.current?.click();
-            }}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(true);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-            }}
-            onDrop={onDrop}
           >
             <EmptyUpload
               isDragging={isDragging}
@@ -353,16 +287,16 @@ export const FileList = ({
               desc={l("util.uploadFilesClick")}
               dndDesc={l("util.uploadFilesDrop")}
             />
-          </div>
+          </button>
         )}
       </div>
       <input
-        ref={inputFileRef}
+        ref={inputRef}
         type="file"
         className="hidden"
         accept={accept}
         multiple={multiple}
-        onChange={onFileSelect}
+        onChange={onInputChange}
       />
     </>
   );
@@ -371,65 +305,89 @@ export const FileList = ({
 Upload.FileList = FileList;
 
 interface UploadImageProps {
+  className?: string;
+  wrapperClassName?: string;
   type: "image" | "crop";
   protoFile: ProtoLightFile | null;
   styleType: "circle" | "square";
-  renderEmpty?: (onSelectImage: () => void) => React.ReactNode;
-  renderComplete?: (file: ProtoLightFile) => React.ReactNode;
+  renderEmpty?: () => ReactNode;
+  renderComplete?: (file: ProtoLightFile) => ReactNode;
   onSave: (file: File | FileList) => void | Promise<void>;
   onRemove: (file: File | FileList) => void;
-  className?: string;
-  wrapperClassName?: string;
-  children?: React.ReactNode;
   aspectRatio?: number[];
+  disabled?: boolean;
+  multiple?: boolean;
+  maxCount?: number;
 }
 
 const UploadImage = ({
-  children,
   className,
   wrapperClassName,
   type,
-  styleType,
   protoFile,
-  onSave,
-  onRemove,
+  styleType,
   renderEmpty,
   renderComplete,
+  onSave,
+  onRemove,
   aspectRatio,
+  disabled,
+  multiple,
+  maxCount,
 }: UploadImageProps) => {
+  const { l } = usePage();
   const { getPhoto } = useCamera();
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const bottomSheetRef = useRef<BottomSheetRef | null>(null);
   const cropImageRef = useRef<CropRef | null>(null);
   const [image, setImage] = useState<string>();
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isAccepted, setIsAccepted] = useState(false);
-  const accept = "image/jpeg, image/png, image/gif, image/webp, image/avif";
-  const { l } = usePage();
+  const [isSaving, setIsSaving] = useState(false);
+  const isUploading = protoFile?.status === "uploading";
+  const isMultiple = type === "image" && !!multiple;
+  const isLocked = !!disabled || isUploading || isSaving;
+  const roundedClassName = styleType === "circle" ? "rounded-full" : "rounded-md";
+  const { isDragging, inputRef, openPicker, onInputChange, dropProps } = useFileDrop({
+    accept: imageAccept,
+    multiple: isMultiple,
+    limit: maxCount,
+    disabled: isLocked,
+    onFiles: (files) => {
+      const first = files.item(0);
+      if (!first) return;
+      if (type === "crop") void readAsDataUrl(first).then(setImage);
+      else void onSave(isMultiple ? files : first);
+    },
+    onReject: warnRejected,
+  });
+
+  const onSelectImage = async () => {
+    if (isLocked) return;
+    const device = await Device.getDevice();
+    if (Object.keys(device.info).length === 0 || device.info.platform === "web") {
+      openPicker();
+      return;
+    }
+    const photo = await getPhoto();
+    if (!photo?.dataUrl) return;
+    if (type === "crop") setImage(photo.dataUrl);
+    else await onSave(await fileFromDataUrl(photo.dataUrl));
+  };
+
   const onCancel = () => {
     bottomSheetRef.current?.close();
     setImage(undefined);
   };
-  const onSelectImage = async () => {
-    const device = await Device.getDevice();
-    if (Object.keys(device.info).length === 0 || device.info.platform === "web") inputRef.current?.click();
-    else {
-      const photo = await getPhoto();
-      setImage(photo?.dataUrl);
-    }
-  };
 
-  const saveHandler = async () => {
-    setIsUploading(true);
-    const file = await cropImageRef.current?.getFileStream();
-    if (file) {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(file);
+  const onSaveCropped = async () => {
+    setIsSaving(true);
+    try {
+      const file = await cropImageRef.current?.getFileStream();
+      if (!file) return;
       bottomSheetRef.current?.close();
+      setImage(undefined);
       await onSave(file);
+    } finally {
+      setIsSaving(false);
     }
-    setIsUploading(false);
   };
 
   return (
@@ -437,108 +395,54 @@ const UploadImage = ({
       <div className={wrapperClassName}>
         <input
           ref={inputRef}
-          multiple={false}
-          accept={accept}
-          onChange={(e) => {
-            if (!e.target.files) return;
-            if (type === "image") void onSave(e.target.files[0]);
-            else {
-              const reader = new FileReader();
-              reader.readAsDataURL(e.target.files[0]);
-              reader.onload = () => {
-                setImage(reader.result as string);
-                e.target.value = "";
-              };
-            }
-          }}
-          className="hidden"
           type="file"
+          accept={imageAccept}
+          multiple={isMultiple}
+          className="hidden"
+          onChange={onInputChange}
         />
-        {protoFile && protoFile.status === "active" ? (
+        {protoFile?.status === "active" ? (
           renderComplete ? (
             renderComplete(protoFile)
           ) : (
-            <div
-              onClick={() => {
-                onRemove(protoFile as unknown as File);
-              }}
-              className={cn("group relative flex size-56", className)}
-            >
-              <Image
-                className={cn(
-                  "bg-background object-cover px-0",
-                  styleType === "circle" && "rounded-full",
-                  styleType === "square" && "rounded-md",
-                )}
-                file={protoFile}
-              />
-
-              <button
-                className={cn(
-                  "absolute flex size-full flex-wrap items-center justify-center opacity-0 backdrop-blur-lg group-hover:animate-fadeIn",
-                  styleType === "circle" && "rounded-full",
-                  styleType === "square" && "rounded-md",
-                )}
-              >
-                <AiOutlineDelete className="text-3xl text-primary/0 transition duration-300 group-hover:text-destructive" />
-              </button>
+            <div className={cn("group relative flex size-56", className)}>
+              <Image className={cn("bg-background object-cover px-0", roundedClassName)} file={protoFile} />
+              {disabled ? null : (
+                <button
+                  type="button"
+                  aria-label={l("base.remove")}
+                  onClick={() => onRemove(protoFile as unknown as File)}
+                  className={cn(
+                    "group/remove absolute flex size-full flex-wrap items-center justify-center opacity-0 backdrop-blur-lg focus-visible:opacity-100 group-hover:animate-fadeIn",
+                    roundedClassName,
+                  )}
+                >
+                  <AiOutlineDelete className="text-3xl text-primary/0 transition duration-300 group-hover:text-destructive group-focus-visible/remove:text-destructive" />
+                </button>
+              )}
             </div>
           )
         ) : (
           <div className="relative flex w-full">
             <button
-              className={cn(
-                "group aspect-1 size-56 bg-background px-0 duration-300",
-                styleType === "circle" && "rounded-full",
-                styleType === "square" && "rounded-md",
-                !isAccepted && "cursor-not-allowed",
-                className,
-              )}
+              type="button"
+              disabled={disabled}
+              onClick={() => void onSelectImage()}
+              {...dropProps}
+              className={cn("group aspect-1 size-56 bg-background px-0 duration-300", roundedClassName, className)}
             >
               <div
-                onClick={() => {
-                  void onSelectImage();
-                }}
-                onDragEnter={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(true);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDragging(false);
-                  if (isUploading) return;
-                  const files = e.dataTransfer.files;
-                  if (files.length > 0) {
-                    const file = files[0];
-                    if (accept.includes(file.type)) {
-                      void onSave(file);
-                    } else setIsAccepted(false);
-                  }
-                }}
                 className={cn(
                   buttonRecipe(
                     { variant: "default" },
                     "group relative flex size-full items-center justify-center md:text-lg",
                   ),
-                  styleType === "circle" && "rounded-full",
-                  styleType === "square" && "rounded-md",
+                  roundedClassName,
                   isDragging && "border-2 border-success border-dashed",
                 )}
               >
                 {renderEmpty ? (
-                  renderEmpty(onSelectImage)
+                  renderEmpty()
                 ) : (
                   <EmptyUpload
                     isDragging={isDragging}
@@ -547,13 +451,11 @@ const UploadImage = ({
                     dndDesc={l("util.uploadImageDrop")}
                   />
                 )}
-
-                {protoFile && protoFile.status === "uploading" ? (
+                {isUploading ? (
                   <div
                     className={cn(
                       "absolute top-0 left-0 z-[100] flex size-full flex-col items-center justify-center gap-2 bg-background/30 px-10 backdrop-blur-sm",
-                      styleType === "circle" && "rounded-full",
-                      styleType === "square" && "rounded-md",
+                      roundedClassName,
                     )}
                   >
                     <AiOutlineLoading className="animate-spin text-lg" />
@@ -566,26 +468,19 @@ const UploadImage = ({
         )}
       </div>
       {type === "crop" ? (
-        <BottomSheet
-          type="full"
-          ref={bottomSheetRef}
-          onCancel={() => {
-            setImage(undefined);
-          }}
-          open={!!image}
-        >
+        <BottomSheet type="full" ref={bottomSheetRef} onCancel={() => setImage(undefined)} open={!!image}>
           <CropImage aspectRatio={aspectRatio} ref={cropImageRef} src={image ?? ""} />
           <div className="flex w-full items-center justify-center gap-2">
-            <button className={buttonRecipe({ variant: "default" }, "w-full")} onClick={onCancel}>
-              취소
+            <button type="button" className={buttonRecipe({ variant: "default" }, "w-full")} onClick={onCancel}>
+              {l("base.cancel")}
             </button>
             <button
+              type="button"
+              disabled={isSaving}
               className={buttonRecipe({ variant: "primary" }, "w-full")}
-              onClick={() => {
-                void saveHandler();
-              }}
+              onClick={() => void onSaveCropped()}
             >
-              저장
+              {isSaving ? <AiOutlineLoading className="animate-spin" /> : l("base.save")}
             </button>
           </div>
         </BottomSheet>
@@ -599,37 +494,53 @@ Upload.Image = UploadImage;
 interface UploadImagesProps {
   multiple?: boolean;
   fileList?: ProtoLightFile[];
-
   disabled?: boolean;
+  maxCount?: number;
   styleType: "circle" | "square";
-  render?: (file: ProtoLightFile) => React.ReactNode;
+  render?: (file: ProtoLightFile) => ReactNode;
   onSave: (file: File | FileList) => void | Promise<void>;
   onRemove: (file: File | FileList) => void;
 }
 
-const UploadImages = ({ multiple, fileList, disabled, styleType, render, onSave, onRemove }: UploadImagesProps) => {
-  if (disabled) return null;
+const UploadImages = ({
+  multiple,
+  fileList = [],
+  disabled,
+  maxCount,
+  styleType,
+  render,
+  onSave,
+  onRemove,
+}: UploadImagesProps) => {
+  const remaining = maxCount === undefined ? undefined : Math.max(0, maxCount - fileList.length);
   return (
-    <div className="flex flex-wrap">
-      {!fileList ? (
-        <UploadImage onSave={onSave} onRemove={onRemove} type="image" styleType={styleType} protoFile={null} />
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {fileList.map((file) => {
-            return (
-              <Upload.Image
-                key={file.id}
-                onSave={onSave}
-                onRemove={onRemove}
-                type="image"
-                styleType={styleType}
-                protoFile={file}
-              />
-            );
-          })}
-          <UploadImage onSave={onSave} onRemove={onRemove} type="image" styleType={styleType} protoFile={null} />
-        </div>
+    <div className="flex flex-wrap gap-2">
+      {fileList.map((file) =>
+        render ? (
+          <Fragment key={file.id}>{render(file)}</Fragment>
+        ) : (
+          <UploadImage
+            key={file.id}
+            type="image"
+            styleType={styleType}
+            protoFile={file}
+            disabled={disabled}
+            onSave={onSave}
+            onRemove={onRemove}
+          />
+        ),
       )}
+      {!disabled && remaining !== 0 ? (
+        <UploadImage
+          type="image"
+          styleType={styleType}
+          protoFile={null}
+          multiple={multiple}
+          maxCount={remaining}
+          onSave={onSave}
+          onRemove={onRemove}
+        />
+      ) : null}
     </div>
   );
 };

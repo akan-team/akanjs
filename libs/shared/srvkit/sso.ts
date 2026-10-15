@@ -1,58 +1,21 @@
-import type { Guard, GuardScope, SignalContext } from "akanjs/signal";
-import { assertSsoConfigured } from "./ssoHelper";
+import type { option as utilOption } from "@libs/util/server";
+import type { Guard, GuardScope } from "akanjs/signal";
+import { SsoProvider } from "./ssoProvider";
 
-// ─── Guard Classes ────────────────────────────────────────────────────
+// Without it, a sign-in starts against a provider this app holds no credentials for and fails at the provider.
+const ssoGuardOf = (type: utilOption.SSOType, name: string) =>
+  class implements Guard {
+    static name = name;
+    static scope: GuardScope = "account";
+    canPass(): boolean {
+      SsoProvider.assertConfigured(type);
+      return true;
+    }
+  };
 
-export class SSOKakao implements Guard {
-  static name = "SSOKakao";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("kakao");
-    return true;
-  }
-}
-
-export class SSONaver implements Guard {
-  static name = "SSONaver";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("naver");
-    return true;
-  }
-}
-
-export class SSOGithub implements Guard {
-  static name = "SSOGithub";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("github");
-    return true;
-  }
-}
-
-export class SSOGoogle implements Guard {
-  static name = "SSOGoogle";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("google");
-    return true;
-  }
-}
-
-export class SSOFacebook implements Guard {
-  static name = "SSOFacebook";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("facebook");
-    return true;
-  }
-}
-
-export class SSOApple implements Guard {
-  static name = "SSOApple";
-  static scope: GuardScope = "account";
-  canPass(context: SignalContext): boolean {
-    assertSsoConfigured("apple");
-    return true;
-  }
-}
+export const SSOKakao = ssoGuardOf("kakao", "SSOKakao");
+export const SSONaver = ssoGuardOf("naver", "SSONaver");
+export const SSOGithub = ssoGuardOf("github", "SSOGithub");
+export const SSOGoogle = ssoGuardOf("google", "SSOGoogle");
+export const SSOFacebook = ssoGuardOf("facebook", "SSOFacebook");
+export const SSOApple = ssoGuardOf("apple", "SSOApple");

@@ -1,92 +1,57 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import { $findMatchingParent } from "@lexical/utils";
+import { usePage } from "@libs/shared/client";
 import { cn } from "akanjs/client";
-import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
-import { $getSelection, $isRangeSelection, COMMAND_PRIORITY_LOW, SELECTION_CHANGE_COMMAND } from "lexical";
-import { useCallback, useEffect, useState } from "react";
+import { $getSelection, $isRangeSelection } from "lexical";
 import { createPortal } from "react-dom";
 
 import { $isCalloutNode, type CalloutVariant } from "../nodes/calloutNode.util";
 import { updateNodeByKey } from "../nodes/shared.util";
+import { editorOverlayLayer, useSelectionAnchor } from "../selectionAnchor";
 import type { CalloutPickerState } from "./calloutPlugin.type";
 
-/** The 5 callout variants as color swatches for the floating picker. */
-const VARIANT_SWATCHES: { key: CalloutVariant; className: string; title: string }[] = [
-  { key: "default", className: "bg-foreground/40", title: "Default" },
-  { key: "info", className: "bg-info", title: "Info" },
-  { key: "success", className: "bg-success", title: "Success" },
-  { key: "warning", className: "bg-warning", title: "Warning" },
-  { key: "error", className: "bg-destructive", title: "Error" },
-];
+const variantSwatches = [
+  { key: "default", className: "bg-foreground/40", title: "shared.editor-calloutDefault" },
+  { key: "info", className: "bg-info", title: "shared.editor-calloutInfo" },
+  { key: "success", className: "bg-success", title: "shared.editor-calloutSuccess" },
+  { key: "warning", className: "bg-warning", title: "shared.editor-calloutWarning" },
+  { key: "error", className: "bg-destructive", title: "shared.editor-calloutError" },
+] as const satisfies readonly { key: CalloutVariant; className: string; title: string }[];
 
 /**
  * Shows a small variant picker anchored to the callout the caret is inside, so
- * a callout can be recolored across all 5 variants after insertion. Follows the
- * same selection-driven, overlay-portaled pattern as `FloatingToolbarPlugin`.
+ * a callout can be recolored across all 5 variants after insertion.
  */
 export const CalloutPlugin = () => {
   const [editor] = useLexicalComposerContext();
-  const portal = useOverlayPortal();
-  const [state, setState] = useState<CalloutPickerState | null>(null);
+  const { l } = usePage();
+  const state = useSelectionAnchor<CalloutPickerState>(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return null;
+    const callout = $findMatchingParent(selection.anchor.getNode(), $isCalloutNode);
+    if (!$isCalloutNode(callout)) return null;
+    const dom = editor.getElementByKey(callout.getKey());
+    return dom ? { rect: dom.getBoundingClientRect(), nodeKey: callout.getKey(), variant: callout.getVariant() } : null;
+  });
 
-  const refresh = useCallback(() => {
-    editor.getEditorState().read(() => {
-      const selection = $getSelection();
-      if (!$isRangeSelection(selection)) return setState(null);
-      const callout = $findMatchingParent(selection.anchor.getNode(), $isCalloutNode);
-      if (!$isCalloutNode(callout)) return setState(null);
-      const dom = editor.getElementByKey(callout.getKey());
-      if (!dom) return setState(null);
-      setState({ rect: dom.getBoundingClientRect(), nodeKey: callout.getKey(), variant: callout.getVariant() });
-    });
-  }, [editor]);
-
-  useEffect(() => {
-    return mergeRegister(
-      editor.registerUpdateListener(() => refresh()),
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          refresh();
-          return false;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-    );
-  }, [editor, refresh]);
-
-  useEffect(() => {
-    if (!state) return;
-    const onViewportChange = () => refresh();
-    window.addEventListener("scroll", onViewportChange, true);
-    window.addEventListener("resize", onViewportChange);
-    return () => {
-      window.removeEventListener("scroll", onViewportChange, true);
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [state, refresh]);
-
-  if (!state || !portal) return null;
+  if (!state) return null;
 
   return createPortal(
     <div
-      style={{
-        position: "fixed",
-        top: state.rect.top + 6,
-        left: state.rect.right - 8,
-        transform: "translateX(-100%)",
-        zIndex: overlayZ.select,
-      }}
-      className="flex items-center gap-1 rounded-md border border-foreground/15 bg-background p-1 shadow-lg"
+      style={{ top: state.rect.top + 6, left: state.rect.right - 8, transform: "translateX(-100%)" }}
+      className={cn(
+        "fixed flex items-center gap-1 rounded-md border border-foreground/15 bg-background p-1 shadow-lg",
+        editorOverlayLayer,
+      )}
       onMouseDown={(event) => event.preventDefault()}
     >
-      {VARIANT_SWATCHES.map((swatch) => (
+      {variantSwatches.map((swatch) => (
         <button
           key={swatch.key}
           type="button"
-          title={swatch.title}
-          aria-label={`Callout: ${swatch.title}`}
+          title={l(swatch.title)}
+          aria-label={l("shared.editor-calloutVariant", { variant: l(swatch.title) })}
           className={cn(
             "h-4 w-4 rounded-full transition-transform hover:scale-110",
             swatch.className,
@@ -100,6 +65,6 @@ export const CalloutPlugin = () => {
         />
       ))}
     </div>,
-    portal,
+    document.body,
   );
 };

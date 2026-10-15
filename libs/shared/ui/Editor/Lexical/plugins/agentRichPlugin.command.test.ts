@@ -13,7 +13,7 @@ import { $spliceRichBlocks, type RichBlockOp } from "./agentRichPlugin.command";
 import { richBlocksOf } from "./agentRichPlugin.util";
 
 // `lexical` core plus `@lexical/table` only. The plugin's own markdown conversion cannot be reached from a
-// test: `AKAN_TRANSFORMERS` imports MermaidNode, which reaches `@libs/util/ui` and builds the util store,
+// test: `akanTransformers` imports MermaidNode, which reaches `@libs/util/ui` and builds the util store,
 // which demands AKAN_PUBLIC_* at import time — which is why the splice takes nodes rather than markdown.
 const makeEditor = () =>
   createEditor({
@@ -61,6 +61,13 @@ describe("$spliceRichBlocks", () => {
     const editor = makeEditor();
     seed(editor, ["one", "three"]);
     splice(editor, "insert", 1, ["two"]);
+    expect(textsOf(editor)).toEqual(["one", "two", "three"]);
+  });
+
+  it("inserts at the end when the index is the block count", () => {
+    const editor = makeEditor();
+    seed(editor, ["one", "two"]);
+    splice(editor, "insert", 2, ["three"]);
     expect(textsOf(editor)).toEqual(["one", "two", "three"]);
   });
 

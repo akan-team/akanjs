@@ -1,15 +1,15 @@
+const shortUnits = ["", "k", "m", "b", "t"] as const;
+
+const fractionDigitsOf = (value: number) => (Math.abs(value) < 10 ? 2 : Math.abs(value) < 100 ? 1 : 0);
+
 export const shortenUnit = (num: number): string => {
-  if (num < 1000) return num.toString();
-  else if (num < 10000) return `${(num / 1000).toFixed(2)}k`;
-  else if (num < 100000) return `${(num / 1000).toFixed(1)}k`;
-  else if (num < 1000000) return `${(num / 1000).toString()}k`;
-  else if (num < 10000000) return `${(num / 1000000).toFixed(2)}m`;
-  else if (num < 100000000) return `${(num / 1000000).toFixed(1)}m`;
-  else if (num < 1000000000) return `${(num / 1000000).toString()}m`;
-  else if (num < 10000000000) return `${(num / 1000000000).toFixed(2)}b`;
-  else if (num < 100000000000) return `${(num / 1000000000).toFixed(1)}b`;
-  else if (num < 1000000000000) return `${(num / 1000000000).toString()}b`;
-  else if (num < 10000000000000) return `${(num / 1000000000000).toFixed(2)}t`;
-  else if (num < 100000000000000) return `${(num / 1000000000000).toFixed(1)}t`;
-  else return `${(num / 1000000000000).toString()}t`;
+  if (Math.abs(num) < 1000) return num.toString();
+  let unitIdx = 0;
+  while (unitIdx < shortUnits.length - 1 && Math.abs(num) >= 1000 ** (unitIdx + 1)) unitIdx += 1;
+  for (; ; unitIdx += 1) {
+    const scaled = num / 1000 ** unitIdx;
+    const rounded = Number(scaled.toFixed(fractionDigitsOf(scaled)));
+    if (Math.abs(rounded) >= 1000 && unitIdx < shortUnits.length - 1) continue;
+    return `${scaled.toFixed(fractionDigitsOf(rounded))}${shortUnits[unitIdx]}`;
+  }
 };

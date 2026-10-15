@@ -77,6 +77,15 @@ const openDeepLink = async (url) => {
   });
 };
 
+// Registered before the SDK's own listener, which stops propagation and opens only fcmOptions.link, never set here.
+self.addEventListener("notificationclick", (event) => {
+  event.notification?.close();
+  const url = event.notification?.data?.url || event.notification?.data?.FCM_MSG?.data?.url;
+  if (!url) return;
+  event.stopImmediatePropagation();
+  event.waitUntil(openDeepLink(url));
+});
+
 if (firebaseConfig) {
   importScripts("https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-app-compat.js");
   importScripts("https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-messaging-compat.js");
@@ -102,12 +111,5 @@ if (firebaseConfig) {
     });
   });
 }
-
-self.addEventListener("notificationclick", (event) => {
-  const url = event.notification?.data?.url || event.notification?.data?.FCM_MSG?.data?.url;
-  event.notification?.close();
-  if (!url) return;
-  event.waitUntil(openDeepLink(url));
-});
 `;
 }

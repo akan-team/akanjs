@@ -5,12 +5,11 @@ import { Image } from "akanjs/ui";
 interface GeneralProps {
   className?: string;
   banner: cnst.Banner;
-  self?: { id?: string } | null;
 }
 
-export const General = ({ className, banner, self }: GeneralProps) => {
+export const General = ({ className, banner }: GeneralProps) => {
   return (
-    <div className={cn(className, `w-full animate-fadeIn`)}>
+    <div className={cn("w-full animate-fadeIn", className)}>
       <div>{banner.title}</div>
       <div>{banner.content}</div>
       <Image file={banner.image} />

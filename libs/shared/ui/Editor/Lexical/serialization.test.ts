@@ -7,6 +7,9 @@ import {
   createEditor,
   type Klass,
   type LexicalNode,
+  type ParagraphNode,
+  type SerializedEditorState,
+  type TextNode,
 } from "lexical";
 
 import { isSerializedEditorState } from "./softGuard";
@@ -90,9 +93,7 @@ describe("Lexical serialization", () => {
     const formats = restored.read(() =>
       $getRoot()
         .getChildren()
-        .map((block) =>
-          $isElementNode(block) ? (block.getFirstChild() as ReturnType<typeof $createTextNode>).getFormat() : 0,
-        ),
+        .map((block) => ($isElementNode(block) ? (block.getFirstChild<TextNode>()?.getFormat() ?? 0) : 0)),
     );
     expect(formats.every((f) => f > 0)).toBe(true);
     expect(new Set(formats).size).toBe(marks.length);
@@ -136,10 +137,9 @@ describe("mention node", () => {
     const json2 = editor.parseEditorState(json1).toJSON();
     expect(json2).toEqual(json1);
 
-    const chip = editor.parseEditorState(json1).read(() => {
-      const paragraph = $getRoot().getFirstChild();
-      return $isElementNode(paragraph) ? paragraph.getLastChild()?.exportJSON() : undefined;
-    }) as Record<string, unknown>;
+    const chip = editor
+      .parseEditorState(json1)
+      .read(() => $getRoot().getFirstChild<ParagraphNode>()?.getLastChild()?.exportJSON()) as Record<string, unknown>;
     expect(chip).toMatchObject({
       type: "akan-mention",
       refName: "admin",
@@ -189,7 +189,7 @@ describe("mention node", () => {
         ],
       },
     };
-    const restored = editor.parseEditorState(legacy);
+    const restored = editor.parseEditorState(legacy as unknown as SerializedEditorState);
     expect(restored.read(() => $getRoot().getTextContent())).toBe("kangmin");
   });
 });

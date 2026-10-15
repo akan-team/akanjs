@@ -1,6 +1,7 @@
 import { dayjs } from "akanjs/base";
 
 import { Err } from "../lib/dict";
+import { RevokedSessions } from "./revokedSessions";
 
 interface RefreshSessionCache {
   get(namespace: string, key: string): Promise<unknown>;
@@ -132,6 +133,9 @@ export const listRefreshSessions = async (
  * from the first rotation, so it cannot be kept open by re-presenting.
  */
 export const refreshRotationGraceMs = 30_000;
+// One browser can still race itself (no Web Locks, a lost response); a few seconds of grace answers the second request
+// with a sibling session instead of reading it as theft and signing the account out everywhere.
+export const browserRefreshGraceMs = 10_000;
 
 export interface RotateRefreshSessionOptions {
   graceMs?: number;
@@ -204,6 +208,7 @@ export const revokeRefreshSessionBySid = async (
       await setSession(cache, { ...session, revokedAt: dayjs().toISOString() });
     }),
   );
+  await RevokedSessions.markRevoked([sessionId]);
 };
 
 export const revokeRefreshSessions = async (
@@ -212,11 +217,14 @@ export const revokeRefreshSessions = async (
   subjectId: string,
 ) => {
   const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
+  const revokedIds = new Set<string>();
   await Promise.all(
     sessionHashes.map(async (sessionHash) => {
       const session = await getSession(cache, sessionHash);
       if (!session || session.revokedAt) return;
       await setSession(cache, { ...session, revokedAt: dayjs().toISOString() });
+      revokedIds.add(session.id);
     }),
   );
+  await RevokedSessions.markRevoked([...revokedIds]);
 };

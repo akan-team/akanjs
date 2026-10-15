@@ -2,6 +2,7 @@ import { RichContentShape } from "./richContentShape";
 import { RichInlineWriter, type WritableNode } from "./richInlineWriter";
 import { RichMarkdownReader } from "./richMarkdownReader";
 import { RichMarkdownTable } from "./richMarkdownTable";
+import { RichNode } from "./richNode";
 
 interface BlockNode extends WritableNode {
   children?: BlockNode[];
@@ -29,7 +30,7 @@ export class RichMarkdownWriter {
   static write(content: unknown): string {
     if (typeof content === "string") return content;
     const root = (content as { root?: { children?: unknown } } | null | undefined)?.root;
-    const blocks = Array.isArray(root?.children) ? (root.children as BlockNode[]) : null;
+    const blocks = Array.isArray(root?.children) ? (root.children.filter(RichNode.isNode) as BlockNode[]) : null;
     if (!blocks?.length) return "";
     if (blocks.length === 1 && blocks[0].type === "paragraph" && !blocks[0].children?.length) return "";
     const markdown = blocks
@@ -37,9 +38,22 @@ export class RichMarkdownWriter {
         (block, idx) => `${RichMarkdownWriter.#separator(blocks[idx - 1], block)}${RichMarkdownWriter.#block(block)}`,
       )
       .join("\n\n");
-    const reread = (RichMarkdownReader.read(markdown).root as { children: unknown[] }).children;
-    if (RichContentShape.same(reread, blocks)) return markdown;
-    return blocks.map(RichMarkdownWriter.#island).join("\n\n");
+    if (RichMarkdownWriter.#rereads(markdown, blocks)) return markdown;
+    return blocks
+      .map(RichMarkdownWriter.#island)
+      .filter((island) => island)
+      .join("\n\n");
+  }
+
+  static #rereads(markdown: string, blocks: unknown[]) {
+    try {
+      return RichContentShape.same(
+        (RichMarkdownReader.read(markdown).root as { children: unknown[] }).children,
+        blocks,
+      );
+    } catch {
+      return false;
+    }
   }
 
   // A list after a list reads back as its continuation — merged into it, or nested under it when it opens indented.
@@ -48,15 +62,24 @@ export class RichMarkdownWriter {
   }
 
   static #block(block: BlockNode) {
-    const lossless = RichMarkdownWriter.#formsOf(block).find((markdown) => {
-      const reread = (RichMarkdownReader.read(markdown).root as { children: unknown[] }).children;
-      return RichContentShape.same(reread, [block]);
-    });
-    return lossless ?? RichMarkdownWriter.#island(block);
+    return RichMarkdownWriter.#losslessFormOf(block) ?? RichMarkdownWriter.#island(block);
+  }
+
+  // A node that throws on the way — a null grandchild, a child that is no array — costs only its own block.
+  static #losslessFormOf(block: BlockNode) {
+    try {
+      return RichMarkdownWriter.#formsOf(block).find((markdown) => RichMarkdownWriter.#rereads(markdown, [block]));
+    } catch {
+      return undefined;
+    }
   }
 
   static #island(block: BlockNode) {
-    return `\`\`\`${RichMarkdownReader.islandFence}\n${JSON.stringify(block)}\n\`\`\``;
+    try {
+      return `\`\`\`${RichMarkdownReader.islandFence}\n${JSON.stringify(block)}\n\`\`\``;
+    } catch {
+      return "";
+    }
   }
 
   /** Candidate markdown for a block, simplest first; none means the block has no markdown form at all. */

@@ -31,6 +31,7 @@ const serviceOn = (cache: CacheDatabase) => {
   Object.defineProperty(userModel, "getActiveUser", { value: async () => user });
   const service = new UserService();
   Object.defineProperty(service, "userModel", { value: userModel });
+  Object.defineProperty(service, "getUser", { value: async () => user });
   Object.defineProperty(service, "securityService", {
     value: {
       createRefreshToken: () => {
@@ -117,6 +118,20 @@ describe("UserService push devices", () => {
       },
     });
     Object.defineProperty(userModel, "revokeRefreshSession", { value: async () => true });
+    const locks = new Map<string, string>();
+    Object.defineProperty(userModel, "userCache", {
+      value: {
+        setIfAbsent: async (_topic: string, key: string, value: string) => {
+          if (locks.has(key)) return false;
+          locks.set(key, value);
+          return true;
+        },
+        get: async (_topic: string, key: string) => locks.get(key),
+        delete: async (_topic: string, key: string) => {
+          locks.delete(key);
+        },
+      },
+    });
     const service = new UserService();
     Object.defineProperty(service, "userModel", { value: userModel });
     Object.defineProperty(service, "getUser", { value: async () => user });
@@ -128,6 +143,15 @@ describe("UserService push devices", () => {
     const { service, tokensOf } = pushServiceOn([deviceOf("old", "phone"), deviceOf("tablet-token", "tablet")]);
     await service.addNotiDeviceTokenOfUser(user.id, deviceOf("new", "phone"));
     expect(await tokensOf()).toEqual(["tablet-token", "new"]);
+  });
+
+  test("two devices registering at once both stay registered", async () => {
+    const { service, tokensOf } = pushServiceOn([]);
+    await Promise.all([
+      service.addNotiDeviceTokenOfUser(user.id, deviceOf("phone-token", "phone")),
+      service.addNotiDeviceTokenOfUser(user.id, deviceOf("tablet-token", "tablet")),
+    ]);
+    expect((await tokensOf()).sort()).toEqual(["phone-token", "tablet-token"]);
   });
 
   test("a stored token with no provider, from before tokens carried one, is dropped on read", async () => {
@@ -164,7 +188,10 @@ describe("UserService native SSO handoff", () => {
       value: async (accountId: string) => (accountId === knownAccountId ? user.id : null),
     });
     Object.defineProperty(userModel, "getActiveUserBySso", { value: async () => user });
-    Object.defineProperty(userModel, "generatePrepareUser", {
+    Object.defineProperty(userModel, "createPrepareUser", {
+      value: async () => ({ id: prepareUserId, nickname: "" }),
+    });
+    Object.defineProperty(userModel, "getPrepareUser", {
       value: async () => ({ id: prepareUserId, nickname: "" }),
     });
     Object.defineProperty(userModel, "setSsoInPrepareUser", {
@@ -180,6 +207,8 @@ describe("UserService native SSO handoff", () => {
     });
     const service = new UserService();
     Object.defineProperty(service, "userModel", { value: userModel });
+    Object.defineProperty(service, "issueSignupToken", { value: async () => "signup-token" });
+    Object.defineProperty(service, "summaryService", { value: { incValue: async () => true } });
     Object.defineProperty(service, "nativeSsoPolicy", { value: { callbackSchemes: ["angelo"] } });
     Object.defineProperty(service, "ssoStarts", { value: memoryMap() });
     Object.defineProperty(service, "ssoCodes", { value: memoryMap() });
@@ -253,6 +282,7 @@ describe("UserService native SSO handoff", () => {
     const verifier = createOpaqueToken();
     const signin = await service.exchangeNativeSsoCode(codeOf(await handOff(service, verifier)), verifier);
     expect(signin.prepareUserId).toBe(prepareUserId);
+    expect(signin.signupToken).toBeTruthy();
     expect(signin.jwt).toBeFalsy();
     expect(prepared).toEqual({ accountId: "ann@example.com", nickname: "Ann" });
   });

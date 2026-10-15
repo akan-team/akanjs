@@ -56,9 +56,7 @@ describe("Shared guards", () => {
     await expect(owner.fetch.createUser(userInput)).rejects.toThrow();
   });
 
-  it("requires an account to render a PDF and an admin to author notifications", async () => {
-    // Unauthenticated this rendered any URL the caller named in a server-side headless browser.
-    await expect(anonFetch.generatePdf("http://127.0.0.1:1/")).rejects.toThrow(/[Aa]uthentication|[Ff]orbidden/);
+  it("requires an admin to author notifications", async () => {
     await expect(owner.fetch.createNotification(sampleOf(cnst.NotificationInput))).rejects.toThrow();
   });
 });

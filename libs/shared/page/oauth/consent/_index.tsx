@@ -5,9 +5,8 @@ import { buttonRecipe } from "akanjs/ui";
 
 export default page()
   .search("request", String, { desc: "The request of this screen." })
-  .render(async ({ request: requestQuery }) => {
+  .render(async ({ request: requestId }) => {
     const { l } = usePage();
-    const requestId = requestQuery;
     const request = requestId ? await fetch.viewOAuthAuthorizationRequest(requestId).catch(() => null) : null;
     const decisionAction = (decision: "approveOAuthConsent" | "denyOAuthConsent") =>
       `${getApiPrefix()}/${decision}/${requestId ?? ""}`;
@@ -19,7 +18,7 @@ export default page()
             <dl className="grid gap-4 rounded-lg border border-border bg-card p-5 text-sm">
               <div className="grid gap-1">
                 <dt className="text-foreground/60">{l("oauth.consentClient")}</dt>
-                <dd className="font-medium text-foreground">{request.clientName ?? request.clientId}</dd>
+                <dd className="font-medium text-foreground">{request.clientName || request.clientId}</dd>
               </div>
               <div className="grid gap-1">
                 <dt className="text-foreground/60">{l("oauth.consentRedirect")}</dt>

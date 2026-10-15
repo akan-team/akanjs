@@ -2,22 +2,19 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, useBasicTypeaheadTriggerMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { mergeRegister } from "@lexical/utils";
+import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
 import { resolveServerUrl } from "akanjs/client";
 import { $getSelection, $setSelection, type BaseSelection, COMMAND_PRIORITY_EDITOR, type TextNode } from "lexical";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MentionCandidate, MentionSource } from "../mention.type";
+import { rememberMention } from "../mentionCache";
 import { $insertMention } from "../nodes/mentionNode.util";
 import { useLocalOnlyTrigger } from "../typeaheadTrigger";
 import { OPEN_MENTION_PICKER_COMMAND, SET_MENTION_SOURCE_COMMAND } from "./mentionPlugin.command";
 import { MentionOption } from "./mentionPlugin.option";
-import {
-  MENTION_SEARCH_DEBOUNCE_MS,
-  MENTION_TRIGGER,
-  searchMentionSources,
-  toMentionPayload,
-} from "./mentionPlugin.util";
+import { mentionSearchDebounceMs, mentionTrigger, searchMentionSources, toMentionPayload } from "./mentionPlugin.util";
 
 interface MentionPluginProps {
   sources: readonly MentionSource[];
@@ -44,7 +41,7 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
   // The caret is lost while a picker dialog holds focus, so it is captured on open.
   const pickerSelection = useRef<BaseSelection | null>(null);
 
-  const triggerFn = useLocalOnlyTrigger(useBasicTypeaheadTriggerMatch(MENTION_TRIGGER, { minLength: 0 }));
+  const triggerFn = useLocalOnlyTrigger(useBasicTypeaheadTriggerMatch(mentionTrigger, { minLength: 0 }));
 
   const scopedSources = useMemo(
     () => (scopedRefName ? sources.filter((source) => source.refName === scopedRefName) : sources),
@@ -90,7 +87,7 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
         setOptions(matches.map((match) => new MentionOption(match.source, match.candidate)));
         setIsSearching(false);
       });
-    }, MENTION_SEARCH_DEBOUNCE_MS);
+    }, mentionSearchDebounceMs);
     return () => {
       controller.abort();
       clearTimeout(timer);
@@ -99,22 +96,27 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
 
   const onSelectOption = useCallback(
     (selected: MentionOption, nodeToRemove: TextNode | null, closeMenu: () => void) => {
-      editor.update(() => $insertMention(toMentionPayload(selected.source, selected.candidate), nodeToRemove));
+      const payload = rememberMention(toMentionPayload(selected.source, selected.candidate));
+      editor.update(() => $insertMention(payload, nodeToRemove));
       closeMenu();
     },
     [editor],
   );
 
-  const closePicker = useCallback(() => setPickerRefName(null), []);
+  const closePicker = useCallback(() => {
+    setPickerRefName(null);
+    editor.focus();
+  }, [editor]);
 
   const pickerSource = pickerRefName ? sources.find((source) => source.refName === pickerRefName) : undefined;
   const onPickerSelect = useCallback(
     (candidate: MentionCandidate) => {
       if (!pickerSource) return;
       const selection = pickerSelection.current;
+      const payload = rememberMention(toMentionPayload(pickerSource, candidate));
       editor.update(() => {
         if (selection) $setSelection(selection.clone());
-        $insertMention(toMentionPayload(pickerSource, candidate));
+        $insertMention(payload);
       });
       setPickerRefName(null);
       editor.focus();
@@ -158,6 +160,9 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
   );
 };
 
+const focusableSelector =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 interface MentionPickerDialogProps {
   label: string;
   children: ReactNode;
@@ -170,15 +175,52 @@ interface MentionPickerDialogProps {
  * otherwise trap the fixed overlay inside the editor card.
  */
 export const MentionPickerDialog = ({ label, children, onClose }: MentionPickerDialogProps) => {
+  const { l } = usePage();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // A modal keeps the keyboard inside it: Escape closes it, and Tab cycles through its own controls only.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusables = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)];
+      const [first, last] = [focusables.at(0), focusables.at(-1)];
+      if (!first || !last) return event.preventDefault();
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", onKeyDown);
+    return () => dialog.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   if (typeof document === "undefined") return null;
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+        className="relative flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background shadow-xl outline-none"
+      >
         <div className="flex items-center justify-between border-foreground/10 border-b px-4 py-3">
           <div className="font-semibold">{label}</div>
           <button type="button" className={buttonRecipe({ size: "sm", variant: "ghost" })} onClick={onClose}>
-            Close
+            {l("shared.editor-close")}
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
@@ -206,6 +248,7 @@ export const MentionMenuList = ({
   onSelect,
   onHighlight,
 }: MentionMenuListProps) => {
+  const { l } = usePage();
   const grouped = options
     .map((option, index) => ({ option, index }))
     .reduce<{ refName: string; label: string; items: { option: MentionOption; index: number }[] }[]>((acc, entry) => {
@@ -254,7 +297,9 @@ export const MentionMenuList = ({
           ))}
         </div>
       ))}
-      {isSearching ? <div className="px-2 py-1.5 text-foreground/40 text-xs">Searching…</div> : null}
+      {isSearching ? (
+        <div className="px-2 py-1.5 text-foreground/40 text-xs">{l("shared.editor-searching")}</div>
+      ) : null}
     </div>
   );
 };

@@ -9,6 +9,12 @@ import type { fetch as sharedFetch } from "../useServer";
 
 type SharedFetch = typeof sharedFetch;
 
+//? Read by the server when the test system boots, so it is set at import. The master code only vouches for an
+//? address on a reserved test domain (RFC 2606), which is why the fixtures sign up on `signup.test`.
+process.env.MASTER_EMAILCODE ??= "135790";
+export const testEmailCode = process.env.MASTER_EMAILCODE;
+export const testEmail = () => `${crypto.randomUUID().slice(0, 12)}@signup.test`;
+
 const getFetch = async () => await getOrSetupSignalTestFetch<SharedFetch>();
 
 export interface UserAgent<Fetch = SharedFetch, User = cnst.User, UserInput = cnst.UserInput> {
@@ -28,27 +34,26 @@ export const getUserAgentWithPhone = async <Fetch = SharedFetch, User = cnst.Use
   const userInput = sampleOf(cnst.UserInput);
 
   // 1. 중복된 폰번호가 있는지 확인
-  expect(await fetch.getUserIdHasPhone(phone)).toBeFalsy();
+  expect(await fetch.userExistsHasPhone(phone)).toBeFalsy();
 
   // 2. 폰번호로 유저 생성 및 인증코드 요청
-  const prepareUser = await fetch.generatePrepareUser(null, "dummy");
-  expect(prepareUser.status).toBe("prepare");
-  await fetch.setPhoneInPrepareUser(prepareUser.id, phone, "dummy");
+  const { userId, signupToken } = await fetch.generatePrepareUser(null);
+  await fetch.setPhoneInPrepareUser(userId, phone, "dummy", signupToken);
 
   // 3. 인증코드 인증
-  await fetch.verifyPhoneInPrepareUser(prepareUser.id, phone, phoneCode);
+  await fetch.verifyPhoneInPrepareUser(userId, phone, phoneCode, signupToken);
 
   // 4. 유저 정보 업데이트
-  await fetch.setAgreePoliciesOfPrepareUser(prepareUser.id, ["privacy", "termsofservice"]);
+  await fetch.setAgreePoliciesOfPrepareUser(userId, ["privacy", "termsofservice"], signupToken);
 
   // 5. 유저 활성화
-  const accessToken = await fetch.activateUser(prepareUser.id);
+  const accessToken = await fetch.activateUser(userId, signupToken);
   const userFetch = fetch.clone({ jwt: accessToken.jwt }) as SharedFetch;
 
   // 6. 로그인
   const user = (await userFetch.getSelf()) as User & cnst.User;
   expect(user.status).toBe("active");
-  expect(await fetch.getUserIdHasPhone(phone)).toBeTruthy();
+  expect(await fetch.userExistsHasPhone(phone)).toBeTruthy();
 
   // 7. 디바이스 토큰 추가
   const deviceToken = {
@@ -77,7 +82,7 @@ export const getUserAgentWithPassword = async <
   UserInput = cnst.UserInput,
 >(): Promise<UserAgent<Fetch, User, UserInput>> => {
   const fetch = await getFetch();
-  const accountId = sample.email();
+  const accountId = testEmail();
   const password = sample.string({ length: 10 });
   const userInput = sampleOf(cnst.UserInput);
 
@@ -85,18 +90,19 @@ export const getUserAgentWithPassword = async <
   expect(await fetch.userExistsHasAccountId(accountId)).toBeFalsy();
 
   // 2. 유저 생성 및 아이디 설정
-  const prepareUser = await fetch.generatePrepareUser(null, "dummy");
-  expect(prepareUser.status).toBe("prepare");
-  await fetch.setAccountIdInPrepareUser(prepareUser.id, accountId);
+  const { userId, signupToken } = await fetch.generatePrepareUser(null);
+  await fetch.setAccountIdInPrepareUser(userId, accountId, signupToken);
+  await fetch.requestEmailCodeInPrepareUser(userId, signupToken);
+  await fetch.verifyEmailInPrepareUser(userId, testEmailCode, signupToken);
 
   // 3. 비밀번호 설정
-  await fetch.setPasswordInPrepareUser(prepareUser.id, accountId, password);
+  await fetch.setPasswordInPrepareUser(userId, accountId, password, signupToken);
 
   // 4. 유저 정보 업데이트
-  await fetch.setAgreePoliciesOfPrepareUser(prepareUser.id, ["privacy", "termsofservice"]);
+  await fetch.setAgreePoliciesOfPrepareUser(userId, ["privacy", "termsofservice"], signupToken);
 
   // 5. 유저 활성화
-  const accessToken = await fetch.activateUser(prepareUser.id);
+  const accessToken = await fetch.activateUser(userId, signupToken);
   const userFetch = fetch.clone({ jwt: accessToken.jwt }) as SharedFetch;
 
   // 6. 로그인

@@ -5,10 +5,10 @@ import * as srv from "../srv";
 export class BannerInternal extends internal(srv.banner, () => ({})) {}
 
 export class BannerSlice extends slice(srv.banner, { guards: { root: Admin, get: Public, cru: Admin } }, (init) => ({
-  inPublic: init()
+  inPublic: init({ guards: [Public], mcp: false })
     .search("category", String)
     .exec(function (category) {
-      return this.bannerService.queryInCategory(category);
+      return this.bannerService.queryOnDisplay(category);
     }),
 })) {}
 

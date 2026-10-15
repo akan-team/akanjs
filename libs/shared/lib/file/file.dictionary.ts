@@ -41,9 +41,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     byIds: fn(["By Ids", "Id별 조회"]).arg((t) => ({
       ids: t(["Ids", "Id"]).desc(["Ids to search", "Id로 조회"]),
     })),
-    byFilename: fn(["By Filename", "파일명별 조회"]).arg((t) => ({
-      filename: t(["Filename", "파일명"]).desc(["Filename to search", "파일명으로 조회"]),
-    })),
     byOrigin: fn(["By Origin", "원본별 조회"]).arg((t) => ({
       origin: t(["Origin", "원본"]).desc(["Origin to search", "원본으로 조회"]),
     })),
@@ -81,28 +78,45 @@ export const dictionary = modelDictionary(["en", "ko"])
         ]),
         parentId: t(["Parent Id", "상위 Id"]).desc(["Parent id to be uploaded", "상위 Id"]),
       })),
-    addFilesRestApi: fn(["Add Files (for RESTful API", "파일 추가 (RESTful API)"])
-      .desc(["Add files to the database (for RESTful API)", "데이터베이스에 파일 추가 (RESTful API)"])
+    requestFileUpload: fn(["Request File Upload", "파일 업로드 요청"])
+      .desc([
+        "Issue a one-time ticket for uploading local files from a shell. POST multipart/form-data to `uploadUrl` with the `ticket` field and one `files` part per file, e.g. `curl -F ticket=<ticket> -F files=@./a.png -F files=@./b.jpg <uploadUrl>`, within 10 minutes. The response lists the files as `uploading`; read `file` by id until its status is `active`, then pass the id to the model field that holds it.",
+        "셸에서 로컬 파일을 올릴 1회용 티켓을 발급한다. 10분 안에 `uploadUrl`로 `ticket` 필드와 파일마다 `files` 파트를 담은 multipart/form-data를 POST한다. 예: `curl -F ticket=<ticket> -F files=@./a.png -F files=@./b.jpg <uploadUrl>`. 응답의 파일은 `uploading` 상태이므로 `file`을 id로 조회해 `active`가 된 뒤 그 id를 파일을 담을 모델 필드에 넘긴다.",
+      ])
+      .arg((t) => ({
+        type: t(["Parent Type", "상위 타입"]).desc([
+          "Model the files are for, such as banner; names the storage directory",
+          "파일이 쓰일 모델(예: banner). 저장 디렉터리 이름이 된다",
+        ]),
+        parentId: t(["Parent Id", "상위 Id"]).desc([
+          "Document the files are for, when it already exists",
+          "파일이 쓰일 문서가 이미 있으면 그 id",
+        ]),
+      })),
+    addFilesByTicket: fn(["Add Files By Ticket", "티켓으로 파일 추가"])
+      .desc([
+        "Upload files with a ticket from requestFileUpload instead of a session",
+        "세션 대신 requestFileUpload에서 받은 티켓으로 파일을 올린다",
+      ])
       .arg((t) => ({
         files: t(["File Streams", "파일 스트림"]).desc(["File streams to be uploaded", "업로드할 파일 스트림"]),
-        metas: t(["File Metas", "파일 메타"]).desc(["File metas to be uploaded", "업로드할 파일 메타"]),
-        type: t(["Parent Type", "상위 타입"]).desc([
-          "Parent type of file in database",
-          "데이터베이스에 저장될 파일의 상위 타입",
+        ticket: t(["Ticket", "티켓"]).desc([
+          "One-time ticket issued by requestFileUpload",
+          "requestFileUpload가 발급한 1회용 티켓",
         ]),
-        parentId: t(["Parent Id", "상위 Id"]).desc(["Parent id to be uploaded", "상위 Id"]),
-      })),
-    generatePdf: fn(["Export PDF", "PDF 내보내기"])
-      .desc(["Export PDF to file", "PDF를 파일로 내보내기"])
-      .arg((t) => ({
-        url: t(["Url", "Url"]).desc(["Url to export", "내보낼 Url"]),
       })),
   }))
   .error({
+    invalidUploadTicket: [
+      "The upload ticket is invalid, expired or already used; request a new one",
+      "업로드 티켓이 올바르지 않거나 만료되었거나 이미 사용되었습니다. 새로 요청해야 합니다",
+    ],
     fileStreamsAndMetasMismatch: [
       "File streams and file metas are not matched",
       "파일 스트림과 파일 메타의 수가 일치하지 않습니다",
     ],
-    cloudPathNotFound: ["Cloud path is not found", "클라우드 경로를 찾을 수 없습니다"],
     fileReadFailed: ["Failed to read the file data of {filename}", "{filename} 파일 데이터를 읽지 못했습니다"],
+  })
+  .translate({
+    maxFilesExceeded: ["Up to {max} files can be attached here.", "여기에는 파일을 {max}개까지 올릴 수 있습니다."],
   });

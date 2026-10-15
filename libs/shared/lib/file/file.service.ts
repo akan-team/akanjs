@@ -1,19 +1,32 @@
-import type { AddFileFromUriOptions, SaveImageFromUriOptions } from "@libs/shared/srvkit";
-import { Crawler, FileManager, getImageAbstract, getImageSize, IpfsApi, StorageApi } from "@libs/util/srvkit";
-import { dayjs } from "akanjs/base";
-import { sleep } from "akanjs/common";
+import type { AddFileFromUriOptions, ResolvedOAuthOptions, SaveImageFromUriOptions } from "@libs/shared/srvkit";
+import {
+  createOpaqueToken,
+  FileManager,
+  getImageAbstract,
+  getImageSize,
+  hashToken,
+  IpfsApi,
+  StorageApi,
+  UntrustedFetch,
+} from "@libs/util/srvkit";
+import { dayjs, getApiPrefix } from "akanjs/base";
 import { createDocumentId } from "akanjs/document";
 import type { LocalFile } from "akanjs/server";
 import { serve } from "akanjs/service";
 
+import * as cnst from "../cnst";
 import * as db from "../db";
 import { Err } from "../dict";
 
-export class FileService extends serve(db.file, ({ plug }) => ({
+export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
   storageApi: plug(StorageApi),
   ipfsApi: plug(IpfsApi),
+  oauthOption: use<ResolvedOAuthOptions>(),
+  uploadTicketDirs: memory(Map, { of: String }),
 })) {
-  localDir = `./data`;
+  private static readonly uriDownloadDir = "./data/uriDownload";
+  private static readonly uploadTicketSeconds = 10 * 60;
+  private static readonly servedTypePattern = /^(?:(?:image|video)\/[a-z0-9][a-z0-9.+-]*|application\/pdf)$/;
 
   override async _postRemove(file: db.File) {
     await this.storageApi.deleteData(file.url);
@@ -21,21 +34,6 @@ export class FileService extends serve(db.file, ({ plug }) => ({
   }
   async failStaleUploads() {
     return await this.fileModel.failStaleUploads(dayjs().subtract(15, "minute"));
-  }
-  async generate(): Promise<db.File> {
-    return (
-      (await this.fileModel.findByFilename("sample.jpg")) ??
-      (await this.addFileFromLocal(
-        {
-          filename: "sample.jpg",
-          mimetype: "image/jpeg",
-          encoding: "7bit",
-          localPath: `./libs/shared/lib/file/sample.jpg`,
-        },
-        "generate",
-        "generate",
-      ))
-    );
   }
 
   async addFiles(
@@ -52,6 +50,22 @@ export class FileService extends serve(db.file, ({ plug }) => ({
       ),
     );
     return files;
+  }
+  async requestFileUpload(purpose: string, group = "default") {
+    const ticket = createOpaqueToken();
+    const expiresAt = dayjs().add(FileService.uploadTicketSeconds, "second");
+    const dir = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}`;
+    await this.uploadTicketDirs.set(hashToken(ticket), dir, { expireAt: expiresAt });
+    const uploadUrl = `${this.oauthOption.issuer}${getApiPrefix()}/file/addFilesByTicket`;
+    return new cnst.FileUploadTicket().set({ ticket, uploadUrl, expiresAt });
+  }
+  async addFilesByTicket(fileStreams: File[], ticket: string): Promise<db.File[]> {
+    const dir = await this.uploadTicketDirs.getDel(hashToken(ticket));
+    if (!dir) throw new Err("file.error.invalidUploadTicket", undefined, { statusCode: 401 });
+    const [purpose = "default", group = "default"] = dir.split("/");
+    const lastModifiedAt = dayjs();
+    const fileMetas = fileStreams.map(() => ({ lastModifiedAt, size: 0 }));
+    return await this.addFiles(fileStreams, fileMetas, purpose, group);
   }
   async addFileFromUri(
     uri: string,
@@ -91,7 +105,7 @@ export class FileService extends serve(db.file, ({ plug }) => ({
         if (cleanupLocalFile) await this.removeLocalFile(localFile);
       }
     } catch (err) {
-      this.logger.warn(`Failed to add file from URI - ${uri}`);
+      this.logger.warn(`Failed to add file from URI - ${FileService.failureOf(uri, err)}`);
       // 큰 파일을 받는 호출자는 실패를 조용히 넘기면 안 된다. 파일 없는 문서가 만들어지기 때문이다
       if (throwOnError) throw err;
       return null;
@@ -109,20 +123,13 @@ export class FileService extends serve(db.file, ({ plug }) => ({
     try {
       if (uri.includes("data:application/json;base64,"))
         return JSON.parse(Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()) as T;
-      const response = (await fetch(this.ipfsApi.getHttpsUri(uri))).json();
-      return response as T;
-    } catch (_err) {
-      this.logger.warn(`Failed to get json from URI - ${uri}`);
+      return await UntrustedFetch.json<T>(this.ipfsApi.getHttpsUri(uri));
+    } catch (err) {
+      this.logger.warn(`Failed to get json from URI - ${FileService.failureOf(uri, err)}`);
       return undefined;
     }
   }
   async readFileBuffer(file: db.File): Promise<Buffer> {
-    return await this._readFileBuffer(file);
-  }
-  async readFileAsBase64(file: db.File): Promise<string> {
-    return (await this._readFileBuffer(file)).toString("base64");
-  }
-  private async _readFileBuffer(file: db.File): Promise<Buffer> {
     if (file.url.startsWith("http://") || file.url.startsWith("https://")) {
       const response = await fetch(file.url, { signal: AbortSignal.timeout(60_000) });
       if (!response.ok) throw new Err("file.error.fileReadFailed", { filename: file.filename });
@@ -135,30 +142,29 @@ export class FileService extends serve(db.file, ({ plug }) => ({
   }
 
   async _addFileFromStream(fileStream: File, fileMeta: db.FileMeta, purpose: string, group: string | null) {
-    const resolvedFileStream = await (fileStream as unknown as Promise<File>);
-    const file = await this.fileModel.generateFile({
+    const upload = await (fileStream as unknown as Promise<File>);
+    const mimetype = FileService.contentTypeOf(upload.type);
+    const file = await this.fileModel.createFile({
       progress: 0,
       url: "",
       imageSize: [0, 0],
-      filename: fileStream.name,
-      mimetype: fileStream.type,
+      filename: upload.name,
+      mimetype,
       encoding: "7bit",
       lastModifiedAt: fileMeta.lastModifiedAt,
-      size: fileMeta.size,
+      size: upload.size,
     });
-    const rename = this._convertFileName(file);
-    const pathSegment = (value: string | null) => value?.replace(/[^A-Za-z0-9_-]/g, "") || "default";
-    const path = `${pathSegment(purpose)}/${pathSegment(group)}/${rename}`;
+    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${file.id}${FileService.extensionOf(upload.name, mimetype)}`;
     this.storageApi.uploadDataFromStream({
       path: path,
-      body: resolvedFileStream.stream(),
-      mimetype: fileStream.type,
+      body: upload.stream(),
+      mimetype,
       updateProgress: async (progress) => {
-        await this.fileModel.progressUpload(file.id, progress.loaded, fileMeta.size);
+        await this.fileModel.progressUpload(file.id, progress.loaded, upload.size);
       },
       uploadSuccess: async (url) => {
-        const abstract = fileStream.type.startsWith("image/")
-          ? await getImageAbstract(await resolvedFileStream.arrayBuffer().then((b) => Buffer.from(b)))
+        const abstract = mimetype.startsWith("image/")
+          ? await getImageAbstract(await upload.arrayBuffer().then((b) => Buffer.from(b)))
           : {};
         void this.fileModel.finishUpload(file.id, url, abstract);
       },
@@ -177,7 +183,7 @@ export class FileService extends serve(db.file, ({ plug }) => ({
     // An edge or station copying a file down from the cloud keeps the source's id so both sides
     // resolve the same reference.
     const file = fileId ? await this._writeFileWithId(fileId, data) : await this.fileModel.createFile(data);
-    const path = `${purpose.length ? purpose : "default"}/${group?.length ? group : "default"}/${this._convertFileName(file)}`;
+    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${this._convertFileName(file)}`;
     const url = await this.storageApi.uploadDataFromLocal({
       path,
       localPath: localFile.localPath,
@@ -196,7 +202,7 @@ export class FileService extends serve(db.file, ({ plug }) => ({
     uri: string,
     { cache, rename, header, onProgress, signal, stallTimeout, redirect }: SaveImageFromUriOptions = {},
   ): Promise<LocalFile> {
-    const dirname = `${this.localDir}/uriDownload`;
+    const dirname = FileService.uriDownloadDir;
     if (uri.startsWith("data:")) return await FileManager.saveEncodedData(uri, dirname);
     const { readStream, totalBytes } = await FileManager.readUrlAsStreamWithSize(
       uri.startsWith("ipfs://") ? this.ipfsApi.getHttpsUri(uri) : uri,
@@ -228,25 +234,26 @@ export class FileService extends serve(db.file, ({ plug }) => ({
     const ext = split.length > 1 ? `.${split.at(-1)}` : "";
     return `${file.id}${ext}`;
   }
-  async migrate(file: db.File) {
-    if (!file.url) return;
-    const root = this.storageApi.root;
-    const localFile = await this.saveImageFromUri(file.url);
-    await sleep(100);
-    const cloudPath = file.url.split("/").slice(3).join("/").split("?")[0];
-    if (!cloudPath) throw new Err("file.error.cloudPathNotFound");
-    const path = root ? cloudPath.replace(`${root}/`, "") : cloudPath;
-    const url = await this.storageApi.uploadDataFromLocal({
-      path,
-      localPath: localFile.localPath,
-    });
-    return await file.set({ url }).save();
+  private static segmentOf(value: string | null) {
+    return value?.replace(/[^A-Za-z0-9_-]/g, "") || "default";
   }
-
-  async generatePdf(url: string) {
-    const crawler = new Crawler();
-    await crawler.init({ headless: true });
-    const pdf = await crawler.generatePdf(url);
-    return pdf;
+  //? Object storage serves an upload under the type it was stored with, and HTML or SVG served from there runs script.
+  private static contentTypeOf(type: string) {
+    const mimetype = type.split(";")[0]?.trim().toLowerCase() ?? "";
+    return FileService.servedTypePattern.test(mimetype) && mimetype !== "image/svg+xml"
+      ? mimetype
+      : "application/octet-stream";
+  }
+  private static extensionOf(filename: string, contentType: string) {
+    const ext = /\.([a-z0-9]{1,10})$/i.exec(filename)?.[1]?.toLowerCase();
+    if (contentType === "application/octet-stream") return ext ? `.${ext}` : "";
+    if (ext && Bun.file(`file.${ext}`).type.split(";")[0] === contentType) return `.${ext}`;
+    return `.${contentType.split("/")[1] ?? ""}`;
+  }
+  //? A URI can carry a presigned token in its query, so a log line names only its origin and drops every query.
+  private static failureOf(uri: string, err: unknown) {
+    const origin = uri.startsWith("data:") ? "data:" : URL.canParse(uri) ? new URL(uri).origin : "(invalid URI)";
+    const reason = (err instanceof Error ? err.message : String(err)).replace(/\?\S*/g, "");
+    return `${origin}: ${reason}`;
   }
 }

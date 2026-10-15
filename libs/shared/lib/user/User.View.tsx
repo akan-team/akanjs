@@ -6,9 +6,8 @@ import { Image } from "akanjs/ui";
 interface GeneralProps {
   className?: string;
   user: cnst.User;
-  siteKey?: string;
 }
-export const General = ({ className, user, siteKey }: GeneralProps) => {
+export const General = ({ className, user }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={cn(`flex flex-col gap-2`, className)}>
@@ -21,14 +20,10 @@ export const General = ({ className, user, siteKey }: GeneralProps) => {
       {user.verifies.includes("password") ? (
         <div>
           <div className="font-bold">{l("user.password")}</div>
-          <p className="text-base">
+          <div className="text-base">
             ********{" "}
-            {user.verifies.includes("phone") ? (
-              <User.Util.SetPasswordWithPhone />
-            ) : siteKey ? (
-              <User.Util.ChangePassword siteKey={siteKey} />
-            ) : null}
-          </p>
+            {user.verifies.includes("phone") ? <User.Util.SetPasswordWithPhone /> : <User.Util.ChangePassword />}
+          </div>
         </div>
       ) : null}
       {user.phone?.length ? (

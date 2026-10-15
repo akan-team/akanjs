@@ -23,13 +23,14 @@ export interface GoogleProps {
   children: ReactNode;
 }
 const libraries: Libraries = ["core", "maps", "marker"];
+const defaultCenter = new cnst.Coordinate({ type: "Point", coordinates: [127.0016985, 37.5642135], altitude: 0 });
 export default function Google({
   id,
   className,
   mapKey,
   onClick,
   onRightClick,
-  center = new cnst.Coordinate({ type: "Point", coordinates: [127.0016985, 37.5642135], altitude: 0 }),
+  center = defaultCenter,
   onChangeCenter,
   zoom,
   onChangeZoom,
@@ -46,17 +47,15 @@ export default function Google({
     libraries,
   });
   const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [centerLng, centerLat] = center.coordinates;
 
-  // Set center
   useEffect(() => {
     const currentCenter = map?.getCenter();
     if (!map || !currentCenter) return;
-    const [lng, lat] = [currentCenter.lng(), currentCenter.lat()];
-    if (center.coordinates[0] === lng && center.coordinates[1] === lat) return;
-    else map.setCenter({ lat: center.coordinates[1], lng: center.coordinates[0] });
-  }, [center, map]);
+    if (currentCenter.lng() === centerLng && currentCenter.lat() === centerLat) return;
+    map.setCenter({ lat: centerLat, lng: centerLng });
+  }, [centerLat, centerLng, map]);
 
-  // Set zoom
   useEffect(() => {
     if (!map) return;
     const currentZoom = map.getZoom();
@@ -64,7 +63,6 @@ export default function Google({
     map.setZoom(zoom ?? 15);
   }, [zoom, map]);
 
-  // Change bounds
   useEffect(() => {
     if (!map || !bounds) return;
     const latLngs = [

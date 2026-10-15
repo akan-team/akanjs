@@ -1,6 +1,5 @@
 import { modelDictionary } from "akanjs/dictionary";
 
-import type { FileStatus } from "../file/file.constant";
 import type { PrivFile, PrivFileInsight } from "./privFile.constant";
 import type { PrivFileFilter } from "./privFile.document";
 import type { PrivFileEndpoint, PrivFileSlice } from "./privFile.signal";
@@ -33,25 +32,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     status: t(["Status", "상태"]).desc(["Status of the private file", "비공개 파일 상태"]),
   }))
   .insight<PrivFileInsight>((t) => ({}))
-  .query<PrivFileFilter>((fn) => ({
-    byAlias: fn(["By Alias", "별칭별 조회"]).arg((t) => ({
-      alias: t(["Alias", "별칭"]).desc(["Alias to search", "조회할 별칭"]),
-    })),
-  }))
-  .enum<FileStatus>("fileStatus", (t) => ({
-    active: t(["Active", "활성"]).desc([
-      "Private file is successfully uploaded and created",
-      "비공개 파일 업로드가 완료되어 정상적으로 생성되었습니다",
-    ]),
-    uploading: t(["Uploading", "업로드중"]).desc([
-      "Private file is being uploaded, but not yet created",
-      "비공개 파일이 업로드중이며 아직 생성되지 않았습니다",
-    ]),
-    failed: t(["Failed", "실패"]).desc([
-      "The private file upload stopped before it finished; upload it again",
-      "비공개 파일 업로드가 끝나기 전에 멈췄습니다. 다시 올려야 합니다",
-    ]),
-  }))
+  .query<PrivFileFilter>((fn) => ({}))
   .slice<PrivFileSlice>((fn) => ({}))
   .endpoint<PrivFileEndpoint>((fn) => ({}))
   .error({
@@ -61,4 +42,8 @@ export const dictionary = modelDictionary(["en", "ko"])
       "이 저장소 백엔드는 업로드 URL을 발급할 수 없습니다.",
     ],
     uploadNotFound: ["The uploaded object was not found", "업로드된 객체를 찾을 수 없습니다."],
+    downloadPresignUnsupported: [
+      "This storage backend cannot issue download URLs",
+      "이 저장소 백엔드는 다운로드 URL을 발급할 수 없습니다.",
+    ],
   });

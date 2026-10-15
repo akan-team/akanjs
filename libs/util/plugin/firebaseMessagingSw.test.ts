@@ -6,6 +6,65 @@ import {
   normalizeFirebaseClientConfig,
 } from "./firebaseMessagingSw";
 
+interface ClickEvent {
+  notification: { data: unknown; close: () => void };
+  stopImmediatePropagation: () => void;
+  waitUntil: (promise: Promise<unknown>) => void;
+}
+
+//? Runs the worker body against a fake `self` and a stand-in for firebase-messaging-compat whose `messaging()` registers
+//? a click listener that swallows FCM notifications, like `onNotificationClick` in @firebase/messaging's sw build.
+const runWorker = (body: string) => {
+  const clickListeners: ((event: ClickEvent) => void)[] = [];
+  const opened: string[] = [];
+  const self = {
+    location: { origin: "https://app.example" },
+    addEventListener: (type: string, listener: (event: ClickEvent) => void) => {
+      if (type === "notificationclick") clickListeners.push(listener);
+    },
+    clients: {
+      matchAll: async () => [],
+      openWindow: async (href: string) => {
+        opened.push(href);
+      },
+      claim: async () => undefined,
+    },
+    registration: { showNotification: async () => undefined },
+    skipWaiting: () => undefined,
+  };
+  const firebase = {
+    initializeApp: () => undefined,
+    messaging: () => {
+      self.addEventListener("notificationclick", (event) => {
+        if (!(event.notification.data as { FCM_MSG?: unknown } | null)?.FCM_MSG) return;
+        event.stopImmediatePropagation();
+        event.notification.close();
+      });
+      return { onBackgroundMessage: () => undefined };
+    },
+  };
+  new Function("self", "importScripts", "firebase", body)(self, () => undefined, firebase);
+  const click = async (data: unknown) => {
+    const pending: Promise<unknown>[] = [];
+    let isStopped = false;
+    const event: ClickEvent = {
+      notification: { data, close: () => undefined },
+      stopImmediatePropagation: () => {
+        isStopped = true;
+      },
+      waitUntil: (promise) => {
+        pending.push(promise);
+      },
+    };
+    for (const listener of clickListeners) {
+      listener(event);
+      if (isStopped) break;
+    }
+    await Promise.all(pending);
+  };
+  return { click, opened };
+};
+
 const configOf = () =>
   normalizeFirebaseClientConfig({
     apiKey: "public-api-key",
@@ -93,7 +152,7 @@ describe("createFirebaseMessagingServiceWorker", () => {
   test("leaves a payload carrying a notification block to the SDK, so one push is one notification", () => {
     const body = createFirebaseMessagingServiceWorker(configOf());
     expect(body).toContain("if (payload?.notification) return;");
-    const handler = body.slice(body.indexOf("onBackgroundMessage"), body.indexOf("notificationclick"));
+    const handler = body.slice(body.indexOf("onBackgroundMessage"));
     expect(handler.indexOf("if (payload?.notification) return;")).toBeLessThan(handler.indexOf("showNotification"));
   });
 
@@ -103,6 +162,24 @@ describe("createFirebaseMessagingServiceWorker", () => {
     expect(body).toContain("existing.focus()");
     expect(body).toContain(`type: "${pushNavigateMessage}"`);
     expect(body).toContain("self.clients.openWindow(target.href)");
+  });
+
+  test("opens the deep link of a notification the SDK drew, although the SDK listener swallows FCM clicks", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
+    await worker.click({ FCM_MSG: { notification: { title: "New reply" }, data: { url: "/en/chat/1" } } });
+    expect(worker.opened).toEqual(["https://app.example/en/chat/1"]);
+  });
+
+  test("opens the deep link of a data-only notification the worker drew itself", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
+    await worker.click({ url: "/en/chat/2?focus=1", FCM_MSG: { data: { url: "/en/chat/2?focus=1" } } });
+    expect(worker.opened).toEqual(["https://app.example/en/chat/2?focus=1"]);
+  });
+
+  test("leaves a click without a deep link to the SDK", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
+    await worker.click({ FCM_MSG: { notification: { title: "Console message" } } });
+    expect(worker.opened).toEqual([]);
   });
 
   test("applies a badge count only where setAppBadge exists", () => {

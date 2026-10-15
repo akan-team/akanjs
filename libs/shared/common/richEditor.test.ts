@@ -82,32 +82,31 @@ const textDoc = (children: object[]) => ({
   root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children }] },
 });
 
-describe("RichEditor.extractTextWithoutMentions", () => {
-  it("멘션 글자를 뺀다 — 나머지 문장은 그대로다", () => {
-    const content = textDoc([textNode("먼지 입자가 빛에 반짝인다."), textMention("신제품 운동화")]);
-    expect(RichEditor.extractTextWithoutMentions(content).trim()).toBe("먼지 입자가 빛에 반짝인다.");
-  });
-
-  it("문장 가운데 있어도 그 자리만 빠진다", () => {
-    const content = textDoc([textNode("바닥의 "), textMention("운동화"), textNode(" 클로즈업.")]);
-    expect(RichEditor.extractTextWithoutMentions(content).trim()).toBe("바닥의  클로즈업.");
-  });
-
-  it("멘션이 없으면 원래 것과 같다", () => {
-    const content = textDoc([textNode("스포트라이트가 내리쬔다.")]);
-    expect(RichEditor.extractTextWithoutMentions(content)).toBe(RichEditor.extractTextFromContent(content));
-  });
-
-  /* 사람이 읽는 자리(미리보기·검색)는 누가 불렸는지 보이는 편이 낫다 — 그쪽은 안 바뀌어야 한다. */
-  it("원래 함수는 멘션을 그대로 둔다", () => {
+describe("RichEditor.extractTextFromContent", () => {
+  /* 사람이 읽는 자리(미리보기·검색)는 누가 불렸는지 보이는 편이 낫다 — 멘션은 글자로 남는다. */
+  it("멘션을 그대로 둔다", () => {
     const content = textDoc([textNode("바닥의 "), textMention("운동화")]);
     expect(RichEditor.extractTextFromContent(content).trim()).toBe("바닥의 @운동화");
   });
 
+  it("keeps line breaks, tabs and block boundaries as whitespace", () => {
+    const content = doc(
+      { type: "paragraph", children: [textNode("line one"), { type: "linebreak" }, textNode("line two")] },
+      { type: "code", children: [textNode("a"), { type: "tab" }, textNode("b")] },
+      { type: "akan-callout", children: [textNode("note")] },
+      { type: "paragraph", children: [textNode("after")] },
+    );
+    expect(RichEditor.extractTextFromContent(content)).toBe("line one\nline two\na\tb\nnote\nafter\n");
+  });
+
   it("빈 값·이상한 값에도 안 터진다", () => {
-    expect(RichEditor.extractTextWithoutMentions(null)).toBe("");
-    expect(RichEditor.extractTextWithoutMentions([])).toBe("");
-    expect(RichEditor.extractTextWithoutMentions("문자열")).toBe("");
+    expect(RichEditor.extractTextFromContent(null)).toBe("");
+    expect(RichEditor.extractTextFromContent([])).toBe("");
+    expect(RichEditor.extractTextFromContent("문자열")).toBe("");
+    expect(RichEditor.extractTextFromContent([null, 1])).toBe("");
+    expect(RichEditor.extractTextFromContent(doc(null, { type: "paragraph", children: [null, textNode("ok")] }))).toBe(
+      "ok\n",
+    );
   });
 });
 
@@ -129,85 +128,12 @@ describe("RichEditor.contentFromText", () => {
   });
 });
 
-describe("RichEditor.appendMention", () => {
-  it("마지막 문단 끝에 멘션과 한 칸을 붙인다", () => {
-    const content = RichEditor.contentFromText("먼지 입자가 빛에 반짝인다.");
-    const mentioned = RichEditor.appendMention(content, { refName: "videoObj", id: "o1", name: "운동화" });
-    expect(RichEditor.extractTextFromContent(mentioned).trim()).toBe("먼지 입자가 빛에 반짝인다.@운동화");
-    expect(RichEditor.extractTextWithoutMentions(mentioned).trim()).toBe("먼지 입자가 빛에 반짝인다.");
-    expect(RichEditor.collectMentions(mentioned)).toEqual([{ refName: "videoObj", refId: "o1" }]);
-  });
-
-  it("마지막 블록이 문단이 아니면 새 문단을 연다", () => {
-    const content = { root: { type: "root", version: 1, children: [{ type: "quote", version: 1, children: [] }] } };
-    const mentioned = RichEditor.appendMention(content, { refName: "videoCharacter", id: "c1", name: "주인공" });
-    const children = (mentioned.root as { children: { type: string }[] }).children;
-    expect(children.at(-1)?.type).toBe("paragraph");
-    expect(RichEditor.collectMentions(mentioned)).toEqual([{ refName: "videoCharacter", refId: "c1" }]);
-  });
-
-  it("빈 값이면 root 를 새로 세운다", () => {
-    const mentioned = RichEditor.appendMention(null, { refName: "file", id: "f1", name: "콘티.png" });
-    expect((mentioned.root as { type: string }).type).toBe("root");
-    expect(RichEditor.extractTextWithoutMentions(mentioned).trim()).toBe("");
-    expect(RichEditor.collectMentions(mentioned)).toEqual([{ refName: "file", refId: "f1" }]);
-  });
-});
-
-describe("RichEditor.contentFromMentionText", () => {
-  it("문장 가운데의 토큰을 그 자리에 칩으로 앉힌다", () => {
-    const content = RichEditor.contentFromMentionText("바닥의 @[운동화](mention:videoObj/o1) 클로즈업.");
-    expect(RichEditor.extractTextWithoutMentions(content).trim()).toBe("바닥의  클로즈업.");
-    expect(RichEditor.collectMentions(content)).toEqual([{ refName: "videoObj", refId: "o1" }]);
-  });
-
-  /* 토큰 문법에 href 가 없다 — 모델마다 있는 라우트를 지어내면 칩이 없는 화면으로 이동한다. */
-  it("링크 없는 참조로 만든다", () => {
-    const content = RichEditor.contentFromMentionText("@[운동화](mention:videoObj/o1)");
-    const [chip] = (content.root.children[0] as { children: { type: string; href?: unknown }[] }).children;
-    expect(chip.type).toBe("akan-mention");
-    expect(chip.href).toBeUndefined();
-  });
-
-  it("한 줄의 두 토큰을 모두 읽는다", () => {
-    const content = RichEditor.contentFromMentionText(
-      "@[지현](mention:videoCharacter/c1) 이 @[운동화](mention:videoObj/o1) 를 집는다",
-    );
-    expect(RichEditor.collectMentions(content)).toEqual([
-      { refName: "videoCharacter", refId: "c1" },
-      { refName: "videoObj", refId: "o1" },
-    ]);
-    expect(RichEditor.extractTextWithoutMentions(content).trim()).toBe("이  를 집는다");
-  });
-
-  it("한 줄이 한 문단이고, 빈 줄은 빈 문단으로 남는다", () => {
-    const content = RichEditor.contentFromMentionText("첫 줄\n\n둘째 줄");
-    expect((content.root.children as unknown[]).length).toBe(3);
-    expect(RichEditor.extractTextFromContent(content).trim()).toBe("첫 줄\n\n둘째 줄");
-  });
-
-  it("라벨에 이스케이프된 `]` 를 되돌린다", () => {
-    const token = RichEditor.mentionToken({ refName: "videoScene", refId: "s1", label: "숨은 방 [열쇠]" });
-    expect(token).toBe("@[숨은 방 [열쇠\\]](mention:videoScene/s1)");
-    const content = RichEditor.contentFromMentionText(token);
-    expect(RichEditor.collectMentions(content)).toEqual([{ refName: "videoScene", refId: "s1" }]);
-    expect(RichEditor.extractTextFromContent(content).trim()).toBe("@숨은 방 [열쇠]");
-  });
-
-  it("멘션이 아닌 `@` 는 글자로 남는다", () => {
-    const content = RichEditor.contentFromMentionText("@[x](mention:broken) @일반");
-    expect(RichEditor.collectMentions(content)).toEqual([]);
-    expect(RichEditor.extractTextFromContent(content).trim()).toBe("@[x](mention:broken) @일반");
-  });
-});
-
 describe("RichEditor.contentFromMarkdown", () => {
   const blocks = (markdown: string) =>
-    (RichEditor.contentFromMarkdown(markdown).root as { children: { type: string; [key: string]: unknown }[] })
-      .children;
+    (RichEditor.contentFromMarkdown(markdown).root as { children: { type: string }[] }).children;
 
   it("gives an empty document one empty paragraph", () => {
-    expect(blocks("")).toEqual([
+    expect(blocks("") as unknown[]).toEqual([
       { children: [], direction: null, format: "", indent: 0, type: "paragraph", version: 1 },
     ]);
   });
@@ -252,17 +178,5 @@ describe("RichEditor.contentFromMarkdown", () => {
     expect(RichEditor.extractTextFromContent(RichEditor.contentFromMarkdown("```ts\nconst a = 1;"))).toContain(
       "const a = 1;",
     );
-  });
-});
-
-describe("RichEditor.extractMentionText", () => {
-  it("칩을 토큰으로 되돌린다 — contentFromMentionText 의 역이다", () => {
-    const body = "바닥의 @[운동화](mention:videoObj/6a1f) 클로즈업.";
-    expect(RichEditor.extractMentionText(RichEditor.contentFromMentionText(body)).trim()).toBe(body);
-  });
-
-  it("멘션이 없으면 본문 그대로다", () => {
-    const content = textDoc([textNode("스포트라이트가 내리쬔다.")]);
-    expect(RichEditor.extractMentionText(content)).toBe(RichEditor.extractTextFromContent(content));
   });
 });

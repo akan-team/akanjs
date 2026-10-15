@@ -9,20 +9,25 @@ import {
   $isNodeSelection,
   CLICK_COMMAND,
   COMMAND_PRIORITY_LOW,
+  HISTORY_MERGE_TAG,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
+  SKIP_COLLAB_TAG,
 } from "lexical";
 import { useCallback, useEffect, useState } from "react";
 import type { MediaAlign } from "./shared.type";
 
-export const ALIGN_TO_JUSTIFY: Record<MediaAlign, string> = {
+/** The width a "reset size" restores media to, and the cap on a size adopted from the file. */
+export const mediaResetWidth = 650;
+
+export const alignToJustify = {
   left: "justify-start",
   center: "justify-center",
   right: "justify-end",
-};
+} as const satisfies { [align in MediaAlign]: string };
 
 /**
  * Selection + lifecycle wiring shared by every decorator media component.
@@ -122,5 +127,20 @@ export const updateNodeByKey = (
       if (node !== null) updater(node);
     },
     merge ? { tag: "history-merge" } : undefined,
+  );
+};
+
+/**
+ * A size read off the loaded media, for the resize handles to start from. It is the editor's own bookkeeping, so it
+ * stays out of history, out of the change stream (`OnChangePlugin` skips a history-merge update) and out of the
+ * room — written there, every open of the page re-sent it to every peer.
+ */
+export const adoptByKey = (editor: LexicalEditor, nodeKey: NodeKey, updater: (node: LexicalNode) => void) => {
+  editor.update(
+    () => {
+      const node = $getNodeByKey(nodeKey);
+      if (node !== null) updater(node);
+    },
+    { tag: [HISTORY_MERGE_TAG, SKIP_COLLAB_TAG] },
   );
 };

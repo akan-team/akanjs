@@ -1,7 +1,8 @@
+import { formatBytes } from "@libs/util/common";
 import { dayjs, enumOf, Int } from "akanjs/base";
 import { type ProtoFile, via } from "akanjs/constant";
 
-export class FileStatus extends enumOf("fileStatus", ["active", "uploading", "failed"]) {}
+export class FileStatus extends enumOf("fileStatus", ["active", "uploading", "failed"] as const) {}
 
 export class FileInput extends via((field) => ({
   filename: field(String, { text: "title" }),
@@ -28,12 +29,7 @@ export class LightFile extends via(
   (resolve) => ({}),
 ) {
   getFileSizeStr() {
-    const size = this.size;
-    if (size < 1024) return `1 KB`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
-    if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
-    if (size < 1024 * 1024 * 1024 * 1024) return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
-    return `${(size / 1024 / 1024 / 1024 / 1024).toFixed(2)} TB`;
+    return formatBytes(this.size);
   }
 }
 

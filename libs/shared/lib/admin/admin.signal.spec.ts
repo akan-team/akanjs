@@ -40,7 +40,7 @@ export const getAdminAgentWithInitialize = async <Fetch = SharedFetch>(): Promis
 
   // 4. Admin 정보 요청
   const me = await adminFetch.me();
-  if (!me) throw new Error("me answered null for a signed-in admin");
+  if (!me) throw new Error("the signed-in admin could not read itself");
   admin = me;
   expect(admin.accountId).toEqual(adminInput.accountId);
 
@@ -87,7 +87,7 @@ export const getAdminAgentFromSuperAdmin = async <Fetch = SharedFetch>(
 
   // 4. Admin 정보 요청
   const me = await adminFetch.me();
-  if (!me) throw new Error("me answered null for a signed-in admin");
+  if (!me) throw new Error("the signed-in admin could not read itself");
   admin = me;
   expect(admin.accountId).toEqual(adminInput.accountId);
 

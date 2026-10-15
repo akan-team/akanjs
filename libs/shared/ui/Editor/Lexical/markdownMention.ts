@@ -18,7 +18,7 @@ import { $createMentionNode, $isMentionNode } from "./nodes/mentionNode.util";
  * `searchMentions`, which returns the token ready to paste.
  */
 
-const TOKEN = RichEditor.mentionPattern;
+const mentionPattern = RichEditor.mentionPattern;
 
 export const mentionToken = RichEditor.mentionToken;
 
@@ -28,13 +28,13 @@ export const mentionToken = RichEditor.mentionToken;
  * ends later; `@[x](mention:a/b)` and LINK's `[x](…)` end at the same index, so the comparison fails and
  * array order decides. Behind LINK, every mention would import as a link to `mention:a/b`.
  *
- * `href` and `imageUrl` are not in the token — they come back from `mentionCache`, which every
- * `$createMentionNode` fills. A cache miss still yields a working chip, just without the link and avatar.
+ * `href` and `imageUrl` are not in the token — they come back from `mentionCache`, which a mention source
+ * fills. A cache miss still yields a working chip, just without the link and avatar.
  */
 export const MENTION: TextMatchTransformer = {
   dependencies: [MentionNode],
-  importRegExp: TOKEN,
-  regExp: new RegExp(`${TOKEN.source}$`),
+  importRegExp: mentionPattern,
+  regExp: new RegExp(`${mentionPattern.source}$`),
   replace: (textNode, match) => {
     const [, label, refName, refId] = match;
     textNode.replace(

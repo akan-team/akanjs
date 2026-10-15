@@ -12,12 +12,7 @@ import { recipe, tv } from "akanjs/ui";
  */
 export const buttonRecipe = recipe(
   tv({
-    // The radius lives on `shape`, not here. akanjs 3.0.0-alpha.2's tailwind-merge is extended with the
-    // color tokens but not the radius ones, so `rounded-field` in the base and `rounded-full` on
-    // `shape: circle` do NOT merge — both survive and stylesheet order picks the winner, leaving circle
-    // buttons not reliably round. Emitting exactly one radius per shape sidesteps the merge entirely.
-    // The framework fix (radiusTokens in cn.ts + factory.ts) produces the same output, so this stays
-    // correct after the swap to akanjs/ui.
+    // One radius per `shape` instead of one here: older akanjs tailwind-merge kept both radius tokens.
     base: "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
     variants: {
       variant: {

@@ -5,10 +5,10 @@
 import type { MentionCandidate, MentionSource } from "../mention.type";
 import type { MentionPayload } from "../nodes/mentionNode.util";
 
-export const MENTION_TRIGGER = "@";
-export const MENTION_SEARCH_DEBOUNCE_MS = 150;
+export const mentionTrigger = "@";
+export const mentionSearchDebounceMs = 150;
 /** Per-source row cap, so one large model cannot crowd the others out of the menu. */
-export const MENTION_ROWS_PER_SOURCE = 5;
+export const mentionRowsPerSource = 5;
 
 /** A candidate paired with the source that produced it, before it becomes a menu row. */
 export interface MentionMatch {
@@ -35,7 +35,7 @@ export const searchMentionSources = async (
       .map(async (source) => {
         try {
           const candidates = await source.search(query, signal);
-          return candidates.slice(0, MENTION_ROWS_PER_SOURCE).map((candidate) => ({ source, candidate }));
+          return candidates.slice(0, mentionRowsPerSource).map((candidate) => ({ source, candidate }));
         } catch {
           // One failing source must not blank the whole menu (editor fail-safe policy).
           return [];

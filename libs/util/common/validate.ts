@@ -1,17 +1,5 @@
 export const validate = {
-  phone: (phone: string) => {
-    return phone.split("-").length === 3;
-  },
-  email: (email: string | null | undefined) => {
-    if (!email) return false;
-    if (email.split("@").length !== 2) return false;
-    else if (email.split(".").length === 1) return false;
-    else return true;
-  },
-  ageLimit: (date: Date) => {
-    return true;
-    // const now = new Date();
-    // const years = (now.getTime() - date.getTime()) / YEAR_IN_MILLISECONDS;
-    // return years > AGE_LIMIT;
-  },
+  //? Hyphenated Korean numbers: area or carrier prefix of 2-4 digits (02, 010, 0505), then 3-4, then 4 digits.
+  phone: (phone: string) => /^\d{2,4}-\d{3,4}-\d{4}$/.test(phone),
+  email: (email: string | null | undefined) => !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
 };

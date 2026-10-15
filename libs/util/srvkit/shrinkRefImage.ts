@@ -2,12 +2,17 @@
  * 레퍼런스로 보낼 그림 한 장이 넘지 말아야 할 크기. 바이트댄스 Ark 는 data URL 한 장이 256KB 를
  * 넘으면 요청을 거절한다 — 이 프로젝트에서 seedream·gpt-image 로 보낸 레퍼런스가 전부(0.46~1.15MB)
  * 그 선을 넘어 5건 중 5건이 실패했다. 같은 그림으로 gemini 는 112건 성공했으므로 그림이 아니라
- * 크기가 문제였다. 여유를 두어 200KB 로 잡는다.
+ * 크기가 문제였다. 한도는 base64 로 4/3 배 불어난 data URL 기준이므로, 여유를 두어 240KB 로 잡고 그 크기로 잰다.
  */
-const REF_MAX_BYTES = 200 * 1024;
+const REF_MAX_DATA_URL_BYTES = 240 * 1024;
+//? "data:image/jpeg;base64," and the JSON quoting around it.
+const DATA_URL_OVERHEAD_BYTES = 64;
 /** 레퍼런스는 "무엇을 닮게 할지" 를 알려주는 용도라 원본 해상도가 필요 없다. */
 const REF_MAX_EDGE = 1024;
 const REF_MIN_QUALITY = 50;
+
+const fitsDataUrl = (byteLength: number) =>
+  Math.ceil(byteLength / 3) * 4 + DATA_URL_OVERHEAD_BYTES <= REF_MAX_DATA_URL_BYTES;
 
 interface ShrunkImage {
   base64: string;
@@ -21,7 +26,7 @@ interface ShrunkImage {
  */
 export const shrinkRefImage = async (buffer: Buffer, mimetype: string): Promise<ShrunkImage> => {
   const original = { base64: buffer.toString("base64"), mimetype };
-  if (buffer.byteLength <= REF_MAX_BYTES) return original;
+  if (fitsDataUrl(buffer.byteLength)) return original;
   try {
     const resized = new Bun.Image(buffer, { autoOrient: true }).resize(REF_MAX_EDGE, REF_MAX_EDGE, {
       fit: "inside",
@@ -29,7 +34,7 @@ export const shrinkRefImage = async (buffer: Buffer, mimetype: string): Promise<
     });
     for (const quality of [82, 70, 60, REF_MIN_QUALITY]) {
       const out = await resized.jpeg({ quality }).buffer();
-      if (out.byteLength <= REF_MAX_BYTES || quality === REF_MIN_QUALITY)
+      if (fitsDataUrl(out.byteLength) || quality === REF_MIN_QUALITY)
         return { base64: out.toString("base64"), mimetype: "image/jpeg" };
     }
     return original;

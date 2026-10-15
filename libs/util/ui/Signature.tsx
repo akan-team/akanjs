@@ -1,4 +1,5 @@
 "use client";
+import { msg, usePage } from "@libs/util/client";
 import { cn } from "akanjs/client";
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { AiOutlineDelete, AiOutlineUpload } from "react-icons/ai";
@@ -16,23 +17,36 @@ export interface SignatureProps {
   clearLabel?: string;
 }
 
-/**
- * Signature/stamp capture control.
- * - "draw" mode lets the signer sign with a mouse/touch pointer on a canvas.
- * - "upload" mode accepts a signature or stamp image file.
- * Both modes emit the result as a PNG (draw) or file (upload) data-URL string via onChange,
- * so the value can be stored directly in a plain string field and rendered with <img src=...>.
- */
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = (event) => reject(event);
+    image.src = src;
+  });
+
+const drawFitted = (canvas: HTMLCanvasElement, image: HTMLImageElement) => {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+};
+
+//? Both modes emit a PNG data URL of at most width × height, small enough to keep in a plain string field.
 export const Signature = ({
   className,
   value,
   onChange,
   width = 480,
   height = 200,
-  drawLabel = "Draw",
-  uploadLabel = "Upload",
-  clearLabel = "Clear",
+  drawLabel,
+  uploadLabel,
+  clearLabel,
 }: SignatureProps) => {
+  const { l } = usePage();
   const [mode, setMode] = useState<"draw" | "upload">("draw");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -47,6 +61,16 @@ export const Signature = ({
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = "#111827";
+    if (!value || !canvas) return;
+    let isCurrent = true;
+    void loadImage(value)
+      .then((image) => {
+        if (isCurrent && !dirty.current) drawFitted(canvas, image);
+      })
+      .catch(() => undefined);
+    return () => {
+      isCurrent = false;
+    };
   }, [mode]);
 
   const pointerPos = (canvas: HTMLCanvasElement, e: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -94,14 +118,22 @@ export const Signature = ({
     onChange(null);
   };
 
-  const onUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChange(typeof reader.result === "string" ? reader.result : null);
-    };
-    reader.readAsDataURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      drawFitted(canvas, await loadImage(objectUrl));
+      dirty.current = false;
+      onChange(canvas.toDataURL("image/png"));
+    } catch {
+      msg.error("util.signatureImageUnreadable");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   };
 
   return (
@@ -114,7 +146,7 @@ export const Signature = ({
             setMode("draw");
           }}
         >
-          <BiEditAlt /> {drawLabel}
+          <BiEditAlt /> {drawLabel ?? l("util.signatureDraw")}
         </button>
         <button
           type="button"
@@ -123,14 +155,14 @@ export const Signature = ({
             setMode("upload");
           }}
         >
-          <AiOutlineUpload /> {uploadLabel}
+          <AiOutlineUpload /> {uploadLabel ?? l("util.signatureUpload")}
         </button>
         <button
           type="button"
           className={buttonRecipe({ variant: "ghost", size: "sm" }, "ml-auto text-destructive")}
           onClick={clear}
         >
-          <AiOutlineDelete /> {clearLabel}
+          <AiOutlineDelete /> {clearLabel ?? l("util.signatureClear")}
         </button>
       </div>
       {mode === "draw" ? (
@@ -153,9 +185,9 @@ export const Signature = ({
               {},
               "py-1 file:mr-3 file:rounded-field file:border-0 file:bg-muted file:px-3 file:py-1 file:font-medium file:text-foreground file:text-sm",
             )}
-            onChange={onUpload}
+            onChange={(event) => void onUpload(event)}
           />
-          {value ? <img src={value} alt="signature" className="max-h-40 object-contain" /> : null}
+          {value ? <img src={value} alt={l("util.signature")} className="max-h-40 object-contain" /> : null}
         </div>
       )}
     </div>

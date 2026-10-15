@@ -3,6 +3,7 @@ import { serviceDictionary } from "akanjs/dictionary";
 export const dictionary = serviceDictionary(["en", "ko"])
   .translate({
     home: ["Home", "홈"],
+    menu: ["Menu", "메뉴"],
     info: ["Info", "정보"],
     selectAll: ["Select All", "모두 선택"],
     clearAll: ["Clear All", "모두 해제"],
@@ -19,30 +20,34 @@ export const dictionary = serviceDictionary(["en", "ko"])
     uploadFileDrop: ["Drop file here", "업로드 할 파일을 여기에 놓아주세요."],
     uploadFilesClick: ["Click and select files", "클릭하여 업로드 할 파일들을 선택해주세요."],
     uploadFilesDrop: ["Drop files here", "업로드 할 파일들을 여기에 놓아주세요."],
+    uploadTypeNotAllowed: ["This file type is not allowed", "허용되지 않는 파일 형식입니다."],
+    uploadFileName: ["File Name", "파일 이름"],
+    uploadFileSize: ["Size", "크기"],
+    uploadFileStatus: ["Status", "상태"],
+    uploadStatusActive: ["Uploaded", "업로드 완료"],
+    uploadStatusUploading: ["Uploading", "업로드 중"],
+    uploadStatusFailed: ["Failed", "실패"],
+    downloadCroppedImage: ["Download Cropped Image", "자른 이미지 다운로드"],
+    signature: ["Signature", "서명"],
+    signatureDraw: ["Draw", "그리기"],
+    signatureUpload: ["Upload", "업로드"],
+    signatureClear: ["Clear", "지우기"],
+    signatureImageUnreadable: ["This image could not be read", "이미지를 읽을 수 없습니다."],
   })
   .error({
-    arrayWeightLengthMismatch: ["Array and weight length should be equal", "배열과 가중치의 길이가 같아야 합니다"],
     jwtSecretRequired: [
       "JWT_SECRET is not configured. Outside local a derived secret can be forged by anyone who knows the app, environment and repo names; set JWT_SECRET or security.jwtSecret, or AKAN_ALLOW_DERIVED_JWT_SECRET=1 to accept the risk",
       "JWT_SECRET 이 설정되지 않았다. local 밖에서 파생 시크릿은 앱·환경·레포 이름을 아는 누구나 위조할 수 있다. JWT_SECRET 또는 security.jwtSecret 을 설정하거나, AKAN_ALLOW_DERIVED_JWT_SECRET=1 로 위험을 감수한다.",
     ],
-    cloudflareDnsRecordsLoadFailed: [
-      "Failed to load Cloudflare DNS records: {errors}",
-      "Cloudflare DNS 레코드를 불러오지 못했습니다: {errors}",
+    discordWebhookFailed: [
+      "The Discord webhook failed with status {status}",
+      "상태 {status}로 Discord 웹훅 전송에 실패했습니다.",
     ],
-    cloudflareDnsRecordCreateFailed: [
-      "Failed to create Cloudflare DNS record: {errors}",
-      "Cloudflare DNS 레코드를 생성하지 못했습니다: {errors}",
-    ],
-    cloudflareDnsRecordUpdateFailed: [
-      "Failed to update Cloudflare DNS record: {errors}",
-      "Cloudflare DNS 레코드를 업데이트하지 못했습니다: {errors}",
-    ],
-    browserNotInitialized: ["Browser not initialized", "브라우저가 초기화되지 않았습니다"],
-    discordGuildNotFound: ["No guild of server in {serverId}", "{serverId} 서버의 길드를 찾을 수 없습니다"],
-    discordBotNotFound: ["No bot found for botId: {botId}", "botId {botId}에 해당하는 봇을 찾을 수 없습니다"],
-    discordRoleOrUserNotFound: ["No role or user", "역할 또는 사용자를 찾을 수 없습니다"],
-    noResponseBody: ["No response body", "응답 본문이 없습니다"],
+    invalidDataUri: ["The data URI is malformed", "data URI 형식이 잘못되었습니다."],
+    untrustedUrlRejected: ["This URL cannot be fetched: {reason}", "이 주소는 가져올 수 없습니다: {reason}"],
+    untrustedFetchFailed: ["The download failed with status {status}", "상태 {status}로 다운로드에 실패했습니다."],
+    untrustedFetchTimedOut: ["The download timed out", "다운로드 시간이 초과되었습니다."],
+    responseTooLarge: ["The response is larger than {maxBytes} bytes", "응답이 {maxBytes}바이트를 넘습니다."],
     streamAborted: ["Stream aborted: {localPath}", "전송이 취소되었습니다: {localPath}"],
     streamStalled: [
       "Stream stalled for {seconds}s: {localPath}",
@@ -52,7 +57,16 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "Filename is required for local path: {localPath}",
       "로컬 경로 {localPath}에 파일 이름이 필요합니다",
     ],
+    githubApiFailed: ["GitHub request failed: {reason}", "GitHub 요청에 실패했습니다: {reason}"],
+    githubAccessTokenExchangeFailed: [
+      "Failed to sign in with GitHub: {reason}",
+      "GitHub 로그인에 실패했습니다: {reason}",
+    ],
     githubRepositoryCreateFailed: ["Failed to create repository: {reason}", "저장소를 생성하지 못했습니다: {reason}"],
+    githubRepositoryCreateForbidden: [
+      "The GitHub App cannot create repositories ({reason}). Grant it the Repository Administration write permission and reconnect GitHub, or use a token that can create private repositories.",
+      "GitHub 앱에 저장소 생성 권한이 없습니다({reason}). Repository Administration 쓰기 권한을 준 뒤 GitHub를 다시 연결하거나, 비공개 저장소를 만들 수 있는 토큰을 사용해야 합니다.",
+    ],
     githubOrganizationRepositoriesListFailed: [
       "Failed to list organization repositories: {reason}",
       "조직 저장소 목록을 불러오지 못했습니다: {reason}",

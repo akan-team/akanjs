@@ -45,7 +45,12 @@ export const dictionary = modelDictionary(["en", "ko"])
         notificationInput: t(["Notification input", "알림 입력"]).desc(["Notification input", "알림 입력"]),
       })),
   }))
-  .error({})
+  .error({
+    recipientRequired: [
+      "A notification for one user needs that user",
+      "한 사람에게 보내는 알림에는 받는 사람이 있어야 합니다.",
+    ],
+  })
   .translate({
     pushOnThisDevice: ["Push on this device", "이 기기에서 푸시 받기"],
     pushOnThisDeviceDesc: [

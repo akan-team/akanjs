@@ -9,7 +9,7 @@ export class LocalFileEndpoint extends endpoint(srv.localFile, ({ query }) => ({
   getBlob: query(Any, { guards: [Public], path: "localFile/getBlob/*", mcp: false })
     .with(Req)
     .exec(async function (req) {
-      const path = req.url.split("/localFile/getBlob/").slice(1).join("/localFile/getBlob/");
+      const path = new URL(req.url).pathname.split("/localFile/getBlob/").slice(1).join("/localFile/getBlob/");
       return await this.localFileService.serveLocalFile(path);
     }),
 })) {}

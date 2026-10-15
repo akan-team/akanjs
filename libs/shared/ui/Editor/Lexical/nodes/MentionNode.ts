@@ -1,37 +1,9 @@
+import { RichUrl } from "@libs/shared/common";
 import { resolveServerUrl } from "akanjs/client";
 import { type EditorConfig, type LexicalEditor, TextNode } from "lexical";
 
-import { MENTION_CHIP, MENTION_CHIP_AVATAR, MENTION_CHIP_LINK } from "../theme";
+import { mentionChip, mentionChipAvatar, mentionChipLink } from "../theme";
 import { $createMentionNode, type MentionPayload, type SerializedMentionNode } from "./mentionNode.util";
-
-const MENTION_CHIP_CLASSES = MENTION_CHIP.split(" ");
-const MENTION_CHIP_LINK_CLASSES = MENTION_CHIP_LINK.split(" ");
-const MENTION_CHIP_AVATAR_CLASSES = MENTION_CHIP_AVATAR.split(" ");
-
-// XXX: the url() below is interpolated into a style property — anything that could
-// close the quoted url and append further declarations must never reach it.
-const cssSafeUrl = (url: string | null) => (url && !/["'()\\\s]/.test(url) ? url : null);
-
-const applyChip = (dom: HTMLElement, node: MentionNode) => {
-  dom.classList.add(...MENTION_CHIP_CLASSES);
-  dom.dataset.mentionRef = node.__refName;
-  dom.dataset.mentionId = node.__refId;
-  if (node.__href) {
-    dom.dataset.mentionHref = node.__href;
-    dom.classList.add(...MENTION_CHIP_LINK_CLASSES);
-  } else {
-    delete dom.dataset.mentionHref;
-    dom.classList.remove(...MENTION_CHIP_LINK_CLASSES);
-  }
-  const avatarUrl = cssSafeUrl(node.__imageUrl ? resolveServerUrl(node.__imageUrl) : null);
-  if (avatarUrl) {
-    dom.style.setProperty("--mention-avatar", `url("${avatarUrl}")`);
-    dom.classList.add(...MENTION_CHIP_AVATAR_CLASSES);
-  } else {
-    dom.style.removeProperty("--mention-avatar");
-    dom.classList.remove(...MENTION_CHIP_AVATAR_CLASSES);
-  }
-};
 
 /**
  * An inline reference to a domain model, rendered as the label (avatar + name).
@@ -47,6 +19,39 @@ const applyChip = (dom: HTMLElement, node: MentionNode) => {
  * runs off `data-mention-href` in `MentionLinkPlugin`.
  */
 export class MentionNode extends TextNode {
+  static readonly #chipClasses = mentionChip.split(" ");
+  static readonly #linkClasses = mentionChipLink.split(" ");
+  static readonly #avatarClasses = mentionChipAvatar.split(" ");
+
+  // XXX: the url() below is interpolated into a style property — anything that could
+  // close the quoted url and append further declarations must never reach it.
+  static #cssSafeUrl(url: string | null) {
+    return url && !/["'()\\\s]/.test(url) ? url : null;
+  }
+
+  static #applyChip(dom: HTMLElement, node: MentionNode) {
+    dom.classList.add(...MentionNode.#chipClasses);
+    dom.dataset.mentionRef = node.__refName;
+    dom.dataset.mentionId = node.__refId;
+    // Only a path on this site: the chip navigates with `router.push`, and a stored url is anyone's to write.
+    const href = RichUrl.internalPath(node.__href);
+    if (href) {
+      dom.dataset.mentionHref = href;
+      dom.classList.add(...MentionNode.#linkClasses);
+    } else {
+      delete dom.dataset.mentionHref;
+      dom.classList.remove(...MentionNode.#linkClasses);
+    }
+    const avatarUrl = MentionNode.#cssSafeUrl(node.__imageUrl ? resolveServerUrl(node.__imageUrl) : null);
+    if (avatarUrl) {
+      dom.style.setProperty("--mention-avatar", `url("${avatarUrl}")`);
+      dom.classList.add(...MentionNode.#avatarClasses);
+    } else {
+      dom.style.removeProperty("--mention-avatar");
+      dom.classList.remove(...MentionNode.#avatarClasses);
+    }
+  }
+
   __refName: string;
   __refId: string;
   __label: string;
@@ -111,13 +116,13 @@ export class MentionNode extends TextNode {
 
   override createDOM(config: EditorConfig, editor?: LexicalEditor): HTMLElement {
     const dom = super.createDOM(config, editor);
-    applyChip(dom, this);
+    MentionNode.#applyChip(dom, this);
     return dom;
   }
 
   override updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
     if (super.updateDOM(prevNode, dom, config)) return true;
-    applyChip(dom, this);
+    MentionNode.#applyChip(dom, this);
     return false;
   }
 

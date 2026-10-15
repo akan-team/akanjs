@@ -2,30 +2,30 @@ import { dayjs } from "akanjs/base";
 import { adapt } from "akanjs/service";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
+import { SignalTestHarness } from "./signalTestHarness";
 
 export interface PurpleApiOptions {
   phone: string;
   apiKey: string;
   apiSecret: string;
 }
+interface SolapiMessageService {
+  send(message: { from: string; to: string; text: string }, options: { scheduledDate: string }): Promise<unknown>;
+}
+interface SolapiModule {
+  SolapiMessageService: new (apiKey: string, apiSecret: string) => SolapiMessageService;
+}
 export class PurpleApi extends adapt("purpleApi", ({ env }) => ({
   options: env((options: ModulesOptions) => options.message),
 })) {
-  private static solapiLoad: Promise<{
-    SolapiMessageService: new (
-      apiKey: string,
-      apiSecret: string,
-    ) => {
-      send(message: { from: string; to: string; text: string }, options: { scheduledDate: string }): Promise<unknown>;
-    };
-  }> | null = null;
+  static #solapiLoad: Promise<SolapiModule> | null = null;
 
-  private static loadSolapi() {
-    PurpleApi.solapiLoad ??= import("solapi") as NonNullable<typeof PurpleApi.solapiLoad>;
-    return PurpleApi.solapiLoad;
+  static #loadSolapi() {
+    PurpleApi.#solapiLoad ??= import("solapi") as Promise<SolapiModule>;
+    return PurpleApi.#solapiLoad;
   }
 
-  #message: InstanceType<Awaited<ReturnType<typeof PurpleApi.loadSolapi>>["SolapiMessageService"]> | null = null;
+  #message: SolapiMessageService | null = null;
 
   get configured() {
     return !!this.options;
@@ -36,17 +36,22 @@ export class PurpleApi extends adapt("purpleApi", ({ env }) => ({
   }
   async #getMessage() {
     const { apiKey, apiSecret } = this.#requireOptions();
-    this.#message ??= new (await PurpleApi.loadSolapi()).SolapiMessageService(apiKey, apiSecret);
+    this.#message ??= new (await PurpleApi.#loadSolapi()).SolapiMessageService(apiKey, apiSecret);
     return this.#message;
   }
   async send(to: string, text: string, at = new Date()) {
     const { phone } = this.#requireOptions();
+    if (SignalTestHarness.isRunning()) {
+      this.logger.debug(`send suppressed in the signal-test harness: ***${to.slice(-4)}`);
+      return true;
+    }
     const message = await this.#getMessage();
     await message.send(
       { from: phone, to: to.replace(/-/g, ""), text },
       { scheduledDate: dayjs(at).format("YYYY-MM-DD HH:mm:ss") },
     );
-    this.logger.info(`send: ${to} ${text} ${at}`);
+    //? Never log the text (it carries one-time codes) or the full number.
+    this.logger.info(`send: ***${to.slice(-4)} (${text.length} chars)`);
     return true;
   }
   async sendPhoneCode(to: string, phoneCode: string, hash: string) {

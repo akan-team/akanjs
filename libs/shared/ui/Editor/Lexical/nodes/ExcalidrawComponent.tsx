@@ -1,9 +1,10 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
+import { Err, usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
 import type { NodeKey } from "lexical";
-import type { JSX, SyntheticEvent } from "react";
+import type { SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AiOutlineEdit, AiOutlineReload } from "react-icons/ai";
@@ -16,7 +17,6 @@ import {
   type ExcalidrawScene,
   normalizeScene,
   pickAppState,
-  RESET_WIDTH,
   renderPreview,
   sanitizeSceneFiles,
   toLoadableFiles,
@@ -24,7 +24,7 @@ import {
 } from "./excalidrawNode.util";
 import { MediaFrame, MediaMenuButton } from "./shared";
 import type { MediaAlign } from "./shared.type";
-import { updateNodeByKey } from "./shared.util";
+import { adoptByKey, mediaResetWidth, updateNodeByKey } from "./shared.util";
 
 interface ExcalidrawComponentProps {
   nodeKey: NodeKey;
@@ -42,6 +42,7 @@ export const ExcalidrawComponent = ({
   align,
 }: ExcalidrawComponentProps) => {
   const [editor] = useLexicalComposerContext();
+  const { l } = usePage();
   const editable = useLexicalEditable();
   const upload = useEditorUpload();
   const scene = normalizeScene(rawScene);
@@ -101,12 +102,16 @@ export const ExcalidrawComponent = ({
     [editor, nodeKey],
   );
 
-  // Adopt the drawing's intrinsic width once (capped), so it resizes from a sane origin.
+  // The resize handles start from the drawing's own width, capped.
   const onLoad = (event: SyntheticEvent<HTMLImageElement>) => {
-    if (width) return;
+    if (!editable || width) return;
     const { naturalWidth } = event.currentTarget;
     if (!naturalWidth) return;
-    setWidth(Math.min(naturalWidth, RESET_WIDTH), true);
+    adoptByKey(
+      editor,
+      nodeKey,
+      (node) => $isExcalidrawNode(node) && node.setWidth(Math.min(naturalWidth, mediaResetWidth)),
+    );
   };
 
   const saveScene = useCallback(async () => {
@@ -114,6 +119,7 @@ export const ExcalidrawComponent = ({
       const uploadFn = upload.canUpload
         ? async (file: File) => {
             const uploaded = await upload.uploadFile(file);
+            if (!uploaded) throw new Err("shared.error.fileUploadFailed");
             return { id: uploaded.id, url: uploaded.url, mimeType: uploaded.mimetype };
           }
         : undefined;
@@ -157,14 +163,14 @@ export const ExcalidrawComponent = ({
           })
         }
         onResize={(nextWidth) => setWidth(nextWidth, true)}
-        onReset={() => setWidth(RESET_WIDTH)}
+        onReset={() => setWidth(mediaResetWidth)}
         extraActions={
           editable ? (
             <>
-              <MediaMenuButton title="Edit" onClick={() => setOpen(true)}>
+              <MediaMenuButton title={l("shared.editor-edit")} onClick={() => setOpen(true)}>
                 <AiOutlineEdit />
               </MediaMenuButton>
-              <MediaMenuButton title="Reset drawing" onClick={resetScene}>
+              <MediaMenuButton title={l("shared.editor-resetDrawing")} onClick={resetScene}>
                 <AiOutlineReload />
               </MediaMenuButton>
             </>
@@ -174,7 +180,7 @@ export const ExcalidrawComponent = ({
         {preview ? (
           <img
             src={preview}
-            alt="Excalidraw drawing"
+            alt={l("shared.editor-drawingAlt")}
             width={width || undefined}
             onLoad={onLoad}
             draggable={false}
@@ -189,7 +195,7 @@ export const ExcalidrawComponent = ({
             className="flex h-40 w-80 max-w-full flex-col items-center justify-center gap-2 rounded-md border border-foreground/20 border-dashed bg-muted/40 text-foreground/50"
           >
             <AiOutlineEdit className="text-3xl" />
-            <span className="text-sm">{editable ? "Click to draw" : "No drawing"}</span>
+            <span className="text-sm">{editable ? l("shared.editor-clickToDraw") : l("shared.editor-noDrawing")}</span>
           </button>
         )}
       </MediaFrame>
@@ -216,13 +222,8 @@ interface ExcalidrawModalProps {
   onSave: () => void;
 }
 
-export const ExcalidrawModal = ({
-  module,
-  scene,
-  onChange,
-  onCancel,
-  onSave,
-}: ExcalidrawModalProps): JSX.Element | null => {
+export const ExcalidrawModal = ({ module, scene, onChange, onCancel, onSave }: ExcalidrawModalProps) => {
+  const { l } = usePage();
   const Excalidraw = module?.Excalidraw;
   // Portal to <body> so the overlay is a true full-screen layer: a transformed
   // or overflow-clipped ancestor (editor card / page layout) would otherwise
@@ -232,13 +233,13 @@ export const ExcalidrawModal = ({
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col bg-background text-foreground">
       <div className="relative z-10 flex items-center justify-between border-foreground/10 border-b bg-background px-4 py-3">
-        <div className="font-semibold">Edit Excalidraw</div>
+        <div className="font-semibold">{l("shared.editor-editExcalidraw")}</div>
         <div className="flex gap-2">
           <button type="button" className={buttonRecipe({ size: "sm", variant: "ghost" })} onClick={onCancel}>
-            Cancel
+            {l("shared.editor-cancel")}
           </button>
           <button type="button" className={buttonRecipe({ size: "sm", variant: "primary" })} onClick={onSave}>
-            Save
+            {l("shared.editor-save")}
           </button>
         </div>
       </div>
@@ -259,7 +260,9 @@ export const ExcalidrawModal = ({
             }}
           />
         ) : (
-          <div className="flex size-full items-center justify-center text-foreground/50">Loading Excalidraw…</div>
+          <div className="flex size-full items-center justify-center text-foreground/50">
+            {l("shared.editor-loadingExcalidraw")}
+          </div>
         )}
       </div>
     </div>,

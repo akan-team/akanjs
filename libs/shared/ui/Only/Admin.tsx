@@ -6,6 +6,7 @@ interface AdminProps {
   children: ReactNode | ReactNode[];
   roles?: cnst.AdminRole["value"][];
 }
+// A display gate, not authorization: what it hides stays callable, so only the endpoint's guards protect the data.
 export const Admin = ({ children, roles }: AdminProps) => {
   const me = st.use.me();
   const path = st.use.path();

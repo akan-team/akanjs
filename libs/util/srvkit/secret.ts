@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type BackendEnv, type BaseEnv, type Environment, getEnv } from "akanjs/base";
-import { bearerTokenOf, Logger } from "akanjs/common";
+import { Logger } from "akanjs/common";
 import { Err } from "../lib/dict";
 import { jwtVerify } from "./jwt";
 
@@ -14,7 +14,7 @@ export const resolveJwt = async <Resolved extends ResolvedToken>(
   defaultResolved: Resolved,
 ): Promise<Resolved> => {
   // McpAuth's parse, exactly: a token read here that /mcp's gate ignores would skip its aud and expiry checks.
-  const token = bearerTokenOf(authorization);
+  const token = /^Bearer +([^ ]+)/i.exec(authorization ?? "")?.[1];
   if (!token) return defaultResolved;
   try {
     const resolved = (await jwtVerify(token, secret)) as Resolved;
@@ -69,11 +69,6 @@ export const assertJwtSecretConfigured = ({
   if (operationMode === "local" || process.env.JWT_SECRET || configuredSecret) return;
   if (process.env.AKAN_ALLOW_DERIVED_JWT_SECRET === "1") return;
   throw new Err("util.error.jwtSecretRequired");
-};
-
-export const generateAeskey = (appName: string, environment: BaseEnv["environment"], repoWideSeed = "aes-key") => {
-  const seed = `${appName}-${environment}-${repoWideSeed}`;
-  return createHash("sha256").update(seed).digest("hex");
 };
 
 export const generateHost = (options: BackendEnv) => {

@@ -4,6 +4,7 @@ import { Try } from "akanjs/server";
 import { adapt } from "akanjs/service";
 import { Err } from "../../lib/dict";
 import type { ModulesOptions } from "../../lib/option";
+import { SignalTestHarness } from "../signalTestHarness";
 import { ensureReadableStreamReady } from "./ensureReadableStreamReady";
 import type {
   CopyRequest,
@@ -17,10 +18,13 @@ import type {
 } from "./type";
 import { writeReadableStreamToFile } from "./writeReadableStreamToFile";
 
+const localDir = () =>
+  SignalTestHarness.isRunning() ? SignalTestHarness.scratchDir() : `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/local`;
+
 export class BlobStorageApi
   extends adapt("blobStorageApi", ({ env }) => ({
-    root: env(() => `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/local/${getEnv().appName}/backend`),
-    privateRoot: env(() => `${process.env.AKAN_WORKSPACE_ROOT ?? "."}/local/${getEnv().appName}/server-private`),
+    root: env(() => `${localDir()}/${getEnv().appName}/backend`),
+    privateRoot: env(() => `${localDir()}/${getEnv().appName}/server-private`),
     urlPrefix: env((options: ModulesOptions) =>
       getEnv().operationMode === "local"
         ? `http://localhost:${process.env.PORT ?? options.port ?? 8282}/api/localFile/getBlob`
@@ -106,6 +110,9 @@ export class BlobStorageApi
   async deleteDataByPath(path: string) {
     await Bun.file(this.#resolveFilePath(path)).delete();
     return true;
+  }
+  presignDownload(_path: string, _expiresInSec: number, _opts?: { filename?: string }) {
+    return null;
   }
   presignUpload(_path: string, _expiresInSec: number) {
     return null;

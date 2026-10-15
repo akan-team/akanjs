@@ -9,7 +9,7 @@ import type { SerializedLexicalNode } from "lexical";
  */
 
 /** Node types that carry a single uploaded `fileId`. */
-const FILE_BACKED_TYPES = new Set(["akan-image", "akan-video", "akan-file"]);
+const fileBackedTypes = new Set(["akan-image", "akan-video", "akan-file"]);
 
 interface MaybeChildren {
   children?: unknown;
@@ -22,7 +22,7 @@ interface MaybeExcalidraw {
 const walk = (node: SerializedLexicalNode, ids: Set<string>): void => {
   const type = node.type;
   const fileId = (node as { fileId?: unknown }).fileId;
-  if (typeof type === "string" && FILE_BACKED_TYPES.has(type) && typeof fileId === "string" && fileId) {
+  if (typeof type === "string" && fileBackedTypes.has(type) && typeof fileId === "string" && fileId) {
     ids.add(fileId);
   }
   // Excalidraw embeds one or more uploaded images inside its scene's file map.

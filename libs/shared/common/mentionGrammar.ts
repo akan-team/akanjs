@@ -1,8 +1,8 @@
 import type { MentionToken } from "./richEditor";
 
 /*
- * The one mention grammar, shared by the editor's markdown transformer, `contentFromMentionText` and the markdown
- * codec — a second copy of this pattern is how the directions drift apart.
+ * The one mention grammar, shared by the editor's markdown transformer and the markdown codec — a second copy of
+ * this pattern is how the directions drift apart.
  *
  * Flagless on purpose: `markdownMention` hands the object itself to Lexical as `importRegExp`, and a `g` flag
  * would leave `lastIndex` behind between matches.

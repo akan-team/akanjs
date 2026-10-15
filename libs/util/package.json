@@ -10,13 +10,11 @@
     "@react-google-maps/api": "^2.20.8",
     "chart.js": "^4.5.1",
     "chartjs-adapter-dayjs-4": "^1.0.4",
-    "discord.js": "^14.26.4",
     "firebase": "^12.13.0",
     "firebase-admin": "^13.10.0",
     "jose": "^6.2.3",
     "nodemailer": "^8.0.10",
     "pigeon-maps": "^0.22.1",
-    "puppeteer": "^24.43.1",
     "qrcode.react": "^4.2.0",
     "react": "19.3.0",
     "react-chartjs-2": "^5.3.1",
@@ -27,12 +25,9 @@
     "react-pdf": "^10.4.1",
     "react-to-print": "^3.3.0",
     "solapi": "^5.5.4",
-    "swiper": "^12.1.4",
-    "ua-parser-js": "^2.0.9"
+    "swiper": "^12.1.4"
   },
   "devDependencies": {
-    "@marsidev/react-turnstile": "^1.5.2",
-    "@octokit/webhooks-types": "^7.6.1",
-    "dayjs": "^1.11.20"
+    "@octokit/webhooks-types": "^7.6.1"
   }
 }

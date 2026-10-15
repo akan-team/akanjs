@@ -1,5 +1,4 @@
 import type {
-  CloudflareApiOptions,
   DiscordApiOptions,
   EmailApiOptions,
   GithubOptions,
@@ -8,7 +7,7 @@ import type {
   PurpleApiOptions,
   PushNotificationServerOptions,
 } from "@libs/util/srvkit";
-import { assertJwtSecretConfigured, generateAeskey, generateHost, resolveJwtSecret } from "@libs/util/srvkit";
+import { assertJwtSecretConfigured, generateHost, resolveJwtSecret } from "@libs/util/srvkit";
 import { getEnv, type SshOptions } from "akanjs/base";
 import { AkanOption } from "akanjs/server";
 import type { LibOptions } from "./srv";
@@ -41,7 +40,8 @@ export type SSOOptions = {
 
 export interface SecurityOptions {
   jwtSecret: string;
-  aeskey?: string;
+  aeskey?: string; //? no longer read; the env files outside git still set it
+
   verifies: ("wallet" | "password" | "phone" | "kakao" | "naver" | "email")[][];
   sso: SSOOptions;
 }
@@ -74,7 +74,7 @@ export type ModulesOptions = LibOptions & {
   discord?: DiscordApiOptions;
   mailer?: EmailApiOptions;
   message?: PurpleApiOptions;
-  cloudflare?: CloudflareApiOptions;
+  cloudflare?: unknown; //? no longer read (Turnstile and the Cloudflare adaptor are gone); env files outside git still set it
   githubAppInfo?: GithubOptions;
   pushNoti?: PushNotificationServerOptions;
   iapVerify?: {
@@ -88,8 +88,6 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
   assertJwtSecretConfigured({ operationMode: env.operationMode, configuredSecret: options.security?.jwtSecret });
   return {
     jwtSecret: resolveJwtSecret(env.appName, env.environment, options.security?.jwtSecret),
-    aeskey:
-      process.env.AES_KEY ?? options.security?.aeskey ?? generateAeskey(env.appName, env.environment, env.repoName),
     host: generateHost(options),
   };
 });

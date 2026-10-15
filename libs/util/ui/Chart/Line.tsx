@@ -12,23 +12,11 @@ import {
   Tooltip,
 } from "chart.js";
 import { Line as LineChart } from "react-chartjs-2";
+import { withChartDefaults } from "./chartOptions";
 import type { LineProps } from "./type";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-export default function Line(props: LineProps) {
-  return (
-    <LineChart
-      options={{
-        responsive: true,
-        plugins: {
-          legend: {
-            display: true,
-          },
-        },
-        ...props.options,
-      }}
-      {...props}
-    />
-  );
+export default function Line({ options, ...props }: LineProps) {
+  return <LineChart {...props} options={withChartDefaults(options)} />;
 }

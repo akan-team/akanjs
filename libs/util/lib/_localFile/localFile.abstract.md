@@ -3,7 +3,8 @@ blob storage의 공개 로컬 파일을 HTTP Response로 읽어 제공한다.
 
 ## Rules
 - `private/`로 시작하는 경로는 localFile로 서빙하지 않는다.
-- endpoint 경로 뒤의 나머지 문자열을 storage path로 사용한다.
+- endpoint 경로 뒤의 나머지 pathname(query string 제외)을 퍼센트 디코딩해 storage path로 사용한다. 디코딩한 뒤 public root
+  밖으로 나가는 경로(`..%2F` 등)와 없는 파일은 똑같이 404 `fileNotFound`로 답한다.
 - 서비스는 파일을 변환하지 않고 storage stream을 그대로 반환한다. Content-Type은 달지 않는다: Bun.serve가 저장된 이름의
   확장자로 정하고 Range에 206으로 답한다. 직접 달면 API 라우터가 본문 전체를 읽어 압축하고 Range를 무시한다.
 - `nosniff`는 선언된 타입을 내용으로 바꾸지 못하게 할 뿐이다. `.html`·`.svg`로 저장된 파일은 그 타입으로 나가므로, PDF가 아닌

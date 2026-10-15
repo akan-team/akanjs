@@ -126,7 +126,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     signinWithSignToken: fn(["Sign in with Sign Token", "서명 토큰으로 로그인"])
       .desc(["API to sign in with a sign token", "서명 토큰으로 로그인하는 API"])
       .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         signToken: t(["Sign Token", "서명 토큰"]).desc(["Sign Token", "서명 토큰"]),
       })),
     signoutUser: fn(["Sign out", "로그아웃"])
@@ -141,6 +140,18 @@ export const dictionary = modelDictionary(["en", "ko"])
       .desc(["API to activate a user", "유저를 활성화하는 API"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
+      })),
+    activateUserByAdmin: fn(["Activate User by Admin", "관리자에 의한 유저 활성화"])
+      .desc([
+        "Open a prepare user's account without the signup policy or a session",
+        "가입 정책과 세션 발급 없이 가입 대기 사용자의 계정을 엽니다",
+      ])
+      .arg((t) => ({
+        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
       })),
     removeUser: fn(["Remove User", "유저 삭제"])
       .desc(["API to remove a user", "유저를 삭제하는 API"])
@@ -150,8 +161,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     generatePrepareUser: fn(["Generate Prepare User", "준비 유저 생성"])
       .desc(["API to generate a prepare user", "준비 유저를 생성하는 API"])
       .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
-        token: t(["Token", "토큰"]).desc(["Token", "토큰"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     setNicknameOfSelf: fn(["Set Nickname of Self", "자기 자신 닉네임 설정"])
       .desc(["API to set the nickname of the self", "자기 자신의 닉네임을 설정하는 API"])
@@ -187,6 +200,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         accountId: t(["Account ID", "아이디"]).desc(["Account ID", "아이디"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     setPasswordInPrepareUser: fn(["Set Password in Prepare User", "준비 유저 비밀번호 설정"])
       .desc(["API to set the password in a prepare user", "준비 유저의 비밀번호를 설정하는 API"])
@@ -194,20 +211,22 @@ export const dictionary = modelDictionary(["en", "ko"])
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         accountId: t(["Account ID", "아이디"]).desc(["Account ID", "아이디"]),
         password: t(["Password", "비밀번호"]).desc(["Password", "비밀번호"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     signinWithPassword: fn(["Sign in with Password", "비밀번호로 로그인"])
       .desc(["API to sign in with a password", "비밀번호로 로그인하는 API"])
       .arg((t) => ({
         accountId: t(["Account ID", "아이디"]).desc(["Account ID", "아이디"]),
         password: t(["Password", "비밀번호"]).desc(["Password", "비밀번호"]),
-        token: t(["Token", "토큰"]).desc(["Token", "토큰"]),
       })),
     changePassword: fn(["Change Password", "비밀번호 변경"])
       .desc(["API to change the password", "비밀번호를 변경하는 API"])
       .arg((t) => ({
         password: t(["Password", "비밀번호"]).desc(["Password", "비밀번호"]),
         prevPassword: t(["Previous Password", "이전 비밀번호"]).desc(["Previous Password", "이전 비밀번호"]),
-        token: t(["Token", "토큰"]).desc(["Token", "토큰"]),
       })),
     requestPhoneCodeForSetPassword: fn(["Request Phone Code for Set Password", "비밀번호 설정을 위한 휴대폰 인증 요청"])
       .desc(["API to request a phone code for setting a password", "비밀번호 설정을 위한 휴대폰 인증 요청을 하는 API"])
@@ -239,6 +258,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       ])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     verifyEmailInPrepareUser: fn(["Verify Email in Prepare User", "준비 유저 이메일 인증"])
       .desc([
@@ -248,9 +271,13 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         emailCode: t(["Email Code", "이메일 인증번호"]).desc(["Email Code", "이메일 인증번호"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
-    getUserIdHasPhone: fn(["Get User ID Has Phone", "휴대폰 번호를 가진 유저 ID 조회"])
-      .desc(["API to get the user ID with a given phone number", "주어진 휴대폰 번호를 가진 유저 ID를 조회하는 API"])
+    userExistsHasPhone: fn(["User Exists Has Phone", "휴대폰 번호 가입 여부 조회"])
+      .desc(["Whether an account already uses this phone number", "이 휴대폰 번호로 가입한 계정이 있는지 조회합니다"])
       .arg((t) => ({
         phone: t(["Phone", "휴대폰 번호"]).desc(["Phone", "휴대폰 번호"]),
       })),
@@ -260,6 +287,10 @@ export const dictionary = modelDictionary(["en", "ko"])
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         phone: t(["Phone", "휴대폰 번호"]).desc(["Phone", "휴대폰 번호"]),
         hash: t(["Hash", "해시"]).desc(["Hash", "해시"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     verifyPhoneInPrepareUser: fn(["Verify Phone in Prepare User", "준비 유저 휴대폰 인증"])
       .desc(["API to verify a phone number in a prepare user", "준비 유저의 휴대폰 인증을 하는 API"])
@@ -267,6 +298,19 @@ export const dictionary = modelDictionary(["en", "ko"])
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         phone: t(["Phone", "휴대폰 번호"]).desc(["Phone", "휴대폰 번호"]),
         phoneCode: t(["Phone Code", "휴대폰 인증번호"]).desc(["Phone Code", "휴대폰 인증번호"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
+      })),
+    requestPhoneCodeForChangePhone: fn(["Request Phone Code for Change Phone", "휴대폰 번호 변경 인증 요청"])
+      .desc([
+        "Text a code to the new phone number before it replaces the current one",
+        "현재 번호를 바꾸기 전에 새 번호로 인증번호를 보냅니다",
+      ])
+      .arg((t) => ({
+        phone: t(["Phone", "휴대폰 번호"]).desc(["The new phone number", "새 휴대폰 번호"]),
+        hash: t(["Hash", "해시"]).desc(["App hash for SMS retrieval", "SMS 자동 인식용 앱 해시"]),
       })),
     setPhoneInActiveUser: fn(["Set Phone in Active User", "활성화 유저 휴대폰 번호 설정"])
       .desc(["API to set the phone number in an active user", "활성화 유저의 휴대폰 번호를 설정하는 API"])
@@ -277,16 +321,50 @@ export const dictionary = modelDictionary(["en", "ko"])
     requestPhoneCodeForSignin: fn(["Request Phone Code for Signin", "로그인을 위한 휴대폰 인증 요청"])
       .desc(["API to request a phone code for signin", "로그인을 위한 휴대폰 인증 요청을 하는 API"])
       .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         phone: t(["Phone", "휴대폰 번호"]).desc(["Phone", "휴대폰 번호"]),
         hash: t(["Hash", "해시"]).desc(["Hash", "해시"]),
       })),
     getSignTokenForSignin: fn(["Get Sign Token for Signin", "로그인을 위한 서명 토큰 조회"])
       .desc(["API to get a sign token for signin", "로그인을 위한 서명 토큰을 조회하는 API"])
       .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         phone: t(["Phone", "휴대폰 번호"]).desc(["Phone", "휴대폰 번호"]),
         phoneCode: t(["Phone Code", "휴대폰 인증번호"]).desc(["Phone Code", "휴대폰 인증번호"]),
+      })),
+    setPasswordInPrepareUserWithSignToken: fn(["Set Password with Sign Token", "서명 토큰으로 가입 비밀번호 설정"])
+      .desc([
+        "API to set a preparing user's password once the email is verified",
+        "메일 인증을 마친 가입 유저의 비밀번호를 설정하는 API",
+      ])
+      .arg((t) => ({
+        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        password: t(["Password", "비밀번호"]).desc(["Password", "비밀번호"]),
+        signToken: t(["Sign Token", "서명 토큰"]).desc(["Sign Token", "서명 토큰"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
+      })),
+    requestEmailCodeForResetPassword: fn(["Request Reset Code", "비밀번호 재설정 메일 요청"])
+      .desc([
+        "API to email a verification code for resetting a password",
+        "비밀번호 재설정을 위한 인증 코드를 메일로 보내는 API",
+      ])
+      .arg((t) => ({ accountId: t(["Account ID", "계정 ID"]).desc(["Account ID", "계정 ID"]) })),
+    verifyEmailCodeForResetPassword: fn(["Verify Reset Code", "비밀번호 재설정 메일 확인"])
+      .desc([
+        "API to verify the reset code and return a sign token",
+        "재설정 인증 코드를 확인하고 서명 토큰을 내주는 API",
+      ])
+      .arg((t) => ({
+        accountId: t(["Account ID", "계정 ID"]).desc(["Account ID", "계정 ID"]),
+        emailCode: t(["Email Code", "메일 인증번호"]).desc(["Email Code", "메일 인증번호"]),
+      })),
+    resetPasswordWithSignToken: fn(["Reset Password with Sign Token", "서명 토큰으로 비밀번호 재설정"])
+      .desc(["API to set a new password with a sign token", "서명 토큰으로 새 비밀번호를 설정하는 API"])
+      .arg((t) => ({
+        accountId: t(["Account ID", "계정 ID"]).desc(["Account ID", "계정 ID"]),
+        password: t(["Password", "비밀번호"]).desc(["Password", "비밀번호"]),
+        signToken: t(["Sign Token", "서명 토큰"]).desc(["Sign Token", "서명 토큰"]),
       })),
     addUserRole: fn(["Add User Role", "유저 권한 추가"])
       .desc(["API to add a role to a user", "유저에 권한을 추가하는 API"])
@@ -362,18 +440,20 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         name: t(["Name", "이름"]).desc(["Name", "이름"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     setAgreePoliciesOfPrepareUser: fn(["Set Agree Policies of Prepare User", "준비 유저 동의 정책 설정"])
       .desc(["API to set the agree policies of a prepare user", "준비 유저의 동의 정책을 설정하는 API"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         agreePolicies: t(["Agree Policies", "동의 정책"]).desc(["Agree Policies", "동의 정책"]),
-      })),
-    setDiscordOfPrepareUser: fn(["Set Discord of Prepare User", "준비 유저 디스코드 설정"])
-      .desc(["API to set the discord of a prepare user", "준비 유저의 디스코드를 설정하는 API"])
-      .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
-        discord: t(["Discord", "디스코드"]).desc(["Discord", "디스코드"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     setNotiSettingOfUser: fn(["Set Noti Setting of User", "유저 알림 설정 설정"])
       .desc(["API to set the noti setting of a user", "유저의 알림 설정을 설정하는 API"])
@@ -445,12 +525,20 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         appliedImages: t(["Applied images", "적용된 사진"]).desc(["Applied images", "적용된 사진"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     setNicknameOfPrepareUser: fn(["Set nickname of prepare user", "준비중 유저의 닉네임을 설정합니다."])
       .desc(["Set nickname of prepare user", "준비중 유저의 닉네임을 설정합니다."])
       .arg((t) => ({
         userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
         nickname: t(["Nickname", "닉네임"]).desc(["Nickname", "닉네임"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
       })),
     refreshJwt: fn(["Refresh JWT", "JWT 갱신"])
       .desc(["Refresh JWT", "JWT 갱신"])
@@ -459,6 +547,36 @@ export const dictionary = modelDictionary(["en", "ko"])
       })),
   }))
   .error({
+    invalidPasswordLength: ["Use at least {min} characters for the password", "비밀번호는 {min}자 이상이어야 합니다."],
+    invalidNicknameLength: ["A nickname is 1 to {max} characters", "닉네임은 1~{max}자로 입력해 주세요."],
+    ssoProviderFailed: [
+      "{type} sign-in did not answer. Try again",
+      "{type} 로그인이 응답하지 않았습니다. 다시 시도해 주세요.",
+    ],
+    ssoEmailNotVerified: [
+      "Verify your email with {type} first, then sign in again",
+      "{type}에서 이메일 인증을 마친 뒤 다시 로그인해 주세요.",
+    ],
+    ssoStateMismatch: [
+      "This sign-in was not started in this browser. Start again",
+      "이 브라우저에서 시작한 로그인이 아닙니다. 처음부터 다시 시도해 주세요.",
+    ],
+    ssoCancelled: ["Sign-in was cancelled", "로그인이 취소되었습니다."],
+    invalidCredentials: ["The account ID or password is wrong", "아이디 또는 비밀번호가 올바르지 않습니다."],
+    tooManySigninAttempts: [
+      "Too many failed sign-ins. Try again in 15 minutes",
+      "로그인 실패가 너무 많습니다. 15분 후에 다시 시도해 주세요.",
+    ],
+    tooManyCodeFailures: [
+      "Too many wrong codes. Try again tomorrow",
+      "인증번호를 너무 많이 틀렸습니다. 내일 다시 시도해 주세요.",
+    ],
+    userRestricted: ["This account is restricted until {until}", "{until}까지 이용이 제한된 계정입니다."],
+    userNotRestricted: ["This account is not restricted", "이용 제한 상태가 아닌 계정입니다."],
+    resetMailFailed: [
+      "The reset mail could not be sent. Try again later",
+      "재설정 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    ],
     noAccount: ["No account exists. Sign up is needed,", "가입되지 않은 이메일입니다. 회원가입을 먼저 해주세요."],
     wrongPassword: ["Wrong password. Please try again.", "비밀번호가 틀렸습니다. 다시 시도해주세요."],
     userNotActive: ["User is not in active status", "유저가 활성 상태가 아닙니다"],
@@ -495,6 +613,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     ],
     invalidEmailCode: ["Invalid or expired email code", "인증번호가 틀렸거나 만료되었습니다."],
     signupNotVerified: ["Finish verifying your account before starting", "인증을 마친 뒤에 시작할 수 있습니다."],
+    invalidSignupToken: [
+      "The sign-up has expired. Start again",
+      "가입 진행이 만료되었습니다. 처음부터 다시 진행해 주세요.",
+    ],
     noRefreshToken: ["No refresh token", "리프레시 토큰이 없습니다"],
     unauthorized: ["Unauthorized", "권한이 없습니다"],
   })
@@ -561,6 +683,21 @@ export const dictionary = modelDictionary(["en", "ko"])
     emailSentSuccess: ["Email Sent", "이메일이 발송되었습니다."],
     emailCodeSentSuccess: ["Code sent to your email", "이메일로 인증번호를 보냈습니다."],
     resendEmailCode: ["Resend code", "인증번호 다시받기"],
+    resendCode: ["Resend code", "인증번호 다시받기"],
+    getPhoneCode: ["Get a code", "인증번호 받기"],
+    getStarted: ["Get started", "시작하기"],
+    signupSubmit: ["Sign up", "가입하기"],
+    namePlaceholder: ["Enter your name", "이름을 입력해주세요"],
+    nameLength: ["Use 2 to 20 characters", "2자 이상 20자 이내로 입력해주세요."],
+    nicknamePlaceholder: ["Enter a nickname", "닉네임을 입력해주세요"],
+    nicknameLength: ["Use 2 to 12 characters", "2자 이상 12자 이내로 입력해주세요."],
+    emailPlaceholder: ["Enter your email", "이메일을 입력해주세요"],
+    invalidEmailFormat: ["That is not an email address", "이메일 형식이 아닙니다."],
+    requestPhoneCode: ["Send code", "인증요청"],
+    resendPhoneCode: ["Resend", "재요청"],
+    verifyPhoneCode: ["Verify", "인증하기"],
+    phoneVerified: ["Verified", "인증완료"],
+    setNewPassword: ["Set password", "비밀번호 설정"],
     deleteLoading: ["Deleting...", "삭제중..."],
     deleteSuccess: ["Deleted", "삭제되었습니다."],
     leaveSuccess: ["Leaved", "탈퇴되었습니다."],

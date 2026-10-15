@@ -35,9 +35,6 @@ export type SerializedImageNode = Spread<
   SerializedLexicalNode
 >;
 
-/** The default width (px) a "reset size" restores an image to. */
-export const RESET_WIDTH = 650;
-
 export const $createImageNode = (payload: ImagePayload): ImageNode => $applyNodeReplacement(new ImageNode(payload));
 
 export const $isImageNode = (node: LexicalNode | null | undefined): node is ImageNode => node instanceof ImageNode;

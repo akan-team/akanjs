@@ -1,28 +1,26 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, useBasicTypeaheadTriggerMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
+import { usePage } from "@libs/shared/client";
 import type { TextNode } from "lexical";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { EditorFeatureKey } from "../feature";
 import type { MentionSource } from "../mention.type";
-import type { EditorSlashOption } from "../plugin";
+import { type EditorSlashGroup, type EditorSlashOption, editorSlashGroups } from "../plugin";
 import { useLocalOnlyTrigger } from "../typeaheadTrigger";
 import { useEditorUpload } from "../UploadContext";
 import type { SlashOption } from "./slashMenuPlugin.option";
-import type { SlashGroup } from "./slashMenuPlugin.type";
 import { buildOptions, matchesQuery } from "./slashMenuPlugin.util";
 
-const GROUP_LABELS: Record<SlashGroup, string> = {
-  text: "Text",
-  list: "Lists",
-  media: "Media",
-  structure: "Structure",
-  reference: "References",
-};
-// Group render order.
-const GROUP_ORDER: SlashGroup[] = ["text", "list", "media", "structure", "reference"];
+const groupLabels = {
+  text: "shared.editor-groupText",
+  list: "shared.editor-groupList",
+  media: "shared.editor-groupMedia",
+  structure: "shared.editor-groupStructure",
+  reference: "shared.editor-groupReference",
+} as const satisfies { [group in EditorSlashGroup]: string };
 
 /**
  * Slash-command block picker. Typing `/` opens a grouped, searchable menu;
@@ -39,10 +37,11 @@ interface SlashMenuPluginProps {
 export const SlashMenuPlugin = ({ features, extraOptions = [], mentionSources = [] }: SlashMenuPluginProps) => {
   const [editor] = useLexicalComposerContext();
   const upload = useEditorUpload();
+  const { l, lang } = usePage();
   const [query, setQuery] = useState<string | null>(null);
   const allOptions = useMemo(
-    () => buildOptions({ upload, features, extraOptions, mentionSources }),
-    [upload, features, extraOptions, mentionSources],
+    () => buildOptions({ l, upload, features, extraOptions, mentionSources }),
+    [lang, upload, features, extraOptions, mentionSources],
   );
 
   // `/` opens the menu at a word boundary; query is a single token (no spaces),
@@ -99,18 +98,21 @@ interface SlashMenuListProps {
 
 /** Renders the filtered options grouped under section headings, tracking the flat index. */
 export const SlashMenuList = ({ options, selectedIndex, onSelect, onHighlight }: SlashMenuListProps) => {
+  const { l } = usePage();
   // Preserve the plugin's flat index while presenting grouped sections.
-  const grouped = GROUP_ORDER.map((group) => ({
-    group,
-    items: options.map((option, index) => ({ option, index })).filter(({ option }) => option.group === group),
-  })).filter((section) => section.items.length > 0);
+  const grouped = editorSlashGroups
+    .map((group) => ({
+      group,
+      items: options.map((option, index) => ({ option, index })).filter(({ option }) => option.group === group),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <div className="max-h-80 w-64 overflow-y-auto rounded-md border border-foreground/10 bg-background p-1 shadow-lg">
       {grouped.map((section) => (
         <div key={section.group}>
           <div className="px-2 py-1 font-medium text-foreground/40 text-xs uppercase tracking-wide">
-            {GROUP_LABELS[section.group]}
+            {l(groupLabels[section.group])}
           </div>
           {section.items.map(({ option, index }) => (
             <button

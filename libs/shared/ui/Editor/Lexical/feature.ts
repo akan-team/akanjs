@@ -1,27 +1,21 @@
 import type { Transformer } from "@lexical/markdown";
+import type { RichNodeLike } from "@libs/shared/common";
 
-/** A serialized node as the loss walk sees it — stored JSON, never a live `LexicalNode`. */
-export interface EditorNodeLike {
-  type?: string;
-  children?: readonly EditorNodeLike[];
+/** A serialized node as the label walk sees it — stored JSON, never a live `LexicalNode`. */
+export type EditorNodeLike = RichNodeLike;
+
+/** Node type → what to call one of those nodes in a sentence. */
+export interface EditorNodeLabels {
+  [nodeType: string]: string;
 }
-
-/** What a markdown round-trip would destroy at one node type, and — when it depends — for which nodes. */
-export interface EditorLoss {
-  label: string;
-  /** Absent ⇒ every node of the type is a loss. Present ⇒ only the ones it returns true for. */
-  when?: (node: EditorNodeLike) => boolean;
-}
-
-export type EditorLosses = Record<string, EditorLoss>;
 
 /**
  * The vocabulary of the editor's `features` prop — every capability a field can be given or denied.
  *
  * One key per built-in feature, so switching a capability off takes it out of the markdown
- * transformers, the slash menu, the floating toolbar, the plugin that implements it, and the agent's
- * syntax sentence in one word. A feature contributed through `plugins` carries no key: passing the
- * plugin is already the opt-in.
+ * shortcuts, the slash menu, the floating toolbar, the plugin that implements it, what an agent's write
+ * may put there, and the agent's syntax sentence in one word. A feature contributed through `plugins`
+ * carries no key: passing the plugin is already the opt-in.
  */
 export const editorFeatureKeys = [
   "heading",
@@ -50,12 +44,8 @@ export const editorFeatureKeys = [
 export type EditorFeatureKey = (typeof editorFeatureKeys)[number];
 
 /**
- * One editor capability, declared once.
- *
- * Three agent-facing lists used to sit beside each other and be kept in step by hand: the transformer
- * array, the labels for what a markdown round-trip destroys, and the syntax sentence in
- * `set<Field>On<Model>`'s description. All three are now derived from a table of these, so giving a
- * feature transformers drops it out of the loss list and into the description in the same edit.
+ * One editor capability, declared once: the typing shortcuts, the agent's syntax clause and the word the
+ * agent's overwrite guard counts it by are all read off a table of these.
  *
  * Pure on purpose — it holds the `Transformer` *type* and never a transformer. The table itself lives
  * in `markdown.ts`, which reaches `MermaidNode` → `@libs/util/ui` → the util store, and so cannot be
@@ -64,15 +54,13 @@ export type EditorFeatureKey = (typeof editorFeatureKeys)[number];
 export interface EditorFeature {
   /** The word the `features` prop switches this on by. Absent on a plugin's own feature, which is on whenever its plugin is. */
   key?: EditorFeatureKey;
-  /** Serialized node `type`, as `lossyNodesOf` tallies it. Absent for a text format, which is no node of its own. */
+  /** Serialized node `type`. Absent for a text format, which is no node of its own. */
   nodeType?: string;
-  /** What to call the loss in a sentence. Absent while markdown carries the feature whole. */
+  /** What to call one such node in a sentence, for a node that means something with no text of its own. */
   label?: string;
-  /** Markdown transformers that carry it in and out. Absent ⇒ a round-trip loses it. */
+  /** The markdown shortcuts a person types it with. */
   transformers?: readonly Transformer[];
-  /** Narrows the loss to the nodes it returns true for — a feature markdown carries except in some shape. */
-  lossyWhen?: (node: EditorNodeLike) => boolean;
-  /** One clause of the syntax cheat-sheet the agent is handed. */
+  /** One clause of the markdown dialect (`RichMarkdownReader`) the agent is told it may write. */
   syntax?: string;
   /** Carries no formatting of its own, so a field offering nothing else is still a plain textarea. See {@link isPlainOnly}. */
   plain?: boolean;
@@ -102,21 +90,12 @@ export const isPlainOnly = (features: readonly EditorFeature[]) => features.ever
 export const transformersOf = (features: readonly EditorFeature[]): Transformer[] =>
   features.flatMap((feature) => [...(feature.transformers ?? [])]);
 
-/**
- * Node type → what a markdown round-trip would destroy there.
- *
- * A feature with transformers is absent unless it also names a `lossyWhen`, which is the only way a
- * carried feature can still report a loss — the table that markdown carries except when a cell is merged.
- */
-export const lossesOf = (features: readonly EditorFeature[]): EditorLosses =>
+/** The nodes worth naming when an agent is about to overwrite them — later features win a shared node type. */
+export const nodeLabelsOf = (features: readonly EditorFeature[]): EditorNodeLabels =>
   Object.fromEntries(
-    features.flatMap(({ nodeType, label, transformers, lossyWhen }) =>
-      nodeType && label && (!transformers || lossyWhen)
-        ? [[nodeType, lossyWhen ? { label, when: lossyWhen } : { label }] as const]
-        : [],
-    ),
+    features.flatMap(({ nodeType, label }) => (nodeType && label ? [[nodeType, label] as const] : [])),
   );
 
 /** The markdown the agent may write, as one comma-joined clause list. */
 export const syntaxOf = (features: readonly EditorFeature[]) =>
-  features.flatMap((feature) => (feature.transformers && feature.syntax ? [feature.syntax] : [])).join(", ");
+  features.flatMap((feature) => (feature.syntax ? [feature.syntax] : [])).join(", ");

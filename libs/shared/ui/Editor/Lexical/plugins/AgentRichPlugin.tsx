@@ -1,29 +1,43 @@
 "use client";
-import { $convertFromMarkdownString, $generateNodesFromMarkdownString, type Transformer } from "@lexical/markdown";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { st } from "@libs/shared/client";
+import { RichEditor, RichMarkdownReader, type RichNodeLike } from "@libs/shared/common";
 import { Int } from "akanjs/base";
-import { $createParagraphNode, $getRoot, $isDecoratorNode, $isElementNode, type LexicalNode } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $parseSerializedNode,
+  type LexicalNode,
+  type SerializedLexicalNode,
+} from "lexical";
 
 import { useAgentField } from "../agentField";
-import { lossesOf, syntaxOf, transformersOf } from "../feature";
+import { nodeLabelsOf, syntaxOf } from "../feature";
+import { type FeatureAllowance, FeatureFilter } from "../featureFilter";
+import { recallMention } from "../mentionCache";
 import { $spliceRichBlocks, type RichBlockOp, richBlockOps } from "./agentRichPlugin.command";
 import {
+  countSentence,
   isEmptyRichContent,
-  lossSentence,
-  lossyNodesOf,
+  labelledNodesOf,
   revealBlocks,
   richBlockListing,
   richBlocksOf,
 } from "./agentRichPlugin.util";
 
-const isBlockNode = (node: LexicalNode) => ($isElementNode(node) || $isDecoratorNode(node)) && !node.isInline();
+const $nodeOf = (block: RichNodeLike): LexicalNode => {
+  try {
+    return $parseSerializedNode(block as SerializedLexicalNode);
+  } catch {
+    // An island spelled wrong keeps its words rather than failing the whole write with it.
+    const text = RichEditor.extractTextFromContent([block]).trim();
+    return text ? $createParagraphNode().append($createTextNode(text)) : $createParagraphNode();
+  }
+};
 
-/** Markdown as root-level blocks. An inline node cannot sit under the root, so it gets a paragraph of its own. */
-const $blocksFromMarkdown = (markdown: string, transformers: Transformer[]) =>
-  $generateNodesFromMarkdownString(markdown, transformers).map((node) =>
-    isBlockNode(node) ? node : $createParagraphNode().append(node),
-  );
+const $blocksOf = (markdown: string, allowance: FeatureAllowance) =>
+  FeatureFilter.blocks(RichMarkdownReader.read(markdown).root.children, allowance, recallMention).map($nodeOf);
 
 /**
  * Publishes this editor's field to the agent: one markdown write for the whole field, and a read/edit
@@ -31,13 +45,15 @@ const $blocksFromMarkdown = (markdown: string, transformers: Transformer[]) =>
  *
  * Markdown, not the stored JSON: `st.tool` arguments are scalars, and a model authoring Lexical's tree
  * directly would trip `parseEditorState`, which `resolveEditorState` and `ExternalValuePlugin` both
- * swallow — a malformed write would empty the document with no error anywhere. Markdown also arrives
- * through the field's own transformers, the same set the person's typing goes through — so a field the
- * `features` prop narrowed to plain text and mentions hands the agent exactly that vocabulary.
+ * swallow — a malformed write would empty the document with no error anywhere.
  *
- * The whole-field write refuses a document that already holds content, because markdown export is lossy
- * for every node class outside the field's transformer set; the block ops are the way in after that,
- * since they convert only the fragment the caller wrote and leave every other block untouched.
+ * The dialect is the one `RichText` speaks everywhere else, read by `RichMarkdownReader` — so what an agent
+ * reads from the store or from MCP, it can write back here unchanged, `akan-node` islands included. What it
+ * writes is then brought down to this field's `features` by `FeatureFilter`, the same vocabulary the person
+ * typing has, and a node no plugin here registers is left out rather than breaking the document.
+ *
+ * The whole-field write refuses a field that already holds content unless the caller says the user asked to
+ * replace it; the block ops are the way in otherwise, since they leave every other block untouched.
  *
  * Every conversion runs against the live editor rather than against the stored value, which buys three
  * things: `HistoryPlugin` picks it up so ⌘Z undoes an agent edit, `OnChangePlugin` carries it to the store
@@ -47,27 +63,25 @@ const $blocksFromMarkdown = (markdown: string, transformers: Transformer[]) =>
 export const AgentRichPlugin = () => {
   const [editor] = useLexicalComposerContext();
   const { name, blockBase, features, content, commit } = useAgentField();
-  const losses = lossesOf(features);
-  const transformers = transformersOf(features);
+  const labels = nodeLabelsOf(features);
+  const allowance = FeatureFilter.allowanceOf(features);
 
   st.tool(name, {
     guard: (args) => {
-      if (isEmptyRichContent(content(), losses) || args.replaceAll === true) return true;
-      const found = lossyNodesOf(content(), losses);
-      return found.length
-        ? `This field already holds content, including ${lossSentence(
-            found,
-          )} that markdown cannot carry. Edit it by block instead; pass replaceAll: true only when the user asked to replace it and lose them.`
-        : "This field already holds text someone wrote. Edit it by block instead; pass replaceAll: true only when the user asked to replace it.";
+      if (isEmptyRichContent(content(), labels) || args.replaceAll === true) return true;
+      const found = labelledNodesOf(content(), labels);
+      return [
+        `This field already holds content${found.length ? `, including ${countSentence(found)}` : ""}.`,
+        "Edit it by block instead; pass replaceAll: true only when the user asked to replace it,",
+        "and keep every ```akan-node block exactly as read.",
+      ].join(" ");
     },
   })
     .desc(
       [
         "Replace this rich-text field with markdown.",
         `Understood: ${syntaxOf(features)}.`,
-        `Not carried: ${Object.values(losses)
-          .map(({ label }) => `${label}s`)
-          .join(", ")}.`,
+        "Anything else is an ```akan-node block holding one node as JSON — keep each exactly as read.",
       ].join(" "),
     )
     .arg("markdown", String)
@@ -75,8 +89,11 @@ export const AgentRichPlugin = () => {
     .exec(async (markdown) => {
       let written: string[] = [];
       await commit(() => {
-        $convertFromMarkdownString(markdown, transformers);
-        written = $getRoot().getChildrenKeys();
+        const root = $getRoot();
+        root.clear();
+        root.append(...$blocksOf(markdown, allowance));
+        if (!root.getChildrenSize()) root.append($createParagraphNode());
+        written = root.getChildrenKeys();
       });
       await revealBlocks(editor, written);
     });
@@ -103,8 +120,7 @@ export const AgentRichPlugin = () => {
   })
     .desc(
       [
-        "Change one top-level block of this field, leaving the rest of the document exactly as it is —",
-        "the only way to edit a field holding anything the whole-field write cannot carry.",
+        "Change one top-level block of this field, leaving the rest of the document exactly as it is.",
         "`markdown` may span several blocks. Returns the fresh listing, so the indices it reports are current.",
       ].join(" "),
     )
@@ -114,7 +130,7 @@ export const AgentRichPlugin = () => {
     .exec(async (op, index, markdown) => {
       let written: string[] = [];
       await commit(() => {
-        const blocks = op === "remove" ? [] : $blocksFromMarkdown(markdown ?? "", transformers);
+        const blocks = op === "remove" ? [] : $blocksOf(markdown ?? "", allowance);
         $spliceRichBlocks(op, index ?? 0, blocks);
         written = blocks.map((block) => block.getKey());
       });

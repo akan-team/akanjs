@@ -1,9 +1,8 @@
 import { MentionGrammar } from "./mentionGrammar";
 import { RichInlineReader } from "./richInlineReader";
+import { RichNode, type RichNodeLike } from "./richNode";
 
-export interface WritableNode {
-  type?: string;
-  text?: string;
+export interface WritableNode extends RichNodeLike {
   format?: unknown;
   detail?: unknown;
   mode?: unknown;
@@ -120,8 +119,10 @@ export class RichInlineWriter {
   }
 
   static #segmentsOf(nodes: WritableNode[], inTable: TableForm | undefined): Segment[] | null {
+    if (!Array.isArray(nodes)) return null;
     const segments: Segment[] = [];
     for (const node of nodes) {
+      if (!RichNode.isNode(node)) continue;
       const segment = RichInlineWriter.#segment(node, inTable);
       if (!segment) return null;
       if ("raw" in segment || segment.text) segments.push(segment);
@@ -167,7 +168,7 @@ export class RichInlineWriter {
 
   static #link(node: WritableNode, inTable: TableForm | undefined): Segment | null {
     if (!node.url || /[\s()]/.test(node.url)) return null;
-    const label = RichInlineWriter.write(node.children ?? [], { inTable });
+    const label = RichInlineWriter.write(Array.isArray(node.children) ? node.children : [], { inTable });
     if (label === null) return null;
     const title = node.title ? ` "${node.title.replace(/(["\\])/g, "\\$1")}"` : "";
     const url = inTable === "gfm" ? node.url.replace(/\|/g, "\\|") : node.url;
@@ -182,10 +183,11 @@ export class RichInlineWriter {
 
   static #autolink(node: WritableNode): Segment | null {
     if (!node.url || node.isUnlinked || /[\s<>]/.test(node.url)) return null;
-    const [only, ...rest] = node.children ?? [];
+    const children = Array.isArray(node.children) ? node.children : [];
+    const [only, ...rest] = children;
     const bare = !rest.length && only?.type === "text" && !only.format && only.text === node.url;
     if (bare && /^(?:https?|mailto):/i.test(node.url)) return { raw: `<${node.url}>` };
-    const label = RichInlineWriter.write(node.children ?? []);
+    const label = RichInlineWriter.write(children);
     return label === null ? null : { raw: `[${label}](<${node.url}>)` };
   }
 }

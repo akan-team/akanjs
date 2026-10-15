@@ -74,3 +74,24 @@ describe("LocalFileService.serveLocalFile", () => {
     }
   });
 });
+
+describe("LocalFileService.serveLocalFile with a request path", () => {
+  test("decodes a percent-encoded name before looking it up", async () => {
+    await Bun.write(`${storage.root}/memo/한글 이름.txt`, "hello");
+    const response = await service.serveLocalFile("memo/%ED%95%9C%EA%B8%80%20%EC%9D%B4%EB%A6%84.txt");
+    expect(await response.text()).toBe("hello");
+  });
+
+  test("answers 404 for a decoded path that climbs out of the public root, even when the target exists", async () => {
+    await Bun.write(`${workspace}/outside.txt`, "secret");
+    for (const path of ["..%2Foutside.txt", "memo%2F..%2F..%2Foutside.txt", "%2E%2E%2Foutside.txt"])
+      await expect(service.serveLocalFile(path)).rejects.toMatchObject({
+        statusCode: 404,
+        error: "localFile.error.fileNotFound",
+      });
+  });
+
+  test("answers 404 for a malformed escape", async () => {
+    await expect(service.serveLocalFile("memo/%E0%A4%A.txt")).rejects.toMatchObject({ statusCode: 404 });
+  });
+});

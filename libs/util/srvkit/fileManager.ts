@@ -5,6 +5,7 @@ import type { LocalFile } from "akanjs/server";
 
 import { Err } from "../lib/dict";
 import { writeReadableStreamToFile } from "./storageApi/writeReadableStreamToFile";
+import { UntrustedFetch } from "./untrustedFetch";
 
 /**
  * 마지막 수신 이후 이 시간 동안 한 바이트도 들어오지 않으면 끊긴 것으로 본다.
@@ -26,6 +27,13 @@ export interface WriteStreamToFileOptions {
   stallTimeout?: number;
 }
 
+export interface ReadUrlOptions {
+  headers?: { [key: string]: string };
+  signal?: AbortSignal;
+  redirect?: RequestRedirect;
+  maxBytes?: number;
+}
+
 export class FileManager {
   static async getFileStat(localFile: string | LocalFile) {
     const localPath = typeof localFile === "string" ? localFile : localFile.localPath;
@@ -45,17 +53,20 @@ export class FileManager {
     await rm(localPath, { force: true });
   }
   /** content-length 까지 함께 돌려준다. 서버가 알려주지 않으면 totalBytes 는 0 */
-  static async readUrlAsStreamWithSize(url: string, init?: RequestInit) {
-    const response = await fetch(url, init);
-    if (!response.ok || !response.body) throw new Err("util.error.noResponseBody");
-    const contentLength = Number(response.headers.get("content-length"));
-    return {
-      readStream: response.body,
-      totalBytes: Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0,
-    };
+  static async readUrlAsStreamWithSize(
+    url: string,
+    { headers, signal, redirect = "follow", maxBytes }: ReadUrlOptions = {},
+  ) {
+    const { body, totalBytes } = await UntrustedFetch.fetch(url, {
+      headers,
+      signal,
+      maxBytes,
+      ...(redirect === "follow" ? {} : { maxRedirects: 0 }),
+    });
+    return { readStream: body, totalBytes };
   }
-  static async readUrlAsStream(url: string, init?: RequestInit): Promise<ReadableStream> {
-    return (await FileManager.readUrlAsStreamWithSize(url, init)).readStream;
+  static async readUrlAsStream(url: string, options?: ReadUrlOptions): Promise<ReadableStream> {
+    return (await FileManager.readUrlAsStreamWithSize(url, options)).readStream;
   }
   static async writeStreamToFile(
     readStream: ReadableStream,
@@ -94,29 +105,34 @@ export class FileManager {
     return { filename, encoding: "7bit", mimetype: FileManager.#getMimetype(filename), localPath, ...fileMeta };
   }
   static async saveEncodedData(data: string, dirname: string): Promise<LocalFile> {
-    const mimetype = data.split(";")[0]?.replace("data:", "") ?? "";
-    const encoding = (data.split(",")[0]?.split(";")[1] as "base64" | "utf-8" | undefined) || "utf-8";
-    const encoded = data.split(",")[1] ?? "";
+    const { mimetype, body } = FileManager.parseDataUri(data);
     const extension = mimetype.split("/")[1]?.split("+")[0] || "bin";
     const filename = `${createDocumentId()}.${extension}`;
     const localPath = `${dirname}/${filename}`;
     if (!(await Bun.file(dirname).exists())) await mkdir(dirname, { recursive: true });
-    await Bun.write(localPath, Buffer.from(encoded, encoding));
+    await Bun.write(localPath, body);
     const stat = await Bun.file(localPath).stat();
     const fileMeta = { size: stat.size, lastModifiedAt: dayjs(stat.mtime) };
     return { filename, encoding: "7bit", mimetype, localPath, ...fileMeta };
   }
+  //? RFC 2397: `data:[<type>][;<param>=<value>]*[;base64],<data>`; without ;base64 the data is percent-encoded text.
+  static parseDataUri(data: string) {
+    const match = /^data:([^,]*),(.*)$/s.exec(data);
+    if (!match) throw new Err("util.error.invalidDataUri");
+    const [, meta = "", payload = ""] = match;
+    const params = meta.split(";").map((param) => param.trim());
+    const isBase64 = params.at(-1)?.toLowerCase() === "base64";
+    const mimetype = (params[0] || "text/plain").toLowerCase();
+    if (isBase64) return { mimetype, body: Buffer.from(payload, "base64") };
+    try {
+      return { mimetype, body: Buffer.from(decodeURIComponent(payload)) };
+    } catch {
+      throw new Err("util.error.invalidDataUri");
+    }
+  }
   static #getMimetype(filename: string) {
-    const lower = filename.toLowerCase();
-    if (lower.endsWith(".png")) return "image/png";
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    if (lower.endsWith(".jfif")) return "image/jfif";
-    if (lower.endsWith(".gif")) return "image/gif";
-    if (lower.endsWith(".webp")) return "image/webp";
-    if (lower.endsWith(".avif")) return "image/avif";
-    if (lower.endsWith(".mp4")) return "video/mp4";
-    if (lower.endsWith(".webm")) return "video/webm";
-    if (lower.endsWith(".mov")) return "video/quicktime";
-    return "unknown";
+    //? Bun's type table has no .jfif, which is a JPEG.
+    if (filename.toLowerCase().endsWith(".jfif")) return "image/jpeg";
+    return Bun.file(filename).type.split(";")[0] ?? "application/octet-stream";
   }
 }

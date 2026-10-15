@@ -14,8 +14,9 @@ metadata, authorization with PKCE and a consent page, client registration, token
   may vary its port; a private-use scheme is accepted only when configuration names it.
 - Refresh tokens rotate on use through `refreshSession`; a token reused within thirty seconds of its rotation is answered with
   a rotation of its own (a client that holds it twice is not a thief), one reused later revokes that grant's lineage only — never
-  the account's other sessions. A refresh presented by a client other than the one it was issued to is refused.
-- Registration is open (RFC 7591), rate-limited per address and public-client only; a `client_id` that is an HTTPS URL is
+  the account's other sessions. A refresh presented by a client other than the one it was issued to is refused before any
+  rotation, so it cannot spend the legitimate client's token.
+- Registration is open (RFC 7591) and rate-limited per address; a client may register as public or with a secret. A `client_id` that is an HTTPS URL is
   read as a Client ID Metadata Document — resolved first and refused when it points into a private range, never fetched
   from the server's own network — unless configuration turns the feature off.
 - A grant is revoked as a whole (RFC 7009 `/oauth/revoke` by the client, or the account's owner disconnecting it): its
@@ -23,8 +24,8 @@ metadata, authorization with PKCE and a consent page, client registration, token
   token dies early. Revocation answers 200 whether or not the token was live, so it cannot be used to probe tokens.
 - A token this server minted names its client and the MCP resource; a browser session names neither. That difference is
   what `isAgentCall` / `Person` read to keep an act a person may take from being taken on a model's say-so.
-- Disconnecting an app and deciding a consent are such acts: an agent's token is refused, an MCP App view's relayed
-  call included. Listing connections stays open to a token, so it can find its own grant.
+- Approving, denying, viewing a consent request and disconnecting an app take `Person`: an agent's own token can never
+  grant itself, or another client, access.
 - None of these endpoints is published to MCP: they are the protocol and the account's own controls, not tools.
 
 authorize -> pending -> approved | denied -> code -> token -> refresh -> revoked

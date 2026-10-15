@@ -4,7 +4,7 @@ import { $insertNodeToNearestRoot, mergeRegister } from "@lexical/utils";
 import { $createParagraphNode, COMMAND_PRIORITY_LOW } from "lexical";
 import { useEffect } from "react";
 
-import { CollapsibleContainerNode } from "../nodes/Collapsible";
+import { CollapsibleContainerNode } from "../nodes/CollapsibleContainerNode";
 import {
   $createCollapsibleContainerNode,
   $createCollapsibleContentNode,

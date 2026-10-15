@@ -29,7 +29,7 @@ export interface AgentField {
   commit: (mutate: () => void) => Promise<void>;
 }
 
-const NO_AGENT_FIELD: AgentField = {
+const noAgentField: AgentField = {
   name: null,
   blockBase: null,
   features: [],
@@ -37,7 +37,7 @@ const NO_AGENT_FIELD: AgentField = {
   commit: () => Promise.resolve(),
 };
 
-const AgentFieldContext = createContext<AgentField>(NO_AGENT_FIELD);
+const AgentFieldContext = createContext<AgentField>(noAgentField);
 
 export const AgentFieldProvider = AgentFieldContext.Provider;
 

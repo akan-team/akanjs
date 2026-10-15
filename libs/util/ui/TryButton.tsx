@@ -1,4 +1,5 @@
 "use client";
+import { usePage } from "@libs/util/client";
 import { cn } from "akanjs/client";
 import { Button, type ButtonVariants, Loading } from "akanjs/ui";
 import type { MouseEvent, ReactNode } from "react";
@@ -26,6 +27,7 @@ export const TryButton = ({
   footer,
   onClick,
 }: TryButtonProps) => {
+  const { l } = usePage();
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [completed, setCompleted] = useState(false);
@@ -43,7 +45,11 @@ export const TryButton = ({
             await onClick?.(e);
             if (completeOnSuccess) setCompleted(true);
           } catch (error) {
-            setErrorMessage(error instanceof Error ? error.message : String(error));
+            //? An akan Err carries its dictionary key in `error`; its `message` is that untranslated key.
+            const { error: key, data } = error as { error?: unknown; data?: { [key: string]: string | number } };
+            setErrorMessage(
+              typeof key === "string" ? l._(key, data) : error instanceof Error ? error.message : String(error),
+            );
           } finally {
             setLoading(false);
           }

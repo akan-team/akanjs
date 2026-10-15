@@ -24,9 +24,7 @@ export class LightAdmin extends via(AdminObject, ["accountId", "roles", "lastLog
     return this.accountId.split("@")[0] ?? this.accountId;
   }
   primaryRole(): AdminRole["value"] {
-    if (this.roles.includes("superAdmin")) return "superAdmin";
-    if (this.roles.includes("admin")) return "admin";
-    return "manager";
+    return [...AdminRole.values].reverse().find((role) => this.roles.includes(role)) ?? "viewer";
   }
 }
 

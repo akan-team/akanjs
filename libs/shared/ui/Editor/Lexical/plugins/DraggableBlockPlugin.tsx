@@ -1,11 +1,12 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { DraggableBlockPlugin_EXPERIMENTAL } from "@lexical/react/LexicalDraggableBlockPlugin";
+import { usePage } from "@libs/shared/client";
 import { $createParagraphNode, $getNearestNodeFromDOMNode, $parseSerializedNode, type LexicalNode } from "lexical";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MdDragIndicator } from "react-icons/md";
 
-import { DRAGGABLE_MENU_CLASS, isOnMenu } from "./draggableBlockPlugin.util";
+import { $exportDeep, draggableMenuClass, isOnMenu } from "./draggableBlockPlugin.util";
 
 interface DraggableBlockPluginProps {
   /** Positioned container the handle/target-line portal into (the editor wrapper). */
@@ -20,6 +21,7 @@ interface DraggableBlockPluginProps {
  */
 export const DraggableBlockPlugin = ({ anchorElem }: DraggableBlockPluginProps) => {
   const [editor] = useLexicalComposerContext();
+  const { l } = usePage();
   const menuRef = useRef<HTMLDivElement>(null);
   const targetLineRef = useRef<HTMLDivElement>(null);
   // The block DOM element the handle currently points at (updated by the plugin).
@@ -60,9 +62,7 @@ export const DraggableBlockPlugin = ({ anchorElem }: DraggableBlockPluginProps) 
   const duplicate = useCallback(() => {
     setMenuOpen(false);
     withTargetBlock((block) => {
-      // Round-trip through serialization so any block type clones faithfully.
-      const clone = $parseSerializedNode(block.exportJSON());
-      block.insertAfter(clone);
+      block.insertAfter($parseSerializedNode($exportDeep(block)));
     });
   }, [withTargetBlock]);
 
@@ -94,10 +94,10 @@ export const DraggableBlockPlugin = ({ anchorElem }: DraggableBlockPluginProps) 
         // and leaves positioning to CSS. The plugin fixes the handle at the
         // editor's left edge (`left = SPACE`), so the editable area carries a
         // matching left gutter (see `Editor.tsx`) for it to sit in.
-        <div ref={menuRef} className={`${DRAGGABLE_MENU_CLASS} absolute top-0 -left-4.5 opacity-0`}>
+        <div ref={menuRef} className={`${draggableMenuClass} absolute top-0 -left-4.5 opacity-0`}>
           <button
             type="button"
-            title="Drag to move · click for actions"
+            title={l("shared.editor-blockHandle")}
             className="flex min-h-6 cursor-grab items-center rounded px-0.5 py-0.5 text-base text-foreground/50 hover:bg-muted hover:text-foreground active:cursor-grabbing"
             onClick={() => setMenuOpen((open) => !open)}
           >
@@ -110,21 +110,21 @@ export const DraggableBlockPlugin = ({ anchorElem }: DraggableBlockPluginProps) 
                 className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
                 onClick={addBelow}
               >
-                Add block below
+                {l("shared.editor-addBlockBelow")}
               </button>
               <button
                 type="button"
                 className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
                 onClick={duplicate}
               >
-                Duplicate
+                {l("shared.editor-duplicate")}
               </button>
               <button
                 type="button"
                 className="block w-full rounded px-2 py-1.5 text-left text-destructive text-sm hover:bg-muted"
                 onClick={remove}
               >
-                Delete
+                {l("shared.editor-delete")}
               </button>
             </div>
           ) : null}

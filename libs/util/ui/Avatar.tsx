@@ -13,7 +13,7 @@ export const Avatar = ({ className = "", icon, src = "" }: AvatarProps) => {
   return (
     <div className={cn("relative inline-flex size-6 overflow-hidden rounded-full bg-muted", className)}>
       {src ? (
-        <Image src={src} className="object-cover" style={{ borderRadius: "50%" }} width={128} height={128} />
+        <Image src={src} className="size-full object-cover" width={128} height={128} />
       ) : icon ? (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-muted-foreground">
           <div className="">{icon}</div>

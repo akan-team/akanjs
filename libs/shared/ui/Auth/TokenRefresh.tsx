@@ -1,23 +1,25 @@
 "use client";
 
+import { refreshBeforeMs } from "@libs/shared/webkit";
 import { getAuthToken } from "akanjs/client";
 import { decodeJwtPayload, Logger } from "akanjs/common";
 import { useEffect } from "react";
 import type { AuthScope, TokenPayload } from "./tokenRefresh.type";
-import { hasScope, refreshToken } from "./tokenRefresh.util";
+import { hasScope, isFinalRefreshError, refreshToken } from "./tokenRefresh.util";
 
 interface TokenRefreshProps {
   scope: AuthScope;
 }
 
-const refreshBeforeMs = 2 * 60 * 1000;
 const retryDelayMs = 30 * 1000;
+const maxRetryDelayMs = 10 * 60 * 1000;
 
 export const TokenRefresh = ({ scope }: TokenRefreshProps) => {
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let refreshing = false;
     let disposed = false;
+    let failures = 0;
 
     const clearRefreshTimeout = () => {
       if (!timeout) return;
@@ -44,10 +46,13 @@ export const TokenRefresh = ({ scope }: TokenRefreshProps) => {
         refreshing = true;
         try {
           await refreshToken(scope);
+          failures = 0;
           schedule();
         } catch (error) {
           Logger.warn(`Failed to refresh ${scope} token: ${error instanceof Error ? error.message : String(error)}`);
-          timeout = setTimeout(schedule, retryDelayMs);
+          if (isFinalRefreshError(error)) return;
+          failures += 1;
+          timeout = setTimeout(schedule, Math.min(retryDelayMs * 2 ** (failures - 1), maxRetryDelayMs));
         } finally {
           refreshing = false;
         }

@@ -1,5 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { RichUrl } from "@libs/shared/common";
 import { router } from "akanjs/client";
 import { useEffect } from "react";
 
@@ -20,7 +21,7 @@ export const MentionLinkPlugin = () => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
       const chip = target.closest<HTMLElement>("[data-mention-href]");
-      const href = chip?.dataset.mentionHref;
+      const href = RichUrl.internalPath(chip?.dataset.mentionHref);
       if (!href) return;
       if (editor.isEditable() && !event.metaKey && !event.ctrlKey) return;
       event.preventDefault();

@@ -57,11 +57,16 @@ export const dictionary = modelDictionary(["en", "ko"])
     archived: t(["Archived", "보관됨"]).desc(["Archived status", "보관됨 상태"]),
   }))
   .slice<SummarySlice>((fn) => ({
-    inPeriod: fn(["Get summary list in period", "기간별 요약 목록 조회"]).arg((t) => ({
-      from: t(["From", "시작"]).desc(["From to search", "시작으로 조회"]),
-      to: t(["To", "끝"]).desc(["To to search", "끝으로 조회"]),
-      periodTypes: t(["Period Types", "기간 타입"]).desc(["Period types to search", "기간 타입으로 조회"]),
-    })),
+    inPeriod: fn(["Get summary list in period", "기간별 요약 목록 조회"])
+      .desc([
+        "Summaries archived between two dates, one row per period, for the admin dashboard charts",
+        "두 날짜 사이에 보관된 기간별 요약 목록, 관리자 대시보드 차트용",
+      ])
+      .arg((t) => ({
+        from: t(["From", "시작"]).desc(["From to search", "시작으로 조회"]),
+        to: t(["To", "끝"]).desc(["To to search", "끝으로 조회"]),
+        periodTypes: t(["Period Types", "기간 타입"]).desc(["Period types to search", "기간 타입으로 조회"]),
+      })),
   }))
   .endpoint<SummaryEndpoint>((fn) => ({
     getActiveSummary: fn(["Get active summary", "활성 요약 조회"]).desc([

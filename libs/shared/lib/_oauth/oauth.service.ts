@@ -51,7 +51,12 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   readonly registrationsPerHour = 20;
 
   override onInit() {
-    RevokedSessions.use(async (sessionId) => !!(await this.revokedSessions.get(sessionId)));
+    RevokedSessions.use(
+      async (sessionId) => !!(await this.revokedSessions.get(sessionId)),
+      async (sessionId, until) => {
+        await this.revokedSessions.set(sessionId, 1, { expireAt: until });
+      },
+    );
   }
 
   metadata(): Response {
@@ -372,17 +377,21 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   }
 
   private async refresh(client: OAuthClientRecord, params: OauthRefreshParams): Promise<Response> {
-    const next = this.securityService.createRefreshToken();
     const presented = hashToken(params.refreshToken);
     const invalid = (description: string) => OAuthErrors.token("invalid_grant", description, params.client);
-    // User and admin sessions live in their own model's cache; the token says nothing about which minted it.
-    const session =
-      (await this.rotate(this.userService.userModel.userCache, presented, next, client)) ??
-      (await this.rotate(this.adminService.adminModel.adminCache, presented, next, client));
-    if (!session) return invalid("The refresh token is unknown, expired, revoked or already used.");
-    if (session.clientId !== client.clientId) return invalid("The refresh token belongs to another client.");
     if (params.resource && !OAuthAuthorize.sameResource(params.resource, this.oauthOption.resource))
       return OAuthErrors.token("invalid_target", `This server issues tokens for ${this.oauthOption.resource} only.`);
+    // User and admin sessions live in their own model's cache; the token says nothing about which minted it.
+    const userCache = this.userService.userModel.userCache;
+    const adminCache = this.adminService.adminModel.adminCache;
+    const cache = (await getRefreshSession(userCache, presented)) ? userCache : adminCache;
+    // Checked before rotating: a request naming another client must not spend the legitimate client's token.
+    const stored = await getRefreshSession(cache, presented);
+    if (!stored) return invalid("The refresh token is unknown, expired, revoked or already used.");
+    if (stored.clientId !== client.clientId) return invalid("The refresh token belongs to another client.");
+    const next = this.securityService.createRefreshToken();
+    const session = await this.rotate(cache, presented, next, client);
+    if (!session) return invalid("The refresh token is unknown, expired, revoked or already used.");
     try {
       return await this.mint(client, { type: session.subject, id: session.subjectId }, session.id, next.refreshToken);
     } catch (error) {

@@ -1,29 +1,23 @@
-import {
-  aesDecrypt,
-  aesEncrypt,
-  createOpaqueToken,
-  hashToken,
-  jwtSign,
-  jwtVerify,
-  resolveJwt,
-} from "@libs/util/srvkit";
+import { createOpaqueToken, hashToken, jwtSign, jwtVerify } from "@libs/util/srvkit";
 import { type Dayjs, dayjs, getEnv } from "akanjs/base";
 import { serve } from "akanjs/service";
 
+import { Err } from "../dict";
+
+interface SignOption {
+  expiresIn?: number; // seconds; omitted, the token never expires
+  typ?: string; // what the token is for; `verify` with the same `typ` refuses any other kind
+}
+
 export class SecurityService extends serve("security" as const, ({ use }) => ({
   jwtSecret: use<string>(),
-  aeskey: use<string>(),
 })) {
   readonly refreshTokenDays = 30;
 
-  async decrypt(hash: string) {
-    return await aesDecrypt(hash, this.aeskey);
-  }
-  async encrypt(data: string) {
-    return await aesEncrypt(data, this.aeskey);
-  }
-  async sign(message: object) {
-    return { jwt: await jwtSign(message, this.jwtSecret) };
+  async sign(message: object, { expiresIn, typ }: SignOption = {}) {
+    const expiresAt = expiresIn ? dayjs().add(expiresIn, "second") : undefined;
+    const claims = typ ? { ...message, typ } : message;
+    return { jwt: await jwtSign(claims, this.jwtSecret, { expiresAt, issuedAt: !!expiresAt }) };
   }
   async signAccessToken(
     data: Record<string, unknown>,
@@ -56,20 +50,9 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
   hashRefreshToken(refreshToken: string) {
     return hashToken(refreshToken);
   }
-  async verify<T extends object = Record<string, unknown>>(token: string): Promise<T> {
-    return (await jwtVerify(token, this.jwtSecret)) as T;
-  }
-  async addJwt(data: Record<string, unknown>, existing: Record<string, unknown> = {}): Promise<{ jwt: string }> {
-    return await this.sign({ ...existing, ...data, appName: getEnv().appName, environment: getEnv().environment });
-  }
-  async subJwt(existing: Record<string, unknown>, keys: string | string[]): Promise<{ jwt: string }> {
-    const removeKeys = Array.isArray(keys) ? keys : [keys];
-    const newJwt = Object.fromEntries(Object.entries(existing).filter(([key]) => !removeKeys.includes(key))) as {
-      [key: string]: unknown;
-    };
-    return await this.sign({ ...newJwt, appName: getEnv().appName, environment: getEnv().environment });
-  }
-  async verifyToken(token?: string) {
-    return await resolveJwt(this.jwtSecret, token, { appName: getEnv().appName, environment: getEnv().environment });
+  async verify<T extends object = Record<string, unknown>>(token: string, { typ }: Pick<SignOption, "typ"> = {}) {
+    const payload = await jwtVerify(token, this.jwtSecret);
+    if (typ !== undefined && payload.typ !== typ) throw new Err("security.error.unexpectedTokenType", { typ });
+    return payload as T;
   }
 }

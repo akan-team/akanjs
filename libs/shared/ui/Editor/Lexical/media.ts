@@ -5,16 +5,16 @@ import { $createEmbedNode, type EmbedPayload } from "./nodes/embedNode.util";
 import { $createExcalidrawNode, type ExcalidrawPayload } from "./nodes/excalidrawNode.util";
 import { $createFileNode, type FilePayload } from "./nodes/fileNode.util";
 import { $createImageNode, type ImagePayload } from "./nodes/imageNode.util";
-import { $createMermaidNode, DEFAULT_MERMAID_CODE, type MermaidPayload } from "./nodes/mermaidNode.util";
+import { $createMermaidNode, defaultMermaidCode, type MermaidPayload } from "./nodes/mermaidNode.util";
 import { $createVideoNode, type VideoPayload } from "./nodes/videoNode.util";
+import type { EditorUpload } from "./UploadContext";
 
 export { collectAttachmentIds, reconcileAttachments } from "./attachments";
 
-/**
- * Media insertion helpers for the decorator nodes. Each drops a fresh node at
- * the nearest root block (which also selects it). Attachment reconcile lives in
- * the pure `./attachments` module (re-exported above for convenience).
- */
+export type UploadKind = "image" | "video" | "file";
+
+export const uploadKindOf = (file: File): UploadKind =>
+  file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file";
 
 export const insertImage = (editor: LexicalEditor, payload: ImagePayload): void => {
   editor.update(() => $insertNodeToNearestRoot($createImageNode(payload)));
@@ -39,5 +39,26 @@ export const insertExcalidraw = (editor: LexicalEditor, payload: ExcalidrawPaylo
 // Seeded with a sample diagram (unlike the other media nodes) so the block draws
 // something the moment it lands — an empty mermaid source renders nothing at all.
 export const insertMermaid = (editor: LexicalEditor, payload: MermaidPayload = {}): void => {
-  editor.update(() => $insertNodeToNearestRoot($createMermaidNode({ code: DEFAULT_MERMAID_CODE, ...payload })));
+  editor.update(() => $insertNodeToNearestRoot($createMermaidNode({ code: defaultMermaidCode, ...payload })));
+};
+
+export const insertUploaded = async (editor: LexicalEditor, upload: EditorUpload, file: File, kind: UploadKind) => {
+  try {
+    const uploaded = await upload.uploadFile(file, kind === "file" ? undefined : `${kind}/*`);
+    if (!uploaded) return;
+    const [width = 0, height = 0] = uploaded.imageSize ?? [];
+    if (kind === "image")
+      insertImage(editor, { fileId: uploaded.id, src: uploaded.url, alt: uploaded.filename, width, height });
+    else if (kind === "video") insertVideo(editor, { fileId: uploaded.id, src: uploaded.url, width, height });
+    else
+      insertFile(editor, {
+        fileId: uploaded.id,
+        src: uploaded.url,
+        name: uploaded.filename,
+        size: uploaded.size,
+        format: uploaded.filename?.split(".").pop(),
+      });
+  } catch (error) {
+    upload.onError(error as Error);
+  }
 };

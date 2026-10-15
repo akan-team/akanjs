@@ -7,8 +7,8 @@ export const Editor = {
   StaticContent,
 };
 
-export { ContentHtml } from "./contentHtml.util";
-export type { EditorCollab } from "./Lexical/Editor";
+export { ContentHtml, type ContentHtmlOptions, type ContentStandIns } from "./contentHtml.util";
+export type { EditorCollab } from "./Lexical/editor.type";
 export type { EditorFeature, EditorFeatureKey } from "./Lexical/feature";
 export { editorFeatureKeys } from "./Lexical/feature";
 export { focusEditorPlugin } from "./Lexical/focus";

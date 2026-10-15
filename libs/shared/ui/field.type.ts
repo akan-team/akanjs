@@ -11,8 +11,9 @@ export interface RichProps {
   labelClassName?: string;
   className?: string;
   slice: SliceMeta;
-  valuePath: string;
-  value?: unknown;
+  /** @deprecated Ignored: the field renders `value`. */
+  valuePath?: string;
+  value: unknown;
   onChange: (value: EditorContent) => void;
   addFile: (file: cnst.File | cnst.File[], options?: { idx?: number; limit?: number }) => void;
   addFilesGql?: (fileList: FileList, id?: string) => Promise<(cnst.File | ProtoFile)[]>;

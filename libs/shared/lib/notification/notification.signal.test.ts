@@ -15,7 +15,7 @@ describe("Notification Signal", () => {
     let notification: cnst.Notification;
     beforeAll(async () => {
       adminAgent = await adminSpec.getAdminAgentWithInitialize();
-      userAgent = await userSpec.getUserAgentWithPhone();
+      userAgent = await userSpec.getUserAgentWithPassword();
     });
 
     it("can create notification", async () => {
@@ -38,6 +38,16 @@ describe("Notification Signal", () => {
       });
       expect(sent).toMatchObject({ type: "user", userId: userAgent.user.id });
     });
+
+    it("refuses a one-user notification that names nobody", async () => {
+      const input = { title: "Lost", content: "Goes nowhere.", level: "notice", type: "user" } as const;
+      await expect(adminAgent.fetch.sendPushNotification(input)).rejects.toThrow();
+    });
+
+    it("refuses to send a push for a signed-in non-admin", async () => {
+      const input = { title: "Spam", content: "To everyone.", level: "notice", type: "all" } as const;
+      await expect(userAgent.fetch.sendPushNotification(input)).rejects.toThrow();
+    });
   });
 
   describe("Device Registration", () => {
@@ -50,7 +60,8 @@ describe("Notification Signal", () => {
     } as const;
     let userAgent: userSpec.UserAgent;
     beforeAll(async () => {
-      userAgent = await userSpec.getUserAgentWithPhone(1);
+      userAgent = await userSpec.getUserAgentWithPassword();
+      await userAgent.fetch.addNotiDeviceTokenOfSelf(dummyDevice);
     });
 
     // `notiInfo` is secret, so the settings screen has no way to read its own state off `self`.

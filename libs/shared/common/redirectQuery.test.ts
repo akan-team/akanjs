@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { withRedirectQuery } from "./redirectQuery";
+import { safeRedirectPath } from "./safeRedirectPath";
 
 describe("withRedirectQuery", () => {
   it("adds a query to a bare path", () => {
@@ -21,5 +22,22 @@ describe("withRedirectQuery", () => {
 
   it("returns the path unchanged when there is nothing to add", () => {
     expect(withRedirectQuery("/home", {})).toBe("/home");
+  });
+
+  it("keeps a fragment after the query", () => {
+    expect(withRedirectQuery("/page#sec", { userId: "u1" })).toBe("/page?userId=u1#sec");
+    expect(withRedirectQuery("/page?a=1#sec", { userId: "u1" })).toBe("/page?a=1&userId=u1#sec");
+  });
+});
+
+describe("safeRedirectPath", () => {
+  it("keeps a path on this site", () => {
+    expect(safeRedirectPath("/ko/signin?next=%2Fhome", "/")).toBe("/ko/signin?next=%2Fhome");
+  });
+
+  it("falls back for another host, a scheme, a control character or a missing value", () => {
+    for (const path of ["//evil.com", "/\\evil.com", "https://evil.com", "javascript:alert(1)", "evil.com", "", null])
+      expect(safeRedirectPath(path, "/fallback")).toBe("/fallback");
+    expect(safeRedirectPath("/a\u0000b", "/fallback")).toBe("/fallback");
   });
 });

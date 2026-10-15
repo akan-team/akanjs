@@ -1,10 +1,11 @@
 "use client";
-import { DecoratorNode, type NodeKey } from "lexical";
+import type { NodeKey } from "lexical";
 import type { JSX } from "react";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import { FileComponent } from "./FileComponent";
 import { $createFileNode, type FilePayload, type SerializedFileNode } from "./fileNode.util";
 
-export class FileNode extends DecoratorNode<JSX.Element> {
+export class FileNode extends BlockDecoratorNode {
   __fileId?: string;
   __src: string;
   __name: string;
@@ -46,19 +47,6 @@ export class FileNode extends DecoratorNode<JSX.Element> {
       size: this.__size,
       format: this.__format,
     };
-  }
-
-  override createDOM(): HTMLElement {
-    // A bare block host; all visuals live in the decorate() component.
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
   }
 
   override decorate(): JSX.Element {

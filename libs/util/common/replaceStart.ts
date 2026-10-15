@@ -1,3 +1,4 @@
 export const replaceStart = (str: string) => {
-  return str.replace(str.substring(1, str.length), str.substring(1, str.length).replace(/./g, "*"));
+  const [first = "", ...rest] = Array.from(str);
+  return `${first}${"*".repeat(rest.length)}`;
 };

@@ -1,4 +1,5 @@
 import { type Dayjs, dayjs } from "akanjs/base";
+import { MAX_PAGE_SIZE } from "akanjs/constant";
 import { store } from "akanjs/store";
 
 import type * as cnst from "../cnst";
@@ -6,21 +7,12 @@ import { fetch, sig } from "../useClient";
 
 export class SummaryStore extends store(sig.summary, () => ({
   // state
-  summaryListInRange: [] as cnst.LightSummary[],
   summaryListInHourly: [] as cnst.LightSummary[],
   summaryListInDaily: [] as cnst.LightSummary[],
-  summaryListInWeekly: [] as cnst.LightSummary[],
-  summaryListInMonthly: [] as cnst.LightSummary[],
-  summaryListInHau: [] as cnst.LightSummary[],
-  summaryListInDau: [] as cnst.LightSummary[],
-  summaryListInWau: [] as cnst.LightSummary[],
-  summaryListInMau: [] as cnst.LightSummary[],
   fromByHourly: dayjs().subtract(7, "day"),
-  fromByDaily: dayjs().subtract(7, "day"),
-  fromByMonthly: dayjs().subtract(6, "month"),
   toByHourly: dayjs(),
+  fromByDaily: dayjs().subtract(7, "day"),
   toByDaily: dayjs(),
-  toByMonthly: dayjs(),
 })) {
   async getActiveSummary() {
     this.set({ summary: await fetch.getActiveSummary(), summaryLoading: false });
@@ -29,106 +21,31 @@ export class SummaryStore extends store(sig.summary, () => ({
     this.set({ summaryLoading: true });
     this.set({ summary: await fetch.recountSummary(), summaryLoading: false });
   }
-  async getSummaryListInPeriod({
-    from,
-    to,
-    periodTypes,
-  }: {
-    from: Dayjs;
-    to: Dayjs;
-    periodTypes: cnst.PeriodType["value"][];
-  }) {
-    const summaryListInPeriod = await fetch.summaryListInPeriod(from, to, periodTypes, 0, 0, null);
-    this.set({ summaryListInRange: summaryListInPeriod });
-  }
+  //? One request answers at most MAX_PAGE_SIZE rows, one per hour or day here, so a longer range starts that many before `to`.
   async getSummaryListInHourly(from: Dayjs, to: Dayjs) {
+    const earliest = to.subtract(MAX_PAGE_SIZE - 1, "hour");
+    const start = from.isBefore(earliest) ? earliest : from;
     const summaryListInHourly = await fetch.summaryListInPeriod(
-      from,
+      start,
       to,
       ["hourly", "daily", "weekly", "monthly"],
       0,
-      0,
+      MAX_PAGE_SIZE,
       "oldestAt",
     );
-    this.set({ summaryListInHourly });
+    this.set({ summaryListInHourly, ...(start === from ? {} : { fromByHourly: start }) });
   }
   async getSummaryListInDaily(from: Dayjs, to: Dayjs) {
+    const earliest = to.subtract(MAX_PAGE_SIZE - 1, "day");
+    const start = from.isBefore(earliest) ? earliest : from;
     const summaryListInDaily = await fetch.summaryListInPeriod(
-      from,
+      start,
       to,
       ["daily", "weekly", "monthly"],
       0,
-      0,
+      MAX_PAGE_SIZE,
       "oldestAt",
     );
-    this.set({ summaryListInDaily });
-  }
-  async getSummaryListInWeekly(from: Dayjs, to: Dayjs) {
-    const summaryListInWeekly = await fetch.summaryListInPeriod(from, to, ["weekly", "monthly"], 0, 0, "oldestAt");
-    this.set({ summaryListInWeekly });
-  }
-  async getSummaryListInMonthly(from: Dayjs, to: Dayjs) {
-    const summaryListInMonthly = await fetch.summaryListInPeriod(from, to, ["monthly"], 0, 0, "oldestAt");
-    this.set({ summaryListInMonthly });
-  }
-
-  async getSummaryListInHau({
-    from,
-    to,
-    periodTypes,
-  }: {
-    from: Dayjs;
-    to: Dayjs;
-    periodTypes: cnst.PeriodType["value"][];
-  }) {
-    const summaryListInHau = await fetch.summaryListInPeriod(from, to, periodTypes, 0, 0, null);
-    this.set({ summaryListInHau });
-  }
-  async getSummaryListInDau({
-    from,
-    to,
-    periodTypes,
-  }: {
-    from: Dayjs;
-    to: Dayjs;
-    periodTypes: cnst.PeriodType["value"][];
-  }) {
-    const summaryListInDau = await fetch.summaryListInPeriod(from, to, periodTypes, 0, 0, null);
-    this.set({ summaryListInDau });
-  }
-  async getSummaryListInWau({
-    from,
-    to,
-    periodTypes,
-  }: {
-    from: Dayjs;
-    to: Dayjs;
-    periodTypes: cnst.PeriodType["value"][];
-  }) {
-    const summaryListInWau = await fetch.summaryListInPeriod(from, to, periodTypes, 0, 0, null);
-    this.set({ summaryListInWau });
-  }
-  async getSummaryListInMau({
-    from,
-    to,
-    periodTypes,
-  }: {
-    from: Dayjs;
-    to: Dayjs;
-    periodTypes: cnst.PeriodType["value"][];
-  }) {
-    const summaryListInMau = await fetch.summaryListInPeriod(from, to, periodTypes, 0, 0, null);
-    this.set({ summaryListInMau });
-  }
-
-  setPeriodAll(from: Dayjs, to: Dayjs) {
-    this.set({
-      fromByHourly: from,
-      toByHourly: to,
-      fromByDaily: from,
-      toByDaily: to,
-      fromByMonthly: from,
-      toByMonthly: to,
-    });
+    this.set({ summaryListInDaily, ...(start === from ? {} : { fromByDaily: start }) });
   }
 }

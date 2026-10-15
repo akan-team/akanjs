@@ -1,25 +1,30 @@
 import { describe, expect, it } from "bun:test";
 import { RichEditor } from "../../../../common/richEditor";
-import type { EditorLosses } from "../feature";
-import { isEmptyRichContent, lossSentence, lossyNodesOf, richBlockListing, richBlocksOf } from "./agentRichPlugin.util";
+import type { EditorNodeLabels } from "../feature";
+import {
+  countSentence,
+  isEmptyRichContent,
+  labelledNodesOf,
+  richBlockListing,
+  richBlocksOf,
+} from "./agentRichPlugin.util";
 
 // Relative imports, and no `@lexical/*` anywhere: the util reads serialized JSON so the guard is
 // testable without the sibling node packages, whose dev ESM builds trip bun's loader.
 
-// What `lossesOf(AKAN_FEATURES)` produces today, plus a plugin-contributed node. The real table cannot
-// be imported here (`markdown.ts` reaches MermaidNode → `@libs/util/ui` → the util store), and
-// `feature.test.ts` covers the derivation itself. `table` stands in for the narrowed loss a carried
-// feature reports — markdown carries a table, but not a merged cell.
-const labels: EditorLosses = {
-  "akan-image": { label: "image" },
-  "akan-video": { label: "video" },
-  "akan-file": { label: "file" },
-  "akan-embed": { label: "embed" },
-  "akan-excalidraw": { label: "drawing" },
-  "akan-callout": { label: "callout" },
-  "akan-collapsible": { label: "toggle" },
-  "akan-page-block": { label: "nested page" },
-  table: { label: "merged table cell", when: (node) => (node.children ?? []).some((row) => row.type === "merged") },
+// Labels as `nodeLabelsOf` hands them over, plus a plugin-contributed node. The real table cannot be
+// imported here (`markdown.ts` reaches MermaidNode → `@libs/util/ui` → the util store), and
+// `feature.test.ts` covers the derivation itself.
+const labels: EditorNodeLabels = {
+  "akan-image": "image",
+  "akan-video": "video",
+  "akan-file": "file",
+  "akan-embed": "embed",
+  "akan-excalidraw": "drawing",
+  "akan-mermaid": "diagram",
+  "akan-callout": "callout",
+  "akan-collapsible": "toggle",
+  "akan-page-block": "nested page",
 };
 
 const docOf = (...children: unknown[]) => ({
@@ -52,41 +57,17 @@ describe("agentRichPlugin.util", () => {
     });
   });
 
-  describe("lossyNodesOf", () => {
-    it("finds a loss nested below the root, not just a root child", () => {
+  describe("labelledNodesOf", () => {
+    it("finds a labelled node nested below the root, not just a root child", () => {
       const content = docOf({
         type: "akan-callout",
         version: 1,
         children: [paragraphOf(textOf("see")), { type: "akan-image", version: 1 }],
       });
-      expect(lossyNodesOf(content, labels)).toEqual([
+      expect(labelledNodesOf(content, labels)).toEqual([
         { label: "callout", count: 1 },
         { label: "image", count: 1 },
       ]);
-    });
-
-    it("stays silent where the loss rule declines the node — markdown carries an ordinary table", () => {
-      const content = docOf({
-        type: "table",
-        version: 1,
-        children: [
-          { type: "tablerow", version: 1, children: [{ type: "tablecell", version: 1, children: [] }] },
-          { type: "tablerow", version: 1, children: [{ type: "tablecell", version: 1, children: [] }] },
-        ],
-      });
-      expect(lossyNodesOf(content, labels)).toEqual([]);
-    });
-
-    it("counts a narrowed loss once, not its rows and cells", () => {
-      const content = docOf({
-        type: "table",
-        version: 1,
-        children: [
-          { type: "merged", version: 1, children: [{ type: "tablecell", version: 1, children: [] }] },
-          { type: "tablerow", version: 1, children: [{ type: "tablecell", version: 1, children: [] }] },
-        ],
-      });
-      expect(lossyNodesOf(content, labels)).toEqual([{ label: "merged table cell", count: 1 }]);
     });
 
     it("counts a toggle once, not its title and content", () => {
@@ -98,53 +79,49 @@ describe("agentRichPlugin.util", () => {
           { type: "akan-collapsible-content", version: 1, children: [] },
         ],
       });
-      expect(lossyNodesOf(content, labels)).toEqual([{ label: "toggle", count: 1 }]);
-    });
-
-    it("leaves mermaid out — it has its own transformer", () => {
-      expect(lossyNodesOf(docOf({ type: "akan-mermaid", version: 1 }), labels)).toEqual([]);
+      expect(labelledNodesOf(content, labels)).toEqual([{ label: "toggle", count: 1 }]);
     });
 
     it("counts a node a plugin contributed, which serializes no text of its own", () => {
       const content = docOf({ type: "akan-page-block", version: 1 });
-      expect(lossyNodesOf(content, labels)).toEqual([{ label: "nested page", count: 1 }]);
+      expect(labelledNodesOf(content, labels)).toEqual([{ label: "nested page", count: 1 }]);
       expect(isEmptyRichContent(content, labels)).toBe(false);
     });
 
-    it("leaves the nodes markdown does carry out", () => {
+    it("leaves unlabelled nodes out", () => {
       const content = docOf(
         { type: "heading", tag: "h1", version: 1, children: [textOf("Title")] },
         { type: "quote", version: 1, children: [textOf("said")] },
         { type: "code", version: 1, children: [textOf("run()")] },
         { type: "horizontalrule", version: 1 },
       );
-      expect(lossyNodesOf(content, labels)).toEqual([]);
+      expect(labelledNodesOf(content, labels)).toEqual([]);
     });
 
-    it("reports the most numerous loss first", () => {
+    it("reports the most numerous label first", () => {
       const content = docOf(
         { type: "akan-image", version: 1 },
         { type: "akan-image", version: 1 },
         { type: "akan-callout", version: 1, children: [] },
         { type: "akan-image", version: 1 },
       );
-      expect(lossyNodesOf(content, labels)).toEqual([
+      expect(labelledNodesOf(content, labels)).toEqual([
         { label: "image", count: 3 },
         { label: "callout", count: 1 },
       ]);
     });
 
     it("reads a legacy array-shaped value without throwing", () => {
-      expect(lossyNodesOf([{ type: "akan-image" }], labels)).toEqual([{ label: "image", count: 1 }]);
+      expect(labelledNodesOf([{ type: "akan-image" }], labels)).toEqual([{ label: "image", count: 1 }]);
     });
   });
 
-  describe("lossSentence", () => {
+  describe("countSentence", () => {
     it("pluralizes each count", () => {
-      expect(lossSentence([{ label: "image", count: 3 }])).toBe("3 images");
-      expect(lossSentence([{ label: "table", count: 1 }])).toBe("1 table");
+      expect(countSentence([{ label: "image", count: 3 }])).toBe("3 images");
+      expect(countSentence([{ label: "table", count: 1 }])).toBe("1 table");
       expect(
-        lossSentence([
+        countSentence([
           { label: "image", count: 2 },
           { label: "callout", count: 1 },
         ]),

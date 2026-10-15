@@ -1,30 +1,18 @@
 import {
   Account,
   Admin,
+  browserRefreshGraceMs,
   Every,
-  extractFacebookProfile,
-  extractGithubProfile,
-  extractGoogleProfile,
-  extractKakaoProfile,
-  extractNaverProfile,
-  type FacebookResponse,
-  type GithubResponse,
-  type GoogleResponse,
-  getSsoCode,
-  getSsoOrigin,
-  type KakaoResponse,
   makeAccessTokenResponse,
-  makeOAuthRedirectResponse,
   makeSignoutResponse,
-  makeSsoRedirectResponse,
-  NativeSso,
-  type NaverResponse,
   readRefreshTokenCookie,
   Self,
   SelfOrAdmin,
   type SerAccount,
+  SignupHolder,
   SSO,
-  type SsoCookie,
+  SsoFlow,
+  Staff,
   User,
 } from "@libs/shared/srvkit";
 import { Any, ID } from "akanjs/base";
@@ -34,11 +22,16 @@ import * as cnst from "../cnst";
 import { Err } from "../dict";
 import * as srv from "../srv";
 
-export class UserInternal extends internal(srv.user, () => ({})) {}
+export class UserInternal extends internal(srv.user, ({ cron }) => ({
+  // Every mode, unlike the summary cron: an expired restriction has to end wherever the app runs.
+  releaseExpiredRestrictions: cron("*/10 * * * *", { serverMode: "batch" }).exec(async function () {
+    await this.userService.releaseExpiredRestrictions();
+  }),
+})) {}
 
 export class UserSlice extends slice(
   srv.user,
-  { guards: { root: Admin, get: Public, cru: SelfOrAdmin, create: Admin } },
+  { guards: { root: Staff, get: Public, cru: SelfOrAdmin, create: Admin } },
   () => ({}),
 ) {}
 
@@ -55,42 +48,47 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .exec(async function (userId) {
       return await this.userService.subBadgeCount(userId);
     }),
-  getUserIdHasNickname: query(ID, { nullable: true })
+  getUserIdHasNickname: query(ID, { guards: [Public], nullable: true, mcp: false, rateLimit: { calls: 120 } })
     .param("nickname", String)
     .exec(async function (nickname) {
       return await this.userService.getUserIdHasNickname(nickname);
     }),
-  getSelf: query(cnst.User, { nullable: true })
+  getSelf: query(cnst.User, { guards: [Public], nullable: true, mcp: false })
     .with(Self, { nullable: true })
     .exec(async function (self) {
       if (!self) return null;
       return await this.userService.getUser(self.id);
     }),
-  signinWithSignToken: mutation(cnst.util.AccessToken)
-    .param("userId", ID)
+  signinWithSignToken: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("signToken", String)
-    .exec(async function (userId, signToken) {
-      return makeAccessTokenResponse(await this.userService.signinWithSignToken(userId, signToken)) as never;
+    .with(Account)
+    .exec(async function (signToken, account) {
+      return makeAccessTokenResponse(await this.userService.signinWithSignToken(signToken, account)) as never;
     }),
-  signoutUser: mutation(cnst.util.AccessToken)
+  signoutUser: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("pushDeviceId", String, { nullable: true })
     .with(Account)
     .exec(async function (pushDeviceId, account) {
       return makeSignoutResponse(await this.userService.signoutUser(account, pushDeviceId)) as never;
     }),
-  activateUser: mutation(cnst.util.AccessToken)
+  activateUser: mutation(cnst.util.AccessToken, { guards: [SignupHolder], mcp: false })
     .param("userId", ID)
+    .body("signupToken", String)
     .with(Account)
-    .exec(async function (userId, account) {
+    .exec(async function (userId, _signupToken, account) {
       return makeAccessTokenResponse(await this.userService.activateUser(userId, account)) as never;
     }),
-  generatePrepareUser: mutation(cnst.User)
-    .body("userId", ID, { nullable: true })
-    .body("token", String)
-    .exec(async function (userId, token) {
-      // TODO: 임시 비활
-      // if (!(await this.cloudflareService.isVerified(token))) throw new Error("Invalid Turnstile Token");
-      return await this.userService.generatePrepareUser(userId);
+  // An admin vouches for the account, so the signup policy does not apply and no session is handed out.
+  activateUserByAdmin: mutation(cnst.User, { guards: [Admin], mcp: false })
+    .param("userId", ID)
+    .exec(async function (userId) {
+      return await this.userService.activateUserByAdmin(userId);
+    }),
+  // Resumes the draft its token names, or opens a new one; either way the answer carries a fresh token.
+  generatePrepareUser: mutation(cnst.SignupTicket, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
+    .body("signupToken", String, { nullable: true })
+    .exec(async function (signupToken) {
+      return await this.userService.openSignup(signupToken);
     }),
   setNicknameOfSelf: mutation(cnst.User, { guards: [User] })
     .body("nickname", String)
@@ -123,53 +121,49 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       return await this.userService.getAccountId(self.id, false);
     }),
 
-  //*===================================================================*//
-  //*====================== Password Signing Area ======================*//
-  userExistsHasAccountId: query(Boolean)
+  userExistsHasAccountId: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 120 } })
     .param("accountId", String)
     .exec(async function (accountId) {
       const exists = await this.userService.existsByAccountId(accountId, ["active", "restricted", "dormant"]);
       return !!exists;
     }),
-  setAccountIdInPrepareUser: mutation(Boolean)
+  setAccountIdInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("accountId", String)
+    .body("signupToken", String)
     .exec(async function (userId, accountId) {
-      // TODO: 임시 비활
-      // if (!(await this.cloudflareService.isVerified(token))) throw new Error("Invalid Turnstile Token");
       await this.userService.setAccountIdInPrepareUser(userId, accountId);
       return true;
     }),
-  setPasswordInPrepareUser: mutation(Boolean)
+  setPasswordInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("accountId", String)
     .body("password", String)
+    .body("signupToken", String)
     .exec(async function (userId, accountId, password) {
       await this.userService.setPasswordInPrepareUser(userId, accountId, password);
       return true;
     }),
-  signinWithPassword: mutation(cnst.util.AccessToken)
+  signinWithPassword: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("accountId", String)
     .body("password", String)
-    .body("token", String)
     .with(Account)
-    .exec(async function (accountId, password, token, account) {
-      // TODO: 임시 비활
-      //if (!(await this.cloudflareService.isVerified(token))) throw new Error("Invalid Turnstile Token");
+    .exec(async function (accountId, password, account) {
       return makeAccessTokenResponse(await this.userService.signinWithPassword(accountId, password, account)) as never;
     }),
-  changePassword: mutation(Boolean, { guards: [Every] })
+  changePassword: mutation(Boolean, { guards: [Every], rateLimit: { calls: 10, by: "account" } })
     .body("password", String)
     .body("prevPassword", String)
-    .body("token", String)
     .with(Self)
-    .exec(async function (password, prevPassword, token, self) {
-      // TODO: 임시 비활
-      // if (!(await this.cloudflareService.isVerified(token))) throw new Error("Invalid Turnstile Token");
+    .exec(async function (password, prevPassword, self) {
       await this.userService.changePassword(self.id, password, prevPassword);
       return true;
     }),
-  requestPhoneCodeForSetPassword: mutation(Boolean, { guards: [User] })
+  requestPhoneCodeForSetPassword: mutation(Boolean, {
+    guards: [User],
+    mcp: false,
+    rateLimit: { calls: 5, by: "account" },
+  })
     .body("phone", String)
     .body("hash", String)
     .with(Self)
@@ -177,14 +171,14 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.requestPhoneCodeForSetPassword(self.id, phone, hash);
       return true;
     }),
-  getSignTokenForSetPassword: mutation(String, { guards: [User] })
+  getSignTokenForSetPassword: mutation(String, { guards: [User], mcp: false })
     .body("phone", String)
     .body("phoneCode", String)
     .with(Self)
     .exec(async function (phone, phoneCode, self) {
       return await this.userService.getSignTokenForSetPassword(self.id, phone, phoneCode);
     }),
-  setPasswordWithSignToken: mutation(Boolean, { guards: [Every] })
+  setPasswordWithSignToken: mutation(Boolean, { guards: [User], mcp: false })
     .body("password", String)
     .body("signToken", String)
     .with(Self)
@@ -192,51 +186,71 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.setPasswordWithSignToken(self.id, password, signToken);
       return true;
     }),
-  resetPassword: mutation(Boolean)
+  resetPassword: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .exec(async function (accountId) {
       return await this.userService.resetPassword(accountId);
     }),
-  requestEmailCodeInPrepareUser: mutation(Boolean)
+  requestEmailCodeInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
+    .body("signupToken", String)
     .exec(async function (userId) {
       await this.userService.requestEmailCodeInPrepareUser(userId);
       return true;
     }),
-  verifyEmailInPrepareUser: mutation(Boolean)
+  verifyEmailInPrepareUser: mutation(String, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
     .body("emailCode", String)
+    .body("signupToken", String)
     .exec(async function (userId, emailCode) {
-      await this.userService.verifyEmailInPrepareUser(userId, emailCode);
+      return await this.userService.verifyEmailInPrepareUser(userId, emailCode);
+    }),
+  setPasswordInPrepareUserWithSignToken: mutation(Boolean, { guards: [SignupHolder], mcp: false })
+    .body("userId", ID)
+    .body("password", String)
+    .body("signToken", String)
+    .body("signupToken", String)
+    .exec(async function (userId, password, signToken) {
+      await this.userService.setPasswordInPrepareUserWithSignToken(userId, password, signToken);
       return true;
     }),
-  //*====================== Password Signing Area ======================*//
-  //*===================================================================*//
 
-  //*================================================================*//
-  //*====================== Phone Signing Area ======================*//
-  getUserIdHasPhone: query(ID, { nullable: true })
+  userExistsHasPhone: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 120 } })
     .param("phone", String)
     .exec(async function (phone) {
-      return await this.userService.getUserIdHasPhone(phone);
+      return await this.userService.userExistsHasPhone(phone);
     }),
-  setPhoneInPrepareUser: mutation(Boolean)
+  setPhoneInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
     .body("phone", String)
     .body("hash", String)
+    .body("signupToken", String)
     .exec(async function (userId, phone, hash) {
       await this.userService.setPhoneInPrepareUser(userId, phone, hash);
       return true;
     }),
-  verifyPhoneInPrepareUser: mutation(Boolean)
+  verifyPhoneInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
     .body("phone", String)
     .body("phoneCode", String)
+    .body("signupToken", String)
     .exec(async function (userId, phone, phoneCode) {
       await this.userService.verifyPhoneInPrepareUser(userId, phone, phoneCode);
       return true;
     }),
-  setPhoneInActiveUser: mutation(Boolean, { guards: [User] })
+  requestPhoneCodeForChangePhone: mutation(Boolean, {
+    guards: [User],
+    mcp: false,
+    rateLimit: { calls: 5, by: "account" },
+  })
+    .body("phone", String)
+    .body("hash", String)
+    .with(Self)
+    .exec(async function (phone, hash, self) {
+      await this.userService.requestPhoneCodeForChangePhone(self.id, phone, hash);
+      return true;
+    }),
+  setPhoneInActiveUser: mutation(Boolean, { guards: [User], mcp: false })
     .body("phone", String)
     .body("phoneCode", String)
     .with(Self)
@@ -244,26 +258,41 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.setPhoneInActiveUser(self.id, phone, phoneCode);
       return true;
     }),
-  requestPhoneCodeForSignin: mutation(Boolean)
-    .param("userId", ID)
+  requestPhoneCodeForSignin: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("phone", String)
     .body("hash", String)
-    .exec(async function (userId, phone, hash) {
-      await this.userService.requestPhoneCodeForSignin(userId, phone, hash);
+    .exec(async function (phone, hash) {
+      await this.userService.requestPhoneCodeForSignin(phone, hash);
       return true;
     }),
-  getSignTokenForSignin: mutation(String)
-    .param("userId", ID)
+  getSignTokenForSignin: mutation(String, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("phone", String)
     .body("phoneCode", String)
-    .exec(async function (userId, phone, phoneCode) {
-      return await this.userService.getSignTokenForSignin(userId, phone, phoneCode);
+    .exec(async function (phone, phoneCode) {
+      return await this.userService.getSignTokenForSignin(phone, phoneCode);
     }),
-  //*====================== Phone Signing Area ======================*//
-  //*================================================================*//
 
-  //*================================================================*//
-  //*====================== Admin Control Area ======================*//
+  requestEmailCodeForResetPassword: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
+    .body("accountId", String)
+    .exec(async function (accountId) {
+      await this.userService.requestEmailCodeForResetPassword(accountId);
+      return true;
+    }),
+  verifyEmailCodeForResetPassword: mutation(String, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
+    .body("accountId", String)
+    .body("emailCode", String)
+    .exec(async function (accountId, emailCode) {
+      return await this.userService.verifyEmailCodeForResetPassword(accountId, emailCode);
+    }),
+  resetPasswordWithSignToken: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
+    .body("accountId", String)
+    .body("password", String)
+    .body("signToken", String)
+    .exec(async function (accountId, password, signToken) {
+      await this.userService.resetPasswordWithSignToken(accountId, password, signToken);
+      return true;
+    }),
+
   addUserRole: mutation(cnst.User, { guards: [Admin], mcp: false })
     .param("userId", ID)
     .body("role", cnst.UserRole)
@@ -326,7 +355,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .exec(async function (userId) {
       return makeAccessTokenResponse(await this.userService.getAccessTokenByAdmin(userId)) as never;
     }),
-  getEncourageInfo: query(cnst.EncourageInfo, { guards: [Admin] })
+  getEncourageInfo: query(cnst.EncourageInfo, { guards: [Staff] })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.getEncourageInfo(userId);
@@ -345,46 +374,37 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       await this.userService.setInquiry(userId, inquiry);
       return true;
     }),
-  //*====================== Admin Control Area ======================*//
-  //*================================================================*//
 
-  //*================================================================*//
-  //*====================== Public Setup Area =======================*//
-  setNicknameOfPrepareUser: mutation(Boolean)
+  setNicknameOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("nickname", String)
+    .body("signupToken", String)
     .exec(async function (userId, nickname) {
       await this.userService.setNicknameOfPrepareUser(userId, nickname);
       return true;
     }),
-  setAppliedImagesOfPrepareUser: mutation(Boolean)
+  setAppliedImagesOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("appliedImages", [String])
+    .body("signupToken", String)
     .exec(async function (userId, appliedImages) {
       await this.userService.setAppliedImagesOfPrepareUser(userId, appliedImages);
       return true;
     }),
-  //*================================================================*//
-  //*====================== Secret Setup Area =======================*//
-  setNameOfPrepareUser: mutation(Boolean)
+  setNameOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("name", String)
+    .body("signupToken", String)
     .exec(async function (userId, name) {
       await this.userService.setNameOfPrepareUser(userId, name);
       return true;
     }),
-  setAgreePoliciesOfPrepareUser: mutation(Boolean)
+  setAgreePoliciesOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
     .body("agreePolicies", [String])
+    .body("signupToken", String)
     .exec(async function (userId, agreePolicies) {
       await this.userService.setAgreePoliciesOfPrepareUser(userId, agreePolicies);
-      return true;
-    }),
-  setDiscordOfPrepareUser: mutation(Boolean)
-    .body("userId", ID)
-    .body<"discord", { nickname?: string; user?: { username: string } }>("discord", Any)
-    .exec(async function (userId, discord) {
-      await this.userService.setDiscordOfPrepareUser(userId, discord);
       return true;
     }),
   setNotiSettingOfUser: mutation(Boolean, { guards: [SelfOrAdmin] })
@@ -415,214 +435,88 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       if (!notiDeviceToken) return false;
       return await this.userService.hasNotiDeviceTokenOfUser(self.id, notiDeviceToken);
     }),
-  notiSettingOfSelf: query(String, { guards: [User], mcp: false })
+  notiSettingOfSelf: query(cnst.NotiSetting, { guards: [User], mcp: false })
     .with(Self)
     .exec(async function (self) {
       return await this.userService.getNotiSettingOfUser(self.id);
     }),
-  //*====================== Secret Setup Area =======================*//
-  //*================================================================*//
 
-  //*======================================================*//
-  //*====================== SSO Area ======================*//
   github: query(Any, { guards: [SSO.Github] })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest;
-      const start = NativeSso.parseStart(req);
-      if (!start) return makeOAuthRedirectResponse("github", req);
-      return makeOAuthRedirectResponse("github", req, {
-        origin: start.origin,
-        state: await this.userService.startNativeSso("github", start),
-      });
+    .exec(async function (req) {
+      return await SsoFlow.start("github", req as Bun.BunRequest, this.userService);
     }),
   githubCallback: query(Any, { guards: [SSO.Github], path: "github/callback" })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest & { user?: GithubResponse; account?: SerAccount };
-      const start = await this.userService.takeNativeSso(NativeSso.stateOf(req));
-      if (start)
-        return NativeSso.respond(
-          start,
-          await this.userService.handOffNativeSso(start, async () => {
-            const githubUser = await extractGithubProfile(getSsoCode(req), start.origin);
-            return { accountId: githubUser.username, nickname: githubUser.displayName };
-          }),
-        );
-      const githubUser = req.user ?? (await extractGithubProfile(getSsoCode(req), getSsoOrigin(req)));
-      const { username: accountId } = githubUser;
-      const { cookie, redirect } = await this.userService.handleSsoCallback(
-        accountId,
-        "github",
-        req.cookies.toJSON() as unknown as SsoCookie,
-        req.account as SerAccount | undefined,
-        githubUser.displayName,
-      );
-      return makeSsoRedirectResponse(redirect, cookie);
+    .exec(async function (req) {
+      return await SsoFlow.callback("github", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
   google: query(Any, { guards: [SSO.Google] })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest;
-      const start = NativeSso.parseStart(req);
-      if (!start) return makeOAuthRedirectResponse("google", req);
-      return makeOAuthRedirectResponse("google", req, {
-        origin: start.origin,
-        state: await this.userService.startNativeSso("google", start),
-      });
+    .exec(async function (req) {
+      return await SsoFlow.start("google", req as Bun.BunRequest, this.userService);
     }),
   googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest & { user?: GoogleResponse; account?: SerAccount };
-      const start = await this.userService.takeNativeSso(NativeSso.stateOf(req));
-      if (start)
-        return NativeSso.respond(
-          start,
-          await this.userService.handOffNativeSso(start, async () => {
-            const googleUser = await extractGoogleProfile(getSsoCode(req), start.origin);
-            return { accountId: googleUser.emails[0].value, nickname: googleUser.displayName };
-          }),
-        );
-      const googleUser = req.user ?? (await extractGoogleProfile(getSsoCode(req), getSsoOrigin(req)));
-      const accountId = googleUser.emails[0].value;
-      const { cookie, redirect } = await this.userService.handleSsoCallback(
-        accountId,
-        "google",
-        req.cookies.toJSON() as unknown as SsoCookie,
-        req.account as SerAccount | undefined,
-        googleUser.displayName,
-      );
-      return makeSsoRedirectResponse(redirect, cookie);
+    .exec(async function (req) {
+      return await SsoFlow.callback("google", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
   facebook: query(Any, { guards: [SSO.Facebook] })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest;
-      const start = NativeSso.parseStart(req);
-      if (!start) return makeOAuthRedirectResponse("facebook", req);
-      return makeOAuthRedirectResponse("facebook", req, {
-        origin: start.origin,
-        state: await this.userService.startNativeSso("facebook", start),
-      });
+    .exec(async function (req) {
+      return await SsoFlow.start("facebook", req as Bun.BunRequest, this.userService);
     }),
   facebookCallback: query(Any, { guards: [SSO.Facebook], path: "facebook/callback" })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest & { user?: FacebookResponse; account?: SerAccount };
-      const start = await this.userService.takeNativeSso(NativeSso.stateOf(req));
-      if (start)
-        return NativeSso.respond(
-          start,
-          await this.userService.handOffNativeSso(start, async () => {
-            const facebookUser = await extractFacebookProfile(getSsoCode(req), start.origin);
-            const nickname = [facebookUser.name.givenName, facebookUser.name.familyName].filter(Boolean).join(" ");
-            return { accountId: facebookUser.emails[0].value, nickname };
-          }),
-        );
-      const facebookUser = req.user ?? (await extractFacebookProfile(getSsoCode(req), getSsoOrigin(req)));
-      const accountId = facebookUser.emails[0].value;
-      const { cookie, redirect } = await this.userService.handleSsoCallback(
-        accountId,
-        "facebook",
-        req.cookies.toJSON() as unknown as SsoCookie,
-        req.account as SerAccount | undefined,
-        [facebookUser.name.givenName, facebookUser.name.familyName].filter(Boolean).join(" "),
-      );
-      return makeSsoRedirectResponse(redirect, cookie);
+    .exec(async function (req) {
+      return await SsoFlow.callback("facebook", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
-  apple: query(String, { guards: [SSO.Apple] }).exec(() => "unreachable"),
+  apple: query(Any, { guards: [SSO.Apple] })
+    .with(Req)
+    .exec(async function (req) {
+      return await SsoFlow.start("apple", req as Bun.BunRequest, this.userService);
+    }),
   appleCallback: query(Any, { guards: [SSO.Apple], path: "apple/callback" })
     .with(Req)
-    .exec(async () => {
-      // const sso = this.securityOption.sso.apple as AppleCredential;
-      // if (!payload.code || !sso) throw new Error("Invalid Apple SSO");
-      // return verifyAppleUser(payload, this.options.origin, sso);
+    .exec(async function (req) {
+      return await SsoFlow.callback("apple", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
   kakao: query(Any, { guards: [SSO.Kakao] })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest;
-      const start = NativeSso.parseStart(req);
-      if (!start) return makeOAuthRedirectResponse("kakao", req);
-      return makeOAuthRedirectResponse("kakao", req, {
-        origin: start.origin,
-        state: await this.userService.startNativeSso("kakao", start),
-      });
+    .exec(async function (req) {
+      return await SsoFlow.start("kakao", req as Bun.BunRequest, this.userService);
     }),
   kakaoCallback: query(Any, { guards: [SSO.Kakao], path: "kakao/callback" })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest & { user?: KakaoResponse; account?: SerAccount };
-      const start = await this.userService.takeNativeSso(NativeSso.stateOf(req));
-      if (start)
-        return NativeSso.respond(
-          start,
-          await this.userService.handOffNativeSso(start, async () => {
-            const { email: accountId, name } = await extractKakaoProfile(getSsoCode(req), start.origin);
-            return { accountId, nickname: name };
-          }),
-        );
-      const { email: accountId, name } = req.user ?? (await extractKakaoProfile(getSsoCode(req), getSsoOrigin(req)));
-      const { cookie, redirect } = await this.userService.handleSsoCallback(
-        accountId,
-        "kakao",
-        req.cookies.toJSON() as unknown as SsoCookie,
-        req.account as SerAccount | undefined,
-        name,
-      );
-      return makeSsoRedirectResponse(redirect, cookie);
+    .exec(async function (req) {
+      return await SsoFlow.callback("kakao", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
   naver: query(Any, { guards: [SSO.Naver] })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest;
-      const start = NativeSso.parseStart(req);
-      if (!start) return makeOAuthRedirectResponse("naver", req);
-      return makeOAuthRedirectResponse("naver", req, {
-        origin: start.origin,
-        state: await this.userService.startNativeSso("naver", start),
-      });
+    .exec(async function (req) {
+      return await SsoFlow.start("naver", req as Bun.BunRequest, this.userService);
     }),
   naverCallback: query(Any, { guards: [SSO.Naver], path: "naver/callback" })
     .with(Req)
-    .exec(async function (request) {
-      const req = request as Bun.BunRequest & { user?: NaverResponse; account?: SerAccount };
-      const start = await this.userService.takeNativeSso(NativeSso.stateOf(req));
-      if (start)
-        return NativeSso.respond(
-          start,
-          await this.userService.handOffNativeSso(start, async () => {
-            const { email: accountId, name } = await extractNaverProfile(getSsoCode(req), start.origin);
-            return { accountId, nickname: name };
-          }),
-        );
-      const { email: accountId, name } = req.user ?? (await extractNaverProfile(getSsoCode(req), getSsoOrigin(req)));
-      const { cookie, redirect } = await this.userService.handleSsoCallback(
-        accountId,
-        "naver",
-        req.cookies.toJSON() as unknown as SsoCookie,
-        req.account as SerAccount | undefined,
-        name,
-      );
-      return makeSsoRedirectResponse(redirect, cookie);
+    .exec(async function (req) {
+      return await SsoFlow.callback("naver", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
     }),
-  exchangeSsoCode: mutation(cnst.SsoSignin)
+  exchangeSsoCode: mutation(cnst.SsoSignin, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("code", String)
     .body("codeVerifier", String)
     .with(Account)
     .exec(async function (code, codeVerifier, account) {
       return await this.userService.exchangeNativeSsoCode(code, codeVerifier, account);
     }),
-  //*====================== SSO Area ======================*//
-  //*======================================================*//
-  refreshJwt: mutation(cnst.util.AccessToken)
+  refreshJwt: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("refreshToken", String, { nullable: true })
     .with(Account)
     .with(Req)
     .exec(async function (refreshToken, account, request) {
       const token = refreshToken ?? readRefreshTokenCookie(request.cookies, "user");
       if (!token) throw new Err("user.error.noRefreshToken");
-      return makeAccessTokenResponse(await this.userService.refreshUserToken(token, account)) as never;
+      return makeAccessTokenResponse(
+        await this.userService.refreshUserToken(token, account, { graceMs: browserRefreshGraceMs }),
+      ) as never;
     }),
 })) {}

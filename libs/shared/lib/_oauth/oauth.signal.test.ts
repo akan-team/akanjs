@@ -352,6 +352,9 @@ describe("Oauth Signal", () => {
       client_id: otherClient,
     });
     expect((await json(crossed)).error).toBe("invalid_grant");
+    // The refusal is decided before the rotation, so the legitimate client's token is not spent by it.
+    const own = await token({ grant_type: "refresh_token", refresh_token: fresh.refresh_token, client_id: clientId });
+    expect(own.status).toBe(200);
     const unknown = await token({ grant_type: "refresh_token", refresh_token: "r", client_id: "dcr_nobody" });
     expect(unknown.status).toBe(401);
     expect((await json(unknown)).error).toBe("invalid_client");
@@ -428,19 +431,16 @@ describe("Oauth Signal", () => {
     await expect(owner.fetch.listOAuthConnections()).resolves.toBeDefined();
   });
 
-  it("leaves disconnecting an app and deciding a consent to a person, never an agent's token", async () => {
+  it("refuses a consent decision or a disconnect made with an agent's own token", async () => {
     const fresh = await grant();
+    const requestId = requestIdOf(await authorize(owner.accessToken.jwt));
+    expect((await decide("approveOAuthConsent", requestId, fresh.access_token)).status).toBe(403);
+    expect((await decide("denyOAuthConsent", requestId, fresh.access_token)).status).toBe(403);
     const [connection] = (await connections(fresh.access_token)).filter((c) => c.isCurrent);
-    expect(connection).toBeDefined();
-    const byAgent = await fetch(`${base}${getApiPrefix()}/revokeOAuthConnection/${connection.sessionId}`, {
+    const cut = await fetch(`${base}${getApiPrefix()}/revokeOAuthConnection/${connection.sessionId}`, {
       method: "POST",
       headers: { authorization: `Bearer ${fresh.access_token}` },
     });
-    expect(byAgent.ok).toBe(false);
-    expect((await connections(owner.accessToken.jwt)).some((c) => c.sessionId === connection.sessionId)).toBe(true);
-    const requestId = requestIdOf(await authorize(owner.accessToken.jwt));
-    expect((await decide("approveOAuthConsent", requestId, fresh.access_token)).status).not.toBe(302);
-    expect((await decide("denyOAuthConsent", requestId, fresh.access_token)).status).not.toBe(302);
-    expect((await decide("approveOAuthConsent", requestId, owner.accessToken.jwt)).status).toBe(302);
+    expect(cut.status).toBe(403);
   });
 });

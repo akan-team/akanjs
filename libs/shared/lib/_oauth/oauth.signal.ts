@@ -81,7 +81,6 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.listConnections(account);
     }),
 
-  // `Person` too: an MCP App view relays its calls on the agent's token, and cutting a connector stays a person's act.
   revokeOAuthConnection: mutation(Boolean, { guards: [Every, Person], mcp: false })
     .param("sessionId", String)
     .with(Account)
@@ -89,7 +88,7 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.revokeConnection(sessionId, account);
     }),
 
-  viewOAuthAuthorizationRequest: query(cnst.OauthRequest, { guards: [Every], mcp: false })
+  viewOAuthAuthorizationRequest: query(cnst.OauthRequest, { guards: [Every, Person], mcp: false })
     .param("requestId", String)
     .with(Account)
     .exec(async function (requestId, account) {

@@ -1,11 +1,10 @@
-interface ShapeNode {
-  type?: unknown;
-  text?: unknown;
+import type { RichNodeLike } from "./richNode";
+
+interface ShapeNode extends RichNodeLike {
   format?: unknown;
   detail?: unknown;
   mode?: unknown;
   style?: unknown;
-  children?: unknown;
   listType?: unknown;
   language?: unknown;
 }
@@ -42,7 +41,8 @@ export class RichContentShape {
     }
     // `start` and `left` are the same edge in a left-to-right document, and the editor writes either.
     if (shaped.format === "start" || shaped.format === "left") shaped.format = "";
-    if (node.type === "akan-mention") RichContentShape.#omit(shaped, ["text", "href", "imageUrl"]);
+    // The token carries neither href nor imageUrl, so a chip holding one has to fail this and travel as an island.
+    if (node.type === "akan-mention") RichContentShape.#omit(shaped, ["text"]);
     // rel/target record how a link was made — the toolbar writes `noreferrer`, a pasted page brings its own `_blank`.
     if (node.type === "link") RichContentShape.#omit(shaped, ["rel", "target"]);
     if (node.type === "listitem") RichContentShape.#omit(shaped, ["value"]);

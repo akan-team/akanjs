@@ -1,4 +1,3 @@
-import { safeExternalUrl } from "./url";
+import { RichUrl } from "@libs/shared/common";
 
-/** Only http/https and mailto links may be created via TOGGLE_LINK_COMMAND. */
-export const validateLinkUrl = (url: string) => url.startsWith("mailto:") || safeExternalUrl(url) !== null;
+export const validateLinkUrl = (url: string) => RichUrl.typedLink(url) !== null;

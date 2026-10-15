@@ -1,5 +1,6 @@
 "use client";
 import { cn } from "akanjs/client";
+import { capitalize } from "akanjs/common";
 import { st } from "akanjs/store";
 import { useContext } from "react";
 import { useReactToPrint } from "react-to-print";
@@ -15,10 +16,20 @@ interface TriggerProps {
 }
 
 export const Trigger = ({ children, className, pageStyle }: TriggerProps) => {
-  const { ref } = useContext(PrintContext);
+  const { ref, name } = useContext(PrintContext);
   const print = useReactToPrint({ contentRef: ref, pageStyle });
-  st.tool("printPage", { settle: false })
-    .desc("Open the print dialog for the document on screen.")
+  st.tool(name ? `print${capitalize(name)}` : "printPage", {
+    settle: false,
+    //? Every Print on a screen stays mounted, a hidden tab's included; only the one with a box on screen may print.
+    guard: () =>
+      (ref.current?.getClientRects().length ?? 0) > 0 ||
+      "This document is not on screen. Show it first, for example by switching to its tab.",
+  })
+    .desc(
+      name
+        ? `Open the print dialog for the ${name} document on screen.`
+        : "Open the print dialog for the document on screen.",
+    )
     .exec(() => {
       print();
     });

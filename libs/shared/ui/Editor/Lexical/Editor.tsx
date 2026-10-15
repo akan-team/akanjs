@@ -1,9 +1,7 @@
 "use client";
 import { CheckListPlugin } from "@lexical/react/LexicalCheckListPlugin";
 import { LexicalCollaboration } from "@lexical/react/LexicalCollaborationContext";
-import { CollaborationPlugin } from "@lexical/react/LexicalCollaborationPlugin";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
@@ -14,21 +12,19 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { TabIndentationPlugin } from "@lexical/react/LexicalTabIndentationPlugin";
 import { TablePlugin } from "@lexical/react/LexicalTablePlugin";
-import { type cnst, Err } from "@libs/shared/client";
+import { type cnst, Err, msg, usePage } from "@libs/shared/client";
 import type { EditorContent } from "@libs/shared/common";
 import { addFileUntilActive } from "@libs/shared/webkit";
-import type { Any } from "akanjs/base";
 import { cn } from "akanjs/client";
 import type { ProtoFile } from "akanjs/constant";
-import { BLUR_COMMAND, COMMAND_PRIORITY_LOW, type EditorState } from "lexical";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Doc } from "yjs";
+import type { EditorState } from "lexical";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createEditorConfig } from "./config";
-import type { AddFile } from "./editor.type";
+import type { AddFile, EditorCollab } from "./editor.type";
 import { validateLinkUrl } from "./editor.util";
 import { type EditorFeatureKey, featuresOf, isPlainOnly, transformersOf } from "./feature";
-import { AKAN_FEATURES } from "./markdown";
+import { akanFeatures } from "./markdown";
 import { reconcileAttachments } from "./media";
 import {
   collectPluginFeatures,
@@ -45,43 +41,33 @@ import { CalloutPlugin } from "./plugins/CalloutPlugin";
 import { CodeHighlightPlugin } from "./plugins/CodeHighlightPlugin";
 import { CollapsiblePlugin } from "./plugins/CollapsiblePlugin";
 import { DraggableBlockPlugin } from "./plugins/DraggableBlockPlugin";
+import { EditableSyncPlugin } from "./plugins/EditableSyncPlugin";
+import { ExternalValuePlugin } from "./plugins/ExternalValuePlugin";
 import { FloatingToolbarPlugin } from "./plugins/FloatingToolbarPlugin";
+import { FlushOnBlurPlugin } from "./plugins/FlushOnBlurPlugin";
 import { FormatGuardPlugin } from "./plugins/FormatGuardPlugin";
 import { HorizontalRulePlugin } from "./plugins/HorizontalRulePlugin";
 import { MentionLinkPlugin } from "./plugins/MentionLinkPlugin";
 import { MentionPlugin } from "./plugins/MentionPlugin";
+import { PasteFilterPlugin } from "./plugins/PasteFilterPlugin";
 import { PlainPastePlugin } from "./plugins/PlainPastePlugin";
 import { SlashMenuPlugin } from "./plugins/SlashMenuPlugin";
 import { TableActionsPlugin } from "./plugins/TableActionsPlugin";
 import { UploadPlugin } from "./plugins/UploadPlugin";
-import { isSerializedEditorState, toSerializedEditorState } from "./softGuard";
+import { toSerializedEditorState } from "./softGuard";
 import { type EditorUpload, EditorUploadProvider } from "./UploadContext";
 import { normalizeUploadPolicy, type UploadPolicy, validateUploadFile } from "./upload";
 
-/**
- * Public prop contract for the Akan editor. Deliberately mirrors the outgoing
- * Yoopta editor so consuming call sites need no changes at cutover.
- *
- * Marks, text blocks, links, code, divider, markdown shortcuts (Phase 1), the
- * interaction layer (Phase 2), media/upload (Phase 3), and the structural blocks
- * (Phase 3b) are all wired. `plugins` injects consumer-owned nodes/slash options/
- * plugin components (see {@link EditorPlugin}) — the PageBlock nested page uses it.
- * `onDelete` stays declared for signature parity; per-node deletion cleanup now
- * runs through a plugin's own mutation listener.
- */
 interface EditorProps {
-  readOnly?: boolean;
-  disabled?: boolean;
   className?: string;
+  disabled?: boolean;
   value?: unknown;
-  defaultValue?: unknown;
   onChange: (value: EditorContent) => void;
-  onDelete?: (nodes: Any[]) => void;
   addFilesGql?: (fileList: FileList, id?: string) => Promise<(cnst.File | ProtoFile)[]>;
   addFile?: AddFile;
   attachments?: cnst.File[];
-  onAttachmentAdd?: (file: cnst.File) => void;
   onAttachmentsChange?: (files: cnst.File[]) => void;
+  /** Omitted, a refused or failed upload is shown to the person as an error message. */
   onUploadError?: (error: Error) => void;
   uploadPolicy?: UploadPolicy;
   toolbar?: boolean;
@@ -104,115 +90,27 @@ interface EditorProps {
   agentBlocks?: boolean;
   height?: string;
   placeholder?: string;
-  debug?: boolean;
   /** Live collaboration. Present, it replaces the local history and the external-value sync — see EditorCollab. */
   collab?: EditorCollab;
 }
 
-/**
- * Live collaboration for one document.
- *
- * Three of the editor's own plugins have to stand down while this is on, which is why it is a prop and not
- * something `plugins` can add: `HistoryPlugin` would let one person's undo revert someone else's typing
- * (`Y.UndoManager`, which `CollaborationPlugin` installs, is scoped to the local client), `ExternalValuePlugin`
- * would overwrite the shared document whenever the `value` prop changed, and `initialJson` would give every
- * client its own starting state instead of the one the room agreed on.
- */
-export interface EditorCollab {
-  /** Room identity — one per document. */
-  id: string;
-  providerFactory: (id: string, docMap: Map<string, Doc>) => never;
-  /** True for exactly one client per empty document; every other client must say false. */
-  shouldBootstrap: boolean;
-  username?: string;
-  cursorColor?: string;
-}
+const changeDebounceMs = 300;
 
-const CHANGE_DEBOUNCE_MS = 300;
+// `CollaborationPlugin` is what pulls yjs in, so only an editor that collaborates downloads it.
+const CollaborationPlugin = lazy(() =>
+  import("@lexical/react/LexicalCollaborationPlugin").then(({ CollaborationPlugin }) => ({
+    default: CollaborationPlugin,
+  })),
+);
 
-/** Keeps Lexical's `editable` flag in sync with the `readOnly`/`disabled` props after mount. */
-export const EditableSyncPlugin = ({ editable }: { editable: boolean }) => {
-  const [editor] = useLexicalComposerContext();
-  useEffect(() => {
-    editor.setEditable(editable);
-  }, [editor, editable]);
-  return null;
-};
-
-/**
- * Commits the pending debounced change the moment the editor loses focus.
- *
- * Without this, clicking away (e.g. into another field of the same form) inside the
- * `CHANGE_DEBOUNCE_MS` window leaves the just-typed text sitting uncommitted in
- * `latestStateRef` while `ExternalValuePlugin`'s focus guard has already dropped
- * (the root is no longer `activeElement`) — a follow-up render with the still-stale
- * `value` prop then overwrites the editor with the pre-edit content, and the pending
- * timer commits that stale state a moment later. Flushing synchronously on blur closes
- * the window entirely: the store is already caught up by the time focus leaves.
- */
-export const FlushOnBlurPlugin = ({ onBlur }: { onBlur: () => void }) => {
-  const [editor] = useLexicalComposerContext();
-  useEffect(
-    () =>
-      editor.registerCommand(
-        BLUR_COMMAND,
-        () => {
-          onBlur();
-          return false;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-    [editor, onBlur],
-  );
-  return null;
-};
-
-/**
- * Re-applies an externally-changed `value` imperatively. Guards against the
- * onChange→setState→value feedback loop by (a) skipping while the editor is
- * focused (never clobber active typing) and (b) skipping when the incoming
- * content already equals the current document.
- *
- * The value is normalized, not just guarded: a form that loads after mount is the usual way a field
- * whose stored value is plain text reaches the editor, and dropping it here would open the form empty
- * and let the first save overwrite what was written.
- */
-export const ExternalValuePlugin = ({ value }: { value: unknown }) => {
-  const [editor] = useLexicalComposerContext();
-  useEffect(() => {
-    const state = toSerializedEditorState(value);
-    if (!state) return;
-    const root = editor.getRootElement();
-    if (root && root.ownerDocument.activeElement === root) return;
-    const current = editor.getEditorState().toJSON();
-    if (JSON.stringify(current) === JSON.stringify(state)) return;
-    try {
-      editor.setEditorState(editor.parseEditorState(state));
-    } catch {
-      // Corrupt but root-shaped JSON — keep the current document.
-    }
-  }, [editor, value]);
-  return null;
-};
-
-/**
- * Akan rich-text editor (Lexical). Phase 1: marks, text blocks, links, code,
- * divider, markdown shortcuts, debounced change→save. Phase 2: slash menu,
- * floating toolbar, block drag handles. Phase 3: media nodes (image/video/file/
- * embed/callout) with upload (drop/paste/slash), resize/align, and attachment
- * reconcile against the host's `attachments`/`onAttachmentsChange`.
- */
 export default function Editor({
-  readOnly = false,
-  disabled,
   className,
+  disabled,
   value,
-  defaultValue,
   onChange,
   addFile,
   addFilesGql,
   attachments,
-  onAttachmentAdd,
   onAttachmentsChange,
   onUploadError,
   uploadPolicy,
@@ -225,10 +123,12 @@ export default function Editor({
   agentName,
   agentBlocks,
   height,
-  placeholder = "Type something",
+  placeholder,
   collab,
 }: EditorProps) {
-  const editable = !readOnly && !disabled;
+  const { l } = usePage();
+  const editable = !disabled;
+  const placeholderText = placeholder ?? l("shared.editor-placeholder");
   // The positioned wrapper the floating handle/target-line portal into.
   const [anchorElem, setAnchorElem] = useState<HTMLDivElement | null>(null);
   // Lazy init runs once at mount; LexicalComposer ignores later initialConfig
@@ -237,10 +137,17 @@ export default function Editor({
     createEditorConfig({
       editable,
       // In a collaborative editor the starting state comes from the room, not from this client's props.
-      initialJson: collab ? undefined : (value ?? defaultValue),
+      initialJson: collab ? undefined : value,
       extraNodes: collectPluginNodes(plugins),
     }),
   );
+  // Fixed at mount like the composer: `CollaborationPlugin` reconnects to the room whenever this string
+  // changes, so one rebuilt from every commit re-uploaded the document and re-joined the room each time.
+  // A JSON string, not the object: the object branch of `initializeEditor` wants an EditorState instance.
+  const [bootstrapJson] = useState(() => {
+    const state = collab?.shouldBootstrap ? toSerializedEditorState(value) : null;
+    return state ? JSON.stringify(state) : undefined;
+  });
   const extraSlashOptions = useMemo(() => collectPluginSlashOptions(plugins), [plugins]);
   const mentionSources = useMemo(() => collectPluginMentionSources(plugins), [plugins]);
   const pluginFeatures = useMemo(() => collectPluginFeatures(plugins), [plugins]);
@@ -249,7 +156,7 @@ export default function Editor({
   // fresh array every render would re-register `FormatGuardPlugin`'s command listener on each one.
   const featureKey = features?.join(",") ?? "*";
   const editorFeatures = useMemo(
-    () => [...featuresOf(AKAN_FEATURES, features), ...pluginFeatures],
+    () => [...featuresOf(akanFeatures, features), ...pluginFeatures],
     [featureKey, pluginFeatures],
   );
   const enabled = useMemo(
@@ -265,17 +172,22 @@ export default function Editor({
   const addFileRef = useRef(addFile);
   addFileRef.current = addFile;
   const attachmentsRef = useRef<cnst.File[]>(attachments ?? []);
-  const onAttachmentAddRef = useRef(onAttachmentAdd);
   const onAttachmentsChangeRef = useRef(onAttachmentsChange);
   const onUploadErrorRef = useRef(onUploadError);
+  const mountedRef = useRef(false);
   useEffect(() => {
     attachmentsRef.current = attachments ?? [];
   }, [attachments]);
   useEffect(() => {
-    onAttachmentAddRef.current = onAttachmentAdd;
     onAttachmentsChangeRef.current = onAttachmentsChange;
     onUploadErrorRef.current = onUploadError;
-  }, [onAttachmentAdd, onAttachmentsChange, onUploadError]);
+  }, [onAttachmentsChange, onUploadError]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const latestStateRef = useRef<EditorState | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -300,13 +212,13 @@ export default function Editor({
   // `state` is for a writer that produced one without `OnChangePlugin` seeing it: Lexical drops any update whose
   // *previous* state was empty (`prevEditorState.isEmpty()`), so the first write into an empty field never reaches
   // `handleChange`. A person types again and the next keystroke carries the document; an agent writes once.
+  // Without one, only a change still waiting on the debounce is committed — a blur that follows no edit writes nothing.
   const flush = useCallback(
     (state?: EditorState) => {
       if (state) latestStateRef.current = state;
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      else if (!timerRef.current) return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
       commit();
     },
     [commit],
@@ -319,22 +231,26 @@ export default function Editor({
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         commit();
-      }, CHANGE_DEBOUNCE_MS);
+      }, changeDebounceMs);
     },
     [commit],
   );
 
-  // Uploads `file` (validating against policy), records it as a tracked
-  // attachment, and resolves the stored `cnst.File`. Shared by the slash menu,
-  // drop/paste, and any future media insert path via the upload context.
+  // The external value replaced the document, so a commit still pending from before would write it back over.
+  const onExternalValue = useCallback((state: EditorState) => {
+    latestStateRef.current = state;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
   const uploadFile = useCallback(
-    async (file: File, acceptOverride?: string): Promise<cnst.File> => {
+    async (file: File, accept?: string) => {
       if (!addFilesGql) throw new Err("shared.error.fileUploadNotConfigured");
-      const activePolicy = acceptOverride ? { ...policy, accept: acceptOverride } : policy;
-      validateUploadFile(file, activePolicy, attachmentsRef.current.length);
+      validateUploadFile(file, policy, attachmentsRef.current.length, accept);
       const uploaded = (await addFileUntilActive(file, addFilesGql)) as cnst.File;
+      // A form closed while its upload ran must not receive it: `addFile` writes whatever form is open now.
+      if (!mountedRef.current) return null;
       if (addFileRef.current) await addFileRef.current(uploaded);
-      onAttachmentAddRef.current?.(uploaded);
       const next = [...attachmentsRef.current.filter((attachment) => attachment.id !== uploaded.id), uploaded];
       attachmentsRef.current = next;
       onAttachmentsChangeRef.current?.(next);
@@ -348,7 +264,16 @@ export default function Editor({
       canUpload: editable && !!addFilesGql,
       policy,
       uploadFile,
-      onError: (error) => onUploadErrorRef.current?.(error),
+      onError: (error) => {
+        if (onUploadErrorRef.current) return onUploadErrorRef.current(error);
+        const { error: key, data } = error as { error?: unknown; data?: Record<string, unknown> };
+        msg.error(
+          typeof key === "string" ? (key as Parameters<typeof msg.error>[0]) : "shared.error.fileUploadFailed",
+          {
+            data,
+          },
+        );
+      },
     }),
     [editable, addFilesGql, policy, uploadFile],
   );
@@ -376,7 +301,7 @@ export default function Editor({
               contentEditable={
                 <ContentEditable
                   className={cn("leading-7 outline-none", showHandle && "pl-2")}
-                  aria-placeholder={placeholder}
+                  aria-placeholder={placeholderText}
                   placeholder={
                     // ContentEditable 과 같은 상자여야 한다 — 이 div 는 절대 위치라 `leading-7` 과
                     // 좌측 패딩을 직접 따라 적어야 첫 줄이 실제 텍스트와 겹친다.
@@ -386,7 +311,7 @@ export default function Editor({
                         showHandle && "pl-2",
                       )}
                     >
-                      {placeholder}
+                      {placeholderText}
                     </div>
                   }
                   style={{ minHeight: editable ? (height ?? "8rem") : undefined }}
@@ -417,18 +342,14 @@ export default function Editor({
             {collab ? (
               <CollaborationPlugin
                 id={collab.id}
-                providerFactory={collab.providerFactory as never}
+                providerFactory={collab.providerFactory}
                 shouldBootstrap={collab.shouldBootstrap}
-                // A JSON string, not the object: the object branch of `initializeEditor` hands the value
-                // straight to `setEditorState`, which wants an EditorState instance and not stored JSON.
-                initialEditorState={
-                  collab.shouldBootstrap && isSerializedEditorState(value) ? JSON.stringify(value) : undefined
-                }
+                initialEditorState={bootstrapJson}
                 username={collab.username}
                 cursorColor={collab.cursorColor}
               />
             ) : (
-              <ExternalValuePlugin value={value} />
+              <ExternalValuePlugin value={value} onApply={onExternalValue} />
             )}
             <FormatGuardPlugin features={enabled} />
             <AgentRichPlugin />
@@ -436,6 +357,7 @@ export default function Editor({
             <EditableSyncPlugin editable={editable} />
             <MentionLinkPlugin />
             {editable && isPlainOnly(editorFeatures) ? <PlainPastePlugin /> : null}
+            {editable && features ? <PasteFilterPlugin features={editorFeatures} /> : null}
             {editable && slashMenu ? (
               <SlashMenuPlugin features={enabled} extraOptions={extraSlashOptions} mentionSources={mentionSources} />
             ) : null}
@@ -445,12 +367,21 @@ export default function Editor({
             {editable && has("callout") ? <CalloutPlugin /> : null}
             {editable && has("collapsible") ? <CollapsiblePlugin /> : null}
             {editable && has("table") ? <TableActionsPlugin /> : null}
-            {editable && addFilesGql && (has("image") || has("video") || has("file")) ? <UploadPlugin /> : null}
+            {editable && addFilesGql && (has("image") || has("video") || has("file")) ? (
+              <UploadPlugin features={enabled} />
+            ) : null}
             {editable ? plugins?.map((plugin, index) => <Fragment key={index}>{plugin.render?.()}</Fragment>) : null}
           </div>
         </AgentFieldPlugin>
       </EditorUploadProvider>
     </LexicalComposer>
   );
-  return collab ? <LexicalCollaboration>{composer}</LexicalCollaboration> : composer;
+  // The boundary sits outside the composer, so the editor never draws — or takes a keystroke — before the room binds.
+  return collab ? (
+    <Suspense fallback={null}>
+      <LexicalCollaboration>{composer}</LexicalCollaboration>
+    </Suspense>
+  ) : (
+    composer
+  );
 }

@@ -1,11 +1,12 @@
 "use client";
-import { DecoratorNode, type NodeKey } from "lexical";
+import type { NodeKey } from "lexical";
 import type { JSX } from "react";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import type { MediaAlign } from "./shared.type";
 import { VideoComponent } from "./VideoComponent";
 import { $createVideoNode, type SerializedVideoNode, type VideoPayload } from "./videoNode.util";
 
-export class VideoNode extends DecoratorNode<JSX.Element> {
+export class VideoNode extends BlockDecoratorNode {
   __fileId?: string;
   __src: string;
   __poster?: string;
@@ -57,19 +58,6 @@ export class VideoNode extends DecoratorNode<JSX.Element> {
       height: this.__height,
       align: this.__align,
     };
-  }
-
-  override createDOM(): HTMLElement {
-    // A bare block host; all visuals live in the decorate() component (MediaFrame).
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
   }
 
   setAlign(align: MediaAlign): void {

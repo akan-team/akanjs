@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { RichNode } from "@libs/shared/common";
 
 import { ContentHtml } from "./contentHtml.util";
 
@@ -156,5 +157,99 @@ describe("ContentHtml", () => {
     expect(ContentHtml.render(doc("a string where a node belongs"))).toBeNull();
     expect(ContentHtml.render(doc(paragraph(null, text("after"))))).toBeNull();
     expect(ContentHtml.render({ root: { type: "root", version: 1, children: "not an array" } })).toBe("");
+  });
+
+  test("links a mention chip only to a path on this site", () => {
+    const chip = (href: string) =>
+      ContentHtml.render(doc(paragraph({ type: "akan-mention", version: 1, label: "ada", href, format: 0 })));
+    expect(chip("/user/1")).toContain('href="/user/1"');
+    for (const href of ["https://evil.com", "//evil.com", "/\\evil.com", "javascript:x"]) {
+      expect(chip(href)).not.toContain("href=");
+      expect(chip(href)).toContain("ada");
+    }
+  });
+
+  test("draws links and chips without a target under disableHref", () => {
+    const html = ContentHtml.render(
+      doc(
+        paragraph(
+          { type: "link", version: 1, url: "https://example.com", children: [text("site")] },
+          { type: "akan-mention", version: 1, label: "ada", href: "/user/1", format: 0 },
+        ),
+      ),
+      { disableHref: true },
+    );
+    expect(html).toContain("site");
+    expect(html).toContain("ada");
+    expect(html).not.toContain("href=");
+  });
+
+  test("draws an unlinked autolink as its text, and a callout stored without a variant as info", () => {
+    const html = ContentHtml.render(
+      doc(
+        paragraph({ type: "autolink", version: 1, url: "https://a.com", isUnlinked: true, children: [text("a.com")] }),
+        { type: "akan-callout", version: 1, children: [text("note")] },
+      ),
+    );
+    expect(html).not.toContain("<a");
+    expect(html).toContain("bg-info/10");
+  });
+});
+
+describe("ContentHtml fidelity", () => {
+  test("numbers every ordered item itself, so a nested list's wrapper does not shift the count", () => {
+    const item = (value: number, ...children: unknown[]) => ({ type: "listitem", version: 1, value, children });
+    const html = ContentHtml.render(
+      doc({
+        type: "list",
+        version: 1,
+        listType: "number",
+        children: [
+          item(1, text("one")),
+          item(2, { type: "list", version: 1, listType: "bullet", children: [item(1, text("inner"))] }),
+          item(2, text("two")),
+        ],
+      }),
+    );
+    expect(html?.match(/<li[^>]*value="\d+"/g)?.length).toBe(3);
+    expect(html).toContain('value="2">two</li>');
+    expect(html).toContain('<li class="pl-2">inner</li>');
+  });
+
+  test("draws a block's alignment, indent and direction from fixed vocabularies only", () => {
+    const html = ContentHtml.render(
+      doc(
+        { type: "paragraph", version: 1, format: "center", indent: 2, direction: "rtl", children: [text("x")] },
+        { type: "paragraph", version: 1, format: 'center;" onclick="x', indent: 999, children: [text("y")] },
+      ),
+    );
+    expect(html).toContain('style="text-align: center; padding-inline-start: 80px" dir="rtl"');
+    expect(html).not.toContain("onclick");
+    expect(html).toContain("padding-inline-start: 800px");
+  });
+});
+
+describe("ContentHtml.resolve", () => {
+  const pageBlock = { type: "akan-page-block", version: 1, pageBlockId: "p1", title: "Child", emoji: null };
+
+  test("swaps a plugin node for its stand-in, which both renderers can draw", () => {
+    const resolved = ContentHtml.resolve(doc(paragraph(text("intro")), pageBlock), {
+      "akan-page-block": () => RichNode.paragraph([RichNode.link("/pages/p1", [RichNode.text("Child")])]),
+    });
+    const html = ContentHtml.render(resolved);
+    expect(html).toContain('href="/pages/p1"');
+    expect(html).toContain("Child");
+  });
+
+  // The client fallback parses nothing else: one unregistered type and it would open the whole document empty.
+  test("leaves out a node the editor does not register, and a child that is no node", () => {
+    const resolved = ContentHtml.resolve(doc(paragraph(text("kept"), null), pageBlock, { type: "akan-unknown" }));
+    expect(resolved).toEqual(doc(paragraph(text("kept"))));
+  });
+
+  test("hands back a document with nothing to resolve as the same object", () => {
+    const clean = doc(paragraph(text("plain")));
+    expect(ContentHtml.resolve(clean)).toBe(clean);
+    expect(ContentHtml.resolve(null)).toBeNull();
   });
 });

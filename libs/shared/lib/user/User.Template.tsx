@@ -1,5 +1,5 @@
 "use client";
-import { fetch, st, User, usePage } from "@libs/shared/client";
+import { st, User, usePage } from "@libs/shared/client";
 import { Field, Only } from "@libs/shared/ui";
 import { buttonRecipe, CodeInput, Upload } from "@libs/util/ui";
 import { cn } from "akanjs/client";
@@ -80,6 +80,7 @@ interface SubmitPhoneProps {
 }
 
 export const SubmitPhone = ({ className = "", userId, redirect, hash }: SubmitPhoneProps) => {
+  const { l } = usePage();
   const phone = st.use.phone();
   return (
     <button
@@ -89,21 +90,21 @@ export const SubmitPhone = ({ className = "", userId, redirect, hash }: SubmitPh
         void st.do.setPhoneInPrepareUser(userId, phone, { hash, redirect });
       }}
     >
-      인증번호 받기
+      {l("user.getPhoneCode")}
     </button>
   );
 };
 
 interface PhoneCodeProps {
   className?: string;
-  autoComplete?: boolean;
+  submitOnComplete?: boolean;
 }
-export const PhoneCode = ({ className, autoComplete = true }: PhoneCodeProps) => {
+export const PhoneCode = ({ className, submitOnComplete = true }: PhoneCodeProps) => {
   const phoneCode = st.use.phoneCode();
   return (
     <div className={cn("w-full pb-4", className)}>
       <CodeInput
-        autoComplete={autoComplete}
+        submitOnComplete={submitOnComplete}
         unitStyle="underline"
         value={phoneCode}
         onChange={st.do.setPhoneCode}
@@ -133,6 +134,7 @@ interface NameProps {
 }
 
 export const Name = ({ className, inputClassName, placeholder, onKeyDown }: NameProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <Input
@@ -141,10 +143,8 @@ export const Name = ({ className, inputClassName, placeholder, onKeyDown }: Name
       className={className}
       inputClassName={inputClassName}
       onKeyDown={onKeyDown}
-      placeholder={placeholder ?? "이름을 입력해주세요"}
-      validate={(value: string) =>
-        value.length >= 2 && value.length <= 20 ? true : "2자 이상 20자 이내로 입력해주세요."
-      }
+      placeholder={placeholder ?? l("user.namePlaceholder")}
+      validate={(value: string) => (value.length >= 2 && value.length <= 20 ? true : l("user.nameLength"))}
       value={userForm.name ?? ""}
       onChange={st.do.setNameOnUser}
     />
@@ -157,6 +157,7 @@ interface SubmitNameProps {
   className?: string;
 }
 export const SubmitName = ({ userId, redirect, className }: SubmitNameProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <button
@@ -167,7 +168,7 @@ export const SubmitName = ({ userId, redirect, className }: SubmitNameProps) => 
         await st.do.setNameOfPrepareUser(userId, userForm.name, { redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -189,6 +190,7 @@ export const AccountId = ({
   redirect,
   requestEmailCode,
 }: AccountIdProps) => {
+  const { l } = usePage();
   const accountId = st.use.accountId();
   return (
     <Input.Email
@@ -196,7 +198,7 @@ export const AccountId = ({
       inputStyleType={inputStyleType}
       className={className}
       inputClassName={inputClassName}
-      placeholder={placeholder ?? "이메일을 입력해주세요"}
+      placeholder={placeholder ?? l("user.emailPlaceholder")}
       value={accountId}
       onChange={st.do.setAccountId}
       onPressEnter={() => {
@@ -216,6 +218,7 @@ export const GeneratePrepareUserWithAccountId = ({
   redirect,
   requestEmailCode,
 }: GeneratePrepareUserWithAccountIdProps) => {
+  const { l } = usePage();
   const accountId = st.use.accountId();
   return (
     <button
@@ -226,7 +229,7 @@ export const GeneratePrepareUserWithAccountId = ({
         void st.do.generatePrepareUserWithAccountId({ redirect, requestEmailCode });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -236,6 +239,7 @@ interface SubmitAccountIdProps {
   redirect: string;
 }
 export const SubmitAccountId = ({ userId, redirect }: SubmitAccountIdProps) => {
+  const { l } = usePage();
   const accountId = st.use.accountId();
   return (
     <button
@@ -246,7 +250,7 @@ export const SubmitAccountId = ({ userId, redirect }: SubmitAccountIdProps) => {
         void st.do.setAccountIdInPrepareUser(userId, { redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -284,6 +288,7 @@ interface SubmitPasswordProps {
   redirect: string;
 }
 export const SubmitPassword = ({ userId, redirect }: SubmitPasswordProps) => {
+  const { l } = usePage();
   const accountId = st.use.accountId();
   const password = st.use.password();
   const passwordConfirm = st.use.passwordConfirm();
@@ -295,7 +300,7 @@ export const SubmitPassword = ({ userId, redirect }: SubmitPasswordProps) => {
         void st.do.setPasswordInPrepareUser(userId, { redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -310,6 +315,7 @@ export const SubmitPolicy = ({
   redirect,
   mandatoryPolicies = ["termsofservice", "privacy", "location"],
 }: SubmitPolicyProps) => {
+  const { l } = usePage();
   const agreePolicies = st.use.agreePolicies();
   return (
     <button
@@ -319,7 +325,7 @@ export const SubmitPolicy = ({
         void st.do.setAgreePoliciesOfPrepareUser(userId, agreePolicies, { redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -330,15 +336,16 @@ interface NicknameProps {
   placeholder?: string;
 }
 export const Nickname = ({ className, inputClassName, placeholder }: NicknameProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <Input
       autoFocus
       className={className}
       inputClassName={inputClassName}
-      placeholder={placeholder ?? "이름을 입력해주세요"}
+      placeholder={placeholder ?? l("user.nicknamePlaceholder")}
       validate={(value: string | null) =>
-        value && value.length >= 2 && value.length <= 20 ? true : "2자 이상 20자 이내로 입력해주세요."
+        value && value.length >= 2 && value.length <= 12 ? true : l("user.nicknameLength")
       }
       value={userForm.nickname}
       onChange={st.do.setNicknameOnUser}
@@ -352,6 +359,7 @@ interface SubmitNicknameOfPrepareUserProps {
   className?: string;
 }
 export const SubmitNicknameOfPrepareUser = ({ redirect, userId, className }: SubmitNicknameOfPrepareUserProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <button
@@ -361,7 +369,7 @@ export const SubmitNicknameOfPrepareUser = ({ redirect, userId, className }: Sub
         void st.do.setNicknameOfPrepareUser(userId, { redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -371,6 +379,7 @@ interface SubmitNicknameProps {
   className?: string;
 }
 export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <button
@@ -380,7 +389,7 @@ export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => 
         void st.do.setNicknameOfSelf({ redirect });
       }}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -467,6 +476,7 @@ interface SubmitAppliedImagesProps {
   redirect: string;
 }
 export const SubmitAppliedImages = ({ redirect }: SubmitAppliedImagesProps) => {
+  const { l } = usePage();
   const userForm = st.use.userForm();
   return (
     <Button
@@ -476,7 +486,7 @@ export const SubmitAppliedImages = ({ redirect }: SubmitAppliedImagesProps) => {
         void st.do.setAppliedImagesOfSelf(userForm.appliedImages, { redirect });
       }}
     >
-      가입하기
+      {l("user.signupSubmit")}
     </Button>
   );
 };
@@ -491,7 +501,7 @@ export const ActivateByAdmin = ({ userId, className }: ActivateByAdminProps) => 
     <button
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
-        void fetch.activateUser(userId);
+        void st.do.activateUserByAdmin(userId);
       }}
     >
       {l("user.signal.activateUser")}

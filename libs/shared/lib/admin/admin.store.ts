@@ -1,6 +1,7 @@
 import { msg } from "@libs/shared/client";
 import { saveRefreshToken } from "@libs/shared/webkit";
-import { setAuth } from "akanjs/client";
+import { getApiPrefix } from "akanjs/base";
+import { router, setAuth, setCookie } from "akanjs/client";
 import { store } from "akanjs/store";
 
 import * as cnst from "../cnst";
@@ -29,14 +30,20 @@ export class AdminStore extends store(sig.admin, () => ({
     msg.success("base.success", { key: "setAdminPassword" });
   }
   async signinAdmin({ redirect }: { redirect?: string } = {}) {
-    try {
-      const { accountId, password } = this.get().adminForm;
-      const accessToken = await fetch.signinAdmin(accountId, password ?? "");
-      await saveRefreshToken("admin", accessToken.refreshToken);
-      await (this as unknown as RootStore).login({ auth: "admin", jwt: accessToken.jwt, redirect });
-    } catch (_e) {
-      //
-    }
+    const { accountId, password } = this.get().adminForm;
+    if (!accountId || !password) return;
+    const accessToken = await fetch.signinAdmin(accountId, password);
+    await saveRefreshToken("admin", accessToken.refreshToken);
+    await (this as unknown as RootStore).login({ auth: "admin", jwt: accessToken.jwt, redirect });
+  }
+  // The callback reads these cookies to tell an operator's sign-in from a user's and to know where to land.
+  async ssoSigninAdmin(ssoType: cnst.SsoType["value"], { redirect = "/admin" }: { redirect?: string } = {}) {
+    const adminRedirect = encodeURIComponent(router.getPrefixedPath(redirect));
+    setCookie("ssoFor", "admin");
+    setCookie("adminRedirect", adminRedirect);
+    setCookie("errorRedirect", adminRedirect);
+    setCookie("ssoOrigin", location.origin);
+    location.assign(`${getApiPrefix()}/user/${ssoType}`);
   }
   async signoutAdmin() {
     const { jwt } = await fetch.signoutAdmin();

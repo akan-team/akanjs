@@ -6,10 +6,11 @@
  * way to know either value. Without this cache a markdown round-trip would hand back a chip with a dead
  * link and no avatar, which is a silent loss of exactly the thing a mention exists for.
  *
- * `$createMentionNode` fills it, so every mention the editor has built — parsed from stored content,
- * picked from the `@` menu, or restored from a token — is recallable. Deliberately import-free: it sits
- * between `mentionNode.util.ts` and `markdownMention.ts`, which already reference each other's module
- * graph, and one more edge there would be a TDZ hazard.
+ * Filled only where a mention source resolved the payload — a pick from the `@` menu or a picker, and
+ * `searchMentions` — never from a document that was merely read: its chips are anyone's to write, and a
+ * cached one would lend its link to every later token naming the same document. Deliberately import-free:
+ * it sits between `mentionNode.util.ts` and `markdownMention.ts`, which already reference each other's
+ * module graph, and one more edge there would be a TDZ hazard.
  */
 export interface RememberedMention {
   refName: string;
@@ -20,18 +21,19 @@ export interface RememberedMention {
 }
 
 /** Bounded because a long editing session searches far more mentions than it inserts. */
-const CACHE_LIMIT = 500;
+const cacheLimit = 500;
 
 const remembered = new Map<string, RememberedMention>();
 
-export const rememberMention = (mention: RememberedMention) => {
+export const rememberMention = <Mention extends RememberedMention>(mention: Mention): Mention => {
   const key = `${mention.refName}/${mention.refId}`;
   remembered.delete(key);
   remembered.set(key, mention);
-  if (remembered.size > CACHE_LIMIT) {
+  if (remembered.size > cacheLimit) {
     const oldest = remembered.keys().next();
     if (!oldest.done) remembered.delete(oldest.value);
   }
+  return mention;
 };
 
 export const recallMention = (refName: string, refId: string): RememberedMention | undefined =>

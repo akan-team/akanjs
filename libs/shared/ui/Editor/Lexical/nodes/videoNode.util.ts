@@ -30,8 +30,6 @@ export type SerializedVideoNode = Spread<
   SerializedLexicalNode
 >;
 
-export const RESET_WIDTH = 650;
-
 export const $createVideoNode = (payload: VideoPayload): VideoNode => $applyNodeReplacement(new VideoNode(payload));
 
 export const $isVideoNode = (node: LexicalNode | null | undefined): node is VideoNode => node instanceof VideoNode;

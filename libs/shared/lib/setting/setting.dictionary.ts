@@ -25,10 +25,6 @@ export const dictionary = modelDictionary(["en", "ko"])
       "Get the active setting from the API",
       "API에서 활성 설정 가져오기",
     ]),
-    helloAkanJs: fn(["Hello Akan js!", "안녕하세요 Akan js!"]).desc([
-      "request to hello Akan js!",
-      "Akan js에게 인사를 요청합니다.",
-    ]),
   }))
   .translate({
     updateSuccessMsg: ["Setting updated successfully", "설정이 성공적으로 업데이트되었습니다."],

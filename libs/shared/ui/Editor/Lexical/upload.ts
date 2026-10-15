@@ -1,12 +1,6 @@
 import { Err } from "@libs/shared/client";
 
-/**
- * Framework-independent upload policy + validation, ported (near-verbatim) from
- * the Yoopta `Upload.ts`. These rules describe *what* may be uploaded; the
- * actual transport (`addFilesGql` → `addFileUntilActive`) is wired by
- * `Editor.tsx` and exposed to nodes/plugins through the upload context. Embed
- * provider resolution lives in the pure `./embed` module.
- */
+/** What a field accepts as an upload, and which players its embeds may name. */
 export interface UploadPolicy {
   accept?: string;
   maxFileSize?: number;
@@ -14,7 +8,7 @@ export interface UploadPolicy {
   allowedEmbedProviders?: string[];
 }
 
-export const DEFAULT_UPLOAD_POLICY: Required<UploadPolicy> = {
+export const defaultUploadPolicy: Required<UploadPolicy> = {
   accept: "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip",
   maxFileSize: 1024 * 1024 * 100,
   maxFiles: 30,
@@ -22,19 +16,24 @@ export const DEFAULT_UPLOAD_POLICY: Required<UploadPolicy> = {
 };
 
 export const normalizeUploadPolicy = (policy?: UploadPolicy): Required<UploadPolicy> => ({
-  ...DEFAULT_UPLOAD_POLICY,
+  ...defaultUploadPolicy,
   ...policy,
 });
 
-/** Throws a typed `Err` (dict keys in `shared.dictionary`) when `file` violates `policy`. */
-export const validateUploadFile = (file: File, policy: Required<UploadPolicy>, currentFileCount = 0): void => {
+/** Throws a typed `Err` when `file` breaks `policy`; `accept` narrows the host's own list, never widens it. */
+export const validateUploadFile = (
+  file: File,
+  policy: Required<UploadPolicy>,
+  currentFileCount = 0,
+  accept?: string,
+): void => {
   if (currentFileCount >= policy.maxFiles) {
     throw new Err("shared.error.tooManyFiles", { maxFiles: policy.maxFiles });
   }
   if (file.size > policy.maxFileSize) {
     throw new Err("shared.error.fileTooLarge", { maxSize: Math.round(policy.maxFileSize / 1024 / 1024) });
   }
-  if (!isAcceptedFile(file, policy.accept)) {
+  if (!isAcceptedFile(file, policy.accept) || (accept !== undefined && !isAcceptedFile(file, accept))) {
     throw new Err("shared.error.fileTypeNotAllowed", { fileType: file.type || file.name });
   }
 };

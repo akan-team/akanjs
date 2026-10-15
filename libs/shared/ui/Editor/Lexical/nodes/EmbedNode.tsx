@@ -1,21 +1,22 @@
 "use client";
-import { DecoratorNode, type NodeKey } from "lexical";
+import type { EmbedProvider } from "@libs/shared/common";
+import type { NodeKey } from "lexical";
 import type { JSX } from "react";
-import type { EmbedProviderType } from "../embed";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import { EmbedComponent } from "./EmbedComponent";
 import {
   $createEmbedNode,
-  DEFAULT_HEIGHT,
-  DEFAULT_WIDTH,
+  defaultEmbedHeight,
+  defaultEmbedWidth,
   type EmbedPayload,
   type SerializedEmbedNode,
 } from "./embedNode.util";
 import type { MediaAlign } from "./shared.type";
 
-export class EmbedNode extends DecoratorNode<JSX.Element> {
+export class EmbedNode extends BlockDecoratorNode {
   __url: string;
   __embedUrl: string;
-  __provider?: EmbedProviderType;
+  __provider?: EmbedProvider;
   __width: number;
   __height: number;
   __align: MediaAlign;
@@ -47,8 +48,8 @@ export class EmbedNode extends DecoratorNode<JSX.Element> {
     this.__url = payload.url ?? "";
     this.__embedUrl = payload.embedUrl ?? "";
     this.__provider = payload.provider;
-    this.__width = payload.width ?? DEFAULT_WIDTH;
-    this.__height = payload.height ?? DEFAULT_HEIGHT;
+    this.__width = payload.width ?? defaultEmbedWidth;
+    this.__height = payload.height ?? defaultEmbedHeight;
     this.__align = payload.align ?? "center";
   }
 
@@ -66,19 +67,6 @@ export class EmbedNode extends DecoratorNode<JSX.Element> {
     };
   }
 
-  override createDOM(): HTMLElement {
-    // A bare block host; all visuals live in the decorate() component.
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
-  }
-
   setAlign(align: MediaAlign): void {
     this.getWritable().__align = align;
   }
@@ -89,7 +77,7 @@ export class EmbedNode extends DecoratorNode<JSX.Element> {
     writable.__height = height;
   }
 
-  setSource(url: string, embedUrl: string, provider: EmbedProviderType): void {
+  setSource(url: string, embedUrl: string, provider: EmbedProvider): void {
     const writable = this.getWritable();
     writable.__url = url;
     writable.__embedUrl = embedUrl;
@@ -101,7 +89,6 @@ export class EmbedNode extends DecoratorNode<JSX.Element> {
       <EmbedComponent
         nodeKey={this.getKey()}
         embedUrl={this.__embedUrl}
-        provider={this.__provider}
         width={this.__width}
         height={this.__height}
         align={this.__align}

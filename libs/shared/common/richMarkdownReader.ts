@@ -29,36 +29,11 @@ interface IslandNode {
 export class RichMarkdownReader {
   static readonly islandFence = "akan-node";
 
-  // The editor's registered vocabulary. `parseEditorState` rejects a whole document over one node type it does not
-  // know, so an island naming anything else is read back as the code block it looks like instead.
+  // The editor's own vocabulary, plus the nested page a wiki body holds so a page read and written back keeps its
+  // sub-page links. `parseEditorState` rejects a whole document over one node type it does not know, so an island
+  // naming anything else is read back as the code block it looks like instead.
   static readonly islandTypes: ReadonlySet<string> = new Set([
-    "paragraph",
-    "text",
-    "linebreak",
-    "tab",
-    "heading",
-    "quote",
-    "list",
-    "listitem",
-    "link",
-    "autolink",
-    "code",
-    "code-highlight",
-    "horizontalrule",
-    "table",
-    "tablerow",
-    "tablecell",
-    "akan-mention",
-    "akan-image",
-    "akan-video",
-    "akan-file",
-    "akan-embed",
-    "akan-callout",
-    "akan-collapsible",
-    "akan-collapsible-title",
-    "akan-collapsible-content",
-    "akan-excalidraw",
-    "akan-mermaid",
+    ...[...RichNode.editorTypes].filter((type) => type !== "root"),
     "akan-page-block",
   ]);
 

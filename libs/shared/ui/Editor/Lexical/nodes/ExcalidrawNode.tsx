@@ -1,6 +1,7 @@
 "use client";
-import { DecoratorNode, type NodeKey } from "lexical";
+import type { NodeKey } from "lexical";
 import type { JSX } from "react";
+import { BlockDecoratorNode } from "./BlockDecoratorNode";
 import { ExcalidrawComponent } from "./ExcalidrawComponent";
 import {
   $createExcalidrawNode,
@@ -18,7 +19,7 @@ import type { MediaAlign } from "./shared.type";
  * the shared `MediaFrame`. Width is stored on the node; height follows the SVG's
  * intrinsic aspect ratio. Editing happens in a full-screen modal.
  */
-export class ExcalidrawNode extends DecoratorNode<JSX.Element> {
+export class ExcalidrawNode extends BlockDecoratorNode {
   __scene: ExcalidrawScene;
   __preview: string | null;
   __width: number;
@@ -57,19 +58,6 @@ export class ExcalidrawNode extends DecoratorNode<JSX.Element> {
       width: this.__width,
       align: this.__align,
     };
-  }
-
-  override createDOM(): HTMLElement {
-    // Block host; the drawing/controls live in the decorate() component.
-    return document.createElement("div");
-  }
-
-  override updateDOM(): false {
-    return false;
-  }
-
-  override isInline(): false {
-    return false;
   }
 
   setScene(scene: ExcalidrawScene): void {

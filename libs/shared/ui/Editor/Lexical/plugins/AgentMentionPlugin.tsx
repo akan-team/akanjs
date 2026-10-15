@@ -8,9 +8,9 @@ import { rememberMention } from "../mentionCache";
 import { toMentionPayload } from "./mentionPlugin.util";
 
 /** Enough for the agent to recognise the right one, few enough that a large model cannot flood the turn. */
-const ROWS = 8;
+const rows = 8;
 
-const SEARCH_TIMEOUT_MS = 10_000;
+const searchTimeoutMs = 10_000;
 
 interface AgentMentionPluginProps {
   sources: readonly MentionSource[];
@@ -48,10 +48,10 @@ export const AgentMentionPlugin = ({ sources }: AgentMentionPluginProps) => {
     .exec(async (refName, query) => {
       const source = sources.find((candidate) => candidate.refName === refName);
       if (!source) return `There is no "${refName}" to mention here. Models: ${refNames}.`;
-      const candidates = await source.search(query, AbortSignal.timeout(SEARCH_TIMEOUT_MS));
+      const candidates = await source.search(query, AbortSignal.timeout(searchTimeoutMs));
       if (!candidates.length) return `No ${source.label} matches "${query}".`;
       return candidates
-        .slice(0, ROWS)
+        .slice(0, rows)
         .map((candidate) => {
           const payload = toMentionPayload(source, candidate);
           // The token carries no href or avatar, so the resolved payload is banked here for the write

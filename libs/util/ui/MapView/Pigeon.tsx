@@ -4,10 +4,12 @@ import { cn } from "akanjs/client";
 import { Map, type PigeonProps as PigeonLibProps, ZoomControl } from "pigeon-maps";
 import {
   type CSSProperties,
+  type MouseEvent,
   type MouseEventHandler,
   type PropsWithChildren,
   type ReactNode,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -17,6 +19,13 @@ import { OverzoomTile } from "./OverzoomTile";
 import ScaleBar from "./ScaleBar";
 
 const CLICK_DRAG_THRESHOLD_PX = 5;
+const defaultCenter = new cnst.Coordinate().set({ coordinates: [127.0016985, 37.5642135], altitude: 0 });
+const emptyBounds = { minLat: 0, maxLat: 0, minLng: 0, maxLng: 0 };
+
+interface PigeonView {
+  center: [number, number];
+  zoom: number;
+}
 
 export interface PigeonProps {
   id?: string;
@@ -45,11 +54,11 @@ export default function Pigeon({
   onLoad,
   onClick,
   onRightClick,
-  center = new cnst.Coordinate().set({ coordinates: [127.0016985, 37.5642135], altitude: 0 }),
+  center = defaultCenter,
   onChangeCenter,
   zoom,
   onChangeZoom,
-  bounds = { minLat: 0, maxLat: 0, minLng: 0, maxLng: 0 },
+  bounds = emptyBounds,
   onChangeBounds,
   mouseEvents = true,
   onMouseMove,
@@ -60,23 +69,36 @@ export default function Pigeon({
   showScaleBar = true,
   scaleBarClassName,
 }: PigeonProps) {
+  const [centerLng, centerLat] = center.coordinates;
+  const requestedZoom = zoom ?? 13;
+  //? pigeon-maps re-applies both its center and zoom props whenever either changes, so it is fed its own last view.
+  const [view, setView] = useState<PigeonView>({ center: [centerLat, centerLng], zoom: requestedZoom });
+  useEffect(() => {
+    setView((prev) =>
+      prev.center[0] === centerLat && prev.center[1] === centerLng ? prev : { ...prev, center: [centerLat, centerLng] },
+    );
+  }, [centerLat, centerLng]);
+  useEffect(() => {
+    setView((prev) => (prev.zoom === requestedZoom ? prev : { ...prev, zoom: requestedZoom }));
+  }, [requestedZoom]);
   return (
     <MapViewContext.Provider value={{ type: "pigeon" }}>
       <div className={cn("relative h-full w-full", className)}>
         <Map
           attribution={false}
           boxClassname="relative h-full w-full"
-          center={[center.coordinates[1], center.coordinates[0]]}
-          defaultCenter={[center.coordinates[1], center.coordinates[0]]}
-          zoom={zoom ?? 13}
-          defaultZoom={zoom ?? 13}
+          center={view.center}
+          defaultCenter={[centerLat, centerLng]}
+          zoom={view.zoom}
+          defaultZoom={requestedZoom}
           maxZoom={23}
           tileComponent={OverzoomTile}
           provider={mapTiler}
           onBoundsChanged={({ center: [lat, lng], zoom: newZoom, bounds: { ne, sw }, initial }) => {
+            setView({ center: [lat, lng], zoom: newZoom });
             if (initial) onLoad?.();
             if (zoom !== newZoom) onChangeZoom?.(newZoom);
-            if (center.coordinates[0] !== lng || center.coordinates[1] !== lat)
+            if (centerLng !== lng || centerLat !== lat)
               onChangeCenter?.(new cnst.Coordinate().set({ coordinates: [lng, lat], altitude: 0 }));
             if (
               bounds.minLat !== sw[1] ||
@@ -99,16 +121,16 @@ export default function Pigeon({
             <ZoomControl
               style={zoomControlStyle}
               buttonStyle={{
-                background: "rgba(0, 0, 0, 0.8)",
-                color: "#9e9e9e",
+                background: "color-mix(in oklab, var(--background) 80%, transparent)",
+                color: "var(--foreground)",
               }}
             />
           ) : null}
           {showScaleBar ? (
             <ScaleBar
               className={cn("absolute right-2 bottom-2", scaleBarClassName)}
-              zoom={zoom ?? 13}
-              lat={center.coordinates[1]}
+              zoom={view.zoom}
+              lat={view.center[0]}
             />
           ) : null}
         </Map>
@@ -153,8 +175,6 @@ function MouseTracker({
   onRightClick,
   children,
 }: PropsWithChildren<MouseTrackerProps>) {
-  const [initialLeft, setInitialLeft] = useState(0);
-  const [initialTop, setInitialTop] = useState(0);
   const mouseDownPosition = useRef<[number, number] | null>(null);
   const draggedRef = useRef(false);
 
@@ -164,17 +184,21 @@ function MouseTracker({
 
   propsRef.current = props;
 
+  //? Measured on every event: a rect saved at render time is stale once the page or a modal scrolls.
+  const coordinateOf = (event: MouseEvent<HTMLDivElement>) => {
+    const { left, top } = event.currentTarget.getBoundingClientRect();
+    const [lat, lng] = propsRef.current.pixelToLatLng?.([event.clientX - left, event.clientY - top]) ?? [0, 0];
+    return new cnst.Coordinate().set({ coordinates: [lng, lat], altitude: 0 });
+  };
+
   const handleDragMove: MouseEventHandler<HTMLDivElement> = (event) => {
-    const x = event.clientX;
-    const y = event.clientY;
     if (mouseDownPosition.current) {
-      const delta = Math.sqrt((x - mouseDownPosition.current[0]) ** 2 + (y - mouseDownPosition.current[1]) ** 2);
+      const delta = Math.sqrt(
+        (event.clientX - mouseDownPosition.current[0]) ** 2 + (event.clientY - mouseDownPosition.current[1]) ** 2,
+      );
       if (delta > CLICK_DRAG_THRESHOLD_PX) draggedRef.current = true;
     }
-
-    const { pixelToLatLng } = propsRef.current;
-    const [lat, lng] = pixelToLatLng?.([x - initialLeft, y - initialTop]) ?? [0, 0];
-    onMouseMove?.(new cnst.Coordinate().set({ coordinates: [lng, lat], altitude: 0 }), event);
+    onMouseMove?.(coordinateOf(event), event);
   };
   const handleMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     mouseDownPosition.current = [event.clientX, event.clientY];
@@ -188,23 +212,12 @@ function MouseTracker({
     mouseDownPosition.current = null;
     draggedRef.current = false;
     if (dragged) return;
-
-    const x = event.clientX;
-    const y = event.clientY;
-
-    const { pixelToLatLng } = propsRef.current;
-    const [lat, lng] = pixelToLatLng?.([x - initialLeft, y - initialTop]) ?? [0, 0];
-    onClick?.(new cnst.Coordinate().set({ coordinates: [lng, lat], altitude: 0 }), event);
+    onClick?.(coordinateOf(event), event);
   };
 
   const handleContextMenu: MouseEventHandler<HTMLDivElement> = (event) => {
-    event.preventDefault(); // 브라우저 기본 컨텍스트 메뉴 방지
-    const x = event.clientX;
-    const y = event.clientY;
-
-    const { pixelToLatLng } = propsRef.current;
-    const [lat, lng] = pixelToLatLng?.([x - initialLeft, y - initialTop]) ?? [0, 0];
-    onRightClick?.(new cnst.Coordinate().set({ coordinates: [lng, lat], altitude: 0 }), event);
+    event.preventDefault();
+    onRightClick?.(coordinateOf(event), event);
   };
 
   return (
@@ -215,12 +228,6 @@ function MouseTracker({
       onMouseMove={handleDragMove}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      ref={(ref) => {
-        if (ref !== null) {
-          setInitialLeft(ref.getBoundingClientRect().left);
-          setInitialTop(ref.getBoundingClientRect().top);
-        }
-      }}
     >
       {children}
     </div>

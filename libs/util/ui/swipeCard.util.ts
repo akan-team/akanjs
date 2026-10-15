@@ -69,13 +69,13 @@ export const animateBack = async (element: HTMLElement) => {
   element.style.transition = "10ms";
 };
 
-export const getSwipeDirection = (property: { x: number; y: number }) => {
+export const getSwipeDirection = (property: { x: number; y: number }, threshold = settings.swipeThreshold) => {
   if (Math.abs(property.x) > Math.abs(property.y)) {
-    if (property.x > settings.swipeThreshold) return "right";
-    else if (property.x < -settings.swipeThreshold) return "left";
+    if (property.x > threshold) return "right";
+    else if (property.x < -threshold) return "left";
   } else {
-    if (property.y > settings.swipeThreshold) return "up";
-    else if (property.y < -settings.swipeThreshold) return "down";
+    if (property.y > threshold) return "up";
+    else if (property.y < -threshold) return "down";
   }
   return "none";
 };

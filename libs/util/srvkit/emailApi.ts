@@ -2,10 +2,12 @@ import { adapt } from "akanjs/service";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
 import type { SendMailOptions, Transporter } from "./emailApi.helper";
+import { SignalTestHarness } from "./signalTestHarness";
 
 export interface EmailApiOptions {
   address: string;
-  service: string;
+  //? Ignored (the transport is `address` on port 587); optional so env files that still set it type-check.
+  service?: unknown;
   auth: { user: string; pass: string };
 }
 
@@ -26,7 +28,7 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
     const { address, auth } = this.#requireOptions();
     EmailApi.#nodemailerLoad ??= import("nodemailer");
     this.#mailerLoad ??= EmailApi.#nodemailerLoad.then(({ createTransport }) =>
-      createTransport({ host: address, port: 587, secure: false, auth }),
+      createTransport({ host: address, port: 587, secure: false, requireTLS: true, auth }),
     );
     return this.#mailerLoad;
   }
@@ -110,9 +112,19 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
 </html>
       `;
   }
+  static #maskRecipients(to: SendMailOptions["to"]) {
+    return (Array.isArray(to) ? to : to ? [to] : [])
+      .flatMap((recipient) => (typeof recipient === "string" ? recipient.split(",") : [recipient.address]))
+      .map((address) => `***@${address.split("@").at(-1)?.replace(/[>\s]/g, "") ?? ""}`)
+      .join(",");
+  }
   async sendMail(mail: SendMailOptions) {
     try {
       const { auth } = this.#requireOptions();
+      if (SignalTestHarness.isRunning()) {
+        this.logger.debug(`sendMail suppressed in the signal-test harness: ${EmailApi.#maskRecipients(mail.to)}`);
+        return true;
+      }
       const mailer = await this.#getMailer();
       const res = await mailer.sendMail({ from: auth.user, ...mail });
       const toAddresses = Array.isArray(mail.to)
@@ -129,8 +141,7 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
   }
   async sendPasswordResetMail(to: string, password: string, serviceName: string, from = this.options?.auth.user) {
     const html = EmailApi.getHtmlContent(to, password, serviceName);
-    await this.sendMail({ to, subject: "Password Reset", html, from });
-    return true;
+    return await this.sendMail({ to, subject: "Password Reset", html, from });
   }
   static getVerificationCodeHtml(rawCode: string, rawServiceName: string) {
     const code = EmailApi.#escapeHtml(rawCode);

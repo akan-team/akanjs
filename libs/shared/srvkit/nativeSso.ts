@@ -15,6 +15,7 @@ export interface NativeSsoStart {
 export interface NativeSsoIdentity {
   accountId: string;
   nickname?: string;
+  legacyAccountId?: string;
 }
 
 export type NativeSsoResult = { code: string } | { error: string };

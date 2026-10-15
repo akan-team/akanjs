@@ -1,10 +1,16 @@
 import { spawn } from "node:child_process";
 import type { Logger } from "akanjs/common";
 
+interface OutputCapture {
+  append(text: string): unknown;
+  readonly text: string;
+}
+
 interface ExecuteCommandStreamOptions {
   logger?: Logger;
   onStdout?: (chunk: string) => void | Promise<void>;
   onStderr?: (chunk: string) => void | Promise<void>;
+  capture?: { stdout: OutputCapture; stderr: OutputCapture };
 }
 
 export const executeCommand = (command: string, logger?: Logger): Promise<{ stdout: string; stderr: string }> => {
@@ -13,7 +19,7 @@ export const executeCommand = (command: string, logger?: Logger): Promise<{ stdo
 
 export const executeCommandStream = (
   command: string,
-  { logger, onStdout, onStderr }: ExecuteCommandStreamOptions = {},
+  { logger, onStdout, onStderr, capture }: ExecuteCommandStreamOptions = {},
 ): Promise<{ stdout: string; stderr: string }> => {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const proc = spawn("sh", ["-c", command], { stdio: "pipe" });
@@ -25,18 +31,24 @@ export const executeCommandStream = (
     proc.stdout.on("data", (data: Buffer) => {
       const chunk = data.toString();
       logger?.debug(chunk);
-      stdout += chunk;
+      if (capture) capture.stdout.append(chunk);
+      else stdout += chunk;
       if (onStdout) callbacks.push(Promise.resolve(onStdout(chunk)));
     });
     proc.stderr.on("data", (data: Buffer) => {
       const chunk = data.toString();
       logger?.debug(chunk);
-      stderr += chunk;
+      if (capture) capture.stderr.append(chunk);
+      else stderr += chunk;
       if (onStderr) callbacks.push(Promise.resolve(onStderr(chunk)));
     });
 
     proc.on("close", async (code) => {
       await Promise.allSettled(callbacks);
+      if (capture) {
+        stdout = capture.stdout.text;
+        stderr = capture.stderr.text;
+      }
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {

@@ -4,7 +4,7 @@ import { via } from "akanjs/constant";
 
 import type { UserFilter } from "../user/user.document";
 
-export class SummaryStatus extends enumOf("summaryStatus", ["active", "archived"]) {}
+export class SummaryStatus extends enumOf("summaryStatus", ["active", "archived"] as const) {}
 
 export class PeriodType extends enumOf("periodType", [
   "non-periodic",
@@ -13,7 +13,7 @@ export class PeriodType extends enumOf("periodType", [
   "daily",
   "weekly",
   "monthly",
-]) {}
+] as const) {}
 
 export class SummaryInput extends via((field) => ({
   type: field(PeriodType, { default: "non-periodic" }),
@@ -68,11 +68,12 @@ export class LightSummary extends via(SummaryObject, ["at"] as const, (resolve) 
 
 export class Summary extends via(SummaryObject, LightSummary, (resolve) => ({})) {
   static getPeriodicType(now = new Date()): ["monthly" | "weekly" | "daily" | "hourly", Date] {
-    now.setMinutes(0, 0, 0);
-    const [hour, weekDay, date] = [now.getHours(), now.getDay(), now.getDate()];
+    const at = new Date(now);
+    at.setMinutes(0, 0, 0);
+    const [hour, weekDay, date] = [at.getHours(), at.getDay(), at.getDate()];
     const type =
       date === 1 && hour === 0 ? "monthly" : weekDay === 0 && hour === 0 ? "weekly" : hour === 0 ? "daily" : "hourly";
-    return [type, now];
+    return [type, at];
   }
 }
 

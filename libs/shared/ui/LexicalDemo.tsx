@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import type { EditorPlugin } from "./Editor";
 import { mockAddFilesGql } from "./lexicalDemo.util";
 
-const LEGACY_YOOPTA_VALUE = {
+const legacyYooptaValue = {
   "block-1": {
     id: "block-1",
     type: "Paragraph",
@@ -14,9 +14,9 @@ const LEGACY_YOOPTA_VALUE = {
     value: [{ id: "el-1", type: "paragraph", children: [{ text: "레거시 Yoopta 데이터 (렌더되면 안 됨)" }] }],
   },
 };
-const MENTION_ROWS = 8;
+const mentionRows = 8;
 /** Everything the editor can do, minus everything but mentions — a textarea an agent and `@` can write into. */
-const PLAIN_FEATURES = ["mention"] as const;
+const plainFeatures = ["mention"] as const;
 
 interface LexicalDemoProps {
   plugins?: EditorPlugin[];
@@ -45,7 +45,7 @@ export const LexicalDemo = ({ plugins = [] }: LexicalDemoProps) => {
           label: "Admin",
           keywords: ["관리자", "staff"],
           search: async (query) => {
-            const admins = await fetch.adminListInMention(query, 0, MENTION_ROWS, "relevance");
+            const admins = await fetch.adminListInMention(query, 0, mentionRows, "relevance");
             return admins.map((admin) => ({
               refId: admin.id,
               label: admin.accountId.split("@")[0] ?? admin.accountId,
@@ -169,7 +169,7 @@ export const LexicalDemo = ({ plugins = [] }: LexicalDemoProps) => {
         <button
           type="button"
           className={buttonRecipe({ size: "sm", variant: "warning", outline: true })}
-          onClick={() => remountWith(LEGACY_YOOPTA_VALUE)}
+          onClick={() => remountWith(legacyYooptaValue)}
         >
           레거시 Yoopta 주입 → fail-safe 확인
         </button>
@@ -228,7 +228,7 @@ export const LexicalDemo = ({ plugins = [] }: LexicalDemoProps) => {
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-foreground/15 bg-background p-4">
             <Editor.Rich
-              features={PLAIN_FEATURES}
+              features={plainFeatures}
               plugins={editorPlugins}
               blockActions={false}
               onChange={(val) => setPlainJson(val)}

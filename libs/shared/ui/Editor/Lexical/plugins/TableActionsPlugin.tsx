@@ -14,17 +14,11 @@ import {
   $setTableRowIsHeader,
   TableCellHeaderStates,
 } from "@lexical/table";
-import { mergeRegister } from "@lexical/utils";
+import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
-import { overlayZ, useOverlayPortal } from "akanjs/ui/overlayLayer";
-import {
-  $getNodeByKey,
-  $getSelection,
-  $isRangeSelection,
-  COMMAND_PRIORITY_LOW,
-  SELECTION_CHANGE_COMMAND,
-} from "lexical";
-import { useCallback, useEffect, useState } from "react";
+import { cn } from "akanjs/client";
+import { $getNodeByKey, $getSelection, $isRangeSelection } from "lexical";
+import { type ReactNode, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   AiOutlineDelete,
@@ -34,67 +28,25 @@ import {
   AiOutlineInsertRowRight,
 } from "react-icons/ai";
 import { RiDeleteColumn, RiDeleteRow, RiLayoutColumnLine, RiLayoutRowLine } from "react-icons/ri";
+import { editorOverlayLayer, useSelectionAnchor } from "../selectionAnchor";
 import type { CellAnchor } from "./tableActionsPlugin.type";
 
 /**
  * Floating table toolbar. When the caret sits inside a table cell it anchors a
  * compact action bar to that cell offering row/column insert & delete, header
- * row/column toggles, and whole-table delete. Positioned `fixed` on the overlay
- * layer (the enclosing modal's root, else body) so it escapes the editor's
- * overflow, and repositioned on scroll/resize (mirrors `CalloutPlugin`).
- * Mounted only while the editor is editable.
+ * row/column toggles, and whole-table delete. Positioned `fixed` in a body
+ * portal so it escapes the editor's overflow. Mounted only while the editor is editable.
  */
 export const TableActionsPlugin = () => {
   const [editor] = useLexicalComposerContext();
-  const portal = useOverlayPortal();
-  const [anchor, setAnchor] = useState<CellAnchor | null>(null);
-
-  // Recompute the anchored cell + its viewport rect from the current selection.
-  const sync = useCallback(() => {
-    editor.getEditorState().read(() => {
-      const selection = $getSelection();
-      if (!$isRangeSelection(selection)) {
-        setAnchor(null);
-        return;
-      }
-      const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
-      if (!cell) {
-        setAnchor(null);
-        return;
-      }
-      const dom = editor.getElementByKey(cell.getKey());
-      if (!dom) {
-        setAnchor(null);
-        return;
-      }
-      setAnchor({ cellKey: cell.getKey(), rect: dom.getBoundingClientRect() });
-    });
-  }, [editor]);
-
-  useEffect(() => {
-    return mergeRegister(
-      editor.registerCommand(
-        SELECTION_CHANGE_COMMAND,
-        () => {
-          sync();
-          return false;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerUpdateListener(() => sync()),
-    );
-  }, [editor, sync]);
-
-  useEffect(() => {
-    if (!anchor) return;
-    const reposition = () => sync();
-    window.addEventListener("scroll", reposition, true);
-    window.addEventListener("resize", reposition);
-    return () => {
-      window.removeEventListener("scroll", reposition, true);
-      window.removeEventListener("resize", reposition);
-    };
-  }, [anchor, sync]);
+  const { l } = usePage();
+  const anchor = useSelectionAnchor<CellAnchor>(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return null;
+    const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
+    const dom = cell ? editor.getElementByKey(cell.getKey()) : null;
+    return cell && dom ? { cellKey: cell.getKey(), rect: dom.getBoundingClientRect() } : null;
+  });
 
   const run = useCallback(
     (mutate: () => void) => {
@@ -133,53 +85,70 @@ export const TableActionsPlugin = () => {
       if (!$isTableCellNode(node)) return;
       $getTableNodeFromLexicalNodeOrThrow(node).remove();
     });
-    setAnchor(null);
   }, [editor, anchor]);
 
-  if (!anchor || !portal) return null;
+  if (!anchor) return null;
 
   return createPortal(
     <div
-      className="fixed flex items-center gap-0.5 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl"
-      style={{ top: anchor.rect.top - 44, left: anchor.rect.left, zIndex: overlayZ.select }}
+      className={cn(
+        "fixed flex items-center gap-0.5 rounded-lg border border-foreground/15 bg-background p-1 text-foreground shadow-xl",
+        editorOverlayLayer,
+      )}
+      style={{ top: anchor.rect.top - 44, left: anchor.rect.left }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <TableActionButton title="Insert row above" onClick={() => run(() => $insertTableRowAtSelection(false))}>
+      <TableActionButton
+        title={l("shared.editor-rowAbove")}
+        onClick={() => run(() => $insertTableRowAtSelection(false))}
+      >
         <AiOutlineInsertRowAbove />
       </TableActionButton>
-      <TableActionButton title="Insert row below" onClick={() => run(() => $insertTableRowAtSelection(true))}>
+      <TableActionButton
+        title={l("shared.editor-rowBelow")}
+        onClick={() => run(() => $insertTableRowAtSelection(true))}
+      >
         <AiOutlineInsertRowBelow />
       </TableActionButton>
-      <TableActionButton title="Insert column left" onClick={() => run(() => $insertTableColumnAtSelection(false))}>
+      <TableActionButton
+        title={l("shared.editor-columnLeft")}
+        onClick={() => run(() => $insertTableColumnAtSelection(false))}
+      >
         <AiOutlineInsertRowLeft />
       </TableActionButton>
-      <TableActionButton title="Insert column right" onClick={() => run(() => $insertTableColumnAtSelection(true))}>
+      <TableActionButton
+        title={l("shared.editor-columnRight")}
+        onClick={() => run(() => $insertTableColumnAtSelection(true))}
+      >
         <AiOutlineInsertRowRight />
       </TableActionButton>
       <span className="mx-0.5 h-5 w-px bg-foreground/15" />
-      <TableActionButton title="Toggle header row" onClick={() => toggleHeader("row")}>
+      <TableActionButton title={l("shared.editor-headerRow")} onClick={() => toggleHeader("row")}>
         <RiLayoutRowLine />
       </TableActionButton>
-      <TableActionButton title="Toggle header column" onClick={() => toggleHeader("column")}>
+      <TableActionButton title={l("shared.editor-headerColumn")} onClick={() => toggleHeader("column")}>
         <RiLayoutColumnLine />
       </TableActionButton>
       <span className="mx-0.5 h-5 w-px bg-foreground/15" />
-      <TableActionButton title="Delete row" onClick={() => run(() => $deleteTableRowAtSelection())}>
+      <TableActionButton title={l("shared.editor-deleteRow")} onClick={() => run(() => $deleteTableRowAtSelection())}>
         <RiDeleteRow />
       </TableActionButton>
-      <TableActionButton title="Delete column" onClick={() => run(() => $deleteTableColumnAtSelection())}>
+      <TableActionButton
+        title={l("shared.editor-deleteColumn")}
+        onClick={() => run(() => $deleteTableColumnAtSelection())}
+      >
         <RiDeleteColumn />
       </TableActionButton>
-      <TableActionButton title="Delete table" onClick={deleteTable}>
+      <TableActionButton title={l("shared.editor-deleteTable")} onClick={deleteTable}>
         <AiOutlineDelete className="text-destructive" />
       </TableActionButton>
     </div>,
-    portal,
+    document.body,
   );
 };
 
 interface TableActionButtonProps {
-  children: React.ReactNode;
+  children: ReactNode;
   title: string;
   onClick: () => void;
 }

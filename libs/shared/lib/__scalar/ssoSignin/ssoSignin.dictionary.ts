@@ -16,4 +16,8 @@ export const dictionary = scalarDictionary(["en", "ko"])
       "The user still to sign up, when the account is new",
       "새 계정일 때 가입을 마쳐야 하는 사용자",
     ]),
+    signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+      "Proof of the sign-up the prepare user continues",
+      "가입 대기 사용자의 가입 증명",
+    ]),
   }));

@@ -1,10 +1,11 @@
 "use client";
-import { type cnst, fetch, st, usePage } from "@libs/shared/client";
+import { type cnst, st, usePage } from "@libs/shared/client";
+import { useAutoSubmit } from "@libs/shared/webkit";
 import { pad } from "@libs/util/common";
-import { AreYouRobot, buttonRecipe, Icon } from "@libs/util/ui";
+import { buttonRecipe, Icon } from "@libs/util/ui";
 import { usePushNotification } from "@libs/util/webkit";
 import { dayjs } from "akanjs/base";
-import { cn, getCookie, router, setCookie } from "akanjs/client";
+import { cn } from "akanjs/client";
 import { formatPhone, isEmail, isPhoneNumber } from "akanjs/common";
 import { Input, Link, Loading, Modal, Switch } from "akanjs/ui";
 import { useInterval } from "akanjs/webkit";
@@ -16,87 +17,99 @@ interface SetPasswordWithPhoneProps {
   hash?: string;
 }
 export const SetPasswordWithPhone = ({ disabled, hash = "verify" }: SetPasswordWithPhoneProps) => {
-  // XXX: the two sign-in paths stay unpublished on purpose. `signinWithPassword` and `ssoSigninUser` are the
-  // credential gate, and the field setters that `Input.Password` publishes already let a caller write the
-  // password state — pressing sign in as well would turn "fill a form" into "sign in as someone".
-
   const { l } = usePage();
-  const self = st.use.self();
+  const phone = st.use.phone();
   const phoneCode = st.use.phoneCode();
   const phoneCodeAt = st.use.phoneCodeAt();
-  const phoneVerifiedAt = st.use.phoneVerifiedAt();
-  const [phoneCodeRemain, setPhoneCodeRemain] = useState({ minute: 0, second: 0 });
-  const isPhoneVerified = !!phoneVerifiedAt && phoneVerifiedAt.isAfter(dayjs().subtract(3, "minutes"));
+  const signToken = st.use.signToken();
+  const password = st.use.password();
+  const passwordConfirm = st.use.passwordConfirm();
+  const [remainSec, setRemainSec] = useState(0);
   useInterval(() => {
-    if (!phoneCodeAt) return;
-    const remainSec = Math.max(0, phoneCodeAt.add(3, "minutes").diff(dayjs(), "second"));
-    setPhoneCodeRemain({ minute: Math.floor(remainSec / 60), second: remainSec % 60 });
+    setRemainSec(phoneCodeAt ? Math.max(0, 180 - dayjs().diff(phoneCodeAt, "second")) : 0);
   }, 1000);
+  const isPhoneVerified = !!signToken;
+  const isPasswordReady = password.length >= 7 && password === passwordConfirm;
   return (
-    <>
-      <div className="my-6 flex">
-        <div className="flex w-full gap-2">
-          <Input
-            className="w-full"
-            inputClassName="w-full"
-            placeholder={l("user.phonePlaceholder")}
-            value={self.phone ?? ""}
-            disabled={true}
+    <div className="my-4 flex flex-col gap-4">
+      <div className="flex w-full gap-2">
+        <Input
+          className="w-full"
+          inputClassName="w-full"
+          placeholder={l("user.phonePlaceholder")}
+          value={phone}
+          onChange={st.do.setPhone}
+          disabled={!!disabled || isPhoneVerified}
+          validate={(value) => true}
+        />
+        <button
+          type="button"
+          className={buttonRecipe({ variant: phoneCodeAt ? "default" : "primary" }, "w-20 whitespace-nowrap text-xs")}
+          disabled={!!disabled || isPhoneVerified || !isPhoneNumber(phone)}
+          onClick={() => void st.do.requestPhoneCodeForSetPassword(hash)}
+        >
+          {phoneCodeAt ? l("user.resendPhoneCode") : l("user.requestPhoneCode")}
+        </button>
+      </div>
+      <div className="relative flex w-full gap-2">
+        <Input
+          className="w-full"
+          inputClassName="w-full"
+          placeholder={l("user.phoneCodePlaceholder")}
+          value={phoneCode}
+          onChange={st.do.setPhoneCode}
+          disabled={!phoneCodeAt || isPhoneVerified}
+          validate={(value) => true}
+        />
+        {!isPhoneVerified && remainSec ? (
+          <div className="absolute top-2 right-28 flex h-8 items-center text-primary/70 text-sm">
+            {pad(Math.floor(remainSec / 60), 2)}:{pad(remainSec % 60, 2)}
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className={buttonRecipe({ variant: "primary" }, "w-20 whitespace-nowrap text-xs")}
+          disabled={!phoneCodeAt || isPhoneVerified || phoneCode.length !== 6}
+          onClick={() => void st.do.getSignTokenForSetPassword()}
+        >
+          {isPhoneVerified ? l("user.phoneVerified") : l("user.verifyPhoneCode")}
+        </button>
+      </div>
+      {isPhoneVerified ? (
+        <>
+          <Input.Password
+            placeholder={l("user.newPassword")}
+            value={password}
+            onChange={st.do.setPassword}
+            validate={(value) => true}
+          />
+          <Input.Password
+            placeholder={l("user.passwordConfirm")}
+            value={passwordConfirm}
+            onChange={st.do.setPasswordConfirm}
             validate={(value) => true}
           />
           <button
-            className={buttonRecipe(
-              { variant: !phoneCodeAt ? "primary" : "default" },
-              "w-20 whitespace-nowrap text-xs",
-            )}
-            disabled={!!disabled || !isPhoneNumber(self.phone)} // || self.verifies.includes("phone")}
-            onClick={() => {
-              if (self.phone) void st.do.requestPhoneCodeForSetPassword(hash);
-            }}
+            type="button"
+            className={buttonRecipe({ variant: "primary" }, "w-full")}
+            disabled={!isPasswordReady}
+            onClick={() => void st.do.setPasswordWithSignToken()}
           >
-            {phoneCodeAt ? "재요청" : "인증요청"}
+            {l("user.setNewPassword")}
           </button>
-        </div>
-      </div>
-      <div className="my-6 flex">
-        <div className="relative flex w-full gap-2">
-          <Input
-            className="w-full"
-            inputClassName="w-full"
-            placeholder={l("user.phoneCodePlaceholder")}
-            value={phoneCode}
-            onChange={st.do.setPhoneCode}
-            disabled={!phoneCodeAt || isPhoneVerified}
-            validate={(value) => true}
-          />
-          {!isPhoneVerified && phoneCodeAt && (
-            <div className="absolute top-2 right-28 flex h-8 items-center align-middle text-primary/70 text-sm">
-              {pad(phoneCodeRemain.minute, 2)}:{pad(phoneCodeRemain.second, 2)}
-            </div>
-          )}
-          <button
-            className={buttonRecipe({ variant: "primary" }, "w-20 whitespace-nowrap text-xs")}
-            disabled={!phoneCodeAt || isPhoneVerified}
-            onClick={() => void st.do.getSignTokenForSetPassword()}
-          >
-            {isPhoneVerified ? "인증완료" : "인증하기"}
-          </button>
-        </div>
-      </div>
-      {/* TODO: 비밀번호 입력 */}
-    </>
+        </>
+      ) : null}
+    </div>
   );
 };
 
 interface SignInPasswordProps {
-  siteKey?: string;
   redirect: string;
   replace?: boolean;
   forgotPasswordHref?: string | null;
   signupHref?: string | null;
 }
 export const SignInPassword = ({
-  siteKey,
   redirect,
   replace = false,
   forgotPasswordHref = "/forgotpassword",
@@ -105,14 +118,11 @@ export const SignInPassword = ({
   const { l } = usePage();
   const accountId = st.use.accountId();
   const password = st.use.password();
-  const _turnstileToken = st.use.turnstileToken();
   const isSubmitable = isEmail(accountId) && password.length >= 7;
-  const [isReady, setIsReady] = useState(true);
   useEffect(() => {
     return () => {
       st.do.setAccountId("");
       st.do.setPassword("");
-      st.do.setTurnstileToken("");
     };
   }, []);
   return (
@@ -142,7 +152,7 @@ export const SignInPassword = ({
           placeholder={l("user.passwordPlaceholder")}
           onChange={st.do.setPassword}
           onPressEnter={() => {
-            if (isReady && isSubmitable) void st.do.signinWithPassword({ redirect, replace });
+            if (isSubmitable) void st.do.signinWithPassword({ redirect, replace });
           }}
           validate={(value: string) => true}
         />
@@ -162,46 +172,29 @@ export const SignInPassword = ({
           </>
         ) : null}
       </div>
-      {siteKey ? (
-        <AreYouRobot
-          siteKey={siteKey}
-          onSuccess={(token) => {
-            st.do.setTurnstileToken(token);
-            setIsReady(true);
-          }}
-        />
-      ) : null}
       <button
         id="signin-button"
-        className={buttonRecipe({ variant: "primary" }, [
-          "w-full gap-2 text-background md:mt-5",
-          !isReady && "pointer-events-none opacity-50",
-        ])}
+        className={buttonRecipe({ variant: "primary" }, "w-full gap-2 text-background md:mt-5")}
         disabled={!isSubmitable}
         onClick={() => void st.do.signinWithPassword({ redirect, replace })}
       >
         {l("shared.signin")}
         <div className="w-4">
-          {!isReady ? (
-            <Loading.Spin />
-          ) : (
-            <div className="animate-pop text-lg duration-200">
-              <AiFillCheckCircle />
-            </div>
-          )}
+          <div className="animate-pop text-lg duration-200">
+            <AiFillCheckCircle />
+          </div>
         </div>
       </button>
     </>
   );
 };
 
-export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
+export const ChangePassword = () => {
   const { l } = usePage();
   const password = st.use.password();
   const prevPassword = st.use.prevPassword();
   const userModal = st.use.userModal();
   const passwordConfirm = st.use.passwordConfirm();
-  const turnstileToken = st.use.turnstileToken();
   st.tool("changePassword", {
     confirm: true,
     guard: () =>
@@ -211,9 +204,7 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
           ? "The new password needs at least seven characters."
           : password !== passwordConfirm
             ? "The two new passwords do not match."
-            : !turnstileToken
-              ? "The are-you-a-robot check has to be solved by a person first."
-              : true,
+            : true,
   })
     .desc("Save the new password the change-password form holds.")
     .exec(() => st.do.changePassword());
@@ -232,14 +223,14 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
         onCancel={() => {
           st.do.setUserModal(null);
         }}
-        title="비밀번호 변경"
+        title={l("user.changePassword")}
         action={
           <button
             className={buttonRecipe({ variant: "default" }, "w-full")}
             onClick={() => void st.do.changePassword()}
-            disabled={password.length < 7 || password !== passwordConfirm || !turnstileToken}
+            disabled={password.length < 7 || password !== passwordConfirm}
           >
-            Submit
+            {l("user.setNewPassword")}
           </button>
         }
       >
@@ -254,14 +245,6 @@ export const ChangePassword = ({ siteKey }: { siteKey: string }) => {
         <div className="mb-2 flex items-baseline justify-center">
           <div className="w-32">{l("user.passwordConfirm")}</div>
           <Input.Password value={passwordConfirm} onChange={st.do.setPasswordConfirm} validate={(value) => true} />
-        </div>
-        <div className="mb-2 flex justify-center">
-          <AreYouRobot
-            siteKey={siteKey}
-            onSuccess={(token) => {
-              st.do.setTurnstileToken(token);
-            }}
-          />
         </div>
       </Modal>
     </>
@@ -497,7 +480,7 @@ export const ForgotPassword = () => {
             setAccountId(accountId);
           }}
           validate={(accountId) => {
-            if (!isEmail(accountId)) return "이메일 형식이 아닙니다.";
+            if (!isEmail(accountId)) return l("user.invalidEmailFormat");
             else return true;
           }}
         />
@@ -522,6 +505,7 @@ interface SignoutProps {
   children: ReactNode;
 }
 export const Signout = ({ className, href, children }: SignoutProps) => {
+  const { l } = usePage();
   st.tool("signout", { confirm: true })
     .desc("Sign out of this account.")
     .exec(() => st.do.logout());
@@ -534,23 +518,23 @@ export const Signout = ({ className, href, children }: SignoutProps) => {
 
 interface ResendPhoneCodeForSigninProps {
   className?: string;
-  userId: string;
   phone: string;
   hash: string;
 }
-export const ResendPhoneCodeForSignin = ({ className, userId, phone, hash }: ResendPhoneCodeForSigninProps) => {
+export const ResendPhoneCodeForSignin = ({ className, phone, hash }: ResendPhoneCodeForSigninProps) => {
+  const { l } = usePage();
   st.tool("resendPhoneCode", { confirm: true })
     .desc("Send the sign-in code to this phone number again by SMS.")
-    .exec(() => st.do.requestPhoneCodeForSignin(userId, phone, hash));
+    .exec(() => st.do.requestPhoneCodeForSignin(phone, hash));
   return (
     <div className={cn("mt-2 flex justify-center", className)}>
       <button
         className="cursor-pointer border-b border-dashed text-sm opacity-60 duration-300 hover:opacity-100"
         onClick={() => {
-          void st.do.requestPhoneCodeForSignin(userId, phone, hash);
+          void st.do.requestPhoneCodeForSignin(phone, hash);
         }}
       >
-        인증번호 다시받기
+        {l("user.resendCode")}
       </button>
     </div>
   );
@@ -568,6 +552,7 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
   phone,
   hash = "dummy",
 }: ResendPhoneCodeForSetPhoneInPrepareUserProps) => {
+  const { l } = usePage();
   return (
     <div className={cn("mt-2 flex justify-center", className)}>
       <button
@@ -576,7 +561,7 @@ export const ResendPhoneCodeForSetPhoneInPrepareUser = ({
           void st.do.setPhoneInPrepareUser(userId, phone, { hash });
         }}
       >
-        인증번호 다시받기
+        {l("user.resendCode")}
       </button>
     </div>
   );
@@ -610,17 +595,14 @@ interface VerifyEmailInPrepareUserProps {
 export const VerifyEmailInPrepareUser = ({ userId, redirect, className = "" }: VerifyEmailInPrepareUserProps) => {
   const { l } = usePage();
   const emailCode = st.use.emailCode();
-  const handleClick = async () => {
+  const { run: handleClick } = useAutoSubmit(emailCode, async () => {
     await st.do.verifyEmailInPrepareUser(userId, { redirect });
-  };
+  });
   st.tool("verifyEmailCode", {
     guard: () => (emailCode.length === 6 ? true : "The six-digit code from the mail goes in first."),
   })
     .desc("Confirm the email address with the six-digit code that was mailed to it, once it is typed in.")
     .exec(handleClick);
-  useEffect(() => {
-    if (emailCode.length === 6) void handleClick();
-  }, [emailCode]);
   return (
     <button
       className={cn(buttonRecipe({ variant: "primary" }), className)}
@@ -640,6 +622,7 @@ interface ActivateProps {
   agreePolicies?: string[];
 }
 export const Activate = ({ className, userId, redirect, agreePolicies }: ActivateProps) => {
+  const { l } = usePage();
   st.tool("activateUser", { confirm: true })
     .desc("Finish signing up and open the account.")
     .exec(() => st.do.activateUser(userId, { redirect, agreePolicies }));
@@ -650,7 +633,7 @@ export const Activate = ({ className, userId, redirect, agreePolicies }: Activat
         void st.do.activateUser(userId, { redirect, agreePolicies });
       }}
     >
-      시작하기
+      {l("user.getStarted")}
     </button>
   );
 };
@@ -666,60 +649,42 @@ export const PhoneSignRoute = ({
   signinHref = "/signin/phoneCode",
   signupHref = "/signup/phoneCode",
 }: PhoneSignRouteProps) => {
+  const { l } = usePage();
   const phone = st.use.phone();
   return (
     <button
       className={cn(buttonRecipe({ variant: "primary" }), className)}
       disabled={!isPhoneNumber(phone)}
-      onClick={async () => {
-        const userId = await fetch.getUserIdHasPhone(phone);
-        const encodedPhone = encodeURIComponent(phone);
-        const hash = "sign"; // TODO: 추후 변경
-        if (userId) {
-          void st.do.requestPhoneCodeForSignin(userId, phone, hash);
-          router.push(`${signinHref}?userId=${userId}&phone=${encodedPhone}&hash=${hash}`);
-        } else {
-          const { turnstileToken } = st.get();
-          const prepareUserId = getCookie("prepareUserId");
-          const user = await fetch.generatePrepareUser(prepareUserId ?? null, turnstileToken ?? "dummy");
-          setCookie("prepareUserId", user.id);
-          void st.do.setPhoneInPrepareUser(user.id, phone, {
-            hash,
-            redirect: `${signupHref}?userId=${user.id}&phone=${encodedPhone}&hash=${hash}`,
-          });
-        }
-      }}
+      onClick={() => void st.do.startPhoneSign({ signinHref, signupHref })}
     >
-      인증번호 받기
+      {l("user.getPhoneCode")}
     </button>
   );
 };
 
 interface SigninWithPhoneCodeProps {
   redirect: string;
-  userId: string;
+  phone: string;
   className?: string;
 }
-export const SigninWithPhoneCode = ({ redirect, userId, className = "" }: SigninWithPhoneCodeProps) => {
+export const SigninWithPhoneCode = ({ redirect, phone, className = "" }: SigninWithPhoneCodeProps) => {
+  const { l } = usePage();
   const phoneCode = st.use.phoneCode();
-  const handleClick = async () => {
-    await st.do.signinWithPhoneCode(userId, { redirect });
-  };
+  const { run: handleClick } = useAutoSubmit(phoneCode, async () => {
+    await st.do.signinWithPhoneCode(phone, { redirect });
+  });
   st.tool("signinWithPhoneCode", {
     guard: () => (phoneCode.length === 6 ? true : "The six-digit code from the text goes in first."),
   })
     .desc("Sign in with the six-digit code that was texted to this number, once it is typed in.")
     .exec(handleClick);
-  useEffect(() => {
-    if (phoneCode.length === 6) void handleClick();
-  }, [phoneCode]);
   return (
     <button
       className={cn(buttonRecipe({ variant: "primary" }), className)}
       disabled={phoneCode.length !== 6}
       onClick={handleClick}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -729,25 +694,23 @@ interface VerifyPhoneInPrepareUserProps {
   className?: string;
 }
 export const VerifyPhoneInPrepareUser = ({ userId, redirect, className = "" }: VerifyPhoneInPrepareUserProps) => {
+  const { l } = usePage();
   const phoneCode = st.use.phoneCode();
-  const handleClick = async () => {
+  const { run: handleClick } = useAutoSubmit(phoneCode, async () => {
     await st.do.verifyPhoneInPrepareUser(userId, { redirect });
-  };
+  });
   st.tool("verifyPhoneCode", {
     guard: () => (phoneCode.length === 6 ? true : "The six-digit code from the text goes in first."),
   })
     .desc("Confirm the phone number with the six-digit code that was texted to it, once it is typed in.")
     .exec(handleClick);
-  useEffect(() => {
-    if (phoneCode.length === 6) void handleClick();
-  }, [phoneCode]);
   return (
     <button
       className={cn(buttonRecipe({ variant: "primary" }), className)}
       disabled={phoneCode.length !== 6}
       onClick={handleClick}
     >
-      다음
+      {l("util.next")}
     </button>
   );
 };
@@ -757,6 +720,7 @@ interface PushNotificationSwitchProps {
 }
 
 export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProps) => {
+  const { l } = usePage();
   const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
   const pushRegistered = st.use.pushRegistered();
@@ -886,7 +850,7 @@ interface SetPasswordByAdminProps {
 // stays a thing an operator does by hand.
 export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
   const { l } = usePage();
-  const [password, setPassword] = useState("********");
+  const [password, setPassword] = useState("");
   const [editState, setEditState] = useState<"edit" | "saving" | null>(null);
   return (
     <div className={cn("flex items-center gap-2", className)}>
@@ -894,6 +858,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
       <Input.Password
         value={password}
         onChange={setPassword}
+        placeholder="********"
         disabled={!editState}
         validate={(value: string) =>
           value.length < 8 || value.length > 20 ? l("user.setPasswordByAdminInvalid") : true
@@ -906,8 +871,12 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
             disabled={editState === "saving" || password.length < 8 || password.length > 20}
             onClick={async () => {
               setEditState("saving");
-              await st.do.setPasswordByAdmin(password);
-              setEditState(null);
+              try {
+                await st.do.setPasswordByAdmin(password);
+                setPassword("");
+              } finally {
+                setEditState(null);
+              }
             }}
           >
             <AiOutlineSave />
@@ -916,7 +885,7 @@ export const SetPasswordByAdmin = ({ className }: SetPasswordByAdminProps) => {
             className={buttonRecipe({ variant: "outline" })}
             disabled={editState === "saving"}
             onClick={() => {
-              setPassword("********");
+              setPassword("");
               setEditState(null);
             }}
           >

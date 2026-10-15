@@ -17,6 +17,6 @@ interface ViewProps {
   className?: string;
   view: ClientView<"file", cnst.File>;
 }
-export const View = ({ view }: ViewProps) => {
-  return <Load.View view={view} renderView={(file) => <File.View.General file={file} />} />;
+export const View = ({ className, view }: ViewProps) => {
+  return <Load.View className={className} view={view} renderView={(file) => <File.View.General file={file} />} />;
 };

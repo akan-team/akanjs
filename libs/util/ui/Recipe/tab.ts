@@ -1,6 +1,16 @@
 import { recipe, tv } from "akanjs/ui";
 
 /**
+ * The `active: true` delta on its own, for `<Tab.Menu activeClassName>`. That prop is *appended* to
+ * `className`, so it must carry only the delta — handing it the whole recipe would also re-apply the
+ * base and clobber the call site's own `h-*`/`px-*` overrides, since the later class wins the merge.
+ */
+export const tabActiveClass = "text-foreground";
+
+/** daisyUI's `.tab-disabled`, which was `pointer-events: none` at 40% opacity. */
+export const tabDisabledClass = "pointer-events-none opacity-40";
+
+/**
  * Tab item. akanjs's `<Tab.Menus>` and `<Tab.Menu>` render bare `div`s and only merge the classes
  * they are handed, so daisyUI's `.tab` was the entire look and has to be reproduced here.
  *
@@ -15,16 +25,6 @@ import { recipe, tv } from "akanjs/ui";
  *
  * Server-safe: never add "use client" here.
  */
-/**
- * The `active: true` delta on its own, for `<Tab.Menu activeClassName>`. That prop is *appended* to
- * `className`, so it must carry only the delta — handing it the whole recipe would also re-apply the
- * base and clobber the call site's own `h-*`/`px-*` overrides, since the later class wins the merge.
- */
-export const tabActiveClass = "text-foreground";
-
-/** daisyUI's `.tab-disabled`, which was `pointer-events: none` at 40% opacity. */
-export const tabDisabledClass = "pointer-events-none opacity-40";
-
 export const tabRecipe = recipe(
   tv({
     base: "relative inline-flex h-10 cursor-pointer select-none flex-wrap items-center justify-center border-transparent px-3 text-center text-sm hover:text-foreground",

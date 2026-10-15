@@ -1,8 +1,14 @@
 import { msg } from "@libs/shared/client";
 import { pkcePair, withRedirectQuery } from "@libs/shared/common";
-import { loadRefreshToken, saveRefreshToken } from "@libs/shared/webkit";
+import {
+  clearSignupToken,
+  loadSignupToken,
+  refreshSession,
+  saveRefreshToken,
+  saveSignupToken,
+} from "@libs/shared/webkit";
 import { type Dayjs, dayjs, getApiPrefix, getEnv, getServerOrigin } from "akanjs/base";
-import { getCookie, router, setAuth, setCookie } from "akanjs/client";
+import { router, setAuth, setCookie } from "akanjs/client";
 import { AkanNativeError, authSession, desktopPlatform, isNativeShell } from "akanjs/client/native";
 import { formatPhone, isPhoneNumber } from "akanjs/common";
 import { store } from "akanjs/store";
@@ -22,10 +28,9 @@ export class UserStore extends store(sig.user, () => ({
   prevPassword: "",
   phone: "",
   phoneCode: "",
-  phoneCodeAt: null as Dayjs | null,
+  phoneCodeAt: null as Dayjs | null, // when the last code was sent
   phoneVerifiedAt: null as Dayjs | null,
   emailCode: "",
-  turnstileToken: null as string | null,
   sameAccountIdExists: "unknown" as "unknown" | boolean,
   sameNicknameExists: "unknown" as "unknown" | boolean,
   signToken: null as string | null,
@@ -33,6 +38,8 @@ export class UserStore extends store(sig.user, () => ({
   leaveInfo: new cnst.LeaveInfo(),
   agreePolicies: [] as string[],
 })) {
+  // A resend within 20 seconds of the last code is dropped, which also absorbs a double tap on the send button.
+  private static readonly resendCooldownSec = 20;
   // Firefox and desktop Safari ship no Badging API, and reading a missing method off `navigator` and calling it
   // throws synchronously — which would take the whole badge action down with it.
   private static setAppBadge(count: number) {
@@ -82,10 +89,8 @@ export class UserStore extends store(sig.user, () => ({
     else router.refresh();
   }
   async generatePrepareUser() {
-    const { turnstileToken } = this.get();
-    const prepareUserId = getCookie("prepareUserId");
-    const user = await fetch.generatePrepareUser(prepareUserId ?? null, turnstileToken ?? "dummy");
-    setCookie("prepareUserId", user.id);
+    const { signupToken } = await fetch.generatePrepareUser(loadSignupToken() || null);
+    saveSignupToken(signupToken);
   }
   async checkSameAccountIdExists(accountId: string) {
     if (!accountId) {
@@ -105,8 +110,10 @@ export class UserStore extends store(sig.user, () => ({
   }
   async activateUser(userId: string, { redirect, agreePolicies }: { redirect?: string; agreePolicies?: string[] }) {
     // 약관 화면이 따로 없는 가입 흐름에서는 활성화 버튼 자체가 동의 표시라, 동의 목록을 함께 넘겨 기록한다.
-    if (agreePolicies?.length) await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies);
-    const accessToken = await fetch.activateUser(userId);
+    const signupToken = loadSignupToken();
+    if (agreePolicies?.length) await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies, signupToken);
+    const accessToken = await fetch.activateUser(userId, signupToken);
+    clearSignupToken();
     setAuth(accessToken);
     await saveRefreshToken("user", accessToken.refreshToken);
     await this.getSelf(accessToken);
@@ -121,7 +128,7 @@ export class UserStore extends store(sig.user, () => ({
   async setNicknameOfPrepareUser(userId: string, { redirect }: { redirect: string }) {
     const { userForm } = this.get();
     if (!userForm.nickname) return;
-    await fetch.setNicknameOfPrepareUser(userId, userForm.nickname);
+    await fetch.setNicknameOfPrepareUser(userId, userForm.nickname, loadSignupToken());
     if (redirect) router.push(withRedirectQuery(redirect, { userId }));
   }
   async setAppliedImagesOfSelf(appliedImages: cnst.File[], { redirect }: { redirect?: string }) {
@@ -136,11 +143,10 @@ export class UserStore extends store(sig.user, () => ({
     await fetch.setAppliedImagesOfPrepareUser(
       userId,
       userForm.appliedImages.map((file) => file.id),
+      loadSignupToken(),
     );
     if (redirect) router.push(withRedirectQuery(redirect, { userId }));
   }
-  //*================================================================*//
-  //*====================== Admin Control Area ======================*//
   async addUserRole(id: string, role: cnst.UserRole["value"]) {
     const user = await fetch.addUserRole(id, role);
     this.setUser(user);
@@ -153,6 +159,9 @@ export class UserStore extends store(sig.user, () => ({
     const restrictUntil = restrictHour ? dayjs().add(restrictHour, "hour") : undefined;
     await fetch.restrictUser(id, restrictReason, restrictUntil);
     // this.setUser(user);
+  }
+  async activateUserByAdmin(userId: string) {
+    this.setUser(await fetch.activateUserByAdmin(userId));
   }
   async releaseUser(id: string) {
     await fetch.releaseUser(id);
@@ -179,15 +188,11 @@ export class UserStore extends store(sig.user, () => ({
     await fetch.setPhoneByAdmin(user.id, phone);
     msg.success("user.changePhoneSuccess", { key: "changePhoneByAdmin" });
   }
-  //*====================== Admin Control Area ======================*//
-  //*================================================================*//
 
-  //*===================================================================*//
-  //*====================== Password Signing Area ======================*//
   async setAccountIdInPrepareUser(userId: string, { redirect }: { redirect: string }) {
     const { accountId } = this.get();
     if (!accountId) return;
-    await fetch.setAccountIdInPrepareUser(userId, accountId);
+    await fetch.setAccountIdInPrepareUser(userId, accountId, loadSignupToken());
     router.push(withRedirectQuery(redirect, { userId }));
   }
   async generatePrepareUserWithAccountId({
@@ -204,143 +209,149 @@ export class UserStore extends store(sig.user, () => ({
       msg.error("user.accountIdAlreadyExistsError");
       return;
     }
-    const prepareUser = await fetch.generatePrepareUser(null, "dummy");
+    const { userId, signupToken } = await fetch.generatePrepareUser(null);
+    saveSignupToken(signupToken);
     if (!requestEmailCode) {
-      await this.setAccountIdInPrepareUser(prepareUser.id, { redirect });
+      await this.setAccountIdInPrepareUser(userId, { redirect });
       return;
     }
-    await fetch.setAccountIdInPrepareUser(prepareUser.id, accountId);
-    await this.requestEmailCodeInPrepareUser(prepareUser.id);
-    router.push(withRedirectQuery(redirect, { userId: prepareUser.id }));
+    await fetch.setAccountIdInPrepareUser(userId, accountId, signupToken);
+    await this.requestEmailCodeInPrepareUser(userId);
+    router.push(withRedirectQuery(redirect, { userId }));
   }
   async requestEmailCodeInPrepareUser(userId: string) {
-    await fetch.requestEmailCodeInPrepareUser(userId);
+    await fetch.requestEmailCodeInPrepareUser(userId, loadSignupToken());
     this.set({ emailCode: "" });
     msg.success("user.emailCodeSentSuccess", { key: "emailCode" });
   }
   async verifyEmailInPrepareUser(userId: string, { redirect }: { redirect?: string } = {}) {
     const { emailCode } = this.get();
     if (emailCode.length !== 6) return;
-    await fetch.verifyEmailInPrepareUser(userId, emailCode);
+    await fetch.verifyEmailInPrepareUser(userId, emailCode, loadSignupToken());
     this.set({ emailCode: "" });
     if (redirect) router.push(withRedirectQuery(redirect, { userId }));
   }
   async setPasswordInPrepareUser(userId: string, { redirect }: { redirect: string }) {
     const { accountId, password, passwordConfirm } = this.get();
     if (!accountId || !password || password !== passwordConfirm) return;
-    await fetch.setPasswordInPrepareUser(userId, accountId, password);
+    await fetch.setPasswordInPrepareUser(userId, accountId, password, loadSignupToken());
     router.push(withRedirectQuery(redirect, { userId }));
   }
   async signinWithPassword({ redirect, replace }: { redirect: string; replace?: boolean }) {
-    try {
-      const { turnstileToken } = this.get();
-      const { accountId, password } = this.pick("accountId", "password");
-      const accessToken = await fetch.signinWithPassword(accountId, password, turnstileToken ?? "dummy");
-      setAuth(accessToken);
-      await saveRefreshToken("user", accessToken.refreshToken);
-      await this.getSelf(accessToken);
-      if (replace) router.replace(redirect);
-      else router.push(redirect);
-    } catch (_error) {
-      (this as unknown as RootStore).showMessage({ content: "Invalid account or password" });
-    }
+    const { accountId, password } = this.pick("accountId", "password");
+    const accessToken = await fetch.signinWithPassword(accountId, password);
+    setAuth(accessToken);
+    await saveRefreshToken("user", accessToken.refreshToken);
+    await this.getSelf(accessToken);
+    if (replace) router.replace(redirect);
+    else router.push(redirect);
   }
   async changePassword() {
-    const { turnstileToken } = this.get();
     const { password, prevPassword } = this.pick("password", "prevPassword");
-    if (!window.confirm("Do you want to change your password?")) return;
-    await fetch.changePassword(password, prevPassword, turnstileToken ?? "dummy");
-    this.set({ userModal: null, password: "", prevPassword: "", turnstileToken: null });
+    await fetch.changePassword(password, prevPassword);
+    this.set({ userModal: null, password: "", prevPassword: "" });
   }
   async requestPhoneCodeForSetPassword(hash = "signin") {
-    const { phone, phoneCodeAt } = this.get();
-    if (phoneCodeAt && dayjs().subtract(5, "seconds").isBefore(phoneCodeAt)) return;
-    else if (!isPhoneNumber(phone)) return;
-    this.set({ phoneCode: "", phoneCodeAt: dayjs().add(3, "minutes") });
+    const { phone } = this.get();
+    if (dayjs().diff(this.get().phoneCodeAt ?? 0, "second") < UserStore.resendCooldownSec || !isPhoneNumber(phone))
+      return;
+    this.set({ phoneCode: "", phoneCodeAt: dayjs(), phoneVerifiedAt: null, signToken: null });
     await fetch.requestPhoneCodeForSetPassword(phone, hash);
   }
   async getSignTokenForSetPassword() {
     const { phone, phoneCode } = this.pick("phone", "phoneCode");
     if (!phone || !phoneCode) return;
     const signToken = await fetch.getSignTokenForSetPassword(phone, phoneCode);
-    this.set({ signToken });
+    this.set({ signToken, phoneVerifiedAt: dayjs() });
   }
   async setPasswordWithSignToken() {
-    const { password, signToken } = this.pick("self", "password", "signToken");
-    if (!window.confirm("Do you want to change your password?")) return;
+    const { password, passwordConfirm, signToken } = this.pick("password", "passwordConfirm", "signToken");
+    if (password !== passwordConfirm) return;
     await fetch.setPasswordWithSignToken(password, signToken);
-    this.set({ userModal: null, password: "", signToken: null });
+    this.set({
+      password: "",
+      passwordConfirm: "",
+      phoneCode: "",
+      phoneCodeAt: null,
+      phoneVerifiedAt: null,
+      signToken: null,
+    });
+    msg.success("user.changePasswordSuccess");
   }
   async resetPassword(accountId: string) {
     await fetch.resetPassword(accountId);
     msg.success("user.emailSentSuccess", { key: "forgotPassword" });
     this.resetUser();
   }
-  //*====================== Password Signing Area ======================*//
-  //*===================================================================*//
 
-  //*================================================================*//
-  //*====================== Phone Signing Area ======================*//
   async setPhoneInPrepareUser(
     userId: string,
     phone: string,
     { hash = "dummy", redirect }: { hash?: string; redirect?: string } = {},
   ) {
-    const { phoneCodeAt } = this.get();
-    if (phoneCodeAt && dayjs().subtract(5, "seconds").isBefore(phoneCodeAt)) return;
-    else if (!isPhoneNumber(phone)) return;
-    await fetch.setPhoneInPrepareUser(userId, phone, hash);
-    this.set({ phoneCode: "", phoneCodeAt: dayjs().add(3, "minutes") });
+    if (dayjs().diff(this.get().phoneCodeAt ?? 0, "second") < UserStore.resendCooldownSec || !isPhoneNumber(phone))
+      return;
+    this.set({ phoneCode: "", phoneCodeAt: dayjs() });
+    await fetch.setPhoneInPrepareUser(userId, phone, hash, loadSignupToken());
     if (redirect) router.push(withRedirectQuery(redirect, { userId, phone, hash }));
   }
   async verifyPhoneInPrepareUser(userId: string, { redirect }: { redirect?: string } = {}) {
     const { phone, phoneCode } = this.pick("phone", "phoneCode");
     if (!phone || !phoneCode) return;
-    await fetch.verifyPhoneInPrepareUser(userId, phone, phoneCode);
+    await fetch.verifyPhoneInPrepareUser(userId, phone, phoneCode, loadSignupToken());
     if (redirect) router.push(withRedirectQuery(redirect, { userId }));
   }
-  async requestPhoneCodeForSignin(userId: string, phone: string, hash = "signin") {
-    const { phoneCodeAt } = this.get();
-    if (phoneCodeAt && dayjs().subtract(5, "seconds").isBefore(phoneCodeAt)) return;
-    this.set({ phoneCode: "", phoneCodeAt: dayjs().add(3, "minutes") });
-    await fetch.requestPhoneCodeForSignin(userId, phone, hash);
+  async requestPhoneCodeForSignin(phone: string, hash = "signin") {
+    if (dayjs().diff(this.get().phoneCodeAt ?? 0, "second") < UserStore.resendCooldownSec) return;
+    this.set({ phoneCode: "", phoneCodeAt: dayjs() });
+    await fetch.requestPhoneCodeForSignin(phone, hash);
   }
-  async signinWithPhoneCode(userId: string, { redirect }: { redirect: string }) {
-    const { phone, phoneCode } = this.pick("phone", "phoneCode");
-    if (!phone || !phoneCode) return;
-    const signToken = await fetch.getSignTokenForSignin(userId, phone, phoneCode);
-    this.set({ signToken });
-    const accessToken = await fetch.signinWithSignToken(userId, signToken);
+  async signinWithPhoneCode(phone: string, { redirect }: { redirect: string }) {
+    const { phoneCode } = this.pick("phoneCode");
+    if (!phone) return;
+    const signToken = await fetch.getSignTokenForSignin(phone, phoneCode);
+    const accessToken = await fetch.signinWithSignToken(signToken);
     setAuth(accessToken);
     await saveRefreshToken("user", accessToken.refreshToken);
     await this.getSelf(accessToken);
-    this.set({ signToken: null });
     router.push(redirect);
   }
-  //*====================== Phone Signing Area ======================*//
-  //*================================================================*//
+  // An existing number signs in; a new one starts a sign-up, so neither page needs the account id in its URL.
+  async startPhoneSign({
+    signinHref,
+    signupHref,
+    hash = "sign",
+  }: {
+    signinHref: string;
+    signupHref: string;
+    hash?: string;
+  }) {
+    const { phone } = this.get();
+    if (!isPhoneNumber(phone)) return;
+    const query = `phone=${encodeURIComponent(phone)}&hash=${hash}`;
+    if (await fetch.userExistsHasPhone(phone)) {
+      await this.requestPhoneCodeForSignin(phone, hash);
+      router.push(`${signinHref}?${query}`);
+      return;
+    }
+    const { userId, signupToken } = await fetch.generatePrepareUser(loadSignupToken() || null);
+    saveSignupToken(signupToken);
+    await this.setPhoneInPrepareUser(userId, phone, { hash, redirect: `${signupHref}?userId=${userId}&${query}` });
+  }
 
-  //*================================================================*//
-  //*====================== Secret Setup Area =======================*//
   async setNameOfPrepareUser(userId: string, name: string, { redirect }: { redirect: string }) {
-    const success = await fetch.setNameOfPrepareUser(userId, name);
+    const success = await fetch.setNameOfPrepareUser(userId, name, loadSignupToken());
     if (success) router.push(withRedirectQuery(redirect, { userId }));
   }
   async setAgreePoliciesOfPrepareUser(userId: string, agreePolicies: string[], { redirect }: { redirect: string }) {
-    const success = await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies);
+    const success = await fetch.setAgreePoliciesOfPrepareUser(userId, agreePolicies, loadSignupToken());
     if (success) router.push(withRedirectQuery(redirect, { userId }));
   }
-  //*====================== Secret Setup Area =======================*//
-  //*================================================================*//
 
   async refreshJwt() {
-    const accessToken = await fetch.refreshJwt(await loadRefreshToken("user"));
-    setAuth(accessToken);
-    await saveRefreshToken("user", accessToken.refreshToken);
+    await refreshSession("user", fetch.refreshJwt, { force: true });
   }
 
-  //*======================================================*//
-  //*====================== SSO Area ======================*//
   async ssoSigninUser(
     ssoType: cnst.SsoType["value"],
     {
@@ -382,8 +393,9 @@ export class UserStore extends store(sig.user, () => ({
         msg.error("user.ssoSigninFailed");
         return;
       }
-      const { jwt, refreshToken, prepareUserId } = await fetch.exchangeSsoCode(code, verifier);
+      const { jwt, refreshToken, prepareUserId, signupToken } = await fetch.exchangeSsoCode(code, verifier);
       if (prepareUserId) {
+        if (signupToken) saveSignupToken(signupToken);
         navigate(withRedirectQuery(signupRedirect, { userId: prepareUserId }));
         return;
       }
@@ -399,10 +411,8 @@ export class UserStore extends store(sig.user, () => ({
     setCookie("signupRedirect", encodeURIComponent(router.getPrefixedPath(signupRedirect)));
     setCookie("errorRedirect", encodeURIComponent(router.getPrefixedPath(errorRedirect)));
     setCookie("ssoOrigin", location.origin);
-    const url = `/api/user/${ssoType}`;
+    const url = `${getApiPrefix()}/user/${ssoType}`;
     if (replace) location.replace(url);
     else location.assign(url);
   }
-  //*====================== SSO Area ======================*//
-  //*======================================================*//
 }

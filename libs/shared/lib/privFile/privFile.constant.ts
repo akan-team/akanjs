@@ -1,3 +1,4 @@
+import { formatBytes } from "@libs/util/common";
 import { dayjs, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
 
@@ -24,12 +25,7 @@ export class LightPrivFile extends via(
   (resolve) => ({}),
 ) {
   getFileSizeStr() {
-    const size = this.size;
-    if (size < 1024) return `1 KB`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
-    if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
-    if (size < 1024 * 1024 * 1024 * 1024) return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
-    return `${(size / 1024 / 1024 / 1024 / 1024).toFixed(2)} TB`;
+    return formatBytes(this.size);
   }
 }
 

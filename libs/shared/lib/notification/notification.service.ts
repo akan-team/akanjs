@@ -7,6 +7,7 @@ import { serve } from "akanjs/service";
 
 import type * as cnst from "../cnst";
 import * as db from "../db";
+import { Err } from "../dict";
 import type * as srv from "../srv";
 
 export class NotificationService extends serve(db.notification, ({ service, plug }) => ({
@@ -73,10 +74,13 @@ export class NotificationService extends serve(db.notification, ({ service, plug
     });
     outcome.successCount = successCount;
     outcome.prunedTokens = invalidTokens;
+    // One write per owner: removing a user's dead tokens one by one would race and drop each other's removals.
+    const deadTokensByOwner = new Map<string, string[]>();
     for (const token of invalidTokens) {
       const ownerId = tokenOwners.get(token)?.ownerId;
-      if (ownerId) void this.userService.subNotiDeviceTokenOfUser(ownerId, token);
+      if (ownerId) deadTokensByOwner.set(ownerId, [...(deadTokensByOwner.get(ownerId) ?? []), token]);
     }
+    for (const [ownerId, tokens] of deadTokensByOwner) void this.userService.subNotiDeviceTokensOfUser(ownerId, tokens);
     return outcome;
   }
 
@@ -96,6 +100,8 @@ export class NotificationService extends serve(db.notification, ({ service, plug
   }
 
   async sendPushNotification(notificationInput: db.NotificationInput) {
+    if (notificationInput.type === "user" && !notificationInput.userId)
+      throw new Err("notification.error.recipientRequired");
     const notification = await this.notificationModel.createNotification(notificationInput);
     const image = notification.image ? await this.fileService.getFile(notification.image) : null;
     const payload: PushPayload = {

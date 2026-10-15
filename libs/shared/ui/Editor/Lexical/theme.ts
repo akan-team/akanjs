@@ -1,29 +1,27 @@
 import type { EditorThemeClasses } from "lexical";
 
-/** Callout color variants (5). Kept out of `EditorThemeClasses` (which has no
- *  index signature) and applied directly by `CalloutNode.createDOM`. */
+/** Callout color variants. Kept out of `EditorThemeClasses`, which has no index signature, and applied by `CalloutNode.createDOM`. */
 export type CalloutVariant = "default" | "info" | "success" | "warning" | "error";
 
-const CALLOUT_BASE = "my-3 rounded-md border border-l-4 py-2 pr-3 pl-4 leading-7";
-export const CALLOUT_VARIANTS: Record<CalloutVariant, string> = {
-  default: `${CALLOUT_BASE} border-foreground/15 border-l-foreground/40 bg-muted/60`,
-  info: `${CALLOUT_BASE} border-info/30 border-l-info bg-info/10`,
-  success: `${CALLOUT_BASE} border-success/30 border-l-success bg-success/10`,
-  warning: `${CALLOUT_BASE} border-warning/30 border-l-warning bg-warning/10`,
-  error: `${CALLOUT_BASE} border-destructive/30 border-l-destructive bg-destructive/10`,
-};
+const calloutBase = "my-3 rounded-md border border-l-4 py-2 pr-3 pl-4 leading-7";
+export const calloutVariants = {
+  default: `${calloutBase} border-foreground/15 border-l-foreground/40 bg-muted/60`,
+  info: `${calloutBase} border-info/30 border-l-info bg-info/10`,
+  success: `${calloutBase} border-success/30 border-l-success bg-success/10`,
+  warning: `${calloutBase} border-warning/30 border-l-warning bg-warning/10`,
+  error: `${calloutBase} border-destructive/30 border-l-destructive bg-destructive/10`,
+} as const satisfies { [variant in CalloutVariant]: string };
 
-/** Mention chip skin. Same reason as the callout variants: `EditorThemeClasses`
- *  has no index signature, so `MentionNode.createDOM` applies it directly. */
-export const MENTION_CHIP = "rounded-sm bg-primary/10 px-1 font-medium text-primary transition-colors";
+/** Mention chip skin, applied by `MentionNode.createDOM` for the same reason as the callout variants. */
+export const mentionChip = "rounded-sm bg-primary/10 px-1 font-medium text-primary transition-colors";
 
 /** The pressable half, added only by a chip that carries an href — a bare reference must not look clickable. */
-export const MENTION_CHIP_LINK = "cursor-pointer hover:bg-primary/20";
+export const mentionChipLink = "cursor-pointer hover:bg-primary/20";
 
 /** Avatar half of the chip, added only when the mention carries an `imageUrl`.
  *  A `::before` rather than a child element: the chip is a `TextNode`, so any real
  *  child inside its DOM would be overwritten by text reconciliation. */
-export const MENTION_CHIP_AVATAR =
+export const mentionChipAvatar =
   "before:mr-1 before:inline-block before:size-[1.05em] before:rounded-full before:bg-center before:bg-cover before:align-[-0.15em] before:content-[''] before:[background-image:var(--mention-avatar)]";
 
 /**

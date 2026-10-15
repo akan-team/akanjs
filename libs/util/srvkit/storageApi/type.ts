@@ -65,5 +65,7 @@ export interface StorageBackend {
   deleteDataByPath(path: string): Promise<boolean>;
   /** A URL that lets its holder PUT exactly this object without credentials, or null where the backend cannot sign one. */
   presignUpload(path: string, expiresInSec: number): string | null;
+  /** A URL that lets its holder GET exactly this object without credentials, or null where the backend cannot sign one. */
+  presignDownload(path: string, expiresInSec: number, opts?: { filename?: string }): string | null;
   getDataSize(path: string): Promise<number | null>;
 }

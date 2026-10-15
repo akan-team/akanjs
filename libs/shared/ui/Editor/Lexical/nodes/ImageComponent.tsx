@@ -1,12 +1,13 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { resolveServerUrl } from "akanjs/client";
 import type { NodeKey } from "lexical";
 import type { SyntheticEvent } from "react";
-import { $isImageNode, RESET_WIDTH } from "./imageNode.util";
+import { $isImageNode } from "./imageNode.util";
 import { MediaFrame } from "./shared";
 import type { ImageFit, MediaAlign } from "./shared.type";
-import { updateNodeByKey } from "./shared.util";
+import { adoptByKey, mediaResetWidth, updateNodeByKey } from "./shared.util";
 
 interface ImageComponentProps {
   nodeKey: NodeKey;
@@ -21,17 +22,19 @@ interface ImageComponentProps {
 
 export const ImageComponent = ({ nodeKey, src, alt, width, height, align, fit, bgColor }: ImageComponentProps) => {
   const [editor] = useLexicalComposerContext();
+  const editable = useLexicalEditable();
 
   const setSize = (nextWidth: number, nextHeight: number, merge = false) =>
     updateNodeByKey(editor, nodeKey, (node) => $isImageNode(node) && node.setSize(nextWidth, nextHeight), merge);
 
-  // Adopt the intrinsic size once, so images uploaded without dimensions still resize.
+  // Images uploaded without dimensions still resize: the handles start from the size the file loads at.
   const onLoad = (event: SyntheticEvent<HTMLImageElement>) => {
-    if (width || height) return;
+    if (!editable || width || height) return;
     const { naturalWidth, naturalHeight } = event.currentTarget;
     if (!naturalWidth || !naturalHeight) return;
-    const cappedWidth = Math.min(naturalWidth, RESET_WIDTH);
-    setSize(cappedWidth, Math.round((cappedWidth / naturalWidth) * naturalHeight), true);
+    const cappedWidth = Math.min(naturalWidth, mediaResetWidth);
+    const cappedHeight = Math.round((cappedWidth / naturalWidth) * naturalHeight);
+    adoptByKey(editor, nodeKey, (node) => $isImageNode(node) && node.setSize(cappedWidth, cappedHeight));
   };
 
   return (
@@ -47,7 +50,7 @@ export const ImageComponent = ({ nodeKey, src, alt, width, height, align, fit, b
         updateNodeByKey(editor, nodeKey, (node) => $isImageNode(node) && node.setAlign(nextAlign))
       }
       onResize={(nextWidth, nextHeight) => setSize(nextWidth, nextHeight, true)}
-      onReset={() => setSize(RESET_WIDTH, height && width ? Math.round((RESET_WIDTH / width) * height) : 0)}
+      onReset={() => setSize(mediaResetWidth, height && width ? Math.round((mediaResetWidth / width) * height) : 0)}
     >
       <img
         src={resolveServerUrl(src)}

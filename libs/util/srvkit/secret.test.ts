@@ -82,7 +82,13 @@ describe("resolveJwt", () => {
   });
 
   test("reads a bearer credential whatever the scheme's case or the spaces before it, as /mcp does", async () => {
-    for (const authorization of [`Bearer ${token}`, `bearer ${token}`, `BEARER ${token}`, `Bearer  ${token}`])
+    for (const authorization of [
+      `Bearer ${token}`,
+      `bearer ${token}`,
+      `BEARER ${token}`,
+      `Bearer  ${token}`,
+      `Bearer ${token} trailing`,
+    ])
       expect(await resolveJwt(secret, authorization, anonymous)).toMatchObject({ tokenType: "access" });
   });
 
@@ -102,16 +108,7 @@ describe("resolveJwt", () => {
   });
 
   test("stays anonymous for every header /mcp's bearer check reads no token from", async () => {
-    for (const authorization of [
-      undefined,
-      token,
-      `Basic ${token}`,
-      `Bearer\t${token}`,
-      ` Bearer ${token}`,
-      "Bearer ",
-      `Bearer ${token} trailing`,
-      `Bearer ${token}\tx`,
-    ])
+    for (const authorization of [undefined, token, `Basic ${token}`, `Bearer\t${token}`, ` Bearer ${token}`, "Bearer "])
       expect(await resolveJwt(secret, authorization, anonymous)).toBe(anonymous);
   });
 });

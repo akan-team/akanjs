@@ -1,4 +1,4 @@
-import { type Environment, getEnv } from "akanjs/base";
+import type { Environment } from "akanjs/base";
 
 /**
  * What an access token the OAuth authorization server minted carries on top of a browser session's claims. A
@@ -16,9 +16,13 @@ export type SerAccount<AddData = unknown> = {
   environment: Environment;
 } & OAuthTokenClaims &
   AddData;
-export const getDefaultAccount = (): SerAccount => {
-  const env = getEnv();
-  return { appName: env.appName, environment: env.environment };
+// `sid` is the session the token was minted from; `selfSid` and `meSid` are the sessions behind each identity it holds.
+export type AuthTokenMeta = {
+  exp?: number;
+  iat?: number;
+  jti?: string;
+  sid?: string;
+  selfSid?: string;
+  meSid?: string;
+  tokenType?: string;
 };
-
-export type AuthTokenMeta = { exp?: number; iat?: number; jti?: string; sid?: string; tokenType?: string };

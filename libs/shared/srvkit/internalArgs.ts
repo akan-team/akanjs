@@ -1,31 +1,24 @@
-import type { Me as BaseMe, Self as BaseSelf } from "@libs/shared/common";
 import type { InternalArg, SignalContext } from "akanjs/signal";
-import type { SerAccount } from "./account";
+import { Err } from "../lib/dict";
 import { isAgentCall } from "./agentCall";
+import { accountOf } from "./callerAccount";
+import { SignupToken } from "./signupToken";
 
 export class Account implements InternalArg {
   getArg(context: SignalContext) {
-    if (context.transport === "http") return context.getHttpContext<{ account?: SerAccount }>().req.account ?? null;
-    else if (context.transport === "websocket")
-      return context.getWebSocketContext<{ account?: SerAccount }>().ws.data.account ?? null;
+    return accountOf(context);
   }
 }
 
 export class Self implements InternalArg {
   getArg(context: SignalContext) {
-    if (context.transport === "http")
-      return context.getHttpContext<{ account?: SerAccount<{ self?: BaseSelf }> }>().req.account?.self ?? null;
-    else if (context.transport === "websocket")
-      return context.getWebSocketContext<{ account?: SerAccount<{ self?: BaseSelf }> }>().ws.data.account?.self ?? null;
+    return accountOf(context)?.self ?? null;
   }
 }
 
 export class Me implements InternalArg {
   getArg(context: SignalContext) {
-    if (context.transport === "http")
-      return context.getHttpContext<{ account?: SerAccount<{ me?: BaseMe }> }>().req.account?.me ?? null;
-    else if (context.transport === "websocket")
-      return context.getWebSocketContext<{ account?: SerAccount<{ me?: BaseMe }> }>().ws.data.account?.me ?? null;
+    return accountOf(context)?.me ?? null;
   }
 }
 
@@ -33,5 +26,14 @@ export class Me implements InternalArg {
 export class AgentCall implements InternalArg<boolean> {
   getArg(context: SignalContext): boolean {
     return isAgentCall(context);
+  }
+}
+
+/** The prepare user whose signup token the call carries in its `signupToken` argument; 401 without a valid one. */
+export class SignupUserId implements InternalArg<Promise<string>> {
+  async getArg(context: SignalContext): Promise<string> {
+    const userId = await SignupToken.userIdOf(context);
+    if (!userId) throw new Err("user.error.invalidSignupToken", undefined, { statusCode: 401 });
+    return userId;
   }
 }

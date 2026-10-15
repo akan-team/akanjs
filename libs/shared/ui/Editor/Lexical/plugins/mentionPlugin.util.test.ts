@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import type { MentionCandidate, MentionSource } from "../mention.type";
-import { MENTION_ROWS_PER_SOURCE, searchMentionSources, toMentionPayload } from "./mentionPlugin.util";
+import { mentionRowsPerSource, searchMentionSources, toMentionPayload } from "./mentionPlugin.util";
 
 const candidates = (refName: string, count: number): MentionCandidate[] =>
   Array.from({ length: count }, (_, idx) => ({ refId: `${refName}${idx}`, label: `${refName}-${idx}` }));
@@ -21,7 +21,7 @@ describe("searchMentionSources", () => {
       new AbortController().signal,
     );
 
-    expect(matches.filter((match) => match.source.refName === "admin")).toHaveLength(MENTION_ROWS_PER_SOURCE);
+    expect(matches.filter((match) => match.source.refName === "admin")).toHaveLength(mentionRowsPerSource);
     expect(matches.filter((match) => match.source.refName === "user")).toHaveLength(3);
     expect(matches[0]?.candidate.refId).toBe("admin0");
   });

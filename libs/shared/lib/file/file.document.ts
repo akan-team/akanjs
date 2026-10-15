@@ -8,9 +8,6 @@ export class FileFilter extends from(cnst.File, (filter) => ({
     byIds: filter()
       .arg("ids", [ID])
       .query((ids, q) => ({ id: q.oneOf(ids) })),
-    byFilename: filter()
-      .arg("filename", String)
-      .query((filename) => ({ filename })),
     byOrigin: filter()
       .arg("origin", String)
       .query((origin) => ({ origin, status: "active" })),
@@ -38,14 +35,5 @@ export class FileModel extends into(File, FileFilter, cnst.file, () => ({})) {
       { status: "failed" },
     );
     return modifiedCount;
-  }
-  async generateFile(data: Partial<db.File>): Promise<db.File> {
-    if (data.id) {
-      const existingFile = await this.File.findById(data.id);
-      const doc = existingFile?.set(data) ?? new this.File({ id: data.id, ...data } as unknown as db.FileInput);
-      return await doc.save();
-    } else {
-      return await new this.File(data).save();
-    }
   }
 }
