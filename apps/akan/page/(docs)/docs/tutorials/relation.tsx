@@ -532,7 +532,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({
     yogurtIcecreamQty: t(["Yogurt Icecream Qty", "요거트 아이스크림 수량"]).desc([
@@ -547,7 +547,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     cornQty: t(["Corn Qty", "옥수수 수량"]).desc(["Corn quantity", "옥수수 수량"]),
     granolaQty: t(["Granola Qty", "그래놀라 수량"]).desc(["Granola quantity", "그래놀라 수량"]),
     bananaQty: t(["Banana Qty", "바나나 수량"]).desc(["Banana quantity", "바나나 수량"]),
-    figQty: t(["Fig Qty", "피그 수량"]).desc(["Fig quantity", "피그 수량"]),
+    figQty: t(["Fig Qty", "무화과 수량"]).desc(["Fig quantity", "무화과 수량"]),
   }))
   .slice<IcecreamOrderSlice>((fn) => ({
     inPublic: fn(["IcecreamOrder In Public", "IcecreamOrder 공개"]).arg((t) => ({ // [!code collapse:5]

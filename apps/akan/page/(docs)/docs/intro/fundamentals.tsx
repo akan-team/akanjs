@@ -330,14 +330,14 @@ export default page()
             />
             <div>
               {l.trans({
-                en: "When you run `akan create-workspace`, shared and util libraries are installed by default. These libraries are common libraries that can be used by all apps.",
-                ko: "처음 `akan create-workspace`를 진행하면, 기본적으로 shared, util 라이브러리가 설치되고, 이는 공통 라이브러리로서 모든 앱에서 사용할 수 있습니다.",
+                en: "`akan create-workspace` starts an empty workspace. Pass `--libs` to install the shared and util libraries. Every app in the workspace can then use them.",
+                ko: "`akan create-workspace`는 빈 워크스페이스로 시작합니다. shared와 util 라이브러리를 설치하려면 `--libs`를 붙이세요. 설치하면 워크스페이스의 모든 앱에서 쓸 수 있습니다.",
               })}
             </div>
             <div>
               {l.trans({
-                en: "You can use common libraries in your created application (e.g. myapp). For example, you can use the shared library to provide admin page and file upload tool.",
-                ko: "생성한 내 애플리케이션(e.g. myapp)에서 서버 로직, 도메인 모듈, 클라이언트 로직, 컴포넌트 등의 공통 라이브러리를 사용할 수 있습니다. 예를 들면, shared 라이브러리에서는 관리자페이지와 파일 업로드 도구 등을 제공합니다.",
+                en: "An app such as myapp can use a library's server logic, domain modules, client logic, and components. With `--libs`, shared provides an admin page and a file upload tool.",
+                ko: "생성한 앱(예: myapp)은 라이브러리의 서버 로직, 도메인 모듈, 클라이언트 로직, 컴포넌트를 쓸 수 있습니다. `--libs`를 켜면 shared가 관리자 페이지와 파일 업로드 도구를 제공합니다.",
               })}
             </div>
             <Docs.Alert>
@@ -471,7 +471,7 @@ export default page()
                   </div>
                 </div>
                 <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
-                  <div className="font-bold">base/ · common/</div>
+                  <div className="font-bold">common/</div>
                   <div className="text-foreground/70 text-sm">
                     {l.trans({ en: "Pure shared logic", ko: "순수 공유 로직" })}
                   </div>
@@ -582,11 +582,11 @@ export default page()
                 ├── moduleA.service.ts    # ${l.trans({ en: "Business logic", ko: "비즈니스 로직" })}
                 ├── moduleA.signal.ts     # ${l.trans({ en: "API endpoints", ko: "API 엔드포인트" })}
                 ├── moduleA.store.ts      # ${l.trans({ en: "State management", ko: "상태 관리" })}
-                ├── moduleA.Template.tsx  # ${l.trans({ en: "Form UI", ko: "수정/생성 UI" })}
-                ├── moduleA.Unit.tsx      # ${l.trans({ en: "Overview UI", ko: "개요 UI" })}
-                ├── moduleA.Util.tsx      # ${l.trans({ en: "Utility UI", ko: "유틸리티 UI" })}
-                ├── moduleA.View.tsx      # ${l.trans({ en: "Detail view UI", ko: "상세 뷰 UI" })}
-                └── moduleA.Zone.tsx      # ${l.trans({ en: "Integration UI", ko: "통합 UI" })}`}
+                ├── ModuleA.Template.tsx  # ${l.trans({ en: "Form UI", ko: "수정/생성 UI" })}
+                ├── ModuleA.Unit.tsx      # ${l.trans({ en: "Overview UI", ko: "개요 UI" })}
+                ├── ModuleA.Util.tsx      # ${l.trans({ en: "Utility UI", ko: "유틸리티 UI" })}
+                ├── ModuleA.View.tsx      # ${l.trans({ en: "Detail view UI", ko: "상세 뷰 UI" })}
+                └── ModuleA.Zone.tsx      # ${l.trans({ en: "Integration UI", ko: "통합 UI" })}`}
             />
             <div>
               {l.trans({

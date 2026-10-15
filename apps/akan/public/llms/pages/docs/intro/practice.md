@@ -29,7 +29,7 @@ The concept of Korean-style yogurt ice cream is that customers can freely add th
 
 First, let's create an akan app with the project code "koyo". The koyo project is a service that operates all services under your company as the brand "Ko-yo". Now, let's type the following command in the terminal.
 
-Now, you can run the koyo service locally with the following command. Then, you can access the service at http://localhost:8282.
+Now run koyo locally with the following command. koyo comes before myapp alphabetically, so koyo is http://localhost:8282 and myapp moves to 8283. AKAN_DEV_PORT pins the port.
 
 Create icecream order module
 
@@ -322,7 +322,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({})) // [!code collapse:7]
   .slice<IcecreamOrderSlice>((fn) => ({

@@ -46,7 +46,7 @@ Run the App
 
 Start the app with one command:
 
-The app opens on http://localhost:8282.
+The app opens on http://localhost:8282. The dev port is 8282 plus the app's index in alphabetical order, so the only app is 8282.
 
 Edit a page
 
@@ -117,7 +117,7 @@ void run();
 ```bash
 ...
 ...
-[AkanApp] INFO  AkanApp gateway is running on port 8282 +7ms
+[AkanApp] INFO  AkanApp gateway is running on port http://localhost:8282 +7ms
 ...
 ...
 ```

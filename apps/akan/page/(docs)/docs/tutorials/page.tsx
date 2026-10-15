@@ -118,8 +118,8 @@ export class IcecreamOrderInsight extends via(IcecreamOrder, (field) => ({})) {}
               <li>
                 <strong>phone</strong>:{" "}
                 {l.trans({
-                  en: "Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order",
-                  ko: "픽업 알림을 위한 고객 전화번호로, isPhoneNumber로 유효성을 검사합니다. 누구나 주문을 조회할 수 있으므로 field.hidden으로 선언해, 저장되고 서버 코드는 읽지만 응답에는 항상 null이 담기게 합니다",
+                  en: "Customer's phone number for pickup notifications. isPhoneNumber accepts a Korean mobile number in the form 010-0000-0000, the same shape as the field placeholder. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order",
+                  ko: "픽업 알림을 위한 고객 전화번호입니다. isPhoneNumber는 placeholder와 같은 한국 휴대폰 번호 010-0000-0000만 통과합니다. 누구나 주문을 조회할 수 있으므로 field.hidden으로 선언해, 저장되고 서버 코드는 읽지만 응답에는 항상 null이 담깁니다",
                 })}
               </li>
               <li>
@@ -188,7 +188,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({
@@ -774,8 +774,8 @@ export const General = ({ className, showServeType = true }: GeneralProps) => {
               <li>
                 <strong>Field.Phone</strong>:{" "}
                 {l.trans({
-                  en: "Phone number input with formatting and validation built-in",
-                  ko: "형식 지정과 유효성 검사가 내장된 전화번호 입력",
+                  en: "Phone number input with formatting and validation. It accepts a Korean mobile number, 010-0000-0000",
+                  ko: "형식 지정과 유효성 검사가 있는 전화번호 입력입니다. 한국 휴대폰 번호 010-0000-0000을 받습니다",
                 })}
               </li>
             </ul>

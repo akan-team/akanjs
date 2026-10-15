@@ -159,58 +159,14 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => 
           <Docs.Description>
             <div>
               {l.trans({
-                en: `Now, let's add a service function that sends a warning message if a served order is not finished. For easy testing, let's send a warning message after 15 seconds if the order is served.`,
-                ko: `이제, 서빙된 주문이 완료처리되지 않으면 경고 메세지를 보내는 서비스 기능을 추가해봅시다. 테스트가 용이하게 주문이 서빙된 후 15초가 지나면 경고 메세지를 보내도록 해봅시다.`,
-              })}
-            </div>
-            <Code.Snippet
-              className="w-full"
-              title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
-              code={`
-import { AlarmApi } from "@apps/koyo/srvkit";
-import { dayjs } from "akanjs/base"; // [!code ++]
-import { serve } from "akanjs/service"; // [!code collapse:4]
-
-import * as db from "../db";
-
-export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({
-  alarmApi: plug(AlarmApi),
-})) {
-  async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.process().save();
-  }
-  async serveIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.serve().save();
-  }
-  async finishIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.finish().save();
-  }
-  async cancelIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.cancel().save();
-  }
-  async warnIcecreamMeltingAll() { // [!code ++:7]
-    const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
-    for (const icecreamOrder of servedIcecreamOrders) {
-      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
-      this.alarmApi.warn(\`IcecreamOrder \${icecreamOrder.id} is melting 😱\`);
-    }
-  }
-}`}
-            />
-            <div>
-              {l.trans({
-                en: `However, how can we query only the served icecream orders? To do this, let's create a list query function by utilizing the feature of creating a query based on the given conditions in the icecreamOrder.document file.`,
-                ko: `하지만, 어떻게 아이스크림 주문들 중 서빙된 주문들만 조회할 수 있을까요? 이를 위해서는 document 파일에서 주어진 조건에 맞게 쿼리를 생성하는 기능을 활용해서 리스트 조회 기능을 만들어봅시다.`,
+                en: `A served order that nobody picks up should raise a warning. First give the document a query that selects orders by status, so the service can ask for the served ones.`,
+                ko: `서빙된 주문을 아무도 가져가지 않으면 경고를 보내야 합니다. 서비스가 서빙된 주문만 물을 수 있도록, 먼저 document에 상태별 쿼리를 둡니다.`,
               })}
             </div>
             <div>
               {l.trans({
-                en: `Now, let's apply the query to the document.`,
-                ko: `이제 도큐먼트에서 쿼리를 적용해봅시다.`,
+                en: `Apply the query on the document.`,
+                ko: `도큐먼트에 쿼리를 적용합니다.`,
               })}
             </div>
             <Code.Snippet
@@ -272,6 +228,50 @@ export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter,
                 })}
               </div>
             </Docs.Alert>
+            <div>
+              {l.trans({
+                en: `Now add a service function that uses listByStatuses. For easy testing, it warns 15 seconds after the order was served.`,
+                ko: `이제 listByStatuses를 쓰는 서비스 함수를 추가합니다. 테스트가 쉽도록, 서빙된 뒤 15초가 지나면 경고를 보냅니다.`,
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts"
+              code={`
+import { AlarmApi } from "@apps/koyo/srvkit";
+import { dayjs } from "akanjs/base"; // [!code ++]
+import { serve } from "akanjs/service"; // [!code collapse:4]
+
+import * as db from "../db";
+
+export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({
+  alarmApi: plug(AlarmApi),
+})) {
+  async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.process().save();
+  }
+  async serveIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.serve().save();
+  }
+  async finishIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.finish().save();
+  }
+  async cancelIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.cancel().save();
+  }
+  async warnIcecreamMeltingAll() { // [!code ++:7]
+    const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
+    for (const icecreamOrder of servedIcecreamOrders) {
+      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
+      this.alarmApi.warn(\`IcecreamOrder \${icecreamOrder.id} is melting 😱\`);
+    }
+  }
+}`}
+            />
           </Docs.Description>
         </Scroll.Slide>
 

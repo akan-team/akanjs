@@ -247,7 +247,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({
@@ -351,8 +351,8 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ use, servic
           <Docs.Description>
             <div>
               {l.trans({
-                en: `Think of signal endpoints as the communication system between the frontend (like the shop's order display screen) and the backend (the kitchen and management system). When staff clicks a "Process" button on the screen, it needs to communicate with the backend to actually update the order. Akan.js serves every endpoint over HTTP and over the websocket, and publishes it to AI agents over MCP when its guards allow, so every caller reaches the same kitchen through the same hatch.`,
-                ko: `시그널 엔드포인트를 프론트엔드(가게의 주문 표시 화면 같은)와 백엔드(주방과 관리 시스템) 사이의 의사소통 시스템이라고 생각해보세요. 직원이 화면의 "작업시작" 버튼을 클릭하면, 실제로 주문을 업데이트하기 위해 백엔드와 통신해야 합니다. Akan.js는 모든 엔드포인트를 HTTP와 websocket으로 함께 제공하고, guard가 허용하면 MCP를 통해 AI 에이전트에게도 공개하므로, 모든 호출자가 같은 창구로 같은 주방에 도달합니다.`,
+                en: `Think of signal endpoints as the communication system between the frontend (like the shop's order display screen) and the backend (the kitchen and management system). When staff clicks a "Process" button on the screen, it needs to communicate with the backend to actually update the order. Akan.js serves every endpoint over HTTP and websocket. MCP publishes an endpoint when its guards admit the caller. A mutation whose only guard is Public stays on HTTP and websocket and off the agent list.`,
+                ko: `시그널 엔드포인트를 프론트엔드(가게의 주문 표시 화면 같은)와 백엔드(주방과 관리 시스템) 사이의 의사소통 시스템이라고 생각해보세요. 직원이 화면의 "작업시작" 버튼을 클릭하면, 실제로 주문을 업데이트하기 위해 백엔드와 통신해야 합니다. Akan.js는 모든 엔드포인트를 HTTP와 websocket으로 제공합니다. MCP는 guard가 그 호출자를 허용하는 엔드포인트를 공개합니다. guard가 Public뿐인 mutation은 HTTP와 websocket에만 남고 에이전트 목록에는 오르지 않습니다.`,
               })}
             </div>
             <Code.Snippet
@@ -414,8 +414,8 @@ export class IcecreamOrderEndpoint extends endpoint(srv.icecreamOrder, ({ query,
             </div>
             <div>
               {l.trans({
-                en: `Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them. Once you add sign-in, replace Public with a staff guard such as Admin.`,
-                ko: `직접 만든 엔드포인트도 각자 guards를 지정합니다. 아직 이 가게에는 로그인이 없으므로 직원용 동작은 guards: [Public]으로 두었고, 누구나 호출할 수 있습니다. 로그인을 추가하면 Public을 Admin 같은 직원용 guard로 바꾸세요.`,
+                en: `Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them over HTTP. Those mutations stay off the MCP list. Once you add sign-in, replace Public with a staff guard such as Admin, and the same actions are published to agents.`,
+                ko: `직접 만든 엔드포인트도 각자 guards를 지정합니다. 아직 이 가게에는 로그인이 없으므로 직원용 동작은 guards: [Public]으로 두었고, HTTP로는 누구나 호출할 수 있습니다. 이 mutation은 MCP 목록에 오르지 않습니다. 로그인을 추가하면 Public을 Admin 같은 직원용 guard로 바꾸고, 그러면 같은 동작이 에이전트에게도 공개됩니다.`,
               })}
             </div>
             <div>
@@ -464,7 +464,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({

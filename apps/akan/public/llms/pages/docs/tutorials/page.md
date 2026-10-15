@@ -29,7 +29,7 @@ Let's understand the new schema additions:
 
 An enum defining how the customer wants their order - for here, take out, or delivery
 
-Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
+Customer's phone number for pickup notifications. isPhoneNumber accepts a Korean mobile number in the form 010-0000-0000, the same shape as the field placeholder. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
 
 Updated to include serveType for display in order lists and dashboards
 
@@ -87,7 +87,7 @@ Large, touch-friendly buttons for selecting a single option (size)
 
 Allows selecting multiple options (toppings) with visual feedback
 
-Phone number input with formatting and validation built-in
+Phone number input with formatting and validation. It accepts a Korean mobile number, 010-0000-0000
 
 In the next tutorial, we'll use a Scalar - a value object embedded in a model - to track ice cream stock, so the shop knows when it is about to run out.
 
@@ -196,7 +196,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({

@@ -95,9 +95,9 @@ Utility library
 
 Other specific libraries
 
-When you run `akan create-workspace`, shared and util libraries are installed by default. These libraries are common libraries that can be used by all apps.
+`akan create-workspace` starts an empty workspace. Pass `--libs` to install the shared and util libraries. Every app in the workspace can then use them.
 
-You can use common libraries in your created application (e.g. myapp). For example, you can use the shared library to provide admin page and file upload tool.
+An app such as myapp can use a library's server logic, domain modules, client logic, and components. With `--libs`, shared provides an admin page and a file upload tool.
 
 80:20 rule
 
@@ -309,11 +309,11 @@ Akan.js is always open to your feedback. If you have any questions, please leave
                 ├── moduleA.service.ts    # Business logic
                 ├── moduleA.signal.ts     # API endpoints
                 ├── moduleA.store.ts      # State management
-                ├── moduleA.Template.tsx  # Form UI
-                ├── moduleA.Unit.tsx      # Overview UI
-                ├── moduleA.Util.tsx      # Utility UI
-                ├── moduleA.View.tsx      # Detail view UI
-                └── moduleA.Zone.tsx      # Integration UI
+                ├── ModuleA.Template.tsx  # Form UI
+                ├── ModuleA.Unit.tsx      # Overview UI
+                ├── ModuleA.Util.tsx      # Utility UI
+                ├── ModuleA.View.tsx      # Detail view UI
+                └── ModuleA.Zone.tsx      # Integration UI
 ```
 
 ## Agent Notes

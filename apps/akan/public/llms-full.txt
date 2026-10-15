@@ -1163,7 +1163,7 @@ The concept of Korean-style yogurt ice cream is that customers can freely add th
 
 First, let's create an akan app with the project code "koyo". The koyo project is a service that operates all services under your company as the brand "Ko-yo". Now, let's type the following command in the terminal.
 
-Now, you can run the koyo service locally with the following command. Then, you can access the service at http://localhost:8282.
+Now run koyo locally with the following command. koyo comes before myapp alphabetically, so koyo is http://localhost:8282 and myapp moves to 8283. AKAN_DEV_PORT pins the port.
 
 Create icecream order module
 
@@ -1256,7 +1256,7 @@ Run the App
 
 Start the app with one command:
 
-The app opens on http://localhost:8282.
+The app opens on http://localhost:8282. The dev port is 8282 plus the app's index in alphabetical order, so the only app is 8282.
 
 Edit a page
 
@@ -4589,7 +4589,7 @@ Let's understand the new schema additions:
 
 An enum defining how the customer wants their order - for here, take out, or delivery
 
-Customer's phone number for pickup notifications, validated with isPhoneNumber. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
+Customer's phone number for pickup notifications. isPhoneNumber accepts a Korean mobile number in the form 010-0000-0000, the same shape as the field placeholder. field.hidden stores it and lets server code read it, but every response sends null, because anyone can read an order
 
 Updated to include serveType for display in order lists and dashboards
 

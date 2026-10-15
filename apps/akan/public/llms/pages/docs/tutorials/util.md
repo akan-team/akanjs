@@ -82,13 +82,13 @@ This pattern ensures that business rules are enforced at the document level whil
 
 Create Signal Endpoints
 
-Think of signal endpoints as the communication system between the frontend (like the shop's order display screen) and the backend (the kitchen and management system). When staff clicks a "Process" button on the screen, it needs to communicate with the backend to actually update the order. Akan.js serves every endpoint over HTTP and over the websocket, and publishes it to AI agents over MCP when its guards allow, so every caller reaches the same kitchen through the same hatch.
+Think of signal endpoints as the communication system between the frontend (like the shop's order display screen) and the backend (the kitchen and management system). When staff clicks a "Process" button on the screen, it needs to communicate with the backend to actually update the order. Akan.js serves every endpoint over HTTP and websocket. MCP publishes an endpoint when its guards admit the caller. A mutation whose only guard is Public stays on HTTP and websocket and off the agent list.
 
 Each signal endpoint is defined using the mutation() builder, specifying the return type and accepting the order ID as a parameter via .param(). The .exec() callback delegates to the corresponding service method to perform the actual business logic.
 
 The second argument to slice() is the guard map, not boilerplate: root is the generated admin query API and stays closed (None here, Admin once your workspace has libs/shared), get covers reads, and cru covers create, update and remove — create is opened on its own because the kiosk takes anonymous orders. Leaving root: Public hands that admin query API to every anonymous caller, and to every AI agent through /mcp.
 
-Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them. Once you add sign-in, replace Public with a staff guard such as Admin.
+Every custom endpoint names its own guards too. This shop has no sign-in yet, so the staff actions use guards: [Public] and anyone can call them over HTTP. Those mutations stay off the MCP list. Once you add sign-in, replace Public with a staff guard such as Admin, and the same actions are published to agents.
 
 We also need to add dictionary entries for these API endpoints so they display properly in the UI:
 
@@ -264,7 +264,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({
@@ -391,7 +391,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({}))
   .slice<IcecreamOrderSlice>((fn) => ({

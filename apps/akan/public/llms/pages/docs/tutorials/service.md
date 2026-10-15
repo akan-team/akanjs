@@ -44,15 +44,15 @@ adapt() registers the adapter by itself, so there is nothing to add to option.ts
 
 Query in Document
 
-Now, let's add a service function that sends a warning message if a served order is not finished. For easy testing, let's send a warning message after 15 seconds if the order is served.
+A served order that nobody picks up should raise a warning. First give the document a query that selects orders by status, so the service can ask for the served ones.
 
-However, how can we query only the served icecream orders? To do this, let's create a list query function by utilizing the feature of creating a query based on the given conditions in the icecreamOrder.document file.
-
-Now, let's apply the query to the document.
+Apply the query on the document.
 
 By declaring the byStatuses query in IcecreamOrderFilter, you can use list, find, count, exists, insight and other functions according to the given query conditions. For example, you can use listByStatuses, countByStatuses, and insightByStatuses functions. countByStatuses returns a number, and insightByStatuses returns db.IcecreamOrderInsight.
 
 Why do we receive an array of statuses instead of a single status? This is useful when we need to query multiple statuses at once. If we think there is a possibility of querying multiple statuses, it is better to receive them as an array and process them.
+
+Now add a service function that uses listByStatuses. For easy testing, it warns 15 seconds after the order was served.
 
 Use Interval
 
@@ -108,44 +108,6 @@ export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => 
 }
 ```
 
-### apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts
-
-```ts
-import { AlarmApi } from "@apps/koyo/srvkit";
-import { dayjs } from "akanjs/base"; // [!code ++]
-import { serve } from "akanjs/service"; // [!code collapse:4]
-
-import * as db from "../db";
-
-export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({
-  alarmApi: plug(AlarmApi),
-})) {
-  async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.process().save();
-  }
-  async serveIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.serve().save();
-  }
-  async finishIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.finish().save();
-  }
-  async cancelIcecreamOrder(icecreamOrderId: string) {
-    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
-    return await icecreamOrder.cancel().save();
-  }
-  async warnIcecreamMeltingAll() { // [!code ++:7]
-    const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
-    for (const icecreamOrder of servedIcecreamOrders) {
-      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
-      this.alarmApi.warn(`IcecreamOrder ${icecreamOrder.id} is melting 😱`);
-    }
-  }
-}
-```
-
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.document.ts
 
 ```ts
@@ -189,6 +151,44 @@ export class IcecreamOrder extends by(cnst.IcecreamOrder) {
 }
 
 export class IcecreamOrderModel extends into(IcecreamOrder, IcecreamOrderFilter, cnst.icecreamOrder, () => ({})) {}
+```
+
+### apps/koyo/lib/icecreamOrder/icecreamOrder.service.ts
+
+```ts
+import { AlarmApi } from "@apps/koyo/srvkit";
+import { dayjs } from "akanjs/base"; // [!code ++]
+import { serve } from "akanjs/service"; // [!code collapse:4]
+
+import * as db from "../db";
+
+export class IcecreamOrderService extends serve(db.icecreamOrder, ({ plug }) => ({
+  alarmApi: plug(AlarmApi),
+})) {
+  async processIcecreamOrder(icecreamOrderId: string) { // [!code collapse:16]
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.process().save();
+  }
+  async serveIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.serve().save();
+  }
+  async finishIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.finish().save();
+  }
+  async cancelIcecreamOrder(icecreamOrderId: string) {
+    const icecreamOrder = await this.getIcecreamOrder(icecreamOrderId);
+    return await icecreamOrder.cancel().save();
+  }
+  async warnIcecreamMeltingAll() { // [!code ++:7]
+    const servedIcecreamOrders = await this.icecreamOrderModel.listByStatuses(["served"]);
+    for (const icecreamOrder of servedIcecreamOrders) {
+      if (icecreamOrder.updatedAt.isAfter(dayjs().subtract(15, "seconds"))) continue;
+      this.alarmApi.warn(`IcecreamOrder ${icecreamOrder.id} is melting 😱`);
+    }
+  }
+}
 ```
 
 ### apps/koyo/lib/icecreamOrder/icecreamOrder.signal.ts

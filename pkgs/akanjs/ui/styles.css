@@ -331,6 +331,20 @@ body.akan-mobile-document {
 :root:active-view-transition-type(akan-nav)::view-transition-new(root) {
   animation: none;
 }
+/* A body portal is captured into the root group, which the full-viewport page snapshot paints over. */
+body > [data-agent-ui] {
+  view-transition-name: akan-agent;
+}
+html[data-akan-vt]::view-transition-group(akan-agent) {
+  animation: none;
+  z-index: 2;
+}
+html[data-akan-vt]::view-transition-old(akan-agent) {
+  display: none;
+}
+html[data-akan-vt]::view-transition-new(akan-agent) {
+  animation: none;
+}
 html[data-akan-vt]::view-transition-group(.akan-page) {
   animation: none;
 }

@@ -58,8 +58,8 @@ export default page()
             <Code.Snippet className="w-full" title="Terminal" language="bash" code="akan create-application koyo" />
             <div>
               {l.trans({
-                en: `Now, you can run the koyo service locally with the following command. Then, you can access the service at http://localhost:8282.`,
-                ko: `이제, koyo 서비스를 로컬 환경에서 다음과 같이 실행할 수 있으며, 브라우저에서 http://localhost:8282 로 접속하면 됩니다.`,
+                en: `Now run koyo locally with the following command. koyo comes before myapp alphabetically, so koyo is http://localhost:8282 and myapp moves to 8283. AKAN_DEV_PORT pins the port.`,
+                ko: `이제 다음 명령으로 koyo를 로컬에서 실행합니다. koyo가 myapp보다 이름순으로 앞이라 http://localhost:8282 이고, myapp은 8283으로 옮겨갑니다. AKAN_DEV_PORT로 포트를 고정할 수 있습니다.`,
               })}
             </div>
             <Code.Snippet className="w-full" title="Terminal" language="bash" code="akan start koyo" />
@@ -382,7 +382,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     corn: t(["Corn", "옥수수"]).desc(["Corn topping", "옥수수 토핑"]),
     granola: t(["Granola", "그래놀라"]).desc(["Granola topping", "그래놀라 토핑"]),
     banana: t(["Banana", "바나나"]).desc(["Banana topping", "바나나 토핑"]),
-    fig: t(["Fig", "피그"]).desc(["Fig topping", "피그 토핑"]),
+    fig: t(["Fig", "무화과"]).desc(["Fig topping", "무화과 토핑"]),
   }))
   .insight<IcecreamOrderInsight>((t) => ({})) // [!code collapse:7]
   .slice<IcecreamOrderSlice>((fn) => ({

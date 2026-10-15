@@ -142,8 +142,8 @@ cd myorg`}
           <Docs.Description>
             <div>
               {l.trans({
-                en: "The app opens on http://localhost:8282.",
-                ko: "앱은 http://localhost:8282 에서 열립니다.",
+                en: "The app opens on http://localhost:8282. The dev port is 8282 plus the app's index in alphabetical order, so the only app is 8282.",
+                ko: "앱은 http://localhost:8282 에서 열립니다. 개발 포트는 8282에 앱 이름의 알파벳순 인덱스를 더한 값이라, 앱이 하나면 8282입니다.",
               })}
             </div>
           </Docs.Description>
@@ -231,7 +231,7 @@ void run();
               code={`
 ...
 ...
-[AkanApp] INFO  AkanApp gateway is running on port 8282 +7ms
+[AkanApp] INFO  AkanApp gateway is running on port http://localhost:8282 +7ms
 ...
 ...`}
             />
