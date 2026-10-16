@@ -32,6 +32,7 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 type InlineRscChunk = [1, string] | [3, string];
@@ -158,14 +159,12 @@ function commitRscPatchNavigation({
   target,
   patch,
   replace,
-  scrollToTop,
-  bumpScrollToTop,
+  requestScroll,
 }: {
   target: string;
   patch: Extract<RscFetchResult, { type: "patched" }>;
   replace?: boolean;
-  scrollToTop?: boolean;
-  bumpScrollToTop?: () => void;
+  requestScroll?: () => void;
 }): boolean {
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable) throw new Error("[rscClient] validated RSC patch is missing a thenable");
@@ -184,7 +183,7 @@ function commitRscPatchNavigation({
         return;
       }
       commitHistory(target, replace);
-      if (scrollToTop) bumpScrollToTop?.();
+      requestScroll?.();
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
       if (outletCommitted) resetAkanSegmentOutletPatches();
@@ -200,11 +199,13 @@ function akanHistoryState(replace: boolean, shallow = false) {
   const idx = (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
   const current = Number.isInteger(idx) ? (idx as number) : 0;
   const shallowState = shallow ? { shallow: true, rendered: renderedHref } : {};
-  return { __akanRouter: { idx: replace ? current : current + 1, ...shallowState } };
+  const scrollState = replace ? scrollRestoration.replaceEntry() : scrollRestoration.pushEntry();
+  return { __akanRouter: { idx: replace ? current : current + 1, ...scrollState, ...shallowState } };
 }
 
 // The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
 let renderedHref = normalizeHref(window.location.href);
+const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
 
 function commitHistory(target: string, replace: boolean | undefined) {
@@ -334,12 +335,11 @@ function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSe
 
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
-  const [scrollToTopTick, setScrollToTopTick] = useState(0);
+  const [scrollRequest, setScrollRequest] = useState<{ scrollY: number } | null>(null);
 
   useLayoutEffect(() => {
-    if (!scrollToTopTick) return;
-    window.scrollTo(0, 0);
-  }, [scrollToTopTick]);
+    if (scrollRequest) scrollRestoration.scrollTo(scrollRequest.scrollY);
+  }, [scrollRequest]);
 
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => {
     rscCache.clear();
@@ -417,7 +417,8 @@ function Root(): ReactNode {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) return;
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
-    const scrollToTop = options.scrollToTop ?? true;
+    const scrollY = options.scrollY ?? ((options.scrollToTop ?? true) ? 0 : undefined);
+    const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY });
     try {
       let nextNode = rscCache.get(target);
       const servedFromCache = !!nextNode;
@@ -445,8 +446,7 @@ function Root(): ReactNode {
                 target,
                 patch: replayedPatch,
                 replace: options.replace,
-                scrollToTop,
-                bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
+                requestScroll,
               })
             ) {
               currentCommitFromCache = true;
@@ -471,8 +471,7 @@ function Root(): ReactNode {
               target,
               patch: fetched,
               replace: options.replace,
-              scrollToTop,
-              bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
+              requestScroll,
             })
           ) {
             currentCommitFromCache = false;
@@ -528,8 +527,7 @@ function Root(): ReactNode {
         updateHistory: () => {
           commitHistory(target, options.replace);
         },
-        scrollToTop,
-        bumpScrollToTop: () => setScrollToTopTick((tick) => tick + 1),
+        requestScroll,
         navId,
         getCurrentNavId: () => navigationSeq,
       });
@@ -548,13 +546,15 @@ function Root(): ReactNode {
 window.addEventListener("popstate", (event) => {
   const here = normalizeHref(window.location.href);
   const entry = (event.state as { __akanRouter?: { shallow?: boolean; rendered?: string } } | null)?.__akanRouter;
+  const scrollY = scrollRestoration.traverseTo(event.state);
   //? A shallow entry shows the render that was on screen when it was written, which a later same-path push replaces.
   const keepsPage = (entry?.shallow ? entry.rendered : here) === renderedHref;
   // The URL already moved, so a refused route falls back to the document route's real not-found page.
   if (!keepsPage)
     void globalThis
-      .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false })
+      .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, scrollY })
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
+  else if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
   window.setTimeout(() => {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
     const href = globalThis.__AKAN_GET_SYNC_ROUTE_HREF__?.(window.location.href) ?? window.location.href;
@@ -562,5 +562,8 @@ window.addEventListener("popstate", (event) => {
   }, 0);
 });
 
-const hydrate = () => hydrateRoot(document, createElement(Root));
+const hydrate = () => {
+  hydrateRoot(document, createElement(Root));
+  scrollRestoration.restoreDocumentLoad();
+};
 void Promise.resolve(initialThenable).then(hydrate, hydrate);

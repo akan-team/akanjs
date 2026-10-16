@@ -312,8 +312,7 @@ interface CommitRscNavigationInput<T> {
   startTransition: (callback: () => void) => void;
   commitThenable: (thenable: T) => void;
   updateHistory?: () => void;
-  scrollToTop?: boolean;
-  bumpScrollToTop?: () => void;
+  requestScroll?: () => void;
 }
 
 export function commitRscNavigation<T>({
@@ -324,14 +323,13 @@ export function commitRscNavigation<T>({
   startTransition,
   commitThenable,
   updateHistory,
-  scrollToTop,
-  bumpScrollToTop,
+  requestScroll,
 }: CommitRscNavigationInput<T>): void {
   rememberRscCacheEntry(cache, href, thenable, maxEntries);
   startTransition(() => {
     commitThenable(thenable);
     updateHistory?.();
-    if (scrollToTop) bumpScrollToTop?.();
+    requestScroll?.();
   });
 }
 

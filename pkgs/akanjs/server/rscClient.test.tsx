@@ -81,3 +81,40 @@ describe("rscClient history", () => {
     expect(shown()).toBe("/feed");
   });
 });
+
+describe("rscClient scroll restoration", () => {
+  test("a move back restores the offset its entry was left at, and a push starts at the top", async () => {
+    await navigate("/blog");
+    window.scrollTo(0, 600);
+    await navigate("/blog/post");
+    expect(window.scrollY).toBe(0);
+    window.scrollTo(0, 3000);
+
+    await back("/blog");
+
+    expect(window.scrollY).toBe(600);
+    expect(window.history.scrollRestoration).toBe("manual");
+  });
+
+  test("an entry left by a push keeps its offset in its state for a document loaded back into it", async () => {
+    await navigate("/docs");
+    window.scrollTo(0, 420);
+    await navigate("/docs/next");
+
+    await back("/docs");
+
+    expect((window.history.state as { __akanRouter?: { scrollY?: number } }).__akanRouter?.scrollY).toBe(420);
+  });
+
+  test("a shallow entry restores its offset without rendering the page again", async () => {
+    await navigate("/shop");
+    window.scrollTo(0, 250);
+    await navigate("/shop?peek=c", { shallow: true });
+    window.scrollTo(0, 900);
+
+    await act(async () => window.history.back());
+
+    expect(shown()).toBe("/shop");
+    expect(window.scrollY).toBe(250);
+  });
+});
