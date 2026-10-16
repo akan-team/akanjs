@@ -30,15 +30,7 @@
     "apps/*/lib/useClient.ts",
     "apps/*/lib/useServer.ts"
   ],
-  "test": [
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "tests/**",
-    "e2e/**",
-    "playwright/**"
-  ],
+  "test": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "tests/**", "e2e/**", "playwright/**"],
   "glue": [
     "**/api/**",
     "**/routes/**",
@@ -64,13 +56,5 @@
     "**/prisma.config.*",
     "**/akan.config.ts"
   ],
-  "appSource": [
-    "app/**",
-    "src/**",
-    "pages/**",
-    "components/**",
-    "lib/**",
-    "apps/*/page/**",
-    "apps/*/lib/**"
-  ]
+  "appSource": ["app/**", "src/**", "pages/**", "components/**", "lib/**", "apps/*/page/**", "apps/*/lib/**"]
 }

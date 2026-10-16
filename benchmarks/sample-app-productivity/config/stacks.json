@@ -6,10 +6,7 @@
       "label": "Akan.js 2.2.12",
       "runtime": "bun",
       "packagePolicy": "published-fixed",
-      "allowedPackages": [
-        "create-akan-workspace@2.2.12",
-        "akanjs@2.2.12"
-      ],
+      "allowedPackages": ["create-akan-workspace@2.2.12", "akanjs@2.2.12"],
       "promptAppendix": "scenarios/team-task-board/prompt.akanjs.md",
       "setup": [
         {
@@ -28,27 +25,9 @@
       ],
       "installCommand": null,
       "baseUrl": "http://127.0.0.1:8282",
-      "startCommand": [
-        "bun",
-        "run",
-        "akan",
-        "start",
-        "taskboard"
-      ],
-      "buildCommand": [
-        "bun",
-        "run",
-        "akan",
-        "build",
-        "taskboard"
-      ],
-      "lintCommand": [
-        "bun",
-        "run",
-        "akan",
-        "lint",
-        "taskboard"
-      ],
+      "startCommand": ["bun", "run", "akan", "start", "taskboard"],
+      "buildCommand": ["bun", "run", "akan", "build", "taskboard"],
+      "lintCommand": ["bun", "run", "akan", "lint", "taskboard"],
       "conventionCheck": "akanjs",
       "versionChecks": [
         {
@@ -63,14 +42,7 @@
       "label": "Next.js App Router + Prisma + SQLite",
       "runtime": "node",
       "packagePolicy": "latest-stable-locked",
-      "allowedPackages": [
-        "next",
-        "react",
-        "react-dom",
-        "prisma",
-        "@prisma/client",
-        "typescript"
-      ],
+      "allowedPackages": ["next", "react", "react-dom", "prisma", "@prisma/client", "typescript"],
       "promptAppendix": "scenarios/team-task-board/prompt.next-prisma.md",
       "setup": [
         {
@@ -91,29 +63,14 @@
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "prisma",
-            "@prisma/client"
-          ],
+          "args": ["add", "prisma", "@prisma/client"],
           "cwd": "{{workspacePath}}"
         }
       ],
-      "installCommand": [
-        "bun",
-        "install"
-      ],
+      "installCommand": ["bun", "install"],
       "baseUrl": "http://127.0.0.1:3000",
-      "startCommand": [
-        "bun",
-        "run",
-        "dev"
-      ],
-      "buildCommand": [
-        "bun",
-        "run",
-        "build"
-      ],
+      "startCommand": ["bun", "run", "dev"],
+      "buildCommand": ["bun", "run", "build"],
       "lintCommand": null,
       "conventionCheck": null,
       "versionChecks": []
@@ -137,49 +94,23 @@
       "setup": [
         {
           "cmd": "bunx",
-          "args": [
-            "create-vite@latest",
-            "{{workspacePath}}",
-            "--template",
-            "react-ts"
-          ]
+          "args": ["create-vite@latest", "{{workspacePath}}", "--template", "react-ts"]
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "hono",
-            "drizzle-orm"
-          ],
+          "args": ["add", "hono", "drizzle-orm"],
           "cwd": "{{workspacePath}}"
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "-d",
-            "drizzle-kit"
-          ],
+          "args": ["add", "-d", "drizzle-kit"],
           "cwd": "{{workspacePath}}"
         }
       ],
-      "installCommand": [
-        "bun",
-        "install"
-      ],
+      "installCommand": ["bun", "install"],
       "baseUrl": "http://127.0.0.1:5173",
-      "startCommand": [
-        "bun",
-        "run",
-        "dev",
-        "--host",
-        "127.0.0.1"
-      ],
-      "buildCommand": [
-        "bun",
-        "run",
-        "build"
-      ],
+      "startCommand": ["bun", "run", "dev", "--host", "127.0.0.1"],
+      "buildCommand": ["bun", "run", "build"],
       "lintCommand": null,
       "conventionCheck": null,
       "versionChecks": []
@@ -203,49 +134,23 @@
       "setup": [
         {
           "cmd": "bunx",
-          "args": [
-            "create-vite@latest",
-            "{{workspacePath}}",
-            "--template",
-            "react-ts"
-          ]
+          "args": ["create-vite@latest", "{{workspacePath}}", "--template", "react-ts"]
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "elysia",
-            "drizzle-orm"
-          ],
+          "args": ["add", "elysia", "drizzle-orm"],
           "cwd": "{{workspacePath}}"
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "-d",
-            "drizzle-kit"
-          ],
+          "args": ["add", "-d", "drizzle-kit"],
           "cwd": "{{workspacePath}}"
         }
       ],
-      "installCommand": [
-        "bun",
-        "install"
-      ],
+      "installCommand": ["bun", "install"],
       "baseUrl": "http://127.0.0.1:5173",
-      "startCommand": [
-        "bun",
-        "run",
-        "dev",
-        "--host",
-        "127.0.0.1"
-      ],
-      "buildCommand": [
-        "bun",
-        "run",
-        "build"
-      ],
+      "startCommand": ["bun", "run", "dev", "--host", "127.0.0.1"],
+      "buildCommand": ["bun", "run", "build"],
       "lintCommand": null,
       "conventionCheck": null,
       "versionChecks": []
@@ -269,49 +174,23 @@
       "setup": [
         {
           "cmd": "bunx",
-          "args": [
-            "create-vite@latest",
-            "{{workspacePath}}",
-            "--template",
-            "react-ts"
-          ]
+          "args": ["create-vite@latest", "{{workspacePath}}", "--template", "react-ts"]
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "fastify",
-            "@prisma/client"
-          ],
+          "args": ["add", "fastify", "@prisma/client"],
           "cwd": "{{workspacePath}}"
         },
         {
           "cmd": "bun",
-          "args": [
-            "add",
-            "-d",
-            "prisma"
-          ],
+          "args": ["add", "-d", "prisma"],
           "cwd": "{{workspacePath}}"
         }
       ],
-      "installCommand": [
-        "bun",
-        "install"
-      ],
+      "installCommand": ["bun", "install"],
       "baseUrl": "http://127.0.0.1:5173",
-      "startCommand": [
-        "bun",
-        "run",
-        "dev",
-        "--host",
-        "127.0.0.1"
-      ],
-      "buildCommand": [
-        "bun",
-        "run",
-        "build"
-      ],
+      "startCommand": ["bun", "run", "dev", "--host", "127.0.0.1"],
+      "buildCommand": ["bun", "run", "build"],
       "lintCommand": null,
       "conventionCheck": null,
       "versionChecks": []

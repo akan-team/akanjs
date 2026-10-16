@@ -3,3 +3,4 @@ workspaces/
 results/
 targets.local.json
 bun.lock
+test-results/
