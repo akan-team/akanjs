@@ -22,6 +22,15 @@ Generate client state coordination for a module. Store connects generated fetch 
 - Do not call private or internal signal operations from UI state.
 
 ## Form Draft Recovery
+- `Load.Edit`, `Model.EditModal` and `Model.New` save the whole `<model>Form` as the user types and offer it back on
+  the next open, so a modal closed by accident, a route change, or a killed app costs nothing. The scope is the
+  record id for an edit and the seed plus the route for a new form, both keyed to the signed-in user, so another
+  record or another parent never loads someone else's half-finished form.
+- A new form's draft is applied on open with a "start over" chip; an edit whose record moved in the meantime is
+  *not* applied, and asks. Turn it off with `draft={false}`, or name the scope yourself with `draft="<scope>"` when
+  the context is in neither the id nor the seed.
+- The old per-field `cache` / `cacheKey` props are deprecated and store nothing — they covered five control types,
+  keyed on the translated label, and restored over server data.
 - `<model>FormDraft`, `restore<Model>FormDraft`, `discard<Model>FormDraft` and `load<Model>FormDraft` are
   generated. Do not hand-write a draft action, and do not write `<model>Form` to browser storage yourself.
 - The draft key carries the signed-in user, derived by hashing the auth token's payload with `iat`, `exp`, `nbf`

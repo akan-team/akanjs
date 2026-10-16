@@ -9,7 +9,7 @@ Generate the business data shape for a collection-backed Akan module. This file 
 - Define `ModelObject` by extending `via(ModelInput, (field) => ({ ... }))` for stored fields controlled by system or service behavior.
 - Define `LightModel` by selecting compact list/reference fields from the object layer.
 - Define full `Model` by combining object and light layers and adding only small static or type helpers when needed.
-- Define `ModelInsight` only when aggregation or dashboard values are useful.
+- Always define `ModelInsight`, empty when the model has no aggregation or dashboard values yet.
 
 ## Current Akan Patterns
 - Use `via()` and the `field` helper for all model layers.
@@ -21,6 +21,7 @@ Generate the business data shape for a collection-backed Akan module. This file 
 - Keep the light model small enough for lists, cards, and relation previews.
 - Do not put persistence queries, service workflows, fetch calls, or React UI in constant files.
 - Use stable defaults for arrays and frequently read values.
+- Never declare a `static` on the Object or Light class: `via(XObject, LightX, …)` mixes in their prototypes only, so a static there never reaches `X` — put it on `XInput` (or a scalar), `X`, or `XInsight`. `no-static-in-object-light-model` recognises the Object class by its `*Object` name (its `via()` shape is the Insight's) and the Light class by its `Light*` name or its `[...] as const` field tuple.
 - Add dictionary coverage for public fields, enums, insights, and query-facing names.
 
 ## Review Checklist

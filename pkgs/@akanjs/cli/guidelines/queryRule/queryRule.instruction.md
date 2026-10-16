@@ -1,8 +1,9 @@
 # Query Rule — Filters, Slices, Hydration, Search, Cascade
 
-How a model's data is queried, exposed to a client store, searched, and removed. Filters and slices are the two
-query surfaces; `q.search()` and the `text` field roles are the search surface; `cascade` is what a removal takes
-with it. `conventions` carries the invariants — this is the full contract behind them.
+How a model's data is queried, exposed to a client store, searched, written, and removed. Filters and slices are
+the two query surfaces; the model facade carries the scoped reads and writes; `q.search()` and the `text` field
+roles are the search surface; `cascade` is what a removal takes with it. `conventions` carries the invariants —
+this is the full contract behind them.
 
 ## Slices, Queries, and Hydration
 
@@ -31,6 +32,9 @@ with it. `conventions` carries the invariants — this is the full contract behi
   A model with none renders ids and says so in the picker.
 - A slice's `exec` returns a `QueryOf` (an opaque query descriptor, `pkgs/akanjs/constant/types.ts`); you **cannot** chain `.sort()`/`.limit()` on it.
 - Apply ordering/paging via the store `init` fetch option instead: `initX(..., { sort, page, limit })` (`pkgs/akanjs/fetch/fetchType/sliceFetch.type.ts`).
+- **`limit: 0` means every row on the server, never on the client.** A server `list<Filter>(…, { limit: 0 })`
+  reads without a ceiling, like an omitted limit, and `null` pages at 20. A client's `0` (`initX(…, { limit: 0 })`)
+  is served `MAX_PAGE_SIZE` (500) with a one-time warn. Paginate (`loadMoreOf<Model>`) or name a page size.
 - **Every sort ends with `id`, in the direction of its last key, and a missing value sorts below every other** —
   first ascending, last descending, in every database mode and in the client placing a live row. Rows the declared
   keys tie on (a midpoint priority dragged into one gap until the float runs out, two rows saved in one millisecond)
@@ -51,8 +55,9 @@ with it. `conventions` carries the invariants — this is the full contract behi
 - **A projection is bare on the facade and nested under `select` on a filter accessor.** `pickById(id, { secretField:
   true })` / `find(query, { secretField: true })` take the projection as their second argument; a generated
   `findBy<Filter>(...args, { select: { secretField: true } })` takes it inside the option object. The shapes do not
-  swap: `{ select: … }` handed to the facade projects a field named `select`, which no model has, and the read comes
-  back empty with no error. This is the only way to read a `field.secret(...)` value, which is otherwise stripped.
+  swap: `{ select: … }` handed to the facade projects a field named `select`, which no model has, and throws
+  `Unknown document field path`. The facade's third argument is the scope (`{ withRemoved: true }`), never a field.
+  This is the only way to read a `field.secret(...)` value, which is otherwise stripped.
 - **Hydrated vs raw:** server queries return hydrated `cnst.<Model>` instances (with `set`/`save`/`refresh`), and so do client fetch results — `FetchClient` parses every return with `crystalize` defaulting to **true** (`pkgs/akanjs/fetch/client/fetchClient.ts`). The raw `GetStateObject` shape (functions stripped, `pkgs/akanjs/base/types.ts`) is what the `<ref>Obj` / `<ref>ObjList` / `<ref>ObjInsight` handles carry, because those pass `crystalize: false` on purpose so the value can cross the RSC boundary as a client prop.
 - Every filter generates fourteen methods: `list` · `listIds` · `find` · `findId` · `pick` · `pickId` · `exists` ·
   `count` · `insight` · `query` · **`remove`** · **`removeOne`** · **`update`** · **`updateOne`**. The last four are
@@ -81,6 +86,26 @@ with it. `conventions` carries the invariants — this is the full contract behi
   matches a freshly inserted row and silently stops matching that same row after its first round-trip save. Reach
   for it only to find rows written before the field was declared.
 
+## Soft Removal And The Facade's Writes
+
+- **Removal is always soft** — the framework has no hard delete for a model table, and `delete` is deliberately
+  left unused so it can mean one later. Every read and query-level write sees live rows only (`removedAt IS NULL`).
+- **`{ withRemoved: true }` reaches removed rows**: the third argument of `find` / `findOne` / `findById`
+  (projection second, `null` when none), the last of `count` / `exists` / `updateMany`, or inside `updateOne` /
+  `updateById`'s options. Without it, a `removedAt` condition only a removed row can meet (`q.exists("removedAt")`,
+  a comparison) throws `can never match`.
+- Removes, slices, filter methods, loaders and `pickById` stay live-only, a removed document is read-only
+  (`save()` throws), and `updateById(id, { removedAt: null }, { withRemoved: true })` revives one without hooks.
+- The facade spells `Many`/`One` out on its writes (`updateOne` / `updateMany` / `removeOne` / `removeMany`); only
+  the count was shortened to `count(query)`, with `countDocuments` kept as `@deprecated`.
+- **`updateById(id, update)` and `removeById(id)` are those same query-level writes narrowed to one id, not the
+  document path**: they fire no hooks, so a model whose removal cascades or carries a `_postRemove` still goes
+  through `remove<Model>(id)`.
+- The write-through pair is `pickAndWrite(id, data)` / `pickOneAndWrite(query, data)` — pick the document, write
+  into it and save it, so the save hooks do run; reach for those when the write has to be seen by them.
+- `upsertById(data, { preserveTimestamps })` writes a record whole under its own id, new or in place, with no
+  hook: the write a sync or a backfill repeats safely, keeping the record's `createdAt`/`updatedAt` when asked.
+
 ## Text Search In A Filter — `q.search()`
 
 - Text search is a filter query node like any other: `bySearch: filter().arg("text", String).query((text, q) =>
@@ -108,10 +133,12 @@ with it. `conventions` carries the invariants — this is the full contract behi
 
 - A field joins the full-text index by declaring one of five roles: `field(String, { text: "title" })`, and likewise
   `"desc"`, `"tag"`, `"thumb"`, `"filter"`. Nothing else opts a field in, and there is no per-model switch.
-- Pick the role by what the value *is*, because the rank weights them positionally (`title` 10, `tag` 3, `desc` 1,
-  `filter` 0): `title` is the one line a human scans for, `desc` is prose, `tag` is a keyword list, `filter` is a
-  scoping value (status, owner, role) that must be matchable but must never outrank a real title hit.
+- Pick the role by what the value *is*, because the rank (`bm25` on SQLite) weights them positionally (`title` 10,
+  `tag` 3, `desc` 1, `filter` 0): `title` is the one line a human scans for, `desc` is prose, `tag` is a keyword
+  list, `filter` is a scoping value (status, owner, role) that must be matchable but must never outrank a real title
+  hit.
 - `thumb` is mirrored for rendering a hit and is **not** indexed — never expect it to match.
+- `schema.index({ x: "text" })` (a Mongo text spec) builds nothing and warns at boot: full-text search is this role.
 - **`field.secret`, `field.hidden` and `resolve()` take no `text` role — it is a compile error**, because the
   mirror is plaintext and an indexed secret would leak through search. The class build throws the same refusal as
   a backstop, for an option object the excess-property check cannot see through, and names the way out: drop the

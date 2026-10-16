@@ -38,6 +38,19 @@ A third-party client package and the `ui/<Folder>/index_.tsx` + `lazy()` boundar
 not flagged. Interaction-driven `fetch.*` inside an `onClick` is not flagged either — only mount-time loads are,
 because those are the ones the server could have performed.
 
+## Lint Rules Behind The Boundary
+- `no-async-component-in-ui` (`{apps,libs}/**/ui/**/*.tsx`) — React has no async client component, so a `ui/`
+  component that awaits breaks as soon as a client parent renders it, and the load drops below the route, which
+  could have started it before the first byte. Only a PascalCase binding whose own initializer is `async` is matched,
+  so an async handler inside a synchronous component and `lazy(async () => import(…))` are untouched.
+- `no-init-fetch-in-client` — `fetch.init<Model><Suffix>` and `fetch.get<Model>Init<Suffix>` compose the slice's list
+  and insight queries into the hydration snapshot `Load.Units` / `Load.View` seed the store from. From a route it
+  resolves before the first byte; after hydration it is two extra round-trips for a shell the browser already
+  painted. Load it in the page and pass the result (or the unawaited `x<Model>Init<Suffix>` promise) down as `init`,
+  and reload from the client through the generated `st.do.init<Model><Suffix>()`. The rule is gated on the real
+  `"use client"` directive plus `*.store.ts` and matches by shape (`init` + `Capitalize<refName>` +
+  `Capitalize<suffix>`), so a hand-written `initPayment` is out.
+
 ## Implementation Playbook
 
 **① Wrap the interaction, not the UI.** The smallest useful client component adds one behaviour and renders

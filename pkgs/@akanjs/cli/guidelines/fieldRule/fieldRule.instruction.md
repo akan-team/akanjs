@@ -10,7 +10,64 @@ Use this whenever generating constants or scalar constants. It defines the curre
 - `field.hidden(Type).optional()` is for internal state that should not be treated as a normal public field.
 - `field.secret(Type).optional()` is for sensitive values that should not be selected by default.
 - Neither survives an endpoint response: both are stripped on the way out and hydration writes `null` over the key, while the generated type still declares the field — so a client holds a deliberate `null` behind a type that promises a value, and only `??` / `== null` catch it. A field a browser has to read is neither.
+- `field.visual(Type)` is a field the page renders and an agent never sees (below).
 - `field([Type])` defines arrays; provide empty array defaults when the app expects list operations.
+
+## Field Types
+- **Import from `akanjs/base`** (real classes/helpers, not globals): `Int`, `Float`, `ID`, `Any`, `Binary`, `Upload`,
+  `ImageResult`, `enumOf`, and the `dayjs` factory. There is **no `JSON` scalar** — use `Any` for open/flexible
+  payloads, and only when the content is genuinely flexible.
+- **Use the JS globals directly (no import needed)**: `String`, `Boolean`, `Date`. They are monkey-patched to
+  behave like scalars, so `field(String)` typechecks.
+- **`Number` is not a valid field/body type.** `NumberConstructor` is intentionally not augmented, so
+  `field(Number)` / `.body("x", Number)` fails to typecheck. Use `Int` for whole-number counts and quantities and
+  `Float` only for values that need decimals.
+- Runtime resolution of every scalar (globals included) goes through `PrimitiveRegistry` by `refName`
+  (`pkgs/akanjs/base/primitiveRegistry.ts`).
+- **`Binary`, `Upload` and `ImageResult` are never model fields.** The class build refuses `field(Binary)` naming
+  the `File` model instead, because every non-base field lives in the `_doc` JSON column and bytes would sit there
+  as base64 and ride every read of the row. How each travels on the wire: `transportRule` and `mcpRule`.
+- Defaults are a literal for scalars and a thunk for anything constructed (`default: () => dayjs()`, so the value
+  is created at runtime). Optional is the postfix `.optional()`.
+
+## Masked And Visual Fields
+- **A `field.hidden` / `field.secret` value reads `null` on the client, and the type still declares it.**
+  `SignalContext.resolveReturn` skips both field types while it builds an endpoint's response, and hydration
+  writes `null` over the key rather than leaving it absent — the first branch of the loop in
+  `constant/getDefault.ts`, ahead of the field's own default. Every use of it typechecks, and the failure lands
+  wherever it is finally dereferenced instead of where it was read. **Guard with `??` or `== null`**:
+  `=== undefined`, a destructuring default and an optional parameter default all catch only a missing key and sail
+  straight past this one. A projection (`pickById(id, { secret: true })`) widens the *server's* read, never the
+  response. If a screen needs the value, the field is neither hidden nor secret; if it only needs to be cheap for a
+  model rather than unseen, that is `field.visual`.
+- **`field.visual(T)` is a field the page renders and an agent never sees** — a blur placeholder, a rendered HTML
+  body, a serialized geometry. It stays an ordinary stored `property` (persistence, search, forms and the page
+  response untouched) and is stripped wherever a value is masked for an AI caller: every in-page-agent read and
+  every MCP result, along with the MCP readable schema. Unlike `hidden`/`secret` it is cost, not secrecy — nothing
+  is refused over one. Reach for it whenever a field is bulky and useless to a model; that is cheaper than every
+  tool learning to avoid it.
+- `field.secret`, `field.hidden` and `resolve()` take no `text` search role (`queryRule`).
+
+## Immutable Fields
+- A document-path change to an `{ immutable: true }` field is refused with `base.error.immutableField` (400,
+  `data.field`), which the client toasts in the user's language; query-level writes are not checked.
+
+## Date Fields On An Instance
+- **A model instance's `Date` fields are prototype accessors, not own properties.** `user.createdAt` is still a
+  `Dayjs`, built on first read from a native `Date` the instance holds under a symbol. So `Object.keys(user)` and
+  `{ ...user }` do **not** include them, while `"createdAt" in user`, `for...in`, `JSON.stringify(user)`,
+  `plainFieldsOf(user)` (`akanjs/common`), `immerify`, and `deepObjectify` all do. To copy a model,
+  `new cnst.X().set(user)`, never a spread.
+
+## Image And File Fields
+- **Do not declare `Upload` as a model field.** `Upload` is a signal-body-only primitive. Declare an image/file
+  field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many.
+- The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload
+  mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
+- Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`,
+  `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` module.
+  Do not hand-roll data-URL fallbacks. `{ cascade: "removeRef" }` on the field removes the file with its owner
+  (`queryRule`).
 
 ## Current Akan Patterns
 - Use `String`, `Boolean`, `Date`, `Int`, `Float`, `ID`, scalar classes, model light classes, or enum classes as field types.

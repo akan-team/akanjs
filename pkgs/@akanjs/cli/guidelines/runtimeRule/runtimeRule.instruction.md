@@ -1,4 +1,4 @@
-# Runtime Rule — Serving, Processes, Logging, Image, Native Apps, Desktop Server, Assets, Build Pipeline
+# Runtime Rule — Serving, Processes, Dev Server, Logging, Image, Native Apps, Desktop Server, Assets, Build Pipeline
 
 How an Akan app is built, what it serves, how many processes it runs, where its logs go, and what ends up in
 its image. Everything here is declared in `akan.config.ts` or narrowed by an env at boot; none of it is reached
@@ -114,6 +114,58 @@ worker per web-serving replica.
   `AkanServer`, whose graph the gateway never runs; through it the process evaluated 35MB of SSR renderer and
   SQLite driver to spawn children and relay bytes. Keep entrypoint imports at the leaf.
 
+## The Dev Server And Local Runs — `akan start`
+
+- After changing application source code, test the app with `bun run akan start <appName>`; test production build
+  generation with `bun run akan build <appName>`.
+- **`akan start` takes several apps** — `akan start a,b`, `akan start a b`, `akan start all`, or no argument at
+  all for a checkbox that remembers the last pick.
+- **It opens a full-screen view by default, at any app count.** A rail of apps with the processes inside each
+  one — `host` for the dev host, gateway and RSC worker, plus a row per replica the gateway forwards — and the
+  selected one's log beside it. `Tab` walks every row and `1`-`9` jump to that app (the rail shows each app's
+  digit), `↑↓` scroll (shift for a page, `G` back to following), `/` greps, `e` shows stderr only, `c` clears,
+  `y` copies, `Y` copies the log path, `o` opens the browser, `r` restarts that app, `q` quits. Under `--share`,
+  `s` copies the public URL — the selected app's, or every app's from the merged row — and the header carries it
+  ahead of the local one, because the line `--share` printed before the view took the terminal is gone by its
+  first repaint. **`--plain` prints prefixed interleaved lines instead**, and a pipe, a redirect or an unsized
+  terminal downgrades to that on its own.
+- **A supervised session writes `local/apps/<app>/runtime/dev.log`, and that path is how a log gets handed over.**
+  Ink repaints one frame in place, so the full-screen view leaves a bordered screenshot in the scrollback and takes
+  the rest of the session with it — a drag-selection is cleared by the next repaint, and what survives carries
+  borders and lines truncated to the pane. The file is the same output with no ANSI, nothing truncated, and every
+  process of the app in arrival order, including the dev host's own build output, which reaches no other file. The
+  previous session is kept beside it as `dev.prev.log`. Hand somebody — or an agent — the path rather than a paste:
+  it costs one line instead of a transcript, and it can be re-read after a fix. In the view, `y` copies the lines
+  the filters have already narrowed and `Y` copies the path.
+- **How many apps boot at once is the machine's answer, not a constant.** A cold boot is an app's RSS peak (~1.8GB
+  per app, most of it the build worker — the base build, then the SSR registry's), so the default wave is what
+  memory and cores allow — half the memory budget divided by that peak, and one app per four cores — which boots a
+  laptop's apps together and still staggers them inside a small container. The session says which in one line.
+  The next wave starts once an app serves and its boot builds have settled, or 30 seconds after it serves, while
+  the app shows as ready — and `--open` opens it — as soon as it serves. `--concurrency <n>` overrides the wave
+  size, and `AKAN_MEMORY_LIMIT` lowers the budget it derives from.
+- **`--kill` frees the dev ports first** — it resolves each port's listener, walks up to the top of that akan dev
+  tree and signals it, so another checkout's server or a stale orphan on the same port is reclaimed. A holder that
+  is not recognisably an akan process is reported and left alone.
+- **A dev server watches its own app directory and the libs it actually depends on**, transitively, resolved once
+  at boot from the synced manifests — so a save under a lib the app never imports rebuilds and reloads nothing,
+  and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
+  `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
+  the whole `libs/` container is watched, which is the safe direction.
+- **A built artifact runs from the generated app directory** with the Akan runtime environment variables:
+
+  ```bash
+  cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
+    AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
+    AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
+  ```
+
+- **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
+  (init, interval, cron, queue worker); `listen: false` alone still runs them, as a batch replica does. A server
+  process a test spawns from source resolves the workspace from its cwd and gets the root `.env` from Bun, so
+  spawn it inside the repo with `bun --no-env-file`, or spawn the built `dist/apps/<app>` output, which needs
+  neither.
+
 ## Logging — Records, Request Context And Live Tail
 
 Every `Logger` call builds a `LogRecord` before any text exists: `at`, `level`, OTel `sev`, `name`, `message`,
@@ -152,6 +204,18 @@ normalized to `info` with one warning.
 - **The generated Dockerfile sets `AKAN_LOG_TO_FILE=0`.** A container's writable layer is ephemeral and nothing
   collects a file from it; stdout is the collection path. A deployment that wants the files back sets
   `AKAN_LOG_TO_FILE=1`.
+- **`AKAN_LOG_FORMAT=ndjson` makes the container's stdout one JSON record per line, and the hub owner (gateway or
+  solo replica) its only writer** — every other server process turns its console off and forwards from
+  `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
+  `raw=true` record instead of breaking the stream. Text stays the default; turn it on in the deployment.
+- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events);
+  unset, the route does not exist.
+- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
+  keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
+  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — in `local`, or with the
+  `AKAN_LOG_DEBUG_HEADER` secret.
+- **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
+  before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
   and a subscriber asking for everything is the test.
 
@@ -331,7 +395,7 @@ has none, or none when it has one, is refused, and switching means a reinstall.
 tied to the image's system, code only a process the app never starts loads — and whatever only they pull in; the
 image keeps them, and the server's own bundle must not import them. A package another dependency still installs
 stops the build, naming who needs it. So does a native addon that would not load on a user's computer: no binary
-for the app's OS and CPU, a link outside the system, or a `binding.gyp` its install never compiled. It runs as an API-only edge server on SQLite, on a loopback port the launcher picks — the last session's when
+for the app's OS and CPU, a link outside the system, or a `binding.gyp` its install never compiled. It runs as an API-only edge server in database mode `single` (SQLite), on a loopback port the launcher picks — the last session's when
 it is free, which is not a guarantee, so a provider that needs an exact redirect URI signs in through a cloud
 server's adapter. It refuses a `Host` other than its own, but any program on the computer can still call that port:
 guard its endpoints as a network server's. It runs in one process, so a `main.ts` or an env asking for replicas (`replica`,
@@ -452,6 +516,29 @@ page API is
 `akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
 hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
+
+**A plugin the app or lib owns lives in `native/<id>/`**, the folder named after the plugin id: `native-plugin.json`
+beside its page API (`src/index.ts`, `definePlugin` from `akanjs/client/native`), its desktop part (`src/desktop.ts`,
+`defineDesktopPlugin` from `akanjs/native/desktop`), Kotlin and Swift. Every mobile and desktop target ships it; a
+lib's reach only the apps that depend on it, and the app's own wins an id. Its page API is imported by a `webkit/`
+hook (`../native/<id>/src`) and nothing else; pages and components call the hook, the same way they reach
+`akanjs/client/native`. A plugin throws `AkanNativeError`, the error its bridge carries back to the page, which is
+why `no-throw-raw-error` exempts a root `native/` folder.
+
+**A page's storage and browser APIs follow the shell, not the browser.** A native shell serves the page from
+`app://localhost` on iOS, macOS and Linux, which keeps no cookies: `document.cookie` reads `""` and a write is
+dropped, so the value exists in the browser and vanishes in the app. Web Storage does work in the shells, but it
+bypasses the store akanjs picks per platform (the shell's Preferences in an app) and throws during SSR. So app and lib
+code never touches `document.cookie`, `localStorage` or `sessionStorage` (`no-document-cookie`, `no-web-storage`): it
+uses `getCookie` / `setCookie` / `removeCookie`, `storage`, and `secretStorage` for tokens and credentials, all from
+`akanjs/client`. `setCookie` writes `path=/; SameSite=Lax; Secure`, and an options object overrides only the keys it
+names — pass `sameSite: "none"` only for a cookie a cross-site POST must carry back. Browser APIs an app WebView lacks
+stay in a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`, which is where the app side goes
+too (`no-web-only-api-outside-webkit`, a warning): `navigator.share` / `canShare` (Android's WebView has none),
+`navigator.serviceWorker` and `Notification.requestPermission` / `.permission` (no app page has them),
+`navigator.geolocation` (use `useGeoLocation` from `akanjs/webkit`) and `navigator.vibrate` (iOS has none; use
+`haptics`). They are legal on the web, so the rule does not ban them; a root `native/` folder is out of its scope,
+since a plugin's web part is where those APIs belong.
 
 ## Database Modes — `database` In `akan.config.ts`
 

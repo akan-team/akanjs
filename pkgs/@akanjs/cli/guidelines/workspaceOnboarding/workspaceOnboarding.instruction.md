@@ -230,10 +230,10 @@ Six worked recipes carry the full code for the most frequent Akan changes, toget
 | Recipe | Covers |
 |---|---|
 | 1. Adding a field to a model | the five `constant.ts` classes, the dictionary entry, the store form, `akan sync` |
-| 2. Injecting a dependency into a service | `service<srv.XService>()`, `plug(Adapter)`, `env(...)`, `use<T>()` |
+| 2. Injecting a dependency into a service | `service<srv.XService>()`, `plug(Adapter)`, `env(...)`, `use<T>()`, writing an `adapt()` adapter |
 | 3. Creating and using a slice | `slice()` guards, the generated `init<Model><Suffix>`, `Load.Units` hydration |
 | 4. Creating a mutation endpoint | the document chain method, the service call, the signal `guards`, the store action |
-| 5. Internal triggers | `internal()` with interval and cron |
+| 5. Internal triggers | `internal()` with interval and cron, queue retries and the dead letter |
 | 6. Creating an insight | the `XInsight` class, the aggregation, the dashboard tile |
 | Data Flow Summary | how a value travels page → store → signal → service → document → DB |
 | Auto-Generated API Reference | what signal, service, store, and document each generate — never hand-write these |
@@ -244,7 +244,7 @@ existing content first and change only the relevant sections — never rewrite a
 ## Modeling & Query Gotchas
 
 A short list of things the type system does not always catch. The full rules for text search, `cascade`, and the
-query-level writes are in the convention set above; these are the shapes that build green and fail later.
+query-level writes are in `queryRule`; these are the shapes that build green and fail later.
 
 - **Slices return a query, not a list.** A slice `exec` must return `this.<model>Service.query<Filter>(...)`, never
   a `list<Filter>(...)` / `listBy...(...)` array. Returning an array type-checks but fails at runtime with
@@ -258,7 +258,7 @@ query-level writes are in the convention set above; these are the shapes that bu
   **bare** — `this.userModel.pickById(id, { passwordHash: true })`, likewise `pickOne` / `find` / `findOne` /
   `findById`. A generated filter accessor takes it **inside the option object** —
   `this.userModel.findByAccountId(accountId, statuses, { select: { passwordHash: true } })`. Handing `{ select: … }`
-  to the facade selects a field named `select`, which no model has: the value arrives empty, with no error.
+  to the facade projects a field named `select`, which no model has, and throws `Unknown document field path`.
 - **`cascade` names a direction, and the wrong one is a data loss** — `removeRef` on the relation the owner holds,
   `removeWith` on the child's reference to its owner. A query-level removal fires no hooks and therefore no cascade.
 - **`q.search()` is a filter node, not a slice requirement.** `bySearch: filter().arg("text", String).query((text,

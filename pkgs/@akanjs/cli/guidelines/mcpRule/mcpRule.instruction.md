@@ -34,7 +34,8 @@ export class FileSlice extends slice(srv.file, {
 ```
 
 - **It is curation, not authorization.** HTTP serves the endpoint exactly as before and the guards are still the
-  only thing deciding who may call it. Never write `mcp: false` where you meant a guard.
+  only thing deciding who may call it. Never write `mcp: false` where you meant a guard. To take generated CRUD off
+  HTTP too, write `guards: { cru: false }`.
 - **The `mcp` map on `slice()` mirrors the `guards` map above it** — same keys (`root`, `get`, `cru`, `create`,
   `update`, `remove`), same fallbacks (`create`/`update`/`remove` inherit `cru`), and the same scope: it narrows
   the root slice and the generated CRUD, and never reaches a named slice or a custom endpoint. Those declare
@@ -55,7 +56,8 @@ export class FileSlice extends slice(srv.file, {
 ## Configuration
 Settings live in the app's `lib/option.ts` — `option.setMcp({ … })`, taking `enabled`, `readOnly`, `path`,
 `version`, `instructions`, `allowedOrigins`, `pageSize`, `language`, `legacyTextBlock`, `outputSchema`, `rateLimit`,
-`promptBudget`, `apps`, `modern`, and `auth`. **Not `main.ts`**: the gateway
+`promptBudget`, `apps`, `modern`, and `auth` — or `setMcp((env) => …)` for settings derived from the server env.
+**Not `main.ts`**: the gateway
 there only spawns children, and `option.ts` is the app-authored file `server.ts` already hands to the process that
 mounts `/mcp`. Every lib's option is read in mount order with the app's last, so an app tightens what a library
 declared without restating it. Each field also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
@@ -170,8 +172,8 @@ export default page()
   relation field as its id and the server never converts an object back, so publishing the related model's shape
   asked an agent for what the document layer cannot take. On the response side every entry inlines the transitive
   closure of every model it mentions (a `$ref` may not cross entries), and on an open catalogue 83% of the bytes
-  were the same schemas repeated — so a nested database model is published as `{ type: "object", description:
-  "<ModelName>" }` and the returned model keeps every field of its own; an embedded scalar stays inline. Measured,
+  were the same schemas repeated — so by default (`outputSchema: "shallow"`) a nested database model is published
+  as `{ type: "object", description: "<ModelName>" }` and the returned model keeps every field of its own; an embedded scalar stays inline. Measured,
   that took a 347-tool listing from 1194KB to 532KB, and one user's paged `tools/list` to 320KB.
   `option.setMcp({ outputSchema: "full" })` (`AKAN_MCP_OUTPUT_SCHEMA`) restores the closure; `"none"` publishes no
   `outputSchema` at all — results still ship as `structuredContent`, and the text block stays on whatever
@@ -323,9 +325,9 @@ delegates to lives in `akanjs/server` (`OAuthAuthorize`, `OAuthToken`, `OAuthReg
   (`["cursor"]` by default, for Cursor's desktop callback), `accessTokenSeconds` (3600, also how long a revoked
   access token can outlive its grant), `clientIdMetadata: { enabled, refusePrivateAddresses }` (both on; `enabled:
   false` turns Client ID Metadata Documents off and the metadata stops advertising them — Claude Code then registers
-  dynamically instead), `issuer` and `resource` (only when a tunnel or an edge makes the derived origin wrong),
-  `enabled: false` to take the server and the `/mcp` credential requirement away together. The signin page must
-  honour `?redirect=` to return the user to the consent page.
+  dynamically instead), `issuer` and `resource` (only when a tunnel or an edge makes the derived origin wrong, since
+  an MCP client compares the issuer byte for byte), `enabled: false` to take the server and the `/mcp` credential
+  requirement away together. The signin page must honour `?redirect=` to return the user to the consent page.
 - **Clients:** Claude Code — `claude mcp add --transport http <name> <origin>/mcp` and nothing else; it registers,
   opens the browser to `http://localhost:<port>/callback`, refreshes on 401. claude.ai — a custom connector by URL
   (needs public HTTPS; DCR or the Advanced-settings client id/secret; callback
@@ -485,7 +487,8 @@ the same guards.** What stays closed is closed because no agent has a reason to 
 - **Scope is what makes hiding possible.** `static scope: "account"` (a role check) is evaluated with no arguments
   and filters the listing per caller; `"resource"` (`Can<Verb><Model>`, ownership) needs `context.getArg()`, stays
   listed, and stops the call. Marking a resource guard `"account"` would make the listing lie — the marker has no
-  default for that reason.
+  default for that reason. An `"account"` guard that throws at listing time reached for arguments it does not
+  have: the entry is hidden from every caller and the guard is named once in the log as mismarked.
 - **Identity comes from the internal args** (`.with(Self)`, `.with(Account)`, `.with(Me)`), never from an id the
   client sent, and the service re-checks ownership behind the guard.
 - **An admin who signs in on the consent page mints an admin token.** A connector created under an admin account

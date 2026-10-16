@@ -1,13 +1,20 @@
-# Transport Rule — Guards, Sockets, Binary Frames, HTTP Verbs
+# Transport Rule — Guards, Sockets, Deadlines, Rate Limits, Server-To-Server Calls, Bytes, HTTP Verbs
 
 How a call reaches a signal: what a guard may read on either transport, how a websocket carries its credential
-and its per-connection state, when a pubsub payload leaves JSON for a binary frame, and which HTTP verb a
-mutation is mounted under. `conventions` carries the invariants — this is the full contract behind them.
+and its per-connection state, how long a call may take and what it may cache or count, how one server calls
+another, which body types and bytes cross the wire, when a pubsub payload leaves JSON for a binary frame, and which
+HTTP verb a mutation is mounted under. `conventions` carries the invariants — this is the full contract behind them.
 
 ## Guards And Transports
 
 - Guards run on both HTTP and websocket calls. Read the caller with `context.get<T>("account")` (`pkgs/akanjs/signal/signalContext.ts`) instead of branching on `getHttpContext()` / `getWebSocketContext()`.
 - Slice-level `guards` only reach the generated query/mutation endpoints. A `pubsub`/`message` endpoint is unguarded unless it declares its own `guards` in its signal option.
+- **Every endpoint that declares no guards is named in a boot `warn`**, since it answers anyone over HTTP and
+  WebSocket — a named slice's `init()`, a root slice, a `pubsub`/`message`/`query`/`mutation`. Write
+  `guards: [Public]` to keep one open on purpose.
+- **A generated verb is taken off HTTP with `guards: { cru: false }`** (or `get`/`create`/`update`/`remove:
+  false`), and a verb whose guards resolve to none is not mounted at all. `mcp: { cru: false }` does **not** do
+  this: it keeps the verbs off the agent shelf while HTTP serves them to whoever passes their guards.
 - A pubsub room is authorized once, at subscribe. When a socket's credential changes the framework re-runs each room's guards and unsubscribes the ones that now fail (`SignalResolver.revalidateWsRooms`), so guards must stay side-effect free and safe to re-run. Each re-check runs on a fresh `SignalContext`, so a guard that memoizes per context answers anew.
 - **Arguments are parsed after the `"account"` guards** (`SignalContext.init` reads the body, `exec` parses): the order is middlewares → `account` guards → parse → `resource` guards → internal arguments → handler, whatever order `guards: [...]` lists them in. A caller an account guard refuses never reaches a scalar parser, which is what keeps a slow parser from being a pre-auth denial of service. A guard or middleware that reads `context.args` / `getArg()` earlier still gets the value, parsed on first read — a mismarked account guard keeps working. One visible consequence: an unauthenticated call with a malformed argument answers 401/403 instead of 400.
 - A websocket carries its credential in the handshake snapshot on `ws.data` (`AppWsData`); clients that hold the token in memory send it with `fetch.setJwt(...)`, which forwards an auth frame over the socket.
@@ -24,7 +31,8 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
 - **A device or another server proves itself with a machine token.** `MachineToken.issue({ kind, id, version },
   { expiresAt? })` in `akanjs/server` signs an EdDSA JWT (`typ: akan-machine+jwt`, `aud: <app>/<environment>`) with
   `AKAN_MACHINE_PRIVATE_KEY`; it never expires unless asked. `akan machine-keygen <file>` writes that key to a file
-  and prints only the public one. A server with either key verifies the bearer of every call — HTTP, and the
+  and prints only the public one. A server with either key (`AKAN_MACHINE_PRIVATE_KEY` or
+  `AKAN_MACHINE_PUBLIC_KEY`) verifies the bearer of every call — HTTP, and the
   websocket's auth frame — after every lib middleware, and sets `account.machine = { kind, id, version }` from a
   verified token; it takes off a `machine` any other middleware or a session's claims put there, so a staff token
   can never pass for one, and a session middleware already reads the EdDSA token as anonymous. `.with(Machine)` hands
@@ -51,6 +59,26 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   socket's close, arrives while the subscribe is still running, the subscribe answers `subscribe: false` and runs its
   `unsubscribe` cleanup (and its `disconnect` one when the socket closed) instead of joining the room.
 
+## Writing A Guard
+
+- **Resource guards are `Can<Verb><Model>` classes in `srvkit/guards.ts`** that `implements Guard` with an
+  `async canPass(context)`. They **fail closed**: no resource named ⇒ `false`; a load that throws ⇒ `logger.warn`
+  then `false`. Admin bypass goes first.
+- **Keep `static name = "User";` on guard classes.** `fetch` serializes guard names and the API explorer filters
+  on them; it looks like dead code, and deleting it breaks the UI. Comment it so the next reader knows.
+- **Every guard class declares `static scope: GuardScope`, required with no default.** `"account"` means the
+  verdict reads the caller and nothing about the call, so it can be evaluated with no arguments — which is what
+  lets an MCP listing hide what this caller certainly cannot use. `"resource"` means it needs the call's arguments
+  (`context.getArg()`) and fails closed without them, so it is never evaluated for a listing: the entry stays
+  visible and is stopped at call time. Getting it wrong is not a type error, so the marker is mandatory rather than
+  defaulted — `SignedIn` / `Admin` / role checks are `"account"`, and every `Can<Verb><Model>` is `"resource"`.
+  What a mismarked guard does to a listing, and `static agents = false` on `Person`: `mcpRule`.
+- **Guards ship with the library that owns the model** and are imported by its own signals through the package
+  path, so a mounting app inherits authorization and cannot forget it.
+- The acting user arrives via `.with(Self)` / `.with(CurrentUserId)` / `.with(Me)`; never trust a client-supplied
+  id. Services re-check ownership even when a guard already gated the call — two independent gates.
+- `srvkit/guards.ts` earns real comments: explain what would leak without each guard.
+
 ## Request Deadlines
 
 - **`{ timeout: <ms> }` in an endpoint's signal option is the whole configuration surface**, and it reaches both
@@ -65,7 +93,9 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   five-minute budget that is a five-minute hold on the event loop for a call that answered in a millisecond.
 - **Without a declaration the client's own default applies — 30 seconds** (`DEFAULT_TIMEOUT_MS`,
   `fetch/client/httpClient.ts`), and the server imposes nothing. Nothing else bounds a request: `Bun.serve` runs
-  with `idleTimeout: 0`, so a long call is only ever ended by one of these two.
+  with `idleTimeout: 0`, so a long call is only ever ended by one of these two. An endpoint whose real work runs
+  longer — provisioning, a firmware flow, an external orchestration — therefore has to declare one, or it dies
+  mid-flight with a transport error that does not say whether the server ever received it.
 - **Precedence is caller, then endpoint, then client default.** `fetch.x(…, { timeout: 5_000 })` overrides what
   the endpoint declared; `{ timeout: false }` waits as long as the runtime will. An app moves its own default
   with `fetch.instance.setTimeout(ms)` — `lib/useClient.ts` is generated, so the `timeout` option on
@@ -102,9 +132,10 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   values for its TTL, as the handler returned them.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
-- The default middleware chain is `Logging → Timeout → <lib middlewares>`, and the call inside it runs an
-  `account` rate limit → account guards → argument parse → resource guards → internal arguments → cache →
-  handler: a hung cache backend is bounded by the same deadline as the handler it stands in for. **`Retry` was removed** — an automatic re-run of an endpoint
+- A call runs the cross-site check and an `ip` rate limit, then the body read, then the default middleware chain
+  `Logging → Timeout → <lib middlewares>`, and inside it an `account` rate limit → account guards → argument
+  parse → resource guards → internal arguments → cache → handler: a hung cache backend is bounded by the same
+  deadline as the handler it stands in for. **`Retry` was removed** — an automatic re-run of an endpoint
   whose failure it cannot classify replays whatever the first attempt already did.
 
 ## Repeated Mutations
@@ -156,6 +187,43 @@ mutation is mounted under. `conventions` carries the invariants — this is the 
   ``await this.rateLimit.consume(`otp:${phone}`, { calls: 5, windowMs: 3_600_000 })``, which answers
   `{ ok: true } | { ok: false, retryAfterMs }` and is never switched off — throw the module's own `Err` with the
   wait when it refuses.
+
+## Calling Another Server
+
+- **A server-side `fetch.clone({ origin })` opens no websocket unless `connect: true`**, and neither does a clone
+  of such a clone: it makes one-off calls to another server, and a socket it opened would reconnect forever with
+  nobody to close it. It never carries the visitor's session either: a call to another origin sends only the `jwt`
+  its caller gave the clone.
+- **Retry a call with `retry`, never with a loop of your own.** `fetch.clone({ origin, retry: {} })` (or a call's
+  own `{ retry }`) tries again on an unreachable server, a 502/503/504 and a 429 after its Retry-After, backing off
+  with jitter until the call's one deadline runs out. A mutation retries under one `Idempotency-Key` it mints, or
+  the `idempotencyKey` you name, and the server runs it once per key, caller and arguments (Repeated Mutations
+  above); a signed-out call, one whose handler returns a `Response`, and a call through MCP run every time. A 4xx
+  is never retried.
+- **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(..., { origin })`
+  restores the remote `Err` — the same class, key and `data` — so a hop that rethrows it answers its own caller
+  with that error and the dictionary translates it. Never wrap the catch in a `new Error`, and never re-key it as a
+  `new Err` of your own: both discard what the endpoint chose to say, and a bare `Error` is generalized to
+  `Internal Server Error` on the way out.
+- `String(err)` and `${err}` read `Err: <key> {…data}`, the data as one line of JSON with secret-named keys masked,
+  so a ``logger.warn(`…: ${String(error)}`)`` keeps the exit code or status the `Err` carried.
+
+## Body Types And Bytes
+
+- `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.
+  Numbers are `Int` or `Float` — `Number` is rejected (`pkgs/akanjs/signal/endpointInfo.ts`).
+- **`Upload` is valid only inside a mutation flagged for file upload**:
+  `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])`, as the `file` module does. It is not a
+  model field type. The other body args of such a mutation arrive typed as in a JSON body. A file's `type` on the
+  server is what its name implies, not its bytes — check the bytes when the type matters.
+- **`Binary` is raw bytes on the wire.** It is `Uint8Array` on both sides — a Node `Buffer` is one, so a server
+  handler may pass one straight in — and it accepts base64 in either direction, so the same declaration serves a
+  JSON body and a binary frame. A `Binary` return travels as base64 in an HTTP body. It is never a model field
+  (`fieldRule`).
+- **Never send bytes as `Any`.** `Any` passes a `Buffer` through untouched and `JSON.stringify` then spells it
+  `{ type: "Buffer", data: number[] }`, which `JSON.parse` never restores; the result is 3.6x the wire and a shape
+  that only breaks at the first byte-offset read. A return declared `Any` that turns out to be bytes fails instead
+  of reaching the caller as `{}`, and MCP refuses a `Binary` return for the same reason it refuses `Any`.
 
 ## Binary Pubsub
 

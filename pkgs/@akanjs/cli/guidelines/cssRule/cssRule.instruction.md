@@ -11,13 +11,28 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
 - Compose classes with `cn` from `akanjs/client` (token-aware tailwind-merge) — the only class-combining function. No object syntax: write `cond && "x"`.
 - Forward `className` last so callers can extend styles.
 
+## Color Vocabulary — What Lint Refuses
+- Vocabulary closure strips the raw Tailwind palette, so these render as no CSS and fail lint: raw palette classes
+  (`bg-blue-500`, `text-gray-400`), arbitrary color values (`bg-[#3b82f6]`), an arbitrary class built by
+  interpolation, daisyUI legacy classes (`btn-primary`, `card-body`) and its dropped color slots (`bg-base-100`,
+  `text-base-content`, `text-primary-content`, `bg-error` — use `background`/`muted`/`border`, `foreground`,
+  `<color>-foreground`, `destructive`), and color literals in `style={{...}}` (`no-raw-palette-class`,
+  `no-arbitrary-color`, `no-daisyui-legacy-class`, `no-inline-color`, `no-interpolated-arbitrary-class`).
+- A legitimate fixed color (OS-chrome mockups, data-viz) takes a `// biome-ignore lint/plugin: <reason>`.
+- Color literals in SVG color attributes (`fill`, `stroke`, `stopColor`, `floodColor`, `lightingColor`, `color`) and
+  in `el.style.<prop> = …` / `el.style.setProperty(…)` writes are flagged as warnings for now; `currentColor`,
+  `none`, `transparent`, `var(--…)` and `url(#id)` stay legal.
+- Class order is the sorter's: `nursery/useSortedClasses` is an error and also sorts the string arguments to `cn()`.
+  Output such as `font-bold text-2xl text-foreground` or `border-foreground/5 border-t` is correct — write the
+  classes in any order, run the formatter, leave the result.
+
 ## Recipe Layer
 - Reusable or variant-like styling belongs in a recipe (a cva-style factory), not repeated inline class stacks.
 - Framework primitives ship recipes: `buttonRecipe` and `badgeRecipe` from `akanjs/ui`. Call them as `buttonRecipe(variants, className?)` — the second argument is merged automatically, so you never wrap it in `cn()`:
   - `buttonRecipe({ variant: "primary", size: "lg" }, "w-full rounded-2xl")`
 - Prefer the `akanjs/ui` primitives (`Button`, `Badge`, `Input`, `Field`, `Table` …) over re-implementing a component's look with utility stacks. There is **no `Card`/`Box` primitive** — a card/box is a recipe surface (e.g. `appCard`), not an `akanjs/ui` component; do not `import { Card }`.
 - App-specific repeated surfaces go one-per-file in `apps/<app>/ui/Recipe/` (server-safe, no `"use client"`) via `recipe(tv({ base, variants }))`, imported from `@apps/<app>/ui`. App recipes **extend** (surfaces the lib lacks — chat bubble, tile); they never re-define a lib component in parallel.
-- Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative list is `AGENTS.md` `## UI Recipes` plus the `list_recipes` tool.
+- Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative list is `AGENTS.md` `## Recipes` plus the `list_recipes` tool.
 
 ## Customization Decision (where a design delta goes)
 Screen code is invariant — a plain `<Button variant="primary">` never changes. Only these config files do:

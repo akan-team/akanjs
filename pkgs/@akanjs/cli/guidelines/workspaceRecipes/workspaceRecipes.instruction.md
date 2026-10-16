@@ -66,11 +66,12 @@ const form = st.use.taskForm();
 
 ### Recipe 2: Injecting a Dependency into a Service
 
-Three patterns: injecting an **external adapter** (`use<>()`), another **module's service** (`service<>()`),
-or a **predefined framework adapter** (`plug()`). A field named `<refName>Service` resolves to the service
-registered under `<refName>` — the `Service`/`Signal` suffix is required and stripped to derive the lookup key.
+Four patterns: injecting an **external adapter** (`use<>()`), another **module's service** (`service<>()`),
+a **predefined framework adapter** (`plug()`), or **an adapter you own** (`adapt()` + `plug()`). A field named
+`<refName>Service` resolves to the service registered under `<refName>` — the `Service`/`Signal` suffix is required
+and stripped to derive the lookup key.
 
-> **For a new adapter you own, prefer the `adapt()` shape in pattern C over the `option.ts` registration in
+> **For a new adapter you own, prefer the `adapt()` shape in pattern D over the `option.ts` registration in
 > pattern A.** An `adapt()` class self-registers and is injected with `plug(TheClass)`, so it never touches
 > `option.ts`. Pattern A is the legacy constructor-style shape: recognise it, keep it working, and migrate one
 > only when you are already changing it.
@@ -146,6 +147,46 @@ Injecting a file/image field is usually simpler than calling
 storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the
 store's generated `upload<Field>On<Model>(fileList)` action handle the upload. Add `{ cascade: "removeRef" }` to that
 field when the file belongs to the model alone, and removing the model removes the file and its stored object.
+
+**D. An adapter you own — `adapt()` in `srvkit/`**
+
+An injected singleton is an `adapt()` class in `srvkit/`. Write new adapters this way.
+
+```typescript
+export class AdminNoti extends adapt("adminNoti" as const, ({ use, env, plug, memory }) => ({
+  discordApi: use<DiscordApi>(),
+  workspaceRoot: env(() => `~/build/${getEnv().environment}`),
+  masterHost: plug(MasterHost),
+  tokenMap: memory(Map, { of: String }),
+})) {}
+```
+
+- Inject it with `plug(TheClass)` from a service or from another adapter. Destructure only the injectors you use,
+  and write the registration key `as const`.
+- **Do not register an `adapt()` class in `lib/option.ts`.** It self-registers, and `plug(Class)` uses the class
+  itself as the token. `option.ts` is now only for legacy constructor-style adapters and for widening the options
+  type.
+- `this.logger` is provided; never construct a `Logger` inside an `adapt()` class. Lifecycle work goes in
+  `override async onInit()`.
+- **`adapt()` is for singletons only.** A per-use value object stays a plain class you `new` at the call site. If
+  there is not exactly one per process that a service needs injected, it is a plain class.
+- **`memory(...)` takes a scalar or model class, not only a primitive** — `memory(Map, { of: CallStateInput })`
+  serializes through the constant and travels as JSON text, so the Redis and sqlite-backed caches round-trip the
+  same declaration. Never hand-encode JSON into a `String` memory. A memory is scoped to the service or adaptor
+  that declares it; `ttl` (milliseconds) sets how long each write lives unless the `set` call names its own
+  `expireAt`, and a `Map` entry expires on its own.
+
+Conventions that hold for both adapter shapes (A and D):
+
+- Route every remote call through one private `#api<T>(path, init?)` with `signal: AbortSignal.timeout(20_000)`.
+- Paginate with `for (let page = 1; ; page += 1)` broken by `if (pageItems.length < 100) break;`.
+- Resolve secrets as `process.env.X ?? options.x ?? deterministicGenerator(...)` **inside a function**, never at
+  module scope.
+- Extend a function by appending an optional trailing parameter with a default, never by changing arity.
+- Parameters: up to three required primitives positional; optional flags in a trailing `{ … } = {}`; four or more
+  parameters, or any two same-typed strings, in one named destructured object.
+- Release locks in `finally`. Load heavy optional dependencies through a module-level memoized promise
+  (`puppeteerLoad ??= import("puppeteer")`).
 
 ---
 
@@ -284,6 +325,10 @@ async cleanupStaleTasks() {
 - `cron("min hour dom month dow")` — runs on a schedule
 - `initialize()` — runs once on service startup
 - `process(Return).msg(Type)` — message queue consumer
+
+A `process` job's `backoff: { type: "exponential", delay, maxDelay }` caps the wait between attempts, and the
+internal's `onFailed(job, error)` runs once a job has failed for good — its last attempt, or bullmq's stall limit —
+the dead letter, on either queue.
 
 ---
 
