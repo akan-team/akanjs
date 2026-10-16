@@ -199,6 +199,7 @@ export { sleep } from "./sleep";
 export { getBasePathFromPathname, parseBasePaths, parseSubRouteHosts, resolveSubRouteHosts } from "./subRoute";
 export { TrustedProxy } from "./TrustedProxy";
 export { toError } from "./toError";
+export { trimSlashes, trimTrailingSlashes } from "./trimSlashes";
 export {
   type TunnelAgentIdentity,
   type TunnelAttachedFrame,
