@@ -364,9 +364,17 @@ void run().catch((error) => {
     return { base, allRoutes };
   }
 
+  //? Opt-in and outside `dist/`: a metafile is the size of the module graph, and `dist/` is what the image copies.
   async #buildOrThrow(label: string, config: Bun.BuildConfig): Promise<Bun.BuildOutput> {
-    const result = await Bun.build(config);
+    const metafileDir = process.env.AKAN_BUILD_METAFILE
+      ? path.join(this.#app.workspace.workspaceRoot, "local", "build-meta", path.basename(this.#app.cwdPath))
+      : null;
+    const result = await Bun.build(metafileDir ? { ...config, metafile: true } : config);
     if (!result.success) throw new AggregateError(result.logs, `[${label}] Bun.build failed`);
+    if (metafileDir && result.metafile) {
+      const entry = path.parse(String(config.entrypoints[0] ?? label)).name;
+      await Bun.write(path.join(metafileDir, `${entry}.json`), JSON.stringify(result.metafile));
+    }
     return result;
   }
 
