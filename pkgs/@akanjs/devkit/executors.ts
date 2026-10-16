@@ -1338,7 +1338,7 @@ export class AppExecutor extends SysExecutor {
         pageKeys.push(key);
       }
     }
-    pageKeys.sort();
+    pageKeys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     this.#pageKeys = this.#excludeDevOnlyPages ? this.#dropDevOnlyPages(pageKeys, devOnlyKeys, devOnlyDirs) : pageKeys;
     return this.#pageKeys;
   }
@@ -1596,7 +1596,9 @@ export class PkgExecutor extends Executor {
     devDependencies: string[] = [],
   ): Promise<Pick<PackageJson, "dependencies" | "devDependencies">> {
     const dependencyNames = [...new Set(dependencies)].sort();
-    const devDependencyNames = [...new Set(devDependencies)].filter((dep) => !dependencyNames.includes(dep)).sort();
+    const devDependencyNames = [...new Set(devDependencies)]
+      .filter((dep) => !dependencyNames.includes(dep))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const dependencyVersions = new Map<string, string>();
     const missingDeps: string[] = [];
     for (const dep of [...dependencyNames, ...devDependencyNames]) {
