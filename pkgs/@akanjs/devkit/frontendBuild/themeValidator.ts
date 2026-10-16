@@ -1,4 +1,5 @@
 // No akanjs runtime import: this runs inside the lint path.
+import { type CssBlock, CssBlockParser } from "./cssBlockParser";
 
 export interface ThemeContrastViolation {
   scope: string;
@@ -34,6 +35,7 @@ const PAIRS: PairDef[] = [
 ];
 
 const THEME_SCOPES = new Set([":root", '[data-theme="dark"]', '[data-theme="light"]']);
+const CONDITIONAL_AT_RULES = new Set(["@media", "@supports", "@container"]);
 
 export type ThemeTokensByScope = Record<string, Record<string, string>>;
 
@@ -42,8 +44,9 @@ export class ThemeValidator {
     const tokensByScope = ThemeValidator.parseThemeTokens(css);
     const violations: ThemeContrastViolation[] = [];
     for (const [scope, tokens] of Object.entries(tokensByScope)) {
-      if (!THEME_SCOPES.has(scope)) continue;
-      violations.push(...this.validateScope(tokens, scope));
+      const underlying = THEME_SCOPES.has(scope) ? null : [...THEME_SCOPES].find((name) => scope.endsWith(` ${name}`));
+      const effective = underlying ? ThemeValidator.#overlayPairs(tokensByScope[underlying] ?? {}, tokens) : tokens;
+      violations.push(...this.validateScope(effective, scope));
     }
     return violations;
   }
@@ -75,21 +78,40 @@ export class ThemeValidator {
   /** A scope declared twice keeps the later value, so pass the framework css before the app's. */
   static parseThemeTokens(css: string): ThemeTokensByScope {
     const result: ThemeTokensByScope = {};
-    const blockRe = /(?:^|})\s*([^{}@]+?)\s*\{([^{}]*)\}/g;
-    for (const block of css.matchAll(blockRe)) {
-      const selectors = block[1].split(",").map((s) => s.trim());
-      const relevant = selectors.filter((s) => THEME_SCOPES.has(ThemeValidator.#normalizeScope(s)));
-      if (relevant.length === 0) continue;
-      const decls: Record<string, string> = {};
-      for (const decl of block[2].matchAll(/--([\w-]+)\s*:\s*([^;]+?)\s*(?:;|$)/g)) {
-        decls[decl[1]] = decl[2].trim();
+    CssBlockParser.walk(CssBlockParser.parse(css), "", (node, condition) => {
+      if (node.kind !== "block") return null;
+      if (node.atRule === "@layer") return condition;
+      if (node.atRule) return CONDITIONAL_AT_RULES.has(node.atRule) ? node.prelude.replace(/\s+/g, " ") : null;
+      const scopes = node.prelude
+        .split(",")
+        .map((selector) => ThemeValidator.#normalizeScope(selector))
+        .filter((scope) => THEME_SCOPES.has(scope));
+      if (scopes.length === 0) return null;
+      const tokens = ThemeValidator.#customProperties(node);
+      for (const scope of scopes) {
+        const key = condition ? `${condition} ${scope}` : scope;
+        result[key] = Object.assign(result[key] ?? {}, tokens);
       }
-      for (const selector of relevant) {
-        const scope = ThemeValidator.#normalizeScope(selector);
-        result[scope] = { ...(result[scope] ?? {}), ...decls };
-      }
-    }
+      return null;
+    });
     return result;
+  }
+
+  static #customProperties(block: CssBlock): Record<string, string> {
+    const tokens: Record<string, string> = {};
+    for (const node of block.nodes) {
+      if (node.kind === "declaration" && node.property.startsWith("--")) tokens[node.property.slice(2)] = node.value;
+    }
+    return tokens;
+  }
+
+  static #overlayPairs(underlying: Record<string, string>, tokens: Record<string, string>): Record<string, string> {
+    const effective: Record<string, string> = {};
+    for (const name of PAIRS.flatMap(({ base, fg }) => [base, fg])) {
+      const value = tokens[name] ?? underlying[name];
+      if (value) effective[name] = value;
+    }
+    return effective;
   }
 
   static #normalizeScope(selector: string): string {

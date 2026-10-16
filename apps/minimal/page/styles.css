@@ -10,13 +10,13 @@
   --background: #1a1a1a;
   --foreground: #ffffff;
   --primary: #ff493b;
-  --primary-foreground: #ffffff;
+  --primary-foreground: #1a1a1a;
   --secondary: #2b2e33;
   --secondary-foreground: #ffffff;
   --accent: #d1a23b;
   --accent-foreground: #1a1a1a;
   --neutral: #3ed13b;
-  --neutral-foreground: #ffffff;
+  --neutral-foreground: #1a1a1a;
   --info: #173b78;
   --info-foreground: #ffffff;
   --success: #255fc3;

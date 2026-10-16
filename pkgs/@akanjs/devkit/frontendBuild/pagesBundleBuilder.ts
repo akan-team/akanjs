@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { BunPlugin } from "bun";
+import ts from "typescript";
 import type { PageEntry } from "../artifact/implicitRootLayout";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
@@ -23,6 +24,12 @@ export interface BuildPagesBundleResult {
   outputBytes: number;
   outputCount: number;
   chunkCount: number;
+}
+
+interface TextSpan {
+  start: number;
+  end: number;
+  text: string;
 }
 
 const VIRTUAL_PAGES_ENTRY = "akan-pages-entry";
@@ -174,14 +181,62 @@ export class PagesBundleBuilder {
 
   static transformServerUseClientFetchSource(source: string): string {
     if (!source.includes(`with { type: "macro" }`) || !source.includes("FetchClient.build")) return source;
-    return source
-      .replace(
-        /import\s+\{\s*getSerializedSignal\s*\}\s+from\s+["']\.\/sig["']\s+with\s+\{\s*type\s*:\s*["']macro["']\s*\};/,
-        `import { fetch as serverFetch } from "./sig";`,
-      )
-      .replace(
-        /const\s+fetchProto\s*=\s*FetchClient\.build<[^;]+;/,
-        "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { Err: pageProto.Err, base: serverFetch });",
-      );
+    const tokens = PagesBundleBuilder.#tokenize(source);
+    const edits: TextSpan[] = [];
+    const importAt = PagesBundleBuilder.#indexOfTokens(tokens, PagesBundleBuilder.#macroImportTokens);
+    if (importAt !== -1)
+      edits.push({
+        start: tokens[importAt].start,
+        end: tokens[importAt + PagesBundleBuilder.#macroImportTokens.length - 1].end,
+        text: `import { fetch as serverFetch } from "./sig";`,
+      });
+    const fetchProtoAt = PagesBundleBuilder.#indexOfTokens(tokens, PagesBundleBuilder.#fetchProtoTokens);
+    const fetchProtoEnd = fetchProtoAt === -1 ? undefined : tokens.slice(fetchProtoAt).find(({ text }) => text === ";");
+    if (fetchProtoEnd)
+      edits.push({
+        start: tokens[fetchProtoAt].start,
+        end: fetchProtoEnd.end,
+        text: "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { Err: pageProto.Err, base: serverFetch });",
+      });
+    let transformed = source;
+    for (const { start, end, text } of edits.sort((a, b) => b.start - a.start))
+      transformed = transformed.slice(0, start) + text + transformed.slice(end);
+    return transformed;
+  }
+
+  static readonly #macroImportTokens = [
+    "import",
+    "{",
+    "getSerializedSignal",
+    "}",
+    "from",
+    '"./sig"',
+    "with",
+    "{",
+    "type",
+    ":",
+    '"macro"',
+    "}",
+    ";",
+  ] as const;
+  static readonly #fetchProtoTokens = ["const", "fetchProto", "=", "FetchClient", ".", "build", "<"] as const;
+
+  //? The scanner, not the parser: parsing recurses per nesting level and overflows the stack on a deep `{` run.
+  static #tokenize(source: string): TextSpan[] {
+    const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, source);
+    const tokens: TextSpan[] = [];
+    for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+      const text =
+        kind === ts.SyntaxKind.StringLiteral ? JSON.stringify(scanner.getTokenValue()) : scanner.getTokenText();
+      tokens.push({ text, start: scanner.getTokenStart(), end: scanner.getTokenEnd() });
+    }
+    return tokens;
+  }
+
+  static #indexOfTokens(tokens: TextSpan[], pattern: readonly string[]): number {
+    for (let idx = 0; idx + pattern.length <= tokens.length; idx += 1) {
+      if (pattern.every((text, offset) => tokens[idx + offset].text === text)) return idx;
+    }
+    return -1;
   }
 }

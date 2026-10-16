@@ -6,6 +6,7 @@ import type { App } from "../commandDecorators";
 import { BarrelAnalyzer } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import { CsrEntryFiles } from "./csrEntryFiles";
+import { CssBlockParser } from "./cssBlockParser";
 import { CssCandidateCache } from "./cssCandidateCache";
 import { CssImportResolver } from "./cssImportResolver";
 
@@ -387,10 +388,13 @@ export function isIgnoredNodeModuleSource(filePath: string): boolean {
 
 /** Skips `@theme` blocks: Tailwind emits those variables only when a utility uses one. */
 export function declaredCustomProperties(css: string): string[] {
-  const withoutThemeBlocks = css.replace(/@theme[^{]*\{[^}]*\}/g, "");
-  return [...new Set([...withoutThemeBlocks.matchAll(/(?:^|[\s;{])(--[\w-]+)\s*:/g)].map(([, name]) => name))].filter(
-    (name): name is string => !!name,
-  );
+  const names = new Set<string>();
+  CssBlockParser.walk(CssBlockParser.parse(css), true, (node) => {
+    if (node.kind === "block") return node.atRule === "@theme" ? null : true;
+    if (node.property.startsWith("--")) names.add(node.property);
+    return null;
+  });
+  return [...names];
 }
 
 export function getPageKeyBasePath(pageKey: string, basePaths: string[]): string | null {
