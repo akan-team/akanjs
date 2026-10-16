@@ -155,6 +155,11 @@ export const TARGETS: Record<string, Target> = {
     "rest",
     "fullstack",
   ]),
+  elysia2: competitor("elysia2", "ElysiaJS 2 beta (Bun)", "competitors/elysia2/server.ts", 4006, "bun", "bun", [
+    "pure_http",
+    "rest",
+    "fullstack",
+  ]),
   hono: competitor("hono", "Hono (Bun)", "competitors/hono/server.ts", 4003, "bun", "bun", [
     "pure_http",
     "rest",
@@ -178,6 +183,11 @@ export const TARGETS: Record<string, Target> = {
     "fullstack",
   ]),
   "elysia-built": builtCompetitor("elysia", "ElysiaJS (built / Bun)", 4002, "bun", "bun", [
+    "pure_http",
+    "rest",
+    "fullstack",
+  ]),
+  "elysia2-built": builtCompetitor("elysia2", "ElysiaJS 2 beta (built / Bun)", 4006, "bun", "bun", [
     "pure_http",
     "rest",
     "fullstack",

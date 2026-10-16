@@ -169,6 +169,7 @@ export class AkanServer {
 
   #di: DiLifecycle;
   #openApiDocument: ReturnType<typeof createOpenApiDocument> | null = null;
+  readonly #initTimings = new Map<string, number>();
   #localPublish: LocalPublish | null = null;
   readonly #binaryPubsub = new BinaryPubsub();
   #metricsTimer: Timer | null = null;
@@ -325,7 +326,16 @@ export class AkanServer {
     };
   }
 
-  async init({ routes: initRoutes = true, web }: { routes?: boolean; web?: AkanWebOption } = {}) {
+  async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
+    const start = performance.now();
+    this.#initTimings.clear();
+    await this.#init(option);
+    const stages = [...this.#di.initTimings, ...this.#initTimings].map(([stage, ms]) => `${stage} ${ms.toFixed(1)}`);
+    this.logger.debug(`Initialized in ${(performance.now() - start).toFixed(1)}ms (${stages.join(" · ")})`);
+    return this;
+  }
+
+  async #init({ routes: initRoutes = true, web }: { routes?: boolean; web?: AkanWebOption }) {
     if (this.status !== "stopped") throw new Error("AkanServer is not able to init. It is already running.");
     this.status = "initializing";
     this.#assertPrefixClearsBasePaths();
@@ -341,7 +351,7 @@ export class AkanServer {
         routes,
         routeOptions,
         wsRoutes,
-        builtinRoutes: this.#createBuiltinRoutes(null),
+        builtinRoutes: this.#timedBuiltinRoutes(null),
         renderEnvRoutes: {},
         hmrHub: null,
         webRouter: null,
@@ -355,6 +365,7 @@ export class AkanServer {
       this.logger.debug("web off: serving api only (AKAN_SSR=false, or a build with `web: false`)");
       return noWeb();
     }
+    const webStart = performance.now();
     const { WebRouter } = await import("./webRouter");
     const webRouter = await WebRouter.create({
       web: requestedWeb,
@@ -369,12 +380,13 @@ export class AkanServer {
     this.web = webRouter.web;
     this.logger.verbose(`web on: ssr=${this.web.ssr} csr=${this.web.csr}`);
     const { renderEnvRoutes, hmrHub } = await webRouter.initializeRoute();
+    this.#initTimings.set("web", performance.now() - webStart);
     const webProxyRunner = WebProxyRunner.create(this.#di.webProxies);
     this.#prepared = {
       routes,
       routeOptions,
       wsRoutes,
-      builtinRoutes: this.#createBuiltinRoutes(webRouter),
+      builtinRoutes: this.#timedBuiltinRoutes(webRouter),
       renderEnvRoutes,
       hmrHub,
       webRouter,
@@ -669,6 +681,13 @@ export class AkanServer {
         `Locale "${locale}" is configured but ${missing.length}/${total} dictionaries do not declare it, so their keys fall back to the default locale: ${listed}${rest}`,
       );
     }
+  }
+
+  #timedBuiltinRoutes(webRouter: WebRouter | null): HttpRoutes {
+    const start = performance.now();
+    const builtinRoutes = this.#createBuiltinRoutes(webRouter);
+    this.#initTimings.set("builtinRoutes", performance.now() - start);
+    return builtinRoutes;
   }
 
   // Takes `webRouter` as an argument: this runs while the `#prepared` literal is still being built, so it is null.

@@ -1,0 +1,8 @@
+{
+  "target": "akan-built-single",
+  "scenario": "pure_http_no_db",
+  "p99Ms": 0.829,
+  "rps": 118582.40644110258,
+  "maxRssMb": 55.22,
+  "recordedAt": "2026-10-16T09:01:27.087Z"
+}

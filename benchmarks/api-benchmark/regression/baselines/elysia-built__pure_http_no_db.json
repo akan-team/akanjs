@@ -1,0 +1,8 @@
+{
+  "target": "elysia-built",
+  "scenario": "pure_http_no_db",
+  "p99Ms": 0.71,
+  "rps": 134029.0985926197,
+  "maxRssMb": 50.09,
+  "recordedAt": "2026-10-16T09:01:27.085Z"
+}

@@ -68,6 +68,7 @@ export class DiLifecycle {
   readonly #middleware = new Map<string, MiddlewareCls>();
   readonly webProxies: WebProxyRegistration[] = [];
   readonly disabledModules = new Map<string, string>();
+  readonly initTimings = new Map<string, number>();
   readonly #predefinedAdaptor;
   readonly #cascade = new CascadeRunner();
 
@@ -407,21 +408,22 @@ export class DiLifecycle {
   }
 
   async #initializeAll(): Promise<SignalRoutes> {
-    await this.#initializeUses();
-    await this.#initializeAdaptor();
-    await this.#initializeServerSignal();
-    await this.#initializeService();
-    await this.#initializeInternal();
+    this.initTimings.clear();
+    await this.#initStage("uses", () => this.#initializeUses());
+    await this.#initStage("adaptors", () => this.#initializeAdaptor());
+    await this.#initStage("serverSignals", () => this.#initializeServerSignal());
+    await this.#initStage("services", () => this.#initializeService());
+    await this.#initStage("internals", () => this.#initializeInternal());
     const {
       routes: sliceRoutes,
       wsRoutes: sliceWsRoutes,
       routeOptions: sliceRouteOptions,
-    } = await this.#initializeSlice();
+    } = await this.#initStage("slices", () => this.#initializeSlice());
     const {
       routes: endpointRoutes,
       wsRoutes: endpointWsRoutes,
       routeOptions: endpointRouteOptions,
-    } = await this.#initializeEndpoint();
+    } = await this.#initStage("endpoints", () => this.#initializeEndpoint());
     const routes: SignalRoutes["routes"] = {};
     SignalResolver.mergeHttpRoutes(routes, sliceRoutes);
     SignalResolver.mergeHttpRoutes(routes, endpointRoutes);
@@ -446,6 +448,13 @@ export class DiLifecycle {
       this.#destroyStages(this.hierarchy.adaptorStages, "adaptor", this.live.adaptor, (adaptor) => adaptor.onDestroy()),
     );
     await this.#timed("Destroying uses...", "Destroy uses", () => this.destroyUses());
+  }
+
+  async #initStage<T>(stage: string, run: () => Promise<T>): Promise<T> {
+    const start = performance.now();
+    const result = await run();
+    this.initTimings.set(stage, performance.now() - start);
+    return result;
   }
 
   async #timed(startMessage: string, doneLabel: string, run: () => Promise<unknown>) {

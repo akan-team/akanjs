@@ -1,0 +1,8 @@
+{
+  "target": "hono-built",
+  "scenario": "pure_http_no_db",
+  "p99Ms": 0.767,
+  "rps": 126864.49947402763,
+  "maxRssMb": 44.59,
+  "recordedAt": "2026-10-16T09:01:27.086Z"
+}

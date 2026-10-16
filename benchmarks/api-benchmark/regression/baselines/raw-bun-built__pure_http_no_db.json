@@ -1,0 +1,8 @@
+{
+  "target": "raw-bun-built",
+  "scenario": "pure_http_no_db",
+  "p99Ms": 0.742,
+  "rps": 131260.0174992257,
+  "maxRssMb": 37.67,
+  "recordedAt": "2026-10-16T09:01:27.086Z"
+}
