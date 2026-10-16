@@ -251,7 +251,7 @@ void bootCsr(pages);
   // An unclosed body runs to EOF, as the HTML tokenizer reads it; that also keeps the scan linear.
   static blankEmbeddedContent(html: string): string {
     return html.replace(
-      /<script\b[^>]*>[\s\S]*?(?:<\/script(?:[\s/][^>]*)?>|$)|<style\b[^>]*>[\s\S]*?(?:<\/style(?:[\s/][^>]*)?>|$)|<!--[\s\S]*?(?:--!?>|$)/gi,
+      /<script\b[^>]*>[\s\S]*?(?:<\/script(?:[\s/][^<>]*)?>|$)|<style\b[^>]*>[\s\S]*?(?:<\/style(?:[\s/][^<>]*)?>|$)|<!--[\s\S]*?(?:--!?>|$)/gi,
       (match) => " ".repeat(match.length),
     );
   }

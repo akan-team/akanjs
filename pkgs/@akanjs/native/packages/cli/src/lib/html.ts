@@ -46,11 +46,11 @@ export function injectEarlyErrors(html: string): string {
   for (let m = opening.exec(html); m; m = opening.exec(html)) {
     const tagEnd = html.indexOf(">", m.index);
     if (tagEnd < 0) break;
-    const closing = /\s*<\/script>/iy;
-    closing.lastIndex = tagEnd + 1;
-    const close = closing.exec(html);
-    if (close && loadsInitScript(html.slice(m.index, tagEnd)))
-      return insertAt(html, tagEnd + 1 + close[0].length, `<script>${EARLY_ERRORS_SCRIPT}</script>`);
+    let closeAt = tagEnd + 1;
+    while (closeAt < html.length && /\s/.test(html.charAt(closeAt))) closeAt += 1;
+    const closeEnd = closeAt + "</script>".length;
+    if (html.slice(closeAt, closeEnd).toLowerCase() === "</script>" && loadsInitScript(html.slice(m.index, tagEnd)))
+      return insertAt(html, closeEnd, `<script>${EARLY_ERRORS_SCRIPT}</script>`);
     opening.lastIndex = tagEnd + 1;
   }
   return html;
