@@ -10,11 +10,10 @@ import {
   ID,
   INTERNAL_META,
   Int,
-  PrimitiveRegistry,
   type PromiseOrObject,
   SLICE_META,
 } from "akanjs/base";
-import { capitalize, cookieHeaderHasAuthToken, Logger } from "akanjs/common";
+import { capitalize, Logger } from "akanjs/common";
 import {
   type ConstantField,
   deserialize,
@@ -37,7 +36,6 @@ import {
 import { websocketRoomContract } from "../../common/websocketContract";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
 import type { EndpointInfo } from "../../signal/endpointInfo";
-import { EndpointRateLimit } from "../../signal/endpointRateLimit";
 import type { Internal, InternalCls } from "../../signal/internal";
 import { Machine } from "../../signal/internalArg";
 import type { InternalInfo } from "../../signal/internalInfo";
@@ -676,32 +674,7 @@ export class SignalResolver {
         );
       switch (endpointInfo.type) {
         case "query":
-          SignalResolver.#mountHttpRoute(
-            routes,
-            path,
-            SignalResolver.#canUsePrimitiveQueryFastPath(key, endpointInfo, middleware)
-              ? {
-                  GET: async (req) => {
-                    if (req.headers.get("authorization") || cookieHeaderHasAuthToken(req.headers.get("cookie")))
-                      return await normalHttpHandler(req);
-                    // No trace by design: this fast path exists to skip per-request work.
-                    return await SignalContext.try(
-                      endpoint,
-                      endpointInfo,
-                      key,
-                      async () => {
-                        const result = await endpointInfo.execFn?.call(endpoint);
-                        return result instanceof Response ? result : Response.json(result);
-                      },
-                      { trace: false },
-                    );
-                  },
-                }
-              : {
-                  GET: normalHttpHandler,
-                },
-            key,
-          );
+          SignalResolver.#mountHttpRoute(routes, path, { GET: normalHttpHandler }, key);
           break;
         case "mutation":
           SignalResolver.#mountHttpRoute(
@@ -853,24 +826,6 @@ export class SignalResolver {
     const select = Object.fromEntries(Object.keys(fields).map((field) => [field, true] as const));
     SignalResolver.#selectCache.set(constant, select);
     return select;
-  }
-
-  static #canUsePrimitiveQueryFastPath(
-    key: string,
-    endpointInfo: EndpointInfo,
-    middleware: Map<string, MiddlewareCls>,
-  ) {
-    return (
-      process.env.AKAN_TRACE !== "1" &&
-      !EndpointRateLimit.budgetOf(key, endpointInfo) &&
-      endpointInfo.args.length === 0 &&
-      endpointInfo.internalArgs.length === 0 &&
-      (endpointInfo.signalOption.guards?.length ?? 0) === 0 &&
-      (endpointInfo.signalOption.middlewares?.length ?? 0) === 0 &&
-      [...middleware.values()].every((MiddlewareCls) => MiddlewareCls.refName === "AccountMiddleware") &&
-      endpointInfo.returns.arrDepth === 0 &&
-      PrimitiveRegistry.has(endpointInfo.returns.returnRef as Cls)
-    );
   }
 
   // Rooms are authorized once at subscribe; without this re-check a signed-out socket would keep its old rooms.

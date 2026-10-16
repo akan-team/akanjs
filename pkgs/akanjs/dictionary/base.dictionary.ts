@@ -49,6 +49,7 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "서버가 예상하지 못한 응답을 보냈습니다. ({status})",
     ],
     immutableField: ["{field} cannot be changed after creation.", "{field}은(는) 생성 후에는 바꿀 수 없습니다."],
+    invalidArgument: ["{name} has an invalid value.", "{name} 값이 올바르지 않습니다."],
     relationNotFound: [
       "The {model} that {field} refers to no longer exists.",
       "{field}이(가) 가리키는 {model}을(를) 찾을 수 없습니다.",

@@ -38,8 +38,19 @@ export type HttpPeerResolver = (req: Request) => { address: string; port: number
 
 const httpEndpointTypes = new Set<EndpointType>(["query", "mutation"]);
 
-const deserializeArg = (arg: ArgInfo, value: unknown) =>
-  deserialize(arg.argRef, arg.arrDepth, value, { key: arg.name, nullable: arg.option?.nullable, enum: arg.enum });
+const deserializeArg = (arg: ArgInfo, value: unknown) => {
+  try {
+    return deserialize(arg.argRef, arg.arrDepth, value, {
+      key: arg.name,
+      nullable: arg.option?.nullable,
+      enum: arg.enum,
+    });
+  } catch (error) {
+    //? The parsers throw a plain `Error`, which `SignalFailure` would answer as a 500 for the caller's own input.
+    if (isExceptionLike(error)) throw error;
+    throw new Err.BadRequest("base.error.invalidArgument", { name: arg.name });
+  }
+};
 
 interface WebSocketRequest {
   ws: Bun.ServerWebSocket<unknown>;
@@ -364,9 +375,8 @@ export class SignalContext<
     key: string,
     origin: TraceOrigin,
     fn: () => Promise<T>,
-    { trace = true }: { trace?: boolean } = {},
   ): Promise<T> {
-    return await runTraced(trace ? SignalTrace.create(key, endpointInfo.type, origin) : null, async () => {
+    return await runTraced(SignalTrace.create(key, endpointInfo.type, origin), async () => {
       try {
         return await fn();
       } catch (error) {
@@ -385,10 +395,9 @@ export class SignalContext<
     endpointInfo: EndpointInfo,
     key: string,
     fn: () => Promise<Response | undefined>,
-    options: { trace?: boolean } = {},
   ): Promise<Response | undefined> {
     try {
-      return await SignalContext.run(endpoint, endpointInfo, key, "http", fn, options);
+      return await SignalContext.run(endpoint, endpointInfo, key, "http", fn);
     } catch (error) {
       if (endpointInfo.type === "message" || endpointInfo.type === "pubsub") throw error;
       if (isExceptionLike(error)) {

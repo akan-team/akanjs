@@ -1580,6 +1580,32 @@ describe("SignalContext argument parsing", () => {
     expect(await statusWith([TestAdmin as GuardCls])).toBe(400);
   });
 
+  test("answers a malformed scalar argument with a 400 naming it, not a 500", async () => {
+    const responseWith = async (guards: GuardCls[], query: string) => {
+      const endpointInfo = buildEndpoint
+        .query(String, { guards })
+        .search("limit", Int)
+        .exec((limit) => `limit:${limit}`);
+      const adaptor = new (adapt("signalTestMalformedArgAdaptor"))();
+      const request = makeHttpRequest({ url: `http://localhost/items?${query}` });
+      return (await SignalContext.try(adaptor, endpointInfo, "malformedArg", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, request });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    };
+
+    const malformed = await responseWith([TestAdmin as GuardCls], "limit=abc");
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({
+      error: "base.error.invalidArgument",
+      statusCode: 400,
+      data: { name: "limit" },
+    });
+    expect((await responseWith([AccountDeny as GuardCls], "limit=abc")).status).toBe(403);
+    expect(await (await responseWith([TestAdmin as GuardCls], "limit=3")).json()).toBe("limit:3");
+  });
+
   test("runs account guards before resource guards, which read the parsed arguments", async () => {
     const trace: string[] = [];
     class ResourceReads implements Guard {

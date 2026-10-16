@@ -168,6 +168,7 @@ export class AkanServer {
   shutdownTimeoutMs = AkanServer.#defaultShutdownTimeoutMs();
 
   #di: DiLifecycle;
+  #openApiDocument: ReturnType<typeof createOpenApiDocument> | null = null;
   #localPublish: LocalPublish | null = null;
   readonly #binaryPubsub = new BinaryPubsub();
   #metricsTimer: Timer | null = null;
@@ -675,17 +676,7 @@ export class AkanServer {
     const { appName } = getEnv();
     const openapiRoutes: HttpRoutes = this.openapi
       ? {
-          "/openapi.json": {
-            GET: () =>
-              Response.json(
-                createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
-                  title: `${appName} API`,
-                  version: "0.0.0",
-                  servers: this.#getOpenApiServers(),
-                  resolveDescription: AkanServer.#createDescriptionResolver(),
-                }),
-              ),
-          },
+          "/openapi.json": { GET: () => Response.json(this.#getOpenApiDocument(appName)) },
         }
       : {};
     // Mounted at the root, not under the prefix: its URL is the OAuth resource URI clients authenticate against.
@@ -809,6 +800,16 @@ export class AkanServer {
   }
 
   // Rebuilt per request, not cached: libs register dictionaries at module evaluation, so a snapshot could go stale.
+  #getOpenApiDocument(appName: string) {
+    this.#openApiDocument ??= createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
+      title: `${appName} API`,
+      version: "0.0.0",
+      servers: this.#getOpenApiServers(),
+      resolveDescription: AkanServer.#createDescriptionResolver(),
+    });
+    return this.#openApiDocument;
+  }
+
   static #createDescriptionResolver() {
     const lookup = new DictionaryLookup();
     return (key: string) => lookup.text(key);
