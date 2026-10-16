@@ -36,6 +36,14 @@ describe("runtime config helpers", () => {
     ).toEqual({ defaultLocale: "ko", locales: ["en", "ko", "ja"] });
   });
 
+  test("answers the same frozen config while the variables read the same, and a new one once they change", () => {
+    const korean = { AKAN_PUBLIC_DEFAULT_LOCALE: "ko", AKAN_PUBLIC_LOCALES: "en,ko" };
+    const first = parseAkanI18nEnv(korean);
+    expect(parseAkanI18nEnv({ ...korean })).toBe(first);
+    expect(Object.isFrozen(first.locales)).toBe(true);
+    expect(parseAkanI18nEnv({ ...korean, AKAN_PUBLIC_DEFAULT_LOCALE: "en" }).defaultLocale).toBe("en");
+  });
+
   test("parses and detects configured base paths", () => {
     expect(parseBasePaths("akanjs, soft,akanjs,,")).toEqual(["akanjs", "soft"]);
     expect(parseBasePaths(new Set(["akan", "akan", "admin"]))).toEqual(["akan", "admin"]);

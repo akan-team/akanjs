@@ -370,6 +370,7 @@ export class WebRouter {
     const localCsrDir = path.join(process.cwd(), "csr");
     const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
     const publicDir = path.join(process.env.AKAN_APP_DIR ?? path.dirname(Bun.main), "public");
+    const shippedPublicFiles = this.#prodMode ? WebRouter.#shippedFiles(publicDir) : null;
     const imageCacheDir = path.join(this.#artifactDir, "image-cache");
     const imageOptimizer = new ImageOptimizer({
       publicDir,
@@ -570,7 +571,7 @@ export class WebRouter {
         }
 
         const filePath = resolveStaticPath(publicDir, url.pathname);
-        if (filePath && (await Bun.file(filePath).exists())) {
+        if (filePath && (await WebRouter.#isPublicFile(filePath, url.pathname, shippedPublicFiles))) {
           this.#requestStats.staticAsset += 1;
           const contentType = Bun.file(filePath).type || "application/octet-stream";
           return WebRouter.#fileResponse(req, filePath, {
@@ -1129,6 +1130,21 @@ export class WebRouter {
     this.#logger.warn(`[csr] ${message}`);
     return new Response(message, { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
+  //? A production `public/` is what the build shipped, so an extensionless path, which is a page, is answered from the
+  //? list made at boot; a path with an extension is still checked on disk, so a file written there at runtime is served.
+  static async #isPublicFile(filePath: string, pathname: string, shipped: Set<string> | null) {
+    if (shipped && !path.extname(pathname)) return shipped.has(filePath);
+    return await Bun.file(filePath).exists();
+  }
+
+  static #shippedFiles(dir: string): Set<string> {
+    const files = new Set<string>();
+    if (!fs.existsSync(dir)) return files;
+    const scan = new Bun.Glob("**/*").scanSync({ cwd: dir, onlyFiles: true, dot: true, followSymlinks: true });
+    for (const relative of scan) files.add(path.resolve(dir, relative));
+    return files;
+  }
+
   static #injectBeforeBodyEnd(html: string, snippet: string): string {
     const matches = [...html.matchAll(/<\/body\s*>/gi)];
     const last = matches.at(-1);

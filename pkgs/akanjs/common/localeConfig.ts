@@ -28,14 +28,22 @@ export function resolveAkanI18nConfig(input: AkanI18nConfigInput = {}): AkanI18n
   return { defaultLocale, locales };
 }
 
+let lastParsed: { defaultLocale?: string; locales?: string; config: AkanI18nConfig } | null = null;
+
+//? Read on every page request by the locale proxy and the router, so the last answer is kept while the two variables
+//? still spell the same; frozen, as the default is, because every caller now shares it.
 export function parseAkanI18nEnv(
   env: Record<string, string | undefined> = {
     AKAN_PUBLIC_DEFAULT_LOCALE: typeof process !== "undefined" ? process.env.AKAN_PUBLIC_DEFAULT_LOCALE : undefined,
     AKAN_PUBLIC_LOCALES: typeof process !== "undefined" ? process.env.AKAN_PUBLIC_LOCALES : undefined,
   },
 ): AkanI18nConfig {
-  return resolveAkanI18nConfig({
-    defaultLocale: env.AKAN_PUBLIC_DEFAULT_LOCALE,
-    locales: env.AKAN_PUBLIC_LOCALES?.split(","),
-  });
+  const defaultLocale = env.AKAN_PUBLIC_DEFAULT_LOCALE;
+  const locales = env.AKAN_PUBLIC_LOCALES;
+  if (lastParsed && lastParsed.defaultLocale === defaultLocale && lastParsed.locales === locales)
+    return lastParsed.config;
+  const resolved = resolveAkanI18nConfig({ defaultLocale, locales: locales?.split(",") });
+  const config = Object.freeze({ ...resolved, locales: Object.freeze(resolved.locales) as unknown as string[] });
+  lastParsed = { defaultLocale, locales, config };
+  return config;
 }

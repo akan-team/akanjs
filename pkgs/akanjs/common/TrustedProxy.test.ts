@@ -23,6 +23,14 @@ describe("TrustedProxy.clientAddress", () => {
   test("unwraps a mapped IPv4 peer", () => {
     expect(TrustedProxy.clientAddress(headers({}), "::ffff:198.51.100.7")).toBe("198.51.100.7");
   });
+
+  test("judges a peer again once the proxy list changes", () => {
+    expect(TrustedProxy.isTrusted("203.0.113.5")).toBe(false);
+    TrustedProxy.configure("203.0.113.0/24");
+    expect(TrustedProxy.isTrusted("203.0.113.5")).toBe(true);
+    TrustedProxy.configure("");
+    expect(TrustedProxy.isTrusted("203.0.113.5")).toBe(false);
+  });
 });
 
 describe("TrustedProxy.isPrivateAddress", () => {

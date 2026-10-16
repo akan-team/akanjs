@@ -1,6 +1,5 @@
 import path from "node:path";
-import { matchRoutePattern } from "akanjs/common";
-import { matchRoutePrefix } from "../../common/routeConvention";
+import { RouteSeedMatcher } from "./routeSeedMatcher";
 
 export interface RouteSeedEntry {
   routeId: string;
@@ -61,27 +60,11 @@ export class RouteSeedIndexStore {
   }
 
   static match(pathname: string, entries: RouteSeedEntry[]): MatchedRoute | null {
-    for (const entry of entries) {
-      const params = matchRoutePattern(entry.pattern ?? entry.routeId, pathname);
-      if (params) return { entry, params };
-    }
-    return null;
+    return RouteSeedMatcher.of(entries).match(pathname);
   }
 
   static matchPrefix(pathname: string, entries: RouteSeedEntry[]): MatchedRoute | null {
-    const candidates = entries
-      .map((entry) => ({
-        entry,
-        params: matchRoutePrefix(entry.pattern ?? entry.routeId, pathname),
-      }))
-      .filter((entry): entry is { entry: RouteSeedEntry; params: Record<string, string> } => Boolean(entry.params))
-      .sort((a, b) => {
-        const lengthDelta =
-          b.entry.pattern.split("/").filter(Boolean).length - a.entry.pattern.split("/").filter(Boolean).length;
-        if (lengthDelta !== 0) return lengthDelta;
-        return a.entry.pattern < b.entry.pattern ? -1 : a.entry.pattern > b.entry.pattern ? 1 : 0;
-      });
-    return candidates[0] ?? null;
+    return RouteSeedMatcher.of(entries).matchPrefix(pathname);
   }
 
   static #normalizeArtifactPath(artifactPath: string, artifactDir: string): string {

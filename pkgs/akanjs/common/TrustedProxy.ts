@@ -5,8 +5,12 @@ import { clientAddressFromHeaders, normalizeIpAddress } from "./clientAddress";
 export class TrustedProxy {
   static #cidrs: { bytes: Uint8Array; bits: number }[] | null = null;
   static #trustAll: boolean | null = null;
+  //? Every request asks about its peer, and behind a proxy that is the same few addresses; bounded for a direct server.
+  static readonly #verdicts = new Map<string, boolean>();
+  static readonly #verdictLimit = 1024;
 
   static configure(list: string | null | undefined) {
+    TrustedProxy.#verdicts.clear();
     TrustedProxy.#trustAll = list?.trim() === "*";
     TrustedProxy.#cidrs = (list ?? "")
       .split(",")
@@ -21,6 +25,7 @@ export class TrustedProxy {
   static reset() {
     TrustedProxy.#cidrs = null;
     TrustedProxy.#trustAll = null;
+    TrustedProxy.#verdicts.clear();
   }
 
   static #load() {
@@ -31,6 +36,15 @@ export class TrustedProxy {
     if (!address) return false;
     TrustedProxy.#load();
     if (TrustedProxy.#trustAll) return true;
+    const known = TrustedProxy.#verdicts.get(address);
+    if (known !== undefined) return known;
+    const verdict = TrustedProxy.#judge(address);
+    if (TrustedProxy.#verdicts.size >= TrustedProxy.#verdictLimit) TrustedProxy.#verdicts.clear();
+    TrustedProxy.#verdicts.set(address, verdict);
+    return verdict;
+  }
+
+  static #judge(address: string): boolean {
     const bytes = TrustedProxy.#toBytes(normalizeIpAddress(address));
     if (!bytes) return false;
     if (TrustedProxy.#isLocalRange(bytes)) return true;
