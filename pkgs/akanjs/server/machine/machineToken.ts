@@ -12,7 +12,15 @@ export interface MachineTokenIssueOptions {
   audience?: string;
 }
 
-export type MachineTokenVerdict = { ok: true; identity: MachineIdentity } | { ok: false; reason: string };
+export type MachineTokenVerdict =
+  | { ok: true; identity: MachineIdentity; expiresAt?: number }
+  | { ok: false; reason: string };
+
+/** What a bearer machine token proves, and the second it lapses at when it was issued with an expiry. */
+export interface MachineProof {
+  identity: MachineIdentity;
+  expiresAt?: number;
+}
 
 interface KeyPair {
   privateKey: KeyObject | null;
@@ -25,6 +33,7 @@ export class MachineToken {
   static readonly type = "akan-machine+jwt";
   static readonly #logger = new Logger("MachineToken");
   static #keys: { source: string; pair: KeyPair } | null = null;
+  static #keyEpoch = 0;
   static #warnedKeyless = false;
 
   static audience() {
@@ -46,7 +55,14 @@ export class MachineToken {
         : null;
     const pair = { privateKey, publicKey };
     MachineToken.#keys = { source, pair };
+    MachineToken.#keyEpoch += 1;
     return pair;
+  }
+
+  /** Moves whenever the keys read from the env change, so a verdict kept from before is known to be stale. */
+  static keyEpoch() {
+    MachineToken.#keyPair();
+    return MachineToken.#keyEpoch;
   }
 
   static canIssue() {
@@ -89,15 +105,23 @@ export class MachineToken {
     if (exp !== undefined && (typeof exp !== "number" || exp <= nowSec)) return { ok: false, reason: "expired" };
     const identity = { kind, id: sub, version: ver } as MachineIdentity;
     if (!MachineToken.#isIdentity(identity)) return { ok: false, reason: "sub, kind and ver are required" };
-    return { ok: true, identity: { kind: identity.kind, id: identity.id, version: identity.version } };
+    return {
+      ok: true,
+      identity: { kind: identity.kind, id: identity.id, version: identity.version },
+      ...(exp !== undefined ? { expiresAt: exp as number } : {}),
+    };
   }
 
   /** The identity a bearer machine token proves, or `null`: absent, another kind of token, or one that fails. */
   static fromAuthorization(authorization: string | null | undefined): MachineIdentity | null {
+    return MachineToken.proofOf(authorization)?.identity ?? null;
+  }
+
+  static proofOf(authorization: string | null | undefined): MachineProof | null {
     const token = bearerTokenOf(authorization);
     if (!token || !MachineToken.isMachineToken(token)) return null;
     const verdict = MachineToken.verify(token);
-    if (verdict.ok) return verdict.identity;
+    if (verdict.ok) return verdict.expiresAt === undefined ? { identity: verdict.identity } : verdict;
     if (!MachineToken.canVerify() && !MachineToken.#warnedKeyless) {
       MachineToken.#warnedKeyless = true;
       MachineToken.#logger.error(

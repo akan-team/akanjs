@@ -9,10 +9,18 @@ import type { AccessAccount, ReqType } from "./accountMiddleware.helper";
 import { isAgentToken } from "./agentCall";
 import { RevokedSessions } from "./revokedSessions";
 
-type ScopedAccount = AccessAccount & AuthTokenMeta & { self?: unknown; me?: unknown };
+type ScopedAccount = AccessAccount & AuthTokenMeta & { self?: unknown; me?: unknown; exp?: number };
+
+interface VerifiedToken {
+  authorization: string | undefined;
+  account: ScopedAccount;
+}
 
 export class AccountMiddleware implements Middleware {
   static readonly refName = "AccountMiddleware";
+  //? A socket re-presents the same token on every frame, and its signature verifies the same way until it expires;
+  //? the revocation check below is not cached, so a revoked session still loses the next frame.
+  static readonly #verifiedBySocket = new WeakMap<object, VerifiedToken>();
 
   // Each identity in a token answers to its own session, so signing out of the console drops only `me`. A token
   // minted before the per-scope ids carries one `sid` for whatever it holds.
@@ -39,11 +47,13 @@ export class AccountMiddleware implements Middleware {
         context.transport === "http" ? context.getHttpContext().req : context.getWebSocketContext().ws.data
       ) as Partial<ReqType>;
       const cookieJwt = readAuthToken((key) => req.cookies?.get(key));
-      const account = await resolveJwt<ScopedAccount>(
-        jwtSecret,
-        req.headers?.get("authorization") ?? (cookieJwt ? `Bearer ${cookieJwt}` : undefined),
-        { appName, environment } as unknown as ScopedAccount,
-      );
+      const authorization = req.headers?.get("authorization") ?? (cookieJwt ? `Bearer ${cookieJwt}` : undefined);
+      const resolve = () =>
+        resolveJwt<ScopedAccount>(jwtSecret, authorization, { appName, environment } as unknown as ScopedAccount);
+      const account =
+        context.transport === "websocket"
+          ? await AccountMiddleware.#verifiedOnSocket(req, authorization, resolve)
+          : await resolve();
       const live = account.tokenType === "access" ? await AccountMiddleware.withoutRevoked(account) : null;
       Object.assign(req, {
         account: live ?? ({ appName, environment } as Account),
@@ -51,5 +61,21 @@ export class AccountMiddleware implements Middleware {
       });
       return await next();
     };
+  }
+
+  // A copy per frame, so nothing a frame's handlers write onto the account reaches the next one.
+  static async #verifiedOnSocket(
+    socket: object,
+    authorization: string | undefined,
+    resolve: () => Promise<ScopedAccount>,
+  ): Promise<ScopedAccount> {
+    const verified = AccountMiddleware.#verifiedBySocket.get(socket);
+    const reusable =
+      verified?.authorization === authorization &&
+      (verified.account.exp === undefined || verified.account.exp * 1000 > Date.now());
+    if (verified && reusable) return { ...verified.account };
+    const account = await resolve();
+    AccountMiddleware.#verifiedBySocket.set(socket, { authorization, account });
+    return { ...account };
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { resetEnvCache } from "akanjs/base";
 import { Machine, type SignalContext } from "akanjs/signal";
@@ -130,6 +130,33 @@ describe("MachineAccount", () => {
     expect(http.machine).toEqual(kiosk);
     const ws = await callWith({ headers: new Headers({ authorization }) }, "websocket");
     expect(ws.account).toEqual({ appName: "fleet", environment: "main", machine: kiosk });
+  });
+
+  test("verifies a socket's token once, until the token changes, the keys change or it lapses", async () => {
+    const verify = spyOn(MachineToken, "verify");
+    try {
+      const holder = { headers: new Headers({ authorization: `Bearer ${MachineToken.issue(kiosk)}` }) };
+      for (let idx = 0; idx < 3; idx += 1) expect((await callWith(holder, "websocket")).machine).toEqual(kiosk);
+      expect(verify).toHaveBeenCalledTimes(1);
+
+      const other = { kind: "kiosk", id: "pc-8", version: 1 };
+      holder.headers.set("authorization", `Bearer ${MachineToken.issue(other)}`);
+      expect((await callWith(holder, "websocket")).machine).toEqual(other);
+      useEnv({ AKAN_MACHINE_PRIVATE_KEY: Ed25519Key.generate().privatePem });
+      expect((await callWith(holder, "websocket")).machine).toBeNull();
+      expect(verify).toHaveBeenCalledTimes(3);
+
+      holder.headers.set(
+        "authorization",
+        `Bearer ${MachineToken.issue(kiosk, { expiresAt: new Date(Date.now() + 60_000) })}`,
+      );
+      expect((await callWith(holder, "websocket")).machine).toEqual(kiosk);
+      setSystemTime(new Date(Date.now() + 120_000));
+      expect((await callWith(holder, "websocket")).machine).toBeNull();
+    } finally {
+      setSystemTime();
+      verify.mockRestore();
+    }
   });
 
   test("takes off a machine any other middleware put on the account", async () => {

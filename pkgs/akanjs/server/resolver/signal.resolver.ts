@@ -24,6 +24,7 @@ import {
 } from "akanjs/constant";
 import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
 import {
+  type AdaptorCls,
   type AkanJob,
   type AkanJobOptions,
   type DocumentStore,
@@ -76,6 +77,7 @@ export class SignalResolver {
   static readonly #coalescingRooms = new Set<string>();
   static readonly #liveRoutes = new Map<string, { store: DocumentStore; route: LiveRoute }>();
   static readonly #everyRowAsked = new Set<string>();
+  static readonly #websockets = new WeakMap<InjectRegistry, { key: AdaptorCls; websocket: WebsocketAdaptor }>();
 
   static coalescesRoom(roomId: string): boolean {
     const separator = roomId.indexOf("-");
@@ -876,17 +878,24 @@ export class SignalResolver {
     if ((live?.syncHub.roomCount ?? 0) < liveRooms) SignalResolver.#roomReplay?.forget(roomId);
     else SignalResolver.#roomReplay?.left(roomId);
   }
+  // Every subscribe and every live event reaches this, so the scan runs once per registry and the answer is kept while
+  // the registry still holds that same instance under that same key.
   static #getWebsocket(registry: InjectRegistry): WebsocketAdaptor {
+    const found = SignalResolver.#websockets.get(registry);
+    if (found && registry.adaptor.get(found.key) === (found.websocket as unknown)) return found.websocket;
+    const key = SignalResolver.#websocketKey(registry);
+    const websocket = key ? (registry.adaptor.get(key) as WebsocketAdaptor | undefined) : undefined;
+    if (!key || !websocket) throw new Error("WebSocket adaptor is not registered");
+    SignalResolver.#websockets.set(registry, { key, websocket });
+    return websocket;
+  }
+
+  static #websocketKey(registry: InjectRegistry): AdaptorCls | undefined {
+    if (registry.adaptor.has(WebsocketAdaptorRole)) return WebsocketAdaptorRole;
     const roleProvider = [...registry.adaptorRole.entries()].find(
       ([role]) => role.refName === WebsocketAdaptorRole.refName,
     )?.[1];
-    const websocket =
-      (registry.adaptor.get(WebsocketAdaptorRole) as WebsocketAdaptor | undefined) ??
-      (roleProvider ? (registry.adaptor.get(roleProvider) as WebsocketAdaptor | undefined) : undefined) ??
-      ([...registry.adaptor.entries()].find(([adaptorCls]) =>
-        ["solidPubsub", "wsRedis"].includes(adaptorCls.refName),
-      )?.[1] as WebsocketAdaptor | undefined);
-    if (!websocket) throw new Error("WebSocket adaptor is not registered");
-    return websocket;
+    if (roleProvider && registry.adaptor.has(roleProvider)) return roleProvider;
+    return [...registry.adaptor.keys()].find((adaptorCls) => ["solidPubsub", "wsRedis"].includes(adaptorCls.refName));
   }
 }
