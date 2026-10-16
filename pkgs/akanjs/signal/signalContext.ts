@@ -29,6 +29,7 @@ import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
 import { Exception, isExceptionLike } from "./exception";
 import { type GuardCls, type GuardScope, guardOf } from "./guard";
+import { MiddlewareChain } from "./middlewareChain";
 import { SignalFailure } from "./SignalFailure";
 import { getCurrentTrace, runTraced, SignalTrace, type TraceOrigin, traceSpan } from "./trace";
 
@@ -59,7 +60,6 @@ interface WebSocketRequest {
   eventType: WebSocketEventType;
 }
 type RuntimeRecord = Record<string, unknown>;
-type MiddlewareHandler = (context: SignalContext, next: () => Promise<unknown>) => PromiseOrObject<unknown>;
 /** Request-scoped: the outermost `resolveReturn` starts one and every recursion threads it down. */
 type ResolveCache = Map<ConstantFieldTypeInput, Map<string, Promise<unknown>>>;
 
@@ -146,7 +146,8 @@ export class SignalContext<
       CrossSiteGuard.assertOrigin(httpCtx.req, httpCtx.url, this.key);
     }
     // Leaving a room is never refused: a client held there could not get out.
-    if (!this.#isLeavingRoom()) await EndpointRateLimit.admit(this, "ip");
+    const admitting = this.#isLeavingRoom() ? undefined : EndpointRateLimit.admit(this, "ip");
+    if (admitting) await admitting;
     const start = this.#spanned ? performance.now() : 0;
     this.#rawArgs = await this.ctx.readArgs(this.endpointInfo);
     if (this.#spanned) this.trace?.recordSpan("argRead", performance.now() - start);
@@ -244,43 +245,18 @@ export class SignalContext<
     coreExec: () => Promise<unknown>,
     { endpointMiddlewares = true, skip = [] as string[] }: { endpointMiddlewares?: boolean; skip?: string[] } = {},
   ): () => Promise<unknown> {
-    const middlewares = [
-      ...[...this.#middleware.entries()].filter(([name]) => !skip.includes(name)).map(([, cls]) => cls),
-      ...(endpointMiddlewares ? (this.endpointInfo.signalOption.middlewares ?? []) : []),
-    ];
-    if (middlewares.length === 0) return coreExec;
-    let next = coreExec;
-    for (let i = middlewares.length - 1; i >= 0; i--) {
-      const MiddlewareCls = middlewares[i];
-      if (!MiddlewareCls) continue;
-      const currentNext = next;
-      next = async () =>
-        await (await SignalContext.#getMiddlewareHandler(MiddlewareCls, this.getEnv()))(this, currentNext);
-    }
-    return next;
+    const chain = MiddlewareChain.of(
+      this.#middleware,
+      this.getEnv(),
+      endpointMiddlewares ? this.endpointInfo : null,
+      skip,
+    );
+    return () => chain.run(this, coreExec);
   }
   static #httpPeer: HttpPeerResolver | null = null;
   /** Registered by the listening `Bun.serve`, the only thing that can answer `requestIP`; unused behind the gateway. */
   static setHttpPeerResolver(resolve: HttpPeerResolver | null) {
     SignalContext.#httpPeer = resolve;
-  }
-  // `use(env)` takes no context, so a handler is a function of (class, env) and is built once per process.
-  static #middlewareHandlers = new WeakMap<MiddlewareCls, WeakMap<object, Promise<MiddlewareHandler>>>();
-  static #getMiddlewareHandler(MiddlewareCls: MiddlewareCls, env: BackendEnv): Promise<MiddlewareHandler> {
-    const byEnv =
-      SignalContext.#middlewareHandlers.get(MiddlewareCls) ?? new WeakMap<object, Promise<MiddlewareHandler>>();
-    SignalContext.#middlewareHandlers.set(MiddlewareCls, byEnv);
-    const cached = byEnv.get(env);
-    if (cached) return cached;
-    // A rejected setup is evicted, not cached, so the next request retries instead of the endpoint staying poisoned.
-    const handler = Promise.resolve(new MiddlewareCls().use(env) as PromiseOrObject<MiddlewareHandler>).catch(
-      (error: unknown) => {
-        byEnv.delete(env);
-        throw error;
-      },
-    );
-    byEnv.set(env, handler);
-    return handler;
   }
   async exec() {
     if (!this.trace || getCurrentTrace() === this.trace) return await this.#exec();
@@ -294,7 +270,8 @@ export class SignalContext<
     if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
     const coreExec = async () => {
       if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
-      await EndpointRateLimit.admit(this, "account");
+      const admitting = EndpointRateLimit.admit(this, "account");
+      if (admitting) await admitting;
       if (this.#spanned) await traceSpan("guards", () => this.#checkGuards("account"));
       else await this.#checkGuards("account");
       if (this.trace) {
@@ -317,14 +294,12 @@ export class SignalContext<
       }
       const handle = async () => await this.endpointInfo.execFn?.call(this.adaptor, ...this.args, ...this.internalArgs);
       const traced = this.#spanned ? () => traceSpan("handler", handle) : handle;
-      return await EndpointIdempotency.through(
-        this,
-        () => EndpointCache.through(this, traced),
-        async (result) => {
-          const resolved = await this.#resolve(result);
-          return await traceSpan("serialize", async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo));
-        },
-      );
+      const run = EndpointCache.declares(this.endpointInfo) ? () => EndpointCache.through(this, traced) : traced;
+      if (!EndpointIdempotency.applies(this)) return await run();
+      return await EndpointIdempotency.through(this, run, async (result) => {
+        const resolved = await this.#resolve(result);
+        return await traceSpan("serialize", async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo));
+      });
     };
     const next = this.#withMiddleware(coreExec);
     const result = this.#spanned ? await traceSpan("execChain", () => next()) : await next();

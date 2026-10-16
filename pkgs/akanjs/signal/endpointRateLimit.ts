@@ -92,9 +92,13 @@ export class EndpointRateLimit {
   }
 
   /** `ip` runs before the request body is read; `account` after the middlewares resolved the caller. */
-  static async admit(context: SignalContext, phase: "ip" | "account") {
+  static admit(context: SignalContext, phase: "ip" | "account"): Promise<void> | undefined {
     const budget = EndpointRateLimit.budgetOf(context.key, context.endpointInfo);
-    if (!budget || budget.by !== phase) return;
+    if (!budget || budget.by !== phase) return undefined;
+    return EndpointRateLimit.#consume(context, phase, budget);
+  }
+
+  static async #consume(context: SignalContext, phase: "ip" | "account", budget: ResolvedBudget) {
     const caller =
       (phase === "account" ? EndpointRateLimit.#accountOf(context) : null) ?? EndpointRateLimit.#ipOf(context);
     const verdict = await EndpointRateLimit.#limiterOf(context).consume(`${context.key}:${caller}`, budget);

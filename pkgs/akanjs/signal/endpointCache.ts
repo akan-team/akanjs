@@ -1,5 +1,6 @@
 import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
 import dayjs from "dayjs";
+import type { EndpointInfo } from "./endpointInfo";
 import type { SignalContext } from "./signalContext";
 import { TaggedJson } from "./TaggedJson";
 import { traceCache } from "./trace";
@@ -10,9 +11,14 @@ export class EndpointCache {
   static #topic = "cache";
   static #refused = new Set<string>();
 
+  static declares(endpointInfo: EndpointInfo): boolean {
+    const ttl = endpointInfo.signalOption.cache;
+    return !!ttl && Number.isFinite(ttl) && ttl > 0;
+  }
+
   static async through(context: SignalContext, run: () => Promise<unknown>) {
     const ttl = context.endpointInfo.signalOption.cache;
-    if (!ttl || !Number.isFinite(ttl) || ttl <= 0) return await run();
+    if (!ttl || !EndpointCache.declares(context.endpointInfo)) return await run();
     if (!EndpointCache.#cacheable(context)) return await run();
     const cache = context.getAdaptor(CacheAdaptorRole) as unknown as CacheAdaptor;
     const key = `${context.key}:${JSON.stringify(context.args)}`;

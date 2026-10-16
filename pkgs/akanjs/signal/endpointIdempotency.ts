@@ -30,15 +30,18 @@ export class EndpointIdempotency {
   static readonly #topic = "idempotency";
   static readonly #tag = "\u0000akan";
 
+  //? An MCP call's headers are its JSON-RPC envelope's, and its context answers a value where this replays a Response.
+  static applies(context: SignalContext): boolean {
+    return context.endpointInfo.type === "mutation" && context.transport === "http" && context.origin === "http";
+  }
+
   /** A Response when the call is kept or replayed; otherwise the handler's own result, which the caller answers. */
   static async through(
     context: SignalContext,
     run: () => Promise<unknown>,
     answer: (result: unknown) => Promise<unknown>,
   ) {
-    //? An MCP call's headers are its JSON-RPC envelope's, and its context answers a value where this replays a Response.
-    if (context.endpointInfo.type !== "mutation" || context.transport !== "http" || context.origin !== "http")
-      return await run();
+    if (!EndpointIdempotency.applies(context)) return await run();
     const { req } = context.getHttpContext();
     const idempotencyKey = req.headers.get(EndpointIdempotency.header)?.trim();
     if (!idempotencyKey || idempotencyKey.length > 256) return await run();
