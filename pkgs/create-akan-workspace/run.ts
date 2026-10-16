@@ -11,7 +11,7 @@ const spawnProcess = (spawnCommand: SpawnCommand, command: string, args: string[
   const proc = spawnCommand(command, args, { cwd: process.cwd(), stdio: "inherit", ...options });
   return new Promise((resolve, reject) => {
     proc.on("exit", (code, signal) => {
-      if (!!code || signal) reject({ code, signal });
+      if (code || signal) reject({ code, signal });
       else resolve({ code, signal });
     });
   });

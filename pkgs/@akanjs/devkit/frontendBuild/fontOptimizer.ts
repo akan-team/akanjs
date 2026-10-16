@@ -425,7 +425,8 @@ export class FontOptimizer {
       if (!isDir) continue;
       const filePaths: string[] = [];
       for await (const filePath of glob.scan({ cwd: root, absolute: true })) filePaths.push(filePath);
-      for (const filePath of filePaths.sort()) parts.push(await Bun.file(filePath).text());
+      for (const filePath of filePaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+        parts.push(await Bun.file(filePath).text());
     }
     return parts.join("");
   }

@@ -71,7 +71,7 @@ describe("Windows signing", () => {
     expect(
       peFiles(root)
         .map((f) => f.slice(root.length + 1).replaceAll("\\", "/"))
-        .sort(),
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     ).toEqual(["board.exe", "resources/server/node_modules/x/addon.node"]);
   });
 

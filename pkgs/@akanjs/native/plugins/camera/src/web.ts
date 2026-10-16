@@ -18,7 +18,7 @@ type Output = Pick<TakePhotoOptions, "quality" | "maxWidth" | "maxHeight">;
 const jpegQuality = (output: Output) => Math.min(100, Math.max(1, output.quality ?? 90)) / 100;
 
 /** The largest size within the limits, keeping the aspect ratio. */
-function fit(width: number, height: number, output: Output): { width: number; height: number } {
+function fitWithin(width: number, height: number, output: Output): { width: number; height: number } {
   const scale = Math.min(1, (output.maxWidth ?? width) / width, (output.maxHeight ?? height) / height);
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
@@ -55,7 +55,7 @@ async function normalized(file: File, output: Output): Promise<Photo> {
     return { url: URL.createObjectURL(file), mime: file.type || "application/octet-stream", size: file.size }; // e.g. HEIC outside Safari
   }
   try {
-    const size = fit(bitmap.width, bitmap.height, output);
+    const size = fitWithin(bitmap.width, bitmap.height, output);
     // A JPEG's EXIF orientation is applied when it is shown too, so a fitting one needs no work.
     if (
       file.type === "image/jpeg" &&
@@ -209,7 +209,7 @@ async function captureWithPreview(options: TakePhotoOptions): Promise<Photo> {
       cancel.onclick = () => finish(() => reject(cancelled()));
       shutter.onclick = () => {
         if (!video.videoWidth || !video.videoHeight) return; // no frame yet
-        const { width, height } = fit(video.videoWidth, video.videoHeight, options);
+        const { width, height } = fitWithin(video.videoWidth, video.videoHeight, options);
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;

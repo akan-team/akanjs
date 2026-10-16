@@ -253,7 +253,9 @@ describe("AutoImportSync.syncForBatch", () => {
 
     const result = await sync.syncForBatch([uiFile, pageFile, webkitFile]);
     expect(result.errors).toEqual([]);
-    expect(result.changedFiles.sort()).toEqual([pageFile, webkitFile, uiFile].sort());
+    expect(result.changedFiles.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+      [pageFile, webkitFile, uiFile].sort(),
+    );
     expect(await readFile(uiFile, "utf8")).toContain(`import { st } from "@apps/akan/client";`);
     expect(await readFile(pageFile, "utf8")).toContain(`import { cnst } from "@apps/akan/client";`);
     expect(await readFile(webkitFile, "utf8")).toContain(`import { fetch } from "@libs/shared/client";`);

@@ -69,7 +69,10 @@ describe("window-state file and rules", () => {
     const tracker = createTracker({
       initial: saved,
       delay: 20,
-      read: async () => (reads++, snap),
+      read: async () => {
+        reads++;
+        return snap;
+      },
       write: (s) => writes.push(s),
     });
     for (let i = 0; i < 5; i++) tracker.changed();
@@ -128,7 +131,10 @@ describe("window-state desktop plugin", () => {
         return () => {};
       },
       launch: { setWindow: (b: Partial<SavedWindowState>) => void launch.push(b), exit() {} },
-      onQuit: (fn: () => void | Promise<void>) => (quitHooks.push(fn), () => {}),
+      onQuit: (fn: () => void | Promise<void>) => {
+        quitHooks.push(fn);
+        return () => {};
+      },
     } as unknown as DesktopContext;
     const fire = (type: string, event: Record<string, unknown>) => {
       for (const l of listeners.get(type) ?? []) l({ type, ...event });

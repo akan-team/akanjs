@@ -274,7 +274,13 @@ describe("desktop", () => {
       "device.battery": { level: null, charging: null },
       "webview.version": { version: "140.0.3485.54" },
     };
-    const c = { ...ctx(), shell: async (op: string) => (ops.push(op), answers[op]) } as unknown as DesktopContext;
+    const c = {
+      ...ctx(),
+      shell: async (op: string) => {
+        ops.push(op);
+        return answers[op];
+      },
+    } as unknown as DesktopContext;
     const plugin = createDesktopDevice("win32");
     expect(await plugin.methods.getInfo!(undefined, c)).toMatchObject({
       platform: "windows",

@@ -26,7 +26,7 @@ export class AbstractDoc {
   static async findAll(sys: SysExecutor, { module }: { module?: string | null } = {}) {
     const filePaths = (await sys.getAllFiles(`${AbstractDoc.#facetRoots}/**/*${AbstractDoc.suffix}`))
       .map((filePath) => filePath.split(path.sep).join("/"))
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const docs = await Promise.all(filePaths.map((filePath) => AbstractDoc.read(sys, filePath)));
     if (!module) return docs;
     return docs.filter((doc) => doc.moduleName === module || doc.folderName === module);

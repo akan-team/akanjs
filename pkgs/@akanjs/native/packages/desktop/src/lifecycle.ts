@@ -14,6 +14,7 @@
 export type QuitReason = "user" | "session" | "lastWindowClosed";
 
 /** Return false (or resolve to false) to keep the app running / the window open. */
+// biome-ignore lint/suspicious/noConfusingVoidType: `undefined` would refuse a handler, sync or async, that returns nothing
 export type Veto<E> = (event: E) => boolean | void | Promise<boolean | void>;
 
 export interface LifecycleOptions {

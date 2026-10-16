@@ -91,8 +91,8 @@ export const getDefaultLiveRegistry = (): LiveRegistry => ({
 export class InjectInfo<
   Type extends InjectType = any,
   ReturnType = any,
-  Env extends { [key: string]: any } = never,
-  FieldValue = never,
+  _Env extends { [key: string]: any } = never,
+  _FieldValue = never,
 > {
   readonly type: Type;
   readonly generateFactory: (options: any) => ReturnType;

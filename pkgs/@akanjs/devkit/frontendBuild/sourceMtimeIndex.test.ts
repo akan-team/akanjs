@@ -50,7 +50,7 @@ describe("SourceMtimeIndex", () => {
 
     for (const [i, abs] of files.entries()) await rewrite(abs, `${i}00`);
 
-    expect((await index.collectChanges()).sort()).toEqual([...files].sort());
+    expect((await index.collectChanges()).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([...files].sort());
   });
 
   test("reports a change once, then stops reporting it", async () => {

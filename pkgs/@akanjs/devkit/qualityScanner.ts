@@ -215,7 +215,7 @@ export class AkanQualityScanner {
       if (!(await isDirectory(absoluteTargetRoot))) continue;
       await this.#walkTargetFiles(workspaceRoot, absoluteTargetRoot, ignoreFilter, files);
     }
-    return files.sort();
+    return files.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   async #readGitIgnore(workspaceRoot: string) {

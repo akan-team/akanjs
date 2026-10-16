@@ -355,7 +355,7 @@ export function createDesktopSecureStorage(options: DesktopSecureStorageOptions 
           store.entries = new Map(readable);
           save(store);
         }
-        return { keys: readable.map(([name]) => name).sort() };
+        return { keys: readable.map(([name]) => name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
       },
       clear(_args, ctx) {
         const store = storeFor(ctx);

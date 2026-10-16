@@ -108,4 +108,4 @@ export class DocumentSchema<Doc = unknown> {
 
 export type SchemaOf<Mdl = unknown, Doc = unknown> = DocumentSchema<Doc> & { readonly __model?: Mdl };
 
-export const getDefaultSchemaOptions = <TSchema, TDocument>() => new DocumentSchema<TDocument>();
+export const getDefaultSchemaOptions = <_TSchema, TDocument>() => new DocumentSchema<TDocument>();

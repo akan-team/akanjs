@@ -70,7 +70,12 @@ export function NotificationsCard() {
         </button>
         <button
           className="secondary"
-          onClick={() => run("clear", async () => (await ln.removeAllDelivered(), add("cleared delivered")))}
+          onClick={() =>
+            run("clear", async () => {
+              await ln.removeAllDelivered();
+              add("cleared delivered");
+            })
+          }
         >
           Clear
         </button>

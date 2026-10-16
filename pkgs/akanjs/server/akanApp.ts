@@ -769,7 +769,7 @@ export class AkanApp {
 
   async #proxyHttp(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response> {
     const child = await this.#pickReadyFederationChild(req);
-    if (!child?.upstream || child.upstream.type !== "unix") return this.#respondWithUnavailable(req);
+    if (child?.upstream?.type !== "unix") return this.#respondWithUnavailable(req);
     // Read once: a concurrent request's failure can clear `child.upstream` while this one awaits the child.
     const { socketPath } = child.upstream;
     const url = new URL(req.url);

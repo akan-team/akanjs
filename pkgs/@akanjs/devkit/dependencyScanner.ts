@@ -107,7 +107,7 @@ export class TypeScriptDependencyScanner {
     return {
       npmDeps: [...runtimeDeps].sort(),
       npmDevDeps: [...devDeps].sort(),
-      missingDeps: missingDeps.sort(),
+      missingDeps: missingDeps.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     };
   }
 

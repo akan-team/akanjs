@@ -29,7 +29,7 @@ describe("DictionaryRegistry", () => {
   test("collects the root every makeTrans call builds", () => {
     makeTrans({ registryService: serviceModule() as never });
     const root = DictionaryRegistry.getRoot();
-    expect(DictionaryRegistry.getLanguages().sort()).toEqual(["en", "ko"]);
+    expect(DictionaryRegistry.getLanguages().sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["en", "ko"]);
     expect(root.en.registryService.ready).toEqual({ t: "Ready" });
     expect(root.ko.registryService.ready).toEqual({ t: "준비됨" });
   });

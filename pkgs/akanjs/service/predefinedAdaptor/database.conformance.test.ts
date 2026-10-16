@@ -781,7 +781,9 @@ const describeDriver = (kind: SqlDriverKind) => {
       const { id } = await store.create({ title: "gone" });
       await store.remove(id);
       expect(titlesOf(await store.find({}))).toEqual(["kept"]);
-      expect(titlesOf(await store.find({}, { withRemoved: true })).sort()).toEqual(["gone", "kept"]);
+      expect(
+        titlesOf(await store.find({}, { withRemoved: true })).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+      ).toEqual(["gone", "kept"]);
       expect(titlesOf(await store.find(q.exists("removedAt"), { withRemoved: true }))).toEqual(["gone"]);
       expect(await store.count({}, { withRemoved: true })).toBe(2);
       expect(await store.exists({ id })).toBeNull();

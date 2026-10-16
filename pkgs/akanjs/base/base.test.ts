@@ -23,7 +23,7 @@ describe("enumOf", () => {
     expect(Role.has("unknown")).toBe(false);
     expect(Role.indexOf("guest")).toBe(2);
     expect(Role.find((value) => value.startsWith("mem"))).toBe("member");
-    expect(Role.findIndex((value) => value === "guest")).toBe(2);
+    expect(Role.findIndex((value) => value.startsWith("gue"))).toBe(2);
     expect(Role.filter((value) => value.includes("e"))).toEqual(["member", "guest"]);
     expect(Role.map((value, idx) => `${idx}:${value}`)).toEqual(["0:admin", "1:member", "2:guest"]);
   });

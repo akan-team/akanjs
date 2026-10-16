@@ -903,7 +903,7 @@ export function generateKotlin(model: GenModel, pkg: string): string {
     } else out.push(`            ${JSON.stringify(m.name)} -> ${kotlinName(m.name)}(${reply})`);
   }
   out.push(
-    '            else -> call.reject(AkanNativeErrorCode.NOT_FOUND, "unknown method ${call.method}")',
+    `            else -> call.reject(AkanNativeErrorCode.NOT_FOUND, "unknown method \${call.method}")`,
     "        }",
     "    }",
     "}",

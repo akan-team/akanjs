@@ -267,7 +267,10 @@ describe("windows (SH-6)", () => {
     const calls: { method: string; args: unknown }[] = [];
     const record =
       (method: string, result: unknown = { title: "t" }) =>
-      (args: unknown) => (calls.push({ method, args }), result);
+      (args: unknown) => {
+        calls.push({ method, args });
+        return result;
+      };
     host = installMockHost({
       platform: "macos",
       plugins: {

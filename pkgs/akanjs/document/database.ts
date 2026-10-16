@@ -1,5 +1,5 @@
 import type { MergedValues } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import type { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { CacheAdaptor, CacheSetOptions, CacheValue } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
@@ -8,14 +8,11 @@ import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
 import type { Mdl, SaveEventListener, SaveEventType, UpdateResult } from "./into";
 import type { DataInputOf, FindQueryOption, ListQueryOption } from "./types";
 
-export class CacheDatabase<T = unknown> {
-  private logger: Logger;
+export class CacheDatabase<_T = unknown> {
   constructor(
     private readonly refName: string,
     private readonly cache: CacheAdaptor,
-  ) {
-    this.logger = new Logger(`${refName}Cache`);
-  }
+  ) {}
   async set(topic: string, key: string, value: CacheValue, option: CacheSetOptions = {}) {
     await this.cache.set(this.refName, `${topic}:${key}`, value, option);
   }

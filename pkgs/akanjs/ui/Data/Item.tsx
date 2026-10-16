@@ -69,7 +69,7 @@ export const convToAntdColumn = (column: DataColumn<any>) => {
   else return { key: column, dataIndex: column, title: capitalize(column), render: renderCell };
 };
 
-interface ItemProps<T extends string, Full extends { id: string }, Light extends { id: string }> {
+interface ItemProps<_T extends string, _Full extends { id: string }, Light extends { id: string }> {
   className?: string;
   model: Light;
   slice: SliceMeta;
@@ -167,7 +167,7 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
   );
 }
 
-interface ActionProps<T extends string, M extends { id: string }, L extends { id: string }> {
+interface ActionProps<_T extends string, _M extends { id: string }, L extends { id: string }> {
   action: DataAction;
   model: L;
   slice: SliceMeta;

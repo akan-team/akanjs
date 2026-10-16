@@ -91,7 +91,7 @@ describe("Android native config", () => {
     const xml = androidManifest(
       ctx,
       [],
-      ['<meta-data android:name="k" android:value="${applicationId}" />'],
+      [`<meta-data android:name="k" android:value="\${applicationId}" />`],
       ["<queries />"],
       false,
       ['<intent-filter><action android:name="x.Y" /></intent-filter>'],

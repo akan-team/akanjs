@@ -257,7 +257,14 @@ export function startHost(plugins: DesktopPlugin[]): void {
           // Dev builds: never answers by itself; counts its cancellation (v1.1 cancel check).
           if (req.method === "hang" && boot.dev)
             return new Promise((resolve) =>
-              signal.addEventListener("abort", () => resolve((cancels++, undefined)), { once: true }),
+              signal.addEventListener(
+                "abort",
+                () => {
+                  cancels++;
+                  resolve(undefined);
+                },
+                { once: true },
+              ),
             );
           // Dev builds: table sizes for the document churn check (K13).
           if (req.method === "info" && boot.dev) {
@@ -400,10 +407,11 @@ export function startHost(plugins: DesktopPlugin[]): void {
     const started = performance.now();
     for (let frames = 0; ; frames++) {
       if (frames >= DRAIN_FRAMES || performance.now() - started > DRAIN_MS) {
-        continuation ??= setTimeout(() => {
-          continuation = null;
-          drain();
-        }, 0);
+        if (continuation === null)
+          continuation = setTimeout(() => {
+            continuation = null;
+            drain();
+          }, 0);
         return;
       }
       const size = native.akan_native_poll(buffer, buffer.length);

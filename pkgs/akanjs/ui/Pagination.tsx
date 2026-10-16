@@ -62,7 +62,7 @@ export const DefaultPagination = ({
   }
 
   const emptyNode = empty ?? renderEmpty;
-  if (total <= 0) return emptyNode ? <>{emptyNode}</> : null;
+  if (total <= 0) return emptyNode || null;
   return (
     <div className={cn("flex items-center justify-center gap-1", classNames?.className)}>
       <button

@@ -179,7 +179,6 @@ export class PostgresDialect implements SqlDialect {
     const textAt = `(${this.docColumn()}) #>> ${p}`;
     const arr = `COALESCE(NULLIF(${jsonbAt}, 'null'::jsonb), '[]'::jsonb)`;
     const set = (next: string) => `${PostgresDialect.#setFunction}(${acc}, ${p}, ${next})`;
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
     switch (op) {
       case "set":
         return { sql: set("?::text::jsonb"), params: [jsonStr(value)] };

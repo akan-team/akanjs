@@ -18,7 +18,7 @@ import { ClientBridge, ClientInner, ClientPathWrapper, ClientSsrBridge, ClientWr
 import { getFrameCssVars, isResponsiveFrame, type ProviderProps } from "./Common";
 
 export const SSR = () => {
-  return <></>;
+  return null;
 };
 
 export type SSRProviderProps = ProviderProps & {

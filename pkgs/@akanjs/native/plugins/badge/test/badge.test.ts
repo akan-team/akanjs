@@ -27,8 +27,20 @@ function stubBadging(refuse = false): (string | number)[] {
     refuse
       ? Promise.reject(Object.assign(new Error("The user agent does not allow badges"), { name: "NotAllowedError" }))
       : Promise.resolve();
-  Object.defineProperty(nav, "setAppBadge", { configurable: true, value: (n: number) => (calls.push(n), answer()) });
-  Object.defineProperty(nav, "clearAppBadge", { configurable: true, value: () => (calls.push("clear"), answer()) });
+  Object.defineProperty(nav, "setAppBadge", {
+    configurable: true,
+    value: (n: number) => {
+      calls.push(n);
+      return answer();
+    },
+  });
+  Object.defineProperty(nav, "clearAppBadge", {
+    configurable: true,
+    value: () => {
+      calls.push("clear");
+      return answer();
+    },
+  });
   return calls;
 }
 

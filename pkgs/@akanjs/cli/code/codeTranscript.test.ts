@@ -98,7 +98,7 @@ describe("CodeTranscript", () => {
         truncated: false,
       },
     ]);
-    expect(transcript.parts.filter((part) => part.kind === "tool")[0]?.tool.title).toBe("bash: bun test");
+    expect(transcript.parts.find((part) => part.kind === "tool")?.tool.title).toBe("bash: bun test");
   });
 
   test("a blocked call is not an error, and it closes its own row", () => {
@@ -113,7 +113,7 @@ describe("CodeTranscript", () => {
         truncated: false,
       },
     ]);
-    const part = transcript.parts.filter((entry) => entry.kind === "tool")[0];
+    const part = transcript.parts.find((entry) => entry.kind === "tool");
     expect(part?.outcome).toBe("blocked");
     const lines = CodeTuiParts.lines(transcript.parts, 80);
     expect(CodeTuiLines.text(lines[0] ?? { key: "", spans: [] })).toContain("⦸");
@@ -126,7 +126,7 @@ describe("CodeTranscript", () => {
       { type: "text_delta", turnId: "t1", text: "half a sen" },
       { type: "turn_end", turnId: "t1", stopReason: "truncated" },
     ]);
-    expect(transcript.parts.filter((part) => part.kind === "assistant")[0]?.truncated).toBe(true);
+    expect(transcript.parts.find((part) => part.kind === "assistant")?.truncated).toBe(true);
     expect(drawn(transcript).some((line) => line.includes("output limit"))).toBe(true);
   });
 
@@ -136,7 +136,7 @@ describe("CodeTranscript", () => {
       { type: "text_delta", turnId: "t1", text: "partial" },
       { type: "turn_end", turnId: "t1", stopReason: "aborted" },
     ]);
-    expect(transcript.parts.filter((part) => part.kind === "assistant")[0]).toMatchObject({
+    expect(transcript.parts.find((part) => part.kind === "assistant")).toMatchObject({
       text: "partial",
       truncated: false,
       streaming: false,

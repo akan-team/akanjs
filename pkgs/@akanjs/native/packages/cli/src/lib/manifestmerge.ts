@@ -37,7 +37,7 @@ const KEPT_APPLICATION_ATTRS = ["android:appComponentFactory"];
 function clean(element: XmlElement, applicationId: string): XmlElement {
   element.attrs = element.attrs
     .filter(([n]) => !n.startsWith("tools:") && n !== "xmlns:tools")
-    .map(([n, v]) => [n, v.replaceAll("${applicationId}", applicationId)]);
+    .map(([n, v]) => [n, v.replaceAll(`\${applicationId}`, applicationId)]);
   for (const c of element.children) clean(c, applicationId);
   return element;
 }

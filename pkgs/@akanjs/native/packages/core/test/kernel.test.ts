@@ -132,7 +132,12 @@ describe("retained events", () => {
     const events = new RetainedEvents<string>();
     const log: string[] = [];
     for (const [op, a, b] of c.ops) {
-      if (op === "listen") events.listen(a, (v) => (b ? (log.push(`${a}:${v}`), true) : false));
+      if (op === "listen")
+        events.listen(a, (v) => {
+          if (!b) return false;
+          log.push(`${a}:${v}`);
+          return true;
+        });
       else if (op === "unlisten") events.unlisten(a);
       else events.emit(a, b === true);
     }

@@ -571,7 +571,7 @@ describe("windows (SH-6)", () => {
   function multi(focusOrder: number[] = []) {
     const delivered: { event: string; data: unknown; window: number }[] = [];
     const shellCalls: { op: string; args?: Record<string, unknown> }[] = [];
-    const emits: ((data: number, target?: EmitTarget) => number[] | void)[] = [];
+    const emits: ((data: number, target?: EmitTarget) => unknown)[] = [];
     let stops = 0;
     let caller: DesktopContext | undefined;
     const plugin = defineDesktopPlugin<
@@ -668,7 +668,10 @@ describe("capabilities (PL-11, plugins.md C7)", () => {
   >({
     id: "fs",
     methods: {
-      read: ({ path }, ctx) => (seen.push({ window: ctx.window, scope: ctx.scope }), path),
+      read: ({ path }, ctx) => {
+        seen.push({ window: ctx.window, scope: ctx.scope });
+        return path;
+      },
       remove: () => {},
     },
     events: { change: () => () => {} },

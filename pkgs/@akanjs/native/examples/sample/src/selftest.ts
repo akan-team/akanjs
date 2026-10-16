@@ -287,7 +287,10 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
     await check("bridge order: an event after a response, 1000 times (v1.1 seq)", async () => {
       const got: number[] = [];
       const seen = new Set<number>();
-      const listener = (data: { n: number }) => (got.push(data.n), seen.add(data.n));
+      const listener = (data: { n: number }) => {
+        got.push(data.n);
+        seen.add(data.n);
+      };
       const rt = pageRuntime();
       const key = "$host\u0000echo";
       if (!rt.listeners.has(key)) rt.listeners.set(key, new Set());
@@ -1550,7 +1553,10 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
           cleanup();
           resolve(event.data.akanNativeSelftestFrame);
         };
-        const timer = setTimeout(() => (cleanup(), reject(new Error("the test frame did not report"))), 10_000);
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("the test frame did not report"));
+        }, 10_000);
         window.addEventListener("message", onMessage);
         document.body.append(frame);
       });
@@ -1579,10 +1585,10 @@ export async function runSelftest(): Promise<{ pass: boolean; platform: string; 
       frame.style.display = "none";
       try {
         const report = await new Promise<string>((resolve, reject) => {
-          const timer = setTimeout(
-            () => (window.removeEventListener("message", onMessage), reject(new Error("the data: frame did not load"))),
-            5000,
-          );
+          const timer = setTimeout(() => {
+            window.removeEventListener("message", onMessage);
+            reject(new Error("the data: frame did not load"));
+          }, 5000);
           const onMessage = (event: MessageEvent) => {
             if (!event.data?.akanNativeSelftestNav) return;
             clearTimeout(timer);

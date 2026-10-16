@@ -198,7 +198,10 @@ export function useFilePicker(): UseFilePicker {
     setError(null);
     // start() runs before any await, so web dialogs keep the click's user activation.
     return start().then(
-      (value) => (setPending(false), value),
+      (value) => {
+        setPending(false);
+        return value;
+      },
       (e: unknown) => {
         setPending(false);
         setError(AkanNativeError.from(e));

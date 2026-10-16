@@ -160,7 +160,7 @@ const hrefFromFile = (filePath: string) => {
   return `/${relative.replace(/\/index$/, "")}`;
 };
 
-const sectionFromHref = (href: string) => href.split("/").filter(Boolean)[0] ?? "docs";
+const sectionFromHref = (href: string) => href.split("/").find(Boolean) ?? "docs";
 
 const titleFromHref = (href: string): LocalizedText => {
   const segment = href.split("/").filter(Boolean).at(-1) ?? href;

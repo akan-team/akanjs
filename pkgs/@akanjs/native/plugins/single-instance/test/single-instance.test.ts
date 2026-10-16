@@ -214,7 +214,10 @@ describe("single-instance desktop plugin", () => {
       },
       onNativeEvent: () => () => {},
       launch: { setWindow() {}, exit: (code = 0) => void exits.push(code) },
-      onQuit: (fn: () => void | Promise<void>) => (quitHooks.push(fn), () => {}),
+      onQuit: (fn: () => void | Promise<void>) => {
+        quitHooks.push(fn);
+        return () => {};
+      },
     } as unknown as DesktopContext;
     return { ctx, ops, exits, quitHooks, links };
   }

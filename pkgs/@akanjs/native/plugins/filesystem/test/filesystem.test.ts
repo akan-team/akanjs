@@ -117,10 +117,12 @@ describe("routing", () => {
       plugins: {
         filesystem: {
           methods: {
-            readFile: (args) => (
-              seen.push(args),
-              args.encoding ? { data: "hello" } : { url: "/__akan_native/file/f1.txt", mime: "text/plain", size: 5 }
-            ),
+            readFile: (args) => {
+              seen.push(args);
+              return args.encoding
+                ? { data: "hello" }
+                : { url: "/__akan_native/file/f1.txt", mime: "text/plain", size: 5 };
+            },
             writeFile: (args) => void seen.push(args),
             paths: () => ({ data: "/data/user/0/x/files", cache: "c", documents: "d", temp: "t" }),
           },

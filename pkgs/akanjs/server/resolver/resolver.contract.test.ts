@@ -1303,7 +1303,7 @@ describe("SignalResolver declaration contracts", () => {
     expect(cleaned).toEqual([]);
     release();
     await Promise.all([subscribing, messaging]);
-    expect(cleaned.sort()).toEqual(["message:chat", `room:${validId}`]);
+    expect(cleaned.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["message:chat", `room:${validId}`]);
     expect(ws.subscribed).toEqual([]);
     expect(websocket.instance.calls).not.toContainEqual(expect.objectContaining({ method: "joinRoom" }));
   });
@@ -1772,7 +1772,7 @@ describe("SignalResolver declaration contracts", () => {
     expect(cruOff.keys).not.toEqual(expect.arrayContaining(generated(["create"])));
     expect(cruOff.keys.filter((key) => /^(create|update|remove)/.test(key))).toEqual([]);
     expect(cruOff.crud).toEqual({ create: false, update: false, remove: false });
-    expect(cruOff.synthesized.sort()).toEqual(generated(["get", "light"]).sort());
+    expect(cruOff.synthesized.sort()).toEqual(generated(["get", "light"]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 
     const createOff = resolve({ root: Public, get: Public, cru: Public, create: false });
     expect(createOff.keys).toEqual(expect.arrayContaining(generated(["update", "remove"])));

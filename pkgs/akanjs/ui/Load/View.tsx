@@ -11,7 +11,7 @@ import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import Stream from "./Stream";
 
-interface DefaultProps<T extends string, M> {
+interface DefaultProps<_T extends string, M> {
   className?: string;
   /** Renders the model without the default wrapper div. */
   noDiv?: boolean;
@@ -87,7 +87,7 @@ function Render<T extends string, Full extends { id: string }>({
   });
 
   return noDiv && renderModel ? (
-    <>{renderView(renderModel)}</>
+    renderView(renderModel)
   ) : renderModel ? (
     <div className={cn("w-full", className)} data-agent-scope={scopePath}>
       {renderView(renderModel)}

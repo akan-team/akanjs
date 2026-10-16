@@ -24,6 +24,30 @@
       "!benchmarks/sample-app-productivity/workspaces"
     ]
   },
+  "linter": {
+    "rules": {
+      "complexity": {
+        "noBannedTypes": "error",
+        "noCommaOperator": "error",
+        "noExtraBooleanCast": "error",
+        "noUselessFragments": "error",
+        "useArrayFind": "error",
+        "useIndexOf": "error",
+        "useLiteralKeys": "error",
+        "useOptionalChain": "error"
+      },
+      "correctness": {
+        "noUnusedPrivateClassMembers": "error",
+        "noUnusedVariables": "error"
+      },
+      "suspicious": {
+        "noConfusingVoidType": "error",
+        "noFocusedTests": "error",
+        "noTemplateCurlyInString": "error",
+        "useArraySortCompare": "error"
+      }
+    }
+  },
   "overrides": [
     {
       "includes": [
@@ -42,6 +66,16 @@
         "./node_modules/@akanjs/devkit/lint/no-interpolated-arbitrary-class.grit",
         "./node_modules/@akanjs/devkit/lint/no-deprecated-log-level.grit"
       ]
+    },
+    {
+      "includes": ["pkgs/@akanjs/devkit/executors.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "useArraySortCompare": "warn"
+          }
+        }
+      }
     }
   ]
 }

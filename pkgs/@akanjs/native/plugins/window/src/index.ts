@@ -384,13 +384,13 @@ export function useWindowState(): WindowState | null {
  * none prevents it, the window closes as usual. Desktop only: elsewhere it never fires
  * (`appWindow.eventImplementation("closeRequested")` tells). Returns an unregister function.
  */
-export const onCloseRequested: (handler: VetoHandler<{}>) => () => void = vetoable(
+export const onCloseRequested: (handler: VetoHandler<Record<never, never>>) => () => void = vetoable(
   (listener) => appWindow.listen("closeRequested", listener),
   (args) => appWindow.answerCloseRequested(args),
 );
 
 /** onCloseRequested while mounted; always calls the latest handler. */
-export function useCloseRequested(handler: VetoHandler<{}>): void {
+export function useCloseRequested(handler: VetoHandler<Record<never, never>>): void {
   const latest = React.useRef(handler);
   latest.current = handler;
   React.useEffect(() => onCloseRequested((event) => latest.current(event)), []);

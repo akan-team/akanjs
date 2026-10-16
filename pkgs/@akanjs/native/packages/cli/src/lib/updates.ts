@@ -200,7 +200,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   for (const key of Object.keys(r))
     if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report"].includes(key))
       problems.push(`updates.${key} is not supported`);
-  if (publicKeys && publicKeys.every((key) => revokedKeys.includes(keyIdOf(key))))
+  if (publicKeys?.every((key) => revokedKeys.includes(keyIdOf(key))))
     problems.push(
       "updates.revokedKeys revokes every key of updates.publicKeys: a phone built from it would trust none (add one with `akan-native update keygen`)",
     );

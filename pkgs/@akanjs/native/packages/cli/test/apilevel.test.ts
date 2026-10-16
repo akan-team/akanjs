@@ -42,7 +42,10 @@ function classFile(
 ): Uint8Array {
   const pool: number[][] = [];
   const utf8Index = new Map<string, number>();
-  const add = (entry: number[]) => (pool.push(entry), pool.length);
+  const add = (entry: number[]) => {
+    pool.push(entry);
+    return pool.length;
+  };
   const utf8 = (s: string) => {
     const known = utf8Index.get(s);
     if (known) return known;

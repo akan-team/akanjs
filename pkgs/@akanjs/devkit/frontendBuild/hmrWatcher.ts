@@ -197,7 +197,7 @@ export class HmrWatcher {
     const gaps = this.#index.coverageGaps;
     const key = gaps
       .map((gap) => `${gap.code}:${gap.path}`)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .join("|");
     if (key === this.#reportedGaps) return;
     this.#reportedGaps = key;

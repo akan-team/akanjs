@@ -228,7 +228,10 @@ describe("transports", () => {
     const g = globalThis as any;
     const realFetch = g.fetch;
     const rang: string[] = [];
-    g.fetch = async (url: string) => (rang.push(url), new Response(null, { status: 204 }));
+    g.fetch = async (url: string) => {
+      rang.push(url);
+      return new Response(null, { status: 204 });
+    };
     g.__AKAN_NATIVE__ = { platform: "android", plugins: { echo: { methods: ["echo"], events: [] } } };
     g.top = {}; // not this window: an iframe
     try {

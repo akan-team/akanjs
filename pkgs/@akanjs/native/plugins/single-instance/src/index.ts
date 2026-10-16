@@ -26,6 +26,7 @@ export interface SingleInstanceEvents {
   secondInstance: SecondInstance;
 }
 
+// biome-ignore lint/complexity/noBannedTypes: the native CLI spec parser reads a literal `{}` Api argument as "no methods"
 export const singleInstance = definePlugin<{}, SingleInstanceEvents>("single-instance", {
   methods: [],
   events: ["secondInstance"],

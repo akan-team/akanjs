@@ -217,6 +217,7 @@ export interface DesktopPlugin<Api = any, Events = any> {
    */
   events?: {
     [E in keyof Events]?: (
+      // biome-ignore lint/suspicious/noConfusingVoidType: `undefined` would refuse a test's plain void-returning emit
       emit: (data: Events[E], target?: EmitTarget) => number[] | void,
       ctx: DesktopContext,
     ) => () => void;
@@ -274,6 +275,8 @@ export function limitExternalOpens(enabled: boolean): void {
   lastExternalOpen = -Infinity;
 }
 
-export function defineDesktopPlugin<Api, Events = {}>(plugin: DesktopPlugin<Api, Events>): DesktopPlugin<Api, Events> {
+export function defineDesktopPlugin<Api, Events = Record<never, never>>(
+  plugin: DesktopPlugin<Api, Events>,
+): DesktopPlugin<Api, Events> {
   return plugin;
 }

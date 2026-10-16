@@ -83,7 +83,10 @@ describe("share routing", () => {
       plugins: {
         share: {
           methods: {
-            share: (args) => (seen.push(args), { completed: true, target: "com.apple.UIKit.activity.Mail" }),
+            share: (args) => {
+              seen.push(args);
+              return { completed: true, target: "com.apple.UIKit.activity.Mail" };
+            },
             canShare: () => ({ value: true }),
           },
         },
@@ -140,7 +143,10 @@ describe("share web implementation", () => {
     host = installMockHost({ platform: "web" });
     const calls: ShareData[] = [];
     let outcome: () => Promise<void> = async () => {};
-    stubNavigator("share", (data: ShareData) => (calls.push(data), outcome()));
+    stubNavigator("share", (data: ShareData) => {
+      calls.push(data);
+      return outcome();
+    });
 
     const pending = share.share({ title: "T", text: "hello", url: "https://example.com/" });
     expect(calls).toEqual([{ title: "T", text: "hello", url: "https://example.com/" }]); // before any await: keeps user activation

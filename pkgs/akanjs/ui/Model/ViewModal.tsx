@@ -60,13 +60,13 @@ export default function ViewModal({
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const isModalOpen = modelModal === (modal ?? "view") && (modelLoading === id || model?.id === id);
   const Title = () => {
-    if (!model || modelLoading || !renderTitle) return <></>;
+    if (!model || modelLoading || !renderTitle) return null;
     const render = renderTitle(model);
     if (typeof render === "string") return <h2 className="flex items-center text-2xl">{render}</h2>;
     else return render;
   };
   const Action = () => {
-    if (!model || modelLoading || !renderAction) return <></>;
+    if (!model || modelLoading || !renderAction) return null;
     const render = renderAction(model);
     return render;
   };

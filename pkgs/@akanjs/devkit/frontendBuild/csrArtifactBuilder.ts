@@ -234,7 +234,7 @@ void bootCsr(pages);
     for await (const filePath of glob.scan({ cwd: this.#outputDir, absolute: true })) {
       if (predicate(filePath)) files.push(filePath);
     }
-    return files.sort();
+    return files.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   // Bun hoists the module script into <head> and a React bundle contains "</head>" as text, so positions come from a

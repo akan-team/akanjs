@@ -53,7 +53,6 @@ describe("plist reader", () => {
 
 describe("iOS signing", () => {
   const profile = profileFromPlist("/p.mobileprovision", parsePlist(PROFILE_XML) as Record<string, unknown>);
-  const identity = { sha1: certSha1, name: "Apple Development: Jane Doe (VX85V6WY6B)" };
 
   test("a profile: team, kind, devices, certificates", () => {
     expect([profile.teamId, profile.appId, profile.kind, profile.devices, profile.certificates]).toEqual([

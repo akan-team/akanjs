@@ -450,7 +450,10 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     }
     const out = new Uint8Array(received);
     let at = 0;
-    for (const c of chunks) out.set(c, at), (at += c.length);
+    for (const c of chunks) {
+      out.set(c, at);
+      at += c.length;
+    }
     return out;
   };
 

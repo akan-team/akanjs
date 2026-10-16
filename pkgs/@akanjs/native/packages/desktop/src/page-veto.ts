@@ -37,7 +37,7 @@ interface Pending {
   resolve(allow: boolean): void;
 }
 
-export function createPageVeto<D extends object = {}>(ackTimeout = PAGE_ACK_TIMEOUT): PageVeto<D> {
+export function createPageVeto<D extends object = Record<never, never>>(ackTimeout = PAGE_ACK_TIMEOUT): PageVeto<D> {
   let emit: ((data: D & { id: number }, target?: EmitTarget) => number[] | unknown) | null = null;
   let seq = 0;
   const pending = new Map<number, Pending>();

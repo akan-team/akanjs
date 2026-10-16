@@ -43,7 +43,10 @@ describe("deep links on Windows and Linux (D6)", () => {
   test("Linux: writes the entry and the default once", async () => {
     const home = mkdtempSync(join(tmpdir(), "akan-native-links-"));
     const runs: string[][] = [];
-    const run = async (argv: string[]) => (runs.push(argv), { code: 0, stdout: "" });
+    const run = async (argv: string[]) => {
+      runs.push(argv);
+      return { code: 0, stdout: "" };
+    };
     const env = { XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config") };
     mkdirSync(env.XDG_CONFIG_HOME);
     writeFileSync(join(env.XDG_CONFIG_HOME, "mimeapps.list"), "[Default Applications]\ntext/html=firefox.desktop;\n");

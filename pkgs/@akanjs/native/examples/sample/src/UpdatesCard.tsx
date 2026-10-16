@@ -15,7 +15,10 @@ export function UpdatesCard() {
 
   const run = (label: string, task: () => Promise<unknown>) =>
     task()
-      .then((result) => (result !== undefined && add(`${label}: ${JSON.stringify(result)}`), refresh()))
+      .then((result) => {
+        if (result !== undefined) add(`${label}: ${JSON.stringify(result)}`);
+        return refresh();
+      })
       .catch((e) => add(`${label} failed: ${e?.code ?? ""} ${e?.message ?? e}`));
 
   return (

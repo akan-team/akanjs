@@ -30,7 +30,7 @@ export function createDesktopSingleInstance(
     messages.emit(message, true);
   };
 
-  return defineDesktopPlugin<{}, SingleInstanceEvents>({
+  return defineDesktopPlugin<Record<never, never>, SingleInstanceEvents>({
     id: "single-instance",
     // Before every other plugin: a second launch exits without setting anything else up (N3).
     launchPhase: "gate",
@@ -56,7 +56,8 @@ export function createDesktopSingleInstance(
         const key = String(++listens);
         messages.listen(
           key,
-          (m) => ((emit as (m: SecondInstance, target?: EmitTarget) => number[] | void)(m, "focused")?.length ?? 1) > 0,
+          (m) =>
+            ((emit as (m: SecondInstance, target?: EmitTarget) => number[] | undefined)(m, "focused")?.length ?? 1) > 0,
         );
         return () => messages.unlisten(key);
       },

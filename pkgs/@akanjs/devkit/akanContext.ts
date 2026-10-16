@@ -847,8 +847,8 @@ export class AkanContextAnalyzer {
       const listed = listedByImport(sectionOf(agentsMd, "## Recipes")).get("akanjs/ui") ?? new Set<string>();
       pushIndexDiagnostic(
         "AGENTS.md",
-        [...frameworkDeclared].filter((name) => !listed.has(name)).sort(),
-        [...listed].filter((name) => !frameworkDeclared.has(name)).sort(),
+        [...frameworkDeclared].filter((name) => !listed.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        [...listed].filter((name) => !frameworkDeclared.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
         "akan agent install agents-md",
       );
     }
@@ -859,7 +859,7 @@ export class AkanContextAnalyzer {
         .catch(() => "");
       const groups = listedByImport(sectionOf(scopeMd, "## Recipes In Scope"));
       const ownListed = groups.get(`@${sys.path}/ui`) ?? new Set<string>();
-      const missing = [...own].filter((name) => !ownListed.has(name)).sort();
+      const missing = [...own].filter((name) => !ownListed.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       // Every listed name — the scope's own and its dependency libs' — must still exist at its owner.
       const stale = [...groups.entries()]
         .flatMap(([importFrom, names]) =>

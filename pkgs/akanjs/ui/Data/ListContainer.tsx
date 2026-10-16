@@ -44,8 +44,8 @@ const pageLimits = [10, 20, 50, 100];
 const menuItemClassName = "flex w-full flex-nowrap justify-start gap-2";
 
 export interface ListContainerProps<
-  T extends string,
-  State,
+  _T extends string,
+  _State,
   Input,
   Full extends { id: string },
   Light extends { id: string },

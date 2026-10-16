@@ -83,11 +83,14 @@ describe("routing", () => {
       plugins: {
         "file-picker": {
           methods: {
-            pickFiles: (args) => (
-              seen.push(args),
-              { files: [{ url: "/__akan_native/file/a.pdf", mime: "application/pdf", size: 3, name: "A.pdf" }] }
-            ),
-            saveFile: (args) => (seen.push(args), { saved: true, name: "out (1).csv" }),
+            pickFiles: (args) => {
+              seen.push(args);
+              return { files: [{ url: "/__akan_native/file/a.pdf", mime: "application/pdf", size: 3, name: "A.pdf" }] };
+            },
+            saveFile: (args) => {
+              seen.push(args);
+              return { saved: true, name: "out (1).csv" };
+            },
             pickDirectory: () => ({ name: null, files: [], truncated: false }),
           },
         },
@@ -107,7 +110,16 @@ describe("routing", () => {
     const seen: Record<string, unknown>[] = [];
     host = installMockHost({
       platform: "android",
-      plugins: { "file-picker": { methods: { saveFile: (args) => (seen.push(args), { saved: false }) } } },
+      plugins: {
+        "file-picker": {
+          methods: {
+            saveFile: (args) => {
+              seen.push(args);
+              return { saved: false };
+            },
+          },
+        },
+      },
     });
     const url = URL.createObjectURL(new Blob(["a,b"], { type: "text/csv" }));
     try {
@@ -119,7 +131,16 @@ describe("routing", () => {
     host.uninstall();
     host = installMockHost({
       platform: "macos",
-      plugins: { "file-picker": { methods: { saveFile: (args) => (seen.push(args), { saved: true, name: "x" }) } } },
+      plugins: {
+        "file-picker": {
+          methods: {
+            saveFile: (args) => {
+              seen.push(args);
+              return { saved: true, name: "x" };
+            },
+          },
+        },
+      },
     });
     await filePicker.saveFile({ name: "x.txt", url: "data:text/plain,hi", mime: "text/plain" });
     expect(seen.at(-1)).toEqual({ name: "x.txt", mime: "text/plain", data: "aGk=", encoding: "base64" });
@@ -130,7 +151,16 @@ describe("routing", () => {
     const seen: unknown[] = [];
     host = installMockHost({
       platform: "ios",
-      plugins: { "file-picker": { methods: { saveFile: (args) => (seen.push(args), { saved: false }) } } },
+      plugins: {
+        "file-picker": {
+          methods: {
+            saveFile: (args) => {
+              seen.push(args);
+              return { saved: false };
+            },
+          },
+        },
+      },
     });
     await filePicker.saveFile({ name: "a.csv", data: "\uFEFFa,b" });
     expect(seen.at(-1)).toEqual({ name: "a.csv", data: "77u/YSxi", encoding: "base64" });
@@ -140,7 +170,16 @@ describe("routing", () => {
     const seen: unknown[] = [];
     host = installMockHost({
       platform: "ios",
-      plugins: { "file-picker": { methods: { pickFiles: (args) => (seen.push(args), { files: [] }) } } },
+      plugins: {
+        "file-picker": {
+          methods: {
+            pickFiles: (args) => {
+              seen.push(args);
+              return { files: [] };
+            },
+          },
+        },
+      },
     });
     expect(await code(filePicker.pickFiles({ forServer: true }))).toBe("UNSUPPORTED");
     expect(await code(filePicker.pickDirectory({ forServer: true }))).toBe("UNSUPPORTED");

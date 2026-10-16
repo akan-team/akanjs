@@ -29,7 +29,7 @@ export const Reconnect = () => {
 
     try {
       await (fetch as unknown as { ping: () => Promise<string> }).ping();
-    } catch (e) {
+    } catch {
       setConnectStatus((prev) => (prev === "normal" || prev === "initial" ? "disconnected" : prev));
       setTimeout(() => {
         setConnectStatus((prev) => (prev === "disconnected" ? "connecting" : prev));

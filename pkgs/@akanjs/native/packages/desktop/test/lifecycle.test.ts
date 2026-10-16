@@ -261,12 +261,10 @@ describe("page veto across windows", () => {
     } as never;
     const sent: unknown[] = [];
     const veto = createPageVeto(1000);
-    veto.source(
-      (data, target) => (
-        sent.push(target), target && typeof target === "object" ? (target.window === 2 ? [2] : []) : [1, 2]
-      ),
-      ctx,
-    );
+    veto.source((data, target) => {
+      sent.push(target);
+      return target && typeof target === "object" ? (target.window === 2 ? [2] : []) : [1, 2];
+    }, ctx);
     expect(await veto.ask({}, { window: 3 })).toBe(true);
     const pending = veto.ask({}, { window: 2 });
     documentEnded!({ window: 1, id: "a".repeat(32) }); // another window's page: no effect

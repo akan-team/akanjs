@@ -76,7 +76,7 @@ describe("TypeScriptDependencyScanner", () => {
     });
     expect(deps.pkgDeps).toEqual(["akanjs/tool"]);
     expect(deps.libDeps).toEqual(["shared"]);
-    expect(deps.npmDeps.sort()).toEqual(["lodash", "react"]);
+    expect(deps.npmDeps.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["lodash", "react"]);
     expect(deps.npmDevDeps).toEqual(["typescript"]);
 
     const graph = scanner.generateDependencyGraph();

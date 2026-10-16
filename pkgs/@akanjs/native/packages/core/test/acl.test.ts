@@ -159,7 +159,13 @@ describe("page side (web implementations) and mock host (native)", () => {
       acl,
       plugins: {
         fs: {
-          methods: { read: (args, _h, scope) => (scopes.push(scope), args.path), remove: () => {} },
+          methods: {
+            read: (args, _h, scope) => {
+              scopes.push(scope);
+              return args.path;
+            },
+            remove: () => {},
+          },
           events: ["change"],
         },
       },

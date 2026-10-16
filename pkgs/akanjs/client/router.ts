@@ -453,7 +453,7 @@ class Router {
       const h = requestHeaders();
       const req = getRequest();
       const reqPathname = req ? new URL(req.url).pathname : "";
-      const langFromPath = reqPathname.split("/").filter(Boolean)[0];
+      const langFromPath = reqPathname.split("/").find(Boolean);
       const lang = (h.get("x-locale") ?? langFromPath ?? this.#lang) as string;
       const basePath = getServerBasePath(reqPathname, lang, h.get("x-base-path") ?? undefined, this.#prefix);
       const { pathname, href: fullHref } = getPathInfo(href, lang, shouldExposeBasePath() ? basePath : "");

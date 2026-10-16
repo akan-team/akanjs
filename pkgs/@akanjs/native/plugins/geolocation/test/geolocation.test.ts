@@ -176,7 +176,10 @@ describe("native hosts", () => {
       plugins: {
         geolocation: {
           methods: {
-            getCurrentPosition: (a) => (args.push(a), seoul),
+            getCurrentPosition: (a) => {
+              args.push(a);
+              return seoul;
+            },
             checkPermission: () => ({ location: "prompt-with-rationale", precise: null }),
             requestPermission: () => ({ location: "granted", precise: false }),
           },

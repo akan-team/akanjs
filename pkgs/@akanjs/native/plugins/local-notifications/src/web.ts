@@ -57,7 +57,7 @@ function dismiss(id: number): void {
 
 function show(n: ScheduledNotification): void {
   const N = api();
-  if (!N || N.permission !== "granted") return; // permission revoked meanwhile
+  if (N?.permission !== "granted") return; // permission revoked meanwhile
   dismiss(n.id);
   // tag: the browser replaces an open notification with the same id.
   const notification = new N(n.title, { body: n.body, tag: `akan-native-${n.id}` });

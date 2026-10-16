@@ -5,7 +5,7 @@ import { capitalize, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv } fr
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
-import type { RefObject } from "react";
+import type { EffectCallback, RefObject } from "react";
 import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
@@ -51,7 +51,7 @@ export type ReactAPI = {
     getServerSnapshot?: () => T,
   ) => T;
   useRef: <T>(initialValue: T) => { current: T };
-  useEffect: (effect: () => (() => void) | void, deps?: any[]) => void;
+  useEffect: (effect: EffectCallback, deps?: any[]) => void;
 };
 
 export class StoreInstance {

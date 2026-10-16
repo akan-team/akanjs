@@ -99,7 +99,6 @@ export class SqliteDialect implements SqlDialect {
     // Reads target the param-free original `_doc`, so every operator of one update sees the pre-update document.
     const cur = `json_extract(${this.docColumn()}, ${p})`;
     const arr = `COALESCE(${cur}, json('[]'))`;
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: exhaustive switch over a string-literal union, not a truthiness check
     switch (op) {
       case "set":
         return { sql: `json_set(${acc}, ${p}, json(?))`, params: [jsonStr(value)] };

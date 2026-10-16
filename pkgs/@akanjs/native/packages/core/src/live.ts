@@ -13,6 +13,7 @@ export interface LiveValue<T> {
  */
 export function createLiveValue<T>(
   initial: T,
+  // biome-ignore lint/suspicious/noConfusingVoidType: `undefined` would refuse a void-typed start that has nothing to stop
   start?: (set: (value: T) => void) => (() => void) | void,
   equals: (a: T, b: T) => boolean = Object.is,
 ): LiveValue<T> {

@@ -194,7 +194,7 @@ export class PackageRunner extends runner("package") {
     if (!failures.length) return;
     throw new Error(
       `[package] ${pkg.name} dist imports ${failures.length} subpath(s) no consumer can resolve:\n` +
-        `${failures.sort().join("\n")}\n` +
+        `${failures.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join("\n")}\n` +
         `Add the missing "exports" entries: a bare file facet needs "./*": "./*.ts", a directory facet ` +
         `needs its own "./name": "./name/index.ts", and "./*.ts": "./*.ts" keeps an already-suffixed ` +
         `specifier from gaining a second extension.`,

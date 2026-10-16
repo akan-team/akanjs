@@ -248,7 +248,7 @@ export const resolveWritableState = (
   return { shape, initializers, meta };
 };
 
-export const resolveDerivedState = <WritableState>(
+export const resolveDerivedState = <_WritableState>(
   state: Record<string, unknown>,
   writableKeys: Set<string>,
 ): { shape: Record<string, unknown>; meta: StateDerivedMeta } => {

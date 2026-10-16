@@ -18,7 +18,7 @@ beforeAll(async () => {
 
 const cellOf = (column: Parameters<typeof convToAntdColumn>[0], value: unknown) => {
   const { render } = convToAntdColumn(column);
-  return renderToStaticMarkup(<>{(render ? render(value as never, {} as never) : value) as ReactNode}</>);
+  return renderToStaticMarkup((render ? render(value as never, {} as never) : value) as ReactNode);
 };
 
 describe("convToAntdColumn", () => {

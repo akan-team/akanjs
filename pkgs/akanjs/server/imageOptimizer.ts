@@ -299,7 +299,7 @@ export class ImageOptimizer {
 
   async #getOptimizedImage(source: ImageSource, params: ParsedImageRequest): Promise<OptimizedImage> {
     const inputType = ImageOptimizer.#detectContentType(source.buffer) || source.contentType;
-    if (!inputType || !inputType.startsWith("image/") || inputType.includes(",")) {
+    if (!inputType.startsWith("image/") || inputType.includes(",")) {
       throw new ImageOptimizerError(400, "The requested resource is not a valid image");
     }
     if (inputType === ImageOptimizer.#svg && !this.#config.dangerouslyAllowSVG) {

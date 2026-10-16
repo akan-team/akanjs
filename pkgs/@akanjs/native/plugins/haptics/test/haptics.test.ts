@@ -15,7 +15,10 @@ afterEach(() => {
 function stubVibrate(result = true): (number | number[])[] {
   const calls: (number | number[])[] = [];
   Object.defineProperty(nav, "vibrate", {
-    value: (p: number | number[]) => (calls.push(p), result),
+    value: (p: number | number[]) => {
+      calls.push(p);
+      return result;
+    },
     configurable: true,
   });
   return calls;

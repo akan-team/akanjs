@@ -263,7 +263,10 @@ describe("keep-awake desktop implementation", () => {
           id,
           window,
           ended: false,
-          own: (fn: () => unknown) => (owned.push(fn), () => owned.splice(owned.indexOf(fn), 1)),
+          own: (fn: () => unknown) => {
+            owned.push(fn);
+            return () => owned.splice(owned.indexOf(fn), 1);
+          },
         },
         shell: async (op: string) => void ops.push(op),
       } as unknown as DesktopContext;

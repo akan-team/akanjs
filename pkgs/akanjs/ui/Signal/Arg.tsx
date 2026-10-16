@@ -37,9 +37,7 @@ export default function Arg({ argType, value, onChange }: ArgProps) {
     <Arg.Json value={value as string} onChange={onChange} />
   ) : argType === "Upload" ? (
     <Arg.Upload value={value as FileList} onChange={onChange} />
-  ) : (
-    <></>
-  );
+  ) : null;
 }
 
 interface ArgTableProps {

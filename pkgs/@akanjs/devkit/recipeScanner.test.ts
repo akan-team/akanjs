@@ -48,7 +48,10 @@ export default function Page() {
 describe("scanRecipes", () => {
   test("detects framework recipes with full variant surface", () => {
     const recipes = scanRecipes([{ path: "recipe.ts", content: FRAMEWORK, importFrom: "akanjs/ui" }]);
-    expect(recipes.map((r) => r.name).sort()).toEqual(["badgeRecipe", "buttonRecipe"]);
+    expect(recipes.map((r) => r.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "badgeRecipe",
+      "buttonRecipe",
+    ]);
 
     const button = byName(recipes, "buttonRecipe");
     expect(button?.importFrom).toBe("akanjs/ui");
@@ -91,7 +94,10 @@ describe("scanRecipes", () => {
       { path: "a.ts", content: src, importFrom: "@a" },
       { path: "b.ts", content: `export const other = recipe(tv({ base: "c" }));`, importFrom: "@b" },
     ]);
-    expect(recipes.map((r) => `${r.name}@${r.importFrom}`).sort()).toEqual(["other@@b", "shown@@a"]);
+    expect(recipes.map((r) => `${r.name}@${r.importFrom}`).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "other@@b",
+      "shown@@a",
+    ]);
   });
 });
 
@@ -154,7 +160,7 @@ describe("collectRecipeSources", () => {
     expect(
       scanRecipes(sources)
         .map((r) => r.name)
-        .sort(),
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     ).toEqual(["appBox", "appCard"]);
   });
 

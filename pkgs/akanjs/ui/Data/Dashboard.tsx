@@ -7,7 +7,7 @@ import { useState } from "react";
 
 import { dictLabel, formatStat } from "./dataText";
 
-export interface DashboardProps<T extends string, State> {
+export interface DashboardProps<_T extends string, _State> {
   className?: string;
   summary: Record<string, unknown>;
   /** The listing these tiles belong to. Kept so a caller names its target; the labels are app-level keys. */

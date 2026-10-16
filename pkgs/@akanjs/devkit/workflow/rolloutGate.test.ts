@@ -56,7 +56,11 @@ describe("tooling rollout gate", () => {
       }),
     );
 
-    expect(violations.map((violation) => `${violation.packageName}:${violation.status}`).sort()).toEqual([
+    expect(
+      violations
+        .map((violation) => `${violation.packageName}:${violation.status}`)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    ).toEqual([
       "@ttsc/graph:reference-only",
       "ast-grep:experiment-only",
       "recast:experiment-only",

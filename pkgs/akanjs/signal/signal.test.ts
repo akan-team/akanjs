@@ -1184,7 +1184,7 @@ describe("SignalContext execution", () => {
 
   test("runs a mutation once per Idempotency-Key and its caller, and refuses a repeat while the first still runs", async () => {
     let runs = 0;
-    let release = () => undefined as void;
+    let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });

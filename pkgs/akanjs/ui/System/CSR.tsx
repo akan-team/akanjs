@@ -367,7 +367,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
 };
 
 const CSRInner = () => {
-  return <></>;
+  return null;
 };
 CSR.Inner = CSRInner;
 

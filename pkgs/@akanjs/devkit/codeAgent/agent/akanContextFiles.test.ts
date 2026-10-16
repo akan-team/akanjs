@@ -73,7 +73,9 @@ describe("workspace context files", () => {
   test("a rule with no frontmatter at all is unconditional, and so is .cursorrules", () => {
     const root = workspace({ ".cursor/rules/plain.mdc": "just do it", ".cursorrules": "the legacy file" });
     const files = AkanContextFiles.extend(loaded(root), { workspaceRoot: root, cwd: root });
-    expect(namesOf(files, root).sort()).toEqual([".cursorrules", ".cursor/rules/plain.mdc", "AGENTS.md"].sort());
+    expect(namesOf(files, root).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+      [".cursorrules", ".cursor/rules/plain.mdc", "AGENTS.md"].sort(),
+    );
   });
 
   test("rules nested under the rules directory are found, in a stable order", () => {

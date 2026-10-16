@@ -8,7 +8,7 @@ import { usePageTool } from "akanjs/webkit";
 import { Pagination as Pagn } from "../Pagination";
 import { sliceNamesOf } from "../sliceNamesOf";
 
-interface PaginationProps<T extends string> {
+interface PaginationProps<_T extends string> {
   className?: string;
   slice: SliceMeta;
 }

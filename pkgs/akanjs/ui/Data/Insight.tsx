@@ -4,7 +4,7 @@ import type { SliceMeta } from "akanjs/fetch";
 
 import { dictLabel, formatStat } from "./dataText";
 
-interface InsightProps<T extends string, Insight> {
+interface InsightProps<_T extends string, Insight> {
   className?: string;
   insight: Insight;
   slice: SliceMeta;

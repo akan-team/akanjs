@@ -92,7 +92,7 @@ const checkAkan = async (workspace: string, logFile: string | null): Promise<Con
   const parallelApiFiles = files
     .filter((file) => file !== `${AKAN_APP}/server.ts`)
     .filter((file) => matchesAnyGlob(file, PARALLEL_API_PATTERNS))
-    .sort();
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   for (const file of parallelApiFiles) {
     violations.push(violation("parallel-api-layer", "Akan stack should not create a parallel API/server layer", file));
   }

@@ -77,7 +77,10 @@ describe("Model row wrappers", () => {
     );
 
     const tools = surface.snapshot().tools;
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["removeRowTestItem", "viewRowTestItem"]);
+    expect(tools.map((tool) => tool.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "removeRowTestItem",
+      "viewRowTestItem",
+    ]);
     expect(tools.find((tool) => tool.name === "removeRowTestItem")?.needsConfirm).toBe(true);
     expect(tools.find((tool) => tool.name === "viewRowTestItem")?.needsConfirm).toBe(false);
     unmount();

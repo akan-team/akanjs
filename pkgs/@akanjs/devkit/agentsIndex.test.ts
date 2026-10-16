@@ -86,6 +86,9 @@ describe("collectScopeRecipeSources", () => {
     await write("libs/shared/ui/Recipe/panel.ts", `export const panelRecipe = recipe(tv({ base: "y" }));`);
     await write("pkgs/akanjs/ui/recipe/buttonRecipe.ts", `export const buttonRecipe = recipe(tv({ base: "z" }));`);
     const sources = await collectScopeRecipeSources(root, { type: "app", name: "minimal" }, ["shared"]);
-    expect(sources.map((source) => source.importFrom).sort()).toEqual(["@apps/minimal/ui", "@libs/shared/ui"]);
+    expect(sources.map((source) => source.importFrom).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "@apps/minimal/ui",
+      "@libs/shared/ui",
+    ]);
   });
 });

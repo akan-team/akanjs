@@ -176,7 +176,7 @@ export function assembleApk({ base, dex, assetsDir, extra = [] }: ApkInput): Uin
   for (const [i, bytes] of dex.entries())
     entries.push(fileEntry(i === 0 ? "classes.dex" : `classes${i + 1}.dex`, bytes, true));
   for (const e of extra) entries.push(fileEntry(e.name, e.bytes, false));
-  for (const file of walk(assetsDir).sort()) {
+  for (const file of walk(assetsDir).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
     const rel = relative(assetsDir, file).split("\\").join("/");
     const ext = rel.split(".").pop()!.toLowerCase();
     entries.push(fileEntry(`assets/${rel}`, new Uint8Array(readFileSync(file)), STORE_EXT.has(ext)));
@@ -198,7 +198,7 @@ export function assembleBundleModule({ base, dex, assetsDir, extra = [] }: ApkIn
     entries.push(fileEntry(`dex/${i === 0 ? "classes.dex" : `classes${i + 1}.dex`}`, bytes, false));
   // Native libraries keep their lib/<abi>/ path; other files of the APK root go under root/.
   for (const e of extra) entries.push(fileEntry(e.name.startsWith("lib/") ? e.name : `root/${e.name}`, e.bytes, false));
-  for (const file of walk(assetsDir).sort()) {
+  for (const file of walk(assetsDir).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
     const rel = relative(assetsDir, file).split("\\").join("/");
     const ext = rel.split(".").pop()!.toLowerCase();
     entries.push(fileEntry(`assets/${rel}`, new Uint8Array(readFileSync(file)), STORE_EXT.has(ext)));

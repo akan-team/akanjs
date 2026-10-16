@@ -37,8 +37,8 @@ type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic
   slice: {
     [K in keyof InternalSliceObj]: InternalSliceObj[K] extends SliceStateAction<
       infer RefName,
-      infer Suffix,
-      infer SliceName,
+      infer _Suffix,
+      infer _SliceName,
       infer State,
       infer Action
     >

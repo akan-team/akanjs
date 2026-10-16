@@ -67,7 +67,10 @@ export function addonReport(serverDir: string, os: AddonOs, arch: AddonArch): Ad
         `${name} was compiled on this computer at install (binding.gyp, no prebuilt binary): check that it runs on a computer with nothing else installed`,
       );
   }
-  return { problems: problems.sort(), warnings: warnings.sort() };
+  return {
+    problems: problems.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    warnings: warnings.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+  };
 }
 
 /** A path inside the server as the report names it: relative, `/`-separated on every OS. */

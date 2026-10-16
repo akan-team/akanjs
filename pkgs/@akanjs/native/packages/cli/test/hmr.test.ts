@@ -463,7 +463,10 @@ describe("dev gateway with an external dev server (akanjs readiness O4-1, O4-2)"
       const reply = await new Promise<string>((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${server.port}/_akan/hmr?token=1`);
         ws.onopen = () => ws.send("hi");
-        ws.onmessage = (e) => (resolve(String(e.data)), ws.close());
+        ws.onmessage = (e) => {
+          resolve(String(e.data));
+          ws.close();
+        };
         ws.onerror = () => reject(new Error("socket failed"));
       });
       expect(reply).toBe("echo hi ?token=1");
@@ -511,7 +514,10 @@ describe("dev gateway with an external dev server (akanjs readiness O4-1, O4-2)"
       const reply = await new Promise<string>((resolve, reject) => {
         const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws?user=2`);
         ws.onopen = () => ws.send("hello");
-        ws.onmessage = (e) => (resolve(String(e.data)), ws.close());
+        ws.onmessage = (e) => {
+          resolve(String(e.data));
+          ws.close();
+        };
         ws.onerror = () => reject(new Error("socket failed"));
       });
       expect(reply).toBe("server hello ?user=2");

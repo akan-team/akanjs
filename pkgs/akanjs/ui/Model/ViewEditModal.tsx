@@ -122,7 +122,7 @@ export default function ViewEditModal({
   const canRemove = !!servedEndpointOf(fetch, `remove${ModelName}`);
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
   const Title = () => {
-    if (!model || modelLoading || !renderTitle) return <></>;
+    if (!model || modelLoading || !renderTitle) return null;
     const render = renderTitle(model);
     if (typeof render === "string")
       return <h2 className="flex items-center text-sm md:text-base lg:text-lg xl:text-2xl">{render}</h2>;

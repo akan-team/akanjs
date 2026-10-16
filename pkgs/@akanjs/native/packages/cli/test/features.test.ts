@@ -28,10 +28,14 @@ test("the iOS shell names AkanNativeUpdates and AkanNativeVectors only under the
     let condition = "";
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
-      if (trimmed.startsWith("#if ")) depth++, (condition = trimmed.slice(4));
-      else if (trimmed === "#else") condition = `!${condition}`;
-      else if (trimmed === "#endif") depth--, (condition = depth ? condition : "");
-      else if (/\bAkanNativeUpdates\b/.test(trimmed) && !trimmed.startsWith("//"))
+      if (trimmed.startsWith("#if ")) {
+        depth++;
+        condition = trimmed.slice(4);
+      } else if (trimmed === "#else") condition = `!${condition}`;
+      else if (trimmed === "#endif") {
+        depth--;
+        condition = depth ? condition : "";
+      } else if (/\bAkanNativeUpdates\b/.test(trimmed) && !trimmed.startsWith("//"))
         expect([file, trimmed, condition]).toEqual([file, trimmed, "AKAN_NATIVE_UPDATES"]);
       else if (/\bAkanNativeVectors\b/.test(trimmed) && !trimmed.startsWith("//") && !trimmed.startsWith("///"))
         expect([file, trimmed, condition]).toEqual([file, trimmed, "AKAN_NATIVE_DEV"]);

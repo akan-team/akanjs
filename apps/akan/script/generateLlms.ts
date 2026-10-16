@@ -544,7 +544,7 @@ const hrefFromFile = (filePath: string) => {
 
 const mirrorHrefFromHref = (href: string) => `/llms/pages${href}.md`;
 const outputPathFromHref = (href: string) => path.join(pagesOutputRoot, `${href.replace(/^\//, "")}.md`);
-const sectionFromHref = (href: string) => href.split("/").filter(Boolean)[0] ?? "docs";
+const sectionFromHref = (href: string) => href.split("/").find(Boolean) ?? "docs";
 
 const titleFromHref = (href: string) => {
   const segment = href.split("/").filter(Boolean).at(-1) ?? "Akan.js";

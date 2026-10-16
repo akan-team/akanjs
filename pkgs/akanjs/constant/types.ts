@@ -1,6 +1,6 @@
 import { type Dayjs, dayjs, enumOf, type GetStateObject } from "akanjs/base";
 
-export type QueryOf<T = any> = any;
+export type QueryOf<_T = any> = any;
 
 export type ConstantType = "input" | "object" | "full" | "light" | "insight" | "scalar";
 

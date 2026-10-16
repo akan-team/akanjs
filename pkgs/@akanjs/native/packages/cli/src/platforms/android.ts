@@ -179,7 +179,7 @@ export function androidManifest(
     <uses-sdk android:minSdkVersion="${MIN_SDK}" android:targetSdkVersion="${TARGET_SDK}" />
     <uses-permission android:name="android.permission.INTERNET" />
 ${permissions.map((p) => `    <uses-permission android:name="${xml(p)}" />`).join("\n")}
-${manifestXml.map((x) => `    ${x.replaceAll("${applicationId}", appId)}`).join("\n")}
+${manifestXml.map((x) => `    ${x.replaceAll(`\${applicationId}`, appId)}`).join("\n")}
 
     <application
         android:name="com.akanjs.runtime.AkanNativeApplication"
@@ -224,7 +224,7 @@ ${config.deepLinks.domains
 ${pathPrefixes.map((prefix) => `                <data android:pathPrefix="${xml(prefix)}" />\n`).join("")}            </intent-filter>`,
   )
   .join("\n")}
-${activityXml.map((x) => `            ${x.replaceAll("${applicationId}", appId)}`).join("\n")}
+${activityXml.map((x) => `            ${x.replaceAll(`\${applicationId}`, appId)}`).join("\n")}
         </activity>
 
         <!-- Framework-only replacement for androidx FileProvider (camera EXTRA_OUTPUT, plugins.md C4) -->
@@ -233,7 +233,7 @@ ${activityXml.map((x) => `            ${x.replaceAll("${applicationId}", appId)}
             android:authorities="${appId}.akan-native.files"
             android:exported="false"
             android:grantUriPermissions="true" />
-${applicationXml.map((x) => `        ${x.replaceAll("${applicationId}", appId)}`).join("\n")}
+${applicationXml.map((x) => `        ${x.replaceAll(`\${applicationId}`, appId)}`).join("\n")}
     </application>
 </manifest>
 `;

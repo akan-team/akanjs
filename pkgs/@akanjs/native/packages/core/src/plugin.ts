@@ -91,16 +91,18 @@ type WithOptions<F> = F extends (...args: infer P) => infer R
  */
 export type PluginMethods<Api> = { [K in keyof Api]: Api[K] & WithOptions<Api[K]> };
 
-export type Plugin<Api, Events = {}> = PluginMethods<Api> & PluginHandle<Api, Events>;
+export type Plugin<Api, Events = Record<never, never>> = PluginMethods<Api> & PluginHandle<Api, Events>;
 
 const RESERVED = new Set([...RESERVED_MEMBERS, "$$typeof"]);
 
 /** Identity helper that gives web implementations their types. */
-export function defineWebPlugin<Api, Events = {}>(impl: WebPlugin<Api, Events>): WebPlugin<Api, Events> {
+export function defineWebPlugin<Api, Events = Record<never, never>>(
+  impl: WebPlugin<Api, Events>,
+): WebPlugin<Api, Events> {
   return impl;
 }
 
-export function definePlugin<Api extends object, Events extends object = {}>(
+export function definePlugin<Api extends object, Events extends object = Record<never, never>>(
   id: string,
   options: PluginOptions<Api, Events>,
 ): Plugin<Api, Events> {

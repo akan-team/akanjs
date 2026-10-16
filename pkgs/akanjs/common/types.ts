@@ -6,7 +6,7 @@ export interface RetryPolicy extends BackoffPolicy {
   attempts?: number;
 }
 
-export interface FetchPolicy<Returns = unknown> {
+export interface FetchPolicy<_Returns = unknown> {
   cache?: boolean | number;
   crystalize?: boolean;
   origin?: string;

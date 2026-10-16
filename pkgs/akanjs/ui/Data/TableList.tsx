@@ -16,7 +16,7 @@ import { Action, convToAntdColumn } from "./Item";
 import DataPagination from "./Pagination";
 
 interface TableListProps<
-  T extends string,
+  _T extends string,
   Input,
   Full extends { id: string },
   Light extends { id: string },

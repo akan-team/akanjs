@@ -533,7 +533,9 @@ describe("ContextRunner", () => {
     }[];
 
     expect(ambiguous.diagnostics).toContainEqual(expect.objectContaining({ code: "module-context-ambiguous" }));
-    expect(ambiguous.candidates.map((candidate) => candidate.app).sort()).toEqual(["demo", "ops"]);
+    expect(ambiguous.candidates.map((candidate) => candidate.app).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+      ["demo", "ops"],
+    );
     expect(filtered).toHaveLength(1);
     expect(filtered[0]).toMatchObject({ sysName: "ops", path: "apps/ops/lib/post" });
   });

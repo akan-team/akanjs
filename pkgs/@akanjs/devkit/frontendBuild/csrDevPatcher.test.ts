@@ -379,7 +379,10 @@ describe("CsrDevPatcher", () => {
     await expect(patcher.update([], { roots: [file("ui/E1.tsx")], onlyRoots: true })).rejects.toThrow();
     await expect(patcher.update([], { roots: [file("ui/E4.tsx")], onlyRoots: true })).rejects.toThrow();
     const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
-    expect(graph.pending.sort()).toEqual(["apps/demo/ui/E1.tsx", "apps/demo/ui/E4.tsx"]);
+    expect(graph.pending.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "apps/demo/ui/E1.tsx",
+      "apps/demo/ui/E4.tsx",
+    ]);
   });
 
   test("a route's check that adds its own root leaves another route's failed root pending", async () => {

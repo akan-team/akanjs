@@ -64,7 +64,7 @@ describe("StoreSurfaceSource", () => {
       source
         .tools()
         .map((tool) => tool.name)
-        .sort(),
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     ).toEqual(["goBack", "highlight", "navigate", "readScreen", "readState"]);
     expect(entryOf("publishNote")).toBeUndefined();
     expect(entryOf("setTitleOnSurfaceNote")).toBeUndefined();

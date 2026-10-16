@@ -119,7 +119,7 @@ type RootSliceInfoObj<
   _Filter extends FilterInstance,
   _QueryKey extends string,
 > = {
-  [""]: SliceInfo<
+  "": SliceInfo<
     SrvRefName<SrvModule>,
     _Input,
     _Full,
@@ -207,7 +207,7 @@ export function slice<
       ...libSlices.map((libSlice) => libSlice[SLICE_META]),
       {
         // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
-        [""]: init({ guards: rootGuards, ...(mcpOption?.root === false ? { mcp: false } : {}) })
+        "": init({ guards: rootGuards, ...(mcpOption?.root === false ? { mcp: false } : {}) })
           .search<"queryKey", string>("queryKey", String)
           .search<"args", unknown[]>("args", Any)
           .exec((queryKey, args) => {

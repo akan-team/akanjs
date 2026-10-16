@@ -113,7 +113,7 @@ async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { 
   if (violations.length > 0) {
     throw new Error(
       `[scan-convention]\n${violations
-        .sort()
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
         .map((violation) => `- ${violation}`)
         .join("\n")}`,
     );

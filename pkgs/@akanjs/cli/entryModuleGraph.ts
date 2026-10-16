@@ -84,6 +84,6 @@ export class EntryModuleGraph {
     const externals = this.eagerExternals(entry);
     return EntryModuleGraph.heavyDependencies
       .filter((dep) => externals.some((name) => name === dep || name.startsWith(`${dep}/`)))
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 }

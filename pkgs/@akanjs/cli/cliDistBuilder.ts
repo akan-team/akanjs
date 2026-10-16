@@ -47,7 +47,7 @@ export class CliDistBuilder {
       const relativePaths: string[] = [];
       for await (const relativePath of new Bun.Glob("**/*").scan({ cwd: dir, onlyFiles: true, dot: true }))
         if (!CliDistBuilder.#ignoredInputs.test(relativePath)) relativePaths.push(relativePath);
-      for (const relativePath of relativePaths.sort()) {
+      for (const relativePath of relativePaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
         const info = await stat(path.join(dir, relativePath)).catch(() => null);
         if (info) hasher.update(`${path.basename(dir)}/${relativePath}:${info.mtimeMs}:${info.size}\n`);
       }

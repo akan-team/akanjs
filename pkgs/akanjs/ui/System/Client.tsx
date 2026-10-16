@@ -53,7 +53,7 @@ import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
 
 export const Client = () => {
-  return <></>;
+  return null;
 };
 interface ClientWrapperProps {
   children: ReactNode;

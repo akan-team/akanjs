@@ -277,7 +277,7 @@ export type FieldInfoObjectToFieldObject<Obj extends FieldInfoObject> = {
 
 export class ConstantField<
   FieldType extends ConstantFieldKind = ConstantFieldKind,
-  Value extends ConstantFieldTypeInput | null = any,
+  _Value extends ConstantFieldTypeInput | null = any,
   FieldValue = any,
   MapValue = any,
   Nullable extends boolean = boolean,
@@ -477,7 +477,7 @@ type FieldOption<
       >
     >[];
 
-export type PlainTypeToFieldType<PlainType> = PlainType extends [infer First, ...infer Rest]
+export type PlainTypeToFieldType<PlainType> = PlainType extends [infer First, ...unknown[]]
   ? PlainTypeToFieldType<First>[]
   : PlainType extends number
     ? typeof Int | typeof Float

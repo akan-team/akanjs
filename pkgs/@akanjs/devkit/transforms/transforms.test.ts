@@ -93,7 +93,12 @@ describe('export * in a "use client" module', () => {
       "export const text = \"export * from './a string'\";",
       "",
     ].join("\n");
-    expect(scanUseClientExports(shapes, file).sort()).toEqual(["LeaveInfo", "Voc", "ns", "text"]);
+    expect(scanUseClientExports(shapes, file).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "LeaveInfo",
+      "Voc",
+      "ns",
+      "text",
+    ]);
     expect(scanUseClientExports('export * from "./a";\nexport const X = 1;\n', file)).toEqual(["X"]);
     const stub = transformUseClient(shapes, { path: file, workspaceRoot: "/repo" });
     expect(stub).toContain("export const LeaveInfo = registerClientReference");
