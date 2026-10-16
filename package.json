@@ -39,6 +39,7 @@
     "testDevRegistryE2e": "bun infra/test/runDevRegistryE2e.ts",
     "testConformance": "bun infra/test/runConformance.ts",
     "testNative": "bun infra/test/runNativeChecks.ts",
+    "testGates": "bun infra/test/runGates.ts",
     "killAkan": "lsof -ti tcp:8282,18282-18300 | xargs kill -9",
     "buildAkan": "bun pkgs/@akanjs/cli/build.ts",
     "runAkan": "bun dist/pkgs/@akanjs/cli/index.js",
