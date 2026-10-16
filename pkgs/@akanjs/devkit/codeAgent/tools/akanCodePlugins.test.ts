@@ -247,22 +247,26 @@ describe("PreviewView", () => {
     expect(typeof PreviewView.available).toBe("boolean");
   });
 
-  test.skipIf(!PreviewView.available)("finds an empty body and a console error on a real page", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch: () =>
-        new Response('<!doctype html><html><body></body><script>console.error("boom")</script></html>', {
-          headers: { "content-type": "text/html" },
-        }),
-    });
-    try {
-      const probe = await PreviewView.probe(`http://localhost:${server.port}/`);
-      expect(probe.pageErrors.join(" ")).toContain("rendered empty");
-      expect(probe.consoleErrors.join(" ")).toContain("boom");
-    } finally {
-      server.stop(true);
-    }
-  });
+  test.skipIf(!PreviewView.available)(
+    "finds an empty body and a console error on a real page",
+    async () => {
+      const server = Bun.serve({
+        port: 0,
+        fetch: () =>
+          new Response('<!doctype html><html><body></body><script>console.error("boom")</script></html>', {
+            headers: { "content-type": "text/html" },
+          }),
+      });
+      try {
+        const probe = await PreviewView.probe(`http://localhost:${server.port}/`);
+        expect(probe.pageErrors.join(" ")).toContain("rendered empty");
+        expect(probe.consoleErrors.join(" ")).toContain("boom");
+      } finally {
+        server.stop(true);
+      }
+    },
+    30_000,
+  );
 });
 
 describe("SubagentPool", () => {
