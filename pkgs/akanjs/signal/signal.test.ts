@@ -804,6 +804,19 @@ describe("signal serialization and registry", () => {
 });
 
 describe("SignalContext execution", () => {
+  test("names the caller on a context-mode trace and times no stage", async () => {
+    const endpointInfo = buildEndpoint.query(String, { guards: [TestAdmin as GuardCls] }).exec(() => "ok");
+    const request = Object.assign(makeHttpRequest(), { account: { id: "u1" } }) as unknown as Bun.BunRequest;
+    const context = makeSignalContext({ endpointInfo, request });
+
+    await context.init();
+    await context.exec();
+
+    expect(context.trace?.mode).toBe("context");
+    expect(context.trace?.attrs).toMatchObject({ userId: "u1" });
+    expect(context.trace?.spans).toEqual([]);
+  });
+
   test("parses HTTP params, query arrays, nullable search args, and JSON body", async () => {
     const endpointInfo = buildEndpoint
       .mutation(String)

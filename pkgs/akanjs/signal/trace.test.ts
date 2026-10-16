@@ -66,6 +66,20 @@ describe("SignalTrace.create", () => {
     expect(SignalTrace.create("userList", "query", "http")).toBeNull();
   });
 
+  test("keeps one traceId for its life, stamped with the time it started rather than first read", () => {
+    const before = Date.now();
+    const trace = new SignalTrace("lazyId", "query", { mode: "context" });
+    const after = Date.now();
+    const id = trace.traceId;
+
+    expect(trace.traceId).toBe(id);
+    expect(id).toMatch(/^[0-9a-z]+-[0-9a-z]{1,6}$/);
+    const startedAt = Number.parseInt(id.split("-")[0] ?? "", 36);
+    expect(startedAt).toBeGreaterThanOrEqual(before);
+    expect(startedAt).toBeLessThanOrEqual(after);
+    expect(new SignalTrace("lazyId", "query").traceId).not.toBe(id);
+  });
+
   test("names the endpoint as type:key", () => {
     expect(SignalTrace.create("signScContract", "mutation", "http")?.endpoint).toBe("mutation:signScContract");
   });

@@ -96,7 +96,6 @@ export class SignalTrace {
   static #activeFlights = 0;
   static #flightMaxTraces: number | null = null;
 
-  readonly traceId: string;
   readonly endpointKey: string;
   readonly endpointType: string;
   readonly origin: TraceOrigin;
@@ -118,6 +117,8 @@ export class SignalTrace {
   #flightRing: FlightEntry[] | null = null;
   #flightEvicted = 0;
   #finalized = false;
+  readonly #startedAtEpoch: number;
+  #traceId: string | null = null;
 
   constructor(
     endpointKey: string,
@@ -129,7 +130,13 @@ export class SignalTrace {
     this.mode = mode;
     this.origin = origin;
     this.startedAt = performance.now();
-    this.traceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    this.#startedAtEpoch = Date.now();
+  }
+
+  // Spelled on first read: most calls log nothing, and the two base-36 conversions cost a tenth of a bare call.
+  get traceId(): string {
+    this.#traceId ??= `${this.#startedAtEpoch.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return this.#traceId;
   }
 
   /** `null` when both modes are off. */

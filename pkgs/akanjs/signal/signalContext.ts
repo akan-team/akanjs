@@ -147,9 +147,9 @@ export class SignalContext<
     }
     // Leaving a room is never refused: a client held there could not get out.
     if (!this.#isLeavingRoom()) await EndpointRateLimit.admit(this, "ip");
-    const start = this.trace ? performance.now() : 0;
+    const start = this.#spanned ? performance.now() : 0;
     this.#rawArgs = await this.ctx.readArgs(this.endpointInfo);
-    this.trace?.recordSpan("argRead", performance.now() - start);
+    if (this.#spanned) this.trace?.recordSpan("argRead", performance.now() - start);
     return this;
   }
   /** Parsed on first read, so a guard or middleware that reads one still gets it; a parser runs at most once per call. */
@@ -163,9 +163,9 @@ export class SignalContext<
   #parseArgs(): unknown[] {
     const raw = this.#rawArgs;
     if (!raw) return [];
-    const start = this.trace ? performance.now() : 0;
+    const start = this.#spanned ? performance.now() : 0;
     const args = this.endpointInfo.args.map((arg, idx) => this.ctx.parseArg(arg, raw[idx]));
-    this.trace?.recordSpan("argParse", performance.now() - start);
+    if (this.#spanned) this.trace?.recordSpan("argParse", performance.now() - start);
     return args;
   }
   #isLeavingRoom() {
@@ -286,19 +286,24 @@ export class SignalContext<
     if (!this.trace || getCurrentTrace() === this.trace) return await this.#exec();
     return await runTraced(this.trace, async () => await this.#exec());
   }
+  // Spans are recorded only in full mode; a context-mode trace carries attrs and the log context, not timings.
+  get #spanned() {
+    return this.trace?.mode === "full";
+  }
   async #exec() {
     if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
     const coreExec = async () => {
       if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
       await EndpointRateLimit.admit(this, "account");
+      if (this.#spanned) await traceSpan("guards", () => this.#checkGuards("account"));
+      else await this.#checkGuards("account");
       if (this.trace) {
-        await traceSpan("guards", () => this.#checkGuards("account"));
         const account = this.get<{ id?: unknown }>("account");
         if (typeof account?.id === "string") this.trace.setAttr("userId", account.id);
-      } else await this.#checkGuards("account");
+      }
       // Parsed only now: a caller the account guards refused never reaches an argument parser.
       this.#args ??= this.#parseArgs();
-      if (this.trace) await traceSpan("resourceGuards", () => this.#checkGuards("resource"));
+      if (this.#spanned) await traceSpan("resourceGuards", () => this.#checkGuards("resource"));
       else await this.#checkGuards("resource");
       if (this.endpointInfo.internalArgs.length > 0) {
         this.internalArgs = await Promise.all(
@@ -311,7 +316,7 @@ export class SignalContext<
         );
       }
       const handle = async () => await this.endpointInfo.execFn?.call(this.adaptor, ...this.args, ...this.internalArgs);
-      const traced = this.trace ? () => traceSpan("handler", handle) : handle;
+      const traced = this.#spanned ? () => traceSpan("handler", handle) : handle;
       return await EndpointIdempotency.through(
         this,
         () => EndpointCache.through(this, traced),
@@ -322,12 +327,12 @@ export class SignalContext<
       );
     };
     const next = this.#withMiddleware(coreExec);
-    const result = this.trace ? await traceSpan("execChain", () => next()) : await next();
+    const result = this.#spanned ? await traceSpan("execChain", () => next()) : await next();
     // A pubsub's return is not sent; a live slice's exec returns the resolved query its room is routed by.
     if (this.endpointInfo.type === "pubsub") return result;
     if (result instanceof Response) return result;
     const resolved = await this.#resolve(result);
-    if (!this.trace) return this.ctx.makeResponse(resolved, this.endpointInfo);
+    if (!this.#spanned) return this.ctx.makeResponse(resolved, this.endpointInfo);
     return await traceSpan("serialize", async () => this.ctx.makeResponse(resolved, this.endpointInfo));
   }
   async #resolve(result: unknown) {
@@ -338,7 +343,7 @@ export class SignalContext<
       registry: this.#registry,
       live: this.#live,
     };
-    const resolved = this.trace
+    const resolved = this.#spanned
       ? await traceSpan("resolveReturn", () => SignalContext.resolveReturn(result, resolveOption))
       : await SignalContext.resolveReturn(result, resolveOption);
     return this.#settle(resolved);
