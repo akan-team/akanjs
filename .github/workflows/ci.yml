@@ -31,6 +31,19 @@ jobs:
       - uses: ./.github/actions/setup
       - run: bun run typecheckPkgs
 
+  typecheck-libs:
+    name: Typecheck libs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: bun run buildAkan
+      - name: Seed each lib's gitignored test env from its tracked example
+        run: for lib in util shared; do cp "libs/$lib/env/env.server.example.ts" "libs/$lib/env/env.server.testing.ts"; done
+      - run: bun run runAkan typecheck util
+      - run: bun run runAkan typecheck shared
+
   test:
     name: Test (${{ matrix.package }})
     runs-on: ubuntu-latest
@@ -55,10 +68,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
-      - run: bun run runAkan sync
+      - run: bun run runAkan sync-all
       - name: Fail when sync changed tracked files
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
             git status --short
             git --no-pager diff
             echo "::error::akan sync changed tracked files. Run it locally and commit the result."

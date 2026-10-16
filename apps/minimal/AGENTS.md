@@ -34,5 +34,5 @@ Import from `@libs/util/ui`:
 - `inputRecipe`(kind: field*|area|select · size: xs|sm|md*|lg|xl · tone: default*|primary) — Input surface — the shell shared by `<input>`, `<textarea>` and `<select>`.
 - `rangeRecipe`(size: xs|sm|md*|lg · tone: default*|primary|secondary|accent|success|warning|error)
 - `tableRecipe`(size: sm|md*) — Table. daisyUI styled cells through descendant selectors, which a utility recipe can only reach with
-- `tabRecipe`(active: true|false*)
+- `tabRecipe`(active: true|false*) — Tab item. akanjs's `<Tab.Menus>` and `<Tab.Menu>` render bare `div`s and only merge the classes
 <!-- akan:agent:end -->
