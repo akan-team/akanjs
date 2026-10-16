@@ -83,6 +83,7 @@
     "@inquirer/prompts": "^8.4.3",
     "@kubernetes/client-node": "^1.4.0",
     "@lexical/code": "^0.51.0",
+    "@lexical/code-prism": "^0.51.0",
     "@lexical/extension": "^0.51.0",
     "@lexical/link": "^0.51.0",
     "@lexical/list": "^0.51.0",

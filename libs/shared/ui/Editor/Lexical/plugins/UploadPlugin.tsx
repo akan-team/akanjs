@@ -87,8 +87,8 @@ export const UploadPlugin = ({ features }: UploadPluginProps) => {
       ),
       editor.registerCommand(
         PASTE_COMMAND,
-        (event: ClipboardEvent) => {
-          const files = event.clipboardData?.files;
+        (event) => {
+          const files = "clipboardData" in event ? event.clipboardData?.files : undefined;
           const images = files ? [...files].filter((file) => file.type.startsWith("image/")) : [];
           if (images.length > 0) {
             event.preventDefault();

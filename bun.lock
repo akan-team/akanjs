@@ -15,6 +15,7 @@
         "@inquirer/prompts": "^8.4.3",
         "@kubernetes/client-node": "^1.4.0",
         "@lexical/code": "^0.51.0",
+        "@lexical/code-prism": "^0.51.0",
         "@lexical/extension": "^0.51.0",
         "@lexical/link": "^0.51.0",
         "@lexical/list": "^0.51.0",
@@ -139,7 +140,7 @@
     },
     "pkgs/@akanjs/cli": {
       "name": "@akanjs/cli",
-      "version": "3.0.2",
+      "version": "3.1.0-rc.4",
       "bin": {
         "akan": "./index.ts",
       },
@@ -152,7 +153,7 @@
         "@earendil-works/pi-tui": "0.86.1",
         "@inquirer/prompts": "^8.4.3",
         "@tailwindcss/node": "^4.3.0",
-        "akanjs": "3.0.2",
+        "akanjs": "3.1.0-rc.4",
         "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "dayjs": "^1.11.20",
@@ -174,7 +175,7 @@
     },
     "pkgs/@akanjs/devkit": {
       "name": "@akanjs/devkit",
-      "version": "3.0.2",
+      "version": "3.1.0-rc.4",
       "dependencies": {
         "@earendil-works/chord": "0.86.1",
         "@earendil-works/pi-agent-core": "0.86.1",
@@ -184,7 +185,7 @@
         "@earendil-works/pi-tui": "0.86.1",
         "@inquirer/prompts": "^8.4.3",
         "@tailwindcss/node": "^4.3.0",
-        "akanjs": "3.0.2",
+        "akanjs": "3.1.0-rc.4",
         "chalk": "^5.6.2",
         "commander": "^14.0.3",
         "dayjs": "^1.11.20",
@@ -223,7 +224,7 @@
     },
     "pkgs/akanjs": {
       "name": "akanjs",
-      "version": "3.1.0-rc.2",
+      "version": "3.1.0-rc.4",
       "dependencies": {
         "@lexical/plain-text": "^0.51.0",
         "@noble/ciphers": "^2.4.0",
@@ -284,7 +285,7 @@
     },
     "pkgs/create-akan-workspace": {
       "name": "create-akan-workspace",
-      "version": "3.0.2",
+      "version": "3.1.0-rc.4",
       "bin": {
         "create-akan-workspace": "index.js",
       },
@@ -772,6 +773,8 @@
     "@lexical/code": ["@lexical/code@0.51.0", "", { "dependencies": { "@lexical/code-core": "0.51.0", "@lexical/extension": "0.51.0", "lexical": "0.51.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-migAY4bBDyrZ+YDYky4n5Wu2ggpzkct4bf9Q4Y+L5t4/vJSCYs/x/qCqqNWmBXZF2or6bLCRUQmVRXxwj+lzfw=="],
 
     "@lexical/code-core": ["@lexical/code-core@0.51.0", "", { "dependencies": { "@lexical/extension": "0.51.0", "@lexical/html": "0.51.0", "@lexical/internal": "0.51.0", "@lexical/utils": "0.51.0", "lexical": "0.51.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-D35OqZF2cY78jSRNu/v/IjyEP8qY6dOfjKUBZISJcLkJBHnJAxiWMF1+J2I3dTuu8OvKRib2+uNgzEg/VuTOsQ=="],
+
+    "@lexical/code-prism": ["@lexical/code-prism@0.51.0", "", { "dependencies": { "@lexical/code-core": "0.51.0", "@lexical/extension": "0.51.0", "lexical": "0.51.0", "prismjs": "^1.30.0" }, "peerDependencies": { "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-iw2AkQefB7JP9E5TKHCBx2ew/u1uFGP9WNJRIYmErS2R0thhuPFrjDJ+cGkp9s1Wk8Zo0fi5BWJ2xbYXe/WjqQ=="],
 
     "@lexical/devtools-core": ["@lexical/devtools-core@0.51.0", "", { "dependencies": { "@lexical/html": "0.51.0", "@lexical/link": "0.51.0", "@lexical/mark": "0.51.0", "@lexical/table": "0.51.0", "@lexical/utils": "0.51.0", "lexical": "0.51.0" }, "peerDependencies": { "react": ">=18.x", "react-dom": ">=18.x", "typescript": ">=5.2" }, "optionalPeers": ["typescript"] }, "sha512-VpRcsvbA0fy7NGndMmMyTC0FgCuRqqwNK14/qA+qCmUZSt1jdqS2rYHo2BhOB8T8GgnX9fNeWav2xyro3FsvNA=="],
 
@@ -2560,6 +2563,8 @@
     "pretty-format": ["pretty-format@29.7.0", "", { "dependencies": { "@jest/schemas": "^29.6.3", "ansi-styles": "^5.0.0", "react-is": "^18.0.0" } }, "sha512-Pdlw/oPxN+aXdmM9R00JVC9WVFoCLTKJvDVLgmJ+qAffBMxsV85l/Lu7sNx4zSzPyoL2euImuEwHhOXdEgNFZQ=="],
 
     "prism-react-renderer": ["prism-react-renderer@2.4.1", "", { "dependencies": { "@types/prismjs": "^1.26.0", "clsx": "^2.0.0" }, "peerDependencies": { "react": ">=16.0.0" } }, "sha512-ey8Ls/+Di31eqzUxC46h8MksNuGx/n0AAC8uKpwFau4RPDYLuE3EXTp8N8G2vX2N7UC/+IXeNUnlWBGGcAG+Ig=="],
+
+    "prismjs": ["prismjs@1.30.0", "", {}, "sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw=="],
 
     "progress": ["progress@2.0.3", "", {}, "sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA=="],
 
