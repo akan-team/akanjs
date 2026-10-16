@@ -1,16 +1,16 @@
 {
   "type-perf": {
-    "instantiations": 796734,
-    "types": 227439,
-    "checkMs": 4070
+    "instantiations": 797214,
+    "types": 227721,
+    "checkMs": 4090
   },
   "bundle-size": {
-    "main.js": 196056,
-    "server.js": 432511,
-    "rscWorker.js": 308162,
+    "main.js": 196487,
+    "server.js": 434691,
+    "rscWorker.js": 308458,
     "console-runtime.js": 75125,
-    "chunk-*.js": 6140604,
+    "chunk-*.js": 6143027,
     "public/": 2474085,
-    "csr/": 3577768
+    "csr/": 3577957
   }
 }
