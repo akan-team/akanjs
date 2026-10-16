@@ -531,7 +531,7 @@ const collectLayoutFiles = async (dir: string): Promise<string[]> => {
       return [];
     }),
   );
-  return files.flat();
+  return files.flat().sort();
 };
 
 const hrefFromFile = (filePath: string) => {
@@ -1016,11 +1016,13 @@ const renderLlmsFull = (pages: LlmsPage[]) => {
 
 const prioritySortValue = (priority: Priority) => ({ P0: 0, P1: 1, P2: 2 })[priority];
 
+const compareOrdinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 const run = async () => {
   const [files, menuMeta] = await Promise.all([collectFiles(docsRoot), extractMenuMeta()]);
   const pages = (await Promise.all(files.map((file) => extractPage(file, menuMeta)))).sort((a, b) => {
     const priorityDiff = prioritySortValue(a.priority) - prioritySortValue(b.priority);
-    return priorityDiff || a.href.localeCompare(b.href);
+    return priorityDiff || compareOrdinal(a.href, b.href);
   });
 
   await rm(pagesOutputRoot, { recursive: true, force: true });

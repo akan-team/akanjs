@@ -28,9 +28,23 @@ interface MenuMeta {
   order: number;
 }
 
-const appRoot = process.cwd();
+interface DocsSearchIndex {
+  generatedAt: string;
+  items: DocsSearchItem[];
+}
+
+const appRoot = path.resolve(import.meta.dir, "..");
 const docsRoot = path.join(appRoot, "page", "(docs)");
 const outputPath = path.join(appRoot, "public", "docs-search-index.json");
+// Mirrors the header nav (`akanjsDocsHeaderLinks`); readdir order varies by filesystem.
+const sectionOrder = ["docs", "conventions", "references", "cheatsheet"];
+
+const compareOrdinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+const sectionRankOf = (filePath: string) => {
+  const rank = sectionOrder.indexOf(path.relative(docsRoot, filePath).split(path.sep)[0] ?? "");
+  return rank === -1 ? sectionOrder.length : rank;
+};
 
 const mergeText = (...texts: Partial<LocalizedText>[]): LocalizedText => ({
   en: texts
@@ -159,7 +173,9 @@ const titleFromHref = (href: string): LocalizedText => {
 
 const extractMenuMeta = async () => {
   const meta = new Map<string, MenuMeta>();
-  const layoutFiles = await collectLayoutFiles(docsRoot);
+  const layoutFiles = (await collectLayoutFiles(docsRoot)).sort(
+    (a, b) => sectionRankOf(a) - sectionRankOf(b) || compareOrdinal(a, b),
+  );
 
   for (const filePath of layoutFiles) {
     const sourceText = await readFile(filePath, "utf8");
@@ -242,13 +258,22 @@ const extractDocItem = async (filePath: string, menuMeta: Map<string, MenuMeta>)
   };
 };
 
+// The index is committed, so a timestamp that moved without the items would be a diff on every regeneration.
+const generatedAtOf = async (items: DocsSearchItem[]) => {
+  const previous = await readFile(outputPath, "utf8")
+    .then((text) => JSON.parse(text) as Partial<DocsSearchIndex>)
+    .catch(() => null);
+  const previousAt = previous?.generatedAt;
+  const isUnchanged = typeof previousAt === "string" && JSON.stringify(previous?.items) === JSON.stringify(items);
+  return isUnchanged ? previousAt : new Date().toISOString();
+};
+
 const run = async () => {
   const [files, menuMeta] = await Promise.all([collectFiles(docsRoot), extractMenuMeta()]);
-  const items = await Promise.all(files.map((file) => extractDocItem(file, menuMeta)));
-  const index = {
-    generatedAt: new Date().toISOString(),
-    items: items.sort((a, b) => a.order - b.order || a.href.localeCompare(b.href)),
-  };
+  const items = (await Promise.all(files.map((file) => extractDocItem(file, menuMeta)))).sort(
+    (a, b) => a.order - b.order || compareOrdinal(a.href, b.href),
+  );
+  const index: DocsSearchIndex = { generatedAt: await generatedAtOf(items), items };
 
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(index, null, 2)}\n`);
