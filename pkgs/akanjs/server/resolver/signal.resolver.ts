@@ -22,6 +22,7 @@ import {
   resolvePageSkip,
   serialize,
 } from "akanjs/constant";
+import { DictionaryRegistry } from "akanjs/dictionary";
 import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
 import {
   type AdaptorCls,
@@ -36,6 +37,7 @@ import {
 } from "akanjs/service";
 import { websocketRoomContract } from "../../common/websocketContract";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
+import { EndpointErrorContract } from "../../signal/endpointErrorContract";
 import type { EndpointInfo } from "../../signal/endpointInfo";
 import type { Internal, InternalCls } from "../../signal/internal";
 import { Machine } from "../../signal/internalArg";
@@ -652,6 +654,7 @@ export class SignalResolver {
     const defaultPrefix = endpointCls.srv.cnst?.refName;
     SignalResolver.#warnUnguarded(endpointMeta);
     SignalResolver.#warnMachineKeyless(endpointMeta);
+    SignalResolver.#warnUndefinedErrors(endpointMeta);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
       const path = endpointInfo.getRoutePath(key, defaultPrefix);
       if (endpointInfo.signalOption.globalPrefix !== undefined) {
@@ -807,6 +810,21 @@ export class SignalResolver {
     if (!open.length) return;
     SignalResolver.logger.warn(
       `${open.join(", ")} declare${open.length === 1 ? "s" : ""} no guards, so anyone can call ${open.length === 1 ? "it" : "them"} over HTTP and WebSocket. Name the guards, or \`guards: [Public]\` to keep one open on purpose.`,
+    );
+  }
+  // A declared key no dictionary defines is published to OpenAPI and MCP as an error nobody can translate. Skipped when
+  // no dictionary is registered at all, as in a test that boots signals alone.
+  static #warnUndefinedErrors(endpointMeta: { [key: string]: EndpointInfo }) {
+    const declared = Object.entries(endpointMeta).flatMap(([key, endpointInfo]) =>
+      EndpointErrorContract.keysOf(endpointInfo.signalOption.errors).map((errorKey) => `${key} → ${errorKey}`),
+    );
+    if (!declared.length) return;
+    const known = new Set(DictionaryRegistry.getKeys());
+    if (!known.size) return;
+    const undefinedKeys = declared.filter((entry) => !known.has(entry.split(" → ")[1] ?? ""));
+    if (!undefinedKeys.length) return;
+    SignalResolver.logger.warn(
+      `${undefinedKeys.join(", ")}: declared in \`errors\`, defined in no dictionary's \`.error({})\`. Add the key, or drop it from the declaration.`,
     );
   }
   static #warnMachineKeyless(endpointMeta: { [key: string]: EndpointInfo }) {

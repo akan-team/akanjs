@@ -354,6 +354,24 @@ describe("McpDocument", () => {
     expect(doc.tools.find((tool) => tool.name === "countMcpPosts")?.description).toBeUndefined();
   });
 
+  test("spells the errors an endpoint declares into its description, after the dictionary text", () => {
+    const declared = signal();
+    const countMcpPosts = declared.mcpPost?.endpoint.countMcpPosts;
+    if (!countMcpPosts) throw new Error("countMcpPosts is not in the fixture");
+    declared.mcpPost.endpoint.countMcpPosts = {
+      ...countMcpPosts,
+      errors: { 403: ["mcpPost.error.hidden"], 409: ["mcpPost.error.locked"] },
+    };
+    const text: Record<string, string> = {
+      "mcpPost.signal.countMcpPosts.desc": "Counts the posts",
+      "mcpPost.error.locked": "The board is locked.",
+    };
+    const doc = new McpDocument(declared, { resolveDescription: (key) => text[key] });
+    expect(doc.tools.find((tool) => tool.name === "countMcpPosts")?.description).toBe(
+      "Counts the posts\nErrors it answers with on purpose: 403 mcpPost.error.hidden, 409 mcpPost.error.locked (The board is locked.).",
+    );
+  });
+
   test("marks path args required and leaves every search arg optional", () => {
     const doc = new McpDocument(signal());
     const single = doc.tools.find((tool) => tool.name === "mcpPost");

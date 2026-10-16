@@ -76,6 +76,13 @@ export interface LiveEndpointOption {
   pauseOn: string[];
 }
 
+/** A dictionary error key, `<module>.error.<key>`: what an `Err` carries and the wire's `error` field names. */
+export type EndpointErrorKey = `${string}.error.${string}`;
+/** The errors an endpoint answers with on purpose, by HTTP status: `{ 409: ["ticket.error.locked"] }`. */
+export interface EndpointErrors {
+  readonly [status: number]: readonly EndpointErrorKey[];
+}
+
 export interface SignalOption<Response = any, Nullable extends boolean = false, _Key = keyof UnCls<Response>>
   extends InitOption,
     TimerOption {
@@ -114,6 +121,11 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
   fileUpload?: boolean;
   /** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
   mcp?: boolean;
+  /**
+   * The errors this endpoint throws on purpose, by status. Published as OpenAPI responses and in the MCP tool's
+   * description; outside production, throwing a key this leaves out is warned about once.
+   */
+  errors?: EndpointErrors;
   /**
    * A slow subscriber of a `pubsub(Binary)`: `"coalesce"` (default) keeps only the newest frame per room, `"queue"`
    * delivers every frame and grows the send buffer with the slowest subscriber.
@@ -172,6 +184,7 @@ export interface SerializedEndpoint extends SerializedSignalOption {
   returns: SerializedReturns;
   /** Milliseconds; the client sizes its request budget from it. */
   timeout?: number;
+  errors?: EndpointErrors;
 }
 export interface SerializedFilter {
   filter: { [key: string]: SerializedArg[] };

@@ -501,6 +501,21 @@ describe("makeTrans", () => {
     );
   });
 
+  test("tells an Akan error, and which key it carries, from anything else thrown", () => {
+    const conflict = new trans.Err.Conflict("dictionaryTestItem.error.notFound" as never);
+    const remote = Object.assign(new Error("dictionaryTestItem.error.notFound"), {
+      error: "dictionaryTestItem.error.notFound",
+      statusCode: 404,
+    });
+
+    expect(trans.Err.is(conflict)).toBe(true);
+    expect(trans.Err.is(conflict, "dictionaryTestItem.error.notFound" as never)).toBe(true);
+    expect(trans.Err.is(conflict, "dictionaryTestItem.error.other" as never)).toBe(false);
+    expect(trans.Err.is(remote, "dictionaryTestItem.error.notFound" as never)).toBe(true);
+    expect(trans.Err.is(new Error("dictionaryTestItem.error.notFound"))).toBe(false);
+    expect(trans.Err.is(null)).toBe(false);
+  });
+
   test("creates Err exceptions with dictionary error keys", () => {
     const err = new trans.Err("dictionaryTestItem.error.notFound" as never, { id: "1" });
     const conflict = new trans.Err.Conflict("dictionaryTestItem.error.notFound" as never);

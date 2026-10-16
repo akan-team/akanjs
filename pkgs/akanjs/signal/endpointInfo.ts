@@ -19,6 +19,7 @@ import type {
   UploadableClientArg,
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
+import { EndpointErrorContract } from "./endpointErrorContract";
 import type { InternalArgCls } from "./internalArg";
 import type { ArgType, SignalOption, SrvMap } from "./types";
 
@@ -104,6 +105,7 @@ export class EndpointInfo<
   }
 
   constructor(type: ReqType, returnRef: Returns, signalOption: SignalOption<Returns, Nullable> = {}) {
+    EndpointErrorContract.assertDeclared(signalOption.errors);
     this.type = type;
     this.returns = EndpointInfo.getReturnInfo(returnRef, signalOption);
     this.signalOption = signalOption;

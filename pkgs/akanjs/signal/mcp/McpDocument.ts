@@ -188,7 +188,7 @@ export class McpDocument {
     const outputSchema = this.#outputSchema(endpoint);
     return {
       name: key,
-      ...this.#catalogue.entryTexts(refName, key),
+      ...this.#withErrors(this.#catalogue.entryTexts(refName, key), endpoint),
       inputSchema: {
         type: "object",
         properties,
@@ -199,6 +199,22 @@ export class McpDocument {
       ...(outputSchema ? { outputSchema } : {}),
       annotations: mcpHintsOf(key, endpoint) satisfies McpToolAnnotations,
     };
+  }
+
+  // An agent reads the tool's description and nothing else, so the errors it may answer with are spelled there.
+  #withErrors(texts: { title?: string; description?: string }, endpoint: SerializedEndpoint) {
+    const errors = Object.entries(endpoint.errors ?? {}) as [string, readonly string[]][];
+    if (!errors.length) return texts;
+    const listed = errors
+      .flatMap(([status, keys]) =>
+        keys.map((key) => {
+          const message = this.#options.resolveDescription?.(key);
+          return `${status} ${key}${message ? ` (${message})` : ""}`;
+        }),
+      )
+      .join(", ");
+    const line = `Errors it answers with on purpose: ${listed}.`;
+    return { ...texts, description: texts.description ? `${texts.description}\n${line}` : line };
   }
 
   #outputSchema(endpoint: SerializedEndpoint) {

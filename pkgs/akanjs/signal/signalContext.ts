@@ -25,6 +25,7 @@ import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import { CrossSiteGuard } from "./CrossSiteGuard";
 import { EndpointCache } from "./endpointCache";
+import { EndpointErrorContract } from "./endpointErrorContract";
 import { EndpointIdempotency } from "./endpointIdempotency";
 import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
@@ -365,7 +366,9 @@ export class SignalContext<
       try {
         return await fn();
       } catch (error) {
-        if (!isExceptionLike(error)) {
+        if (isExceptionLike(error))
+          EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, (error as unknown as Error).message);
+        else {
           const message = error instanceof Error ? error.message : String(error);
           const stack = error instanceof Error ? error.stack : undefined;
           endpoint.logger.error(`Error ${endpointInfo.type}-${key}:\n${stack ?? message}`);

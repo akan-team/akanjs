@@ -651,6 +651,18 @@ describe("signal serialization and registry", () => {
     expect(QuietSlice.mcp).toEqual({ get: false, create: false, update: false, remove: false });
   });
 
+  test("ships an endpoint's errors declaration with it, and nothing for one that declares none", () => {
+    const declaring = endpoint(signalTestServiceModel, (builder) => ({
+      lock: builder
+        .mutation(Boolean, { guards: [Public], errors: { 409: ["signalTestItem.error.locked"] } })
+        .exec(() => true),
+      plain: builder.query(String, { guards: [Public] }).exec(() => "ok"),
+    }));
+    const serialized = FetchSerializer.serializeDatabaseSignal(RegistrySlice, declaring);
+    expect(serialized.endpoint.lock?.errors).toEqual({ 409: ["signalTestItem.error.locked"] });
+    expect(serialized.endpoint.plain && "errors" in serialized.endpoint.plain).toBe(false);
+  });
+
   test("serializes database and service signals", () => {
     const databaseSignal = FetchSerializer.serializeDatabaseSignal(RegistrySlice, RegistryEndpoint);
     const serviceEndpoint = endpoint(ServiceModel.from(SignalTestAuxService), (builder) => ({
@@ -1652,6 +1664,45 @@ describe("SignalContext argument parsing", () => {
 
     expect(await (await responseWith([TestAdmin as GuardCls], { ...valid, role: "admin" })).json()).toBe("ok");
     expect(received).toEqual([valid]);
+  });
+
+  test("refuses an errors declaration no response could carry, and serializes a valid one", () => {
+    const declare = (errors: Record<number, string[]>) => () =>
+      buildEndpoint.mutation(String, { guards: [TestAdmin as GuardCls], errors: errors as never }).exec(() => "ok");
+
+    expect(declare({ 302: ["item.error.moved"] })).toThrow("400–599");
+    expect(declare({ 409: ["locked"] })).toThrow("<module>.error.<key>");
+    const endpointInfo = declare({ 409: ["item.error.locked"] })();
+    expect(endpointInfo.signalOption.errors).toEqual({ 409: ["item.error.locked"] });
+  });
+
+  test("warns once, outside production, when an endpoint throws a key its errors declaration leaves out", async () => {
+    const warned: string[] = [];
+    const adaptor = new (adapt("signalTestErrorContractAdaptor"))();
+    Object.assign(adaptor, { logger: { ...adaptor.logger, warn: (message: string) => void warned.push(message) } });
+    const throwing = (errorKey: string) =>
+      buildEndpoint
+        .mutation(String, { guards: [TestAdmin as GuardCls], errors: { 409: ["item.error.locked"] } })
+        .exec(() => {
+          throw new Exception(409, errorKey);
+        });
+    const call = (endpointInfo: EndpointInfo) =>
+      SignalContext.try(adaptor, endpointInfo, "contractCall", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, request: makeHttpRequest({ body: {} }) });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+
+    const declared = throwing("item.error.locked");
+    const undeclared = throwing("item.error.gone");
+    expect((await call(declared))?.status).toBe(409);
+    await call(undeclared);
+    await call(undeclared);
+    await call(throwing("base.error.gatewayTimeout"));
+
+    expect(warned).toEqual([
+      '"contractCall" threw item.error.gone, which its `errors` declaration leaves out: OpenAPI and the MCP catalogue do not publish it.',
+    ]);
   });
 
   test("runs account guards before resource guards, which read the parsed arguments", async () => {

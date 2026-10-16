@@ -176,6 +176,49 @@ describe("createOpenApiDocument", () => {
     expect(Object.keys(document.paths["/openApiItem/patchOpenApiItem"])).toEqual(["patch"]);
   });
 
+  test("documents each declared error under its status, in the wire shape, with its message", () => {
+    const document = createOpenApiDocument(
+      {
+        openApiItem: {
+          prefix: "openApiItem",
+          endpoint: {
+            lockOpenApiItem: {
+              type: "mutation",
+              args: [],
+              returns: { refName: "Boolean" },
+              guards: ["User"],
+              errors: { 409: ["openApiItem.error.locked", "openApiItem.error.archived"] },
+            },
+          },
+        },
+      },
+      { resolveDescription: (key) => (key === "openApiItem.error.locked" ? "The item is locked." : undefined) },
+    );
+
+    const responses = document.paths["/openApiItem/lockOpenApiItem"]?.post?.responses as Record<string, unknown>;
+    expect(Object.keys(responses)).toEqual(["200", "409", "default"]);
+    expect(responses["409"]).toEqual({
+      description: "openApiItem.error.locked: The item is locked.\nopenApiItem.error.archived",
+      content: {
+        "application/json": {
+          schema: {
+            allOf: [
+              { $ref: "#/components/schemas/AkanError" },
+              {
+                type: "object",
+                properties: {
+                  error: { type: "string", enum: ["openApiItem.error.locked", "openApiItem.error.archived"] },
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(document.components.schemas.AkanError).toMatchObject({ required: ["error", "statusCode"] });
+    expect(createOpenApiDocument(serializedSignal).components.schemas.AkanError).toBeUndefined();
+  });
+
   test("can include base and non-standard paths explicitly", () => {
     const document = createOpenApiDocument(serializedSignal, {
       excludeSignals: [],

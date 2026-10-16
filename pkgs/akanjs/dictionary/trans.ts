@@ -66,6 +66,7 @@ export type ErrConstructor<ErrorKey extends string> = {
   new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption): ErrInstance;
   prototype: ErrInstance;
   fromJSON(payload: ErrPayload): ErrInstance;
+  is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & { readonly error: Key };
   BadRequest: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
   Unauthorized: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
   Forbidden: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
@@ -152,6 +153,13 @@ export const makeTrans = <
 
     static fromJSON(payload: ErrPayload) {
       return new Err(payload.error as _ErrorKey, payload.data, payload);
+    }
+
+    /** An Akan error, and one of `keys` when any are named; read off `error`, so a restored remote one passes too. */
+    static is<Key extends _ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & { readonly error: Key } {
+      if (typeof error !== "object" || error === null) return false;
+      const key = (error as { error?: unknown }).error;
+      return typeof key === "string" && (!keys.length || (keys as string[]).includes(key));
     }
 
     static BadRequest = class BadRequestErr extends Err {

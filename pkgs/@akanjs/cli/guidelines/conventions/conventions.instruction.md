@@ -422,6 +422,10 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 
 - State-machine preconditions throw in `document.ts`, cross-document rules in `service.ts`, request policy in
   `signal.ts` guards. Best-effort code returns a sentinel (`null`, `undefined`, `[0, 0]`, `{}`) — no Result types.
+- An endpoint names the errors it throws on purpose — `errors: { 409: ["ticket.error.locked"] }` in its signal
+  option, with keys its dictionary defines and never `base.error.*`. That is the status's OpenAPI response and a line
+  of the MCP tool's description; outside production a thrown key it leaves out warns once. A caller narrows with
+  `Err.is(error, "ticket.error.locked")`.
 - `try/catch` turns an exception into a decision: guards → `logger.warn` → `false`; adapters → `logger.error` →
   `null`; UI `try/finally` resets a spinner. A bodyless `catch {}` needs a one-line reason.
 - Store actions do not `try/catch` (the framework toasts the `Err`); client validation is `msg.error("<key>")` plus

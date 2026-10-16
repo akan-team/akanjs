@@ -1,6 +1,6 @@
 import { FetchClient } from "akanjs/fetch";
 import { type JsonSchema, JsonSchemaBuilder } from "../schema";
-import type { SerializedArg, SerializedEndpoint, SerializedSignal } from "../types";
+import type { EndpointErrors, SerializedArg, SerializedEndpoint, SerializedSignal } from "../types";
 
 type OpenApiParameter = Record<string, unknown>;
 type OpenApiOperation = Record<string, unknown>;
@@ -39,6 +39,20 @@ const httpMethods = {
 
 const schema = new JsonSchemaBuilder();
 
+// The wire shape every error answers with; `error` is the dictionary key, which `Err.fromJSON` restores the class from.
+const akanErrorSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    error: { type: "string", description: "The dictionary error key, <module>.error.<key>." },
+    statusCode: { type: "integer" },
+    data: { type: "object", additionalProperties: true, description: "The values the message interpolates." },
+    details: {},
+    path: { type: "string" },
+    timestamp: { type: "string", format: "date-time" },
+  },
+  required: ["error", "statusCode"],
+};
+
 export const createOpenApiDocument = (
   serializedSignal: Record<string, SerializedSignal>,
   options: OpenApiDocumentOptions = {},
@@ -46,6 +60,7 @@ export const createOpenApiDocument = (
   const paths: Record<string, OpenApiPathItem> = {};
   const excludeSignals = new Set(options.excludeSignals ?? ["base"]);
   let hasProtectedOperation = false;
+  let declaresErrors = false;
 
   for (const [refName, signal] of Object.entries(serializedSignal)) {
     if (excludeSignals.has(refName)) continue;
@@ -58,6 +73,7 @@ export const createOpenApiDocument = (
       if (!options.includeNonStandardPaths && isNonStandardOpenApiPath(path)) continue;
       const operation = createOperation(refName, endpointKey, endpoint, options);
       if (operation.security) hasProtectedOperation = true;
+      if (endpoint.errors) declaresErrors = true;
       paths[path] ??= {};
       paths[path][method] = operation;
     }
@@ -73,7 +89,10 @@ export const createOpenApiDocument = (
     ...(options.servers?.length ? { servers: options.servers } : {}),
     paths,
     components: {
-      schemas: schema.referencedSchemas(paths, schema.allModelSchemas()),
+      schemas: {
+        ...schema.referencedSchemas(paths, schema.allModelSchemas()),
+        ...(declaresErrors ? { AkanError: akanErrorSchema } : {}),
+      },
       ...(hasProtectedOperation
         ? {
             securitySchemes: {
@@ -125,6 +144,7 @@ const createOperation = (
         description: "Successful response",
         content: createResponseContent(endpoint),
       },
+      ...createErrorResponses(endpoint, options),
       default: {
         description: "Error response",
       },
@@ -134,6 +154,31 @@ const createOperation = (
     "x-akan-endpoint-type": endpoint.type,
   };
 };
+
+const createErrorResponses = (endpoint: SerializedEndpoint, options: OpenApiDocumentOptions) =>
+  Object.fromEntries(
+    (Object.entries(endpoint.errors ?? {}) as [string, EndpointErrors[number]][]).map(([status, keys]) => [
+      status,
+      {
+        description: keys
+          .map((key) => {
+            const message = options.resolveDescription?.(key);
+            return message ? `${key}: ${message}` : key;
+          })
+          .join("\n"),
+        content: {
+          "application/json": {
+            schema: {
+              allOf: [
+                { $ref: "#/components/schemas/AkanError" },
+                { type: "object", properties: { error: { type: "string", enum: [...keys] } } },
+              ],
+            },
+          },
+        },
+      },
+    ]),
+  );
 
 const createParameter = (
   refName: string,
