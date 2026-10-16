@@ -10,7 +10,9 @@ export const createTunnel = async (
   service: "redis" | "postgres",
   { app, environment, port = service === "postgres" ? 5432 : 6379 }: TunnelOption,
 ) => {
-  const { serveDomain, repoName } = WorkspaceExecutor.getBaseDevEnv();
+  const baseDevEnv = WorkspaceExecutor.getBaseDevEnv();
+  WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, `The ${service} tunnel`);
+  const { serveDomain, repoName } = baseDevEnv;
   const host = `${app.name}-${environment}.${serveDomain}`;
   const sshPort = process.env.SSH_TUNNEL_PORT ? parseInt(process.env.SSH_TUNNEL_PORT) : 32767;
   const dstHost = `${service}-0.${service}-svc.${app.name}-${environment}.svc.cluster.local`;

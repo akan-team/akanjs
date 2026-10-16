@@ -130,10 +130,9 @@ pipeline {
                 // The framework unit suites, gating Dockerize and Deploy. `testPkgs` is the same command
                 // developers run locally, so a red build here reproduces with one line and no Jenkins.
                 //
-                // Prepare Build has already run `bun install` and written AKAN_PUBLIC_REPO_NAME /
-                // AKAN_PUBLIC_SERVE_DOMAIN / AKAN_PUBLIC_ENV into `.env`, which the cli suite needs:
-                // 8 of its tests build temp workspaces through `WorkspaceExecutor.getBaseDevEnv`, which
-                // throws without them.
+                // Prepare Build has already run `bun install`. The suites need no `.env`: with
+                // AKAN_PUBLIC_REPO_NAME / AKAN_PUBLIC_SERVE_DOMAIN unset, the CLI falls back to the repo's own
+                // name and `localhost`, and only a build or tunnel for a real environment refuses those.
                 sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run testPkgs\""
             }
         }

@@ -48,4 +48,18 @@ describe("createTunnel", () => {
       expect(failure.message).toContain(reason.message);
     }
   });
+
+  test("refuses to dial a cluster host built on the local default serve domain", async () => {
+    const { app } = track(await createTempApp("demo"));
+    delete process.env.AKAN_PUBLIC_SERVE_DOMAIN;
+    const connect = spyOn(Client.prototype, "connect");
+    try {
+      await expect(createTunnel("redis", { app, environment: "debug" })).rejects.toThrow(
+        'The redis tunnel for the "debug" environment needs AKAN_PUBLIC_SERVE_DOMAIN (would be "localhost") set',
+      );
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
+  });
 });

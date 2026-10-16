@@ -44,4 +44,5 @@ export interface BaseDevEnv {
   env: "testing" | "debug" | "develop" | "main" | "local";
   portOffset: number;
   appName?: string | undefined;
+  defaulted?: ("AKAN_PUBLIC_REPO_NAME" | "AKAN_PUBLIC_SERVE_DOMAIN")[];
 }

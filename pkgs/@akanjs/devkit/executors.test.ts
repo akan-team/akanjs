@@ -335,7 +335,7 @@ describe("Executor filesystem helpers", () => {
 });
 
 describe("Workspace and app executor environment contracts", () => {
-  test("reads base development environment and reports required missing values", () => {
+  test("reads base development environment", () => {
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";
     process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
     process.env.AKAN_PUBLIC_ENV = "local";
@@ -351,10 +351,53 @@ describe("Workspace and app executor environment contracts", () => {
       env: "local",
       portOffset: 10,
       workspaceId: undefined,
+      defaulted: [],
+    });
+  });
+
+  test("unset, the repo name is the origin remote's and the serve domain localhost, both marked defaulted", async () => {
+    const root = await makeTempRoot();
+    for (const args of [
+      ["init", "-q"],
+      ["remote", "add", "origin", "git@github.com:akan-team/fixture-repo.git"],
+    ])
+      expect(Bun.spawnSync(["git", ...args], { cwd: root }).exitCode).toBe(0);
+    for (const key of ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN", "AKAN_PUBLIC_ENV", "AKAN_WORKSPACE_ROOT"])
+      delete process.env[key];
+
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      repoName: "fixture-repo",
+      serveDomain: "localhost",
+      env: "debug",
+      defaulted: ["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"],
     });
 
-    delete process.env.AKAN_PUBLIC_REPO_NAME;
-    expect(() => WorkspaceExecutor.getBaseDevEnv()).toThrow("AKAN_PUBLIC_REPO_NAME is not set");
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      repoName: "fixture-repo",
+      serveDomain: "example.com",
+      defaulted: ["AKAN_PUBLIC_REPO_NAME"],
+    });
+  });
+
+  test("a build or tunnel for a real environment refuses a defaulted value, and a local one takes it", () => {
+    const baseDevEnv = {
+      repoName: "fixture-repo",
+      serveDomain: "localhost",
+      env: "debug" as const,
+      portOffset: 0,
+      workspaceRoot: undefined,
+    };
+    const defaulted = { ...baseDevEnv, defaulted: ["AKAN_PUBLIC_SERVE_DOMAIN" as const] };
+
+    expect(() => WorkspaceExecutor.assertDeployableEnv(defaulted, "main", "akan build")).toThrow(
+      'akan build for the "main" environment needs AKAN_PUBLIC_SERVE_DOMAIN (would be "localhost") set',
+    );
+    expect(() => WorkspaceExecutor.assertDeployableEnv(defaulted, "local", "akan build")).not.toThrow();
+    expect(() =>
+      WorkspaceExecutor.assertDeployableEnv({ ...baseDevEnv, defaulted: [] }, "main", "akan build"),
+    ).not.toThrow();
+    expect(() => WorkspaceExecutor.assertDeployableEnv(baseDevEnv, "main", "akan build")).not.toThrow();
   });
 
   test("reads base development environment from an explicit env file", async () => {
@@ -382,6 +425,7 @@ describe("Workspace and app executor environment contracts", () => {
       env: "develop",
       portOffset: 7,
       workspaceId: undefined,
+      defaulted: [],
     });
   });
 
@@ -438,6 +482,21 @@ describe("Workspace and app executor environment contracts", () => {
     expect(process.env.AKAN_PUBLIC_SERVER_PORT).toBeUndefined();
     expect((await stat(path.join(root, "dist/apps/demo/private"))).isDirectory()).toBe(true);
     expect((await stat(path.join(root, "dist/apps/demo/public"))).isDirectory()).toBe(true);
+  });
+
+  test("the app command env hands the dev server the local defaults that stood in for unset values", async () => {
+    const root = await makeTempRoot();
+    delete process.env.AKAN_PUBLIC_REPO_NAME;
+    delete process.env.AKAN_PUBLIC_SERVE_DOMAIN;
+    process.env.AKAN_WORKSPACE_ROOT = root;
+    const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), "defaults");
+
+    const env = app.getCommandEnv();
+    expect(env.AKAN_PUBLIC_SERVE_DOMAIN).toBe("localhost");
+    expect(env.AKAN_PUBLIC_REPO_NAME).toBe(WorkspaceExecutor.getBaseDevEnv().repoName);
+
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    expect(app.getCommandEnv().AKAN_PUBLIC_SERVE_DOMAIN).toBe("example.com");
   });
 
   test("akan start clears the dev output and keeps the bin downloads and a native folder from before dist/native", async () => {

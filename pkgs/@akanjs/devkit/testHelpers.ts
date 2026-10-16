@@ -80,6 +80,8 @@ export const createFakeExecutor = <Extra extends object = object>(
 export const makeCliTempWorkspace = async (parentDir = os.tmpdir()) => {
   await mkdir(parentDir, { recursive: true });
   const root = await mkdtemp(path.join(parentDir, "akan-cli-"));
+  //? The CLI recognises a workspace root by an apps/, libs/ or pkgs/ folder beside package.json and tsconfig.json.
+  await mkdir(path.join(root, "apps"));
   await writeText(path.join(root, ".gitignore"), "");
   await writeText(
     path.join(root, ".env"),

@@ -175,13 +175,26 @@ describe("akan pipeline", () => {
   });
 
   test("a directory that is not a workspace root exits 2 and leaves no envelope", async () => {
-    const root = await workspaceWith({ "apps/web/akan.config.ts": "export default {};\n" });
-    await rm(path.join(root, ".env"));
+    const root = await workspaceWith({
+      "apps/web/akan.config.ts": "export default {};\n",
+      "apps/web/package.json": '{ "name": "web", "version": "1.0.0" }\n',
+      "apps/web/tsconfig.json": "{}\n",
+      "apps/web/.env": "",
+    });
     const out = path.join(root, "plan.json");
-    const { code, stdout } = await cli(root, ["plan", "--out", out]);
+    const { code, stdout } = await cli(path.join(root, "apps/web"), ["plan", "--out", out]);
     expect(code).toBe(2);
     expect(stdout).toContain("must be run from the workspace root");
     expect(await Bun.file(out).exists()).toBe(false);
+  });
+
+  test("a workspace root with no .env is still the root, as a fresh clone is", async () => {
+    const root = await workspaceWith({ "apps/web/akan.config.ts": "export default {};\n" });
+    await rm(path.join(root, ".env"));
+    const out = path.join(root, "plan.json");
+    const { code, stderr } = await cli(root, ["plan", "--out", out, "--branch", "main"]);
+    expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
+    expect(await Bun.file(out).exists()).toBe(true);
   });
 
   test("without --apps every app runs in code-point order, so the deploy order never follows a machine's locale", async () => {

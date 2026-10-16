@@ -186,20 +186,21 @@ const assignCommandContext = (context: CommandContext, argMeta: ArgMeta | Intern
   else context.values[argMeta.type.toLowerCase()] = value;
 };
 
+//? Not `.env`, which a fresh clone lacks; an app or a package folder has a package.json and tsconfig.json of its own.
 const assertCurrentDirectoryIsWorkspaceRoot = async () => {
   const cwd = process.cwd();
-  const [hasPackageJson, hasTsConfig, hasEnv] = await Promise.all([
+  const [hasPackageJson, hasTsConfig, ...hasMemberDirs] = await Promise.all([
     FileSys.fileExists(`${cwd}/package.json`),
     FileSys.fileExists(`${cwd}/tsconfig.json`),
-    FileSys.fileExists(`${cwd}/.env`),
+    ...["apps", "libs", "pkgs"].map((dir) => FileSys.dirExists(`${cwd}/${dir}`)),
   ]);
-  if (hasPackageJson && hasTsConfig && hasEnv) return;
+  if (hasPackageJson && hasTsConfig && hasMemberDirs.some(Boolean)) return;
 
   throw new Error(
     [
       "Akan CLI commands must be run from the workspace root.",
       `Current directory: ${cwd}`,
-      "Move to the directory that contains package.json, tsconfig.json, and .env, then run the command again.",
+      "Move to the directory that contains package.json, tsconfig.json, and an apps/, libs/ or pkgs/ folder, then run the command again.",
     ].join("\n"),
   );
 };

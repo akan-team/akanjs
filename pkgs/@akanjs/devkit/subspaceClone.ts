@@ -221,19 +221,20 @@ export class SubspaceClone {
 
   // An allowlist, not a filter, so no secret can reach a customer's clone; `AKAN_PUBLIC_*` ships in every bundle anyway.
   #localEnv() {
-    const { serveDomain } = WorkspaceExecutor.getBaseDevEnv();
+    const { serveDomain, defaulted = [] } = WorkspaceExecutor.getBaseDevEnv();
     return {
       AKAN_WORKSPACE_ID: "local",
       AKAN_PUBLIC_REPO_NAME: this.#declaration.name,
-      AKAN_PUBLIC_SERVE_DOMAIN: serveDomain,
+      //? Written down, the local default would read as chosen and pass the clone's build check for a real environment.
+      ...(defaulted.includes("AKAN_PUBLIC_SERVE_DOMAIN") ? {} : { AKAN_PUBLIC_SERVE_DOMAIN: serveDomain }),
       AKAN_PUBLIC_ENV: "local",
       AKAN_PUBLIC_OPERATION_MODE: "local",
       AKAN_PUBLIC_LOG_LEVEL: "warn",
     };
   }
 
-  // The CLI needs a `.env` to recognise a workspace root and none arrives with the slice. Excluded through
-  // `.git/info/exclude`, not the copied `.gitignore`, so it can never be committed to the customer's repo.
+  // No `.env` arrives with the slice, and the clone runs under the customer's repo name in a local env. Excluded
+  // through `.git/info/exclude`, not the copied `.gitignore`, so it can never be committed to the customer's repo.
   async #writeLocalEnv() {
     const excludePath = path.join(this.#clonePath, ".git/info/exclude");
     const exclude = (await FileSys.fileExists(excludePath)) ? await FileSys.readText(excludePath) : "";

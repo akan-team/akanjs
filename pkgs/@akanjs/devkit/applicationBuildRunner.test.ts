@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
@@ -107,6 +107,29 @@ console.info(new SampleService().name);
     } finally {
       if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
       else process.env.AKAN_PUBLIC_ENV = shellEnv;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a build for a real environment stops before any phase when the serve domain is only the local default", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeFile(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=repo\n");
+    const shellDomain = process.env.AKAN_PUBLIC_SERVE_DOMAIN;
+    delete process.env.AKAN_PUBLIC_SERVE_DOMAIN;
+    const app = AppExecutor.from(workspace, "portal");
+    let prepared = false;
+    app.prepareCommand = async () => {
+      prepared = true;
+      throw new Error("prepared");
+    };
+    try {
+      await expect(new ApplicationBuildRunner(app, { environment: "main" }).build()).rejects.toThrow(
+        'akan build for the "main" environment needs AKAN_PUBLIC_SERVE_DOMAIN (would be "localhost") set',
+      );
+      expect(prepared).toBe(false);
+      await expect(new ApplicationBuildRunner(app, { environment: "local" }).build()).rejects.toThrow("prepared");
+    } finally {
+      if (shellDomain !== undefined) process.env.AKAN_PUBLIC_SERVE_DOMAIN = shellDomain;
       await rm(root, { recursive: true, force: true });
     }
   });

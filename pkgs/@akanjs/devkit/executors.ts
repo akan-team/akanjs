@@ -54,7 +54,7 @@ import { Spinner } from "./spinner";
 // Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
 import type { TypeChecker } from "./typeChecker";
 import { ProjectTypecheck } from "./typecheck/projectTypecheck";
-import type { FileContent, PackageJson, TsConfigJson } from "./types";
+import type { BaseDevEnv, FileContent, PackageJson, TsConfigJson } from "./types";
 import { barrelFacetDirs } from "./workspaceLayout";
 
 export interface PageRoot {
@@ -662,6 +662,7 @@ export class WorkspaceExecutor extends Executor {
   }
   /** The public env a native build was told to reproduce (`--public-env`): it outranks `.env`, which outranks the rest. */
   static publicEnvPin: Record<string, string> | null = null;
+  static readonly localServeDomain = "localhost";
   static getBaseDevEnv(envPath?: string) {
     // Bun auto-loads .env, so we use process.env directly
     const sourceEnv = {
@@ -673,11 +674,11 @@ export class WorkspaceExecutor extends Executor {
     const workspaceRoot = sourceEnv.AKAN_WORKSPACE_ROOT;
     const workspaceId = sourceEnv.AKAN_WORKSPACE_ID;
 
-    const repoName = sourceEnv.AKAN_PUBLIC_REPO_NAME;
-    if (!repoName) throw new Error("AKAN_PUBLIC_REPO_NAME is not set");
-
-    const serveDomain = sourceEnv.AKAN_PUBLIC_SERVE_DOMAIN;
-    if (!serveDomain) throw new Error("AKAN_PUBLIC_SERVE_DOMAIN is not set");
+    const repoName =
+      sourceEnv.AKAN_PUBLIC_REPO_NAME ||
+      resolveRepoName(envPath ? path.dirname(envPath) : (workspaceRoot ?? process.cwd()));
+    const serveDomain = sourceEnv.AKAN_PUBLIC_SERVE_DOMAIN || WorkspaceExecutor.localServeDomain;
+    const defaulted = (["AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const).filter((key) => !sourceEnv[key]);
 
     const portOffset = parseInt(sourceEnv.PORT_OFFSET ?? "0");
 
@@ -697,7 +698,19 @@ export class WorkspaceExecutor extends Executor {
       env,
       portOffset,
       workspaceId,
+      defaulted,
     };
+  }
+  //? A build or tunnel for a real environment carries these into an image, a bundle or a host name it dials.
+  static assertDeployableEnv(baseDevEnv: BaseDevEnv, environment: string, purpose: string) {
+    const defaulted = environment === "local" ? [] : (baseDevEnv.defaulted ?? []);
+    if (!defaulted.length) return;
+    const values = { AKAN_PUBLIC_REPO_NAME: baseDevEnv.repoName, AKAN_PUBLIC_SERVE_DOMAIN: baseDevEnv.serveDomain };
+    const standIns = defaulted.map((key) => `${key} (would be "${values[key]}")`).join(" and ");
+    throw new Error(
+      `${purpose} for the "${environment}" environment needs ${standIns} set, not a local default. ` +
+        `Set ${defaulted.length > 1 ? "them" : "it"} in the workspace .env or the shell, or use AKAN_PUBLIC_ENV=local.`,
+    );
   }
   getWorkspaceId<AllowEmpty extends boolean = false>({
     allowEmpty,
@@ -1159,10 +1172,12 @@ export class AppExecutor extends SysExecutor {
     return basePort + appIndex + portOffset;
   }
   getCommandEnv(env: Record<string, string> = {}): Record<string, string> {
-    const { portOffset } = WorkspaceExecutor.getBaseDevEnv();
+    const { portOffset, repoName, serveDomain } = WorkspaceExecutor.getBaseDevEnv();
     const PORT = (8282 + portOffset).toString();
     return {
       ...process.env,
+      AKAN_PUBLIC_REPO_NAME: repoName,
+      AKAN_PUBLIC_SERVE_DOMAIN: serveDomain,
       AKAN_PUBLIC_APP_NAME: this.name,
       AKAN_WORKSPACE_ROOT: this.workspace.workspaceRoot,
       NODE_NO_WARNINGS: "1",

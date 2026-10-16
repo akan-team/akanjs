@@ -6,6 +6,7 @@ import type {
   ApplicationBuildResult,
 } from "./applicationBuildReporter";
 import type { App } from "./commandDecorators";
+import { WorkspaceExecutor } from "./executors";
 import {
   AllRoutesBuilder,
   CsrArtifactBuilder,
@@ -101,6 +102,7 @@ export class ApplicationBuildRunner {
     this.#spinner = spinner;
     const { web, assets, baseDevEnv } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
+    WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
     //? Bundles bake AKAN_PUBLIC_ENV from process.env, where the shell outranks the .env that picked the server env.
     process.env.AKAN_PUBLIC_ENV = environment;
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
