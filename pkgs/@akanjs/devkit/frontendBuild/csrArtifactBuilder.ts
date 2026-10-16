@@ -3,6 +3,7 @@ import path from "node:path";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
+import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { bundleDefine } from "./bundleDefine";
 import { CsrEntryFiles } from "./csrEntryFiles";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
@@ -90,7 +91,7 @@ export class CsrArtifactBuilder {
       define: bundleDefine(app, command, "csr"),
       optimizeImports,
       // A raw `.css` in the route graph is Tailwind source; the base artifact's compiled sheet is the only stylesheet.
-      plugins: [PagesBundleBuilder.createCssStubPlugin()],
+      plugins: [PagesBundleBuilder.createCssStubPlugin(), createBrowserDirnamePlugin()],
     };
   }
 
