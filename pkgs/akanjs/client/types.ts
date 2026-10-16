@@ -102,8 +102,9 @@ const slugFontPart = (value: string) =>
   value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "font";
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join("-") || "font";
 
 export interface ModelsProps<M extends { id: string }> {
   className?: string;

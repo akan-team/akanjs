@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
+import { trimSlashes } from "../common/trimSlashes";
 import type { RouterInstance } from "./router";
 
 type Side = "server" | "client";
@@ -57,6 +58,7 @@ beforeAll(() => {
       }, obj),
     interpolateTranslation,
     pathGetLoose,
+    trimSlashes,
     getBasePathFromPathname: (
       pathname: string,
       opts: { basePaths: Set<string>; i18n: { locales: string[] }; headerBasePath?: string },

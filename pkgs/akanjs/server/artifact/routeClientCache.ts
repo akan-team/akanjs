@@ -107,13 +107,12 @@ export class RouteClientCache {
         continue;
       }
       const generation = this.merged.generation;
-      const promise = this.#runBuild(routeId, seeds, generation);
-      this.#building.set(routeId, { generation, promise });
+      const pending: PendingBuild = { generation, promise: this.#runBuild(routeId, seeds, generation) };
+      this.#building.set(routeId, pending);
       try {
-        await promise;
+        await pending.promise;
       } finally {
-        const current = this.#building.get(routeId);
-        if (current?.promise === promise) this.#building.delete(routeId);
+        if (this.#building.get(routeId) === pending) this.#building.delete(routeId);
         this.#prune();
       }
     }

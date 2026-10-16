@@ -21,7 +21,7 @@ export interface AkanConsoleOptions {
 /** `level=warn grep="payment failed" endpoint=mutation:*` → a query object the socket parses. */
 export const parseAkanConsoleQuery = (args: string): Record<string, string> => {
   const query: Record<string, string> = {};
-  for (const match of args.matchAll(/([A-Za-z]+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g)) {
+  for (const match of args.matchAll(/(?<![A-Za-z])([A-Za-z]+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g)) {
     const [, key, doubleQuoted, singleQuoted, bare] = match;
     if (key) query[key] = doubleQuoted ?? singleQuoted ?? bare ?? "";
   }

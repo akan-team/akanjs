@@ -1,8 +1,10 @@
+import { trimSlashes } from "akanjs/common";
+
 /** Where an SSR document links its root layout's `.manifest()`; the server answers it from that layout. */
 export const webManifestHref = (basePath?: string | null) =>
   basePath ? `/${basePath}/manifest.webmanifest` : "/manifest.webmanifest";
 
-const trimSlashes = (value: string) => value.trim().replace(/^\/+|\/+$/g, "");
+const trimBasePath = (value: string) => trimSlashes(value.trim());
 
 /** The basePath a `/manifest.webmanifest` request asks for: by a visible prefix, else by the request's basePath. */
 export const getWebManifestBasePath = (
@@ -12,9 +14,9 @@ export const getWebManifestBasePath = (
 ): string | null | undefined => {
   const segments = pathname.trim().split("/").filter(Boolean);
   if (segments.at(-1) !== "manifest.webmanifest" || segments.length > 2) return undefined;
-  const known = basePaths.map(trimSlashes);
+  const known = basePaths.map(trimBasePath);
   if (segments.length === 2) return known.includes(segments[0] ?? "") ? (segments[0] ?? null) : undefined;
-  const fromHeader = trimSlashes(headerBasePath ?? "");
+  const fromHeader = trimBasePath(headerBasePath ?? "");
   return known.includes(fromHeader) ? fromHeader : null;
 };
 

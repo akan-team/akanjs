@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
+import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths, trimSlashes } from "akanjs/common";
 import { csrLocation } from "./csrLocation";
 import { isMcpView } from "./mcpView";
 
@@ -99,7 +99,7 @@ const normalizeRoutePath = (path: string | undefined) => {
   if (!normalized) return undefined;
   const [pathWithoutHash, hash = ""] = normalized.split("#");
   const [pathname, search = ""] = pathWithoutHash.split("?");
-  const routePath = `/${pathname.replace(/^\/+|\/+$/g, "")}`;
+  const routePath = `/${trimSlashes(pathname)}`;
   return `${routePath === "/" ? "/" : routePath}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
 };
 

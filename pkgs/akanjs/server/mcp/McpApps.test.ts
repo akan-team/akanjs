@@ -11,7 +11,7 @@ const shellOf = (html: string, basePaths: string[] = []) => new McpApps({ basePa
 
 const viewOf = async (origin: string) => {
   const read = await shellOf("<head></head>").read("ui://probe/app", origin);
-  const script = /<script>([\s\S]*)<\/script>/.exec(read?.text ?? "")?.[1] ?? "";
+  const script = /<script>([\s\S]*)<\/script>/i.exec(read?.text ?? "")?.[1] ?? "";
   class Element {
     tagName = "IMG";
     readonly attributes = new Map<string, string>();

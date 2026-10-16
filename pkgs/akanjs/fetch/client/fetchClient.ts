@@ -7,6 +7,7 @@ import {
   type RetryPolicy,
   readAuthToken,
   resolveFileUploadCapability,
+  trimTrailingSlashes,
 } from "akanjs/common";
 import { type BaseInsight, type BaseObject, ConstantRegistry, deserialize, serialize } from "akanjs/constant";
 import type {
@@ -378,7 +379,7 @@ export class FetchClient {
     }
   }
   static #normalizeOrigin(origin: string) {
-    return origin.replace(/\/+$/, "");
+    return trimTrailingSlashes(origin);
   }
   static #sameOrigin(a: string, b: string) {
     return FetchClient.#normalizeOrigin(a) === FetchClient.#normalizeOrigin(b);

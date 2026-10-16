@@ -11,7 +11,7 @@ type DebugPayload = Record<string, unknown>;
 
 const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessEnvLike };
 
-const debugSessionId = Math.random().toString(36).slice(2, 8);
+const debugSessionId = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
 let debugSeq = 0;
 
 const FRAME_TRACE_LIMIT = 2000;

@@ -98,7 +98,7 @@ describe("client pure exports and utilities", () => {
   test("rsc navigation globals are optional and receive arguments", async () => {
     const calls: unknown[] = [];
 
-    expect(clearRscNavigationCache()).toBeUndefined();
+    expect(clearRscNavigationCache).not.toThrow();
     expect(navigateRsc("/missing")).toBeUndefined();
 
     globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => calls.push("clear");

@@ -22,7 +22,7 @@ export class McpUriTemplate {
 
   static expand(template: string, args: Record<string, unknown>): string {
     const queryAt = template.indexOf("{?");
-    const path = (queryAt === -1 ? template : template.slice(0, queryAt)).replace(/\{([^}]+)\}/g, (_, name: string) =>
+    const path = (queryAt === -1 ? template : template.slice(0, queryAt)).replace(/\{([^{}]+)\}/g, (_, name: string) =>
       encodeURIComponent(String(args[name] ?? "")),
     );
     if (queryAt === -1) return path;

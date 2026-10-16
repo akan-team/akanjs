@@ -1,4 +1,4 @@
-import { isRecord } from "akanjs/common";
+import { isRecord, trimSlashes } from "akanjs/common";
 import type { PageConfig, PageSafeAreaConfig, PageState, ResponsiveInset, SsrRenderMode } from "./csrTypes";
 import { transitionTypes } from "./transitionTypes";
 
@@ -250,7 +250,7 @@ const getPlatformFrameProfile = (platform: DevicePlatform): PageConfig => {
 };
 
 const getRouteRoleFrameDefaults = (path: string, platform: DevicePlatform, basePath?: string): PageConfig => {
-  const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "");
+  const normalizedBasePath = trimSlashes(basePath ?? "");
   const depth = path
     .split("/")
     .filter(Boolean)

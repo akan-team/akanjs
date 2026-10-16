@@ -9,8 +9,9 @@ export type MarkdownSpan =
   | { kind: "plain"; text: string };
 
 // One level of nested parens in the href, so a url ending in one (a wiki title) is captured whole, not cut at `)`.
+// A label holds no `[`, as in CommonMark: `[a [b](u)` links `b`, and a run of `[` is not rescanned from each one.
 const inline =
-  /(!?)\[([^\]]*)\]\(((?:[^\s()]|\([^\s()]*\))+)\)|`([^`]+)`|\*\*([\s\S]+?)\*\*|\*([^*\n]+?)\*|~~([\s\S]+?)~~/g;
+  /(!?)\[([^[\]]*)\]\(((?:[^\s()]|\([^\s()]*\))+)\)|`([^`]+)`|\*\*([\s\S]+?)\*\*|\*([^*\n]+?)\*|~~([\s\S]+?)~~/g;
 
 // A link's scheme is refused here for every host: the text is model output and React writes a `javascript:` href as
 // given. Underscore emphasis is deliberately unmatched, because snake_case is everywhere in this content.

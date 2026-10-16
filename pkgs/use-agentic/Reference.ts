@@ -43,8 +43,11 @@ export class Reference {
     return `@[${reference.label}](mention:${Reference.keyOf(reference)})`;
   }
 
-  /** Greedy on the label alone: a label may hold anything but `]`, and every other part is a name or an id. */
-  static readonly pattern = /@\[([^\]]*)\]\(mention:([^/)]+)\/([^#)]+)(?:#([^)]*))?\)/g;
+  /**
+   * Greedy on the label alone: a label may hold anything but `]` or an `@[`, where a token starts over, and every
+   * other part is a name, an id or a dotted path, none of which holds a bracket.
+   */
+  static readonly pattern = /@\[((?:(?!@\[)[^\]])*)\]\(mention:([^/)[\]]+)\/([^#)[\]]+)(?:#([^)[\]]*))?\)/g;
 
   /**
    * The pointers a draft names, in the order it names them. Pointers only — the value lives in `staged` and is

@@ -72,4 +72,11 @@ describe("Reference tokens", () => {
   test("text naming nothing parses to nothing, including a bare markdown link", () => {
     expect(Reference.parse("see [the docs](https://example.com) and @nobody")).toEqual([]);
   });
+
+  test("a stray `@[` typed ahead of a token stays text, and a run of them is read once", () => {
+    expect(Reference.parse("look @[@[Karina](mention:videoCharacter/c1)")).toEqual([
+      { refName: "videoCharacter", refId: "c1", label: "Karina" },
+    ]);
+    expect(Reference.parse(`@[${"@[\\".repeat(50_000)}`)).toEqual([]);
+  });
 });
