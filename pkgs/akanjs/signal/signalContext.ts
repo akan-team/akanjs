@@ -3,7 +3,7 @@ import {
   type BackendEnv,
   Binary,
   type Cls,
-  FIELD_META,
+  type FIELD_META,
   ID,
   INTERNAL_META,
   PrimitiveRegistry,
@@ -16,6 +16,7 @@ import {
   type ConstantFieldTypeInput,
   ConstantRegistry,
   deserialize,
+  FieldPlan,
   serialize,
 } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
@@ -441,6 +442,8 @@ export class SignalContext<
   ): Promise<unknown> {
     if (value === null || value === undefined) return value;
     if (PrimitiveRegistry.has(returnRef as Cls)) return value;
+    const plan = FieldPlan.of(returnRef as ConstantCls);
+    if (!plan.resolvesAsync) return SignalContext.#resolveSync(value, plan, arrDepth);
     else if (arrDepth)
       return await Promise.all(
         (value as unknown[]).map((v) =>
@@ -465,10 +468,14 @@ export class SignalContext<
           resolvedValue[key] = v;
         }),
       );
-    for (const [key, field] of Object.entries((returnRef as ConstantCls)[FIELD_META])) {
+    for (const { key, field, kind } of plan.entries) {
+      if (kind === "masked") continue;
+      if (kind === "value") {
+        resolvedValue[key] = valueRecord[key];
+        continue;
+      }
       const fieldPath = path ? `${path}.${key}` : key;
-      if (field.fieldType === "hidden" || field.fieldType === "secret") continue;
-      else if (field.fieldType === "resolve")
+      if (kind === "computed")
         assign(
           key,
           SignalContext.#resolveComputed(key, valueRecord, {
@@ -481,21 +488,24 @@ export class SignalContext<
             path: fieldPath,
           }),
         );
-      else if (!field.isClass) resolvedValue[key] = valueRecord[key];
-      else if (field.isScalar)
-        assign(
-          key,
-          SignalContext.resolveReturn(valueRecord[key], {
-            signalContext,
-            returnRef: field.modelRef,
-            arrDepth: field.arrDepth,
-            registry,
-            live,
-            cache,
-            path: fieldPath,
-          }),
-        );
-      else
+      else if (kind === "scalar") {
+        const scalarPlan = FieldPlan.of(field.modelRef as unknown as ConstantCls);
+        if (!scalarPlan.resolvesAsync)
+          resolvedValue[key] = SignalContext.#resolveSync(valueRecord[key], scalarPlan, field.arrDepth);
+        else
+          assign(
+            key,
+            SignalContext.resolveReturn(valueRecord[key], {
+              signalContext,
+              returnRef: field.modelRef,
+              arrDepth: field.arrDepth,
+              registry,
+              live,
+              cache,
+              path: fieldPath,
+            }),
+          );
+      } else
         assign(
           key,
           SignalContext.#resolveRelation(valueRecord[key], {
@@ -511,6 +521,23 @@ export class SignalContext<
         );
     }
     if (pending.length) await Promise.all(pending);
+    return resolvedValue;
+  }
+  // The same walk as `resolveReturn` for a class whose plan holds no relation or resolve field, in one pass.
+  static #resolveSync(value: unknown, plan: FieldPlan, arrDepth: number): unknown {
+    if (value === null || value === undefined) return value;
+    if (arrDepth) return (value as unknown[]).map((item) => SignalContext.#resolveSync(item, plan, arrDepth - 1));
+    const valueRecord = value as RuntimeRecord;
+    const resolvedValue = {} as RuntimeRecord;
+    for (const { key, field, kind } of plan.entries) {
+      if (kind === "value") resolvedValue[key] = valueRecord[key];
+      else if (kind === "scalar")
+        resolvedValue[key] = SignalContext.#resolveSync(
+          valueRecord[key],
+          FieldPlan.of(field.modelRef as unknown as ConstantCls),
+          field.arrDepth,
+        );
+    }
     return resolvedValue;
   }
   static async #resolveComputed(

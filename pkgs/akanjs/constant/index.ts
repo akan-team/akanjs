@@ -3,6 +3,7 @@ export * from "./constantRegistry";
 export * from "./crystalize";
 export * from "./dateSlot";
 export * from "./fieldInfo";
+export * from "./fieldPlan";
 export * from "./fieldQueryMeta";
 export * from "./getDefault";
 export * from "./hydrationPlan";

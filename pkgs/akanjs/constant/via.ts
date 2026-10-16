@@ -29,6 +29,7 @@ import {
   field,
   resolve,
 } from "./fieldInfo";
+import { FieldPlan } from "./fieldPlan";
 import { HydrationPlan } from "./hydrationPlan";
 import { makePurify, type PurifiedModel, type PurifyFunc } from "./purify";
 import { TextFieldPaths } from "./textFieldPaths";
@@ -422,6 +423,7 @@ const applyConstantStatics = <Model>(model: ConstantCls<Model>, fieldMap: FieldO
   for (const [key, field] of Object.entries(model[FIELD_META]))
     if (isDateSlotField(field.getProps())) Object.defineProperty(model.prototype, key, dateAccessorOf(key));
   HydrationPlan.reset(model);
+  FieldPlan.reset(model);
   return model as unknown as ConstantCls<Model>;
 };
 

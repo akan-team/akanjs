@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  Any,
   Binary,
   CLIENT_VALUE,
   type Dayjs,
@@ -485,6 +486,29 @@ describe("serialize, deserialize, purify, and immerify", () => {
     expect(deserialize(String, 1, ["a", "b"], {})).toEqual(["a", "b"] as never);
     expect(deserialize(String, 0, null, { nullable: true })).toBeNull();
     expect(() => deserialize(String, 0, null, { key: "name" })).toThrow("Invalid Value (Nullable)");
+  });
+
+  test("answers a model's primitive fields as serialize answers a lone primitive", () => {
+    const PrimitiveFieldsInput = via((f) => ({
+      name: f(String),
+      nick: f(String).optional(),
+      payload: f(Any),
+      count: f(Int),
+    }));
+    ConstantRegistry.buildScalar("constantTestPrimitiveFields", PrimitiveFieldsInput, { PrimitiveFieldsInput });
+    const serializeFields = (value: object) => serialize(PrimitiveFieldsInput, 0, value, "object", {});
+
+    expect(serializeFields({ name: "a", nick: undefined, payload: { x: 1 }, count: 2 })).toEqual({
+      name: "a",
+      nick: null,
+      payload: { x: 1 },
+      count: 2,
+    } as never);
+    expect(() => serializeFields({ name: null, payload: 1, count: 2 })).toThrow("Invalid Value (Nullable)");
+    expect(() => serializeFields({ name: null, payload: 1, count: 2 })).toThrow("in name");
+    expect(() => serializeFields({ name: "a", payload: null, count: 2 })).toThrow("Required Any value");
+    expect(() => serialize(Any, 0, null, "object", {})).toThrow("Required Any value");
+    expect(() => serializeFields({ name: "a", payload: 1, count: 1.5 })).toThrow("Invalid Int value: 1.5");
   });
 
   test("refuses a value outside its enum wherever the enum was declared", () => {

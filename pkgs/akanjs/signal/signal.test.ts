@@ -1729,6 +1729,25 @@ describe("SignalContext return resolution", () => {
     ]);
   });
 
+  test("resolves a return that loads nothing: drops masked fields, copies scalars, keeps null rows", async () => {
+    const SyncPoint = via((f) => ({ x: f(Int), note: f.hidden(String) }));
+    ConstantRegistry.buildScalar("signalTestSyncPoint", SyncPoint, { SyncPoint });
+    const SyncRow = via((f) => ({ label: f(String), point: f(SyncPoint), grid: f([[SyncPoint]] as never) }));
+    ConstantRegistry.buildScalar("signalTestSyncRow", SyncRow, { SyncRow });
+    const rows = [{ label: "a", point: { x: 1, note: "n" }, grid: [[{ x: 2, note: "n" }, null]] }, null];
+
+    const resolved = (await SignalContext.resolveReturn(rows, {
+      signalContext: null,
+      returnRef: SyncRow,
+      arrDepth: 1,
+      registry: getDefaultInjectRegistry(),
+      live: getDefaultLiveRegistry(),
+    })) as { point: object }[];
+
+    expect(resolved).toEqual([{ label: "a", point: { x: 1 }, grid: [[{ x: 2 }, null]] }, null] as never);
+    expect(resolved[0]?.point).not.toBe(rows[0]?.point);
+  });
+
   test("loads and walks a relation once per response, however many rows name it", async () => {
     const loaded: string[] = [];
     const live = getDefaultLiveRegistry();

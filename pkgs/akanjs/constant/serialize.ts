@@ -12,6 +12,7 @@ import {
 } from "akanjs/base";
 
 import { type ConstantCls, type ConstantModelRef, ConstantRegistry, type FieldProps, withSharedInstances } from ".";
+import { FieldPlan } from "./fieldPlan";
 
 export type Serialized<O> = O extends (infer V)[]
   ? Serialized<V>[]
@@ -27,12 +28,14 @@ const getSerializeFn = (inputRef: Cls, { optional = false }: { optional?: boolea
   PrimitiveRegistry.has(inputRef)
     ? (value: unknown) => (inputRef as typeof PrimitiveScalar)._serialize(value as never, { optional })
     : (value: unknown) => value as object;
+const optionalSerialize = { optional: true } as const;
+const requiredSerialize = { optional: false } as const;
 const serializeInput = <Input = unknown>(
   value: Input | Input[],
   inputRef: ConstantModelRef<Input> | PrimitiveScalar,
   arrDepth: number,
   serializeType: "input" | "object" = "object",
-  { optional = false }: { optional?: boolean } = {},
+  optional = false,
 ): Input | Input[] => {
   if (arrDepth && Array.isArray(value))
     return value.map((v) => serializeInput(v, inputRef, arrDepth - 1, serializeType) as Input) as unknown as Input[];
@@ -46,24 +49,23 @@ const serializeInput = <Input = unknown>(
       ]),
     ) as unknown as Input;
   } else if (PrimitiveRegistry.has(inputRef as Cls)) {
-    const serializeFn = getSerializeFn(inputRef as Cls, { optional });
-    return serializeFn(value) as Input;
+    return (inputRef as typeof PrimitiveScalar)._serialize(
+      value as never,
+      optional ? optionalSerialize : requiredSerialize,
+    ) as Input;
   } else {
-    const modelRef = inputRef as ConstantCls;
-    return Object.fromEntries(
-      Object.entries(modelRef[FIELD_META]).map(([key, field]) => [
-        key,
-        serializeType === "input" && field.isClass && !field.isScalar
-          ? serialize(ID, field.arrDepth, getRelationId((value as Record<string, unknown>)?.[key]), serializeType, {
-              nullable: field.nullable,
-              key,
-            })
-          : serialize(field.modelRef, field.arrDepth, (value as Record<string, unknown>)?.[key], serializeType, {
-              nullable: field.nullable,
-              key,
-            }),
-      ]),
-    ) as unknown as Input;
+    const serialized: Record<string, unknown> = {};
+    for (const { key, field, isRelationRef, primitive, serializeOption } of FieldPlan.of(inputRef as ConstantCls)
+      .entries) {
+      const fieldValue = (value as Record<string, unknown> | null | undefined)?.[key];
+      serialized[key] =
+        primitive && !field.arrDepth
+          ? serializePrimitive(primitive, fieldValue, serializeOption)
+          : serializeType === "input" && isRelationRef
+            ? serialize(ID, field.arrDepth, getRelationId(fieldValue), serializeType, serializeOption)
+            : serialize(field.modelRef, field.arrDepth, fieldValue, serializeType, serializeOption);
+    }
+    return serialized as unknown as Input;
   }
 };
 
@@ -82,9 +84,24 @@ export const serialize = (
 ) => {
   if (nullable && (value === null || value === undefined)) return null;
   else if (!nullable && (value === null || value === undefined) && argRef !== Any)
-    throw new Error(`Invalid Value (Nullable) in ${argRef} for value ${value}${key ? ` in ${key}` : ""}`);
-  return serializeInput(value, argRef, arrDepth, serializeType, { optional: nullable }) as object[];
+    throw missingValueError(argRef, value, key);
+  return serializeInput(value, argRef, arrDepth, serializeType, nullable) as object[];
 };
+
+// `serialize` for a non-array primitive field, without the array, Map and model branches it cannot take.
+const serializePrimitive = (
+  primitive: typeof PrimitiveScalar,
+  value: unknown,
+  { nullable, key }: { nullable: boolean; key: string },
+) => {
+  if (value === null || value === undefined) {
+    if (nullable) return null;
+    if ((primitive as unknown) !== Any) throw missingValueError(primitive, value, key);
+  }
+  return primitive._serialize(value as never, nullable ? optionalSerialize : requiredSerialize);
+};
+const missingValueError = (argRef: unknown, value: unknown, key?: string) =>
+  new Error(`Invalid Value (Nullable) in ${argRef} for value ${value}${key ? ` in ${key}` : ""}`);
 
 const getDeserializeFn = (inputRef: ConstantModelRef | PrimitiveScalar) =>
   PrimitiveRegistry.has(inputRef as Cls)
