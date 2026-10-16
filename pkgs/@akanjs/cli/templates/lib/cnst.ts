@@ -7,7 +7,6 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const databaseModules = scanInfo.getDatabaseModules();
   const scalarModules = scanInfo.getScalarModules();
   const libs = scanInfo.getLibs();
-  const libInfos = scanInfo.getLibInfos();
   return `
 import { ConstantRegistry } from "akanjs/constant";
 ${scalarModules.map((module) => `import * as ${module}Cnst from "./__scalar/${module}/${module}.constant";`).join("\n")}

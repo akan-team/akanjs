@@ -9,6 +9,7 @@ import type {
   NativeEnv,
   NativePermission,
 } from "akanjs";
+import { trimSlashes } from "akanjs/common";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import type { NativePluginFolder } from "./nativePluginFolders";
@@ -271,7 +272,7 @@ export class NativeConfig {
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */
   static fileNameOf(name: string) {
-    return name.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "app";
+    return /[^-.](?:.*[^-.])?/.exec(name.replace(/[^A-Za-z0-9._-]/g, "-"))?.[0] ?? "app";
   }
 
   //? A permission names a plugin by its id, and a plugin given by folder is named in its manifest; a spec the runtime
@@ -311,7 +312,7 @@ export class NativeConfig {
 
   //* Every route sits under /:lang, so an app link limited to a basePath lists it once per locale.
   static #deepLinks(target: AkanNativeTarget, locales: readonly string[]) {
-    const basePath = target.basePath?.replace(/^\/+|\/+$/g, "");
+    const basePath = target.basePath ? trimSlashes(target.basePath) : "";
     const pathPrefixes = basePath ? locales.map((locale) => `/${locale}/${basePath}`) : undefined;
     return {
       ...(target.deepLinks?.schemes?.length ? { schemes: target.deepLinks.schemes } : {}),

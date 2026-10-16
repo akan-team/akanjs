@@ -167,6 +167,15 @@ describe("createTsconfigPackageResolver — node_modules fallback", () => {
     expect((await resolve("akanjs/signal"))?.entryFile).toBe(entryFile);
   });
 
+  test("substitutes every * of a wildcard target, as Node does", async () => {
+    const root = await makeTempRoot();
+    await writePackageJson(root, "akanjs", { exports: { "./*": "./*/*.js" } });
+    const entryFile = await write(root, "node_modules/akanjs/signal/signal.js");
+    const resolve = await resolverFor(root, {});
+
+    expect((await resolve("akanjs/signal"))?.entryFile).toBe(entryFile);
+  });
+
   test("resolves a scoped package subpath", async () => {
     // Vendor-neutral on purpose: `packageExports.test.ts` reads every `"@akanjs/devkit/<x>"` literal here as an import.
     const root = await makeTempRoot();

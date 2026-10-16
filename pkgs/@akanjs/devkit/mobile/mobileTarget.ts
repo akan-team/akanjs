@@ -1,4 +1,5 @@
 import type { AkanNativeAppId } from "akanjs";
+import { trimSlashes } from "akanjs/common";
 import type { AkanAppConfig, AkanNativeTarget, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 
@@ -13,8 +14,6 @@ export interface ResolvedMobileTarget {
 }
 
 export const MOBILE_ENVS = ["local", "debug", "develop", "main"] as const satisfies readonly NativeEnv[];
-
-const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, "");
 
 export const getMobileTargets = async (app: App): Promise<ResolvedMobileTarget[]> => {
   const config = await app.getConfig();

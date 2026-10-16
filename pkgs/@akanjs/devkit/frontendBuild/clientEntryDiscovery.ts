@@ -6,7 +6,7 @@ import { BarrelAnalyzer } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import type { AkanConfig, ClientEntryDiscovery, ScannedImport } from "./clientBuildTypes";
 
-const USE_CLIENT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
+const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const NODE_MODULES_RE = /[\\/]node_modules[\\/]/;
 const AKANJS_NODE_MODULE_RE = /[\\/]node_modules[\\/]akanjs[\\/]/;
 // Bun's scanImports also surfaces CSS and asset imports, none of which can be a client component.

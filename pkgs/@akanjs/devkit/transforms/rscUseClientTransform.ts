@@ -2,9 +2,9 @@ import path from "node:path";
 import ts from "typescript";
 import { loaderFor } from "./moduleSyntax";
 
-const USE_CLIENT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
+const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const IMPLICIT_ROOT_LAYOUT_RE =
-  /[/\\]\.akan[/\\]generated[/\\](?:implicit-root-layout|root-layouts[/\\].*__root_layout)\.(tsx|ts|jsx|js)$/;
+  /[/\\]\.akan[/\\]generated[/\\](?:implicit-root-layout|root-layouts[/\\][^/\\]*__root_layout)\.(tsx|ts|jsx|js)$/;
 const STAR_REEXPORT_HINT_RE = /\bexport\s*\*\s*from\b/;
 
 export interface UseClientTransformArgs {

@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { UpdateEnvelope, UpdateManifest } from "@akanjs/native/api";
-import { isRecord } from "akanjs/common";
+import { isRecord, trimTrailingSlashes } from "akanjs/common";
 import { UpdatePackFolder } from "./updatePackFolder";
 
 /** What the uploader needs of an S3 client; Bun.S3Client is one. */
@@ -32,9 +32,9 @@ export class UpdateUploader {
 
   /** `s3://bucket/prefix`: the credentials and endpoint come from S3_* (or AWS_*) in the environment. */
   static parseTarget(target: string): { bucket: string; prefix: string } {
-    const match = /^s3:\/\/([^/]+)\/?(.*)$/.exec(target.trim());
+    const match = /^s3:\/\/([^/]+)(?:\/(.*))?$/.exec(target.trim());
     if (!match?.[1]) throw new Error(`--upload takes s3://<bucket>/<prefix>, not ${JSON.stringify(target)}.`);
-    return { bucket: match[1], prefix: (match[2] ?? "").replace(/\/+$/, "") };
+    return { bucket: match[1], prefix: trimTrailingSlashes(match[2] ?? "") };
   }
 
   static order(files: string[]): { releases: string[]; manifests: string[] } {

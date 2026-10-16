@@ -113,7 +113,7 @@ const slugPart = (value: unknown) =>
     ? value
         .trim()
         .replace(/[^a-zA-Z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
+        .replace(/^-|-$/g, "")
         .toLowerCase()
     : "";
 

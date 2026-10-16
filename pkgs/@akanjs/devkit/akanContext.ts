@@ -209,7 +209,7 @@ export const upsertCodexMcpServerBlock = (
   const match = existing.match(codexAkanTablePattern);
   if (!match) {
     if (!existing.trim()) return nextBlock;
-    return `${existing.replace(/\s*$/, "")}\n\n${nextBlock}`;
+    return `${existing.trimEnd()}\n\n${nextBlock}`;
   }
   if (match[0].trim() === nextBlock.trim()) return existing;
   if (!force)

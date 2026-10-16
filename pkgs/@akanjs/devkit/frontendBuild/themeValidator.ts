@@ -75,7 +75,7 @@ export class ThemeValidator {
   /** A scope declared twice keeps the later value, so pass the framework css before the app's. */
   static parseThemeTokens(css: string): ThemeTokensByScope {
     const result: ThemeTokensByScope = {};
-    const blockRe = /(?:^|})\s*([^{}@]+?)\s*\{([^{}]*)\}/g;
+    const blockRe = /(?:^|})([^{}@]+)\{([^{}]*)\}/g;
     for (const block of css.matchAll(blockRe)) {
       const selectors = block[1].split(",").map((s) => s.trim());
       const relevant = selectors.filter((s) => THEME_SCOPES.has(ThemeValidator.#normalizeScope(s)));

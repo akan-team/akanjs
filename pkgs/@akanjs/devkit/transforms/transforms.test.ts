@@ -4,7 +4,12 @@ import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { BarrelAnalyzer, type BarrelExportTarget } from "./barrelAnalyzer";
 import { rewriteBarrelImports } from "./barrelImportsPlugin";
-import { scanUseClientExports, toClientReferencePath, transformUseClient } from "./rscUseClientTransform";
+import {
+  hasUseClientDirective,
+  scanUseClientExports,
+  toClientReferencePath,
+  transformUseClient,
+} from "./rscUseClientTransform";
 import { createUseClientBundlePlugin } from "./useClientBundlePlugin";
 
 const makeTempRoot = tempDirs("akan-devkit-transform-");
@@ -25,6 +30,12 @@ describe("transformUseClient", () => {
         path: "/repo/apps/demo/.akan/generated/root-layouts/admin__root_layout.tsx",
       }),
     ).toBeNull();
+  });
+
+  test("reads the directive through the leading comments only, in linear time", () => {
+    expect(hasUseClientDirective('/* a */\n// b /* c\n/** d **/\n"use client";')).toBe(true);
+    expect(hasUseClientDirective('/* a */ x /* b */ "use client";')).toBe(false);
+    expect(hasUseClientDirective(`${"/* a */\n".repeat(40)}export const value = 1;`)).toBe(false);
   });
 
   test("a client module with no exports stays server code and is not reported as a client module", () => {

@@ -244,7 +244,7 @@ export class RouteClientBuilder {
   //? a probe export and only the ones the parser reports as exports are declarations.
   static #declaredNamedDefaultFunctions(source: string, filePath?: string) {
     const candidates = [
-      ...source.matchAll(/(^|\n)(\s*)export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)(?=\s*(?:<|\())/g),
+      ...source.matchAll(/(^|\n)([^\S\n]*)export\s+default\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)(?=\s*(?:<|\())/g),
     ].map((match) => ({
       index: match.index,
       text: match[0],

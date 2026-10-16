@@ -32,7 +32,7 @@ export const sourceFile = (sys: Sys, path: string, action: PrimitiveChangedFile[
 export const moduleComponentName = (moduleName: string) =>
   moduleName
     .replace(/[-_]+/g, " ")
-    .replace(/(?:^|\s+)([a-zA-Z0-9])/g, (_, char: string) => char.toUpperCase())
+    .replace(/(?<=^|\s)[a-zA-Z0-9]/g, (char) => char.toUpperCase())
     .replace(/\s+/g, "");
 
 export const moduleSourcePaths = (moduleName: string) => {
@@ -768,7 +768,7 @@ export const insertTemplateField = ({
 
 export const ensureEnumImport = (content: string) => {
   if (content.includes("enumOf")) return content;
-  const baseImport = /import \{ ([^}]+) \} from "akanjs\/base";/.exec(content);
+  const baseImport = /import \{ ([^{}]+) \} from "akanjs\/base";/.exec(content);
   if (baseImport) {
     const names = baseImport[1]?.split(",").map((name) => name.trim()) ?? [];
     return content.replace(baseImport[0], `import { ${[...names, "enumOf"].sort().join(", ")} } from "akanjs/base";`);

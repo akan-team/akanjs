@@ -45,6 +45,7 @@ describe("UpdateUploader", () => {
       prefix: "acme/kiosk",
     });
     expect(UpdateUploader.parseTarget("s3://releases")).toEqual({ bucket: "releases", prefix: "" });
+    expect(UpdateUploader.parseTarget("s3://releases//acme//")).toEqual({ bucket: "releases", prefix: "/acme" });
     expect(() => UpdateUploader.parseTarget("https://releases.example/acme")).toThrow("s3://<bucket>/<prefix>");
   });
 
