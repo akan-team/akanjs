@@ -809,10 +809,15 @@ export class AkanApp {
     }
   }
 
+  //? Older Bun reported every unopenable unix socket as FailedToOpenSocket; 1.4.3 names the errno instead —
+  //? ENOENT once `server.stop()` unlinked the file, ECONNREFUSED for a killed listener, ENOTSOCK for a stray file.
+  static readonly #upstreamOpenFailureCodes = new Set(["FailedToOpenSocket", "ENOENT", "ECONNREFUSED", "ENOTSOCK"]);
+
   static #isUpstreamOpenFailure(error: unknown): boolean {
     if (!error || typeof error !== "object") return false;
     const candidate = error as { code?: unknown; message?: unknown };
-    return candidate.code === "FailedToOpenSocket" || String(candidate.message ?? "").includes("FailedToOpenSocket");
+    if (typeof candidate.code === "string" && AkanApp.#upstreamOpenFailureCodes.has(candidate.code)) return true;
+    return String(candidate.message ?? "").includes("FailedToOpenSocket");
   }
 
   // Child died mid-response: no restart from here, and a rethrow would be a raw 500 blamed on the in-flight URL.
