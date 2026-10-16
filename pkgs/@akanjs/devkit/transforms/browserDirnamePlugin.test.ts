@@ -31,6 +31,7 @@ describe("createBrowserDirnamePlugin", () => {
     );
     await writeText(
       path.join(root, "node_modules/esmdep/index.js"),
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture module's own source holds a template literal
       'export const dir = typeof __dirname !== "undefined" ? `${__dirname}/` : "browser";\n',
     );
     await writeText(path.join(root, "node_modules/esmdep/legacy.cjs"), "module.exports = __filename;\n");

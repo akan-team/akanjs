@@ -43,6 +43,7 @@ console.info(await result.outputs[0].text());
       );
       await writeText(
         path.join(root, "node_modules/wasmdep/index.js"),
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture module's own source holds a template literal
         'var isNode = typeof process == "object" && !!process.versions?.node;\nmodule.exports = isNode ? `${__dirname}/` : "";\n',
       );
       await writeText(path.join(root, "entry.ts"), 'import dir from "wasmdep";\nconsole.info(dir);\n');
