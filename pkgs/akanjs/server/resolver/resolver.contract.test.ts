@@ -976,7 +976,7 @@ describe("SignalResolver declaration contracts", () => {
         params: { id: validId },
         body: {
           data: {
-            ownerId: "owner-1",
+            ownerId: "65f0a1b2c3d4e5f6a7b8c9d0",
             category: "news",
             title: "Alpha",
             count: 1,

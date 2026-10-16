@@ -50,6 +50,8 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     ],
     immutableField: ["{field} cannot be changed after creation.", "{field}은(는) 생성 후에는 바꿀 수 없습니다."],
     invalidArgument: ["{name} has an invalid value.", "{name} 값이 올바르지 않습니다."],
+    requiredArgument: ["{name} is required.", "{name}은(는) 필수 값입니다."],
+    invalidField: ["{field} has an invalid value.", "{field} 값이 올바르지 않습니다."],
     relationNotFound: [
       "The {model} that {field} refers to no longer exists.",
       "{field}이(가) 가리키는 {model}을(를) 찾을 수 없습니다.",

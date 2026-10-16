@@ -1619,6 +1619,41 @@ describe("SignalContext argument parsing", () => {
     expect(await (await responseWith([TestAdmin as GuardCls], "limit=3")).json()).toBe("limit:3");
   });
 
+  test("answers a model body the schema refuses with a 400 naming the field, and drops undeclared keys", async () => {
+    const received: unknown[] = [];
+    const responseWith = async (guards: GuardCls[], data: Record<string, unknown>) => {
+      const endpointInfo = buildEndpoint
+        .mutation(String, { guards })
+        .body("data", SignalTestInput)
+        .exec((input) => {
+          received.push(input);
+          return "ok";
+        });
+      const adaptor = new (adapt("signalTestMalformedBodyAdaptor"))();
+      const request = makeHttpRequest({ url: "http://localhost/items", body: { data } });
+      return (await SignalContext.try(adaptor, endpointInfo, "malformedBody", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, request });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    };
+    const valid = { ownerId: "65f0a1b2c3d4e5f6a7b8c9d0", title: "kit", nested: { label: "n" } };
+
+    const wrongType = await responseWith([TestAdmin as GuardCls], { ...valid, ownerId: "abc" });
+    expect(wrongType.status).toBe(400);
+    expect(await wrongType.json()).toMatchObject({
+      error: "base.error.invalidArgument",
+      data: { name: "data.ownerId", expected: "ID" },
+    });
+    const missing = await responseWith([TestAdmin as GuardCls], { ...valid, title: undefined });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toMatchObject({ error: "base.error.requiredArgument", data: { name: "data.title" } });
+    expect((await responseWith([AccountDeny as GuardCls], { ...valid, ownerId: "abc" })).status).toBe(403);
+
+    expect(await (await responseWith([TestAdmin as GuardCls], { ...valid, role: "admin" })).json()).toBe("ok");
+    expect(received).toEqual([valid]);
+  });
+
   test("runs account guards before resource guards, which read the parsed arguments", async () => {
     const trace: string[] = [];
     class ResourceReads implements Guard {

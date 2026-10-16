@@ -601,11 +601,11 @@ export class SqlDocumentStore {
         const values = Array.isArray(doc[key]) ? doc[key] : [doc[key]];
         const fieldEnum = props.enum as { has: (value: unknown) => boolean } | undefined;
         const invalidValue = fieldEnum ? values.find((value: unknown) => !fieldEnum.has(value)) : undefined;
-        if (invalidValue !== undefined) throw new Error(`Invalid enum value for ${key}: ${invalidValue}`);
+        if (invalidValue !== undefined) throw SqlDocumentStore.#invalidField(key, this.table);
       }
       const validate = props.validate as ((value: unknown, doc: MutableDocumentRecord) => boolean) | undefined;
       if (validate && doc[key] !== undefined && doc[key] !== null && !validate(doc[key], doc)) {
-        throw new Error(`Invalid field value: ${key}`);
+        throw SqlDocumentStore.#invalidField(key, this.table);
       }
     }
     return { ...data, ...doc };
@@ -886,6 +886,11 @@ export class SqlDocumentStore {
     throw new Error(
       `read-only: a removed ${this.table} is revived with updateById(id, { removedAt: null }, { withRemoved: true })`,
     );
+  }
+
+  // An enum or `validate` refusal is the caller's value, so a 400; the value is left out as it may be `field.secret`.
+  static #invalidField(key: string, table: string) {
+    return new Err.BadRequest("base.error.invalidField", { field: key }, { details: { model: table } });
   }
 
   // The document path only, as mongoose exempts `bulkWrite`; checked before save hooks so the error names the

@@ -226,6 +226,10 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
     .mutation(String, { guards: [SignedIn] })
     .body("outline", McpOutline)
     .exec((outline) => `lines:${outline.lines.length}`),
+  retitleOutline: builder
+    .mutation(String, { guards: [SignedIn] })
+    .body("item", McpOutlineInput)
+    .exec((item) => `${item.title}:${item.outline.lines.length}`),
   failingTitle: builder.query(String, { guards: [Public] }).exec(() => {
     throw new Error("boom: internal detail that must not travel");
   }),
@@ -435,6 +439,7 @@ describe("MCP over a booted container", () => {
       "outlineText",
       "periodTitle",
       "renameTitle",
+      "retitleOutline",
       "rewriteOutline",
       "serverResolverTestItem",
       "serverResolverTestItemInsight",
@@ -543,8 +548,8 @@ describe("MCP over a booted container", () => {
     }
     const log = lines.join("\n");
     // The whole build, not one caller's view: per-credential hiding makes these counts exceed tools/list above.
-    expect(log).toContain("MCP catalogue: tools=24 resourceTemplates=3 · listing ");
-    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 24/");
+    expect(log).toContain("MCP catalogue: tools=25 resourceTemplates=3 · listing ");
+    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 25/");
     expect(lines.find((line) => line.includes('"publicRenameTitle"'))).toContain("`[Public]` is having none");
     expect(log).toContain("MCP catalogue: tools=22 resourceTemplates=3 (read-only deployment)");
     expect(lines.find((line) => line.includes('did not expose "renameTitle"'))).toContain("read-only");
@@ -629,6 +634,16 @@ describe("MCP over a booted container", () => {
     const invalid = await call("echoTitle", { id: 12345 });
     expect(invalid.result.isError).toBe(true);
     expect(invalid.result.content[0].text).toBe('Invalid argument "id": expected ID.');
+  });
+
+  test("names the body field a caller got wrong, from the argument down", async () => {
+    const wrongType = await call("retitleOutline", { item: { title: 3, outline: "# A" } });
+    expect(wrongType.result.isError).toBe(true);
+    expect(wrongType.result.content[0].text).toBe('Invalid field "item.title": expected String.');
+    const missing = await call("retitleOutline", { item: { outline: "# A" } });
+    expect(missing.result.content[0].text).toBe('Missing required field "item.title".');
+    const valid = await call("retitleOutline", { item: { title: "guide", outline: "# A\nb", extra: true } });
+    expect(valid.result.content[0].text).toBe("guide:2");
   });
 
   test("says a document is missing rather than that the server failed", async () => {

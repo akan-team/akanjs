@@ -15,8 +15,9 @@ import {
   type ConstantCls,
   type ConstantFieldTypeInput,
   ConstantRegistry,
-  deserialize,
   FieldPlan,
+  InputParser,
+  InvalidInputError,
   serialize,
 } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
@@ -42,7 +43,7 @@ const httpEndpointTypes = new Set<EndpointType>(["query", "mutation"]);
 
 const deserializeArg = (arg: ArgInfo, value: unknown) => {
   try {
-    return deserialize(arg.argRef, arg.arrDepth, value, {
+    return InputParser.parse(arg.argRef, arg.arrDepth, value, {
       key: arg.name,
       nullable: arg.option?.nullable,
       enum: arg.enum,
@@ -50,7 +51,10 @@ const deserializeArg = (arg: ArgInfo, value: unknown) => {
   } catch (error) {
     //? The parsers throw a plain `Error`, which `SignalFailure` would answer as a 500 for the caller's own input.
     if (isExceptionLike(error)) throw error;
-    throw new Err.BadRequest("base.error.invalidArgument", { name: arg.name });
+    if (!(error instanceof InvalidInputError))
+      throw new Err.BadRequest("base.error.invalidArgument", { name: arg.name });
+    if (error.reason === "missing") throw new Err.BadRequest("base.error.requiredArgument", { name: error.path });
+    throw new Err.BadRequest("base.error.invalidArgument", { name: error.path, expected: error.expected });
   }
 };
 

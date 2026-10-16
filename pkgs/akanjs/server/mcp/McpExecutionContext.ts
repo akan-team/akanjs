@@ -1,6 +1,6 @@
 import { type Cls, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
 import { isMcpDescribableArg } from "akanjs/common";
-import { deserialize, serialize } from "akanjs/constant";
+import { InputParser, InvalidInputError, serialize } from "akanjs/constant";
 import type { EndpointInfo } from "../../signal/endpointInfo";
 import { HttpExecutionContext } from "../../signal/signalContext";
 
@@ -32,13 +32,15 @@ export class McpExecutionContext extends HttpExecutionContext {
 
   override parseArg(arg: McpArg, value: unknown): unknown {
     try {
-      return deserialize(arg.argRef, arg.arrDepth, value, {
+      return InputParser.parse(arg.argRef, arg.arrDepth, value, {
         key: arg.name,
         nullable: arg.option?.nullable,
         enum: arg.enum,
       });
-    } catch {
+    } catch (error) {
       // The parser's message names internals; an agent retries on this one, so it must read as its own mistake.
+      if (error instanceof InvalidInputError && error.path !== arg.name)
+        throw new McpArgumentError(McpExecutionContext.#fieldMessage(error));
       throw new McpArgumentError(McpExecutionContext.#argumentMessage(arg, value));
     }
   }
@@ -63,6 +65,10 @@ export class McpExecutionContext extends HttpExecutionContext {
       ? PrimitiveRegistry.getName(arg.argRef as typeof PrimitiveScalar)
       : "";
     return isMcpDescribableArg({ refName });
+  }
+
+  static #fieldMessage({ path, expected }: InvalidInputError) {
+    return expected ? `Invalid field "${path}": expected ${expected}.` : `Missing required field "${path}".`;
   }
 
   static #argumentMessage(arg: McpArg, value: unknown) {
