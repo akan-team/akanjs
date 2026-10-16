@@ -1,4 +1,4 @@
-import { router } from "akanjs/client";
+import { csrLocation, router } from "akanjs/client";
 import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
 import { AgentBridge } from "./AgentBridge";
 import { ScreenFlash } from "./ScreenFlash";
@@ -58,15 +58,36 @@ export class StoreSurfaceSource implements SurfaceSource {
           router.push(path);
           await router.navigation();
         } catch {
-          throw new Error(
-            `There is no route at ${path}, so the page did not move. Call readScreen — it prints each link on this screen with its own path — and navigate to one of those.`,
-          );
+          throw new Error(`There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked()}`);
         }
         // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
         await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
-        return `Now on ${path}. Call readScreen to see it; this screen's own tools and state are listed from the next turn.`;
+        const landed = StoreSurfaceSource.#redirected(path);
+        return `${landed ? `Asked for ${path}, but the app sent the page to ${landed} instead.` : `Now on ${path}.`} ${StoreSurfaceSource.#arrived}`;
       },
     };
+  }
+
+  static readonly #arrived =
+    "This screen's own tools and state replace the previous screen's and are listed on your next turn — call them then, by the names listed. Call readScreen to see the page.";
+
+  static #linked() {
+    const routes = ScreenTarget.linkedRoutes();
+    return routes.length
+      ? `Paths this screen links to: ${routes.join(", ")}. Navigate to one of those rather than composing a path.`
+      : "Call readScreen — it prints each link on this screen with its own path — and navigate to one of those.";
+  }
+
+  /** A redirect or the app's not-found page moves the page somewhere other than the path it was sent to. */
+  static #redirected(path: string): string | null {
+    const trimmed = (route: string) => (route.length > 1 ? route.replace(/\/+$/, "") : route);
+    try {
+      const landed = router.routeOf(csrLocation.pathname);
+      const wanted = router.routeOf(new URL(path, "http://route.invalid").pathname);
+      return trimmed(landed) === trimmed(wanted) ? null : landed;
+    } catch {
+      return null;
+    }
   }
 
   static #goBack(): ToolEntry {
@@ -79,7 +100,7 @@ export class StoreSurfaceSource implements SurfaceSource {
       run: async () => {
         router.back();
         await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
-        return `Back on ${router.getPath()}. Call readScreen to see it; this screen's own tools and state are listed from the next turn.`;
+        return `Back on ${router.getPath()}. ${StoreSurfaceSource.#arrived}`;
       },
     };
   }

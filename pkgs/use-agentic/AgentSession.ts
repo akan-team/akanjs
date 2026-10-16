@@ -193,6 +193,8 @@ export class AgentSession {
   #limits: TurnLimits = {};
   /** What the tools, the screen context and the instructions cost the last request, for a host's gauge. */
   #overhead = 0;
+  /** The tool names the model was handed on the turn now running — what its calls were written against. */
+  #listed: readonly string[] = [];
 
   constructor(surface: SurfaceView, runner: AgentRunner, options: AgentSessionOptions = {}) {
     this.#surface = surface;
@@ -213,7 +215,7 @@ export class AgentSession {
       fallback: async (call, signal) =>
         call.name === AgentSession.askUserTool.name
           ? await this.#ask(call, signal)
-          : { id: call.id, name: call.name, error: `Unknown tool: ${call.name}` },
+          : { id: call.id, name: call.name, error: this.#unknown(call.name) },
     });
     this.#history = options.history;
     this.#onCompact = options.onCompact;
@@ -766,6 +768,7 @@ export class AgentSession {
   ): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop; overflow?: { message: string; limit?: number } }> {
     const frame = this.#frame();
     this.#overhead = AgentSession.#tokensOfFrame(frame);
+    this.#listed = frame.tools.map((tool) => tool.name);
     const request: RunnerRequest = { messages: Transcript.wire(this.#messages), ...frame, signal };
     this.#append({ role: "assistant" });
     let text = "";
@@ -798,6 +801,20 @@ export class AgentSession {
     const settled = await this.#awaitAnswer(`continue-${turns}`, ask.question, [ask.keep], false, signal);
     if ("error" in settled) return null;
     return Array.isArray(settled.result) ? settled.result.join(", ") : settled.result;
+  }
+
+  /**
+   * Answered with the names that exist: a bare refusal sends a model guessing the next name. A screen that moved
+   * since the turn's list was written is said so, since that call was written against the screen it left.
+   */
+  #unknown(name: string): string {
+    const shown = this.#surface.snapshot().tools.map((tool) => tool.name);
+    const now = shown.includes(AgentSession.askUserTool.name) ? shown : [...shown, AgentSession.askUserTool.name];
+    const listed = new Set(this.#listed);
+    const moved = now.length !== listed.size || now.some((one) => !listed.has(one));
+    return moved
+      ? `Unknown tool: ${name}. The screen changed during this turn, so this call was written against tools that are no longer on it. The tools on screen now are listed with their arguments on your next turn — call one then by its exact name: ${now.join(", ")}.`
+      : `Unknown tool: ${name}. Call only a tool listed to you, by its exact name — never a guessed one. Listed now: ${now.join(", ")}.`;
   }
 
   /** No surface call and so no diff to report: the only thing this changes is what the model knows. */

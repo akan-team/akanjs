@@ -35,13 +35,16 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 
   /**
    * Prepended to the app's instructions here, not per adaptor, where forgetting it would be silent. The batching and
-   * no-re-read sentences were measured to cut turns against a provider; do not shorten them.
+   * no-re-read sentences were measured to cut turns against a provider; do not shorten them. The navigation sentence
+   * carves the batching rule: a call batched behind `navigate` was written against the screen being left.
    */
   static readonly preamble = [
     "You are an in-page assistant. Use the published tools to read and drive the screen the user is looking at.",
     "Issue every tool call that does not need another call's result in the same turn, rather than one call per turn.",
     "Prefer the tool that does the whole job in one call, such as a form's fill tool over one call per field.",
     "A tool result already reports what it changed, so never call a read afterwards to confirm work you have just done — answer the user from the results you already have.",
+    "Tools belong to the screen on display: navigate and goBack replace the screen's own tools, and the new screen's are listed only on your next turn, so end the turn at a navigation and call them once they are listed.",
+    "Call a tool only by a name listed to you — never compose or guess one.",
   ].join(" ");
 
   static instructed(request: LlmTurnRequest): LlmTurnRequest {
