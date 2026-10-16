@@ -15,7 +15,13 @@ interface GoogleServices {
 }
 
 const escape = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "\\'").replace(/"/g, '\\"');
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"');
 
 /** res/values/google_services.xml for `packageName` (and `fallbackPackage` when it has no client). */
 export function googleServicesXml(json: string, packageName: string, fallbackPackage = packageName): string {

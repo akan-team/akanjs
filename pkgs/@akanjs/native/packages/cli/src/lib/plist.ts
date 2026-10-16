@@ -62,10 +62,8 @@ const unescape = (text: string) =>
  */
 export function parsePlist(xml: string): PlistValue {
   const tokens = [
-    ...xml
-      .replace(/<\?xml[^>]*\?>|<!DOCTYPE[^>]*>|<!--[\s\S]*?-->/g, "")
-      .matchAll(/<(\/?)([a-zA-Z]+)[^>]*?(\/)?>|([^<]+)/g),
-  ];
+    ...xml.matchAll(/<\?xml[^>]*\?>|<!DOCTYPE[^>]*>|<!--[\s\S]*?-->|<(\/?)([a-zA-Z]+)[^>]*?(\/)?>|([^<]+)/g),
+  ].filter((t) => t[2] !== undefined || t[4] !== undefined);
   let i = 0;
   const next = () => tokens[i++];
   const text = (tag: string): string => {

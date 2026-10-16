@@ -167,9 +167,10 @@ export function injectCspMeta(html: string, policy: string): string {
     );
   }
   const tag = `<meta http-equiv="Content-Security-Policy" content="${policy.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">`;
-  const head = /<head(\s[^>]*)?>/i.exec(html);
-  if (!head) throw new CliError("index.html has no <head> for the Content-Security-Policy <meta>");
-  const afterHead = head.index + head[0].length;
+  const head = /<head[\s>]/i.exec(html);
+  const headEnd = head ? html.indexOf(">", head.index) : -1;
+  if (headEnd < 0) throw new CliError("index.html has no <head> for the Content-Security-Policy <meta>");
+  const afterHead = headEnd + 1;
   const rest = html.slice(afterHead);
   const charset = /<meta\b[^>]*\bcharset\s*=[^>]*>/i.exec(rest);
   // The policy must come before anything it governs: styles, links and scripts other than init.js.

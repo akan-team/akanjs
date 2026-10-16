@@ -476,9 +476,9 @@ export function updateReportOutcome(status: number): UpdateReportOutcome {
  * §10.2.3, digits only), else null. An HTTP date is not read; the batch goes at the next launch or return instead.
  */
 export function updateReportRetryAt(retryAfter: string | null, now: number): number | null {
-  const value = retryAfter?.replace(/^[ \t]+|[ \t]+$/g, "") ?? "";
-  if (!/^[0-9]+$/.test(value)) return null;
-  const seconds = Number(value);
+  const digits = /^[ \t]*([0-9]+)[ \t]*$/.exec(retryAfter ?? "")?.[1];
+  if (digits === undefined) return null;
+  const seconds = Number(digits);
   return Number.isFinite(seconds) ? now + seconds : null;
 }
 

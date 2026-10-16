@@ -63,7 +63,7 @@ export class AppPage {
 
   async socket(): Promise<WebSocket> {
     const pages = (await (await fetch(`http://127.0.0.1:${this.port}/json`)).json()) as DevtoolsTarget[];
-    const page = pages.find((p) => p.type === "page" && p.url.startsWith("https://app.localhost"));
+    const page = pages.find((p) => p.type === "page" && p.url.startsWith("https://app.localhost/"));
     if (!page) throw new Error("no app page yet");
     const ws = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => {

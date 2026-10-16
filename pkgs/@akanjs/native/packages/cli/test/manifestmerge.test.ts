@@ -27,6 +27,7 @@ describe("XML", () => {
     });
     expect(serializeXml(root)).toBe(`<a b="1 &amp; 2">\n    <c d="x" />\n    <e />\n</a>`);
     expect(() => parseXml("<a><b></a>")).toThrow(/does not close/);
+    expect(parseXml(`<a><!-- <b> --><c/></a>`).children.map((c) => c.name)).toEqual(["c"]);
   });
 });
 

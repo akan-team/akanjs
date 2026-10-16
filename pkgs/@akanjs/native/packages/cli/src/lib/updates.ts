@@ -188,7 +188,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   }
   const r = raw as Record<string, unknown>;
   //? The shells append `/<platform>/…` to the URL as text: a query or fragment would swallow the path.
-  if (typeof r.url !== "string" || !/^https?:\/\/[^/?#]+[^?#]*$/.test(r.url))
+  if (typeof r.url !== "string" || !/^https?:\/\/[^/?#][^?#]*$/.test(r.url))
     problems.push("updates.url must be an http(s) URL without a query or fragment");
   const publicKeys = updatePublicKeys(r, problems);
   const revokedKeys = updateRevokedKeys(r.revokedKeys, problems);
@@ -206,7 +206,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     );
   if (typeof r.url !== "string" || !publicKeys) return null;
   return {
-    url: r.url.replace(/\/+$/, ""),
+    url: withoutTrailingSlashes(r.url),
     publicKeys,
     revokedKeys,
     channel: (r.channel as string | undefined) ?? "production",
@@ -215,11 +215,17 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   };
 }
 
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
+}
+
 /** `report: { url }`, posted to as it is: the address is the receiver's, a path of its own included. */
 function updateReportUrl(raw: unknown, problems: string[]): string | null {
   if (raw === undefined) return null;
   const url = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).url : undefined;
-  if (typeof url !== "string" || !/^https?:\/\/[^/?#]+[^#]*$/.test(url) || Object.keys(raw as object).length !== 1) {
+  if (typeof url !== "string" || !/^https?:\/\/[^/?#][^#]*$/.test(url) || Object.keys(raw as object).length !== 1) {
     problems.push("updates.report must be { url } with an http(s) URL");
     return null;
   }

@@ -48,12 +48,14 @@ describe("plist reader", () => {
     const p = parsePlist(PROFILE_XML) as Record<string, unknown>;
     expect(p.DeveloperCertificates).toEqual([cert]);
     expect(p.ExpirationDate).toEqual(new Date("2027-09-26T00:00:00Z"));
+    expect(parsePlist(`<dict><!-- <key>no</key> --><key>k</key><string>a<!-- x -->b</string></dict>`)).toEqual({
+      k: "ab",
+    });
   });
 });
 
 describe("iOS signing", () => {
   const profile = profileFromPlist("/p.mobileprovision", parsePlist(PROFILE_XML) as Record<string, unknown>);
-  const identity = { sha1: certSha1, name: "Apple Development: Jane Doe (VX85V6WY6B)" };
 
   test("a profile: team, kind, devices, certificates", () => {
     expect([profile.teamId, profile.appId, profile.kind, profile.devices, profile.certificates]).toEqual([

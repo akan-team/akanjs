@@ -52,6 +52,10 @@ export function resolveDevEntry(project: Project): string {
   );
 }
 
+//? The shim sits inline in a <script>: a "</script>" or "<!--" in a value would end or change that element.
+const scriptJson = (value: unknown) =>
+  JSON.stringify(value).replace(/[<>\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+
 /**
  * Inline classic script in the dev page. It runs while the document is parsed, so before Bun's
  * client (a module script, deferred).
@@ -74,17 +78,17 @@ export function devShim(socket?: { origin: string; path?: string; paths?: string
     socket === undefined
       ? ""
       : "var W=window.WebSocket,T=" +
-        JSON.stringify(socket.origin) +
+        scriptJson(socket.origin) +
         ",P=" +
-        JSON.stringify([socket.path ?? HMR_PATH, ...(socket.paths ?? [])]) +
+        scriptJson([socket.path ?? HMR_PATH, ...(socket.paths ?? [])]) +
         ";function S(u,p){try{var x=new URL(String(u),location.href);if(P.indexOf(x.pathname)>=0&&x.host===location.host)u=T+x.pathname+x.search}catch(e){}return p===undefined?new W(u):new W(u,p)}" +
         "S.prototype=W.prototype;S.CONNECTING=0;S.OPEN=1;S.CLOSING=2;S.CLOSED=3;window.WebSocket=S;";
   const gateway = socket?.origin.replace(/^ws/, "http");
-  const marker = gateway === undefined ? "" : `window.__AKAN_NATIVE_DEV__={gateway:${JSON.stringify(gateway)}};`;
+  const marker = gateway === undefined ? "" : `window.__AKAN_NATIVE_DEV__={gateway:${scriptJson(gateway)}};`;
   const bodies = !socket?.relayBodies
     ? ""
     : "var G=" +
-      JSON.stringify(gateway) +
+      scriptJson(gateway) +
       ';function R(u,m){try{var x=new URL(String(u),location.href);m=String(m||"GET").toUpperCase();' +
       'if(x.origin===location.origin&&m!=="GET"&&m!=="HEAD"&&x.pathname.indexOf("/__akan_native/")!==0)return G+x.pathname+x.search}catch(e){}return null}' +
       "var F=window.fetch;if(F)window.fetch=function(i,o){var q=window.Request&&i instanceof window.Request," +
@@ -421,7 +425,7 @@ export async function startHmrServer(opts: HmrOptions): Promise<HmrServer> {
       for (const warning of warnings) warnOnce(warning);
       return new Response(page, { headers: { ...noCache, "content-type": "text/html; charset=utf-8" } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = `dev gateway: the page: ${error instanceof Error ? error.message : String(error)}`;
       warnOnce(message);
       return new Response(message, { status: 500, headers: { "content-type": "text/plain; charset=utf-8" } });
     }

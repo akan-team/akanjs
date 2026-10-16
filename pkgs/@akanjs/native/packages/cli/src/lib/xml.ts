@@ -29,12 +29,13 @@ export const escapeXml = (text: string) =>
 
 /** Parses a document's root element. Text between elements is ignored (manifests have none that matters). */
 export function parseXml(source: string): XmlElement {
-  const text = source.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>/g, "");
-  const tag = /<(\/?)([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/g;
+  const tag =
+    /<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>|<(\/?)([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/g;
   const stack: XmlElement[] = [];
   let root: XmlElement | null = null;
-  for (let m = tag.exec(text); m; m = tag.exec(text)) {
+  for (let m = tag.exec(source); m; m = tag.exec(source)) {
     const [, closing, name, attrText, selfClosing] = m;
+    if (name === undefined) continue;
     if (closing) {
       const open = stack.pop();
       if (!open || open.name !== name) throw new Error(`XML: </${name}> does not close <${open?.name ?? "nothing"}>`);

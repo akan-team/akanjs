@@ -109,7 +109,15 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(check({ publicKey: keys[0], publicKeys: [keys[0]] }).problems).toEqual([
       "updates takes publicKey or publicKeys, not both",
     ]);
-    for (const url of ["https://cdn.example.com/ota?v=1", "https://cdn.example.com/ota#x"]) {
+    expect(check({ publicKey: keys[0], url: "https://cdn.example.com/ota///" }).config?.url).toBe(
+      "https://cdn.example.com/ota",
+    );
+    for (const url of [
+      "https://cdn.example.com/ota?v=1",
+      "https://cdn.example.com/ota#x",
+      "https://",
+      "https:///ota",
+    ]) {
       const problems: string[] = [];
       validateUpdates({ url, publicKey: keys[0] }, problems);
       expect(problems).toEqual(["updates.url must be an http(s) URL without a query or fragment"]);

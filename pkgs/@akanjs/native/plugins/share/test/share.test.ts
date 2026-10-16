@@ -57,6 +57,7 @@ describe("share options", () => {
       { files: [""] },
       { url: "/relative" },
       { url: "javascript:alert(1)" },
+      { url: "vbscript:msgbox(1)" },
       { url: "blob:https://x/1" },
     ]) {
       expect(codeOf(() => checkOptions(bad))).toBe("INVALID_ARGS");

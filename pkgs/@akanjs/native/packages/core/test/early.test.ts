@@ -10,6 +10,12 @@ test("the build puts the collector right after init.js; it is valid script", () 
   expect(html).toStartWith(`<head><script src="/__akan_native/init.js"></script><script>(function(){`);
   expect(() => new Function(EARLY_ERRORS_SCRIPT)).not.toThrow();
   expect(injectEarlyErrors("<head></head>")).toBe("<head></head>"); // no init.js: nothing to follow
+  const later = injectEarlyErrors(
+    `<script src="/__akan_native/init.js">x</script><SCRIPT data-src=a SRC='/b/__akan_native/init.js' defer>\n</script>`,
+  );
+  expect(later).toStartWith(
+    `<script src="/__akan_native/init.js">x</script><SCRIPT data-src=a SRC='/b/__akan_native/init.js' defer>\n</script><script>(function(){`,
+  );
 });
 
 test("core sends what was collected once, marked [before runtime], and stops the collector", () => {
