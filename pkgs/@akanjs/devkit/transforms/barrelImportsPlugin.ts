@@ -195,7 +195,7 @@ const resolvePackageExport = (exportsMap: Record<string, ExportValue> | undefine
     if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue;
     const wildcard = subpath.slice(prefix.length, subpath.length - suffix.length);
     const resolved = resolveExportValue(value);
-    if (resolved) return resolved.replace("*", wildcard);
+    if (resolved) return resolved.split("*").join(wildcard);
   }
 
   return null;

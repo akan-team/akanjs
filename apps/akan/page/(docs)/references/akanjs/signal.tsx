@@ -447,7 +447,7 @@ export default page()
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="Public / None / guard" title="Public / None / guard">
+        <Scroll.Slide id="Public-None-guard" title="Public / None / guard">
           <Docs.Title>Public / None / guard</Docs.Title>
           <Docs.Description>
             <div>
@@ -787,7 +787,7 @@ export class TaskService extends serve(db.task, () => ({})) {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="Req / Res / Ws" title="Req / Res / Ip / Ws">
+        <Scroll.Slide id="Req-Res-Ws" title="Req / Res / Ip / Ws">
           <Docs.Title>Req / Res / Ip / Ws</Docs.Title>
           <Docs.Description>
             <div>
@@ -944,7 +944,7 @@ export class WallpadEndpoint extends endpoint(srv.wallpad, ({ mutation, message 
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="middleware / Middleware" title="middleware / Middleware">
+        <Scroll.Slide id="middleware-Middleware" title="middleware / Middleware">
           <Docs.Title>middleware / Middleware</Docs.Title>
           <Docs.Description>
             <div>

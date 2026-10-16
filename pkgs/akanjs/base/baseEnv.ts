@@ -81,8 +81,11 @@ const globalWithPrefix = globalThis as typeof globalThis & { __AKAN_PREFIX__?: R
 export const normalizeRoutePrefix = (value: string | undefined | null): string | undefined => {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
-  const normalized = `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
-  return normalized === "/" ? undefined : normalized;
+  let start = 0;
+  let end = trimmed.length;
+  while (start < end && trimmed[start] === "/") start += 1;
+  while (end > start && trimmed[end - 1] === "/") end -= 1;
+  return start === end ? undefined : `/${trimmed.slice(start, end)}`;
 };
 
 /**

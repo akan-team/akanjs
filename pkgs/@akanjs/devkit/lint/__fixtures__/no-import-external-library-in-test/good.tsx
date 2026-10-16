@@ -4,3 +4,4 @@ import { tmpdir } from "node:os"; // @ok
 import { Database } from "bun:sqlite"; // @ok
 import { describe, expect, test } from "bun:test"; // @ok
 import { fetch } from "../sig"; // @ok
+export { createServer, Database, describe, expect, fetch, mkdtemp, test, tmpdir };

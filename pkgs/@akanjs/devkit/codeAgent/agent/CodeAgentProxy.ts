@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { CodeAgentProfile } from "akanjs/common";
+import { type CodeAgentProfile, trimTrailingSlashes } from "akanjs/common";
 import { akanCodeDefaultModel } from "./akanCodeModel";
 
 interface PreparedRequest {
@@ -27,7 +27,7 @@ export class CodeAgentProxy {
   readonly #token?: string;
 
   constructor({ baseUrl, providers, tokenFile, token }: CodeAgentProxyOptions) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.baseUrl = trimTrailingSlashes(baseUrl);
     this.providers = providers;
     this.#tokenFile = tokenFile;
     this.#token = token;

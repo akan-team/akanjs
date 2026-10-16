@@ -489,6 +489,9 @@ describe("NativeConfig.build", () => {
     expect(NativeConfig.fileNameOf("minimal")).toBe("minimal");
     expect(NativeConfig.fileNameOf("my app!")).toBe("my-app");
     expect(NativeConfig.fileNameOf("...")).toBe("app");
+    expect(NativeConfig.fileNameOf(".-my app!-.")).toBe("my-app");
+    expect(NativeConfig.fileNameOf("-a-")).toBe("a");
+    expect(NativeConfig.fileNameOf(`a${"-".repeat(50_000)}b`)).toHaveLength(50_002);
   });
 });
 

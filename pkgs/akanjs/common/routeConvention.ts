@@ -1,3 +1,5 @@
+import { trimSlashes, trimTrailingSlashes } from "./trimSlashes";
+
 const ROUTE_SOURCE_RE = /^\.\/(.+)\.(tsx|ts|jsx|js)$/;
 const SOURCE_EXT_RE = /\.(tsx|ts|jsx|js)$/;
 const RESERVED_ROUTE_FILES = new Set(["_layout", "_index", "_overrides"]);
@@ -97,9 +99,7 @@ export function validateSubRoutePageKey(
   basePaths: Iterable<string>,
   options: ValidateSubRoutePageKeyOptions = {},
 ): void {
-  const allowedBasePaths = [
-    ...new Set([...basePaths].map((basePath) => basePath.trim().replace(/^\/+|\/+$/g, "")).filter(Boolean)),
-  ];
+  const allowedBasePaths = [...new Set([...basePaths].map((basePath) => trimSlashes(basePath.trim())).filter(Boolean))];
   if (allowedBasePaths.length === 0) return;
 
   const match = ROUTE_SOURCE_RE.exec(key);
@@ -165,7 +165,7 @@ export function tryParseRouteModuleKey(key: string): ParsedRouteModuleKey | null
 
 export function normalizeRoutePattern(segments: string[]): string {
   const parts = segments.map(routeSegmentToPatternPart).filter((part) => part.length > 0);
-  return `/${parts.join("/")}`.replace(/\/+$/, "") || "/";
+  return trimTrailingSlashes(`/${parts.join("/")}`) || "/";
 }
 
 export function routeSegmentToPatternPart(segment: string): string {

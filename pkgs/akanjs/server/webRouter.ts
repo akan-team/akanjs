@@ -244,7 +244,7 @@ export function normalizeRscTargetUrlForHostBasePath(
     if (routeMatches(normalized)) return { url: normalized, basePath: candidate };
   }
 
-  return { url: targetUrl, basePath: basePath ?? targetBasePath };
+  return { url: targetUrl, basePath: targetBasePath };
 }
 
 export interface SsrRoutesInputs {

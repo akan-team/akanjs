@@ -182,7 +182,7 @@ const exportTargetOf = (exportsMap: Record<string, unknown>, subpath: string) =>
     const [prefix = "", suffix = ""] = pattern.split("*");
     if (!pattern.includes("*") || typeof target !== "string") continue;
     if (key.length > prefix.length + suffix.length && key.startsWith(prefix) && key.endsWith(suffix))
-      return target.replace("*", key.slice(prefix.length, key.length - suffix.length));
+      return target.replaceAll("*", key.slice(prefix.length, key.length - suffix.length));
   }
   return null;
 };

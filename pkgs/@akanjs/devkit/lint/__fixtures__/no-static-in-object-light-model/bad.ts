@@ -1,4 +1,4 @@
-import { enumOf, ID, Int } from "akanjs/base";
+import { ID, Int } from "akanjs/base";
 import { via } from "akanjs/constant";
 
 export class QuizInput extends via((field) => ({
@@ -12,7 +12,7 @@ export class QuizObject extends via(QuizInput, (field) => ({
   static readonly minNum = 1; // @flag
   private static secretNum = 2; // @flag
   static { // @flag
-    QuizObject.maxNum = 5;
+    QuizObject.maxNum += 1;
   }
 }
 

@@ -132,14 +132,14 @@ export class WebToolPack {
   /** Enough to read a documentation page; a full HTML parser is not worth a dependency for that. */
   static #readable(html: string) {
     return html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
+      .replace(/<script[\s\S]*?<\/script[^<>]*>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style[^<>]*>/gi, " ")
+      .replace(/<[^<>]+>/g, " ")
       .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&")
       .replace(/[ \t]+/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();

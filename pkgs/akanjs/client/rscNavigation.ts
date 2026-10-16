@@ -3,7 +3,10 @@ declare global {
   var __AKAN_RSC_IS_FROM_CACHE__: (() => boolean) | undefined;
   var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
   var __AKAN_RSC_NAVIGATE__:
-    | ((href: string, options?: { replace?: boolean; scrollToTop?: boolean; shallow?: boolean }) => Promise<void>)
+    | ((
+        href: string,
+        options?: { replace?: boolean; scrollToTop?: boolean; scrollY?: number; shallow?: boolean },
+      ) => Promise<void>)
     | undefined;
   var __AKAN_DEV_SYNC_NAVIGATION__: ((href: string, kind: "push" | "replace" | "back" | "pop") => void) | undefined;
   var __AKAN_DEV_SYNC_NAVIGATION_APPLYING__: boolean | undefined;

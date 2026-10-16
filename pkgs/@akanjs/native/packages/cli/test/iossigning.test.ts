@@ -48,6 +48,9 @@ describe("plist reader", () => {
     const p = parsePlist(PROFILE_XML) as Record<string, unknown>;
     expect(p.DeveloperCertificates).toEqual([cert]);
     expect(p.ExpirationDate).toEqual(new Date("2027-09-26T00:00:00Z"));
+    expect(parsePlist(`<dict><!-- <key>no</key> --><key>k</key><string>a<!-- x -->b</string></dict>`)).toEqual({
+      k: "ab",
+    });
   });
 });
 

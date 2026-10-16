@@ -1,4 +1,5 @@
 import { readFileSync, realpathSync } from "node:fs";
+import { dirname } from "node:path";
 import ora from "ora";
 import * as ts from "typescript";
 
@@ -45,7 +46,7 @@ export const parseTsConfig = (tsConfigPath: string = "./tsconfig.json") => {
     return ts.sys.readFile(path);
   });
 
-  return ts.parseJsonConfigFileContent(configFile.config, ts.sys, realpathSync(tsConfigPath).replace(/[^/\\]+$/, ""));
+  return ts.parseJsonConfigFileContent(configFile.config, ts.sys, dirname(realpathSync(tsConfigPath)));
 };
 
 const collectFiles = (constantFilePath: string, parsedConfig: ts.ParsedCommandLine, includeExports: boolean) => {

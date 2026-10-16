@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { ServerPolicy } from "@akanjs/native/api";
 import type { AkanPlugin } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
-import { type AkanI18nConfig, resolveAkanI18nConfig } from "akanjs/common";
+import { type AkanI18nConfig, resolveAkanI18nConfig, trimSlashes } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
@@ -567,7 +567,7 @@ export class AkanAppConfig implements AppConfigResult {
   }
   #applyRoutes(routes: AkanRouteConfig[] = []) {
     for (const route of routes) {
-      const basePath = route.basePath ? route.basePath.replace(/^\/+|\/+$/g, "") : null;
+      const basePath = route.basePath ? trimSlashes(route.basePath) : null;
       if (basePath !== null) this.basePaths.add(basePath);
       const domains = basePath !== null ? this.subRoutes.getOrInsert(basePath, new Set()) : this.domains;
       for (const branch of Object.keys(route.domains)) this.branches.add(branch);

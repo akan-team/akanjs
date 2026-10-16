@@ -40,6 +40,9 @@ const backoffMs = [1_000, 2_000, 4_000, 8_000, 15_000];
 // link — so a link that never went ready is retried only this many times; one that did is exempt.
 const coldAttemptLimit = 10;
 
+// `setInterval` runs a NaN, negative or over-2^31 delay every 1 ms, so a gateway interval outside this is ignored.
+const heartbeatRangeMs = { min: 1_000, max: 300_000 } as const;
+
 /** Dials out to the gateway, so its machine needs no public address, no inbound port and no NAT traversal. */
 export class TunnelAgent {
   readonly #options: TunnelAgentOptions;
@@ -125,7 +128,7 @@ export class TunnelAgent {
         this.#everReady = true;
         // Reset here rather than on `open`: a socket that opens and drops with no `ready` has not worked yet.
         this.#attempts = 0;
-        this.#startHeartbeat(frame.heartbeatMs || tunnelWireContract.defaultHeartbeatMs);
+        this.#startHeartbeat(TunnelAgent.#heartbeatOf(frame.heartbeatMs));
         this.#grow();
         this.logger.info(`Tunnel ready: ${frame.urls.join(", ")}`);
         onReady(frame);
@@ -202,6 +205,12 @@ export class TunnelAgent {
   #stopHeartbeat() {
     if (this.#heartbeat) clearInterval(this.#heartbeat);
     this.#heartbeat = null;
+  }
+
+  static #heartbeatOf(requestedMs: number) {
+    return requestedMs >= heartbeatRangeMs.min && requestedMs <= heartbeatRangeMs.max
+      ? requestedMs
+      : tunnelWireContract.defaultHeartbeatMs;
   }
 
   #say(frame: TunnelControlFromAgent) {

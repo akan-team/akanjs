@@ -10,6 +10,15 @@ describe("McpUriTemplate", () => {
     expect(McpUriTemplate.list("user", "", [])).toBe("akan://user/list");
   });
 
+  test("expands the shapes it builds, encoding the id and repeating an arrayed query arg", () => {
+    expect(McpUriTemplate.expand(McpUriTemplate.model("user"), { userId: "a/b" })).toBe("akan://user/a%2Fb");
+    expect(
+      McpUriTemplate.expand(McpUriTemplate.list("user", "byStatuses", ["statuses", "limit"]), {
+        statuses: ["active", "pending"],
+      }),
+    ).toBe("akan://user/list/byStatuses?statuses=active&statuses=pending");
+  });
+
   test("keeps the root list out of the segment a slice key occupies", () => {
     expect(McpUriTemplate.list("user", "all", [])).toBe("akan://user/list/all");
     expect(McpUriTemplate.parse("akan://user/list/all")).toEqual({ endpointKey: "userListAll", args: {} });

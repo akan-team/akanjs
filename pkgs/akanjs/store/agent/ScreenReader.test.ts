@@ -49,6 +49,17 @@ describe("ScreenReader", () => {
     expect(text).not.toContain("/docs (/docs)");
   });
 
+  test("never prints a script or data href, whatever its case", () => {
+    const text = readOf(
+      '<p><a href="JavaScript:void(0)">menu</a> <a href="data:text/csv;base64,AAAA">export</a> ' +
+        '<a href="vbscript:run">legacy</a></p>',
+    );
+    expect(text).toContain("legacy");
+    expect(text).not.toContain("(");
+    expect(text).not.toContain("base64");
+    expect(text).not.toContain("vbscript");
+  });
+
   test("skips scripts, hidden subtrees, and the agent's own UI", () => {
     const text = readOf(
       '<p>visible</p><script>secretCode()</script><div hidden>gone</div><div aria-hidden="true">gone too</div>' +

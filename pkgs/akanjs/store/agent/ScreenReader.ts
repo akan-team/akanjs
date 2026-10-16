@@ -13,6 +13,7 @@ const skipTags = new Set([
 ]);
 const headingLevels = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 } as const;
 const headingSelector = "h1, h2, h3, h4, h5, h6";
+const unprintedHrefScheme = /^(?:javascript|data|vbscript):/i;
 const blockTags = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -259,7 +260,7 @@ export class ScreenReader {
     const before = this.#buffer;
     this.#walkChildren(el);
     const text = this.#buffer.slice(before.length).replace(/\s+/g, " ").trim();
-    if (href && href !== "#" && !href.startsWith("javascript:") && text !== href) this.#buffer += ` (${href})`;
+    if (href && href !== "#" && !unprintedHrefScheme.test(href) && text !== href) this.#buffer += ` (${href})`;
   }
 
   static #off(el: HTMLElement) {

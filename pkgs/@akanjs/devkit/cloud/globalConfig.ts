@@ -1,4 +1,5 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { trimTrailingSlashes } from "akanjs/common";
 import dayjs from "dayjs";
 import { FileSys } from "../fileSys";
 import { ConfigLock } from "./configLock";
@@ -60,8 +61,8 @@ export class GlobalConfig {
   static #normalizeHost(host: string) {
     const url = URL.canParse(host) ? new URL(host) : null;
     return url && (url.protocol === "https:" || url.protocol === "http:")
-      ? `${url.origin}${url.pathname.replace(/\/+$/, "")}`
-      : host.replace(/\/+$/, "");
+      ? `${url.origin}${trimTrailingSlashes(url.pathname)}`
+      : trimTrailingSlashes(host);
   }
   static async getHostConfig(host = GlobalConfig.akanCloudHost): Promise<HostConfig> {
     const akanConfig = await GlobalConfig.#getAkanGlobalConfig();

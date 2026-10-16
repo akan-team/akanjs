@@ -1049,7 +1049,7 @@ void run();`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="AkanServer web surfaces" title={surfacesTitle}>
+        <Scroll.Slide id="AkanServer-web-surfaces" title={surfacesTitle}>
           <Docs.Title>{surfacesTitle}</Docs.Title>
           <Docs.Description>
             <div>

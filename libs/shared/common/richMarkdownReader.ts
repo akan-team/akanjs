@@ -37,7 +37,7 @@ export class RichMarkdownReader {
     "akan-page-block",
   ]);
 
-  static readonly #separator = /^\s*<!--.*-->\s*$/;
+  static readonly #separator = /^\s*<!--.*-->\s*$/s;
   static readonly #fence = /^ {0,3}(`{3,}|~{3,})(.*)$/;
   static readonly #rule = /^ {0,3}([-*_])[ \t]*(\1[ \t]*){2,}$/;
   static readonly #heading = /^ {0,3}(#{1,6})(?:[ \t](.*))?$/;

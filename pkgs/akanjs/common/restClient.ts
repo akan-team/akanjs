@@ -1,3 +1,5 @@
+import { trimTrailingSlashes } from "./trimSlashes";
+
 export interface RestClientOptions {
   baseUrl?: string;
   headers?: HeadersInit;
@@ -16,7 +18,7 @@ export class RestClient {
 
   constructor(options: string | RestClientOptions = {}) {
     const normalized = typeof options === "string" ? { baseUrl: options } : options;
-    this.baseUrl = normalized.baseUrl?.replace(/\/+$/, "") ?? "";
+    this.baseUrl = trimTrailingSlashes(normalized.baseUrl ?? "");
     this.headers = new Headers(normalized.headers);
     this.timeout = normalized.timeout;
   }

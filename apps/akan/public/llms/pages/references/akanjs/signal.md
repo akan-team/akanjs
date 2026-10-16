@@ -9,10 +9,10 @@
 ## Headings
 
 - akanjs/signal (#akanjs-signal)
-- Public / None / guard (#Public / None / guard)
+- Public / None / guard (#Public-None-guard)
 - McpProgress (#McpProgress)
-- Req / Res / Ip / Ws (#Req / Res / Ws)
-- middleware / Middleware (#middleware / Middleware)
+- Req / Res / Ip / Ws (#Req-Res-Ws)
+- middleware / Middleware (#middleware-Middleware)
 - SignalRegistry (#SignalRegistry)
 
 ## Content

@@ -2,7 +2,7 @@ import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import type { ShareOptions } from "./index.ts";
 
 // Schemes that do not work as a link outside this page.
-const NOT_LINKS = ["javascript:", "data:", "blob:", "file:"];
+const NOT_LINKS = ["javascript:", "vbscript:", "data:", "blob:", "file:"];
 
 const invalid = (message: string) => new AkanNativeError("INVALID_ARGS", message);
 

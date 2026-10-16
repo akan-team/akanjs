@@ -772,9 +772,11 @@ export const dictionary = serviceDictionary(["en", "ko"])
   }
 
   static async #psRowsOrThrow(): Promise<Array<{ pid: number; ppid: number; rssKb: number; cmd: string }>> {
-    const rows = (await DevStabilityHarness.#psRows()) ?? (await DevStabilityHarness.#psRows());
-    if (!rows) throw new Error("ps did not answer twice in a row; cannot measure the process tree");
-    return rows;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const rows = await DevStabilityHarness.#psRows();
+      if (rows) return rows;
+    }
+    throw new Error("ps did not answer twice in a row; cannot measure the process tree");
   }
 
   static #collectDescendants(rows: Array<{ pid: number; ppid: number }>, rootPid: number): Set<number> {

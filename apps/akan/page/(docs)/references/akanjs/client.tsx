@@ -1295,7 +1295,7 @@ export const Chip = ({ className, isActive = false, children }: ChipProps) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="ModelProps / ModelsProps" title="ModelProps / ModelsProps">
+        <Scroll.Slide id="ModelProps-ModelsProps" title="ModelProps / ModelsProps">
           <Docs.Title>ModelProps / ModelsProps</Docs.Title>
           <Docs.Description>
             <div>
@@ -1376,7 +1376,7 @@ export const Card = ({ user, href }: ModelProps<"user", cnst.LightUser>) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="page / layout / rootLayout" title="page / layout / rootLayout">
+        <Scroll.Slide id="page-layout-rootLayout" title="page / layout / rootLayout">
           <Docs.Title>page / layout / rootLayout</Docs.Title>
           <Docs.Description>
             <div>
@@ -1541,7 +1541,7 @@ export default page()
         <Divider />
 
         <Scroll.Slide
-          id="layout / rootLayout stages"
+          id="layout-rootLayout-stages"
           title={l.trans({ en: "layout / rootLayout Stages", ko: "layout / rootLayout 전용 stage" })}
         >
           <Docs.Title>{l.trans({ en: "layout / rootLayout Stages", ko: "layout / rootLayout 전용 stage" })}</Docs.Title>
@@ -1871,7 +1871,7 @@ export default page()
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="resolveRouteModule / isRouteDefinition" title="resolveRouteModule / isRouteDefinition">
+        <Scroll.Slide id="resolveRouteModule-isRouteDefinition" title="resolveRouteModule / isRouteDefinition">
           <Docs.Title>resolveRouteModule / isRouteDefinition</Docs.Title>
           <Docs.Description>
             <div>
@@ -1961,7 +1961,7 @@ module.default; // the render every loader reads`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="Font / createFont" title="Font / createFont">
+        <Scroll.Slide id="Font-createFont" title="Font / createFont">
           <Docs.Title>Font / createFont</Docs.Title>
           <Docs.Description>
             <div>
@@ -2062,7 +2062,7 @@ export default rootLayout()
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="usePage / msg / Err" title="usePage / msg / Err">
+        <Scroll.Slide id="usePage-msg-Err" title="usePage / msg / Err">
           <Docs.Title>usePage / msg / Err</Docs.Title>
           <Docs.Description>
             <div>
@@ -2182,7 +2182,7 @@ export class ProjectStore extends store(sig.project, () => ({
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="fetch / sig" title="fetch / sig">
+        <Scroll.Slide id="fetch-sig" title="fetch / sig">
           <Docs.Title>fetch / sig</Docs.Title>
           <Docs.Description>
             <div>
@@ -2274,7 +2274,7 @@ export class ProjectStore extends store(sig.project, () => ({
         <Divider />
 
         <Scroll.Slide
-          id="getCookie / setCookie / getAccount / getAuthToken"
+          id="getCookie-setCookie-getAccount-getAuthToken"
           title="getCookie / setCookie / getAccount / getAuthToken"
         >
           <Docs.Title>getCookie / setCookie / getAccount / getAuthToken</Docs.Title>
@@ -2346,7 +2346,7 @@ export const getSelf = (option?: { unauthorize: string }) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="setAuth / initAuth / resetAuth" title="setAuth / initAuth / resetAuth">
+        <Scroll.Slide id="setAuth-initAuth-resetAuth" title="setAuth / initAuth / resetAuth">
           <Docs.Title>setAuth / initAuth / resetAuth</Docs.Title>
           <Docs.Description>
             <div>

@@ -16,10 +16,10 @@
 - Binary (#Binary)
 - ImageResult (#ImageResult)
 - Upload (#Upload)
-- dayjs / Dayjs (#dayjs / Dayjs)
+- dayjs / Dayjs (#dayjs-Dayjs)
 - enumOf (#enumOf)
 - getEnv (#getEnv)
-- getApiPrefix / getWsPrefix (#getApiPrefix / getWsPrefix)
+- getApiPrefix / getWsPrefix (#getApiPrefix-getWsPrefix)
 - DataList (#DataList)
 
 ## Content

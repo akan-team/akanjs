@@ -87,6 +87,14 @@ describe("google-services.json", () => {
     expect(xml).not.toContain("firebase_database_url");
   });
 
+  test("values are escaped for an Android string resource: backslash first, then quotes and markup", () => {
+    const odd = JSON.parse(json);
+    odd.project_info.project_id = `a\\n"b"'c'<d>&`;
+    expect(googleServicesXml(JSON.stringify(odd), "com.akanjs.sample")).toContain(
+      `<string name="project_id" translatable="false">a\\\\n\\"b\\"\\'c\\'&lt;d&gt;&amp;</string>`,
+    );
+  });
+
   test("an app the file does not have is an error naming what it has", () => {
     expect(() => googleServicesXml(json, "com.other.app")).toThrow(
       /has no Android app com.other.app \(it has com.akanjs.sample\)/,

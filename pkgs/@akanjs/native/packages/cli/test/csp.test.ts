@@ -106,6 +106,13 @@ describe("CSP meta (SEC-4)", () => {
       injectCspMeta(`<html><head><meta http-equiv="content-security-policy" content="x"></head></html>`, "y"),
     ).toThrow();
     expect(() => injectCspMeta(`<html><body></body></html>`, "y")).toThrow();
+    expect(() => injectCspMeta(`<html><head lang="en"`, "y")).toThrow();
+  });
+
+  test("a <head> with attributes; a <header> is not it", () => {
+    expect(injectCspMeta(`<header></header><head\nlang="en"><title>t</title></head>`, "y")).toBe(
+      `<header></header><head\nlang="en"><meta http-equiv="Content-Security-Policy" content="y"><title>t</title></head>`,
+    );
   });
 });
 

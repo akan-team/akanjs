@@ -9,14 +9,14 @@
 ## Headings
 
 - akanjs/fetch (#akanjs-fetch)
-- InitHandle / ViewHandle / EditHandle (#InitHandle / ViewHandle / EditHandle)
+- InitHandle / ViewHandle / EditHandle (#InitHandle-ViewHandle-EditHandle)
 - ClientInit (#ClientInit)
-- ClientView / ClientEdit (#ClientView / ClientEdit)
+- ClientView / ClientEdit (#ClientView-ClientEdit)
 - SliceMeta (#SliceMeta)
 - FetchInitForm (#FetchInitForm)
 - Account (#Account)
 - FetchClient (#FetchClient)
-- getRequest / headers / cookies (#getRequest / headers / cookies)
+- getRequest / headers / cookies (#getRequest-headers-cookies)
 
 ## Content
 

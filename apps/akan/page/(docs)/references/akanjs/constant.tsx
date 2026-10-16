@@ -1088,10 +1088,7 @@ export class ProductInput extends via((field) => ({
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide
-          id="field.visual / field.hidden / field.secret"
-          title="field.visual / field.hidden / field.secret"
-        >
+        <Scroll.Slide id="field.visual-field.hidden-field.secret" title="field.visual / field.hidden / field.secret">
           <Docs.Title>field.visual / field.hidden / field.secret</Docs.Title>
           <Docs.Description>
             <div>
@@ -1479,7 +1476,7 @@ test("a new banner starts active", () => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="DocumentModel / DefaultOf / QueryOf" title="DocumentModel / DefaultOf / QueryOf">
+        <Scroll.Slide id="DocumentModel-DefaultOf-QueryOf" title="DocumentModel / DefaultOf / QueryOf">
           <Docs.Title>DocumentModel / DefaultOf / QueryOf</Docs.Title>
           <Docs.Description>
             <div>
@@ -1518,7 +1515,7 @@ test("a new banner starts active", () => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="crystalize / purify" title="crystalize / purify">
+        <Scroll.Slide id="crystalize-purify" title="crystalize / purify">
           <Docs.Title>crystalize / purify</Docs.Title>
           <Docs.Description>
             <div>
@@ -1682,7 +1679,7 @@ test("a banner needs an href to purify", () => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="serialize / deserialize" title="serialize / deserialize">
+        <Scroll.Slide id="serialize-deserialize" title="serialize / deserialize">
           <Docs.Title>serialize / deserialize</Docs.Title>
           <Docs.Description>
             <div>

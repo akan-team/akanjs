@@ -46,6 +46,7 @@ describe("RichMarkdownReader lists", () => {
 
   it("keeps two lists apart across a `<!-- -->` line and merges them without one", () => {
     expect(blocks("- a\n\n<!-- -->\n\n- b").map((block) => block.type)).toEqual(["list", "list"]);
+    expect(blocks("- a\n\n<!-- \u2028 -->\n\n- b").map((block) => block.type)).toEqual(["list", "list"]);
     expect(blocks("- a\n\n- b").map((block) => block.type)).toEqual(["list"]);
   });
 });

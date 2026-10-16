@@ -27,8 +27,7 @@ const recordCommit = (calls: unknown[]) => ({
   },
   commitThenable: (value: unknown) => calls.push(["commit", value]),
   updateHistory: () => calls.push("history"),
-  scrollToTop: true,
-  bumpScrollToTop: () => calls.push("scroll"),
+  requestScroll: () => calls.push("scroll"),
 });
 
 describe("RSC navigation state helpers", () => {

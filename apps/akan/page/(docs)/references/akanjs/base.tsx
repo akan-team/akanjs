@@ -1223,7 +1223,7 @@ export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="dayjs / Dayjs" title="dayjs / Dayjs">
+        <Scroll.Slide id="dayjs-Dayjs" title="dayjs / Dayjs">
           <Docs.Title>dayjs / Dayjs</Docs.Title>
           <Docs.Description>
             <div>
@@ -1509,7 +1509,7 @@ export const publicHost = () => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="getApiPrefix / getWsPrefix" title="getApiPrefix / getWsPrefix">
+        <Scroll.Slide id="getApiPrefix-getWsPrefix" title="getApiPrefix / getWsPrefix">
           <Docs.Title>getApiPrefix / getWsPrefix</Docs.Title>
           <Docs.Description>
             <div>

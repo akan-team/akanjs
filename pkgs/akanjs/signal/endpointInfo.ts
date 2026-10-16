@@ -7,6 +7,7 @@ import {
   isEnum,
   type PromiseOrObject,
 } from "akanjs/base";
+import { trimSlashes } from "akanjs/common";
 import type {
   ConstantFieldType,
   ConstantFieldTypeInput,
@@ -336,7 +337,7 @@ export class EndpointInfo<
     if (prefix === false || prefix === "") return "";
     const resolved = prefix ?? defaultPrefix;
     if (!resolved) return "";
-    const trimmed = resolved.trim().replace(/^\/+|\/+$/g, "");
+    const trimmed = trimSlashes(resolved.trim());
     return trimmed ? `/${trimmed}` : "";
   }
 }

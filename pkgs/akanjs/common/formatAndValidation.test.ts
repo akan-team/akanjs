@@ -39,6 +39,16 @@ describe("format and validation helpers", () => {
     expect(isEmail("user.name@example.co.kr")).toBe(true);
     expect(isEmail("not-an-email")).toBe(false);
     expect(isEmail(null)).toBe(false);
+    expect(isEmail("first-last@mail.example-host.io")).toBe(true);
+    expect(isEmail("a@b.abcdefgh")).toBe(true);
+    expect(isEmail("a@b.abcdefghi")).toBe(false);
+    expect(isEmail("a@b.c")).toBe(false);
+    expect(isEmail("a@b-co")).toBe(false);
+    expect(isEmail("a..b@example.com")).toBe(false);
+    expect(isEmail(".a@example.com")).toBe(false);
+    expect(isEmail("a@example..com")).toBe(false);
+    expect(isEmail(`${"0".repeat(5000)}!`)).toBe(false);
+    expect(isEmail(`0@${"0".repeat(5000)}!`)).toBe(false);
 
     expect(isPhoneNumber("010-1234-5678")).toBe(true);
     expect(isPhoneNumber("031-123-4567")).toBe(true);

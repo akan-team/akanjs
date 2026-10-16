@@ -277,7 +277,7 @@ async function withLock<T>(
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
     if (opts.ready()) return null; // the other process finished meanwhile
-    let stale = true;
+    let stale: boolean;
     try {
       const [pid, at] = readFileSync(lock, "utf8").trim().split(" ").map(Number);
       const alive = (() => {

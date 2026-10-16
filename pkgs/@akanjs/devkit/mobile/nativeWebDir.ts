@@ -1,6 +1,7 @@
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeTarget } from "akanjs";
+import { trimSlashes } from "akanjs/common";
 
 export interface NativeWebDirSources {
   /** The target's CSR bundle: one HTML file with its scripts and styles inlined. */
@@ -21,13 +22,13 @@ export class NativeWebDir {
   //* it goes first in <head>, ahead of every script, because the page reads it as it boots.
   static injectTarget(html: string, target: Pick<AkanNativeTarget, "name" | "basePath" | "indexPath">) {
     if (html.includes(NativeWebDir.#targetTag)) return html;
-    const basePath = target.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+    const basePath = target.basePath ? trimSlashes(target.basePath) : "";
     const script = `${NativeWebDir.#targetTag}${JSON.stringify({
       name: target.name,
       basePath,
       indexPath: target.indexPath,
     })};</script>`;
-    const head = /<head(?:\s[^>]*)?>/i.exec(html);
+    const head = /<head(?:\s[^<>]*)?>/i.exec(html);
     if (!head) return `${script}\n${html}`;
     const at = head.index + head[0].length;
     return `${html.slice(0, at)}\n${script}${html.slice(at)}`;

@@ -141,7 +141,7 @@ const shrink = async (bytes: Buffer, maxEdge: number) => {
  */
 const probe = async (apiKey: string, options: RunOptions) => {
   const digest = new Bun.CryptoHasher("sha256").update(apiKey).digest("hex").slice(0, 12);
-  console.info(`provider=${options.provider} key len=${apiKey.length} sha256=${digest}`);
+  console.info(`provider=${options.provider} key sha256=${digest}`);
   const response = await fetch(`${options.baseUrl}/models`, {
     headers: { authorization: `Bearer ${apiKey}` },
   });

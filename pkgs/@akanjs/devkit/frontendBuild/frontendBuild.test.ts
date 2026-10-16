@@ -195,6 +195,20 @@ describe("CsrArtifactBuilder", () => {
     );
   });
 
+  test("blanks embedded bodies the way the HTML tokenizer closes them", () => {
+    const blank = (html: string) => CsrArtifactBuilder.blankEmbeddedContent(html).trim();
+
+    expect(blank("<script>a</script >")).toBe("");
+    expect(blank("<script>a</script\t\n bar>")).toBe("");
+    expect(blank("<SCRIPT>a</SCRIPT>")).toBe("");
+    expect(blank("<style>a</style foo>")).toBe("");
+    expect(blank("<!-- a --!></head>")).toBe("</head>");
+    expect(blank("<script>a</scripts></head>")).toBe("");
+    expect(blank("<!-- a </head>")).toBe("");
+    expect(CsrArtifactBuilder.blankEmbeddedContent(`<!--${"<!--".repeat(50_000)}`)).toHaveLength(200_004);
+    expect(CsrArtifactBuilder.blankEmbeddedContent(`<script>${"</script\t".repeat(50_000)}`)).toHaveLength(450_008);
+  });
+
   test("gives each basePath its own routes plus the routes outside every basePath", () => {
     const entries = [
       { key: "./_layout.tsx", moduleAbsPath: "/repo/page/_layout.tsx" },

@@ -1,4 +1,4 @@
-import type { AkanI18nConfig } from "akanjs/common";
+import { type AkanI18nConfig, trimSlashes, trimTrailingSlashes } from "akanjs/common";
 import type { RouteSeedEntry } from "./artifact";
 
 export interface DefaultSitemapOptions {
@@ -24,7 +24,7 @@ export function createDefaultSitemapXml({ origin, basePath, entries, i18n }: Def
 }
 
 export function createDefaultSitemapUrls({ origin, basePath, entries, i18n }: DefaultSitemapOptions): string[] {
-  const normalizedOrigin = origin.replace(/\/+$/, "");
+  const normalizedOrigin = trimTrailingSlashes(origin);
   const normalizedBasePath = normalizeSegment(basePath ?? "");
   const paths = entries.flatMap((entry) => expandStaticRoute(entry.pattern, normalizedBasePath, i18n.locales));
   return paths.map((pathname) => `${normalizedOrigin}${pathname}`);
@@ -66,12 +66,12 @@ function expandStaticRoute(pattern: string, basePath: string, locales: readonly 
 }
 
 function normalizePathname(pathname: string): string {
-  const trimmed = pathname.trim().replace(/\/+$/, "");
+  const trimmed = trimTrailingSlashes(pathname.trim());
   return trimmed ? `/${trimmed.replace(/^\/+/, "")}` : "/";
 }
 
 function normalizeSegment(value: string): string {
-  return value.trim().replace(/^\/+|\/+$/g, "");
+  return trimSlashes(value.trim());
 }
 
 function encodePathSegment(value: string): string {

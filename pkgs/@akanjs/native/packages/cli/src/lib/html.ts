@@ -42,9 +42,24 @@ export const EARLY_ERRORS_SCRIPT =
 
 /** Puts the early error collector right after the init.js tag (dev builds). */
 export function injectEarlyErrors(html: string): string {
-  const init = /<script\b[^>]*\bsrc\s*=\s*["']?[^"'\s>]*__akan_native\/init\.js[^>]*>\s*<\/script>/i.exec(html);
-  if (!init) return html;
-  return insertAt(html, init.index + init[0].length, `<script>${EARLY_ERRORS_SCRIPT}</script>`);
+  const opening = /<script\b/gi;
+  for (let m = opening.exec(html); m; m = opening.exec(html)) {
+    const tagEnd = html.indexOf(">", m.index);
+    if (tagEnd < 0) break;
+    let closeAt = tagEnd + 1;
+    while (closeAt < html.length && /\s/.test(html.charAt(closeAt))) closeAt += 1;
+    const closeEnd = closeAt + "</script>".length;
+    if (html.slice(closeAt, closeEnd).toLowerCase() === "</script>" && loadsInitScript(html.slice(m.index, tagEnd)))
+      return insertAt(html, closeEnd, `<script>${EARLY_ERRORS_SCRIPT}</script>`);
+    opening.lastIndex = tagEnd + 1;
+  }
+  return html;
+}
+
+function loadsInitScript(tag: string): boolean {
+  for (const src of tag.matchAll(/\bsrc\s*=\s*["']?([^"'\s>]*)/gi))
+    if (/__akan_native\/init\.js/i.test(src[1] ?? "")) return true;
+  return false;
 }
 
 function insertAt(text: string, index: number, insert: string): string {

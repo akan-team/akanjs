@@ -205,7 +205,7 @@ const syncStateSlug = (target: string) =>
   target
     .trim()
     .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/^-|-$/g, "")
     .toLowerCase();
 
 export const workflowSyncStatePath = (target: string) => `${workflowSyncDir}/${syncStateSlug(target) || "target"}.json`;

@@ -520,7 +520,7 @@ export default page()
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="InitHandle / ViewHandle / EditHandle" title="InitHandle / ViewHandle / EditHandle">
+        <Scroll.Slide id="InitHandle-ViewHandle-EditHandle" title="InitHandle / ViewHandle / EditHandle">
           <Docs.Title>InitHandle / ViewHandle / EditHandle</Docs.Title>
           <Docs.Description>
             <div>
@@ -746,7 +746,7 @@ export const Card = ({ className, init }: CardProps) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="ClientView / ClientEdit" title="ClientView / ClientEdit">
+        <Scroll.Slide id="ClientView-ClientEdit" title="ClientView / ClientEdit">
           <Docs.Title>ClientView / ClientEdit</Docs.Title>
           <Docs.Description>
             <div>
@@ -1225,7 +1225,7 @@ export const getUserFetch = async (jwt: string): Promise<AppFetch> => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="getRequest / headers / cookies" title="getRequest / headers / cookies">
+        <Scroll.Slide id="getRequest-headers-cookies" title="getRequest / headers / cookies">
           <Docs.Title>getRequest / headers / cookies</Docs.Title>
           <Docs.Description>
             <div>
