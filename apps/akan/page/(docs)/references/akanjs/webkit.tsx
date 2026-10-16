@@ -64,7 +64,7 @@ export default page()
       },
       {
         name: ["useFetch", "useFetchFn"],
-        href: ["#useFetch / useFetchFn", "#useFetch / useFetchFn"],
+        href: ["#useFetch-useFetchFn", "#useFetch-useFetchFn"],
         desc: l.trans({
           en: "Tells a client component whether a promise has resolved, and its value.",
           ko: "클라이언트 컴포넌트에 promise가 끝났는지와 그 값을 알려 줍니다.",
@@ -96,7 +96,7 @@ export default page()
       },
       {
         name: ["useLocation", "useHistory"],
-        href: ["#useLocation / useHistory", "#useLocation / useHistory"],
+        href: ["#useLocation-useHistory", "#useLocation-useHistory"],
         desc: l.trans({
           en: "The CSR router's location parser and history stack.",
           ko: "CSR 라우터가 쓰는 위치 해석기와 history 스택입니다.",
@@ -1132,7 +1132,7 @@ export const DragPad = ({ className }: DragPadProps) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="useFetch / useFetchFn" title="useFetch / useFetchFn">
+        <Scroll.Slide id="useFetch-useFetchFn" title="useFetch / useFetchFn">
           <Docs.Title>useFetch / useFetchFn</Docs.Title>
           <Docs.Description>
             <div>
@@ -1811,7 +1811,7 @@ export const BuyCoins = ({ className }: BuyCoinsProps) => {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="useLocation / useHistory" title="useLocation / useHistory">
+        <Scroll.Slide id="useLocation-useHistory" title="useLocation / useHistory">
           <Docs.Title>useLocation / useHistory</Docs.Title>
           <Docs.Description>
             <div>

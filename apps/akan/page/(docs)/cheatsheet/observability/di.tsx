@@ -420,64 +420,6 @@ export default page()
       }),
     ];
 
-    const useNotes = [
-      l.trans({
-        en: (
-          <>
-            <strong>The field name is the key.</strong> <code>mailApi: use&lt;MailApi | null&gt;()</code> reads what was
-            registered as <code>mailApi</code>; the type argument does not choose it.
-          </>
-        ),
-        ko: (
-          <>
-            <strong>필드 이름이 곧 key입니다.</strong> <code>mailApi: use&lt;MailApi | null&gt;()</code>는{" "}
-            <code>mailApi</code>로 등록된 값을 읽습니다. 타입 인자로는 고를 수 없습니다.
-          </>
-        ),
-      }),
-      l.trans({
-        en: (
-          <>
-            <strong>Each key is registered once.</strong> An app mounting <code>libs/util</code> already has{" "}
-            <code>storageApi</code>, <code>emailApi</code> and <code>host</code>, so a second registration of those is
-            an error.
-          </>
-        ),
-        ko: (
-          <>
-            <strong>key는 한 번만 등록합니다.</strong> <code>libs/util</code>을 쓰는 앱에는 이미 <code>storageApi</code>
-            , <code>emailApi</code>, <code>host</code>가 있으므로, 같은 key를 또 등록하면 오류입니다.
-          </>
-        ),
-      }),
-      l.trans({
-        en: (
-          <>
-            <strong>A value may be a Promise.</strong> It is awaited before any service or adaptor starts.
-          </>
-        ),
-        ko: (
-          <>
-            <strong>값은 Promise여도 됩니다.</strong> service나 adaptor가 시작되기 전에 await됩니다.
-          </>
-        ),
-      }),
-      l.trans({
-        en: (
-          <>
-            <strong>Migrate when you touch it.</strong> Move a <code>use</code> singleton to <code>adapt()</code> only
-            when you are already changing it.
-          </>
-        ),
-        ko: (
-          <>
-            <strong>손댈 때 옮깁니다.</strong> <code>use</code> singleton은 어차피 수정하게 될 때에만{" "}
-            <code>adapt()</code>로 옮깁니다.
-          </>
-        ),
-      }),
-    ];
-
     const envColumns = [
       { key: "need", label: l.trans({ en: "What you need", ko: "필요한 값" }) },
       { key: "read", label: l.trans({ en: "Read it with", ko: "읽는 방법" }) },

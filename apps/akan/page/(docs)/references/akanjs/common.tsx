@@ -47,12 +47,12 @@ export default page()
       },
       {
         name: ["capitalize", "lowerlize"],
-        href: ["#capitalize / lowerlize", "#capitalize / lowerlize"],
+        href: ["#capitalize-lowerlize", "#capitalize-lowerlize"],
         desc: l.trans({ en: "Changes the case of the first character only.", ko: "첫 글자의 대소문자만 바꿉니다." }),
       },
       {
         name: ["formatPhone", "isPhoneNumber"],
-        href: ["#formatPhone / isPhoneNumber", "#formatPhone / isPhoneNumber"],
+        href: ["#formatPhone-isPhoneNumber", "#formatPhone-isPhoneNumber"],
         desc: l.trans({
           en: "Adds dashes to a Korean phone number and checks the dashed form.",
           ko: "한국 전화번호에 대시를 넣고, 대시가 들어간 형식인지 검사합니다.",
@@ -76,7 +76,7 @@ export default page()
       },
       {
         name: ["pathGet", "pathSet"],
-        href: ["#pathGet / pathSet", "#pathGet / pathSet"],
+        href: ["#pathGet-pathSet", "#pathGet-pathSet"],
         desc: l.trans({
           en: "Reads and writes a nested value by a path such as `items[0].name`.",
           ko: "`items[0].name` 같은 경로로 중첩된 값을 읽고 씁니다.",
@@ -84,7 +84,7 @@ export default page()
       },
       {
         name: ["randomPick", "randomPicks"],
-        href: ["#randomPick / randomPicks", "#randomPick / randomPicks"],
+        href: ["#randomPick-randomPicks", "#randomPick-randomPicks"],
         desc: l.trans({
           en: "Picks one or several random items from a list.",
           ko: "목록에서 무작위로 하나 또는 여러 개를 고릅니다.",
@@ -643,7 +643,7 @@ while (file.status === "uploading") {
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="capitalize / lowerlize" title="capitalize / lowerlize">
+        <Scroll.Slide id="capitalize-lowerlize" title="capitalize / lowerlize">
           <Docs.Title>capitalize / lowerlize</Docs.Title>
           <Docs.Description>
             <div>
@@ -676,7 +676,7 @@ capitalize("aKan"); // "AKan": only the first character changes`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="formatPhone / isPhoneNumber" title="formatPhone / isPhoneNumber">
+        <Scroll.Slide id="formatPhone-isPhoneNumber" title="formatPhone / isPhoneNumber">
           <Docs.Title>formatPhone / isPhoneNumber</Docs.Title>
           <Docs.Description>
             <div>
@@ -1072,7 +1072,7 @@ await api.post(
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="pathGet / pathSet" title="pathGet / pathSet">
+        <Scroll.Slide id="pathGet-pathSet" title="pathGet / pathSet">
           <Docs.Title>pathGet / pathSet</Docs.Title>
           <Docs.Description>
             <div>
@@ -1192,7 +1192,7 @@ pathSet(user, "tags[0]", "core"); // creates tags: ["core"]`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="randomPick / randomPicks" title="randomPick / randomPicks">
+        <Scroll.Slide id="randomPick-randomPicks" title="randomPick / randomPicks">
           <Docs.Title>randomPick / randomPicks</Docs.Title>
           <Docs.Description>
             <div>

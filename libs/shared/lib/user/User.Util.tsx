@@ -505,7 +505,6 @@ interface SignoutProps {
   children: ReactNode;
 }
 export const Signout = ({ className, href, children }: SignoutProps) => {
-  const { l } = usePage();
   st.tool("signout", { confirm: true })
     .desc("Sign out of this account.")
     .exec(() => st.do.logout());
@@ -720,7 +719,6 @@ interface PushNotificationSwitchProps {
 }
 
 export const PushNotificationSwitch = ({ className }: PushNotificationSwitchProps) => {
-  const { l } = usePage();
   const pushNotification = usePushNotification();
   const deviceToken = st.use.deviceToken();
   const pushRegistered = st.use.pushRegistered();

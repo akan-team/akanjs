@@ -13,12 +13,12 @@
 - useDebounce (#useDebounce)
 - useInterval (#useInterval)
 - useThrottle (#useThrottle)
-- useFetch / useFetchFn (#useFetch / useFetchFn)
+- useFetch / useFetchFn (#useFetch-useFetchFn)
 - useCamera (#useCamera)
 - useGeoLocation (#useGeoLocation)
 - usePushNotification (#usePushNotification)
 - usePurchase (#usePurchase)
-- useLocation / useHistory (#useLocation / useHistory)
+- useLocation / useHistory (#useLocation-useHistory)
 - LoginForm (#LoginForm)
 
 ## Content

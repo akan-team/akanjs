@@ -11,12 +11,12 @@
 - akanjs/common (#akanjs-common)
 - Logger (#Logger)
 - sleep (#sleep)
-- capitalize / lowerlize (#capitalize / lowerlize)
-- formatPhone / isPhoneNumber (#formatPhone / isPhoneNumber)
+- capitalize / lowerlize (#capitalize-lowerlize)
+- formatPhone / isPhoneNumber (#formatPhone-isPhoneNumber)
 - isEmail (#isEmail)
 - RestClient (#RestClient)
-- pathGet / pathSet (#pathGet / pathSet)
-- randomPick / randomPicks (#randomPick / randomPicks)
+- pathGet / pathSet (#pathGet-pathSet)
+- randomPick / randomPicks (#randomPick-randomPicks)
 
 ## Content
 

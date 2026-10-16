@@ -18,14 +18,6 @@
 
 Dependency Injection
 
-**The field name is the key.** `mailApi: use<MailApi | null>()` reads what was registered as `mailApi`; the type argument does not choose it.
-
-**Each key is registered once.** An app mounting `libs/util` already has `storageApi`, `emailApi` and `host`, so a second registration of those is an error.
-
-**A value may be a Promise.** It is awaited before any service or adaptor starts.
-
-**Migrate when you touch it.** Move a `use` singleton to `adapt()` only when you are already changing it.
-
 A service lists what it needs in the builder of `serve()`, and Akan fills each field before the service starts. Business code stays small, and an outside system can be swapped without touching it.
 
 Words used on this page

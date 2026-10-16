@@ -121,6 +121,30 @@ describe("RichMarkdownWriter on documents the editor stored", () => {
     expect(markdown).not.toContain(RichMarkdownReader.islandFence);
   });
 
+  it("doubles no backslash before a pipe in a GFM cell: `\\|` is a cell's only escape, and code and urls are literal", () => {
+    const inCell = (headerState: number, child: object) =>
+      element("tablecell", [paragraph([child])], { backgroundColor: null, colSpan: 1, headerState, rowSpan: 1 });
+    const linked = { rel: null, target: null, title: null };
+    const table = element("table", [
+      element("tablerow", [inCell(1, text("code")), inCell(1, text("link")), inCell(1, text("autolink"))]),
+      element("tablerow", [
+        inCell(0, text("a\\|b", 16)),
+        inCell(0, element("link", [text("l")], { ...linked, url: "https://a.com/x\\|y" })),
+        inCell(
+          0,
+          element("autolink", [text("https://a.com/p\\|q")], {
+            ...linked,
+            isUnlinked: false,
+            url: "https://a.com/p\\|q",
+          }),
+        ),
+      ]),
+    ]);
+    expect(expectLossless(doc(table))).toContain(
+      "| `a\\\\|b` | [l](https://a.com/x\\\\|y) | <https://a.com/p\\\\|q> |",
+    );
+  });
+
   it("keeps empty paragraphs, empty lines and a trailing line break", () => {
     const markdown = expectLossless(
       doc(paragraph([text("a"), { type: "linebreak", version: 1 }]), paragraph([]), paragraph([text("b")])),

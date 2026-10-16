@@ -11,12 +11,12 @@
 - akanjs/constant (#akanjs-constant)
 - via (#via)
 - field (#field)
-- field.visual / field.hidden / field.secret (#field.visual / field.hidden / field.secret)
+- field.visual / field.hidden / field.secret (#field.visual-field.hidden-field.secret)
 - resolve (#resolve)
 - getDefault (#getDefault)
-- DocumentModel / DefaultOf / QueryOf (#DocumentModel / DefaultOf / QueryOf)
-- crystalize / purify (#crystalize / purify)
-- serialize / deserialize (#serialize / deserialize)
+- DocumentModel / DefaultOf / QueryOf (#DocumentModel-DefaultOf-QueryOf)
+- crystalize / purify (#crystalize-purify)
+- serialize / deserialize (#serialize-deserialize)
 - ConstantRegistry (#ConstantRegistry)
 
 ## Content

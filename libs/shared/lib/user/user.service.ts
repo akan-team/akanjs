@@ -350,7 +350,11 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     return !!this.masterEmailCode && /\.(test|example|invalid|localhost)$/i.test(accountId.split("@")[1] ?? "");
   }
   private _generateCode() {
-    return String((crypto.getRandomValues(new Uint32Array(1))[0] ?? 0) % 1_000_000).padStart(6, "0");
+    for (;;) {
+      const value = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+      //? 4_294_000_000 is the largest multiple of 1_000_000 below 2^32; redrawing above it keeps every code equally likely.
+      if (value < 4_294_000_000) return String(value % 1_000_000).padStart(6, "0");
+    }
   }
 
   async userExistsHasPhone(phone: string) {

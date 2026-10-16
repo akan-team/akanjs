@@ -11,7 +11,7 @@
 - akanjs/server (#akanjs-server)
 - AkanApp (#AkanApp)
 - AkanAppOptions (#AkanAppOptions)
-- AkanServer Web Surfaces (#AkanServer web surfaces)
+- AkanServer Web Surfaces (#AkanServer-web-surfaces)
 - AkanOption (#AkanOption)
 - AkanResponse (#AkanResponse)
 - WebProxy (#WebProxy)

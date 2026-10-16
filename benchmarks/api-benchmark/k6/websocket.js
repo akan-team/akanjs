@@ -32,7 +32,6 @@ const deliveryLatency = new Trend("ws_delivery_latency_ms", true);
 const received = new Counter("ws_messages_received");
 const published = new Counter("ws_messages_published");
 const connErrors = new Counter("ws_connect_errors");
-const reconnects = new Counter("ws_reconnects");
 
 export const options = {
   scenarios: {
