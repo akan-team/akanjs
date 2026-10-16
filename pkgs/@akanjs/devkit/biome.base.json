@@ -85,16 +85,6 @@
   "overrides": [
     {
       "includes": [
-        "**/env.client.local.ts",
-        "**/env.client.debug.ts",
-        "**/env.client.develop.ts",
-        "**/env.client.main.ts",
-        "**/env.client.testing.ts",
-        "**/env.server.local.ts",
-        "**/env.server.develop.ts",
-        "**/env.server.main.ts",
-        "**/env.server.testing.ts",
-        "**/env.server.type.ts",
         "apps/*/lib/cnst.ts",
         "apps/*/lib/dict.ts",
         "apps/*/lib/db.ts",
