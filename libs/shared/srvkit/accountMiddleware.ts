@@ -71,7 +71,8 @@ export class AccountMiddleware implements Middleware {
   ): Promise<ScopedAccount> {
     const verified = AccountMiddleware.#verifiedBySocket.get(socket);
     const reusable =
-      verified?.authorization === authorization &&
+      !!verified &&
+      verified.authorization === authorization &&
       (verified.account.exp === undefined || verified.account.exp * 1000 > Date.now());
     if (verified && reusable) return { ...verified.account };
     const account = await resolve();
