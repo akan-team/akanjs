@@ -136,7 +136,9 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   receives them. It works across instances through the cache the entries live in. Every entry key carries its
   endpoint's generation and the endpoint-wide form bumps it in one `incr`: nothing is scanned, old entries expire on
   their TTL, and a miss already running when you invalidate writes under the old generation, where nobody reads it.
-  It answers `false` (warned) when the cache failed. A cached call reads the generation before its entry.
+  The one-call form deletes that entry, so a miss for those arguments already running can write it back; reach for
+  the endpoint-wide form when that matters. It answers `false` (warned) when the cache failed. A cached call reads
+  the generation before its entry.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
 - A call runs the cross-site check and an `ip` rate limit, then the body read, then the default middleware chain
