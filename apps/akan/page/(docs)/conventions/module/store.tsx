@@ -530,8 +530,8 @@ this.set((state) => { state.ticketForm.title = ""; });`,
       {
         name: "upload<Field>On<Model>(fileList, idx?)",
         desc: l.trans({
-          en: "`File` field: uploads, then polls until the file leaves `uploading`. A result whose form was replaced or re-picked meanwhile is dropped.",
-          ko: "`File` 필드: 업로드한 뒤 파일이 `uploading` 상태를 벗어날 때까지 확인합니다. 그 사이 폼이 바뀌었거나 다시 골랐다면 결과는 버립니다.",
+          en: "`File` field: uploads, then polls until the file leaves `uploading`. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.",
+          ko: "`File` 필드: 업로드한 뒤 파일이 `uploading` 상태를 벗어날 때까지 확인합니다. 그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 결과는 버립니다.",
         }),
       },
       {

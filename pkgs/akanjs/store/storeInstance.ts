@@ -70,7 +70,7 @@ export class StoreInstance {
     if (typeof stateOrUpdater === "function") {
       this.#state = produce(this.#state, stateOrUpdater);
     } else {
-      this.#state = { ...this.#state, ...stateOrUpdater };
+      this.#state = this.#dropReplacedUploads({ ...this.#state, ...stateOrUpdater }, stateOrUpdater);
     }
     this.#assertNoDerivedMutation(stateOrUpdater);
     this.#state = this.#materializeDerived(this.#state, prev);
@@ -510,6 +510,16 @@ export class StoreInstance {
         Logger.warn(`Failed to persist ${meta.kind} state ${key}: ${String(error)}`);
       }
     }
+  }
+
+  // A form set whole (open, hydrate, reset, restore, `set<Model>Form`) holds none of the uploads still in flight.
+  #dropReplacedUploads(state: StoreStateRecord, patch: StoreStateRecord) {
+    for (const meta of Object.values(this.#derivedMeta.drafts)) {
+      if (!(meta.formKey in patch) || meta.uploadingKey in patch) continue;
+      const uploading = state[meta.uploadingKey] as object | undefined;
+      if (uploading && Object.keys(uploading).length) state = { ...state, [meta.uploadingKey]: {} };
+    }
+    return state;
   }
 
   // The debounce lives in the store, not a component, so an editor unmounting mid-window still lands its last write.

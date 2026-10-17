@@ -68,6 +68,7 @@ const EditModel = <Full,>({
       Model: ModelName,
       modelForm: `${modelName}Form`,
       modelFormLoading: `${modelName}FormLoading`,
+      modelFormUploading: `${modelName}FormUploading`,
       modelModal: `${modelName}Modal`,
       checkModelSubmitable: `check${ModelName}Submitable`,
     }),
@@ -75,6 +76,8 @@ const EditModel = <Full,>({
   );
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelForm = storeUse[names.modelForm]() as { id: string | null; [key: string]: any };
+  // An upload that settles without touching the form (a failure) must still re-open submit.
+  const modelFormUploading = storeUse[names.modelFormUploading]();
 
   // This component mounts only while the editor is open, which is what keeps one registration on a list that
   // renders an editor per row: at most one of them is ever open.
@@ -88,7 +91,7 @@ const EditModel = <Full,>({
 
   useEffect(() => {
     if (checkSubmit) checkSubmitable();
-  }, [modelModal, modelForm]);
+  }, [modelModal, modelForm, modelFormUploading]);
 
   const LoadingWrapper = useMemo(() => {
     return loadingWrapper === false

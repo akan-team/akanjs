@@ -66,8 +66,9 @@ Use this whenever generating constants or scalar constants. It defines the curre
   mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
 - **An upload is scoped to the form that started it.** While the request runs, `<model>FormUploading` holds a
   ticket under the field's name (`{}` when idle), and `check<Model>Submitable` and `Model.EditModal` keep submit
-  disabled. The result is dropped when the form was replaced meanwhile (`new` / `edit` / `reset`, a save, a draft
-  restore, another record's id) or, on a single field, when a newer upload or a `set<Field>On<Model>` superseded
+  disabled. The result is dropped when the form was set whole meanwhile (`new` / `edit` / `reset`, a save, a draft
+  restore, `set<Model>Form`, an edit shell's hydration — the store clears the key on every `set({ <model>Form })` — or
+  another record's id) or, on a single field, when a newer upload or a `set<Field>On<Model>` superseded
   it; an array field inserts into the list as it is when the result lands. A hand-written submit reads
   `Object.keys(st.use.<model>FormUploading()).length` rather than tracking uploads itself.
 - Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`,

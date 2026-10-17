@@ -45,6 +45,7 @@ export interface DraftMeta {
   refName: string;
   formKey: string;
   draftKey: string;
+  uploadingKey: string;
 }
 
 export interface StateDerivedMeta {
@@ -157,7 +158,12 @@ export const draftMetaOf = (refName: string): DraftMeta => {
   const cached = draftMetaByRefName.get(refName);
   if (cached) return cached;
   const names = databaseStateNames(refName);
-  const meta: DraftMeta = { refName, formKey: names.modelForm, draftKey: names.modelDraft };
+  const meta: DraftMeta = {
+    refName,
+    formKey: names.modelForm,
+    draftKey: names.modelDraft,
+    uploadingKey: names.modelFormUploading,
+  };
   draftMetaByRefName.set(refName, meta);
   return meta;
 };
