@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Dayjs, dayjs, ENDPOINT_META, ID, resetEnvCache } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { assertFilterFitsCrud, DocumentSchema, type SchemaOf } from "akanjs/document";
+import { assertFilterFitsCrud, DocumentSchema, documentQueryHelper, type SchemaOf } from "akanjs/document";
 import { FetchClient } from "akanjs/fetch";
 import {
   type AkanJob,
@@ -694,6 +694,172 @@ describe("ServiceResolver cascade", () => {
     service.__databaseModel = { __remove: async (id: string) => ({ id, cover: null }) } as never;
     await service.__remove("parent-2");
     expect(child.calls).toEqual([]);
+  });
+
+  test("removes a document once when several fields or array entries hold its id", async () => {
+    const child = childTarget(true);
+    const { service } = buildCascade(
+      constantOf(parentRef, {
+        removeRef: new Map([
+          ["enCover", cascadeChildFull],
+          ["koCover", cascadeChildFull],
+          ["gallery", cascadeChildFull],
+        ]),
+      }),
+      child,
+      cascadeChildConstant,
+    );
+    service.__databaseModel = {
+      __remove: async (id: string) => ({
+        id,
+        enCover: "file-1",
+        koCover: "file-1",
+        gallery: ["file-2", "file-1", "file-2"],
+      }),
+    } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls.map((call) => call.arg)).toEqual(["file-1", "file-2"]);
+  });
+
+  // parent -removeWith-> middle -removeRef-> file; the parent reaches the same file first, by its own field or as its owner.
+  const nestedCascade = (parentHoldsFile: boolean) => {
+    const removed: string[] = [];
+    const owned: Record<string, string[]> = {
+      cascadeChild: parentHoldsFile ? [] : ["file-1"],
+      cascadeMiddle: ["middle-1"],
+    };
+    class SideEffectService {
+      async _postRemove(doc: unknown) {
+        return doc;
+      }
+    }
+    const cascade = new CascadeRunner();
+    const serviceOf = (refName: string) => ({
+      __listIds: async () => (owned[refName] ?? []).filter((id) => !removed.includes(`${refName}:${id}`)),
+      __remove: async (id: string) => {
+        if (removed.includes(`${refName}:${id}`)) throw new Error(`No Document (${refName}): ${id}`);
+        removed.push(`${refName}:${id}`);
+        if (refName === "cascadeMiddle") await cascade.run(refName, { id, cover: "file-1" });
+        return { id };
+      },
+    });
+    const services: Record<string, ReturnType<typeof serviceOf>> = {
+      cascadeChild: serviceOf("cascadeChild"),
+      cascadeMiddle: serviceOf("cascadeMiddle"),
+    };
+    const ownedByParent = new Map([
+      ["parent", { key: "parent", modelRef: null, refName: parentRef, typeKey: null, typeValues: [] }],
+    ]);
+    const parentFields = parentHoldsFile ? { removeRef: new Map([["cover", cascadeChildFull]]) } : {};
+    cascade.register(constantOf(parentRef, parentFields), new DocumentSchema(), SideEffectService as never);
+    cascade.register(
+      parentHoldsFile ? cascadeChildConstant : constantOf("cascadeChild", { removeWith: ownedByParent }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.register(
+      constantOf("cascadeMiddle", { removeRef: new Map([["cover", cascadeChildFull]]), removeWith: ownedByParent }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.seal((refName) => services[refName] as never);
+    return { cascade, removed };
+  };
+
+  test("removes an array holding the same id twice in one query naming each id once", async () => {
+    const child = childTarget();
+    const { service } = buildCascade(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      child,
+      cascadeChildConstant,
+    );
+    service.__databaseModel = {
+      __remove: async (id: string) => ({ id, gallery: ["file-1", "file-2", "file-1"] }),
+    } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls).toEqual([
+      { method: "__removeMany", arg: { id: documentQueryHelper.oneOf(["file-1", "file-2"]) } },
+    ]);
+  });
+
+  test("skips a document the parent removed through its own field when a child it removes holds it too", async () => {
+    const { cascade, removed } = nestedCascade(true);
+
+    await cascade.run(parentRef, { id: "parent-1", cover: "file-1" });
+
+    expect(removed).toEqual(["cascadeChild:file-1", "cascadeMiddle:middle-1"]);
+  });
+
+  test("skips a document a removeWith step already removed when a later child points at it", async () => {
+    const { cascade, removed } = nestedCascade(false);
+
+    await cascade.run(parentRef, { id: "parent-1" });
+
+    expect(removed).toEqual(["cascadeChild:file-1", "cascadeMiddle:middle-1"]);
+  });
+
+  // gallery holds A and 200 siblings that, with an older C, name A as their owner: A's first drain page is all siblings.
+  const pagedOverlap = (anyOwner: boolean) => {
+    const ownerKey = anyOwner ? "owner" : "parent";
+    const siblings = Array.from({ length: 200 }, (_, idx) => `b-${idx}`);
+    const ownerOf = new Map<string, string>([...siblings.map((id) => [id, "a"] as const), ["c", "a"]]);
+    const removed: string[] = [];
+    class SideEffectService {
+      async _postRemove(doc: unknown) {
+        return doc;
+      }
+    }
+    const cascade = new CascadeRunner();
+    const service = {
+      __listIds: async (query: Record<string, unknown>, option?: { limit?: number }) =>
+        [...ownerOf]
+          .filter(([id, owner]) => owner === query[ownerKey] && !removed.includes(id))
+          .map(([id]) => id)
+          .slice(0, option?.limit),
+      __remove: async (id: string) => {
+        if (removed.includes(id)) throw new Error(`No Document (cascadeChild): ${id}`);
+        removed.push(id);
+        await cascade.run("cascadeChild", { id });
+        return { id };
+      },
+    };
+    const owned = anyOwner
+      ? { key: ownerKey, modelRef: null, refName: null, typeKey: "ownerType", typeValues: [], anyOwner: true }
+      : { key: ownerKey, modelRef: null, refName: "cascadeChild", typeKey: null, typeValues: [] };
+    cascade.register(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.register(
+      constantOf("cascadeChild", { removeWith: new Map([[ownerKey, owned]]) }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.seal(() => service as never);
+    return { cascade, removed, gallery: ["a", ...siblings] };
+  };
+
+  test("drains every child of an array entry even when its first page is siblings the array removes later", async () => {
+    const { cascade, removed, gallery } = pagedOverlap(false);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(removed).toContain("c");
+    expect(removed).toHaveLength(202);
+  });
+
+  test("drains every wildcard child of an array entry even when its first page is siblings the array removes later", async () => {
+    const { cascade, removed, gallery } = pagedOverlap(true);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(removed).toContain("c");
+    expect(removed).toHaveLength(202);
   });
 
   test("fails to seal when a cascade target is not mounted", () => {

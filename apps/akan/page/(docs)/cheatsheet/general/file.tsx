@@ -598,6 +598,20 @@ export default page()
       l.trans({
         en: (
           <>
+            <strong>One owner may hold a file twice.</strong> The same file in two <code>removeRef</code> fields, or
+            twice in one array, is removed once when the owner goes.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>한 소유자가 같은 파일을 두 번 가져도 됩니다.</strong> 두 <code>removeRef</code> 필드나 한 배열에
+            같은 파일이 두 번 들어 있어도, 소유자를 지울 때 그 파일은 한 번만 지워집니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
             <strong>Nothing checks for other owners.</strong> <code>libs/shared</code>'s File dedupes by{" "}
             <code>origin</code>, so two documents can share one file; <code>removeRef</code> declares that this field
             owns it alone.
