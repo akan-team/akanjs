@@ -155,7 +155,7 @@ Field
 
 When a plain Error escapes
 
-Anything that is not an `Err` is answered as a 500, so the user never sees the dictionary sentence:
+Anything that is not an `Err` or a missing document is answered as a 500, so the user never sees the dictionary sentence:
 
 Thrown
 
@@ -163,7 +163,9 @@ What the caller gets
 
 - Err, Err.*: Answered with its own `statusCode`, and `error` holds the dictionary key.
 
-- Error, getOrder(missingId): Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
+- NoDocumentError, getOrder(missingId): Answered as 404, and `error` holds `base.error.documentNotFound`.
+
+- Error: Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
 
 **In development you see everything.** Under `akan start` the response carries the real message and the stack.
 

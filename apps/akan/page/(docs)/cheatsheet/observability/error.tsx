@@ -203,7 +203,14 @@ export default page()
         }),
       },
       {
-        name: ["Error", "getOrder(missingId)"],
+        name: ["NoDocumentError", "getOrder(missingId)"],
+        desc: l.trans({
+          en: "Answered as 404, and `error` holds `base.error.documentNotFound`.",
+          ko: "404로 응답하고, `error`에는 `base.error.documentNotFound`가 들어갑니다.",
+        }),
+      },
+      {
+        name: ["Error"],
         desc: l.trans({
           en: "Answered as 500, and a deployed build sets `error` to `Internal Server Error`.",
           ko: "500으로 응답하며, 배포된 빌드에서는 `error`가 `Internal Server Error`입니다.",
@@ -838,13 +845,13 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
               {l.trans({
                 en: (
                   <span>
-                    Anything that is not an <code>Err</code> is answered as a 500, so the user never sees the dictionary
-                    sentence:
+                    Anything that is not an <code>Err</code> or a missing document is answered as a 500, so the user
+                    never sees the dictionary sentence:
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>Err</code>가 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을 보지 못합니다:
+                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을 보지 못합니다:
                   </span>
                 ),
               })}
