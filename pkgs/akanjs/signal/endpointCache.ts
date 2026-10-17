@@ -1,4 +1,4 @@
-import { type CacheAdaptor, CacheAdaptorRole } from "akanjs/service";
+import { type CacheAdaptor, CacheAdaptorRole, EndpointCacheKeys } from "akanjs/service";
 import dayjs from "dayjs";
 import type { EndpointInfo } from "./endpointInfo";
 import type { SignalContext } from "./signalContext";
@@ -8,7 +8,6 @@ import { traceCache } from "./trace";
 // Not a middleware: it runs after the guards (which a lib's account middleware feeds), so a hit reaches only an
 // admitted caller, inside the `timeout` deadline. The entry is shared, hence no internal arguments.
 export class EndpointCache {
-  static #topic = "cache";
   static #refused = new Set<string>();
 
   static declares(endpointInfo: EndpointInfo): boolean {
@@ -21,7 +20,8 @@ export class EndpointCache {
     if (!ttl || !EndpointCache.declares(context.endpointInfo)) return await run();
     if (!EndpointCache.#cacheable(context)) return await run();
     const cache = context.getAdaptor(CacheAdaptorRole) as unknown as CacheAdaptor;
-    const key = `${context.key}:${JSON.stringify(context.args)}`;
+    const key = await EndpointCache.#key(context, cache);
+    if (key === undefined) return await run();
     const cached = await EndpointCache.#read(context, cache, key);
     if (cached !== undefined) {
       traceCache(true);
@@ -44,15 +44,23 @@ export class EndpointCache {
     return false;
   }
   // A cache backend that is down must not take the endpoint down with it: the call runs uncached instead.
+  static async #key(context: SignalContext, cache: CacheAdaptor) {
+    try {
+      return await EndpointCacheKeys.entryKey(cache, context.key, context.args);
+    } catch (error) {
+      context.adaptor.logger.warn(`Cache read failed for ${context.key}: ${String(error)}`);
+      return undefined;
+    }
+  }
   static async #read(context: SignalContext, cache: CacheAdaptor, key: string) {
     try {
-      const cached = await cache.get<string>(EndpointCache.#topic, key);
+      const cached = await cache.get<string>(EndpointCacheKeys.topic, key);
       if (cached == null) return undefined;
       const { returnRef, arrDepth } = context.endpointInfo.returns;
       return TaggedJson.parse(cached, { ref: returnRef, arrDepth });
     } catch (error) {
       context.adaptor.logger.warn(`Cache read failed for ${context.key}: ${String(error)}`);
-      await cache.delete(EndpointCache.#topic, key).catch(() => undefined);
+      await cache.delete(EndpointCacheKeys.topic, key).catch(() => undefined);
       return undefined;
     }
   }
@@ -61,7 +69,7 @@ export class EndpointCache {
       const serialized = TaggedJson.stringify(result);
       // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
       if (serialized === undefined) return;
-      await cache.set(EndpointCache.#topic, key, serialized, { expireAt: dayjs().add(ttl, "millisecond") });
+      await cache.set(EndpointCacheKeys.topic, key, serialized, { expireAt: dayjs().add(ttl, "millisecond") });
     } catch (error) {
       context.adaptor.logger.warn(`Cache write failed for ${context.key}: ${String(error)}`);
     }

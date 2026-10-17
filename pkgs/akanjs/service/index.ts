@@ -1,6 +1,7 @@
 export * from "./adapt";
 export * from "./agent.service";
 export * from "./base.service";
+export * from "./endpointCacheKeys";
 export * from "./injectInfo";
 export * from "./ipcTypes";
 export * from "./liveSyncHub";
