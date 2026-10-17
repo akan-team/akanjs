@@ -130,7 +130,7 @@ You get
 
 - fetch.add<Model>Files: Takes `(fileList, parentId?)` and posts the files, with `type` set to the model's name.
 
-- st.do.upload<Field>On<Model>: Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s.
+- st.do.upload<Field>On<Model>: Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s. `<model>FormUploading` marks the field while the request runs, and a result whose form moved on is dropped.
 
 - Field.Img, Field.Imgs, Field.File, Field.Files: Form controls in `@libs/shared/ui` that call `add<Model>Files` for the `slice` you pass.
 

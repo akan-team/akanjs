@@ -64,6 +64,12 @@ Use this whenever generating constants or scalar constants. It defines the curre
   field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many.
 - The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload
   mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
+- **An upload is scoped to the form that started it.** While the request runs, `<model>FormUploading` holds a
+  ticket under the field's name (`{}` when idle), and `check<Model>Submitable` and `Model.EditModal` keep submit
+  disabled. The result is dropped when the form was replaced meanwhile (`new` / `edit` / `reset`, a save, a draft
+  restore, another record's id) or, on a single field, when a newer upload or a `set<Field>On<Model>` superseded
+  it; an array field inserts into the list as it is when the result lands. A hand-written submit reads
+  `Object.keys(st.use.<model>FormUploading()).length` rather than tracking uploads itself.
 - Storage is wired through the `StorageAdaptor` DI role (default `BlobStorage`,
   `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` module.
   Do not hand-roll data-URL fallbacks. `{ cascade: "removeRef" }` on the field removes the file with its owner

@@ -7,6 +7,7 @@ export const databaseStateNames = (refName: string) => {
     modelLoading: `${refName}Loading`,
     modelForm: `${refName}Form`,
     modelFormLoading: `${refName}FormLoading`,
+    modelFormUploading: `${refName}FormUploading`,
     modelSubmit: `${refName}Submit`,
     modelViewAt: `${refName}ViewAt`,
     modelModal: `${refName}Modal`,

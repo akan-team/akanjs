@@ -319,6 +319,13 @@ this.set((state) => { state.ticketForm.title = ""; });`,
         }),
       },
       {
+        name: "<model>FormUploading: { [fileField]?: string[] }",
+        desc: l.trans({
+          en: "Uploads in flight per `File` field of the form; `{}` when idle. Keep submit disabled while it is not empty.",
+          ko: "폼의 `File` 필드별로 진행 중인 업로드입니다. 없으면 `{}`이며, 비어 있지 않은 동안은 제출을 막으세요.",
+        }),
+      },
+      {
         name: "<model>Submit: Submit",
         desc: l.trans({
           en: "`{ disabled, loading, times }` for the submit button.",
@@ -523,8 +530,8 @@ this.set((state) => { state.ticketForm.title = ""; });`,
       {
         name: "upload<Field>On<Model>(fileList, idx?)",
         desc: l.trans({
-          en: "`File` field: uploads, then polls until the file leaves `uploading`.",
-          ko: "`File` 필드: 업로드한 뒤 파일이 `uploading` 상태를 벗어날 때까지 확인합니다.",
+          en: "`File` field: uploads, then polls until the file leaves `uploading`. A result whose form was replaced or re-picked meanwhile is dropped.",
+          ko: "`File` 필드: 업로드한 뒤 파일이 `uploading` 상태를 벗어날 때까지 확인합니다. 그 사이 폼이 바뀌었거나 다시 골랐다면 결과는 버립니다.",
         }),
       },
       {

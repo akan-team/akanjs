@@ -1,5 +1,5 @@
 import { DataList } from "akanjs/base";
-import { ConstantRegistry, type DefaultOf } from "akanjs/constant";
+import { ConstantRegistry, type DefaultOf, type ProtoLightFile } from "akanjs/constant";
 import type { ExtractSort, FilterInstance } from "akanjs/document";
 import type {
   SerializedSlice,
@@ -29,6 +29,11 @@ export interface DraftState {
   /** Set while a draft is the thing in the form. Drives the "continuing, saved n minutes ago" chip. */
   appliedAt: Date | null;
 }
+
+/** Opaque tickets of the uploads in flight, per `File` field of the form; `{}` when nothing is uploading. */
+export type FormUploading<_Default> = {
+  [K in keyof _Default as _Default[K] extends (ProtoLightFile | null) | ProtoLightFile[] ? K : never]?: string[];
+};
 
 export type SliceStateKey =
   | "defaultModel"
@@ -64,6 +69,8 @@ type BaseState<RefName extends string, Full, _Default = DefaultOf<Full>> = {
   [K in `${RefName}Form`]: _Default;
 } & {
   [K in `${RefName}FormLoading`]: string | boolean;
+} & {
+  [K in `${RefName}FormUploading`]: FormUploading<_Default>;
 } & {
   [K in `${RefName}Submit`]: Submit;
 } & {
@@ -183,6 +190,7 @@ export const createDatabaseState = (refName: string) => {
     [names.modelLoading]: true,
     [names.modelForm]: new cnst.input() as object,
     [names.modelFormLoading]: true,
+    [names.modelFormUploading]: {},
     [names.modelSubmit]: { disabled: true, loading: false, times: 0 },
     [names.modelViewAt]: new Date(0),
     [names.modelModal]: null,
