@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
+import { resetEnvCache, SLICE_META } from "akanjs/base";
 import { ConstantRegistry, type ProtoFile, via } from "akanjs/constant";
-import type { FetchProxy } from "akanjs/fetch";
-import { makeActions, makeFormSetter } from "./action";
-import { createDatabaseState } from "./state";
+import type { ClientSignal } from "akanjs/fetch";
+import { store } from "./store";
+import { setTestEnv } from "./store.fixture";
+import { StoreInstance } from "./storeInstance";
+import { StoreRegistry } from "./storeRegistry";
 
 const FileInput = via((f) => ({ url: f(String), status: f(String) }));
 const FileObj = via(FileInput, () => ({}));
@@ -11,56 +14,72 @@ const UpFile = via(FileObj, LightFile, () => ({}));
 const FileInsight = via(UpFile, () => ({}));
 ConstantRegistry.buildModel("upFile", FileInput, FileObj, UpFile, LightFile, FileInsight, {});
 
-const PostInput = via((f) => ({ title: f(String), image: f(UpFile).optional(), images: f([UpFile]) }));
+const PostInput = via((f) => ({
+  title: f(String),
+  image: f(UpFile).optional(),
+  images: f([UpFile]),
+  attachments: f([UpFile]).optional(),
+}));
 const PostObj = via(PostInput, () => ({}));
 const LightPost = via(PostObj, ["title"] as const, () => ({}));
 const Post = via(PostObj, LightPost, () => ({}));
 const PostInsight = via(Post, () => ({}));
-ConstantRegistry.buildModel("upPost", PostInput, PostObj, Post, LightPost, PostInsight, {});
+const postConstant = ConstantRegistry.buildModel("upPost", PostInput, PostObj, Post, LightPost, PostInsight, {});
 
 interface Deferred {
   resolve: (files: ProtoFile[]) => void;
   reject: (error: Error) => void;
 }
-type Actions = { [key: string]: (...args: any[]) => any };
 type State = { [key: string]: any };
+interface Instance {
+  get: () => State;
+  do: { [key: string]: (...args: any[]) => Promise<void> };
+  subscribe: (listener: () => void) => () => void;
+}
 
 const fileOf = (id: string, status = "active") => ({ id, url: `/f/${id}`, status }) as unknown as ProtoFile;
+const idsOf = (files: ProtoFile[] | null) => (files ?? []).map((file) => file.id);
+const picked = [new File(["a"], "a.png")];
+let rootIndex = 0;
 
-const contextOf = () => {
+const makeInstance = () => {
   const uploads: Deferred[] = [];
   const reads: string[] = [];
   const fileStatus = new Map<string, string>();
-  const fetch = {
+  const reading: { hold: boolean } = { hold: false };
+  const handlers: { [key: string]: unknown } = {
     serializedSignal: { upFile: { endpoint: { addFiles: { fileUpload: true } } } },
     addUpPostFiles: () =>
       new Promise<ProtoFile[]>((resolve, reject) => {
         uploads.push({ resolve, reject });
       }),
-    upFile: async (id: string) => {
+    upFile: (id: string) => {
       reads.push(id);
-      return fileOf(id, fileStatus.get(id) ?? "active");
+      if (reading.hold) return new Promise(() => undefined);
+      return Promise.resolve(fileOf(id, fileStatus.get(id) ?? "active"));
     },
-  } as unknown as FetchProxy<unknown>;
-  const state: State = {
-    ...createDatabaseState("upPost"),
-    defaultUpPost: new Post(),
-    upPostForm: { id: "", title: "x", image: null, images: [] },
   };
-  const ctx = {
-    ...(makeFormSetter("upPost", fetch) as unknown as Actions),
-    ...(makeActions("upPost", {}, fetch) as unknown as Actions),
-    set: (recipe: unknown) => {
-      if (typeof recipe === "function") (recipe as (draft: State) => void)(state);
-      else Object.assign(state, recipe);
-    },
-    get: () => state,
-  } as Actions & { set: (recipe: unknown) => void; get: () => State };
-  const call = (name: string, ...args: unknown[]) => (ctx[name] as (...a: unknown[]) => unknown).call(ctx, ...args);
-  return { state, uploads, reads, fileStatus, call };
+  const fetch = new Proxy(handlers, { get: (target, key: string) => (target[key] ??= async () => null) });
+  const signal = {
+    refName: "upPost",
+    _slice: { [SLICE_META]: {} },
+    cnst: postConstant,
+    fetch,
+    serializedSignal: { prefix: "upPost", endpoint: {}, slice: { "": { args: [] } } },
+    slices: [],
+  } as unknown as ClientSignal<"upPost">;
+  class UpPostStore extends store(signal, () => ({})) {}
+  StoreRegistry.register(UpPostStore);
+  rootIndex += 1;
+  const instance = new StoreInstance(StoreRegistry.merge(`uploadRoot${rootIndex}`, UpPostStore)) as unknown as Instance;
+  void instance.do.newUpPost({ title: "x" });
+  return { instance, uploads, reads, fileStatus, reading, state: () => instance.get() };
 };
 
-const picked = [new File(["a"], "a.png")];
+beforeEach(() => {
+  setTestEnv("uploadtest");
+  resetEnvCache();
+});
 
 afterEach(() => {
   jest.useRealTimers();
@@ -68,135 +87,184 @@ afterEach(() => {
 
 describe("upload<Field>On<Model> pending state", () => {
   test("a field holds a ticket while its upload is in flight and is cleared when it lands", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
-    expect(state.upPostFormUploading.image).toHaveLength(1);
-    expect(state.upPostFormUploading.images).toBeUndefined();
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    expect(state().upPostFormUploading.image).toHaveLength(1);
+    expect(state().upPostFormUploading.images).toBeUndefined();
     uploads[0]?.resolve([fileOf("f1")]);
     await done;
-    expect(state.upPostFormUploading).toEqual({});
-    expect(state.upPostForm.image.id).toBe("f1");
+    expect(state().upPostFormUploading).toEqual({});
+    expect(state().upPostForm.image.id).toBe("f1");
   });
 
-  test("a failed upload releases its ticket and still rejects", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImagesOnUpPost", picked) as Promise<void>;
+  test("a failed upload releases its ticket, even after the form moved to another record", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const first = instance.do.uploadImagesOnUpPost(picked);
     uploads[0]?.reject(new Error("network"));
-    await expect(done).rejects.toThrow("network");
-    expect(state.upPostFormUploading).toEqual({});
-    expect(state.upPostForm.images).toEqual([]);
+    await expect(first).rejects.toThrow("network");
+    expect(state().upPostFormUploading).toEqual({});
+    const second = instance.do.uploadImagesOnUpPost(picked);
+    instance.do.writeOnUpPost("id", "other");
+    uploads[1]?.reject(new Error("network"));
+    await expect(second).rejects.toThrow("network");
+    expect(state().upPostFormUploading).toEqual({});
+    expect(state().upPostForm.images).toEqual([]);
+  });
+
+  test("a result for another record releases its ticket without writing", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImagesOnUpPost(picked);
+    instance.do.writeOnUpPost("id", "other");
+    uploads[0]?.resolve([fileOf("late")]);
+    await done;
+    expect(state().upPostFormUploading).toEqual({});
+    expect(state().upPostForm.images).toEqual([]);
   });
 
   test("check<Model>Submitable keeps submit disabled while an upload is in flight", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
-    call("checkUpPostSubmitable");
-    expect(state.upPostSubmit.disabled).toBe(true);
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.checkUpPostSubmitable();
+    expect(state().upPostSubmit.disabled).toBe(true);
     uploads[0]?.resolve([fileOf("f1")]);
     await done;
-    call("checkUpPostSubmitable");
-    expect(state.upPostSubmit.disabled).toBeFalsy();
+    await instance.do.checkUpPostSubmitable();
+    expect(state().upPostSubmit.disabled).toBeFalsy();
+  });
+
+  test("a subscriber never sees the field idle before the uploaded file is in the form", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    const seenWhenIdle: unknown[] = [];
+    const unsubscribe = instance.subscribe(() => {
+      if (!state().upPostFormUploading.image) seenWhenIdle.push(state().upPostForm.image?.id ?? null);
+    });
+    uploads[0]?.resolve([fileOf("f1")]);
+    await done;
+    unsubscribe();
+    expect(seenWhenIdle[0]).toBe("f1");
   });
 });
 
 describe("upload<Field>On<Model> scoping", () => {
   test("a result that lands after the form was reset is dropped", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
-    call("resetUpPost");
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.resetUpPost();
+    expect(state().upPostFormUploading).toEqual({});
     uploads[0]?.resolve([fileOf("late")]);
     await done;
-    expect(state.upPostForm.image).toBeNull();
-    expect(state.upPostFormUploading).toEqual({});
+    expect(state().upPostForm.image).toBeNull();
   });
 
-  test("a result that lands after the form moved to another record is dropped", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImagesOnUpPost", picked) as Promise<void>;
-    state.upPostForm = { id: "other", title: "y", image: null, images: [fileOf("kept")] };
+  test("a result that lands after the whole form was set is dropped, even with the same empty id", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.setUpPostForm({ ...state().upPostForm, title: "replacement" });
+    expect(state().upPostFormUploading).toEqual({});
     uploads[0]?.resolve([fileOf("late")]);
     await done;
-    expect(state.upPostForm.images.map((file: ProtoFile) => file.id)).toEqual(["kept"]);
+    expect(state().upPostForm.title).toBe("replacement");
+    expect(state().upPostForm.image).toBeNull();
+  });
+
+  test("a result that lands after a new form was opened is dropped", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.newUpPost({ title: "second" });
+    uploads[0]?.resolve([fileOf("late")]);
+    await done;
+    expect(state().upPostForm.image).toBeNull();
   });
 
   test("on a single field an older upload finishing last does not overwrite the newer pick", async () => {
-    const { state, uploads, call } = contextOf();
-    const first = call("uploadImageOnUpPost", picked) as Promise<void>;
-    const second = call("uploadImageOnUpPost", picked) as Promise<void>;
+    const { instance, uploads, state } = makeInstance();
+    const first = instance.do.uploadImageOnUpPost(picked);
+    const second = instance.do.uploadImageOnUpPost(picked);
     uploads[1]?.resolve([fileOf("newer")]);
     await second;
     uploads[0]?.resolve([fileOf("older")]);
     await first;
-    expect(state.upPostForm.image.id).toBe("newer");
-    expect(state.upPostFormUploading).toEqual({});
+    expect(state().upPostForm.image.id).toBe("newer");
+    expect(state().upPostFormUploading).toEqual({});
   });
 
-  test("an explicit set of the field wins over an upload still in flight", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
-    call("setImageOnUpPost", null);
-    expect(state.upPostFormUploading).toEqual({});
+  test("an explicit set of a single field wins over an upload still in flight", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.setImageOnUpPost(null);
+    expect(state().upPostFormUploading).toEqual({});
     uploads[0]?.resolve([fileOf("late")]);
     await done;
-    expect(state.upPostForm.image).toBeNull();
+    expect(state().upPostForm.image).toBeNull();
   });
 
   test("an explicit set of an array field keeps its uploads, which land in the new list", async () => {
-    const { state, uploads, call } = contextOf();
-    const done = call("uploadImagesOnUpPost", picked) as Promise<void>;
-    call("setImagesOnUpPost", [fileOf("chosen")]);
-    expect(state.upPostFormUploading.images).toHaveLength(1);
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImagesOnUpPost(picked);
+    await instance.do.setImagesOnUpPost([fileOf("chosen")]);
+    expect(state().upPostFormUploading.images).toHaveLength(1);
     uploads[0]?.resolve([fileOf("late")]);
     await done;
-    expect(state.upPostForm.images.map((file: ProtoFile) => file.id)).toEqual(["chosen", "late"]);
+    expect(idsOf(state().upPostForm.images)).toEqual(["chosen", "late"]);
+  });
+
+  test("a nullable array cleared to null during an upload takes the result as its first item", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadAttachmentsOnUpPost(picked);
+    await instance.do.setAttachmentsOnUpPost(null);
+    uploads[0]?.resolve([fileOf("late")]);
+    await done;
+    expect(idsOf(state().upPostForm.attachments)).toEqual(["late"]);
   });
 
   test("an array field inserts into the list as it is when the upload lands", async () => {
-    const { state, uploads, call } = contextOf();
-    const a = call("uploadImagesOnUpPost", picked) as Promise<void>;
-    const b = call("uploadImagesOnUpPost", picked) as Promise<void>;
-    expect(state.upPostFormUploading.images).toHaveLength(2);
-    call("addImagesOnUpPost", fileOf("added"));
+    const { instance, uploads, state } = makeInstance();
+    const a = instance.do.uploadImagesOnUpPost(picked);
+    const b = instance.do.uploadImagesOnUpPost(picked);
+    expect(state().upPostFormUploading.images).toHaveLength(2);
+    await instance.do.addImagesOnUpPost(fileOf("added"));
     uploads[1]?.resolve([fileOf("b")]);
     await b;
-    expect(state.upPostFormUploading.images).toHaveLength(1);
+    expect(state().upPostFormUploading.images).toHaveLength(1);
     uploads[0]?.resolve([fileOf("a")]);
     await a;
-    expect(state.upPostForm.images.map((file: ProtoFile) => file.id)).toEqual(["added", "b", "a"]);
-    expect(state.upPostFormUploading).toEqual({});
+    expect(idsOf(state().upPostForm.images)).toEqual(["added", "b", "a"]);
+    expect(state().upPostFormUploading).toEqual({});
   });
 });
 
 describe("upload status poll", () => {
-  test("stops updating a single field once the field holds another file", async () => {
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
+
+  test("reads nothing once the field no longer holds the file, even while a read is pending", async () => {
     jest.useFakeTimers();
-    const { state, uploads, reads, fileStatus, call } = contextOf();
-    fileStatus.set("f1", "uploading");
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
+    const { instance, uploads, reads, reading, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
     uploads[0]?.resolve([fileOf("f1", "uploading")]);
     await done;
-    call("setImageOnUpPost", fileOf("mine"));
+    reading.hold = true;
     jest.advanceTimersByTime(3000);
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
     expect(reads).toEqual(["f1"]);
-    expect(state.upPostForm.image.id).toBe("mine");
-    jest.advanceTimersByTime(3000);
-    await Promise.resolve();
+    await instance.do.setImageOnUpPost(fileOf("mine"));
+    jest.advanceTimersByTime(9000);
+    await flush();
     expect(reads).toEqual(["f1"]);
+    expect(state().upPostForm.image.id).toBe("mine");
   });
 
   test("keeps updating the file while the field still holds it", async () => {
     jest.useFakeTimers();
-    const { state, uploads, fileStatus, call } = contextOf();
-    fileStatus.set("f1", "uploading");
-    const done = call("uploadImageOnUpPost", picked) as Promise<void>;
+    const { instance, uploads, fileStatus, state } = makeInstance();
+    fileStatus.set("f1", "active");
+    const done = instance.do.uploadImagesOnUpPost(picked);
     uploads[0]?.resolve([fileOf("f1", "uploading")]);
     await done;
-    fileStatus.set("f1", "active");
     jest.advanceTimersByTime(3000);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(state.upPostForm.image.status).toBe("active");
+    await flush();
+    expect(state().upPostForm.images[0].status).toBe("active");
   });
 });
