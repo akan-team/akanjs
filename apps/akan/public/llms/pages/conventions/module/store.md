@@ -188,6 +188,8 @@ Field
 
 - <model>FormLoading: string | boolean: `true` until a form opens, the id while `edit<Model>` loads, then `false`.
 
+- <model>FormUploading: { [fileField]?: string[] }: Uploads in flight per `File` field of the form; `{}` when idle. Keep submit disabled while it is not empty.
+
 - <model>Submit: Submit: `{ disabled, loading, times }` for the submit button.
 
 - <model>ViewAt: Date: When `<model>` was last loaded or saved.
@@ -250,7 +252,7 @@ Every field of the model also gets setters that write into `<model>Form`. The ar
 
 - addOrSub<Field>On<Model>(value): Array field: adds the value if absent, removes it if present.
 
-- upload<Field>On<Model>(fileList, idx?): `File` field: uploads, then polls until the file leaves `uploading`.
+- upload<Field>On<Model>(fileList, idx?): `File` field: uploads, then polls until the file leaves `uploading`. A result whose form was replaced or re-picked meanwhile is dropped.
 
 - writeOn<Model>(path, value): Writes a nested path, such as `"payments.3.name"`.
 

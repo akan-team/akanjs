@@ -310,8 +310,16 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
 
   const names = {
     modelForm: `${fieldName}Form`,
+    modelFormUploading: databaseStateNames(refName).modelFormUploading,
     writeOnModel: `writeOn${className}`,
     addModelFiles: `add${className}Files`,
+  };
+  type UploadState = { [key: string]: { [field: string]: string[] } };
+  let uploadSeq = 0;
+  const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
+    const { [field]: tickets = [], ...rest } = state[names.modelFormUploading];
+    const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
+    state[names.modelFormUploading] = left.length ? { ...rest, [field]: left } : rest;
   };
   const baseSetAction = {
     [names.writeOnModel]: function (this: SetGet, path: string | (string | number)[], value: any) {
@@ -322,9 +330,14 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   };
   const fieldSetAction = Object.entries(modelRef[FIELD_META]).reduce((acc, [key, field]) => {
     const namesOfField = formSetterNames(className, key);
+    const isFileField =
+      field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName;
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
         this.set((state: { [key: string]: any }) => {
+          // An explicit write wins over an upload still in flight for a single field; an array keeps its uploads,
+          // which insert into the list as it is when they land.
+          if (isFileField && !field.isArray) releaseUpload(state as UploadState, namesOfField.field);
           const setValue =
             value === null
               ? null
@@ -384,26 +397,49 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             },
           }
         : {}),
-      ...(field.isClass && fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
+      ...(isFileField && fileUploadRefName
         ? {
             [namesOfField.uploadFieldOnModel]: async function (
               this: SetGet,
               fileList: FileList | File[],
               index?: number,
             ) {
-              const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: any };
+              const formId = ((this.get() as { [key: string]: any })[names.modelForm] as { id?: string }).id;
               if (!fileList.length) return;
-              const files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(
-                fileList,
-                form.id,
-              );
+              // A ticket scopes the result to this form: replacing the form clears every ticket, and a single field
+              // keeps only the newest, so a result whose ticket is gone is stale and dropped.
+              const ticket = `${++uploadSeq}`;
+              this.set((state: UploadState) => {
+                const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
+                state[names.modelFormUploading] = {
+                  ...state[names.modelFormUploading],
+                  [namesOfField.field]: field.isArray ? [...tickets, ticket] : [ticket],
+                };
+              });
+              const isCurrent = () => {
+                const state = this.get() as { [key: string]: any };
+                return (
+                  !!(state as UploadState)[names.modelFormUploading][namesOfField.field]?.includes(ticket) &&
+                  (state[names.modelForm] as { id?: string }).id === formId
+                );
+              };
+              let files: ProtoFile[];
+              try {
+                files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
+              } catch (error) {
+                if (isCurrent()) this.set((state: UploadState) => releaseUpload(state, namesOfField.field, ticket));
+                throw error;
+              }
+              if (!isCurrent()) return;
+              this.set((state: UploadState) => releaseUpload(state, namesOfField.field, ticket));
               if (field.isArray) {
-                const idx = index ?? (form[namesOfField.field] as ProtoLightFile[]).length;
                 this.set((state: { [key: string]: { [key: string]: ProtoLightFile[] } }) => {
+                  const current = state[names.modelForm][namesOfField.field];
+                  const idx = Math.min(index ?? current.length, current.length);
                   state[names.modelForm][namesOfField.field] = [
-                    ...(form[namesOfField.field] as ProtoLightFile[]).slice(0, idx),
+                    ...current.slice(0, idx),
                     ...files,
-                    ...(form[namesOfField.field] as ProtoLightFile[]).slice(idx),
+                    ...current.slice(idx),
                   ];
                 });
               } else {
@@ -424,6 +460,17 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                       const currentFile = await (
                         (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>
                       )(file.id);
+                      const held = (this.get() as { [key: string]: { [key: string]: unknown } })[names.modelForm][
+                        namesOfField.field
+                      ] as ProtoLightFile | ProtoLightFile[] | null;
+                      // The form moved on (another pick, a reset, another record): this file is no longer ours to update.
+                      const isHeld = Array.isArray(held)
+                        ? held.some((heldFile) => heldFile.id === currentFile.id)
+                        : held?.id === currentFile.id;
+                      if (!isHeld) {
+                        clearInterval(intervalKey);
+                        return;
+                      }
                       if (field.isArray)
                         this.set((state: { [key: string]: { [key: string]: ProtoLightFile[] } }) => {
                           state[names.modelForm][namesOfField.field] = state[names.modelForm][namesOfField.field].map(
@@ -553,7 +600,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     }
     const savedAt = new Date(record.savedAt);
     if (auto || record.baseUpdatedAt === draft.baseUpdatedAt) {
-      this.set({ [names.modelForm]: form, [names.modelDraft]: { ...draft, appliedAt: savedAt } });
+      this.set({
+        [names.modelForm]: form,
+        [names.modelFormUploading]: {},
+        [names.modelDraft]: { ...draft, appliedAt: savedAt },
+      });
       return;
     }
     this.set({ [names.modelDraft]: { ...draft, pending: { savedAt, form } } });
@@ -607,6 +658,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
       this.set({
         [names.modelForm]: immerify(modelRef, defaultModel),
+        [names.modelFormUploading]: {},
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
         [names.model]: model,
         [names.modelLoading]: false,
@@ -635,6 +687,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
           : {}),
         [names.modelForm]: immerify(modelRef, defaultModel),
+        [names.modelFormUploading]: {},
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
@@ -729,8 +782,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const currentState = this.get() as { [key: string]: any };
       const modelForm = currentState[names.modelForm] as Input;
       const modelSubmit = currentState[names.modelSubmit] as { disabled: boolean };
+      const isUploading = Object.keys(currentState[names.modelFormUploading] as object).length > 0;
       const modelInput = (cnst.input.purify as (obj: any) => DefaultOf<Input> | null)(modelForm);
-      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: !modelInput || disabled } });
+      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: !modelInput || isUploading || disabled } });
     },
     [names.submitModel]: async function (this: SetGet, option?: CreateOption<Full>) {
       const currentState = this.get() as { [key: string]: any };
@@ -759,6 +813,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelForm = immerify(modelRef, merged);
       this.set({
         [names.modelForm]: modelForm,
+        [names.modelFormUploading]: {},
         [defaultModelKey]: setDefault ? immerify(modelRef, merged) : defaultModel,
         [names.model]: null,
         [names.modelModal]: modal ?? "edit",
@@ -782,6 +837,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelFormLoading]: false,
         [names.modelViewAt]: new Date(),
         [names.modelForm]: modelForm,
+        [names.modelFormUploading]: {},
         [names.modelDraft]: armDraft.call(this, draftScope, modelForm, updatedAtOf(model)),
       });
       // A record that moved keeps the draft pending: overwriting a server value the user sees is not recoverable.
@@ -850,6 +906,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.model]: model ?? null,
         [names.modelViewAt]: new Date(0),
         [names.modelForm]: immerify(modelRef, defaultModel),
+        [names.modelFormUploading]: {},
         [names.modelModal]: null,
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
       });
@@ -870,6 +927,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       if (!draft?.pending) return;
       this.set({
         [names.modelForm]: draft.pending.form,
+        [names.modelFormUploading]: {},
         [names.modelDraft]: { ...draft, pending: null, appliedAt: draft.pending.savedAt },
       });
     },
@@ -879,7 +937,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       void DraftStore.remove(draft.key);
       // Saving stays armed; dropping an applied draft puts back the form as the editor opened it.
       this.set({
-        ...(draft.appliedAt && openFormBase ? { [names.modelForm]: openFormBase } : {}),
+        ...(draft.appliedAt && openFormBase ? { [names.modelForm]: openFormBase, [names.modelFormUploading]: {} } : {}),
         [names.modelDraft]: { ...draft, pending: null, appliedAt: null },
       });
     },

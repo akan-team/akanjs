@@ -171,6 +171,7 @@ export default function EditModal<Full extends { id: string }>({
       modelFormLoading: `${modelName}FormLoading`,
       modelModal: `${modelName}Modal`,
       modelSubmit: `${modelName}Submit`,
+      modelFormUploading: `${modelName}FormUploading`,
       submitModel: `submit${ModelName}`,
       resetModel: `reset${ModelName}`,
       setModelModal: `set${ModelName}Modal`,
@@ -308,6 +309,9 @@ export default function EditModal<Full extends { id: string }>({
           ? () => renderSubmit(storeUse[names.modelForm]() as Full)
           : () => {
               const modelSubmit = storeUse[names.modelSubmit]() as Submit;
+              // A save while a file is still uploading would store the form without it.
+              const isUploading = Object.keys(storeUse[names.modelFormUploading]() as object).length > 0;
+              const isBlocked = modelSubmit.disabled || isUploading || !!disabled;
               const handleSubmit = async ({ onError }: { onError?: (e: string) => void } = {}) => {
                 await storeDo[names.submitModel]({
                   ...submitOption,
@@ -328,8 +332,7 @@ export default function EditModal<Full extends { id: string }>({
               };
               const submitModel = st
                 .tool(names.submitModel, {
-                  guard: () =>
-                    modelSubmit.disabled || disabled ? `The ${names.model} form is not ready to submit.` : true,
+                  guard: () => (isBlocked ? `The ${names.model} form is not ready to submit.` : true),
                 })
                 .desc(`Save the ${names.model} the open form holds.`)
                 .exec(() => handleSubmit());
@@ -337,7 +340,7 @@ export default function EditModal<Full extends { id: string }>({
                 <Button
                   {...agentAttrs(submitModel)}
                   className={cn("mt-4 w-full gap-2", submitClassName)}
-                  disabled={modelSubmit.disabled || !!disabled}
+                  disabled={isBlocked}
                   onClick={async (e, { onError }) => {
                     await handleSubmit({ onError });
                   }}

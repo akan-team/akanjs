@@ -26,7 +26,8 @@ For a model `comment` (`<Slice>` is a signal slice suffix, e.g. `InPublic`):
 
 ## Generated state — `st.use.*`
 
-`comment`, `commentLoading`, `commentForm`, `commentFormLoading`, `commentSubmit`, `commentModal`,
+`comment`, `commentLoading`, `commentForm`, `commentFormLoading`, `commentFormUploading` (uploads in flight, per
+`File` field — non-empty means do not submit), `commentSubmit`, `commentModal`,
 `commentViewAt`, `commentOperation`; per slice `commentList<Slice>`, `commentListLoading<Slice>`,
 `commentInitList<Slice>`, `commentSelection<Slice>`, `commentInsight<Slice>`, `pageOfComment<Slice>`,
 `lastPageOfComment<Slice>`, `hasMoreOfComment<Slice>`, `limitOfComment<Slice>`, `sortOfComment<Slice>`.
