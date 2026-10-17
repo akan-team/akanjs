@@ -851,7 +851,8 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
                 ),
                 ko: (
                   <span>
-                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을 보지 못합니다:
+                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을
+                    보지 못합니다:
                   </span>
                 ),
               })}
