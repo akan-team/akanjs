@@ -86,10 +86,12 @@ export class CascadeRunner {
 
   async #removeRef(edge: RefEdge, doc: Record<string, unknown>, seen: Set<string>) {
     const value = doc[edge.key];
-    const ids = (Array.isArray(value) ? value : [value]).filter(
+    const ids = [...new Set(Array.isArray(value) ? value : [value])].filter(
       (item): item is string => typeof item === "string" && !seen.has(`${edge.refName}:${item}`),
     );
     if (!ids.length) return;
+    // Two fields, or one array, may hold the same id; a second remove finds no live row and aborts the cascade.
+    for (const id of ids) seen.add(`${edge.refName}:${id}`);
     const service = this.#service(edge.refName);
     if (this.#bulk.has(edge.refName)) {
       await service.__removeMany({ id: documentQueryHelper.oneOf(ids) });
@@ -113,6 +115,7 @@ export class CascadeRunner {
       let removed = 0;
       for (const id of ids) {
         if (seen.has(`${edge.refName}:${id}`)) continue;
+        seen.add(`${edge.refName}:${id}`);
         await service.__remove(id);
         removed += 1;
       }
