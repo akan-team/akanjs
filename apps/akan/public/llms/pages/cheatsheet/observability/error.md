@@ -155,7 +155,7 @@ Field
 
 When a plain Error escapes
 
-Anything that is not an `Err` or a missing document is answered as a 500, so the user never sees the dictionary sentence:
+A plain `Error`, which is neither an `Err` nor a missing document, is answered as a 500, so the user never sees the dictionary sentence:
 
 Thrown
 

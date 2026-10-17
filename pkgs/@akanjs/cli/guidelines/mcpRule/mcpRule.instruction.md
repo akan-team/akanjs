@@ -239,6 +239,9 @@ export default page()
   unparseable, outside its `enumOf`, or **undeclared** comes back as `isError` naming it — `additionalProperties: false` travels in the
   published schema and nothing on the wire enforces it — and so does a document that is not there, as
   `No <model> found for the arguments given.` A prompt, having no `isError` to carry a refusal, answers `-32602`.
+  A document missing on another server this one called (`fetch.clone({ origin })`) arrives as that server's 404
+  `base.error.documentNotFound`, so a tool reads its dictionary sentence (`The requested item does not exist.`) and an
+  MCP App view receives that `Err`; a prompt whose page reads it is `No screen exists for these arguments.`
   Only a real failure logs a stack; an agent can drive the rest at will.
 - **Three revisions are spoken**: the modern `2026-07-28` and the legacy `2025-11-25` / `2025-06-18`, which are
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to

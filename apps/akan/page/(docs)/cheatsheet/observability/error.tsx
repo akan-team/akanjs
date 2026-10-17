@@ -845,14 +845,14 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
               {l.trans({
                 en: (
                   <span>
-                    Anything that is not an <code>Err</code> or a missing document is answered as a 500, so the user
-                    never sees the dictionary sentence:
+                    A plain <code>Error</code>, which is neither an <code>Err</code> nor a missing document, is answered
+                    as a 500, so the user never sees the dictionary sentence:
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을
-                    보지 못합니다:
+                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 일반 <code>Error</code>는 500으로 응답하므로,
+                    사용자는 dictionary 문장을 보지 못합니다:
                   </span>
                 ),
               })}
