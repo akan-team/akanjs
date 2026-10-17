@@ -86,19 +86,23 @@ export class CascadeRunner {
 
   async #removeRef(edge: RefEdge, doc: Record<string, unknown>, seen: Set<string>) {
     const value = doc[edge.key];
-    const ids = [...new Set(Array.isArray(value) ? value : [value])].filter(
+    const ids = (Array.isArray(value) ? value : [value]).filter(
       (item): item is string => typeof item === "string" && !seen.has(`${edge.refName}:${item}`),
     );
     if (!ids.length) return;
-    // Two fields, or one array, may hold the same id; a second remove finds no live row and aborts the cascade.
-    for (const id of ids) seen.add(`${edge.refName}:${id}`);
     const service = this.#service(edge.refName);
     if (this.#bulk.has(edge.refName)) {
       await service.__removeMany({ id: documentQueryHelper.oneOf(ids) });
       return;
     }
     // Through the target's service, never its model: only that path runs the `_postRemove` side effects.
-    for (const id of ids) await service.__remove(id);
+    for (const id of ids) {
+      // A second remove finds no live row and aborts the cascade; mark only on removal, since a nested drain skips
+      // marked rows and would stop at a page of siblings this loop has not removed yet.
+      if (seen.has(`${edge.refName}:${id}`)) continue;
+      seen.add(`${edge.refName}:${id}`);
+      await service.__remove(id);
+    }
   }
 
   async #removeWith(edge: WithEdge, ownerRef: string, ownerId: string, seen: Set<string>) {

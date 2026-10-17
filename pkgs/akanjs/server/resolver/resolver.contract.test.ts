@@ -784,6 +784,66 @@ describe("ServiceResolver cascade", () => {
     expect(removed).toEqual(["cascadeChild:file-1", "cascadeMiddle:middle-1"]);
   });
 
+  // gallery holds A and 200 siblings that, with an older C, name A as their owner: A's first drain page is all siblings.
+  const pagedOverlap = (anyOwner: boolean) => {
+    const ownerKey = anyOwner ? "owner" : "parent";
+    const siblings = Array.from({ length: 200 }, (_, idx) => `b-${idx}`);
+    const ownerOf = new Map<string, string>([...siblings.map((id) => [id, "a"] as const), ["c", "a"]]);
+    const removed: string[] = [];
+    class SideEffectService {
+      async _postRemove(doc: unknown) {
+        return doc;
+      }
+    }
+    const cascade = new CascadeRunner();
+    const service = {
+      __listIds: async (query: Record<string, unknown>, option?: { limit?: number }) =>
+        [...ownerOf]
+          .filter(([id, owner]) => owner === query[ownerKey] && !removed.includes(id))
+          .map(([id]) => id)
+          .slice(0, option?.limit),
+      __remove: async (id: string) => {
+        if (removed.includes(id)) throw new Error(`No Document (cascadeChild): ${id}`);
+        removed.push(id);
+        await cascade.run("cascadeChild", { id });
+        return { id };
+      },
+    };
+    const owned = anyOwner
+      ? { key: ownerKey, modelRef: null, refName: null, typeKey: "ownerType", typeValues: [], anyOwner: true }
+      : { key: ownerKey, modelRef: null, refName: "cascadeChild", typeKey: null, typeValues: [] };
+    cascade.register(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.register(
+      constantOf("cascadeChild", { removeWith: new Map([[ownerKey, owned]]) }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.seal(() => service as never);
+    return { cascade, removed, gallery: ["a", ...siblings] };
+  };
+
+  test("drains every child of an array entry even when its first page is siblings the array removes later", async () => {
+    const { cascade, removed, gallery } = pagedOverlap(false);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(removed).toContain("c");
+    expect(removed).toHaveLength(202);
+  });
+
+  test("drains every wildcard child of an array entry even when its first page is siblings the array removes later", async () => {
+    const { cascade, removed, gallery } = pagedOverlap(true);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(removed).toContain("c");
+    expect(removed).toHaveLength(202);
+  });
+
   test("fails to seal when a cascade target is not mounted", () => {
     const cascade = new CascadeRunner();
     cascade.register(
