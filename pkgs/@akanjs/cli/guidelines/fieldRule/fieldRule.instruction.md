@@ -68,6 +68,8 @@ Use this whenever generating constants or scalar constants. It defines the curre
   `pkgs/akanjs/service/predefinedAdaptor/storage.adaptor.ts`); the reference implementation is the `file` module.
   Do not hand-roll data-URL fallbacks. `{ cascade: "removeRef" }` on the field removes the file with its owner
   (`queryRule`).
+- The disk path of a stored file is `storage.resolveLocalPath?.(path, access?)` — `null` when it is not on local
+  disk or leaves the storage root. Never cast the role to read `BlobStorage`'s `root` / `privateRoot`.
 
 ## Current Akan Patterns
 - Use `String`, `Boolean`, `Date`, `Int`, `Float`, `ID`, scalar classes, model light classes, or enum classes as field types.

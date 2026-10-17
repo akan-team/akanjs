@@ -142,6 +142,12 @@ export class TaskService extends serve(db.task, ({ plug }) => ({
 }
 ```
 
+To reach the file itself (a `Bun.file()` response with ranges, a CLI tool, a size check), ask the role where it
+lives: `this.storage.resolveLocalPath?.(path, access?)` answers the absolute disk path `BlobStorage` uses, picking
+the root as its writes do with `access` and by the `private/` prefix without it. It answers `null` for a path that
+leaves that root, and an object-storage adaptor does not implement it, so fall back to `readData()`. Never cast the
+role to reach `root` / `privateRoot`.
+
 For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`.
 Injecting a file/image field is usually simpler than calling
 storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the

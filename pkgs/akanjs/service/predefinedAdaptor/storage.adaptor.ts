@@ -1,4 +1,5 @@
 import { renameSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { getApiPrefix, getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 
@@ -50,6 +51,8 @@ export interface StorageAdaptor {
   copyData(request: CopyRequest): Promise<string>;
   deleteData(url: string): Promise<boolean>;
   deleteDataByPath(path: string): Promise<boolean>;
+  /** Absolute path of a stored file on this machine's disk, or `null` when it is not on local disk or escapes the storage root. */
+  resolveLocalPath?(path: string, access?: "public" | "private"): string | null;
 }
 
 export interface BlobStorageOptions {
@@ -87,6 +90,16 @@ export class BlobStorage
   }
   #resolveFilePath(path: string) {
     return path.startsWith("private/") ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+  }
+  // Picks the root as the writes do with `access`, and as the reads do (the `private/` prefix) without it.
+  resolveLocalPath(path: string, access?: "public" | "private") {
+    const isPrivate = access ? access === "private" : path.startsWith("private/");
+    const base = resolve(isPrivate ? this.privateRoot : this.root);
+    const target = resolve(base, path);
+    //? `relative` rather than a prefix check: it holds for either separator, so a Windows desktop server is covered.
+    const within = relative(base, target);
+    if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) return null;
+    return target;
   }
   async readData(path: string): Promise<ReadableStream> {
     const filePath = this.#resolveFilePath(path);

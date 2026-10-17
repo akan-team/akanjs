@@ -637,13 +637,15 @@ export default page()
           en: (
             <>
               The default and the easiest to debug. Files land in <code>{"local/<app>/backend"}</code>, and{" "}
-              <code>localFile.getBlob</code> streams them back.
+              <code>localFile.getBlob</code> streams them back. <code>resolveLocalPath(path, access?)</code> gives a
+              stored file's disk path, or <code>null</code> for one outside the storage root.
             </>
           ),
           ko: (
             <>
               기본값이고 디버깅이 가장 쉽습니다. 파일은 <code>{"local/<app>/backend"}</code>에 쌓이고,{" "}
-              <code>localFile.getBlob</code>이 스트림으로 돌려줍니다.
+              <code>localFile.getBlob</code>이 스트림으로 돌려줍니다. <code>resolveLocalPath(path, access?)</code>는
+              저장된 파일의 디스크 경로를 주고, 스토리지 루트 밖이면 <code>null</code>을 돌려줍니다.
             </>
           ),
         }),
@@ -655,13 +657,15 @@ export default page()
           en: (
             <>
               For production and shared access. Write an <code>adapt()</code> class that implements{" "}
-              <code>StorageAdaptor</code> and apply it in <code>lib/option.ts</code>.
+              <code>StorageAdaptor</code> and apply it in <code>lib/option.ts</code>. It leaves the optional{" "}
+              <code>resolveLocalPath</code> out, since its files are not on this disk.
             </>
           ),
           ko: (
             <>
               운영 환경과 여러 서버의 공유 접근에 맞습니다. <code>StorageAdaptor</code>를 구현한 <code>adapt()</code>{" "}
-              클래스를 만들어 <code>lib/option.ts</code>에 적용합니다.
+              클래스를 만들어 <code>lib/option.ts</code>에 적용합니다. 파일이 이 디스크에 없으므로 선택 메서드인{" "}
+              <code>resolveLocalPath</code>는 구현하지 않습니다.
             </>
           ),
         }),

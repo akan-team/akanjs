@@ -172,9 +172,9 @@ Grow Later
 
 Start on local disk. Once the feature works, move to S3, R2 or MinIO by swapping the storage adaptor, not by rewriting the upload API.
 
-- Local disk — `BlobStorage` — The default and the easiest to debug. Files land in `local/<app>/backend`, and `localFile.getBlob` streams them back.
+- Local disk — `BlobStorage` — The default and the easiest to debug. Files land in `local/<app>/backend`, and `localFile.getBlob` streams them back. `resolveLocalPath(path, access?)` gives a stored file's disk path, or `null` for one outside the storage root.
 
-- Object storage — `option.applyAdaptor(StorageAdaptorRole, S3Storage)` — For production and shared access. Write an `adapt()` class that implements `StorageAdaptor` and apply it in `lib/option.ts`.
+- Object storage — `option.applyAdaptor(StorageAdaptorRole, S3Storage)` — For production and shared access. Write an `adapt()` class that implements `StorageAdaptor` and apply it in `lib/option.ts`. It leaves the optional `resolveLocalPath` out, since its files are not on this disk.
 
 Applying your own adaptor is one line in the app's option file:
 
