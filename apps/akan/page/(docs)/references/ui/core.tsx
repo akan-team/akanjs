@@ -120,8 +120,8 @@ export default page()
         key: "href",
         type: "string | null",
         desc: l.trans({
-          en: "Destination route. When empty, Link renders its children inside a plain `div`.",
-          ko: "이동할 route입니다. 비어 있으면 children을 평범한 `div`로 감싸 그립니다.",
+          en: "An app path, given the locale and basePath, or an external URL kept as is. Empty renders a plain `div`.",
+          ko: "locale과 basePath가 붙는 앱 경로, 또는 그대로 두는 외부 URL입니다. 비어 있으면 평범한 `div`를 그립니다.",
         }),
       },
       {
@@ -827,6 +827,30 @@ export const Card = ({ product }: ModelProps<"product", cnst.LightProduct>) => {
                     <span>
                       <strong>클라이언트 경계가 필요 없습니다.</strong> <code>Link</code>는 서버 컴포넌트에서 그대로
                       동작하므로 이 Unit에는 <code>{'"use client"'}</code>가 없습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>An absolute URL stays external.</strong> Any scheme in any case (<code>HTTPS://…</code>,{" "}
+                      <code>mailto:</code>, <code>tel:</code>, <code>kakaotalk://…</code>) or a <code>{"//host"}</code>{" "}
+                      path passes through untouched, and the CSR bundle opens it outside the app. Only an app path gets
+                      the locale and basePath. <code>javascript:</code>, <code>vbscript:</code> and <code>data:</code>{" "}
+                      never count as external. <code>Href.isExternal(href)</code> from <code>akanjs/client</code> is the
+                      same test.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>절대 URL은 외부 링크로 남습니다.</strong> 대소문자와 상관없이 스킴이 있는 URL(
+                      <code>HTTPS://…</code>, <code>mailto:</code>, <code>tel:</code>, <code>kakaotalk://…</code>)과{" "}
+                      <code>{"//host"}</code> 경로는 그대로 두고, CSR 번들에서는 앱 밖에서 엽니다. locale과 basePath는
+                      앱 경로에만 붙습니다. <code>javascript:</code>, <code>vbscript:</code>, <code>data:</code>는 외부
+                      링크로 치지 않습니다. <code>akanjs/client</code>의 <code>Href.isExternal(href)</code>가 같은
+                      판정을 합니다.
                     </span>
                   ),
                 })}
