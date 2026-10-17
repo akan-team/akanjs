@@ -130,6 +130,13 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   the declared model, not the service's document: a method only the document has is not there on a hit, and a return
   declared as a `Light` model shows `resolveField` its light fields only. The entry still holds `hidden` and `secret`
   values for its TTL, as the handler returned them.
+- **A write drops the answers it made stale: `plug(EndpointCacheControl)` in the service, then
+  `await this.endpointCache.invalidate("bannerListInPublic")`** for every cached answer of that endpoint, or
+  `invalidate("bannerInPublic", [category])` for the one call with those arguments, in declared order as the endpoint
+  receives them. It works across instances through the cache the entries live in. Every entry key carries its
+  endpoint's generation and the endpoint-wide form bumps it in one `incr`: nothing is scanned, old entries expire on
+  their TTL, and a miss already running when you invalidate writes under the old generation, where nobody reads it.
+  It answers `false` (warned) when the cache failed. A cached call reads the generation before its entry.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
 - A call runs the cross-site check and an `ip` rate limit, then the body read, then the default middleware chain
