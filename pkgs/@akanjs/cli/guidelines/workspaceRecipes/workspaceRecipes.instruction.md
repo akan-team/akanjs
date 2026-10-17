@@ -537,7 +537,7 @@ akan sync automatically generates APIs across all layers. Only write custom logi
 | Auto-Generated | Description |
 |---------------|-------------|
 | `this.<model>Model` | Auto-injected model adaptor |
-| `get<Model>(id)`, `load<Model>(id)` | Single document lookup |
+| `get<Model>(id)`, `load<Model>(id)` | Single document lookup: `get` throws `NoDocumentError` for a missing or removed id, answered 404 `base.error.documentNotFound`; `load` returns `null` |
 | `create<Model>(data)`, `update<Model>(id, data)`, `remove<Model>(id)` | CRUD operations — named after the model, e.g. `createTask`/`updateTask`/`removeTask` (there is no literal `createModel`) |
 | `list<Query>(args)`, `find<Query>(args)`, `pick<Query>(args)` | Filter-based queries |
 | `exists<Query>(args)`, `count<Query>(args)`, `insight<Query>(args)` | Filter-based helpers |

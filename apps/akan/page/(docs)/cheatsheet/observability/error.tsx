@@ -203,7 +203,14 @@ export default page()
         }),
       },
       {
-        name: ["Error", "getOrder(missingId)"],
+        name: ["NoDocumentError", "getOrder(missingId)"],
+        desc: l.trans({
+          en: "Answered as 404, and `error` holds `base.error.documentNotFound`.",
+          ko: "404로 응답하고, `error`에는 `base.error.documentNotFound`가 들어갑니다.",
+        }),
+      },
+      {
+        name: ["Error"],
         desc: l.trans({
           en: "Answered as 500, and a deployed build sets `error` to `Internal Server Error`.",
           ko: "500으로 응답하며, 배포된 빌드에서는 `error`가 `Internal Server Error`입니다.",
@@ -479,8 +486,8 @@ export class Order extends by(cnst.Order) {
                       <strong>
                         <code>get</code> throws, <code>load</code> returns null.
                       </strong>{" "}
-                      <code>getOrder(id)</code> throws a plain error when the record is missing, so the caller sees a
-                      generic 500.
+                      <code>getOrder(id)</code> throws <code>NoDocumentError</code> when the record is missing, which
+                      the caller sees as a 404.
                     </span>
                   ),
                   ko: (
@@ -488,7 +495,8 @@ export class Order extends by(cnst.Order) {
                       <strong>
                         <code>get</code>은 에러를 던지고, <code>load</code>는 null을 돌려줍니다.
                       </strong>{" "}
-                      <code>getOrder(id)</code>는 레코드가 없으면 일반 에러를 던지므로 호출자는 뭉뚱그린 500을 받습니다.
+                      <code>getOrder(id)</code>는 레코드가 없으면 <code>NoDocumentError</code>를 던지고, 호출자는 404를
+                      받습니다.
                     </span>
                   ),
                 })}
@@ -497,14 +505,18 @@ export class Order extends by(cnst.Order) {
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Answer a missing record yourself.</strong> When a user can reach an id that does not
-                      exist, call <code>loadProduct(id)</code> and throw <code>Err.NotFound</code> on <code>null</code>.
+                      <strong>A missing record is already a 404.</strong> The generated <code>getProduct</code> and a{" "}
+                      <code>pick</code> that finds no live row answer 404 <code>base.error.documentNotFound</code>. To
+                      say more, call <code>loadProduct(id)</code> and throw your own <code>Err.NotFound</code> on{" "}
+                      <code>null</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>없는 레코드는 직접 답합니다.</strong> 사용자가 없는 id에 닿을 수 있다면{" "}
-                      <code>loadProduct(id)</code>를 부르고, <code>null</code>이면 <code>Err.NotFound</code>를 던집니다.
+                      <strong>없는 레코드는 이미 404입니다.</strong> 생성된 <code>getProduct</code>와 살아 있는 행을
+                      찾지 못한 <code>pick</code>은 404 <code>base.error.documentNotFound</code>로 답합니다. 더 자세히
+                      답하려면 <code>loadProduct(id)</code>를 부르고, <code>null</code>이면 <code>Err.NotFound</code>를
+                      직접 던집니다.
                     </span>
                   ),
                 })}
@@ -833,13 +845,14 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
               {l.trans({
                 en: (
                   <span>
-                    Anything that is not an <code>Err</code> is answered as a 500, so the user never sees the dictionary
-                    sentence:
+                    A plain <code>Error</code>, which is neither an <code>Err</code> nor a missing document, is answered
+                    as a 500, so the user never sees the dictionary sentence:
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>Err</code>가 아닌 에러는 500으로 응답하므로, 사용자는 dictionary 문장을 보지 못합니다:
+                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 일반 <code>Error</code>는 500으로 응답하므로,
+                    사용자는 dictionary 문장을 보지 못합니다:
                   </span>
                 ),
               })}

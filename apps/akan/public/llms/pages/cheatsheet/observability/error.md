@@ -99,9 +99,9 @@ Choose Status
 
 In a service, the order's state and the product's existence pick different statuses:
 
-**`get` throws, `load` returns null.** `getOrder(id)` throws a plain error when the record is missing, so the caller sees a generic 500.
+**`get` throws, `load` returns null.** `getOrder(id)` throws `NoDocumentError` when the record is missing, which the caller sees as a 404.
 
-**Answer a missing record yourself.** When a user can reach an id that does not exist, call `loadProduct(id)` and throw `Err.NotFound` on `null`.
+**A missing record is already a 404.** The generated `getProduct` and a `pick` that finds no live row answer 404 `base.error.documentNotFound`. To say more, call `loadProduct(id)` and throw your own `Err.NotFound` on `null`.
 
 **It is the HTTP status too.** The response goes out with the same code, so proxies and access logs also see 404 or 409.
 
@@ -155,7 +155,7 @@ Field
 
 When a plain Error escapes
 
-Anything that is not an `Err` is answered as a 500, so the user never sees the dictionary sentence:
+A plain `Error`, which is neither an `Err` nor a missing document, is answered as a 500, so the user never sees the dictionary sentence:
 
 Thrown
 
@@ -163,7 +163,9 @@ What the caller gets
 
 - Err, Err.*: Answered with its own `statusCode`, and `error` holds the dictionary key.
 
-- Error, getOrder(missingId): Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
+- NoDocumentError, getOrder(missingId): Answered as 404, and `error` holds `base.error.documentNotFound`.
+
+- Error: Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
 
 **In development you see everything.** Under `akan start` the response carries the real message and the stack.
 

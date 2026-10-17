@@ -96,6 +96,10 @@ this is the full contract behind them.
   a comparison) throws `can never match`.
 - Removes, slices, filter methods, loaders and `pickById` stay live-only, a removed document is read-only
   (`save()` throws), and `updateById(id, { removedAt: null }, { withRemoved: true })` revives one without hooks.
+- **A `pick` that finds no live row throws `NoDocumentError`**, so the generated `get<Model>` of a missing or
+  removed id answers an HTTP or websocket caller 404 `base.error.documentNotFound`, and an agent `No <model> found
+  for the arguments given.` The message, which names the table and the id or query, stays on the server. Throw
+  your own `Err.NotFound` only where a nullable load decides that nothing found is an error.
 - The facade spells `Many`/`One` out on its writes (`updateOne` / `updateMany` / `removeOne` / `removeMany`); only
   the count was shortened to `count(query)`, with `countDocuments` kept as `@deprecated`.
 - **`updateById(id, update)` and `removeById(id)` are those same query-level writes narrowed to one id, not the

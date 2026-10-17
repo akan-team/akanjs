@@ -1,7 +1,11 @@
 /**
  * A `pick` or `get` that matched nothing, so a caller can tell a missing document from a failure. Callers match on
- * the message; `statusCode` does not reach HTTP (`isExceptionLike` also wants a `toJSON`), where it stays a 500.
+ * the message, which names the table and the id or query; the wire carries only the dictionary key, as a 404.
  */
 export class NoDocumentError extends Error {
   readonly statusCode = 404;
+
+  toJSON() {
+    return { error: "base.error.documentNotFound", statusCode: this.statusCode };
+  }
 }

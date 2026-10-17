@@ -13,7 +13,7 @@ import {
 } from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls } from "akanjs/document";
+import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, NoDocumentError } from "akanjs/document";
 import {
   adapt,
   CacheAdaptorRole,
@@ -1699,6 +1699,12 @@ describe("SignalContext argument parsing", () => {
     await call(undeclared);
     await call(undeclared);
     await call(throwing("base.error.gatewayTimeout"));
+    const missing = buildEndpoint
+      .mutation(String, { guards: [TestAdmin as GuardCls], errors: { 409: ["item.error.locked"] } })
+      .exec(() => {
+        throw new NoDocumentError("No Document (item): 507f1f77bcf86cd799439011");
+      });
+    expect((await call(missing))?.status).toBe(404);
 
     expect(warned).toEqual([
       '"contractCall" threw item.error.gone, which its `errors` declaration leaves out: OpenAPI and the MCP catalogue do not publish it.',
