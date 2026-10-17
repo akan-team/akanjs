@@ -515,6 +515,7 @@ export const Open = ({ className }: OpenProps) => {
   if (!ticket) return null;
   return (
     <button
+      type="button"
       className={className}
       onClick={() => void st.do.openTicket(ticket.id, dayjs().add(7, "day"))}
     >

@@ -295,6 +295,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   `Record<...>`. Shared by a second module, the classes become a recipe variant in `ui/Recipe/`; only an enum→variant
   name map (`BadgeVariants["variant"]`) moves to `webkit/`.
 - `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.
+- A raw `<button>` defaults to `type="submit"`, so a click inside any `<form>` also submits it. Write
+  `type="button"` on every raw `<button>` that does not submit; `<Button>` from `akanjs/ui` already defaults to it.
 
 ## Naming And Language
 

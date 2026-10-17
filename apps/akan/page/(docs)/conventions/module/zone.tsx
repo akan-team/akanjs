@@ -746,7 +746,7 @@ export const Card = ({ className, init, devAppId }: CardProps) => {
             partial={{ devAppId }}
             slice={fetch.slice.dbBackupInDevApp}
           >
-            <button className={buttonRecipe({ variant: "secondary" })}>
+            <button type="button" className={buttonRecipe({ variant: "secondary" })}>
               {l("base.new")}
             </button>
           </Model.NewWrapper>

@@ -1073,6 +1073,7 @@ export const Publish = ({ className, postId }: PublishProps) => {
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => st.do.publishPost(postId)}
     >

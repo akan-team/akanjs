@@ -570,7 +570,7 @@ export const Toolbox = ({ projectId, name, isOwner }: ToolboxProps) => {
             </Model.Edit>
           </li>
           <li>
-            <button onClick={() => void archive(projectId)}>{l("project.archiveProject")}</button>
+            <button type="button" onClick={() => void archive(projectId)}>{l("project.archiveProject")}</button>
           </li>
           {isOwner ? (
             <li>
@@ -725,12 +725,13 @@ export const SetOrg = ({ bizLicenseId }: SetOrgProps) => {
   return (
     <Dialog>
       <Dialog.Trigger>
-        <button className={buttonRecipe()}>{l("bizLicense.setOrg")}</button>
+        <button type="button" className={buttonRecipe()}>{l("bizLicense.setOrg")}</button>
       </Dialog.Trigger>
       <Dialog.Modal>
         <Field.ParentId value={orgId} onChange={setOrgId} slice={fetch.slice.orgInSelf} />
         <Dialog.Action>
           <button
+            type="button"
             className={buttonRecipe({ variant: "primary" })}
             disabled={!orgId}
             onClick={() => {
@@ -830,11 +831,11 @@ export const Resolve = ({ reportId }: ResolveProps) => {
   const reportModal = st.use.reportModal();
   return (
     <>
-      <button onClick={() => void st.do.editReport(reportId, { modal: \`resolve-\${reportId}\` })}>
+      <button type="button" onClick={() => void st.do.editReport(reportId, { modal: \`resolve-\${reportId}\` })}>
         {l("report.resolveReport")}
       </button>
       <Modal open={reportModal === \`resolve-\${reportId}\`} onCancel={st.do.resetReport}>
-        <button onClick={() => void st.do.resolveReport(reportId)}>{l.trans({ en: "Confirm", ko: "확인" })}</button>
+        <button type="button" onClick={() => void st.do.resolveReport(reportId)}>{l.trans({ en: "Confirm", ko: "확인" })}</button>
       </Modal>
     </>
   );
@@ -932,7 +933,7 @@ export const Resolve = ({ reportId }: ResolveProps) => {
   const { l } = usePage();
   const [projectIds] = st.use.queryArgsOfTicketInSelf();
   return (
-    <button onClick={() => void st.do.setQueryArgsOfTicketInSelf(projectIds, [])}>
+    <button type="button" onClick={() => void st.do.setQueryArgsOfTicketInSelf(projectIds, [])}>
       {l.trans({ en: "All Assignees", ko: "모든 담당자" })}
     </button>
   );

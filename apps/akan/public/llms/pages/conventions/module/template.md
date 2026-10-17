@@ -238,6 +238,8 @@ Everything above, as a checklist to run before you finish a Template:
 
 **Use a plain control when no Field fits.** `Input`, a button or your own component is fine, but a model field never gets a bare `<input>`.
 
+**A raw button says it does not submit.** A `<button>` with no `type` is a submit button, so when the Template sits in a `<form>` its click submits it. Write `type="button"` on it; `Button` from `akanjs/ui` already defaults to that.
+
 **Keep business decisions out.** They belong in constant, document, service, signal or a store action, and a Template calls no `fetch.*`.
 
 **Split large forms into named components** such as `General`, `Phone` and `SubmitPhone`.
@@ -373,6 +375,7 @@ export const SubmitPhone = ({ userId, redirect }: SubmitPhoneProps) => {
   const phone = st.use.phone();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" })}
       disabled={!isPhoneNumber(phone)}
       onClick={() => {
@@ -464,7 +467,7 @@ export const Edit = ({ ticketId }: EditProps) => {
     partial={{ project }}
     slice={fetch.slice.ticketInProject}
   >
-    <button className={buttonRecipe({ variant: "secondary" })}>
+    <button type="button" className={buttonRecipe({ variant: "secondary" })}>
       {l("ticket.newTicket")}
     </button>
   </Model.NewWrapper>

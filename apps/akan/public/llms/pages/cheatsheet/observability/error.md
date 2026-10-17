@@ -292,6 +292,7 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => st.do.addItemToOrder(orderId, productId, 3)}
       type="button"

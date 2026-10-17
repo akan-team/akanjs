@@ -901,6 +901,7 @@ export const Refill = ({ className }: RefillProps) => {
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => {
         void st.do.refillTodaysInventory();
@@ -1170,7 +1171,7 @@ export default page().render(() => {
       <div className="flex items-center gap-4"> // [!code collapse:16]
         <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <Model.New
-          trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
+          trigger={<button type="button" className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="default"
           partial={icecreamOrderForm}
