@@ -18,6 +18,7 @@ import {
   adapt,
   CacheAdaptorRole,
   type DatabaseService,
+  EndpointCacheControl,
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
   type InjectRegistry,
@@ -1122,6 +1123,75 @@ describe("SignalContext execution", () => {
     expect((await call(new Map())).status).toBe(403);
     expect(runs).toBe(1);
     expect(passes).toBe(3);
+  });
+
+  test("drops an endpoint's cached answers before the TTL: every one, or the one for given args", async () => {
+    let runs = 0;
+    let holdNext = false;
+    let release = () => {};
+    let started = () => {};
+    const info = buildEndpoint
+      .query(String, { guards: [Public], cache: 60_000 })
+      .param("category", String)
+      .exec(async (category) => {
+        runs++;
+        const answer = `${category}-${runs}`;
+        if (holdNext) {
+          holdNext = false;
+          const held = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          started();
+          await held;
+        }
+        return answer;
+      });
+    const cache = new FakeCacheAdaptor();
+    const control = Object.assign(new EndpointCacheControl(), { cache });
+    const call = async (category: string) => {
+      const context = makeSignalContext({
+        endpointInfo: info,
+        request: makeHttpRequest({ params: { category } }),
+        registry: makeCacheRegistry(cache),
+      });
+      await context.init();
+      return await ((await context.exec()) as Response).json();
+    };
+
+    expect(await call("news")).toBe("news-1");
+    expect(await call("event")).toBe("event-2");
+    expect(await call("news")).toBe("news-1");
+
+    expect(await control.invalidate("contextKey", ["news"])).toBe(true);
+    expect(await call("news")).toBe("news-3");
+    expect(await call("event")).toBe("event-2");
+
+    expect(await control.invalidate("contextKey")).toBe(true);
+    expect(await call("news")).toBe("news-4");
+    expect(await call("event")).toBe("event-5");
+
+    holdNext = true;
+    const handlerStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const inFlight = call("sports");
+    await handlerStarted;
+    await control.invalidate("contextKey");
+    release();
+    expect(await inFlight).toBe("sports-6");
+    expect(await call("sports")).toBe("sports-7");
+
+    for (const key of cache.store.keys()) if (key.startsWith("cacheGeneration:")) cache.store.delete(key);
+    expect(await call("news")).toBe("news-8");
+
+    const broken = Object.assign(new EndpointCacheControl(), {
+      cache: {
+        set: async () => {
+          throw new Error("cache down");
+        },
+      },
+    });
+    expect(await broken.invalidate("contextKey")).toBe(false);
   });
 
   test("refuses a cache on a mutation and on a query that takes an internal argument", async () => {

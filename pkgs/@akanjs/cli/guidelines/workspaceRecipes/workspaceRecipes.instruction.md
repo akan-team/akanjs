@@ -142,7 +142,10 @@ export class TaskService extends serve(db.task, ({ plug }) => ({
 }
 ```
 
-For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`.
+For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`. Two framework
+adapters are plugged that way: `plug(RateLimit)` to count a business key, and `plug(EndpointCacheControl)` to drop an
+endpoint's `{ cache }` answers after the write that made them stale:
+`await this.endpointCache.invalidate("bannerListInPublic")`.
 Injecting a file/image field is usually simpler than calling
 storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the
 store's generated `upload<Field>On<Model>(fileList)` action handle the upload. Add `{ cascade: "removeRef" }` to that
