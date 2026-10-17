@@ -276,7 +276,9 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
 - Enum→class lookups: a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`, not
   `Record<...>`. Shared by a second module, the classes become a recipe variant in `ui/Recipe/`; only an enum→variant
   name map (`BadgeVariants["variant"]`) moves to `webkit/`.
-- `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.
+- `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links. A `<Link>` handed
+  an absolute URL (any scheme, any case) or a `//host` path passes it through untouched and opens it outside the app;
+  only an app path gets the locale and basePath. `Href.isExternal(href)` from `akanjs/client` is that test.
 
 ## Naming And Language
 

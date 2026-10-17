@@ -57,7 +57,7 @@ Link
 
 Navigates between internal routes. Use it for every internal link, and keep a bare `<a>` for `mailto:` and external addresses only.
 
-- href (string | null): Destination route. When empty, Link renders its children inside a plain `div`.
+- href (string | null): An app path, given the locale and basePath, or an external URL kept as is. Empty renders a plain `div`.
 
 - disabled (boolean, default false): Blocks navigation and renders the same `div`, so the layout does not move.
 
@@ -88,6 +88,8 @@ A product card that links to its page and stays highlighted while that page is o
 **Active matches by path segment.** `/product/1/edit` also counts as the card's page and `/product/10` does not; add `activeExact` to stop the first. `/` matches only itself.
 
 **No client boundary needed.** `Link` works in a server component, so this Unit carries no `"use client"`.
+
+**An absolute URL stays external.** Any scheme in any case (`HTTPS://…`, `mailto:`, `tel:`, `kakaotalk://…`) or a `//host` path passes through untouched, and the CSR bundle opens it outside the app. Only an app path gets the locale and basePath. `javascript:`, `vbscript:` and `data:` never count as external. `Href.isExternal(href)` from `akanjs/client` is the same test.
 
 Image
 
