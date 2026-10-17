@@ -134,8 +134,9 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   `await this.endpointCache.invalidate("bannerListInPublic")`** for every cached answer of that endpoint, or
   `invalidate("bannerInPublic", [category])` for the one call with those arguments, in declared order as the endpoint
   receives them. It works across instances through the cache the entries live in. Every entry key carries its
-  endpoint's generation and the endpoint-wide form bumps it in one `incr`: nothing is scanned, old entries expire on
-  their TTL, and a miss already running when you invalidate writes under the old generation, where nobody reads it.
+  endpoint's generation, a random token the endpoint-wide form replaces in one write: nothing is scanned, old entries
+  expire on their TTL, and a miss already running when you invalidate writes under the old token, where nobody reads
+  it. A token is never reused, so a generation the cache evicts starts a fresh one rather than reviving dropped answers.
   The one-call form deletes that entry, so a miss for those arguments already running can write it back; reach for
   the endpoint-wide form when that matters. It answers `false` (warned) when the cache failed. A cached call reads
   the generation before its entry.
