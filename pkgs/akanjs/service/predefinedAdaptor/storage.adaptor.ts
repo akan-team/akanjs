@@ -1,5 +1,5 @@
 import { renameSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, parse, relative, resolve, sep } from "node:path";
 import { getApiPrefix, getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 
@@ -93,6 +93,8 @@ export class BlobStorage
   }
   // Picks the root as the writes do with `access`, and as the reads do (the `private/` prefix) without it.
   resolveLocalPath(path: string, access?: "public" | "private") {
+    // A key is always joined under the root (`${root}/${path}`), so a rooted one (`/x`, `C:x`) names another file.
+    if (parse(path).root) return null;
     const isPrivate = access ? access === "private" : path.startsWith("private/");
     const base = resolve(isPrivate ? this.privateRoot : this.root);
     const target = resolve(base, path);

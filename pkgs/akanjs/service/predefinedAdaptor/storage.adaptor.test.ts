@@ -41,13 +41,15 @@ describe("BlobStorage.resolveLocalPath", () => {
   });
 
   test("resolves a stored path under the root a read of that path uses", () => {
-    expect(storage.resolveLocalPath("memo/a.png")).toBe(`${workspace}/backend/memo/a.png`);
-    expect(storage.resolveLocalPath("private/memo/a.pdf")).toBe(`${workspace}/server-private/private/memo/a.pdf`);
+    expect(storage.resolveLocalPath("memo/a.png")).toBe(resolve(workspace, "backend", "memo/a.png"));
+    expect(storage.resolveLocalPath("private/memo/a.pdf")).toBe(
+      resolve(workspace, "server-private", "private/memo/a.pdf"),
+    );
   });
 
   test("with access, picks the root an upload with that access wrote to", () => {
-    expect(storage.resolveLocalPath("memo/a.pdf", "private")).toBe(`${workspace}/server-private/memo/a.pdf`);
-    expect(storage.resolveLocalPath("private/a.png", "public")).toBe(`${workspace}/backend/private/a.png`);
+    expect(storage.resolveLocalPath("memo/a.pdf", "private")).toBe(resolve(workspace, "server-private", "memo/a.pdf"));
+    expect(storage.resolveLocalPath("private/a.png", "public")).toBe(resolve(workspace, "backend", "private/a.png"));
   });
 
   test("refuses a path that leaves its root or names the root itself", () => {
@@ -56,8 +58,12 @@ describe("BlobStorage.resolveLocalPath", () => {
     expect(storage.resolveLocalPath("../backend/a.png", "private")).toBeNull();
   });
 
+  test("refuses an absolute key even inside the root, since the adaptor joins every key under it", () => {
+    expect(storage.resolveLocalPath(resolve(workspace, "backend", "memo/a.png"))).toBeNull();
+  });
+
   test("keeps a name that only starts with two dots", () => {
-    expect(storage.resolveLocalPath("..hidden/a.png")).toBe(`${workspace}/backend/..hidden/a.png`);
+    expect(storage.resolveLocalPath("..hidden/a.png")).toBe(resolve(workspace, "backend", "..hidden/a.png"));
   });
 
   test("is the path the adaptor writes to and reads from", async () => {
