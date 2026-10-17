@@ -86,7 +86,7 @@ export class CascadeRunner {
 
   async #removeRef(edge: RefEdge, doc: Record<string, unknown>, seen: Set<string>) {
     const value = doc[edge.key];
-    const ids = (Array.isArray(value) ? value : [value]).filter(
+    const ids = [...new Set(Array.isArray(value) ? value : [value])].filter(
       (item): item is string => typeof item === "string" && !seen.has(`${edge.refName}:${item}`),
     );
     if (!ids.length) return;

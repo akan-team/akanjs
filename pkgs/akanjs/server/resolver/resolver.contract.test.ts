@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Dayjs, dayjs, ENDPOINT_META, ID, resetEnvCache } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { assertFilterFitsCrud, DocumentSchema, type SchemaOf } from "akanjs/document";
+import { assertFilterFitsCrud, DocumentSchema, documentQueryHelper, type SchemaOf } from "akanjs/document";
 import { FetchClient } from "akanjs/fetch";
 import {
   type AkanJob,
@@ -767,6 +767,24 @@ describe("ServiceResolver cascade", () => {
     cascade.seal((refName) => services[refName] as never);
     return { cascade, removed };
   };
+
+  test("removes an array holding the same id twice in one query naming each id once", async () => {
+    const child = childTarget();
+    const { service } = buildCascade(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      child,
+      cascadeChildConstant,
+    );
+    service.__databaseModel = {
+      __remove: async (id: string) => ({ id, gallery: ["file-1", "file-2", "file-1"] }),
+    } as never;
+
+    await service.__remove("parent-1");
+
+    expect(child.calls).toEqual([
+      { method: "__removeMany", arg: { id: documentQueryHelper.oneOf(["file-1", "file-2"]) } },
+    ]);
+  });
 
   test("skips a document the parent removed through its own field when a child it removes holds it too", async () => {
     const { cascade, removed } = nestedCascade(true);
