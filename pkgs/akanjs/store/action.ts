@@ -310,8 +310,16 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
 
   const names = {
     modelForm: `${fieldName}Form`,
+    modelFormUploading: databaseStateNames(refName).modelFormUploading,
     writeOnModel: `writeOn${className}`,
     addModelFiles: `add${className}Files`,
+  };
+  type UploadState = { [key: string]: { [field: string]: string[] } };
+  let uploadSeq = 0;
+  const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
+    const { [field]: tickets = [], ...rest } = state[names.modelFormUploading];
+    const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
+    state[names.modelFormUploading] = left.length ? { ...rest, [field]: left } : rest;
   };
   const baseSetAction = {
     [names.writeOnModel]: function (this: SetGet, path: string | (string | number)[], value: any) {
@@ -322,9 +330,14 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   };
   const fieldSetAction = Object.entries(modelRef[FIELD_META]).reduce((acc, [key, field]) => {
     const namesOfField = formSetterNames(className, key);
+    const isFileField =
+      field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName;
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
         this.set((state: { [key: string]: any }) => {
+          // An explicit write wins over an upload still in flight for a single field; an array keeps its uploads,
+          // which insert into the list as it is when they land.
+          if (isFileField && !field.isArray) releaseUpload(state as UploadState, namesOfField.field);
           const setValue =
             value === null
               ? null
@@ -384,56 +397,85 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             },
           }
         : {}),
-      ...(field.isClass && fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName
+      ...(isFileField && fileUploadRefName
         ? {
             [namesOfField.uploadFieldOnModel]: async function (
               this: SetGet,
               fileList: FileList | File[],
               index?: number,
             ) {
-              const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: any };
+              const formId = ((this.get() as { [key: string]: any })[names.modelForm] as { id?: string }).id;
               if (!fileList.length) return;
-              const files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(
-                fileList,
-                form.id,
-              );
-              if (field.isArray) {
-                const idx = index ?? (form[namesOfField.field] as ProtoLightFile[]).length;
-                this.set((state: { [key: string]: { [key: string]: ProtoLightFile[] } }) => {
-                  state[names.modelForm][namesOfField.field] = [
-                    ...(form[namesOfField.field] as ProtoLightFile[]).slice(0, idx),
-                    ...files,
-                    ...(form[namesOfField.field] as ProtoLightFile[]).slice(idx),
-                  ];
-                });
-              } else {
-                this.set((state: { [key: string]: { [key: string]: ProtoLightFile | null } }) => {
-                  state[names.modelForm][namesOfField.field] = files[0];
-                });
+              // A ticket scopes the result to this form: a whole-form set clears every ticket, and a single field
+              // keeps only the newest, so a result whose ticket is gone is stale and dropped.
+              const ticket = `${++uploadSeq}`;
+              this.set((state: UploadState) => {
+                const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
+                state[names.modelFormUploading] = {
+                  ...state[names.modelFormUploading],
+                  [namesOfField.field]: field.isArray ? [...tickets, ticket] : [ticket],
+                };
+              });
+              const held = (state: { [key: string]: any }) =>
+                !!(state as UploadState)[names.modelFormUploading][namesOfField.field]?.includes(ticket) &&
+                (state[names.modelForm] as { id?: string }).id === formId;
+              let files: ProtoFile[];
+              try {
+                files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
+              } catch (error) {
+                this.set((state: UploadState) => releaseUpload(state, namesOfField.field, ticket));
+                throw error;
               }
+              let isWritten = false;
+              // One update, so no subscriber sees the field idle before the file it waited for is in the form.
+              this.set((state: { [key: string]: any }) => {
+                isWritten = held(state);
+                releaseUpload(state as UploadState, namesOfField.field, ticket);
+                if (!isWritten) return;
+                const form = state[names.modelForm] as { [key: string]: ProtoLightFile[] | ProtoLightFile | null };
+                if (field.isArray) {
+                  const current = (form[namesOfField.field] as ProtoLightFile[] | null) ?? [];
+                  const idx = Math.min(index ?? current.length, current.length);
+                  form[namesOfField.field] = [...current.slice(0, idx), ...files, ...current.slice(idx)];
+                } else form[namesOfField.field] = files[0] ?? null;
+              });
+              if (!isWritten) return;
               // A light-declared field stores the light projection, so the poll re-reads through the light endpoint.
               const fileReadName = ConstantRegistry.isLight(field.modelRef)
                 ? `light${capitalize(fileUploadRefName)}`
                 : fileUploadRefName;
+              // The form moved on (another pick, a reset, another record): the file is no longer ours to update.
+              const holdsFile = (id: string) => {
+                const value = (this.get() as { [key: string]: { [key: string]: unknown } })[names.modelForm][
+                  namesOfField.field
+                ] as ProtoLightFile | ProtoLightFile[] | null;
+                return Array.isArray(value) ? value.some((heldFile) => heldFile.id === id) : value?.id === id;
+              };
               files.forEach((file) => {
                 let attemptsLeft = UPLOAD_POLL_ATTEMPTS;
                 const intervalKey = setInterval(() => {
                   void (async () => {
+                    if (!holdsFile(file.id)) {
+                      clearInterval(intervalKey);
+                      return;
+                    }
                     attemptsLeft -= 1;
                     try {
                       const currentFile = await (
                         (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>
                       )(file.id);
-                      if (field.isArray)
-                        this.set((state: { [key: string]: { [key: string]: ProtoLightFile[] } }) => {
-                          state[names.modelForm][namesOfField.field] = state[names.modelForm][namesOfField.field].map(
-                            (file) => (file.id === currentFile.id ? currentFile : file),
-                          );
-                        });
-                      else
-                        this.set((state: { [key: string]: { [key: string]: ProtoLightFile | null } }) => {
-                          state[names.modelForm][namesOfField.field] = currentFile;
-                        });
+                      if (!holdsFile(currentFile.id)) {
+                        clearInterval(intervalKey);
+                        return;
+                      }
+                      this.set(
+                        (state: { [key: string]: { [key: string]: ProtoLightFile[] | ProtoLightFile | null } }) => {
+                          const value = state[names.modelForm][namesOfField.field];
+                          state[names.modelForm][namesOfField.field] = Array.isArray(value)
+                            ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
+                            : currentFile;
+                        },
+                      );
                       if (currentFile.status !== "uploading" || attemptsLeft <= 0) clearInterval(intervalKey);
                     } catch (error) {
                       clearInterval(intervalKey);
@@ -729,8 +771,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const currentState = this.get() as { [key: string]: any };
       const modelForm = currentState[names.modelForm] as Input;
       const modelSubmit = currentState[names.modelSubmit] as { disabled: boolean };
+      const isUploading = Object.keys(currentState[names.modelFormUploading] as object).length > 0;
       const modelInput = (cnst.input.purify as (obj: any) => DefaultOf<Input> | null)(modelForm);
-      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: !modelInput || disabled } });
+      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: !modelInput || isUploading || disabled } });
     },
     [names.submitModel]: async function (this: SetGet, option?: CreateOption<Full>) {
       const currentState = this.get() as { [key: string]: any };

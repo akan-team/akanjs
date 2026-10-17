@@ -438,7 +438,8 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 - Import `Int`, `Float`, `ID`, `Any`, `Binary`, `Upload`, `ImageResult`, `enumOf`, `dayjs` from `akanjs/base`;
   `String` / `Boolean` / `Date` are globals. No `JSON` scalar (use `Any`), no `Number`, and `Binary` / `Upload` are
   never fields — a file is `field(File).optional()` / `field([File])`, uploaded by the generated
-  `upload<Field>On<Model>`.
+  `upload<Field>On<Model>`, which marks the field in `<model>FormUploading` while the request runs and drops a
+  result whose form was set whole meanwhile (or, on a single field, re-picked) — gate a hand-written submit on it.
 - Defaults: a literal for scalars, a thunk for anything constructed (`default: () => dayjs()`). Arrays
   `field([T])`; optional `.optional()`.
 - **`field.hidden` / `field.secret` read `null` on the client while the type declares them** — guard with `??` or

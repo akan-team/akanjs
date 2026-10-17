@@ -476,8 +476,8 @@ export default page()
       {
         name: "st.do.upload<Field>On<Model>",
         desc: l.trans({
-          en: "Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s.",
-          ko: "`(fileList, index?)`를 받아 폼의 File 필드를 채우고, 3초마다 다시 읽습니다.",
+          en: "Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s. `<model>FormUploading` marks the field while the request runs, and a result whose form moved on is dropped.",
+          ko: "`(fileList, index?)`를 받아 폼의 File 필드를 채우고, 3초마다 다시 읽습니다. 요청 중에는 `<model>FormUploading`에 필드가 표시되고, 그 사이 폼이 바뀌면 결과는 버립니다.",
         }),
       },
       {
