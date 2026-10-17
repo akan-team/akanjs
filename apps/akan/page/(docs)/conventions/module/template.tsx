@@ -923,6 +923,7 @@ export const SubmitPhone = ({ userId, redirect }: SubmitPhoneProps) => {
   const phone = st.use.phone();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" })}
       disabled={!isPhoneNumber(phone)}
       onClick={() => {
@@ -1301,7 +1302,7 @@ export const Edit = ({ ticketId }: EditProps) => {
     partial={{ project }}
     slice={fetch.slice.ticketInProject}
   >
-    <button className={buttonRecipe({ variant: "secondary" })}>
+    <button type="button" className={buttonRecipe({ variant: "secondary" })}>
       {l("ticket.newTicket")}
     </button>
   </Model.NewWrapper>
@@ -1474,6 +1475,26 @@ export const Edit = ({ ticketId }: EditProps) => {
                     <span>
                       <strong>맞는 Field가 없으면 일반 컨트롤을 씁니다.</strong> <code>Input</code>, 버튼, 직접 만든
                       컴포넌트 모두 괜찮지만, 모델 필드에 맨 <code>{"<input>"}</code>을 쓰지는 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A raw button says it does not submit.</strong> A <code>{"<button>"}</code> with no{" "}
+                      <code>type</code> is a submit button, so when the Template sits in a <code>{"<form>"}</code> its
+                      click submits it. Write <code>type="button"</code> on it; <code>Button</code> from{" "}
+                      <code>akanjs/ui</code> already defaults to that.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>맨 버튼에는 제출하지 않는다고 적습니다.</strong> <code>type</code>이 없는{" "}
+                      <code>{"<button>"}</code>은 제출 버튼이라, Template이 <code>{"<form>"}</code> 안에 있으면 누를 때
+                      그 폼이 제출됩니다. <code>type="button"</code>을 적으세요. <code>akanjs/ui</code>의{" "}
+                      <code>Button</code>은 이미 기본값이 그렇습니다.
                     </span>
                   ),
                 })}

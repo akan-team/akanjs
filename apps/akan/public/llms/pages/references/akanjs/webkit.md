@@ -511,6 +511,7 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
   return (
     <div className={className}>
       <button
+        type="button"
         className={buttonRecipe()}
         onClick={async () => {
           const photo = await getPhoto("camera");
@@ -560,6 +561,7 @@ export const EnablePush = ({ className, children }: EnablePushProps) => {
   const push = usePushNotification();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={async () => {
         const pushToken: PushToken | undefined = await push.register();
@@ -597,6 +599,7 @@ export const BuyCoins = ({ className }: BuyCoinsProps) => {
   if (!coins) return null;
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={() => void purchaseProduct(coins)}
       type="button"

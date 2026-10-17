@@ -510,7 +510,7 @@ export const Create = () => {
       slice={fetch.slice.product}
       partial={{ status: "draft" }}
       trigger={
-        <button className={buttonRecipe({ variant: "outline" })}>
+        <button type="button" className={buttonRecipe({ variant: "outline" })}>
           {l.trans({ en: "Add product", ko: "상품 추가" })}
         </button>
       }

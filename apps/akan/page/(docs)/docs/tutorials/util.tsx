@@ -606,6 +606,7 @@ export const Process = ({ className, icecreamOrderId, disabled }: ProcessProps) 
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "secondary" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -626,6 +627,7 @@ export const Serve = ({ className, icecreamOrderId, disabled }: ServeProps) => {
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "accent" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -646,6 +648,7 @@ export const Finish = ({ className, icecreamOrderId, disabled }: FinishProps) =>
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "success" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -666,6 +669,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "warning" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -782,7 +786,7 @@ export const Card = ({ icecreamOrder }: ModelProps<"icecreamOrder", cnst.LightIc
       </div>
       <div className="flex items-center justify-center gap-2 rounded-xl bg-background p-4">
         <Model.ViewWrapper slice={fetch.slice.icecreamOrder} modelId={icecreamOrder.id}>
-          <button className={buttonRecipe({ variant: "primary" })}>
+          <button type="button" className={buttonRecipe({ variant: "primary" })}>
             <span>{l.trans({ en: "View", ko: "보기" })}</span>
           </button>
         </Model.ViewWrapper>

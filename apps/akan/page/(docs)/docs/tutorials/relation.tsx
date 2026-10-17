@@ -699,7 +699,7 @@ export const View = ({ view }: ViewProps) => {
   return <Load.View view={view} renderView={(delivery) => <Delivery.View.General delivery={delivery} />} />;
 };
 
-interface NewProps { // [!code ++:31]
+interface NewProps { // [!code ++:32]
   className?: string;
 }
 export const New = ({ className }: NewProps) => {
@@ -707,6 +707,7 @@ export const New = ({ className }: NewProps) => {
   return (
     <div className={className}>
       <button
+        type="button"
         className={buttonRecipe({ variant: "primary" })}
         onClick={() => {
           st.do.newDelivery();
@@ -783,7 +784,7 @@ export default page().render(() => {
             <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
             <IcecreamOrder.Util.PublicQueryMaker />
             <Model.New
-              trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
+              trigger={<button type="button" className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
               slice={fetch.slice.icecreamOrderInPublic}
               renderTitle="default"
               partial={icecreamOrderForm}

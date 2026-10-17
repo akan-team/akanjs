@@ -343,7 +343,7 @@ export const Card = ({ className, init, projectId }: CardProps) => {
             slice={fetch.slice.articleInProject}
             partial={{ projectId }}
           >
-            <button className={buttonRecipe({ variant: "secondary" })}>
+            <button type="button" className={buttonRecipe({ variant: "secondary" })}>
               {l("base.new")}
             </button>
           </Model.NewWrapper>

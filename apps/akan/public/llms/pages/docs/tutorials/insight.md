@@ -255,6 +255,7 @@ export const Process = ({ className, icecreamOrderId, disabled }: ProcessProps) 
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "secondary" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -275,6 +276,7 @@ export const Serve = ({ className, icecreamOrderId, disabled }: ServeProps) => {
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "accent" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -295,6 +297,7 @@ export const Finish = ({ className, icecreamOrderId, disabled }: FinishProps) =>
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "success" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -315,6 +318,7 @@ export const Cancel = ({ className, icecreamOrderId, disabled }: CancelProps) =>
   const { l } = usePage();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "warning" }, className)}
       disabled={disabled}
       onClick={() => {
@@ -367,7 +371,7 @@ export default page().render(() => {
         <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <IcecreamOrder.Util.PublicQueryMaker /> // [!code ++]
         <Model.New
-          trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
+          trigger={<button type="button" className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="default"
           partial={icecreamOrderForm}
@@ -780,7 +784,7 @@ export default page().render(() => {
         <div className="font-black text-5xl">{l("icecreamOrder.modelName")}</div>
         <IcecreamOrder.Util.PublicQueryMaker />
         <Model.New
-          trigger={<button className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
+          trigger={<button type="button" className={buttonRecipe({ variant: "primary" })}>{l("base.new")}</button>}
           slice={fetch.slice.icecreamOrderInPublic}
           renderTitle="default"
           partial={icecreamOrderForm}

@@ -286,7 +286,7 @@ async startTask(taskId: string) {
 
 // 6. <Model>.Util.tsx — Reusable button component
 export const Start = ({ taskId }: { taskId: string }) => (
-  <button className={buttonRecipe({ variant: "primary", size: "xs" })} onClick={() => st.do.startTask(taskId)}>
+  <button type="button" className={buttonRecipe({ variant: "primary", size: "xs" })} onClick={() => st.do.startTask(taskId)}>
     Start
   </button>
 );

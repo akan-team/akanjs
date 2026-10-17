@@ -429,6 +429,7 @@ export const EnablePush = ({ className, children }: EnablePushProps) => {
   const push = usePushNotification();
   return (
     <button
+      type="button"
       className={buttonRecipe({ variant: "primary" }, className)}
       onClick={async () => {
         const pushToken = await push.register();
