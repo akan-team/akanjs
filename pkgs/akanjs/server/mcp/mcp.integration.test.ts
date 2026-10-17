@@ -653,6 +653,19 @@ describe("MCP over a booted container", () => {
     expect(json.error.message).toBe("No serverResolverTestItem found for the arguments given.");
   });
 
+  test("answers a missing document over HTTP with 404 and the dictionary key, not 500 and the table name", async () => {
+    const routes = httpRoutes as Record<string, { GET: (req: Request) => Promise<Response> }>;
+    const missingId = "507f1f77bcf86cd799439011";
+    const request = Object.assign(
+      new Request(`http://127.0.0.1:8080/api/serverResolverTestItem/serverResolverTestItem/${missingId}`),
+      { params: { serverResolverTestItemId: missingId } },
+    );
+    const response =
+      await routes["/serverResolverTestItem/serverResolverTestItem/:serverResolverTestItemId"].GET(request);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404 });
+  });
+
   test("refuses an argument nobody declared instead of dropping it", async () => {
     const dropped = await call("serverResolverTestItemListInCategory", { category: "all", status: "active" });
     expect(dropped.result.isError).toBe(true);
