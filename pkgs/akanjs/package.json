@@ -172,31 +172,31 @@
     }
   },
   "dependencies": {
-    "@lexical/plain-text": "^0.51.0",
+    "@lexical/plain-text": "^0.52.0",
     "@noble/ciphers": "^2.4.0",
-    "dayjs": "^1.11.20",
-    "immer": "^11.1.8",
-    "lexical": "^0.51.0",
-    "tailwind-merge": "^3.3.1",
-    "tailwind-variants": "^3.3.0"
+    "dayjs": "^1.11.23",
+    "immer": "^11.1.21",
+    "lexical": "^0.52.0",
+    "tailwind-merge": "^3.7.0",
+    "tailwind-variants": "^3.3.1"
   },
   "peerDependencies": {
-    "@happy-dom/global-registrator": "^20.11.2",
-    "@playwright/test": "^1.60.0",
-    "@react-spring/web": "^10.1.0",
+    "@happy-dom/global-registrator": "^21.0.3",
+    "@playwright/test": "^1.64.1",
+    "@react-spring/web": "^10.1.2",
     "@use-gesture/react": "^10.3.1",
-    "bullmq": "^5.76.10",
+    "bullmq": "^5.81.5",
     "chance": "^1.1.13",
-    "firebase": "^12.13.0",
-    "happy-dom": "^20.11.2",
-    "ioredis": "^5.10.1",
+    "firebase": "^13.0.0",
+    "happy-dom": "^21.0.3",
+    "ioredis": "^5.11.1",
     "postgres": "^3.4.9",
-    "protobufjs": "^8.4.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "react-icons": "^5.6.0",
+    "protobufjs": "^8.8.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-icons": "^5.7.0",
     "react-refresh": "^0.19.0",
-    "react-server-dom-webpack": "^19.3.0",
+    "react-server-dom-webpack": "^19.3.1",
     "react-spring": "^10.0.4",
     "scheduler": "^0.28.0",
     "tailwind-scrollbar": "^4.0.2",
@@ -265,8 +265,8 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
-    "@types/bun": "^1.4.2"
+    "@biomejs/biome": "2.5.14",
+    "@types/bun": "^1.4.3"
   },
   "bun": {
     "platform": "bun"

@@ -64,14 +64,15 @@ export class PackageRunner extends runner("package") {
     await pkg.dist.mkdir(pkg.dist.cwdPath);
     const scanner = await TypeScriptDependencyScanner.from(pkg);
     const { npmDeps, npmDevDeps, missingDeps } = await scanner.getPackageBuildDependencies(pkg.name);
-    // The pi packages are pinned here: Bun applies neither pi-coding-agent's `npm-shrinkwrap.json` nor our
-    // `overrides` to a consumer's install, and a published dependency is the only pin its resolver honours.
+    // The pi packages are pinned here: Bun never applies our `overrides` to a consumer's install, and a published
+    // dependency is the only pin its resolver honours.
     const packageRuntimeDependencies: Record<string, string[]> = {
       "@akanjs/devkit": [
         "tailwind-scrollbar",
-        "@earendil-works/chord",
         "@earendil-works/pi-agent-core",
         "@earendil-works/pi-ai",
+        "@earendil-works/pi-codemode",
+        "@earendil-works/pi-mcp",
         "@earendil-works/pi-telemetry",
         "@earendil-works/pi-tui",
       ],
