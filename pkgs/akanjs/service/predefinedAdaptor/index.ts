@@ -3,6 +3,7 @@ export * from "./cache.adaptor";
 export * from "./compress.adaptor";
 export * from "./database.adaptor";
 export * from "./documentTransfer";
+export * from "./endpointCacheControl.adaptor";
 export * from "./insightQuery";
 export * from "./llm.adaptor";
 export * from "./llmOverflow";
