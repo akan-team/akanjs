@@ -314,11 +314,6 @@ class FakeCacheAdaptor {
   async delete(topic: string, key: string) {
     this.store.delete(`${topic}:${key}`);
   }
-  async incr(topic: string, key: string, by = 1) {
-    const sum = Number(this.store.get(`${topic}:${key}`) ?? 0) + by;
-    this.store.set(`${topic}:${key}`, String(sum));
-    return sum;
-  }
   async setIfAbsent(topic: string, key: string, value: string | number | Buffer) {
     if (this.store.has(`${topic}:${key}`)) return false;
     this.store.set(`${topic}:${key}`, String(value));
@@ -1186,9 +1181,12 @@ describe("SignalContext execution", () => {
     expect(await inFlight).toBe("sports-6");
     expect(await call("sports")).toBe("sports-7");
 
+    for (const key of cache.store.keys()) if (key.startsWith("cacheGeneration:")) cache.store.delete(key);
+    expect(await call("news")).toBe("news-8");
+
     const broken = Object.assign(new EndpointCacheControl(), {
       cache: {
-        incr: async () => {
+        set: async () => {
           throw new Error("cache down");
         },
       },
