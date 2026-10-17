@@ -388,9 +388,10 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 ### Calls, Queries, Agents (summaries)
 
 - **Wire (`transportRule`)**: a deadline is the endpoint's `{ timeout: <ms> }` (undeclared, the client quits at
-  30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument; `{ rateLimit }` per
-  endpoint, `option.setRateLimit` per app, `plug(RateLimit)` for a business key. `socketId` names a connection, not
-  a caller. A device proves itself with a `MachineToken`. Server to server, `fetch.clone({ origin })` opens no socket
+  30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument, dropped early by
+  `plug(EndpointCacheControl).invalidate(endpoint, args?)`; `{ rateLimit }` per endpoint, `option.setRateLimit` per
+  app, `plug(RateLimit)` for a business key. `socketId` names a connection, not a caller. A device proves itself
+  with a `MachineToken`. Server to server, `fetch.clone({ origin })` opens no socket
   without `connect: true`, retries through `retry`, and rethrows a remote `Err` as is — never wrapped or re-keyed.
 - **Body types**: `.body()` / `.param()` take scalars, model refs, or `enumOf(...)`; `Int` / `Float`, never
   `Number` (`pkgs/akanjs/signal/endpointInfo.ts`); `Upload` only in a `fileUpload: true` mutation; bytes are

@@ -211,6 +211,8 @@ What it does
 
 An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted.
 
+A write drops the answers it made stale before their TTL: `plug(EndpointCacheControl)` in the service, then `await this.endpointCache.invalidate("bannerListInPublic")` for every answer of the endpoint, or `invalidate("bannerInPublic", [category])` for the one call with those arguments. Every instance sees it at once.
+
 Call Order
 
 From the outside in:

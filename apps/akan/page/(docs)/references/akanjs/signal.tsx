@@ -960,6 +960,12 @@ export class WallpadEndpoint extends endpoint(srv.wallpad, ({ mutation, message 
                 ko: "엔드포인트의 `{ cache: <ms> }`는 미들웨어가 아닙니다. 저장된 응답은 호출 안에서 가드 다음에 찾으므로, 캐시 적중도 가드가 통과시킨 호출자에게만 돌아갑니다.",
               })}
             </div>
+            <div>
+              {l.trans({
+                en: 'A write drops the answers it made stale before their TTL: `plug(EndpointCacheControl)` in the service, then `await this.endpointCache.invalidate("bannerListInPublic")` for every answer of the endpoint, or `invalidate("bannerInPublic", [category])` for the one call with those arguments. Every instance sees it at once.',
+                ko: '쓰기는 자신이 낡게 만든 응답을 TTL이 지나기 전에 버릴 수 있습니다. 서비스에서 `plug(EndpointCacheControl)`를 주입하고, 엔드포인트의 모든 응답은 `await this.endpointCache.invalidate("bannerListInPublic")`로, 특정 인자로 한 호출의 응답은 `invalidate("bannerInPublic", [category])`로 버립니다. 모든 인스턴스에 곧바로 반영됩니다.',
+              })}
+            </div>
             <Docs.SubSubTitle>{l.trans({ en: "Call Order", ko: "실행 순서" })}</Docs.SubSubTitle>
             <div>{l.trans({ en: "From the outside in:", ko: "바깥쪽부터 차례로 실행됩니다:" })}</div>
             <ol className={orderedList}>
