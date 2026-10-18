@@ -601,10 +601,17 @@ describe("ServiceResolver cascade", () => {
       full: { cascade: { removeRef: new Map(), removeWith: new Map(), ...cascade } },
     }) as unknown as typeof serverResolverTestConstant;
 
+  // The ids a live-row lookup asks for (`{ id: oneOf(ids) }`), the check a cascade makes before removing a reference.
+  const idsAsked = (query: unknown) => {
+    const id = (query as { id?: { kind?: string; op?: string; value?: unknown } }).id;
+    return id?.kind === "op" && id.op === "oneOf" ? (id.value as string[]) : null;
+  };
+
   const childTarget = (hasHook = false) => {
     const calls: { method: string; arg: unknown }[] = [];
     const listQueries: unknown[] = [];
     const ids = ["child-1", "child-2"];
+    const removed = new Set<string>();
     class ChildService {
       async _postRemove(doc: unknown) {
         return doc;
@@ -618,6 +625,8 @@ describe("ServiceResolver cascade", () => {
       service: {
         __remove: async (id: string) => {
           calls.push({ method: "__remove", arg: id });
+          if (removed.has(id)) throw new Error(`No Document (cascadeChild): ${id}`);
+          removed.add(id);
           const idx = ids.indexOf(id);
           if (idx >= 0) ids.splice(idx, 1);
           return { id };
@@ -628,6 +637,8 @@ describe("ServiceResolver cascade", () => {
           return { acknowledged: true, matchedCount: 2, modifiedCount: 2 };
         },
         __listIds: async (query: unknown) => {
+          const asked = idsAsked(query);
+          if (asked) return asked.filter((id) => !removed.has(id));
           listQueries.push(query);
           return [...ids];
         },
@@ -696,6 +707,29 @@ describe("ServiceResolver cascade", () => {
     expect(child.calls).toEqual([]);
   });
 
+  test("skips a referenced document another cascade already removed, and still runs the edges after it", async () => {
+    const child = childTarget(true);
+    const { service } = buildCascade(
+      constantOf(parentRef, {
+        removeRef: new Map([
+          ["cover", cascadeChildFull],
+          ["gallery", cascadeChildFull],
+        ]),
+      }),
+      child,
+      cascadeChildConstant,
+    );
+    await child.service.__remove("file-shared");
+    child.calls.length = 0;
+    service.__databaseModel = {
+      __remove: async (id: string) => ({ id, cover: "file-shared", gallery: ["file-own"] }),
+    } as never;
+
+    await service.__remove("parent-2");
+
+    expect(child.calls).toEqual([{ method: "__remove", arg: "file-own" }]);
+  });
+
   test("removes a document once when several fields or array entries hold its id", async () => {
     const child = childTarget(true);
     const { service } = buildCascade(
@@ -737,7 +771,8 @@ describe("ServiceResolver cascade", () => {
     }
     const cascade = new CascadeRunner();
     const serviceOf = (refName: string) => ({
-      __listIds: async () => (owned[refName] ?? []).filter((id) => !removed.includes(`${refName}:${id}`)),
+      __listIds: async (query: unknown) =>
+        (idsAsked(query) ?? owned[refName] ?? []).filter((id) => !removed.includes(`${refName}:${id}`)),
       __remove: async (id: string) => {
         if (removed.includes(`${refName}:${id}`)) throw new Error(`No Document (${refName}): ${id}`);
         removed.push(`${refName}:${id}`);
@@ -816,6 +851,7 @@ describe("ServiceResolver cascade", () => {
     const cascade = new CascadeRunner();
     const service = {
       __listIds: async (query: Record<string, unknown>, option?: { limit?: number }) =>
+        idsAsked(query)?.filter((id) => !removed.includes(id)) ??
         [...ownerOf]
           .filter(([id, owner]) => owner === query[ownerKey] && !removed.includes(id))
           .map(([id]) => id)
