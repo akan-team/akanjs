@@ -1,6 +1,6 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { cn, router } from "akanjs/client";
+import { cn, isRscNavigationFromCache, router } from "akanjs/client";
 import { type DynamicRecord, isQueryEqual, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import { ConstantRegistry, labelOf, withSharedInstances } from "akanjs/constant";
@@ -144,9 +144,11 @@ function Render<RefName extends string, Light extends { id: string }>({
   }, [initSignature, queryArgsSignature]);
 
   useEffect(() => {
+    // The navigation cache replays an earlier visit's payload with no TTL, and no live room kept those rows current.
+    const seededFromReplay = !loaded && isRscNavigationFromCache();
     const modelStaleAt = storeGet<Date>()[namesOfSlice.modelStaleAt];
     const staleThreshold = Math.max(modelStaleAt.getTime(), staleTime === undefined ? 0 : Date.now() - staleTime);
-    if (storeGet<Date>()[namesOfSlice.modelInitAt].getTime() >= staleThreshold) return;
+    if (!seededFromReplay && storeGet<Date>()[namesOfSlice.modelInitAt].getTime() >= staleThreshold) return;
     if (storeGet<boolean>()[namesOfSlice.modelListLoading]) return;
     void storeDo[namesOfSlice.refreshModel]({ invalidate: true });
   }, [initSignature]);

@@ -448,6 +448,13 @@ this.set((state) => { state.ticketForm.title = ""; });`,
         }),
       },
       {
+        name: "invalidate<Model>()",
+        desc: l.trans({
+          en: "Marks every `<model>` slice stale, so each list refetches on its next mount. Call it after a custom mutation.",
+          ko: "모든 `<model>` slice를 오래된 것으로 표시해, 각 목록이 다음 마운트 때 다시 불러오게 합니다. 커스텀 mutation 뒤에 부릅니다.",
+        }),
+      },
+      {
         name: ["load<Model>FormDraft", "restore<Model>FormDraft", "discard<Model>FormDraft"],
         desc: l.trans({
           en: "Drive the form draft. `Load.Edit`, `Model.EditModal` and `Model.New` call them for you.",

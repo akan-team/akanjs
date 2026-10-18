@@ -264,6 +264,33 @@ describe("Load.Units", () => {
     expect(calls.loadTestItemList).toHaveBeenCalled();
     await unmount();
   });
+
+  test("refetches the rows it seeds from a replayed navigation, stamp or no stamp", async () => {
+    makeStore();
+    sliceState.set({ loadTestItemStaleAt: new Date(0) });
+    const renderItem = (item: Item) => <span>{item.title}</span>;
+    const firstVisit = serverInit({ args: ["a"], initAt: new Date(Date.now() - 1000) });
+    const { rerender, flush, unmount } = mount(
+      <Units<"loadTestItem", Item> init={firstVisit} renderItem={renderItem} />,
+    );
+    await rerender(
+      <Units<"loadTestItem", Item>
+        init={serverInit({ args: ["b"], id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Grace" })}
+        renderItem={renderItem}
+      />,
+    );
+    expect(calls.loadTestItemList).not.toHaveBeenCalled();
+
+    globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => true;
+    try {
+      await rerender(<Units<"loadTestItem", Item> init={firstVisit} renderItem={renderItem} />);
+      await flush();
+    } finally {
+      globalThis.__AKAN_RSC_IS_FROM_CACHE__ = undefined;
+    }
+    expect(calls.loadTestItemList).toHaveBeenCalled();
+    await unmount();
+  });
 });
 
 describe("Load.View", () => {

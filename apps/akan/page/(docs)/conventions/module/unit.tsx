@@ -969,6 +969,12 @@ export const Card = ({ className, init, projectId }: CardProps) => {
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Store key", ko: "store 키" })} items={loadUnitsStateItems} />
+            <div>
+              {l.trans({
+                en: "Rows seeded from an earlier visit are refetched once the list mounts: a page the navigation cache replays, or a payload older than the last write to the model.",
+                ko: "이전 방문의 행으로 채운 목록은 마운트되면 한 번 다시 불러옵니다. 탐색 캐시가 다시 꺼낸 페이지, 또는 그 모델의 마지막 쓰기보다 오래된 payload가 그렇습니다.",
+              })}
+            </div>
 
             <Docs.SubSubTitle>
               {l.trans({ en: "Direct rendering on the server", ko: "서버에서 직접 렌더링하기" })}

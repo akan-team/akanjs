@@ -136,7 +136,7 @@ type BaseAction<
   ) => Promise<void>;
 } & { [K in `set${_CapitalizedRefName}`]: (...models: (Full | Light)[]) => void } & {
   [K in `reset${_CapitalizedRefName}`]: (model?: Full) => void;
-};
+} & { [K in `invalidate${_CapitalizedRefName}`]: () => void };
 
 export type SliceAction<
   RefName extends string,
@@ -543,6 +543,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     viewModel: `view${className}`,
     setModel: `set${className}`,
     resetModel: `reset${className}`,
+    invalidateModel: `invalidate${className}`,
     loadModelDraft: `load${className}FormDraft`,
     restoreModelDraft: `restore${className}FormDraft`,
     discardModelDraft: `discard${className}FormDraft`,
@@ -905,6 +906,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       });
       return model ?? null;
     },
+    [names.invalidateModel]: function (this: SetGet) {
+      this.set(staleAtOfSlices());
+    },
     // For a form seeded from an RSC payload: arms saving and offers the draft, as `edit<Model>` does after its fetch.
     [names.loadModelDraft]: async function (this: SetGet, draftScope?: string) {
       const currentState = this.get() as { [key: string]: any };
@@ -1033,6 +1037,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           isQueryEqual(sort as unknown as object, sortOfModel as unknown as object)
         )
           return;
+        // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
+        const requestedAt = new Date();
         await loadList(
           this,
           () =>
@@ -1049,7 +1055,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               [namesOfSlice.modelList]: modelList,
               [namesOfSlice.modelInsight]: modelInsight,
               [namesOfSlice.modelInitList]: modelList,
-              [namesOfSlice.modelInitAt]: new Date(),
+              [namesOfSlice.modelInitAt]: requestedAt,
               ...lastPageFrom(modelInsight.count, limit),
               ...hasMoreFrom(modelDataList, fetchLimit),
               [namesOfSlice.limitOfModel]: limit,
@@ -1210,10 +1216,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       // Membership was decided server-side; a row is placed only where its position is knowable, else stamped stale.
       [namesOfSlice.applyLiveModel]: function (this: SetGet, event: LiveEventPayload) {
         const currentState = this.get() as { [key: string]: any };
-        if (currentState[namesOfSlice.modelListLoading] as boolean) return;
         const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
         const staleAt = { [namesOfSlice.modelStaleAt]: new Date() };
-        if (event.op === "invalidate") {
+        // The refetch in flight may have read before this event, so it cannot be patched in, only remembered.
+        if (event.op === "invalidate" || (currentState[namesOfSlice.modelListLoading] as boolean)) {
           this.set(staleAt);
           return;
         }

@@ -191,6 +191,8 @@ Store key
 
 - sortOf<Model><Suffix>: The sort key the slice was loaded with. — Example: `sortOfArticleInProject: "latest"`
 
+Rows seeded from an earlier visit are refetched once the list mounts: a page the navigation cache replays, or a payload older than the last write to the model.
+
 Direct rendering on the server
 
 When the page already holds the list, map it straight into Units. Nothing hydrates, and the rows are in the first response:

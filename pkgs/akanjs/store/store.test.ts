@@ -572,6 +572,28 @@ describe("signal generated store contract", () => {
     previous = await expectRestamped(previous, () => instance.do.mergeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa", {}));
     await expectRestamped(previous, () => instance.do.removeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa"));
   });
+
+  test("invalidate<Model> stamps every slice stale without a request", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class InvalidateStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(InvalidateStore);
+    const instance = new StoreInstance(makeRoot("invalidateRoot", InvalidateStore));
+    await instance.do.initStoreTestItemByTitle("Ada");
+    const initAt = (instance.get().storeTestItemInitAtByTitle as Date).getTime();
+    Object.values(signal.calls).forEach((call) => {
+      call.mockClear();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    await instance.do.invalidateStoreTestItem();
+    ["storeTestItemStaleAt", "storeTestItemStaleAtByTitle", "storeTestItemStaleAtByTags"].forEach((key) => {
+      expect((instance.get()[key] as Date).getTime()).toBeGreaterThan(initAt);
+    });
+    Object.values(signal.calls).forEach((call) => {
+      expect(call).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("StoreRegistry and root assembly", () => {
@@ -904,6 +926,32 @@ describe("live sync store action", () => {
     signal.rooms[0].onResync?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(signal.calls.storeTestItemListByTitle).toHaveBeenCalled();
+  });
+
+  test("an event that lands during a refetch is not applied, yet leaves the refetched list stale", async () => {
+    const { instance, signal } = await arrange();
+    let release = () => {};
+    signal.calls.storeTestItemListByTitle = mock(
+      async () =>
+        await new Promise<unknown[]>((resolve) => {
+          release = () => resolve([light("aaaaaaaaaaaaaaaaaaaaaaaa", "Ada", 300)]);
+        }),
+    );
+    const refetch = instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const stampedFrom = Date.now();
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "cccccccccccccccccccccccc",
+      light: light("cccccccccccccccccccccccc", "Cyd", 400),
+    });
+    release();
+    await refetch;
+
+    const after = liveState(instance);
+    expect(after.ids).toEqual(["aaaaaaaaaaaaaaaaaaaaaaaa"]);
+    expect(after.staleAt).toBeGreaterThanOrEqual(stampedFrom);
+    expect((instance.get().storeTestItemInitAtByTitle as Date).getTime()).toBeLessThan(after.staleAt);
   });
 
   test("an invalidate stamps the list stale and touches nothing else", async () => {

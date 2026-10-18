@@ -226,6 +226,8 @@ Base actions
 
 - reset<Model>(model?): Clears `<model>` or sets the one given, resets the form and closes the modal.
 
+- invalidate<Model>(): Marks every `<model>` slice stale, so each list refetches on its next mount. Call it after a custom mutation.
+
 - load<Model>FormDraft, restore<Model>FormDraft, discard<Model>FormDraft: Drive the form draft. `Load.Edit`, `Model.EditModal` and `Model.New` call them for you.
 
 `create<Model>…`, `update<Model>…` and `submit<Model>` take the same options:
