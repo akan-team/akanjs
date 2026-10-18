@@ -97,8 +97,7 @@ export class CascadeRunner {
     }
     // Through the target's service, never its model: only that path runs the `_postRemove` side effects.
     for (const id of ids) {
-      // A second remove finds no live row and aborts the cascade; mark only on removal, since a nested drain skips
-      // marked rows and would stop at a page of siblings this loop has not removed yet.
+      // Mark on removal, not up front: a repeat finds no live row, and a nested drain stops at a page of marked rows.
       if (seen.has(`${edge.refName}:${id}`)) continue;
       seen.add(`${edge.refName}:${id}`);
       await service.__remove(id);

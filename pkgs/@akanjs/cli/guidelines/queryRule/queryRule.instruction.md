@@ -230,8 +230,9 @@ shape, so `cascade` never means "related" — it means one of exactly these:
   generated `remove<Filter>` / `update<Filter>`, and the facade's `removeById` / `updateById`. Remove one document
   at a time when it cascades.
 - Cascades are **idempotent**: `removedAt IS NULL` is ANDed into every query-level write, and a remove never takes
-  `{ withRemoved: true }`, so an already-removed row keeps its original `removedAt`. Every document a cascade starts
-  to remove joins a visited set carried down the whole chain, so a target held by two `removeRef` fields (or twice in
-  one array) is removed once and cycles are cut; the depth cap is 16. `q.search()` cannot see removed rows (the mirror drops
-  them), so search with the flag throws, as does `upsert` with it.
+  `{ withRemoved: true }`, so an already-removed row keeps its original `removedAt`. Every document a cascade
+  removes one at a time joins a visited set carried down the whole chain (a bulk target never does), so a target held
+  by two `removeRef` fields (or twice in one array) is removed once and cycles are cut; the depth cap is 16.
+  `q.search()` cannot see removed rows (the mirror drops them), so search with the flag throws, as does `upsert` with
+  it.
 
