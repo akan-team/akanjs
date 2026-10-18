@@ -730,6 +730,42 @@ describe("ServiceResolver cascade", () => {
     expect(child.calls).toEqual([{ method: "__remove", arg: "file-own" }]);
   });
 
+  test("looks up a long array's live ids in chunks a database can bind, and removes every one", async () => {
+    const removed: string[] = [];
+    const lookups: number[] = [];
+    const gallery = Array.from({ length: 450 }, (_, idx) => `file-${idx}`);
+    class SideEffectService {
+      async _postRemove(doc: unknown) {
+        return doc;
+      }
+    }
+    const fileService = {
+      __listIds: async (query: unknown) => {
+        const asked = idsAsked(query) ?? [];
+        lookups.push(asked.length);
+        if (asked.length > 200) throw new Error("too many bound parameters");
+        return asked.filter((id) => !removed.includes(id));
+      },
+      __remove: async (id: string) => {
+        removed.push(id);
+        return { id };
+      },
+    };
+    const cascade = new CascadeRunner();
+    cascade.register(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      new DocumentSchema(),
+      SideEffectService as never,
+    );
+    cascade.register(cascadeChildConstant, new DocumentSchema(), SideEffectService as never);
+    cascade.seal(() => fileService as never);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(lookups).toEqual([200, 200, 50]);
+    expect(removed).toEqual(gallery);
+  });
+
   test("removes a document once when several fields or array entries hold its id", async () => {
     const child = childTarget(true);
     const { service } = buildCascade(
