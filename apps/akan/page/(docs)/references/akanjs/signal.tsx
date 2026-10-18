@@ -956,8 +956,8 @@ export class WallpadEndpoint extends endpoint(srv.wallpad, ({ mutation, message 
             <Docs.Table columns={builtInColumns} rows={builtInRows} stacked />
             <div>
               {l.trans({
-                en: "An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted.",
-                ko: "엔드포인트의 `{ cache: <ms> }`는 미들웨어가 아닙니다. 저장된 응답은 호출 안에서 가드 다음에 찾으므로, 캐시 적중도 가드가 통과시킨 호출자에게만 돌아갑니다.",
+                en: "An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted. A `{ cache }` TTL is capped at one day, the life of the endpoint's cache generation, so a longer value keeps an answer for a day at most.",
+                ko: "엔드포인트의 `{ cache: <ms> }`는 미들웨어가 아닙니다. 저장된 응답은 호출 안에서 가드 다음에 찾으므로, 캐시 적중도 가드가 통과시킨 호출자에게만 돌아갑니다. `{ cache }` TTL은 엔드포인트 캐시 세대의 수명인 하루로 제한되므로, 더 긴 값을 줘도 응답은 길어야 하루 저장됩니다.",
               })}
             </div>
             <div>

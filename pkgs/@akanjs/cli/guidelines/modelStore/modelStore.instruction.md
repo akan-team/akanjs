@@ -42,6 +42,13 @@ Generate client state coordination for a module. Store connects generated fetch 
 - A model whose form holds a large `field.visual` body can pass the 256KB per-draft cap, and a draft over it is
   dropped with a warning rather than truncated.
 
+## File Uploads
+- `upload<Field>On<Model>(fileList, idx?)` is generated for every `File` field. `Field.Img` / `Imgs` / `File` /
+  `Files` handed the generated `set<Field>On<Model>` upload through it, so do not write an upload action.
+- `<model>FormUploading` holds the uploads in flight per field (`{}` when idle). The generated submit paths save
+  nothing until it is empty; a hand-written submit reads `Object.keys(st.use.<model>FormUploading()).length`. Full
+  contract: `fieldRule`.
+
 ## Review Checklist
 - The instruction points to current docs pages, not removed docs routes.
 - Generated examples use current Akan builder APIs and scanner-friendly filenames.

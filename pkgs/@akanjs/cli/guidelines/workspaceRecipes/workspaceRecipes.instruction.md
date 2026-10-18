@@ -571,6 +571,8 @@ akan sync automatically generates APIs across all layers. Only write custom logi
 | `[slice]List`, `[slice]InitList`, `[slice]Insight`, `[slice]Selection`, `hasMoreOf[Slice]` | Slice states |
 | `init[Slice](args)`, `refresh[Slice]()`, `setPageOf[Slice](page)`, `loadMoreOf[Slice]()` | Slice actions |
 | `set[Field]On[Model](value)` | Auto-setters for each model field |
+| `upload[Field]On[Model](fileList, idx?)` | Upload into a `File` field, scoped to the form that started it |
+| `[model]FormUploading` | Uploads in flight per `File` field (`{}` when idle); generated submits wait until empty |
 
 **Rule**: Write custom store actions only for toast messages (`msg.loading`/`msg.success`) or multi-step workflows. State fields and CRUD actions are already auto-generated.
 

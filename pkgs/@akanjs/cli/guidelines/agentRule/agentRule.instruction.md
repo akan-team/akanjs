@@ -398,6 +398,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   renders one editor per row, and at most one of them is ever open, so one name is registered rather than fifty.
   It also means the verb is absent from the catalogue while nothing is open, which is honest — and costs the
   agent nothing, because the catalogue is re-read on the turn that follows the tool call that opened the form.
+- **A shell's `submit<Model>` refuses while an upload is in flight.** `Model.EditModal` (also while its submit is
+  disabled) and `Model.ViewEditModal` disable the button and answer `The <model> form is not ready to submit.` while
+  `<model>FormUploading` is not empty. That key is read `{ agent: false }`, so the refusal is how an agent learns of
+  the upload: call `submit<Model>` again once the file has landed, rather than setting the field a second time.
 
 ## Forms
 - **A form control publishes its own setter, and reading a form publishes one tool that fills several at once.**

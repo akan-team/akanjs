@@ -130,9 +130,11 @@ You get
 
 - fetch.add<Model>Files: Takes `(fileList, parentId?)` and posts the files, with `type` set to the model's name.
 
-- st.do.upload<Field>On<Model>: Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s. `<model>FormUploading` marks the field while the request runs. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.
+- st.do.upload<Field>On<Model>: Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s.
 
-- Field.Img, Field.Imgs, Field.File, Field.Files: Form controls in `@libs/shared/ui`. Handed the generated `set<Field>On<Model>`, they upload through `upload<Field>On<Model>`; any other `onChange` calls `add<Model>Files` for the `slice` you pass.
+- Field.Img, Field.Imgs, Field.File, Field.Files: Form controls in `@libs/shared/ui`; handed any `onChange` but the generated setter, they call `add<Model>Files`.
+
+Handed the generated `set<Field>On<Model>`, a `Field.*` control uploads through `upload<Field>On<Model>` instead of the `slice` you pass. While the request runs, `<model>FormUploading` marks the field. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.
 
 The marked mutation takes four fixed body fields in this shape. For the service method it calls, see `FileService.addFiles` in `libs/shared/lib/file`:
 

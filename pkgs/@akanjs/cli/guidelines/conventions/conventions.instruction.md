@@ -374,8 +374,8 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 ### Calls, Queries, Agents (summaries)
 
 - **Wire (`transportRule`)**: a deadline is the endpoint's `{ timeout: <ms> }` (undeclared, the client quits at
-  30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument, dropped early by
-  `invalidate(endpoint, args?)` on a plugged `EndpointCacheControl`; `{ rateLimit }` per endpoint,
+  30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument, capped at one day,
+  dropped early by `invalidate(endpoint, args?)` on a plugged `EndpointCacheControl`; `{ rateLimit }` per endpoint,
   `option.setRateLimit` per app, `plug(RateLimit)` for a business key. `socketId` names a connection, not a caller. A
   device proves itself with a `MachineToken`. Server to server, `fetch.clone({ origin })` opens no socket
   without `connect: true`, retries through `retry`, and rethrows a remote `Err` as is — never wrapped or re-keyed.
@@ -417,6 +417,9 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   `plug(StorageAdaptorRole)` · `use<T>()` only for a legacy `option.ts` singleton · `env(...)` for config.
 - `memory(...)` takes a scalar or model class (`memory(Map, { of: CallStateInput })`); never hand-encode JSON into a
   `String` memory.
+- A stored file's disk path is `storage.resolveLocalPath?.(path, access)` on `StorageAdaptorRole` (`fieldRule`):
+  `null` means refused (answer 404, never fall back to `readData()`), `undefined` means the adaptor keeps no local
+  files, and a key that comes from a request passes `access: "public"`.
 - **A new adapter is an `adapt()` singleton in `srvkit/`**, injected with `plug(TheClass)`, key `as const`. Never
   register it in `lib/option.ts` (it self-registers); never construct a `Logger` in it (`this.logger` exists);
   lifecycle work in `override async onInit()`. A per-use value object is a plain class. Legacy

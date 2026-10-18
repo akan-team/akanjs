@@ -209,7 +209,7 @@ What it does
 
 - `Timeout` — The endpoint declares `timeout` in ms. — Rejects with `base.error.gatewayTimeout` (504) once the time is spent.
 
-An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted.
+An endpoint's `{ cache: <ms> }` is not a middleware. The stored answer is looked up inside the call, after the guards, so a hit reaches only a caller they admitted. A `{ cache }` TTL is capped at one day, the life of the endpoint's cache generation, so a longer value keeps an answer for a day at most.
 
 A write drops the answers it made stale before their TTL. Declare `endpointCache: plug(EndpointCacheControl)` in the service, then `await this.endpointCache.invalidate("bannerListInPublic")` for every answer of the endpoint, plus `bannerInsightInPublic` for a slice's count. `invalidate("bannerInPublic", [category])` drops the one call with those arguments: pass every declared argument, `null` for an omitted search argument; a slice list carries skip, limit and sort, so drop it with the endpoint-wide form. Every instance sees it at once.
 
