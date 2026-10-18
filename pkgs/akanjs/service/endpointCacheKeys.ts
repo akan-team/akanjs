@@ -1,11 +1,10 @@
+import { dayjs } from "akanjs/base";
 import type { CacheAdaptor } from "./predefinedAdaptor/cache.adaptor";
 
-// An entry sits under its endpoint's generation, a random token. Invalidating the endpoint replaces the token in one
-// write: every entry becomes unreachable at once and expires on its own TTL, no key is scanned, and a miss already
-// running writes under the old token, where nobody reads it. A token is never reused, so a generation a cache evicts
-// (Redis under `allkeys-*`) starts a fresh one instead of reviving the entries an earlier invalidation dropped.
+// A random per-endpoint token, replaced on invalidation and never reused, so a lost generation revives no entries.
 export class EndpointCacheKeys {
   static readonly topic = "cache";
+  static readonly generationTtlMs = 86_400_000;
   static readonly #generationTopic = "cacheGeneration";
 
   static async entryKey(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string, args: unknown[]) {
@@ -18,14 +17,20 @@ export class EndpointCacheKeys {
     args?: unknown[],
   ) {
     if (args) await cache.delete(EndpointCacheKeys.topic, await EndpointCacheKeys.entryKey(cache, endpoint, args));
-    else await cache.set(EndpointCacheKeys.#generationTopic, endpoint, crypto.randomUUID());
+    else
+      await cache.set(EndpointCacheKeys.#generationTopic, endpoint, crypto.randomUUID(), EndpointCacheKeys.#expiry());
   }
 
   static async #generation(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string) {
     const current = await cache.get<string>(EndpointCacheKeys.#generationTopic, endpoint);
     if (current !== undefined) return current;
     const fresh = crypto.randomUUID();
-    if (await cache.setIfAbsent(EndpointCacheKeys.#generationTopic, endpoint, fresh)) return fresh;
+    if (await cache.setIfAbsent(EndpointCacheKeys.#generationTopic, endpoint, fresh, EndpointCacheKeys.#expiry()))
+      return fresh;
     return (await cache.get<string>(EndpointCacheKeys.#generationTopic, endpoint)) ?? fresh;
+  }
+
+  static #expiry() {
+    return { expireAt: dayjs().add(EndpointCacheKeys.generationTtlMs, "millisecond") };
   }
 }

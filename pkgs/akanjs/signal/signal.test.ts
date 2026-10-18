@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   Any,
   Binary,
+  type Dayjs,
   dayjs,
   ENDPOINT_META,
   ID,
@@ -305,18 +306,21 @@ const makeSignalContext = ({
 
 class FakeCacheAdaptor {
   readonly store = new Map<string, string>();
+  readonly expiries = new Map<string, Dayjs | undefined>();
   async get<T>(topic: string, key: string) {
     return this.store.get(`${topic}:${key}`) as T | undefined;
   }
-  async set(topic: string, key: string, value: string | number | Buffer) {
+  async set(topic: string, key: string, value: string | number | Buffer, option?: { expireAt?: Dayjs }) {
     this.store.set(`${topic}:${key}`, String(value));
+    this.expiries.set(`${topic}:${key}`, option?.expireAt);
   }
   async delete(topic: string, key: string) {
     this.store.delete(`${topic}:${key}`);
   }
-  async setIfAbsent(topic: string, key: string, value: string | number | Buffer) {
+  async setIfAbsent(topic: string, key: string, value: string | number | Buffer, option?: { expireAt?: Dayjs }) {
     if (this.store.has(`${topic}:${key}`)) return false;
     this.store.set(`${topic}:${key}`, String(value));
+    this.expiries.set(`${topic}:${key}`, option?.expireAt);
     return true;
   }
   async acquireLease(topic: string, key: string, owner: string) {
@@ -1161,6 +1165,7 @@ describe("SignalContext execution", () => {
     expect(await call("news")).toBe("news-1");
     expect(await call("event")).toBe("event-2");
     expect(await call("news")).toBe("news-1");
+    expect(cache.expiries.get("cacheGeneration:contextKey")?.isAfter(dayjs())).toBe(true);
 
     expect(await control.invalidate("contextKey", ["news"])).toBe(true);
     expect(await call("news")).toBe("news-3");
@@ -1183,6 +1188,9 @@ describe("SignalContext execution", () => {
 
     for (const key of cache.store.keys()) if (key.startsWith("cacheGeneration:")) cache.store.delete(key);
     expect(await call("news")).toBe("news-8");
+
+    expect(await control.invalidate("noSuchEndpoint")).toBe(true);
+    expect(cache.expiries.get("cacheGeneration:noSuchEndpoint")?.isAfter(dayjs())).toBe(true);
 
     const broken = Object.assign(new EndpointCacheControl(), {
       cache: {
