@@ -69,7 +69,9 @@ export class EndpointCache {
       const serialized = TaggedJson.stringify(result);
       // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
       if (serialized === undefined) return;
-      await cache.set(EndpointCacheKeys.topic, key, serialized, { expireAt: dayjs().add(ttl, "millisecond") });
+      // Capped at the generation's life: an entry outliving its token is stored but no read can reach it.
+      const lifeMs = Math.min(ttl, EndpointCacheKeys.generationTtlMs);
+      await cache.set(EndpointCacheKeys.topic, key, serialized, { expireAt: dayjs().add(lifeMs, "millisecond") });
     } catch (error) {
       context.adaptor.logger.warn(`Cache write failed for ${context.key}: ${String(error)}`);
     }

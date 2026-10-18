@@ -20,6 +20,7 @@ import {
   CacheAdaptorRole,
   type DatabaseService,
   EndpointCacheControl,
+  EndpointCacheKeys,
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
   type InjectRegistry,
@@ -1129,6 +1130,21 @@ describe("SignalContext execution", () => {
     expect(passes).toBe(3);
   });
 
+  const livesAboutADay = (expireAt: Dayjs | undefined) =>
+    !!expireAt && Math.abs(expireAt.diff(dayjs()) - EndpointCacheKeys.generationTtlMs) < 60_000;
+
+  test("caps a cached answer at the generation's one-day life, however long the endpoint's TTL", async () => {
+    const info = buildEndpoint.query(String, { guards: [Public], cache: 7 * 86_400_000 }).exec(() => "week");
+    const cache = new FakeCacheAdaptor();
+    const context = makeSignalContext({ endpointInfo: info, registry: makeCacheRegistry(cache) });
+    await context.init();
+    await context.exec();
+
+    const entries = [...cache.expiries].filter(([key]) => key.startsWith(`${EndpointCacheKeys.topic}:`));
+    expect(entries).toHaveLength(1);
+    expect(livesAboutADay(entries[0]?.[1])).toBe(true);
+  });
+
   test("drops an endpoint's cached answers before the TTL: every one, or the one for given args", async () => {
     let runs = 0;
     let holdNext = false;
@@ -1165,7 +1181,7 @@ describe("SignalContext execution", () => {
     expect(await call("news")).toBe("news-1");
     expect(await call("event")).toBe("event-2");
     expect(await call("news")).toBe("news-1");
-    expect(cache.expiries.get("cacheGeneration:contextKey")?.isAfter(dayjs())).toBe(true);
+    expect(livesAboutADay(cache.expiries.get("cacheGeneration:contextKey"))).toBe(true);
 
     expect(await control.invalidate("contextKey", ["news"])).toBe(true);
     expect(await call("news")).toBe("news-3");
@@ -1190,7 +1206,7 @@ describe("SignalContext execution", () => {
     expect(await call("news")).toBe("news-8");
 
     expect(await control.invalidate("noSuchEndpoint")).toBe(true);
-    expect(cache.expiries.get("cacheGeneration:noSuchEndpoint")?.isAfter(dayjs())).toBe(true);
+    expect(livesAboutADay(cache.expiries.get("cacheGeneration:noSuchEndpoint"))).toBe(true);
 
     const broken = Object.assign(new EndpointCacheControl(), {
       cache: {
