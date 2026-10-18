@@ -10,6 +10,7 @@ import { TurnFeedback, type TurnFeedbackSource } from "../feedback/TurnFeedback"
 import { VerifyFeedback } from "../feedback/VerifyFeedback";
 import { AkanToolPack } from "./AkanToolPack";
 import { AskToolPack } from "./AskToolPack";
+import type { DeepSeekWeb } from "./DeepSeekWeb";
 import { MailToolPack } from "./MailToolPack";
 import { McpToolPack } from "./McpToolPack";
 import { SessionToolPack } from "./SessionToolPack";
@@ -22,6 +23,7 @@ export interface AkanCodePluginsOptions {
   /** Apps whose dev server should be watched, and whose page should be probed. */
   apps: string[];
   canSeeImages: boolean;
+  deepseek?: DeepSeekWeb | undefined;
   /** How many `task` levels deep the owning agent is. */
   depth: number;
   /** The tally of the sub-agent tree the owning agent belongs to, when a `task` opened it. */
@@ -56,7 +58,7 @@ export class AkanCodePlugins {
     });
     const dispose = () => mcp?.close();
     const mcpStatus = mcp?.status ?? [];
-    const web = new WebToolPack({ profile: options.profile });
+    const web = new WebToolPack({ profile: options.profile, deepseek: options.deepseek });
     const sessions = new SessionToolPack({
       workspaceRoot: options.workspace.workspaceRoot,
       cwd: options.cwd,

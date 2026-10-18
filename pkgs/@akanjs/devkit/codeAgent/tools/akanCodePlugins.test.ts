@@ -11,6 +11,7 @@ import { AkanCodePlugins } from "./AkanCodePlugins";
 import { AkanEditScope } from "./AkanEditScope";
 import { AkanEnvKeys } from "./AkanEnvKeys";
 import { AkanVerifier } from "./AkanVerifier";
+import { DeepSeekWeb } from "./DeepSeekWeb";
 import { McpClient } from "./McpClient";
 import { McpToolPack } from "./McpToolPack";
 import { SessionToolPack } from "./SessionToolPack";
@@ -650,6 +651,128 @@ describe("WebToolPack", () => {
       expect(refused?.content[0]?.text).toContain("docs.akanjs.com");
     } finally {
       server.stop(true);
+    }
+  });
+
+  test("reads a long page a window at a time, continuing from the snapshot it first read", async () => {
+    let hits = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => {
+        hits += 1;
+        return new Response(`${"a".repeat(10_000)}${"b".repeat(10_000)}${"c".repeat(500)}`);
+      },
+    });
+    try {
+      const fetchTool = toolsOf(new WebToolPack({ profile: codeAgentPresets.local(root) }).extension()).get(
+        "web_fetch",
+      );
+      const url = `http://localhost:${server.port}/long`;
+      const read = async (offset?: number) =>
+        (await fetchTool?.("1", { url, ...(offset === undefined ? {} : { offset }) } as never))?.content[0]?.text ?? "";
+
+      const first = await read();
+      expect(first).toContain(`${"a".repeat(10_000)}\n\n[characters 0–10000 of 20500; offset 10000 reads on]`);
+      const second = await read(10_000);
+      expect(second).toContain(`\n\n${"b".repeat(10_000)}\n\n[characters 10000–20000 of 20500; offset 20000 reads on]`);
+      expect(await read(20_000)).toEndWith(`\n\n${"c".repeat(500)}`);
+      expect(await read(30_000)).toContain("Offset 30000 is past the end; the page has 20500 characters.");
+      expect(hits).toBe(1);
+      await read();
+      expect(hits).toBe(2);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("reads a public page through DeepSeek, a local one directly, and a refused one directly too", async () => {
+    const asked: string[] = [];
+    const deepseekServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const { url } = (await request.json()) as { url: string };
+        asked.push(url);
+        if (url.endsWith("/refused"))
+          return Response.json({ error: { message: "rejected by security policy" } }, { status: 403 });
+        return Response.json({ title: "Install", content: "\\#\\# Install\n\nRun \\`bun add akanjs\\`\\." });
+      },
+    });
+    const page = Bun.serve({ port: 0, fetch: () => new Response("<h1>local dev page</h1>") });
+    const realFetch = globalThis.fetch;
+    const direct = spyOn(globalThis, "fetch").mockImplementation((async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url).hostname === "docs.example.com") return new Response("<p>read directly</p>");
+      return await realFetch(input, init);
+    }) as typeof fetch);
+    try {
+      const deepseek = new DeepSeekWeb("sk-test", `http://127.0.0.1:${deepseekServer.port}/v1/tools`);
+      const fetchTool = toolsOf(new WebToolPack({ profile: codeAgentPresets.local(root), deepseek }).extension()).get(
+        "web_fetch",
+      );
+      const read = async (url: string) => (await fetchTool?.("1", { url } as never))?.content[0]?.text ?? "";
+
+      expect(await read("https://docs.example.com/install")).toBe(
+        "200 https://docs.example.com/install\nInstall\n\n## Install\n\nRun `bun add akanjs`.",
+      );
+      expect(await read(`http://localhost:${page.port}/`)).toContain("local dev page");
+      expect(asked).toEqual(["https://docs.example.com/install"]);
+      expect(await read("https://docs.example.com/refused")).toContain("read directly");
+      expect(asked.at(-1)).toBe("https://docs.example.com/refused");
+    } finally {
+      direct.mockRestore();
+      deepseekServer.stop(true);
+      page.stop(true);
+    }
+  });
+
+  test("searches through DeepSeek when no key-named provider is set, and a key-named one wins", async () => {
+    const had = { brave: process.env.BRAVE_API_KEY, tavily: process.env.TAVILY_API_KEY };
+    const counts: number[] = [];
+    const deepseekServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        counts.push(((await request.json()) as { count: number }).count);
+        return Response.json({
+          results: [{ title: "Akan.js", url: "https://akanjs.com/?utm_source=x", summary: "s" }],
+        });
+      },
+    });
+    const descriptionsOf = (pack: WebToolPack) => {
+      const descriptions = new Map<string, string>();
+      (pack.extension() as { factory: (pi: unknown) => void }).factory({
+        registerTool: (tool: { name: string; description: string }) => descriptions.set(tool.name, tool.description),
+      });
+      return descriptions;
+    };
+    try {
+      delete process.env.BRAVE_API_KEY;
+      delete process.env.TAVILY_API_KEY;
+      const deepseek = new DeepSeekWeb("sk-test", `http://127.0.0.1:${deepseekServer.port}/v1/tools`);
+      const pack = new WebToolPack({ profile: codeAgentPresets.local(root), deepseek });
+      expect(new WebToolPack({ profile: codeAgentPresets.review(root), deepseek }).names()).toEqual([]);
+      expect(descriptionsOf(pack).get("web_search")).toContain("(deepseek)");
+
+      const search = toolsOf(pack.extension()).get("web_search");
+      const found = await search?.("1", { query: "akan", count: 50 } as never);
+      expect(found?.content[0]?.text).toBe("- Akan.js\n  https://akanjs.com/\n  s");
+      expect(counts).toEqual([WebToolPack.maxResults]);
+      const tooLong = await search?.("1", { query: "x".repeat(DeepSeekWeb.maxQueryChars + 1) } as never);
+      expect(tooLong?.isError).toBe(true);
+      expect(counts).toHaveLength(1);
+
+      process.env.BRAVE_API_KEY = "test";
+      expect(descriptionsOf(pack).get("web_search")).toContain("(brave)");
+    } finally {
+      for (const [name, value] of [
+        ["BRAVE_API_KEY", had.brave],
+        ["TAVILY_API_KEY", had.tavily],
+      ] as const)
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      deepseekServer.stop(true);
     }
   });
 });

@@ -25,6 +25,7 @@ import {
 } from "akanjs/common";
 import type { Workspace } from "../../commandDecorators";
 import { AkanCodePlugins } from "../tools/AkanCodePlugins";
+import { DeepSeekWeb } from "../tools/DeepSeekWeb";
 import { AkanCodeCompaction } from "./AkanCodeCompaction";
 import { AkanCodeServices } from "./AkanCodeServices";
 import {
@@ -101,7 +102,8 @@ export class CodeAgent {
     const agent = new CodeAgent(options.profile);
     const autoCompactAt = AkanCodeCompaction.normalize(options.autoCompactAt);
     const settingsManager = AkanCodeServices.settings();
-    const modelRuntime = await AkanCodeServices.runtime(workspaceRoot, CodeAgentProxy.fromEnv(options.profile));
+    const proxy = CodeAgentProxy.fromEnv(options.profile);
+    const modelRuntime = await AkanCodeServices.runtime(workspaceRoot, proxy);
     const model = await akanCodeModel(modelRuntime, options.model);
     const compaction = settingsManager.getCompactionSettings(model);
     const modelWarnings = akanCodeModelWarnings(model, compaction.reserveTokens + compaction.keepRecentTokens);
@@ -112,6 +114,7 @@ export class CodeAgent {
       profile: options.profile,
       apps: options.apps ?? [],
       canSeeImages: akanCodeModelSupportsImages(model),
+      deepseek: await DeepSeekWeb.fromRuntime(modelRuntime, !!proxy),
       depth: options.depth ?? 0,
       ...(options.subagentSpend ? { subagentSpend: options.subagentSpend } : {}),
       currentSessionId: () => agent.sessionId,
