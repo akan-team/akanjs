@@ -151,9 +151,10 @@ that reaches you from a request passes `access: "public"`**: without it a `priva
 root, so a public route would serve private files. Never cast the role to reach `root` / `privateRoot`.
 
 For a custom adapter class (not a predefined role), pass the class itself, e.g. `ipfsApi: plug(IpfsApi)`. Two framework
-adapters are plugged that way: `plug(RateLimit)` to count a business key, and `plug(EndpointCacheControl)` to drop an
-endpoint's `{ cache }` answers after the write that made them stale:
-`await this.endpointCache.invalidate("bannerListInPublic")`.
+adapters are plugged that way: `rateLimit: plug(RateLimit)` to count a business key, and
+`endpointCache: plug(EndpointCacheControl)` to drop an endpoint's `{ cache }` answers after the write that made them
+stale: `await this.endpointCache.invalidate("bannerListInPublic")`, plus `"bannerInsightInPublic"` for a slice's
+count.
 Injecting a file/image field is usually simpler than calling
 storage directly: declare `image: field(File).optional()` (or `images: field([File])`) on the model and let the
 store's generated `upload<Field>On<Model>(fileList)` action handle the upload. Add `{ cascade: "removeRef" }` to that

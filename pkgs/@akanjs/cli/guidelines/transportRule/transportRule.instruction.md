@@ -130,16 +130,35 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   the declared model, not the service's document: a method only the document has is not there on a hit, and a return
   declared as a `Light` model shows `resolveField` its light fields only. The entry still holds `hidden` and `secret`
   values for its TTL, as the handler returned them.
-- **A write drops the answers it made stale: `plug(EndpointCacheControl)` in the service, then
-  `await this.endpointCache.invalidate("bannerListInPublic")`** for every cached answer of that endpoint, or
-  `invalidate("bannerInPublic", [category])` for the one call with those arguments, in declared order as the endpoint
-  receives them. It works across instances through the cache the entries live in. Every entry key carries its
-  endpoint's generation, a random token the endpoint-wide form replaces in one write: nothing is scanned, old entries
-  expire on their TTL, and a miss already running when you invalidate writes under the old token, where nobody reads
-  it. A token is never reused, so a generation the cache evicts starts a fresh one rather than reviving dropped answers.
-  The one-call form deletes that entry, so a miss for those arguments already running can write it back; reach for
-  the endpoint-wide form when that matters. It answers `false` (warned) when the cache failed. A cached call reads
-  the generation before its entry.
+- **A write drops the answers it made stale.** Plug the adaptor into the service and call it after the write:
+
+  ```ts
+  export class BannerService extends serve(db.banner, ({ plug }) => ({
+    endpointCache: plug(EndpointCacheControl),
+  })) {
+    override async _postUpdate(banner: db.Banner) {
+      await this.endpointCache.invalidate("bannerListInPublic");
+      await this.endpointCache.invalidate("bannerInsightInPublic");
+      return banner;
+    }
+  }
+  ```
+
+  `invalidate(endpoint)` drops every cached answer of that endpoint, across instances. A slice's `init({ cache })`
+  caches its `<model>Insight<Slice>` as well as its list, so drop both or the count stays stale.
+  `invalidate(endpoint, args)` drops the one call with those arguments: pass every declared argument in order as the
+  endpoint receives it, `null` for an omitted search argument (search arguments are nullable, so an omitted one is
+  stored as `null`). A slice list also carries `skip` / `limit` / `sort`, so drop it with the endpoint-wide form.
+  A mismatched list misses silently and still answers `true`.
+- **How it is keyed:** every entry key carries its endpoint's generation, a random token the endpoint-wide form
+  replaces in one write. Nothing is scanned, and a miss already running when you invalidate writes under the old
+  token, where nobody reads it. A token is never reused, so a generation that expires (after a day) or is evicted
+  starts a fresh one instead of reviving dropped answers, and an endpoint name nothing serves leaves no key behind for
+  good. Entries under an old token stay in the cache until their own TTL, and a Redis that BullMQ shares has to run
+  `noeviction`, so nothing frees them early: give an endpoint you invalidate often a short TTL. The one-call form
+  deletes that entry, so a miss for those arguments already running can write it back; reach for the endpoint-wide
+  form when that matters. It answers `false` (logged as an error) when the cache failed. A cached call reads the
+  generation before its entry.
 - **A cache backend that is down does not take the endpoint down.** A failed read is warned and the call runs
   uncached; a failed write is warned and dropped.
 - A call runs the cross-site check and an `ip` rate limit, then the body read, then the default middleware chain

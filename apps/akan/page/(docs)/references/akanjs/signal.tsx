@@ -962,8 +962,8 @@ export class WallpadEndpoint extends endpoint(srv.wallpad, ({ mutation, message 
             </div>
             <div>
               {l.trans({
-                en: 'A write drops the answers it made stale before their TTL: `plug(EndpointCacheControl)` in the service, then `await this.endpointCache.invalidate("bannerListInPublic")` for every answer of the endpoint, or `invalidate("bannerInPublic", [category])` for the one call with those arguments. Every instance sees it at once.',
-                ko: '쓰기는 자신이 낡게 만든 응답을 TTL이 지나기 전에 버릴 수 있습니다. 서비스에서 `plug(EndpointCacheControl)`를 주입하고, 엔드포인트의 모든 응답은 `await this.endpointCache.invalidate("bannerListInPublic")`로, 특정 인자로 한 호출의 응답은 `invalidate("bannerInPublic", [category])`로 버립니다. 모든 인스턴스에 곧바로 반영됩니다.',
+                en: 'A write drops the answers it made stale before their TTL. Declare `endpointCache: plug(EndpointCacheControl)` in the service, then `await this.endpointCache.invalidate("bannerListInPublic")` for every answer of the endpoint, plus "bannerInsightInPublic" for a slice\'s count. `invalidate("bannerInPublic", [category])` drops the one call with those arguments: pass every declared argument, `null` for an omitted search argument; a slice list carries skip, limit and sort, so drop it with the endpoint-wide form. Every instance sees it at once.',
+                ko: '쓰기는 자신이 낡게 만든 응답을 TTL이 지나기 전에 버릴 수 있습니다. 서비스에 `endpointCache: plug(EndpointCacheControl)`를 선언하고, 엔드포인트의 모든 응답은 `await this.endpointCache.invalidate("bannerListInPublic")`로 버리며 슬라이스의 개수는 "bannerInsightInPublic"도 함께 버립니다. 특정 인자로 한 호출의 응답은 `invalidate("bannerInPublic", [category])`로 버리는데, 선언한 인자를 모두 넘기고 생략한 search 인자는 `null`로 넘깁니다. 슬라이스 목록은 skip, limit, sort를 함께 받으므로 엔드포인트 전체 형태로 버립니다. 모든 인스턴스에 곧바로 반영됩니다.',
               })}
             </div>
             <Docs.SubSubTitle>{l.trans({ en: "Call Order", ko: "실행 순서" })}</Docs.SubSubTitle>
