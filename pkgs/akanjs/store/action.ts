@@ -317,6 +317,8 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   type UploadState = { [key: string]: { [field: string]: string[] } };
   let uploadSeq = 0;
   const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
+    const pending = state[names.modelFormUploading][field];
+    if (!pending || (ticket && !pending.includes(ticket))) return;
     const { [field]: tickets = [], ...rest } = state[names.modelFormUploading];
     const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
     state[names.modelFormUploading] = left.length ? { ...rest, [field]: left } : rest;
@@ -335,8 +337,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
         this.set((state: { [key: string]: any }) => {
-          // An explicit write wins over an upload still in flight for a single field; an array keeps its uploads,
-          // which insert into the list as it is when they land.
+          // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
           if (isFileField && !field.isArray) releaseUpload(state as UploadState, namesOfField.field);
           const setValue =
             value === null
@@ -406,8 +407,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             ) {
               const formId = ((this.get() as { [key: string]: any })[names.modelForm] as { id?: string }).id;
               if (!fileList.length) return;
-              // A ticket scopes the result to this form: a whole-form set clears every ticket, and a single field
-              // keeps only the newest, so a result whose ticket is gone is stale and dropped.
+              // A whole-form set clears every ticket and a single field keeps only the newest: a missing ticket is stale.
               const ticket = `${++uploadSeq}`;
               this.set((state: UploadState) => {
                 const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
@@ -444,7 +444,6 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               const fileReadName = ConstantRegistry.isLight(field.modelRef)
                 ? `light${capitalize(fileUploadRefName)}`
                 : fileUploadRefName;
-              // The form moved on (another pick, a reset, another record): the file is no longer ours to update.
               const holdsFile = (id: string) => {
                 const value = (this.get() as { [key: string]: { [key: string]: unknown } })[names.modelForm][
                   namesOfField.field
@@ -543,6 +542,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     restoreModelDraft: `restore${className}FormDraft`,
     discardModelDraft: `discard${className}FormDraft`,
   };
+  // A save while a file is still uploading would store the form without it.
+  const isUploadingIn = (state: { [key: string]: any }) =>
+    Object.keys(state[names.modelFormUploading] as object).length > 0;
   const defaultKeyOf = (sliceName: string) => capitalize(sliceName).replace(names.Model, names.defaultModel);
   // A back-navigation replays the pre-write RSC payload; this stamp makes `Load.Units` refetch on re-hydration.
   const staleAtOfSlices = () => {
@@ -644,7 +646,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
 
-      if (!modelInput) return;
+      if (!modelInput || isUploadingIn(currentState)) return;
       this.set({ [names.modelLoading]: true });
       const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
       this.set({
@@ -669,7 +671,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelForm = currentState[names.modelForm] as Input & { id: string };
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
-      if (!modelInput) return;
+      if (!modelInput || isUploadingIn(currentState)) return;
       if (model?.id === modelForm.id) this.set({ [names.modelLoading]: modelForm.id });
       const updatedModel = await servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError });
       this.set({
@@ -771,9 +773,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const currentState = this.get() as { [key: string]: any };
       const modelForm = currentState[names.modelForm] as Input;
       const modelSubmit = currentState[names.modelSubmit] as { disabled: boolean };
-      const isUploading = Object.keys(currentState[names.modelFormUploading] as object).length > 0;
       const modelInput = (cnst.input.purify as (obj: any) => DefaultOf<Input> | null)(modelForm);
-      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: !modelInput || isUploading || disabled } });
+      const isDisabled = !modelInput || isUploadingIn(currentState) || disabled;
+      this.set({ [names.modelSubmit]: { ...modelSubmit, disabled: isDisabled } });
     },
     [names.submitModel]: async function (this: SetGet, option?: CreateOption<Full>) {
       const currentState = this.get() as { [key: string]: any };

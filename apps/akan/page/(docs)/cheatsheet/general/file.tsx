@@ -476,15 +476,15 @@ export default page()
       {
         name: "st.do.upload<Field>On<Model>",
         desc: l.trans({
-          en: "Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s. `<model>FormUploading` marks the field while the request runs, and a result whose form moved on is dropped.",
-          ko: "`(fileList, index?)`를 받아 폼의 File 필드를 채우고, 3초마다 다시 읽습니다. 요청 중에는 `<model>FormUploading`에 필드가 표시되고, 그 사이 폼이 바뀌면 결과는 버립니다.",
+          en: "Takes `(fileList, index?)`, fills a File field of the form, and re-reads it every 3 s. `<model>FormUploading` marks the field while the request runs. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.",
+          ko: "`(fileList, index?)`를 받아 폼의 File 필드를 채우고, 3초마다 다시 읽습니다. 요청 중에는 `<model>FormUploading`에 필드가 표시됩니다. 그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 결과는 버립니다.",
         }),
       },
       {
         name: ["Field.Img", "Field.Imgs", "Field.File", "Field.Files"],
         desc: l.trans({
-          en: "Form controls in `@libs/shared/ui` that call `add<Model>Files` for the `slice` you pass.",
-          ko: "`@libs/shared/ui`의 폼 컨트롤입니다. 넘긴 `slice`의 `add<Model>Files`를 부릅니다.",
+          en: "Form controls in `@libs/shared/ui`. Handed the generated `set<Field>On<Model>`, they upload through `upload<Field>On<Model>`; any other `onChange` calls `add<Model>Files` for the `slice` you pass.",
+          ko: "`@libs/shared/ui`의 폼 컨트롤입니다. 생성된 `set<Field>On<Model>`을 넘기면 `upload<Field>On<Model>`로 업로드하고, 다른 `onChange`면 넘긴 `slice`의 `add<Model>Files`를 부릅니다.",
         }),
       },
     ];

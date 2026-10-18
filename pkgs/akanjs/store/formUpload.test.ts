@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import { resetEnvCache, SLICE_META } from "akanjs/base";
 import { ConstantRegistry, type ProtoFile, via } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
+import { formUploadOf } from "./formUploadOf";
 import { store } from "./store";
 import { setTestEnv } from "./store.fixture";
 import { StoreInstance } from "./storeInstance";
@@ -33,6 +34,7 @@ interface Deferred {
 type State = { [key: string]: any };
 interface Instance {
   get: () => State;
+  set: (patch: State) => void;
   do: { [key: string]: (...args: any[]) => Promise<void> };
   subscribe: (listener: () => void) => () => void;
 }
@@ -47,12 +49,17 @@ const makeInstance = () => {
   const reads: string[] = [];
   const fileStatus = new Map<string, string>();
   const reading: { hold: boolean } = { hold: false };
+  const saved: unknown[] = [];
   const handlers: { [key: string]: unknown } = {
     serializedSignal: { upFile: { endpoint: { addFiles: { fileUpload: true } } } },
     addUpPostFiles: () =>
       new Promise<ProtoFile[]>((resolve, reject) => {
         uploads.push({ resolve, reject });
       }),
+    createUpPost: async (data: unknown) => {
+      saved.push(data);
+      return { id: "saved", ...(data as object) };
+    },
     upFile: (id: string) => {
       reads.push(id);
       if (reading.hold) return new Promise(() => undefined);
@@ -73,7 +80,7 @@ const makeInstance = () => {
   rootIndex += 1;
   const instance = new StoreInstance(StoreRegistry.merge(`uploadRoot${rootIndex}`, UpPostStore)) as unknown as Instance;
   void instance.do.newUpPost({ title: "x" });
-  return { instance, uploads, reads, fileStatus, reading, state: () => instance.get() };
+  return { instance, uploads, reads, fileStatus, reading, saved, UpPostStore, state: () => instance.get() };
 };
 
 beforeEach(() => {
@@ -147,6 +154,13 @@ describe("upload<Field>On<Model> pending state", () => {
 });
 
 describe("upload<Field>On<Model> scoping", () => {
+  test("setting a File field with nothing pending leaves the uploading state as it was", async () => {
+    const { instance, state } = makeInstance();
+    const before = state().upPostFormUploading;
+    await instance.do.setImageOnUpPost(fileOf("mine"));
+    expect(state().upPostFormUploading).toBe(before);
+  });
+
   test("a result that lands after the form was reset is dropped", async () => {
     const { instance, uploads, state } = makeInstance();
     const done = instance.do.uploadImageOnUpPost(picked);
@@ -231,6 +245,81 @@ describe("upload<Field>On<Model> scoping", () => {
     await a;
     expect(idsOf(state().upPostForm.images)).toEqual(["added", "b", "a"]);
     expect(state().upPostFormUploading).toEqual({});
+  });
+});
+
+describe("saving while an upload is in flight", () => {
+  test("create<Model>InForm and a direct submit<Model> save nothing until the upload lands", async () => {
+    const { instance, uploads, saved, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.createUpPostInForm();
+    await instance.do.submitUpPost();
+    expect(saved).toEqual([]);
+    uploads[0]?.resolve([fileOf("f1")]);
+    await done;
+    await instance.do.submitUpPost();
+    expect(saved).toHaveLength(1);
+    expect(state().upPostFormUploading).toEqual({});
+  });
+
+  test("update<Model>InForm saves nothing until the upload lands", async () => {
+    const { instance, uploads, saved } = makeInstance();
+    instance.do.writeOnUpPost("id", "existing");
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.updateUpPostInForm();
+    expect(saved).toEqual([]);
+    uploads[0]?.resolve([fileOf("f1")]);
+    await done;
+  });
+});
+
+describe("whole-form sets outside the generated actions", () => {
+  test("an edit shell hydrating the form drops the upload", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    const hydrated = { ...state().upPostForm, title: "from server" };
+    instance.set({ upPost: hydrated, upPostForm: hydrated, upPostFormLoading: false, upPostModal: "edit" });
+    expect(state().upPostFormUploading).toEqual({});
+    uploads[0]?.resolve([fileOf("late")]);
+    await done;
+    expect(state().upPostForm.image).toBeNull();
+  });
+
+  test("restoring a draft drops the upload", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    const form = { ...state().upPostForm, title: "from draft" };
+    instance.set({
+      upPostFormDraft: {
+        key: "k",
+        baseHash: "",
+        baseUpdatedAt: null,
+        pending: { savedAt: new Date(), form },
+        appliedAt: null,
+      },
+    });
+    expect(state().upPostFormUploading.image).toHaveLength(1);
+    await instance.do.restoreUpPostFormDraft();
+    expect(state().upPostFormUploading).toEqual({});
+    uploads[0]?.resolve([fileOf("late")]);
+    await done;
+    expect(state().upPostForm.title).toBe("from draft");
+    expect(state().upPostForm.image).toBeNull();
+  });
+});
+
+describe("formUploadOf", () => {
+  test("answers the form's upload action for a generated File setter, and nothing for anything else", async () => {
+    const { UpPostStore } = makeInstance();
+    StoreRegistry.instance.addStore(StoreRegistry.merge(`uploadRegistryRoot${rootIndex}`, UpPostStore));
+    const registry = StoreRegistry.instance as unknown as Instance;
+    await registry.do.newUpPost({ title: "x" });
+    const upload = formUploadOf(registry.do.setImageOnUpPost);
+    expect(typeof upload).toBe("function");
+    void upload?.(picked);
+    expect(registry.get().upPostFormUploading.image).toHaveLength(1);
+    expect(formUploadOf(registry.do.setTitleOnUpPost)).toBeNull();
+    expect(formUploadOf(() => undefined)).toBeNull();
   });
 });
 

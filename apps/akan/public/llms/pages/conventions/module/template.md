@@ -134,7 +134,7 @@ The basic members come from `akanjs/ui`. `Field` from `@libs/shared/ui` holds th
 
 **`Field.ToggleSelect` takes an `enumOf` class as `items`.** Each value becomes a translated button.
 
-**`Field.Img` uploads through `slice`.** It stores the uploaded `File` in the form, and `nullable` marks the label as optional.
+**`Field.Img` handed `st.do.set<Field>On<Model>` uploads through the form's `upload<Field>On<Model>`; `slice` names the upload otherwise.** It stores the uploaded `File` in the form, and `nullable` marks the label as optional.
 
 **`Field.Rich` needs `valuePath`, the field's key in the form.** `addFile` receives each file uploaded in the editor, here the generated `add<Field>On<Model>` of a `[File]` field.
 

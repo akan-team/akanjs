@@ -58,7 +58,7 @@ const EditModel = <Full,>({
   loadingWrapper,
   cancelEdit,
 }: OpenEditorProps<Full>) => {
-  const storeUse = st.use as { [key: string]: () => unknown };
+  const storeUse = st.use as { [key: string]: (option?: { agent?: boolean }) => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const { refName } = slice;
   const [modelName, ModelName] = useMemo(() => [lowerlize(refName), capitalize(refName)], []);
@@ -77,7 +77,7 @@ const EditModel = <Full,>({
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelForm = storeUse[names.modelForm]() as { id: string | null; [key: string]: any };
   // An upload that settles without touching the form (a failure) must still re-open submit.
-  const modelFormUploading = storeUse[names.modelFormUploading]();
+  const modelFormUploading = storeUse[names.modelFormUploading]({ agent: false });
 
   // This component mounts only while the editor is open, which is what keeps one registration on a list that
   // renders an editor per row: at most one of them is ever open.
@@ -312,8 +312,8 @@ export default function EditModal<Full extends { id: string }>({
           ? () => renderSubmit(storeUse[names.modelForm]() as Full)
           : () => {
               const modelSubmit = storeUse[names.modelSubmit]() as Submit;
-              // A save while a file is still uploading would store the form without it.
-              const isUploading = Object.keys(storeUse[names.modelFormUploading]() as object).length > 0;
+              const isUploading =
+                Object.keys(storeUse[names.modelFormUploading]({ agent: false }) as object).length > 0;
               const isBlocked = modelSubmit.disabled || isUploading || !!disabled;
               const handleSubmit = async ({ onError }: { onError?: (e: string) => void } = {}) => {
                 await storeDo[names.submitModel]({

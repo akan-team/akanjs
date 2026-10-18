@@ -512,7 +512,6 @@ export class StoreInstance {
     }
   }
 
-  // A form set whole (open, hydrate, reset, restore, `set<Model>Form`) holds none of the uploads still in flight.
   #dropReplacedUploads(state: StoreStateRecord, patch: StoreStateRecord) {
     for (const meta of Object.values(this.#derivedMeta.drafts)) {
       if (!(meta.formKey in patch) || meta.uploadingKey in patch) continue;

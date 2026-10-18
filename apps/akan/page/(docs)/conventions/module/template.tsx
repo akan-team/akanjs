@@ -790,7 +790,9 @@ export const General = ({ className }: GeneralProps) => {
                   en: (
                     <span>
                       <strong>
-                        <code>Field.Img</code> uploads through <code>slice</code>.
+                        <code>Field.Img</code> handed <code>st.do.set&lt;Field&gt;On&lt;Model&gt;</code> uploads through
+                        the form's <code>upload&lt;Field&gt;On&lt;Model&gt;</code>; <code>slice</code> names the upload
+                        otherwise.
                       </strong>{" "}
                       It stores the uploaded <code>File</code> in the form, and <code>nullable</code> marks the label as
                       optional.
@@ -799,7 +801,9 @@ export const General = ({ className }: GeneralProps) => {
                   ko: (
                     <span>
                       <strong>
-                        <code>Field.Img</code>는 <code>slice</code>를 통해 업로드합니다.
+                        <code>Field.Img</code>에 <code>st.do.set&lt;Field&gt;On&lt;Model&gt;</code>을 넘기면 폼의{" "}
+                        <code>upload&lt;Field&gt;On&lt;Model&gt;</code>로 업로드하고, 그 밖에는 <code>slice</code>로
+                        업로드합니다.
                       </strong>{" "}
                       올라간 <code>File</code>을 폼에 담고, <code>nullable</code>을 주면 라벨에 선택 항목 표시가
                       붙습니다.
