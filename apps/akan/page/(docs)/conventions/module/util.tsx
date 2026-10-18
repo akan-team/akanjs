@@ -835,7 +835,9 @@ export const Resolve = ({ reportId }: ResolveProps) => {
         {l("report.resolveReport")}
       </button>
       <Modal open={reportModal === \`resolve-\${reportId}\`} onCancel={st.do.resetReport}>
-        <button type="button" onClick={() => void st.do.resolveReport(reportId)}>{l.trans({ en: "Confirm", ko: "확인" })}</button>
+        <button type="button" onClick={() => void st.do.resolveReport(reportId)}>
+          {l.trans({ en: "Confirm", ko: "확인" })}
+        </button>
       </Modal>
     </>
   );

@@ -751,9 +751,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   that matter light up with no code. An inline arrow publishes no tool, carries no annotation, and therefore
   draws nothing: one wrapper silently costs three things at once.
 - **For a control the framework did not render, spread `agentAttrs`** from `akanjs/ui`:
-  `<button type="button" {...agentAttrs(run)} onClick={run}>`, where `run` is what `st.tool(…).exec(…)` returned. It reads the
-  name off the callable, so there is nothing to keep in sync and no `ref` to thread — and it earns the same E2E
-  selector and accessibility name an `akanjs/ui` control has. Never hand-write `data-akan-*`.
+  `<button type="button" {...agentAttrs(run)} onClick={run}>`, where `run` is what `st.tool(…).exec(…)` returned.
+  It reads the name off the callable, so there is nothing to keep in sync and no `ref` to thread — and it earns the
+  same E2E selector and accessibility name an `akanjs/ui` control has. Never hand-write `data-akan-*`.
 - **A control that shares its handler with its siblings takes a key**: `agentAttrs(switchTab, menu)`, in the same
   vocabulary the call's argument uses. One tool serves a whole tab strip or a whole list, so without it every
   namesake is interchangeable in the DOM and the page can say *what* the agent did but never *where* — which the
