@@ -663,7 +663,9 @@ describe("MCP over a booted container", () => {
     const response =
       await routes["/serverResolverTestItem/serverResolverTestItem/:serverResolverTestItemId"].GET(request);
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404 });
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["error", "path", "statusCode", "timestamp"]);
+    expect(body).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404 });
   });
 
   test("refuses an argument nobody declared instead of dropping it", async () => {
@@ -1432,6 +1434,22 @@ describe("MCP Apps", () => {
       { type: "image", data: pixelPng, mimeType: "image/png" },
     ]);
     expect(view._meta[MCP_APP_META.value]).toEqual({ data: pixelPng, mimeType: "image/png", caption: "plan" });
+    expect((await call()).json.result._meta).toBeUndefined();
+  });
+
+  test("hands a view the not-found error a browser would get for a missing document", async () => {
+    const session = { "mcp-session-id": await uiSession() };
+    const args = { serverResolverTestItemId: "507f1f77bcf86cd799439011" };
+    const call = (meta?: object) =>
+      postAs(
+        rpc("tools/call", { name: "serverResolverTestItem", arguments: args, ...(meta ? { _meta: meta } : {}) }),
+        session,
+        apps,
+      );
+    const view = (await call({ [MCP_APP_META.view]: true })).json.result;
+    expect(view.isError).toBe(true);
+    expect(view.content[0].text).toBe("No serverResolverTestItem found for the arguments given.");
+    expect(view._meta[MCP_APP_META.error]).toEqual({ error: "base.error.documentNotFound", statusCode: 404 });
     expect((await call()).json.result._meta).toBeUndefined();
   });
 

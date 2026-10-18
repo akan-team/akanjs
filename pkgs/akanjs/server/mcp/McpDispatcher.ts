@@ -78,7 +78,7 @@ export class McpDispatcher {
   // the view toasts it in the user's language. Never a refusal (it names the guard structure), and nothing that is
   // not an `Err`: the HTTP path generalizes the rest too.
   static #restorable(error: unknown, status: number | undefined) {
-    if (!status || status >= 500 || status === 401 || status === 403 || error instanceof NoDocumentError) return null;
+    if (!status || status >= 500 || status === 401 || status === 403) return null;
     return isExceptionLike(error) ? error.toJSON() : null;
   }
 
@@ -178,11 +178,11 @@ export class McpDispatcher {
     return "The server failed to complete this request.";
   }
 
-  // No status reads as a crash, so the agent-triggerable failures (McpArgumentError, NoDocumentError) carry one.
+  // No status reads as a crash, so an agent-triggerable McpArgumentError carries one (a NoDocumentError is
+  // exception-like).
   // Security: only what HTTP forwards keeps its status — a vendor client's own 4xx error is generalized there too.
   static #statusOf(error: unknown): number | undefined {
-    if (isExceptionLike(error) || error instanceof McpArgumentError || error instanceof NoDocumentError)
-      return error.statusCode;
+    if (isExceptionLike(error) || error instanceof McpArgumentError) return error.statusCode;
     return undefined;
   }
 
