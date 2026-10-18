@@ -38,6 +38,7 @@ interface ActionProps {
   label: ReactNode;
   onAct: () => void;
   closeView: () => void;
+  isBlocked?: boolean;
 }
 
 const EditAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
@@ -58,16 +59,19 @@ const EditAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
   );
 };
 
-const SaveAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
+const SaveAction = ({ modelName, label, onAct, closeView, isBlocked = false }: ActionProps) => {
   useCloseViewTool(modelName, closeView);
   const submitModel = st
-    .tool(`submit${capitalize(modelName)}`)
+    .tool(`submit${capitalize(modelName)}`, {
+      guard: () => (isBlocked ? `The ${modelName} form is not ready to submit.` : true),
+    })
     .desc(`Save the ${modelName} the open form holds.`)
     .exec(onAct);
   return (
     <button
       type="button"
       className={buttonRecipe({ variant: "primary" }, "w-full")}
+      disabled={isBlocked}
       onClick={submitModel}
       {...agentAttrs(submitModel)}
     >
@@ -102,7 +106,7 @@ export default function ViewEditModal({
   saveLabel,
 }: ViewEditModalProps) {
   const { l } = usePage();
-  const storeUse = st.use as unknown as { [key: string]: () => unknown };
+  const storeUse = st.use as unknown as { [key: string]: (option?: { agent?: boolean }) => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const storeSel = st.sel as unknown as <Ret, Val>(selector: (state: { [key: string]: Val }) => Ret) => Ret;
   const { refName, sliceName } = slice;
@@ -124,6 +128,7 @@ export default function ViewEditModal({
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modelFormId = storeSel<string, { id: string }>((state) => state[names.modelForm].id);
+  const isUploading = Object.keys(storeUse[`${modelName}FormUploading`]({ agent: false }) as object).length > 0;
   const canUpdate = !!servedEndpointOf(fetch, `update${ModelName}`);
   const canRemove = !!servedEndpointOf(fetch, `remove${ModelName}`);
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
@@ -190,6 +195,7 @@ export default function ViewEditModal({
             modelName={modelName}
             label={saveLabel ?? l("base.save")}
             closeView={closeView}
+            isBlocked={isUploading}
             onAct={() => {
               storeDo[names.submitModel]({ sliceName, modal: "view" });
             }}

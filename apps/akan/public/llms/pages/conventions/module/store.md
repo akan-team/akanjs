@@ -260,7 +260,7 @@ To react when a field changes, declare `_postSet<Field>` on the store. It runs a
 
 **Pass setters by reference.** `onChange={st.do.setTitleOnTicket}` lets the control publish the field to agents and tests; an inline arrow does not.
 
-**`_postSet<Field>` fires for every writer** — the person's control, an agent's tool, or `fill<Model>Form` — so the rule holds on every screen.
+**`_postSet<Field>` fires for every writer** — the person's control, an agent's tool, `fill<Model>Form`, or a landed `upload<Field>On<Model>` — so the rule holds on every screen.
 
 Generated Slice API
 

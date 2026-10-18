@@ -50,6 +50,7 @@ const makeInstance = () => {
   const fileStatus = new Map<string, string>();
   const reading: { hold: boolean } = { hold: false };
   const saved: unknown[] = [];
+  const postSets: unknown[] = [];
   const handlers: { [key: string]: unknown } = {
     serializedSignal: { upFile: { endpoint: { addFiles: { fileUpload: true } } } },
     addUpPostFiles: () =>
@@ -59,6 +60,10 @@ const makeInstance = () => {
     createUpPost: async (data: unknown) => {
       saved.push(data);
       return { id: "saved", ...(data as object) };
+    },
+    updateUpPost: async (id: string, data: unknown) => {
+      saved.push(data);
+      return { id, ...(data as object) };
     },
     upFile: (id: string) => {
       reads.push(id);
@@ -75,12 +80,16 @@ const makeInstance = () => {
     serializedSignal: { prefix: "upPost", endpoint: {}, slice: { "": { args: [] } } },
     slices: [],
   } as unknown as ClientSignal<"upPost">;
-  class UpPostStore extends store(signal, () => ({})) {}
+  class UpPostStore extends store(signal, () => ({})) {
+    _postSetImage(value: unknown) {
+      postSets.push(value);
+    }
+  }
   StoreRegistry.register(UpPostStore);
   rootIndex += 1;
   const instance = new StoreInstance(StoreRegistry.merge(`uploadRoot${rootIndex}`, UpPostStore)) as unknown as Instance;
   void instance.do.newUpPost({ title: "x" });
-  return { instance, uploads, reads, fileStatus, reading, saved, UpPostStore, state: () => instance.get() };
+  return { instance, uploads, reads, fileStatus, reading, saved, postSets, UpPostStore, state: () => instance.get() };
 };
 
 beforeEach(() => {
@@ -248,6 +257,19 @@ describe("upload<Field>On<Model> scoping", () => {
   });
 });
 
+describe("_postSet<Field> after an upload", () => {
+  test("runs with the written file once the result lands, and not for a dropped result", async () => {
+    const { instance, uploads, postSets } = makeInstance();
+    const first = instance.do.uploadImageOnUpPost(picked);
+    const second = instance.do.uploadImageOnUpPost(picked);
+    uploads[1]?.resolve([fileOf("newer")]);
+    await second;
+    uploads[0]?.resolve([fileOf("older")]);
+    await first;
+    expect(postSets.map((value) => (value as ProtoFile).id)).toEqual(["newer"]);
+  });
+});
+
 describe("saving while an upload is in flight", () => {
   test("create<Model>InForm and a direct submit<Model> save nothing until the upload lands", async () => {
     const { instance, uploads, saved, state } = makeInstance();
@@ -264,12 +286,14 @@ describe("saving while an upload is in flight", () => {
 
   test("update<Model>InForm saves nothing until the upload lands", async () => {
     const { instance, uploads, saved } = makeInstance();
-    instance.do.writeOnUpPost("id", "existing");
+    instance.do.writeOnUpPost("id", "aaaaaaaaaaaaaaaaaaaaaaaa");
     const done = instance.do.uploadImageOnUpPost(picked);
     await instance.do.updateUpPostInForm();
     expect(saved).toEqual([]);
     uploads[0]?.resolve([fileOf("f1")]);
     await done;
+    await instance.do.updateUpPostInForm();
+    expect(saved).toHaveLength(1);
   });
 });
 
@@ -314,12 +338,37 @@ describe("formUploadOf", () => {
     StoreRegistry.instance.addStore(StoreRegistry.merge(`uploadRegistryRoot${rootIndex}`, UpPostStore));
     const registry = StoreRegistry.instance as unknown as Instance;
     await registry.do.newUpPost({ title: "x" });
-    const upload = formUploadOf(registry.do.setImageOnUpPost);
-    expect(typeof upload).toBe("function");
-    void upload?.(picked);
+    const field = formUploadOf(registry.do.setImageOnUpPost);
+    expect(field).not.toBeNull();
+    void field?.upload(picked);
     expect(registry.get().upPostFormUploading.image).toHaveLength(1);
     expect(formUploadOf(registry.do.setTitleOnUpPost)).toBeNull();
     expect(formUploadOf(() => undefined)).toBeNull();
+  });
+
+  test("its write updates the field without releasing a pending upload", async () => {
+    const { UpPostStore } = makeInstance();
+    StoreRegistry.instance.addStore(StoreRegistry.merge(`uploadWriteRoot${rootIndex}`, UpPostStore));
+    const registry = StoreRegistry.instance as unknown as Instance;
+    await registry.do.newUpPost({ title: "x" });
+    const field = formUploadOf(registry.do.setImageOnUpPost);
+    void field?.upload(picked);
+    field?.write(fileOf("polled", "active"));
+    expect(registry.get().upPostForm.image.id).toBe("polled");
+    expect(registry.get().upPostFormUploading.image).toHaveLength(1);
+  });
+
+  test("answers nothing for a custom setter beside a custom upload action", () => {
+    class AvatarStore extends store("avatarOnly" as const, () => ({ avatar: null as unknown })) {
+      setAvatar(value: unknown) {
+        this.set({ avatar: value });
+      }
+      uploadAvatar() {}
+    }
+    StoreRegistry.register(AvatarStore);
+    StoreRegistry.instance.addStore(StoreRegistry.merge(`avatarRoot${rootIndex}`, AvatarStore));
+    const registry = StoreRegistry.instance as unknown as Instance;
+    expect(formUploadOf(registry.do.setAvatar)).toBeNull();
   });
 });
 

@@ -291,9 +291,8 @@ export const Img = <T extends cnst.LightFile = cnst.File>({
   useFieldTool(onChange, { disabled });
   useFileFieldTool(onChange, { read, label: (file) => file.filename, disabled });
   const upload = uploaderOf<T>(slice);
-  // A store setter routes the upload through its form, which scopes the result and polls it.
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(!formUpload && value ? [value] : [], ([updatedFile]) => onChange(updatedFile ?? value));
+  useUploadPoll(value ? [value] : [], ([updatedFile]) => (formUpload?.write ?? onChange)(updatedFile ?? value));
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -305,7 +304,7 @@ export const Img = <T extends cnst.LightFile = cnst.File>({
         protoFile={value}
         disabled={disabled}
         onSave={async (file) => {
-          if (formUpload) return await formUpload(filesOf(file));
+          if (formUpload) return await formUpload.upload(filesOf(file));
           const [uploadedFile] = await upload(file);
           onChange(uploadedFile ?? null);
         }}
@@ -354,7 +353,7 @@ export const Imgs = <T extends cnst.LightFile = cnst.File>({
   useFileFieldTool(onChange, { read, label: (file) => file.filename, min: minlength, max: maxlength, disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(formUpload ? [] : value, (updatedFiles) => onChange(replaced(value, updatedFiles)));
+  useUploadPoll(value, (updatedFiles) => (formUpload?.write ?? onChange)(replaced(value, updatedFiles)));
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
@@ -374,7 +373,7 @@ export const Imgs = <T extends cnst.LightFile = cnst.File>({
             msg.warning("file.maxFilesExceeded", { data: { max: maxlength } });
             return;
           }
-          if (formUpload) return await formUpload(files);
+          if (formUpload) return await formUpload.upload(files);
           onChange([...value, ...(await upload(files))]);
         }}
       />
@@ -413,7 +412,7 @@ export const File = <T extends cnst.LightFile = cnst.File>({
   useFieldTool(onChange, { disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(!formUpload && value ? [value] : [], ([updatedFile]) => onChange(updatedFile ?? value));
+  useUploadPoll(value ? [value] : [], ([updatedFile]) => (formUpload?.write ?? onChange)(updatedFile ?? value));
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -427,7 +426,7 @@ export const File = <T extends cnst.LightFile = cnst.File>({
           onChange(null);
         }}
         onChange={async (file) => {
-          if (formUpload) return await formUpload(filesOf(file));
+          if (formUpload) return await formUpload.upload(filesOf(file));
           const [uploadedFile] = await upload(file);
           onChange(uploadedFile ?? null);
         }}
@@ -466,7 +465,7 @@ export const Files = <T extends cnst.LightFile = cnst.File>({
   useFieldTool(onChange, { disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(formUpload ? [] : value, (updatedFiles) => onChange(replaced(value, updatedFiles)));
+  useUploadPoll(value, (updatedFiles) => (formUpload?.write ?? onChange)(replaced(value, updatedFiles)));
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
@@ -485,7 +484,7 @@ export const Files = <T extends cnst.LightFile = cnst.File>({
             msg.warning("file.maxFilesExceeded", { data: { max: maxlength } });
             return;
           }
-          if (formUpload) return await formUpload(files);
+          if (formUpload) return await formUpload.upload(files);
           onChange([...value, ...(await upload(files))]);
         }}
       />

@@ -128,6 +128,8 @@ Related pages
 
   - **Minimum length.** `Text`, `TextArea`, `Email` and `Password` flag input shorter than `minlength`: 2 by default, 8 for `Password`, 0 when `nullable`. Lower it for short values such as initials.
 
+  - **Relation options.** `Parent`, `ParentId`, `Children` and `ChildrenId` load their options from `slice` on open, and `initArgs` holds only that slice's filter args. A `limit` or a `sort` (a key of the slice filter's `sort`) gives the field its own window: it loads that page itself and leaves the slice's list, `limitOf<Model>` and `sortOf<Model>` as the page holds them; the one left out comes from the store. `sortOption` only reorders the rows already loaded.
+
   - **Setter by reference.** `onChange={st.do.setNameOnUser}` publishes the field as an agent tool. An inline arrow runs the same and publishes nothing.
 
   - **Wrappers stay legal.** Transforming the value, adding a statement or writing a nested path with `writeOnX` is fine. Normalize with the control's `transform` prop where you can, and publish the rest with `st.tool`.

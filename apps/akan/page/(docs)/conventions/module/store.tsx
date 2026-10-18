@@ -1345,8 +1345,8 @@ export class UserStore extends store(
                       <strong>
                         <code>{"_postSet<Field>"}</code> fires for every writer
                       </strong>{" "}
-                      — the person's control, an agent's tool, or <code>{"fill<Model>Form"}</code> — so the rule holds
-                      on every screen.
+                      — the person's control, an agent's tool, <code>{"fill<Model>Form"}</code>, or a landed{" "}
+                      <code>{"upload<Field>On<Model>"}</code> — so the rule holds on every screen.
                     </span>
                   ),
                   ko: (
@@ -1354,8 +1354,8 @@ export class UserStore extends store(
                       <strong>
                         <code>{"_postSet<Field>"}</code>는 누가 쓰든 실행됩니다.
                       </strong>{" "}
-                      사람의 컨트롤, 에이전트의 툴, <code>{"fill<Model>Form"}</code> 모두 해당하므로 어느 화면에서나
-                      규칙이 지켜집니다.
+                      사람의 컨트롤, 에이전트의 툴, <code>{"fill<Model>Form"}</code>, 끝난{" "}
+                      <code>{"upload<Field>On<Model>"}</code> 모두 해당하므로 어느 화면에서나 규칙이 지켜집니다.
                     </span>
                   ),
                 })}

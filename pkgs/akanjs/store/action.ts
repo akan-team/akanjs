@@ -407,7 +407,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
             ) {
               const formId = ((this.get() as { [key: string]: any })[names.modelForm] as { id?: string }).id;
               if (!fileList.length) return;
-              // A whole-form set clears every ticket and a single field keeps only the newest: a missing ticket is stale.
+              // A whole-form set clears all tickets and a single field keeps only the newest; a missing one is stale.
               const ticket = `${++uploadSeq}`;
               this.set((state: UploadState) => {
                 const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
@@ -440,6 +440,11 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 } else form[namesOfField.field] = files[0] ?? null;
               });
               if (!isWritten) return;
+              const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
+                namesOfField.postSetField
+              ];
+              if (postSet)
+                void postSet.call(this, (this.get() as { [key: string]: any })[names.modelForm][namesOfField.field]);
               // A light-declared field stores the light projection, so the poll re-reads through the light endpoint.
               const fileReadName = ConstantRegistry.isLight(field.modelRef)
                 ? `light${capitalize(fileUploadRefName)}`

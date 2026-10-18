@@ -7,6 +7,7 @@ import { AgenticSurface, AgentProvider } from "use-agentic";
 import { l, mountSuspense, setTestEnv, waitFor } from "../testHelpers.fixture";
 
 let EditModal: typeof import("./EditModal").default;
+let ViewEditModal: typeof import("./ViewEditModal").default;
 let st: typeof import("akanjs/store").st;
 let makeStore: () => { uploads: Deferred[] };
 
@@ -79,6 +80,7 @@ beforeAll(async () => {
   };
   ({ st } = await import("akanjs/store"));
   ({ default: EditModal } = await import("./EditModal"));
+  ({ default: ViewEditModal } = await import("./ViewEditModal"));
 });
 
 const open = async () => {
@@ -102,6 +104,44 @@ const open = async () => {
   await waitFor(() => !submitDisabled());
   return { ...mounted, uploads, surface, submitButton, submitDisabled };
 };
+
+describe("Model.ViewEditModal upload gating", () => {
+  test("the save button and its agent tool refuse while an upload is in flight", async () => {
+    const { uploads } = makeStore();
+    const surface = new AgenticSurface();
+    const { unmount } = await mountSuspense(
+      <AgentProvider surface={surface}>
+        <ViewEditModal
+          slice={slice}
+          renderView={() => <div>item view</div>}
+          renderTemplate={() => <div>item form</div>}
+        />
+      </AgentProvider>,
+    );
+    await act(async () => {
+      await (st.do as unknown as Do).newUploadModalItem?.({ title: "ok" });
+      await (st.do as unknown as Do).writeOnUploadModalItem?.("id", "aaaaaaaaaaaaaaaaaaaaaaaa");
+    });
+    await waitFor(() => document.body.textContent?.includes("item form") ?? false);
+    const saveButton = () =>
+      [...document.querySelectorAll("button")].find((button) => button.textContent?.includes("save"));
+    expect(saveButton()?.disabled).toBe(false);
+    let upload: Promise<void> | undefined;
+    await act(async () => {
+      upload = (st.do as unknown as Do).uploadImageOnUploadModalItem?.(picked);
+    });
+    await waitFor(() => saveButton()?.disabled === true);
+    expect(saveButton()?.disabled).toBe(true);
+    await expect(surface.call("submitUploadModalItem")).rejects.toThrow("not ready to submit");
+    await act(async () => {
+      uploads[0]?.resolve([{ id: "f1", url: "/f/f1", status: "active" } as unknown as ProtoFile]);
+      await upload;
+    });
+    await waitFor(() => saveButton()?.disabled === false);
+    expect(saveButton()?.disabled).toBe(false);
+    unmount();
+  });
+});
 
 describe("Model.EditModal upload gating", () => {
   test("the submit button and its agent tool refuse while an upload is in flight, and re-open when it lands", async () => {
