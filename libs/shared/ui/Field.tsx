@@ -292,7 +292,9 @@ export const Img = <T extends cnst.LightFile = cnst.File>({
   useFileFieldTool(onChange, { read, label: (file) => file.filename, disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(value ? [value] : [], ([updatedFile]) => (formUpload?.write ?? onChange)(updatedFile ?? value));
+  useUploadPoll(value ? [value] : [], (updatedFiles) =>
+    formUpload ? formUpload.refresh(updatedFiles) : onChange(updatedFiles[0] ?? value),
+  );
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -353,7 +355,9 @@ export const Imgs = <T extends cnst.LightFile = cnst.File>({
   useFileFieldTool(onChange, { read, label: (file) => file.filename, min: minlength, max: maxlength, disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(value, (updatedFiles) => (formUpload?.write ?? onChange)(replaced(value, updatedFiles)));
+  useUploadPoll(value, (updatedFiles) =>
+    formUpload ? formUpload.refresh(updatedFiles) : onChange(replaced(value, updatedFiles)),
+  );
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}
@@ -412,7 +416,9 @@ export const File = <T extends cnst.LightFile = cnst.File>({
   useFieldTool(onChange, { disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(value ? [value] : [], ([updatedFile]) => (formUpload?.write ?? onChange)(updatedFile ?? value));
+  useUploadPoll(value ? [value] : [], (updatedFiles) =>
+    formUpload ? formUpload.refresh(updatedFiles) : onChange(updatedFiles[0] ?? value),
+  );
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={nullable} label={label} desc={desc} /> : null}
@@ -465,7 +471,9 @@ export const Files = <T extends cnst.LightFile = cnst.File>({
   useFieldTool(onChange, { disabled });
   const upload = uploaderOf<T>(slice);
   const formUpload = formUploadOf(onChange);
-  useUploadPoll(value, (updatedFiles) => (formUpload?.write ?? onChange)(replaced(value, updatedFiles)));
+  useUploadPoll(value, (updatedFiles) =>
+    formUpload ? formUpload.refresh(updatedFiles) : onChange(replaced(value, updatedFiles)),
+  );
   return (
     <div className={cn("flex flex-col", className)}>
       {label ? <AkanField.Label className={labelClassName} nullable={!minlength} label={label} desc={desc} /> : null}

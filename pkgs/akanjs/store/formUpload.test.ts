@@ -346,15 +346,44 @@ describe("formUploadOf", () => {
     expect(formUploadOf(() => undefined)).toBeNull();
   });
 
-  test("its write updates the field without releasing a pending upload", async () => {
-    const { UpPostStore } = makeInstance();
-    StoreRegistry.instance.addStore(StoreRegistry.merge(`uploadWriteRoot${rootIndex}`, UpPostStore));
+  const registryWith = async () => {
+    const made = makeInstance();
+    StoreRegistry.instance.addStore(StoreRegistry.merge(`uploadRefreshRoot${rootIndex}`, made.UpPostStore));
     const registry = StoreRegistry.instance as unknown as Instance;
     await registry.do.newUpPost({ title: "x" });
+    return { ...made, registry };
+  };
+
+  test("refresh keeps an array upload that landed while the refresh was in flight", async () => {
+    const { registry, uploads } = await registryWith();
+    await registry.do.setImagesOnUpPost([fileOf("a", "uploading")]);
+    const field = formUploadOf(registry.do.setImagesOnUpPost);
+    const landing = field?.upload(picked);
+    uploads[uploads.length - 1]?.resolve([fileOf("b")]);
+    await landing;
+    field?.refresh([fileOf("a", "active")]);
+    expect(registry.get().upPostForm.images.map((file: ProtoFile) => [file.id, file.status])).toEqual([
+      ["a", "active"],
+      ["b", "active"],
+    ]);
+  });
+
+  test("refresh leaves a single field alone once it holds a newer pick", async () => {
+    const { registry } = await registryWith();
+    await registry.do.setImageOnUpPost(fileOf("a", "uploading"));
+    const field = formUploadOf(registry.do.setImageOnUpPost);
+    await registry.do.setImageOnUpPost(fileOf("b"));
+    field?.refresh([fileOf("a", "active")]);
+    expect(registry.get().upPostForm.image.id).toBe("b");
+  });
+
+  test("refresh updates the file the field still holds without releasing a pending upload", async () => {
+    const { registry } = await registryWith();
+    await registry.do.setImageOnUpPost(fileOf("a", "uploading"));
     const field = formUploadOf(registry.do.setImageOnUpPost);
     void field?.upload(picked);
-    field?.write(fileOf("polled", "active"));
-    expect(registry.get().upPostForm.image.id).toBe("polled");
+    field?.refresh([fileOf("a", "active")]);
+    expect(registry.get().upPostForm.image.status).toBe("active");
     expect(registry.get().upPostFormUploading.image).toHaveLength(1);
   });
 
