@@ -417,9 +417,10 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   `plug(StorageAdaptorRole)` · `use<T>()` only for a legacy `option.ts` singleton · `env(...)` for config.
 - `memory(...)` takes a scalar or model class (`memory(Map, { of: CallStateInput })`); never hand-encode JSON into a
   `String` memory.
-- A stored file's disk path is `storage.resolveLocalPath?.(path, access)` on `StorageAdaptorRole` (`fieldRule`):
-  `null` means refused (answer 404, never fall back to `readData()`), `undefined` means the adaptor keeps no local
-  files, and a key that comes from a request passes `access: "public"`.
+- A file your own code stored through `plug(StorageAdaptorRole)` has its disk path at
+  `storage.resolveLocalPath?.(path, access)` (`fieldRule`): `null` means refused (answer 404, never fall back to
+  `readData()`), `undefined` means the adaptor keeps no local files, and a key that comes from a request passes
+  `access: "public"`. A `File` field is not one: `libs/shared` stores it through its own `StorageApi`.
 - **A new adapter is an `adapt()` singleton in `srvkit/`**, injected with `plug(TheClass)`, key `as const`. Never
   register it in `lib/option.ts` (it self-registers); never construct a `Logger` in it (`this.logger` exists);
   lifecycle work in `override async onInit()`. A per-use value object is a plain class. Legacy
