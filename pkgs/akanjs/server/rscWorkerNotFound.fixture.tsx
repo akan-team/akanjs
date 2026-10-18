@@ -76,6 +76,16 @@ export const pages: PagesContext = {
       return <section>docs:{children}</section>;
     }),
   }),
+  "./pending/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => (
+      <section>
+        <StreamedTag />
+        {children}
+      </section>
+    )),
+  }),
+  "./pending/gone.tsx": async () => ({ default: page().render(() => router.notFound()) }),
+  "./pending/moved.tsx": async () => ({ default: page().render(() => router.redirect("/target")) }),
   "./docs/gone.tsx": async () => ({
     default: page().render(async () => {
       await Bun.sleep(20);

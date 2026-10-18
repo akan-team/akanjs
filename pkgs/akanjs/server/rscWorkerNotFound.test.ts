@@ -78,6 +78,17 @@ describe("RscWorker not-found raised by a route", () => {
   }, 20_000);
 });
 
+describe("RscWorker not-found while a layout still renders", () => {
+  test("stays a 404, not the abort of the render it cancelled", async () => {
+    await withNotFoundWorker(async (render) => {
+      const rendered = await render("http://localhost/en/pending/gone");
+      expect(rendered.status).toBe(404);
+      expect(rendered.body).toContain("root missing");
+      expect(rendered.body).not.toContain("aborted by the server");
+    });
+  }, 20_000);
+});
+
 describe("RscWorker fallback document request scope", () => {
   test("renders a fallback raised before any byte under its own request while another render is in flight", async () => {
     await withNotFoundWorker(async (render) => {
@@ -139,6 +150,7 @@ describe("RscWorker redirect raised by a route", () => {
         ["rdsync", "/en/target"],
         ["rdresolved", "/en/target"],
         ["gate/inner", "/en/signin"],
+        ["pending/moved", "/en/target"],
       ] as const) {
         const result = await rsc.renderWithMeta(new Request(`http://localhost/en/${route}`));
         expect(result).toMatchObject({ type: "redirect", location, status: 307 });

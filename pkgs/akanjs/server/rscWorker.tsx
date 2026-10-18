@@ -881,8 +881,11 @@ export class RscRenderer {
     } = {},
   ): Promise<FlightRenderResult> {
     const controlRef: { current: RenderControl | null } = { current: null };
+    //? Cancelling a Flight stream aborts each pending task through `onError`; the control that cancelled it stands.
+    let isCancelling = false;
     const stream = await renderToReadableStream(element, clientManifest, {
       onError: (error) => {
+        if (isCancelling || (options.requestId && this.#cancelledRenderRequests.has(options.requestId))) return;
         if (isAkanRedirectError(error)) {
           const { location, method, status } = error;
           controlRef.current = { type: "redirect", location, method, status };
@@ -930,6 +933,11 @@ export class RscRenderer {
       reportedTheme = theme;
       this.#send({ type: "theme", requestId: options.requestId, theme });
     };
+    const cancelWith = async (control: RenderControl | null, cancelled: boolean): Promise<FlightRenderResult> => {
+      isCancelling = true;
+      await reader.cancel();
+      return { chunks, bytes, chunksCount, control, lateControlSent, cancelled };
+    };
     const readProbe = () => {
       if (!controlRef.current && options.notFoundProbe?.hit) controlRef.current = { type: "not-found" };
     };
@@ -957,16 +965,11 @@ export class RscRenderer {
     };
     try {
       for (;;) {
-        if (options.requestId && this.#cancelledRenderRequests.has(options.requestId)) {
-          await reader.cancel();
-          return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
-        }
+        if (options.requestId && this.#cancelledRenderRequests.has(options.requestId))
+          return await cancelWith(null, true);
         const { value, done } = await reader.read();
         readProbe();
-        if (controlRef.current && !sentChunk) {
-          await reader.cancel();
-          return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
-        }
+        if (controlRef.current && !sentChunk) return await cancelWith(controlRef.current, false);
         if (controlRef.current && sentChunk) sendLateControl();
         if (done) break;
         //? Flight writes its first row before an async render settles; held one task, a redirect or not-found the body
@@ -974,10 +977,7 @@ export class RscRenderer {
         if (!sentChunk && options.requestId) {
           await new Promise((resolve) => setTimeout(resolve, 0));
           readProbe();
-          if (controlRef.current) {
-            await reader.cancel();
-            return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
-          }
+          if (controlRef.current) return await cancelWith(controlRef.current, false);
         }
         const chunk = value instanceof Uint8Array ? value : new Uint8Array(value as ArrayBufferLike);
         bytes += chunk.byteLength;
