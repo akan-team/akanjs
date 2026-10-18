@@ -614,14 +614,16 @@ export default page()
           <>
             <strong>Nothing checks for other owners.</strong> <code>libs/shared</code>'s File dedupes by{" "}
             <code>origin</code>, so two documents can share one file; <code>removeRef</code> declares that this field
-            owns it alone.
+            owns it alone. Removing the first owner removes the file; removing the second skips it as already gone and
+            still removes the rest.
           </>
         ),
         ko: (
           <>
             <strong>다른 소유자가 있는지는 검사하지 않습니다.</strong> <code>libs/shared</code>의 File은{" "}
             <code>origin</code> 기준으로 중복을 없애므로 두 문서가 한 파일을 함께 쓸 수 있습니다. <code>removeRef</code>
-            는 이 필드가 파일을 단독으로 소유한다는 선언입니다.
+            는 이 필드가 파일을 단독으로 소유한다는 선언입니다. 첫 소유자를 지우면 파일도 지워지고, 두 번째 소유자를
+            지울 때는 이미 지워진 파일을 건너뛰고 나머지를 지웁니다.
           </>
         ),
       }),

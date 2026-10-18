@@ -221,7 +221,9 @@ shape, so `cascade` never means "related" — it means one of exactly these:
   and an unmounted `removeRef` target or `removeWith` owner fails the boot rather than the first removal. An
   unmounted `refPath` candidate only warns, since that list spans optional modules by design.
 - **Nothing checks whether another document still references the same target.** `File` in particular is deduped
-  by `origin`, so two parents can share one row; `removeRef` claims the field owns its target exclusively.
+  by `origin`, so two parents can share one row; `removeRef` claims the field owns its target exclusively. Removing
+  the first parent removes the shared row; the second parent's cascade later skips it, since one live-row lookup per
+  edge drops a target that is already gone, and still runs the rest of its edges.
 - **A reference no cascade removes keeps pointing at the removed row, and a response reads it live-only**: a list
   leaves the target out, an optional field reads `null`, and a required one answers 404
   `base.error.relationNotFound` naming the model and the field path. Make a reference whose target can go first

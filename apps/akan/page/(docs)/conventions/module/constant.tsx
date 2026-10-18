@@ -1449,14 +1449,16 @@ export class BannerObject extends via(BannerInput, (field) => ({
                     <>
                       <strong>It claims the target exclusively.</strong> Nothing checks whether another document still
                       references it, and <code>File</code> is deduped by <code>origin</code>, so two parents can share
-                      one row.
+                      one row. Removing the first parent removes it; the second parent's cascade then skips the row as
+                      already gone and still runs the rest of its edges.
                     </>
                   ),
                   ko: (
                     <>
                       <strong>대상을 혼자 소유한다는 선언입니다.</strong> 다른 도큐먼트가 아직 대상을 참조하는지는
                       검사하지 않습니다. 특히 <code>File</code>은 <code>origin</code>으로 중복을 없애므로, 부모 둘이 한
-                      행을 공유할 수 있습니다.
+                      행을 공유할 수 있습니다. 첫 부모를 지우면 그 행도 지워지고, 두 번째 부모의 cascade는 이미 지워진
+                      행을 건너뛴 뒤 나머지 edge를 그대로 실행합니다.
                     </>
                   ),
                 })}

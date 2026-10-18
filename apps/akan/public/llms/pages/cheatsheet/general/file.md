@@ -164,7 +164,7 @@ The cascade calls the File service, not the File model, so `FileService._postRem
 
 **One owner may hold a file twice.** The same file in two `removeRef` fields, or twice in one array, is removed once when the owner goes.
 
-**Nothing checks for other owners.** `libs/shared`'s File dedupes by `origin`, so two documents can share one file; `removeRef` declares that this field owns it alone.
+**Nothing checks for other owners.** `libs/shared`'s File dedupes by `origin`, so two documents can share one file; `removeRef` declares that this field owns it alone. Removing the first owner removes the file; removing the second skips it as already gone and still removes the rest.
 
 **Query-level removes skip the cascade.** `removeMany`, `removeById` and the generated `remove<Filter>` stamp `removedAt` in one atomic update and fire no hooks. Remove cascading documents one at a time.
 

@@ -292,7 +292,7 @@ Declare it on the relation the owner holds, arrays included:
 
 **Only a relation takes it.** A `String`, an `ID` or a scalar names no document to remove.
 
-**It claims the target exclusively.** Nothing checks whether another document still references it, and `File` is deduped by `origin`, so two parents can share one row.
+**It claims the target exclusively.** Nothing checks whether another document still references it, and `File` is deduped by `origin`, so two parents can share one row. Removing the first parent removes it; the second parent's cascade then skips the row as already gone and still runs the rest of its edges.
 
 removeWith: On The Child
 
