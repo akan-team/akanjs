@@ -1,37 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { PackageJson } from "@akanjs/devkit/types";
 
-//? A published install never reads our overrides, so PackageRunner re-declares every sibling pi package at the version
-//? installed here (a floating 0.80.x once broke every global install); this keeps those pins equal to the tree.
+//? PackageRunner re-declares pi's sibling pins because neither our `overrides` nor pi's own ranges reach a
+//? consumer's install. The source of truth is pi's `dependencies`: since 1.3.0 it pins every sibling exactly, where
+//? 0.86.1 floated `^0.86.1` and only the (now removed) `npm-shrinkwrap.json` held the resolved version.
 
 const repoRoot = path.resolve(import.meta.dir, "../../..");
 const piName = "@earendil-works/pi-coding-agent";
-const piScope = "@earendil-works/";
 const piDir = `${repoRoot}/node_modules/${piName}`;
 const publishedPackages = ["pkgs/@akanjs/devkit/package.json", "pkgs/@akanjs/cli/package.json"];
 
 const readJson = async <T>(file: string) => (await Bun.file(file).json()) as T;
 
-// Each package's dependencies sit beside it in the scope folder, under both Bun's isolated and hoisted layouts.
-const installedSiblingPins = async () => {
-  const pins: Record<string, string> = {};
-  const visit = async (dir: string) => {
-    const { dependencies = {} } = await readJson<PackageJson>(`${dir}/package.json`);
-    for (const name of Object.keys(dependencies).filter((dep) => dep.startsWith(piScope))) {
-      if (pins[name]) continue;
-      const siblingDir = path.resolve(realpathSync(dir), "..", name.slice(piScope.length));
-      pins[name] = (await readJson<PackageJson>(`${siblingDir}/package.json`)).version ?? "";
-      await visit(siblingDir);
-    }
-  };
-  await visit(piDir);
-  return pins;
+const siblingEntries = async () => {
+  const { dependencies = {} } = await readJson<PackageJson>(`${piDir}/package.json`);
+  return Object.entries(dependencies).filter(([name]) => /^@earendil-works\/[^/]+$/.test(name));
 };
 
 describe("pi dependency pins", () => {
-  test("the coding agent read here is the one we publish", async () => {
+  test("the package read here belongs to the coding agent we publish", async () => {
     const installed = await readJson<PackageJson>(`${piDir}/package.json`);
     for (const file of publishedPackages) {
       const { dependencies = {} } = await readJson<PackageJson>(`${repoRoot}/${file}`);
@@ -39,13 +27,19 @@ describe("pi dependency pins", () => {
     }
   });
 
-  test("every sibling pi package is published at the version installed under the coding agent", async () => {
-    const pins = await installedSiblingPins();
-    expect(Object.keys(pins).length).toBeGreaterThan(0);
+  test("the coding agent pins each sibling exactly", async () => {
+    const siblings = await siblingEntries();
+    expect(siblings.length).toBeGreaterThan(0);
+    const floating = siblings.filter(([, version]) => !/^\d+\.\d+\.\d+/.test(version));
+    expect(floating).toEqual([]);
+  });
+
+  test("every sibling pi package is published at the version the coding agent pins", async () => {
+    const siblings = await siblingEntries();
     for (const file of publishedPackages) {
       const { dependencies = {} } = await readJson<PackageJson>(`${repoRoot}/${file}`);
-      const declared = Object.fromEntries(Object.keys(pins).map((name) => [name, dependencies[name]]));
-      expect({ file, ...declared }).toEqual({ file, ...pins });
+      const declared = Object.fromEntries(siblings.map(([name]) => [name, dependencies[name]]));
+      expect({ file, ...declared }).toEqual({ file, ...Object.fromEntries(siblings) });
     }
   });
 });

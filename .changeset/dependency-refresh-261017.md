@@ -7,7 +7,6 @@
 
 Dependency refresh for the published packages:
 
-- **pi coding agent 0.86.1 → 1.3.0** (`@earendil-works/pi-*`, used by `akan code`). `@earendil-works/chord` is no longer pulled in; `@earendil-works/pi-codemode` and `@earendil-works/pi-mcp` join the published sibling pins. pi 1.x no longer ships `npm-shrinkwrap.json`, so the pins are now checked against the installed tree.
 - **React 19.3.1** (`react`, `react-dom`, `react-server-dom-webpack`), together with the 19.0.9 / 19.1.10 / 19.2.9 backports of the same day.
 - **Majors**: `chalk` 6, `commander` 15, `fontaine` 1, `firebase` 13 (optional peer), `happy-dom` / `@happy-dom/global-registrator` 21 (optional peers; CSS and iframe loading are now off by default).
 - **Minors and patches**: `lexical` and every `@lexical/*` 0.52, `typebox` 1.3.37, `@biomejs/biome` 2.5.14, `@inquirer/prompts`, `@tailwindcss/node` / `tailwindcss` 4.3.3, `dayjs`, `immer`, `ignore`, `ora`, `string-width`, `subset-font`, `tailwind-merge`, `tailwind-variants`, `protobufjs`, `react-icons`, `@react-spring/web`, `@playwright/test`, `@types/bun`, and `bullmq` / `ioredis` to their latest 5.x.
