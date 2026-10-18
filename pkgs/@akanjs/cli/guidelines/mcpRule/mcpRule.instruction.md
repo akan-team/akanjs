@@ -238,7 +238,8 @@ export default page()
 - **A caller's own mistake is reported as one** and never as a server failure: an argument that is missing,
   unparseable, outside its `enumOf`, or **undeclared** comes back as `isError` naming it — `additionalProperties: false` travels in the
   published schema and nothing on the wire enforces it — and so does a document that is not there, as
-  `No <model> found for the arguments given.` A prompt, having no `isError` to carry a refusal, answers `-32602`.
+  `No <model> found for the arguments given.`, and an MCP App view also receives the 404 `base.error.documentNotFound`
+  `Err` a browser would get. A prompt, having no `isError` to carry a refusal, answers `-32602`.
   A document missing on another server this one called (`fetch.clone({ origin })`) arrives as that server's 404
   `base.error.documentNotFound`, so a tool reads its dictionary sentence (`The requested item does not exist.`) and an
   MCP App view receives that `Err`; a prompt whose page reads it is `No screen exists for these arguments.`

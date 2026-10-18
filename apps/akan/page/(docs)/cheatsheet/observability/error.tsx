@@ -851,8 +851,8 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
                 ),
                 ko: (
                   <span>
-                    <code>Err</code>도 아니고 없는 도큐먼트도 아닌 일반 <code>Error</code>는 500으로 응답하므로,
-                    사용자는 dictionary 문장을 보지 못합니다:
+                    <code>Err</code>도 아니고 없는 레코드도 아닌 일반 <code>Error</code>는 500으로 응답하므로, 사용자는
+                    dictionary 문장을 보지 못합니다:
                   </span>
                 ),
               })}
@@ -867,14 +867,14 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
                 {l.trans({
                   en: (
                     <span>
-                      <strong>In development you see everything.</strong> Under <code>akan start</code> the response
-                      carries the real message and the stack.
+                      <strong>In development a plain Error shows everything.</strong> Under <code>akan start</code> its
+                      response carries the real message and the stack.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>개발 중에는 모두 보입니다.</strong> <code>akan start</code>에서는 응답에 실제 메시지와
-                      stack이 들어갑니다.
+                      <strong>개발 중에는 일반 Error의 모든 것이 보입니다.</strong> <code>akan start</code>에서는 그
+                      응답에 실제 메시지와 stack이 들어갑니다.
                     </span>
                   ),
                 })}

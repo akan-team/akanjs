@@ -61,7 +61,10 @@ export class Exception extends Error {
   };
 }
 
-/** Forwarded to the caller instead of generalized: an `Exception`, a dictionary `Err`, or a restored remote one. */
+/**
+ * Forwarded to the caller instead of generalized: an `Exception`, a dictionary `Err`, a `NoDocumentError`, or a restored
+ * remote one.
+ */
 export interface ExceptionLike {
   statusCode: number;
   toJSON: () => object;

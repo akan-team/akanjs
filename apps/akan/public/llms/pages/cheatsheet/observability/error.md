@@ -167,7 +167,7 @@ What the caller gets
 
 - Error: Answered as 500, and a deployed build sets `error` to `Internal Server Error`.
 
-**In development you see everything.** Under `akan start` the response carries the real message and the stack.
+**In development a plain Error shows everything.** Under `akan start` its response carries the real message and the stack.
 
 **The stack is in the server log.** Every such 500 is logged with its stack, even when the response hides it.
 
