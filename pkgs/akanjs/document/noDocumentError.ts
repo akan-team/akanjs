@@ -4,8 +4,9 @@
  */
 export class NoDocumentError extends Error {
   readonly statusCode = 404;
+  readonly error = "base.error.documentNotFound";
 
   toJSON() {
-    return { error: "base.error.documentNotFound", statusCode: this.statusCode };
+    return { error: this.error, statusCode: this.statusCode };
   }
 }

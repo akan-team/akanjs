@@ -227,6 +227,28 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     expect(loggerErrors[0]).toContain('WebSocket route "missing" is not registered');
   });
 
+  test("answers a missing document over the socket as a 404 frame with its key, and logs no crash", async () => {
+    const { NoDocumentError } = await import("akanjs/document");
+    const sent: string[] = [];
+    const loggerErrors: string[] = [];
+    const ws = fakeWs({}, (message) => sent.push(message));
+    const handlers = await buildWebsocketHandlers({
+      wsRoutes: {
+        item: async () => {
+          throw new NoDocumentError("No Document (item): 507f1f77bcf86cd799439011");
+        },
+      } as WebsocketRoutes,
+      logger: { error: (message: string) => loggerErrors.push(message) } as never,
+    });
+
+    await handlers.message?.(ws, JSON.stringify({ key: "item", data: [] }));
+
+    const frame = JSON.parse(sent[0] ?? "{}") as Record<string, unknown>;
+    expect(Object.keys(frame).sort()).toEqual(["error", "key", "statusCode", "timestamp"]);
+    expect(frame).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404, key: "item" });
+    expect(loggerErrors).toEqual([]);
+  });
+
   test("keeps HMR websocket traffic separate from app signal routes", async () => {
     const sent: string[] = [];
     let attached = false;
