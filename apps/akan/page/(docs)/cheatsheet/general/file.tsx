@@ -1135,8 +1135,8 @@ export const Upload = () => {
             <Docs.IntroTable type={l.trans({ en: "You get", ko: "생기는 것" })} items={generatedRows} />
             <div>
               {l.trans({
-                en: "Handed the generated `set<Field>On<Model>`, a `Field.*` control uploads through `upload<Field>On<Model>` instead of the `slice` you pass. `<model>FormUploading` marks the field while a result it would keep is pending. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.",
-                ko: "생성된 `set<Field>On<Model>`을 넘기면 `Field.*` 컨트롤은 넘긴 `slice` 대신 `upload<Field>On<Model>`로 업로드합니다. `<model>FormUploading`은 반영될 결과를 기다리는 동안 필드를 표시합니다. 그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 결과는 버립니다.",
+                en: "Handed the generated `set<Field>On<Model>`, a `Field.*` control uploads through `upload<Field>On<Model>` instead of the `slice` you pass. `<model>FormUploading` marks the field while its upload is pending. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.",
+                ko: "생성된 `set<Field>On<Model>`을 넘기면 `Field.*` 컨트롤은 넘긴 `slice` 대신 `upload<Field>On<Model>`로 업로드합니다. `<model>FormUploading`은 업로드가 대기 중인 동안 필드를 표시합니다. 그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 결과는 버립니다.",
               })}
             </div>
             <div>

@@ -134,7 +134,7 @@ You get
 
 - Field.Img, Field.Imgs, Field.File, Field.Files: Form controls in `@libs/shared/ui`; handed any `onChange` but the generated setter, they call `add<Model>Files`.
 
-Handed the generated `set<Field>On<Model>`, a `Field.*` control uploads through `upload<Field>On<Model>` instead of the `slice` you pass. `<model>FormUploading` marks the field while a result it would keep is pending. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.
+Handed the generated `set<Field>On<Model>`, a `Field.*` control uploads through `upload<Field>On<Model>` instead of the `slice` you pass. `<model>FormUploading` marks the field while its upload is pending. A result whose form was set whole meanwhile, or whose single field was re-picked, is dropped.
 
 The marked mutation takes four fixed body fields in this shape. For the service method it calls, see `FileService.addFiles` in `libs/shared/lib/file`:
 
