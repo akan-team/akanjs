@@ -258,7 +258,7 @@ Every field of the model also gets setters that write into `<model>Form`. The ar
 
 - writeOn<Model>(path, value): Writes a nested path, such as `"payments.3.name"`.
 
-A result of `upload<Field>On<Model>` whose form was set whole meanwhile, or whose single field was re-picked, is dropped. Until it lands, `<model>FormUploading` marks the field.
+A result of `upload<Field>On<Model>` whose form was set whole meanwhile, or whose single field was re-picked, is dropped. `<model>FormUploading` marks the field while a result it would keep is pending; a write that drops the result clears its mark at once, even with the request still running.
 
 To react when a field changes, declare `_postSet<Field>` on the store. It runs after every write of that field:
 

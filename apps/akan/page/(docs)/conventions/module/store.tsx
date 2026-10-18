@@ -1303,8 +1303,8 @@ export class UserStore extends store(
             <Docs.IntroTable type={l.trans({ en: "Method", ko: "메서드" })} items={formSetters} />
             <div>
               {l.trans({
-                en: "A result of `upload<Field>On<Model>` whose form was set whole meanwhile, or whose single field was re-picked, is dropped. Until it lands, `<model>FormUploading` marks the field.",
-                ko: "그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 `upload<Field>On<Model>`의 결과는 버립니다. 결과가 도착할 때까지 `<model>FormUploading`에 필드가 표시됩니다.",
+                en: "A result of `upload<Field>On<Model>` whose form was set whole meanwhile, or whose single field was re-picked, is dropped. `<model>FormUploading` marks the field while a result it would keep is pending; a write that drops the result clears its mark at once, even with the request still running.",
+                ko: "그 사이 폼 전체가 바뀌었거나 단일 필드를 다시 골랐다면 `upload<Field>On<Model>`의 결과는 버립니다. `<model>FormUploading`은 반영될 결과를 기다리는 동안 필드를 표시하고, 결과를 버리게 만든 쓰기는 요청이 진행 중이어도 그 표시를 곧바로 지웁니다.",
               })}
             </div>
             <div>
