@@ -154,8 +154,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   replaces in one write. Nothing is scanned, and a miss already running when you invalidate writes under the old
   token, where nobody reads it. A token is never reused, so a generation that expires (after a day) or is evicted
   starts a fresh one instead of reviving dropped answers, and an endpoint name nothing serves leaves no key behind for
-  good. Entries under an old token stay in the cache until their own TTL, and a Redis that BullMQ shares has to run
-  `noeviction`, so nothing frees them early: give an endpoint you invalidate often a short TTL. The one-call form
+  good. **A `{ cache }` TTL is capped at one day**, the generation's life: an entry outliving its token could never be
+  read, so a longer TTL is written as a day. Entries under an old token stay in the cache until their own TTL, and a
+  Redis that BullMQ shares has to run `noeviction`, so nothing frees them early: give an endpoint you invalidate often
+  a short TTL. The one-call form
   deletes that entry, so a miss for those arguments already running can write it back; reach for the endpoint-wide
   form when that matters. It answers `false` (logged as an error) when the cache failed. A cached call reads the
   generation before its entry.
