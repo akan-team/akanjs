@@ -25,6 +25,7 @@ import {
 } from "akanjs/common";
 import type { Workspace } from "../../commandDecorators";
 import { AkanCodePlugins } from "../tools/AkanCodePlugins";
+import { AkanCodeCompaction } from "./AkanCodeCompaction";
 import { AkanCodeServices } from "./AkanCodeServices";
 import {
   akanCodeModel,
@@ -52,6 +53,8 @@ export interface CodeAgentOptions {
   cwd?: string;
   profile: CodeAgentProfile;
   model?: CodeAgentModelRef;
+  /** Percent of the context window that starts a compaction, in steps of 10. */
+  autoCompactAt?: number;
   /** Apps whose dev server and preview the turn-end feedback loop watches. */
   apps?: string[];
   extensions?: InlineExtension[];
@@ -85,6 +88,7 @@ export class CodeAgent {
   readonly #replay: CodeAgentEvent[] = [];
   #replayFrom = 0;
   #lastContextTokens: number | undefined;
+  #autoCompactAt: number | undefined;
 
   private constructor(profile: CodeAgentProfile) {
     this.#profile = profile;
@@ -95,6 +99,7 @@ export class CodeAgent {
     const workspaceRoot = options.workspace.workspaceRoot;
     const cwd = options.cwd ?? workspaceRoot;
     const agent = new CodeAgent(options.profile);
+    const autoCompactAt = AkanCodeCompaction.normalize(options.autoCompactAt);
     const settingsManager = AkanCodeServices.settings();
     const modelRuntime = await AkanCodeServices.runtime(workspaceRoot, CodeAgentProxy.fromEnv(options.profile));
     const model = await akanCodeModel(modelRuntime, options.model);
@@ -146,10 +151,12 @@ export class CodeAgent {
     agent.#workspaceRoot = workspaceRoot;
     if (options.profile.session.store !== "memory") agent.#sessionDir = akanCodePaths.sessionsDir(workspaceRoot);
     await agent.#attach(session, options.mode ?? "print");
+    const autoCompactWarning = agent.#fitAutoCompact(autoCompactAt);
     agent.#suspended = new CodeAgentSuspended(CodeAgentSuspended.fileOf(agent.#sessionDir, agent.sessionId));
     if (agent.#sessionDir && options.profile.session.store === "file")
       agent.#openMail(akanCodePaths.mailDir(workspaceRoot), cwd);
-    for (const message of modelWarnings) agent.#emit({ type: "notice", level: "warning", message });
+    for (const message of [...modelWarnings, ...autoCompactWarning])
+      agent.#emit({ type: "notice", level: "warning", message });
     return agent;
   }
 
@@ -232,6 +239,7 @@ export class CodeAgent {
       contextTokens: model?.contextWindow,
       // Not `off`: that is a setting of a reasoning model, not the absence of reasoning.
       effort: session.supportsThinking() ? session.thinkingLevel : undefined,
+      autoCompactAt: this.#autoCompactAt,
       name: session.sessionName,
       interaction: this.#profile.interaction,
     };
@@ -396,7 +404,40 @@ export class CodeAgent {
     const model = await akanCodeModel(session.modelRuntime, ref);
     if (!model) throw new Error(`Unknown model: ${ref.provider}/${ref.id}`);
     await session.setModel(model);
+    for (const message of this.#fitAutoCompact(this.#autoCompactAt))
+      this.#emit({ type: "notice", level: "warning", message });
     this.#emit({ type: "session", info: this.info });
+  }
+
+  setAutoCompactAt(percent: number | undefined) {
+    const wanted = AkanCodeCompaction.normalize(percent);
+    const problem = this.#autoCompactProblem(wanted);
+    if (problem) throw new Error(problem);
+    this.#autoCompactAt = wanted;
+    this.#applyAutoCompact();
+    this.#emit({ type: "session", info: this.info });
+  }
+
+  // A share that fit one window can fall under the kept turns of a smaller one, and would compact every turn.
+  #fitAutoCompact(percent: number | undefined) {
+    const problem = this.#autoCompactProblem(percent);
+    this.#autoCompactAt = problem ? undefined : percent;
+    this.#applyAutoCompact();
+    return problem ? [`${problem} Autocompact is back to the default.`] : [];
+  }
+
+  #autoCompactProblem(percent: number | undefined) {
+    const session = this.#require();
+    const model = session.model;
+    if (!model || !percent) return undefined;
+    const { keepRecentTokens } = session.settingsManager.getCompactionSettings(model);
+    return AkanCodeCompaction.problemOf(model, percent, keepRecentTokens);
+  }
+
+  // Never before `create` has built the session: `settingsManager.reload()` drops whatever `applyOverrides` set.
+  #applyAutoCompact() {
+    const session = this.#require();
+    if (session.model) AkanCodeCompaction.apply(session.settingsManager, session.model, this.#autoCompactAt);
   }
 
   async waitForIdle() {

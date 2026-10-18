@@ -10,6 +10,7 @@ export interface CodeRunOptions {
   app?: string;
   profile: string;
   model?: string;
+  compactAt?: number;
   json: boolean;
   thinking: boolean;
   resume?: string;
@@ -41,17 +42,24 @@ export class CodeRunner extends runner("code") {
     ]);
     const agentOptions = await CodeRunner.#agentOptions(options, false);
     let resume = options.resume;
+    let autoCompactAt = agentOptions.autoCompactAt;
     let prompt = seed;
     let notice: string | undefined;
     // A session switch rebuilds the agent: the engine binds extensions, tools and context to it at construction.
     for (;;) {
-      const agent = await CodeAgent.create({ ...agentOptions, mode: "tui", ...(resume ? { resume } : {}) });
+      const agent = await CodeAgent.create({
+        ...agentOptions,
+        mode: "tui",
+        ...(resume ? { resume } : {}),
+        ...(autoCompactAt ? { autoCompactAt } : {}),
+      });
       let next: CodeTuiExit | undefined;
       try {
         next = await new CodeTui(agent, {
           thinking: options.thinking,
           ...(notice ? { notice } : {}),
         }).run(prompt);
+        autoCompactAt = agent.info.autoCompactAt;
       } finally {
         agent.dispose();
       }
@@ -85,6 +93,7 @@ export class CodeRunner extends runner("code") {
       profile,
       apps: options.app ? [options.app] : await options.workspace.getApps(),
       model: CodeRunner.modelOf(options.model),
+      ...(options.compactAt !== undefined ? { autoCompactAt: options.compactAt } : {}),
     };
   }
 

@@ -349,6 +349,7 @@ describe("codeAgentEventLabel", () => {
           tools: [],
           contextTokens: undefined,
           effort: undefined,
+          autoCompactAt: undefined,
           name: undefined,
           interaction: { question: "await", approval: "await" },
         },

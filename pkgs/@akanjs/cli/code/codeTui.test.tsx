@@ -25,6 +25,7 @@ const info: CodeAgentSessionInfo = {
   tools: ["read", "bash"],
   contextTokens: 1_000_000,
   effort: "medium",
+  autoCompactAt: undefined,
   name: undefined,
   interaction: { question: "await", approval: "await" },
 };
@@ -75,6 +76,11 @@ class FakeAgent {
 
   setEffort(effort: string) {
     this.calls.push(`setEffort:${effort}`);
+  }
+
+  setAutoCompactAt(percent: number) {
+    this.calls.push(`setAutoCompactAt:${percent}`);
+    this.emit({ type: "session", info: { ...info, autoCompactAt: percent === 100 ? undefined : percent } });
   }
 
   on(listener: (event: CodeAgentEvent) => void) {
@@ -686,6 +692,22 @@ describe("CodeTui", () => {
     await harness.press("/effort high");
     await harness.press("\r");
     expect(harness.agent.calls).toEqual(["setEffort:high"]);
+  });
+
+  test("/autocompact says where compaction starts, and the lower rule keeps a chosen share in view", async () => {
+    const harness = mount();
+    await settle();
+    await harness.press("/autocompact 55");
+    await harness.press("\r");
+    expect(harness.stdout.lastFrame).toContain("now: autocompact default · compacts above 967k of 1000k");
+    expect(harness.agent.calls).toEqual([]);
+    await harness.press(esc);
+    await harness.press("/autocompact 60%");
+    await harness.press("\r");
+    expect(harness.agent.calls).toEqual(["setAutoCompactAt:60"]);
+    expect(harness.stdout.lastFrame).toContain("autocompact 60% · compacts above 600k of 1000k");
+    await harness.emit({ type: "context", used: 250_000, max: 1_000_000 });
+    expect(harness.stdout.lastFrame).toContain("DeepSeek V4 Flash · 25% of 1000k · compacts at 60% · local · medium");
   });
 
   test("a session takes a name from what it was first asked, and /name replaces it", async () => {

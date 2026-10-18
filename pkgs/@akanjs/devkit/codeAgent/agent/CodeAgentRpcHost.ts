@@ -83,6 +83,9 @@ export class CodeAgentRpcHost {
       case "set_model":
         await this.#agent.setModel({ provider: command.provider, id: command.modelId });
         return await this.#agent.state();
+      case "set_auto_compact":
+        this.#agent.setAutoCompactAt(command.percent);
+        return await this.#agent.state();
       case "get_state":
         return await this.#agent.state(command.sinceSeq === undefined ? {} : { sinceSeq: command.sinceSeq });
       case "shutdown":

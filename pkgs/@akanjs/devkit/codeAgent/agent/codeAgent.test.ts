@@ -24,16 +24,31 @@ const chunk = (delta: object, finish: string | null = null) =>
     choices: [{ index: 0, delta, finish_reason: finish }],
   })}\n\n`;
 
+const usageChunk = (promptTokens: number) =>
+  `data: ${JSON.stringify({
+    id: "c1",
+    object: "chat.completion.chunk",
+    created: 0,
+    model: akanCodeDefaultModel.id,
+    choices: [],
+    usage: { prompt_tokens: promptTokens, completion_tokens: 1, total_tokens: promptTokens + 1 },
+  })}\n\n`;
+
 let llm: ReturnType<typeof Bun.serve>;
 let llmCalls = 0;
+let reportedTokens = 0;
 beforeAll(() => {
   llm = Bun.serve({
     port: 0,
     fetch: () => {
       llmCalls += 1;
-      return new Response(`${chunk({ role: "assistant", content: "ok" })}${chunk({}, "stop")}data: [DONE]\n\n`, {
-        headers: { "content-type": "text/event-stream" },
-      });
+      const usage = reportedTokens ? usageChunk(reportedTokens) : "";
+      return new Response(
+        `${chunk({ role: "assistant", content: "ok" })}${chunk({}, "stop")}${usage}data: [DONE]\n\n`,
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
     },
   });
 });
@@ -82,6 +97,49 @@ describe("CodeAgent", () => {
     } finally {
       agent.dispose();
     }
+  });
+
+  test("autocompact is carried from creation, announced on the session frame, and refuses a step it lacks", async () => {
+    const root = await makeTempRoot();
+    const agent = await createAgent(root, { autoCompactAt: 60 });
+    try {
+      const events: CodeAgentEvent[] = [];
+      agent.on((event) => events.push(event));
+      expect(agent.info.autoCompactAt).toBe(60);
+      expect(() => agent.setAutoCompactAt(55)).toThrow("steps of 10");
+      expect(agent.info.autoCompactAt).toBe(60);
+      agent.setAutoCompactAt(100);
+      expect(agent.info.autoCompactAt).toBeUndefined();
+      expect(events.filter((event) => event.type === "session")).toHaveLength(1);
+    } finally {
+      agent.dispose();
+    }
+  });
+
+  test("a chosen share reaches the engine: a reply reported past it compacts, and the default lets it pass", async () => {
+    const compactions = async (options: Partial<CodeAgentOptions>) => {
+      const agent = await createAgent(await makeTempRoot(), options);
+      const reasons: string[] = [];
+      agent.on((event) => {
+        if (event.type === "compaction" && event.phase === "start") reasons.push(event.reason);
+      });
+      try {
+        // The 20k most recent tokens are kept, so a summary needs an older turn behind the filler.
+        for (const text of ["hello", "filler ".repeat(20_000)]) {
+          await agent.prompt(text);
+          await agent.waitForIdle();
+        }
+        reportedTokens = 650_000;
+        await agent.prompt("next");
+        await agent.waitForIdle();
+      } finally {
+        reportedTokens = 0;
+        agent.dispose();
+      }
+      return reasons;
+    };
+    expect(await compactions({})).toEqual([]);
+    expect(await compactions({ autoCompactAt: 60 })).toEqual(["threshold"]);
   });
 
   test("a sub-agent hands its plugins the token tally of the tree that opened it", async () => {

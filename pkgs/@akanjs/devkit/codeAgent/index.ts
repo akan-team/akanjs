@@ -1,5 +1,6 @@
 // Importing this barrel loads the engine (~122MiB resident); a host needing cheap pieces imports the owning module.
 // agent/consoleToStderr is deliberately absent: it takes over globalThis.console, so an RPC entry imports it first.
+export * from "./agent/AkanCodeCompaction";
 export * from "./agent/AkanCodeServices";
 export * from "./agent/akanCodeModel";
 export * from "./agent/akanCodePaths";

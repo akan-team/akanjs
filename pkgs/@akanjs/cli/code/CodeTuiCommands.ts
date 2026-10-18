@@ -12,6 +12,7 @@ export class CodeTuiCommands {
     { name: "effort", desc: "how hard the model thinks before it answers", arg: "<level>" },
     { name: "thinking", desc: "show the model's reasoning, or fold it away again" },
     { name: "compact", desc: "summarise the conversation to free the window", arg: "[notes]" },
+    { name: "autocompact", desc: "how full the window gets before it is summarised", arg: "[<percent>]" },
     { name: "abort", desc: "stop the running turn" },
     { name: "clear", desc: "wipe the screen; the model keeps the conversation" },
     { name: "name", desc: "name this session", arg: "<text>" },

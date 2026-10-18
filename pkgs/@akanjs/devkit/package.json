@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/devkit",
-  "version": "3.1.0-rc.11",
+  "version": "3.1.0-rc.12",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -48,7 +48,7 @@
     "@earendil-works/pi-tui": "1.3.0",
     "@inquirer/prompts": "^8.7.3",
     "@tailwindcss/node": "^4.3.3",
-    "akanjs": "3.1.0-rc.11",
+    "akanjs": "3.1.0-rc.12",
     "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "dayjs": "^1.11.23",

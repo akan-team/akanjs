@@ -21,6 +21,7 @@ import {
   promptMarkWidth,
 } from "../ui/CodeTuiApp";
 import { CodeTuiAgents } from "./CodeTuiAgents";
+import { CodeTuiAutoCompact } from "./CodeTuiAutoCompact";
 import { CodeTuiClipboard } from "./CodeTuiClipboard";
 import { CodeTuiCommands } from "./CodeTuiCommands";
 import { CodeTuiEditor } from "./CodeTuiEditor";
@@ -494,7 +495,8 @@ export class CodeTui {
     const context = this.#transcript.context;
     const window = info.contextTokens ? `${Math.round(info.contextTokens / 1000)}k` : "";
     const used = context?.max ? `${Math.round((context.used / context.max) * 100)}% of ${window}` : "";
-    return [info.model?.name ?? "no model", used || (window && `${window} ctx`), info.profile, info.effort]
+    const compactsAt = info.autoCompactAt ? `compacts at ${info.autoCompactAt}%` : "";
+    return [info.model?.name ?? "no model", used || (window && `${window} ctx`), compactsAt, info.profile, info.effort]
       .filter((part) => !!part)
       .join(" · ");
   }
@@ -859,6 +861,8 @@ export class CodeTui {
         return this.#say("screen cleared · the model still remembers · /compact shortens what it carries");
       case "compact":
         return void this.#agent.compact(argument || undefined).catch((error: unknown) => this.#fail(error));
+      case "autocompact":
+        return this.#setAutoCompact(argument);
       case "thinking":
         this.#thinking = !this.#thinking;
         return this.#say(this.#thinking ? "showing the model's reasoning" : "reasoning folded back to one line");
@@ -1016,6 +1020,17 @@ export class CodeTui {
       this.#agent.setEffort(wanted as CodeAgentEffort);
       // The engine clamps to what the provider serves, so the frame that came back is what actually took.
       this.#say(`effort ${this.#transcript.info?.effort ?? wanted}`);
+    } catch (error: unknown) {
+      this.#fail(error);
+    }
+  }
+
+  #setAutoCompact(argument: string) {
+    const percent = CodeTuiAutoCompact.parse(argument);
+    if (percent === undefined) return this.#open("autocompact", CodeTuiAutoCompact.usage(this.#transcript.info));
+    try {
+      this.#agent.setAutoCompactAt(percent);
+      this.#say(CodeTuiAutoCompact.describe(this.#transcript.info));
     } catch (error: unknown) {
       this.#fail(error);
     }

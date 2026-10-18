@@ -7,6 +7,11 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
     .option("app", String, { desc: "narrow the agent to one app instead of the whole repo", nullable: true })
     .option("profile", String, { desc: "local, pod, review, or web", default: "local" })
     .option("model", String, { desc: "<provider>/<id>, e.g. deepseek/deepseek-flash", nullable: true })
+    .option("compactAt", Number, {
+      desc: "compact once the context window is this full, in percent: 10, 20, … 100",
+      flag: "c",
+      nullable: true,
+    })
     .option("json", Boolean, { desc: "print one event per line as JSON", default: false })
     .option("thinking", Boolean, { desc: "print the model's reasoning", default: false })
     .option("rpc", Boolean, { desc: "serve the agent over stdio for another process to drive", default: false })
@@ -23,8 +28,23 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
       default: false,
     })
     .with(Workspace)
-    .exec(async function (prompt, app, profile, model, json, thinking, rpc, rpcListen, resume, interactive, workspace) {
-      const options = { app, profile, model, json, thinking, rpc, rpcListen, interactive, resume };
-      await this.codeScript.run(workspace, prompt ?? "", options);
-    }),
+    .exec(
+      async function (
+        prompt,
+        app,
+        profile,
+        model,
+        compactAt,
+        json,
+        thinking,
+        rpc,
+        rpcListen,
+        resume,
+        interactive,
+        workspace,
+      ) {
+        const options = { app, profile, model, compactAt, json, thinking, rpc, rpcListen, interactive, resume };
+        await this.codeScript.run(workspace, prompt ?? "", options);
+      },
+    ),
 })) {}

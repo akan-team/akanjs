@@ -19,6 +19,7 @@ const info: CodeAgentSessionInfo = {
   tools: ["read", "bash"],
   contextTokens: 1_000_000,
   effort: "medium",
+  autoCompactAt: undefined,
   name: undefined,
   interaction: { question: "await", approval: "await" },
 };

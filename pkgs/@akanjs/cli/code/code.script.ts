@@ -5,6 +5,7 @@ export interface CodeScriptOptions {
   app: string | null;
   profile: string;
   model: string | null;
+  compactAt: number | null;
   json: boolean;
   thinking: boolean;
   rpc: boolean;
@@ -20,6 +21,7 @@ export class CodeScript extends script("code", [CodeRunner]) {
       ...(options.app ? { app: options.app } : {}),
       profile: options.profile,
       ...(options.model ? { model: options.model } : {}),
+      ...(options.compactAt !== null ? { compactAt: options.compactAt } : {}),
       json: options.json,
       thinking: options.thinking,
       ...(options.resume ? { resume: options.resume } : {}),

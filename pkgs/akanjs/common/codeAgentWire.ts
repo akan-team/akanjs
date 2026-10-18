@@ -21,6 +21,8 @@ export interface CodeAgentSessionInfo {
   contextTokens: number | undefined;
   /** Absent when the model does no reasoning at all, which is not reasoning turned `off`. */
   effort: CodeAgentEffort | undefined;
+  /** Percent of the window that starts a compaction; absent leaves the engine's own, later threshold. */
+  autoCompactAt: number | undefined;
   /** Absent until the session has been asked something. */
   name: string | undefined;
   /** `await` keeps a question inside its turn; `suspend` ends the turn (`awaiting`) and the answer opens a new one. */
@@ -190,6 +192,8 @@ export type CodeAgentCommand =
   | { type: "abort" }
   | { type: "compact"; instructions?: string }
   | { type: "set_model"; provider: string; modelId: string }
+  /** `percent` in steps of 10; absent, or 100, restores the default. */
+  | { type: "set_auto_compact"; percent?: number }
   | { type: "fork"; entryId: string }
   | { type: "new_session" }
   /** Current state, plus every frame after `sinceSeq` when one is given. */
@@ -235,8 +239,11 @@ export const codeAgentEventLabel = (event: CodeAgentEventBody): string => {
         `session ${event.info.sessionId}`,
         event.info.model?.name ?? "no model",
         event.info.contextTokens ? `${Math.round(event.info.contextTokens / 1000)}k ctx` : "unknown ctx",
+        event.info.autoCompactAt ? `compacts at ${event.info.autoCompactAt}%` : "",
         event.info.profile,
-      ].join(" · ");
+      ]
+        .filter((part) => !!part)
+        .join(" · ");
     case "turn_start":
       return "turn start";
     case "turn_end":

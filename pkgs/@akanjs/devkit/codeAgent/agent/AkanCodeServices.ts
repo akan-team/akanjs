@@ -4,6 +4,7 @@ import path from "node:path";
 import { type InlineExtension, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { CodeAgentProfile } from "akanjs/common";
 import { AkanEnvKeys } from "../tools/AkanEnvKeys";
+import { AkanCodeCompaction } from "./AkanCodeCompaction";
 import { type AkanContextFile, AkanContextFiles } from "./AkanContextFiles";
 import { akanCodePaths } from "./akanCodePaths";
 import { akanSystemPrompt } from "./akanSystemPrompt";
@@ -27,9 +28,7 @@ export class AkanCodeServices {
       enableInstallTelemetry: false,
       enableAnalytics: false,
       quietStartup: true,
-      // Twice the engine's 16,384: at 16k a reasoning model stops mid-thought at the compaction threshold,
-      // and the recovery re-sends a near-full window to retry the turn.
-      compaction: { reserveTokens: 32_768 },
+      compaction: { reserveTokens: AkanCodeCompaction.reserveFloor },
     });
   }
 

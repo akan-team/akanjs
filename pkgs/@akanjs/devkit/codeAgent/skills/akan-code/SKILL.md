@@ -78,6 +78,9 @@ Stored under `.akan/code/sessions` — project history, so a second checkout of 
 - `/peers` lists other `akan code` sessions running in this workspace; `/msg <peer> <text>` hands one a
   message.
 - `/clear` wipes the screen and keeps the conversation; `/compact [notes]` shortens what the model carries.
+- `/autocompact <percent>` compacts on its own once the window is that full, in steps of 10 (`/autocompact 60`);
+  `100` is the default, which waits until 32k remain for the reply. `akan code --compact-at 60` (`-c`) starts
+  with it, and a share under the 20k every compaction keeps is refused.
 
 ## Model, effort, keys
 
@@ -119,6 +122,7 @@ akan code -i "<prompt>"         open the session with the prompt already sent
 --app <name>                    narrow the agent to one app
 --profile local|pod|review|web  what it may do (default local)
 --model <provider>/<id>         --thinking, --json, --rpc, --resume <id>
+--compact-at <percent>          compact once the window is this full (10, 20, … 100)
 ```
 
 `review` reads and never writes, loads no project context files, and keeps no session on disk. `pod` has
