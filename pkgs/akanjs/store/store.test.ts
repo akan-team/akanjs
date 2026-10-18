@@ -782,6 +782,40 @@ describe("live sync store action", () => {
     expect(liveState(instance).titles).toEqual(["row400", "row300", "Cyd"]);
   });
 
+  test("a `limit: 0` list keeps every row an enter adds and stays on one page", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const server = Array.from({ length: 25 }, (_, idx) => {
+      const at = 1000 - idx * 10;
+      return new StoreTestLight({ id: `${at}`.padStart(24, "0"), title: `row${at}`, createdAt: new Date(at) } as never);
+    });
+    signal.calls.storeTestItemListByTitle = mock(async () => server);
+    signal.calls.storeTestItemInsightByTitle = mock(async () => new StoreTestInsight({ count: server.length }));
+    class UnpagedStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(UnpagedStore);
+    const instance = new StoreInstance(makeRoot("unpagedRoot", UnpagedStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 0 });
+    expect(liveState(instance).lastPage).toBe(1);
+
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "dddddddddddddddddddddddd",
+      light: light("dddddddddddddddddddddddd", "Dee", 2000),
+    });
+    expect(liveState(instance).titles).toHaveLength(26);
+    expect(liveState(instance).titles.at(-1)).toBe("row760");
+
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "cccccccccccccccccccccccc",
+      light: light("cccccccccccccccccccccccc", "Cyd", 10),
+    });
+    expect(liveState(instance).titles).toHaveLength(27);
+    expect(liveState(instance).titles.at(-1)).toBe("Cyd");
+    expect(liveState(instance).count).toBe(27);
+    expect(liveState(instance).lastPage).toBe(1);
+  });
+
   test("the same enter twice does not count the row twice", async () => {
     const { instance } = await arrange();
     const event = {

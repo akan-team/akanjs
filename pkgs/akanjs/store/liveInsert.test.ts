@@ -46,6 +46,10 @@ describe("livePlacementIndex", () => {
     expect(place({ row: row("new", 50), limit: 4 })).toBe(3);
   });
 
+  test("a `limit: 0` window has no next page, so it takes a row past its tail", () => {
+    expect(place({ row: row("new", 50), limit: 0 })).toBe(3);
+  });
+
   test("a cumulative list takes a row past its tail only once the server has nothing left", () => {
     const past = { row: row("new", 50), cumulative: true, limit: 3 };
     expect(place({ ...past, hasMore: true })).toBeNull();

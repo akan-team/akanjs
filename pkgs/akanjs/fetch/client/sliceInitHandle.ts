@@ -63,9 +63,8 @@ export class SliceInitHandle {
 
   #serverInitOf(modelObjList: BaseObject[], modelObjInsight: BaseInsight | null) {
     const { refName, capRefName, sliceName, argLength, queryArgs, page, limit, sort } = this.#input;
-    const lastPage = modelObjInsight?.count
-      ? Math.max(Math.floor((modelObjInsight.count - 1) / (limit || 20)) + 1, 1)
-      : 1;
+    const lastPage =
+      modelObjInsight?.count && limit > 0 ? Math.max(Math.floor((modelObjInsight.count - 1) / limit) + 1, 1) : 1;
     this.#serverInit ??= {
       refName,
       sliceName,

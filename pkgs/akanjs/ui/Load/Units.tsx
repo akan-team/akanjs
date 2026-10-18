@@ -52,7 +52,7 @@ function Render<RefName extends string, Light extends { id: string }>({
   noDiv,
   from,
   to,
-  loading,
+  loading = <Loading.Area />,
   empty,
   renderItem,
   renderList,
@@ -215,12 +215,11 @@ function Render<RefName extends string, Light extends { id: string }>({
         ) : typeof renderEmpty === "function" ? (
           renderEmpty()
         ) : null}
-        {showLoading ? (loading ?? <Loading.Area />) : null}
+        {showLoading ? loading : null}
       </>
     );
   else if (!renderItem) throw new Error("renderItem is required");
 
-  const RenderItem = ({ model, idx }: { model: Light; idx: number }) => renderItem(model, idx);
   return (
     <>
       <ContainerWrapper
@@ -234,14 +233,16 @@ function Render<RefName extends string, Light extends { id: string }>({
         {modelDataList.length
           ? (reverse ? [...modelDataList].reverse() : modelDataList)
               .slice(from ?? 0, to ?? modelDataList.length + 1)
-              .map((model: Light, idx: number) => <RenderItem key={model.id} model={model} idx={idx} />)
+              .map((model: Light, idx: number) => (
+                <RenderItem key={model.id} renderItem={renderItem} model={model} idx={idx} />
+              ))
           : empty !== undefined
             ? empty
             : typeof renderEmpty === "function"
               ? renderEmpty()
               : null}
       </ContainerWrapper>
-      {showLoading ? (loading ?? <Loading.Area />) : null}
+      {showLoading ? loading : null}
     </>
   );
 }
@@ -287,6 +288,13 @@ export default function Units<RefName extends string, Light extends { id: string
     </Stream>
   );
 }
+
+interface RenderItemProps<Light> {
+  renderItem: (item: Light, idx: number) => ReactNode;
+  model: Light;
+  idx: number;
+}
+const RenderItem = <Light,>({ renderItem, model, idx }: RenderItemProps<Light>) => renderItem(model, idx);
 
 interface MoreProps {
   total: number;

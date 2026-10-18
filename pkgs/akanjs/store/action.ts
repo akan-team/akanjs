@@ -897,6 +897,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const hasMoreFrom = (batch: unknown[], askedFor: number) => ({
       [namesOfSlice.hasMoreOfModel]: batch.length >= askedFor && askedFor > 0,
     });
+    // `limit: 0` lists every row on one page.
+    const lastPageFrom = (count: number, limit: number) => ({
+      [namesOfSlice.lastPageOfModel]: limit > 0 ? Math.max(Math.floor((count - 1) / limit) + 1, 1) : 1,
+    });
     const fetchList = (queryArgs: unknown[], skip: number, limit: number, sort: Sort, options?: object) =>
       (fetch[namesOfSlice.modelList] as (...args: any[]) => Promise<Light[]>)(
         ...expandQueryArgs(queryArgs, slice.args),
@@ -996,7 +1000,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               [namesOfSlice.modelInsight]: modelInsight,
               [namesOfSlice.modelInitList]: modelList,
               [namesOfSlice.modelInitAt]: new Date(),
-              [namesOfSlice.lastPageOfModel]: Math.max(Math.floor((modelInsight.count - 1) / (limit || 20)) + 1, 1),
+              ...lastPageFrom(modelInsight.count, limit),
               ...hasMoreFrom(modelDataList, fetchLimit),
               [namesOfSlice.limitOfModel]: limit,
               [namesOfSlice.queryArgsOfModel]: queryArgs,
@@ -1086,7 +1090,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           () => fetchList(queryArgsOfModel, (page - 1) * limit, limit, sortOfModel, options),
           (modelDataList) => ({
             [namesOfSlice.modelList]: new DataList(modelDataList),
-            [namesOfSlice.lastPageOfModel]: Math.max(Math.floor((modelInsight.count - 1) / limit) + 1, 1),
+            ...lastPageFrom(modelInsight.count, limit),
             [namesOfSlice.limitOfModel]: limit,
             [namesOfSlice.pageOfModel]: page,
             [namesOfSlice.isCumulativeOfModel]: false,
@@ -1127,7 +1131,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
             [namesOfSlice.queryArgsOfModel]: queryArgs,
             [namesOfSlice.modelList]: new DataList(modelDataList),
             [namesOfSlice.modelInsight]: modelInsight,
-            [namesOfSlice.lastPageOfModel]: Math.max(Math.floor((modelInsight.count - 1) / limitOfModel) + 1, 1),
+            ...lastPageFrom(modelInsight.count, limitOfModel),
             [namesOfSlice.pageOfModel]: 1,
             [namesOfSlice.isCumulativeOfModel]: false,
             ...hasMoreFrom(modelDataList, limitOfModel),
@@ -1164,11 +1168,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           return;
         }
         const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
-        const limit = (currentState[namesOfSlice.limitOfModel] as number) || 20;
+        const limit = currentState[namesOfSlice.limitOfModel] as number;
         const isCumulative = currentState[namesOfSlice.isCumulativeOfModel] as boolean;
         const countedTo = (count: number) => ({
           [namesOfSlice.modelInsight]: new cnst.insight().set({ ...modelInsight, count }),
-          [namesOfSlice.lastPageOfModel]: Math.max(Math.floor((count - 1) / limit) + 1, 1),
+          ...lastPageFrom(count, limit),
         });
         if (event.op === "leave") {
           if (!modelList.has(event.id)) return;
@@ -1205,9 +1209,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           this.set({ ...(modelList.has(event.id) ? {} : countedTo(modelInsight.count + 1)), ...staleAt });
           return;
         }
-        // A paged window pushes its last row to the next page; a cumulative list keeps it, since it is on screen.
+        // A paged window pushes its last row to the next page; a cumulative or `limit: 0` list keeps every row.
         const inserted = [...modelList.slice(0, placement), light, ...modelList.slice(placement)];
-        const placed = isCumulative ? inserted : inserted.slice(0, limit);
+        const placed = isCumulative || !limit ? inserted : inserted.slice(0, limit);
         this.set({
           [namesOfSlice.modelList]: new DataList(placed as Light[]),
           ...countedTo(modelInsight.count + 1),

@@ -41,9 +41,10 @@ export const livePlacementIndex = ({
   });
   if (!orderable) return null;
   if (index !== -1) return index;
-  // Past the rows in hand: a full paged window is followed by the next page, a cumulative list by `hasMore` rows.
+  // Past the rows in hand: a full paged window is followed by the next page, a cumulative list by `hasMore` rows, a
+  // `limit: 0` list by nothing.
   if (cumulative) return hasMore ? null : list.length;
-  return list.length < limit ? list.length : null;
+  return !limit || list.length < limit ? list.length : null;
 };
 
 // The order `QueryCompiler.orderBy` asks SQL for: NULL below every value, then `id` in the last key's direction.

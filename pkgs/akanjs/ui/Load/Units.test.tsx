@@ -204,6 +204,40 @@ describe("Load.Units", () => {
     await unmount();
   });
 
+  test("draws the reload overlay only when loading is omitted, never for null", async () => {
+    makeStore();
+    const renderItem = (item: Item) => <span>{item.title}</span>;
+    const silent = mount(<Units<"loadTestItem", Item> init={serverInit()} loading={null} renderItem={renderItem} />);
+    await act(async () => {
+      sliceState.set({ loadTestItemListLoading: true });
+    });
+    expect(silent.container.querySelector(".backdrop-blur-sm")).toBeNull();
+    await silent.unmount();
+
+    makeStore();
+    const fallback = mount(<Units<"loadTestItem", Item> init={serverInit()} renderItem={renderItem} />);
+    await act(async () => {
+      sliceState.set({ loadTestItemListLoading: true });
+    });
+    expect(fallback.container.querySelector(".backdrop-blur-sm")).not.toBeNull();
+    await fallback.unmount();
+  });
+
+  test("keeps each row mounted when the slice re-renders", async () => {
+    makeStore();
+    const { container, unmount } = mount(
+      <Units<"loadTestItem", Item> init={serverInit()} renderItem={(item: Item) => <span>{item.title}</span>} />,
+    );
+    const row = container.querySelector("span");
+    expect(row?.textContent).toBe("Ada");
+
+    await act(async () => {
+      sliceState.set({ pageOfLoadTestItem: 2 });
+    });
+    expect(container.querySelector("span")).toBe(row);
+    await unmount();
+  });
+
   /** The RSC navigation cache replays the payload a route was first rendered with, mutation or no mutation. */
   test("refetches when it re-hydrates from a payload older than the last local write", async () => {
     makeStore();
