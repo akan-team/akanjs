@@ -637,15 +637,17 @@ export default page()
           en: (
             <>
               The default and the easiest to debug. Files land in <code>{"local/<app>/backend"}</code>, and{" "}
-              <code>localFile.getBlob</code> streams them back. <code>resolveLocalPath(path, access?)</code> gives a
-              stored file's disk path, or <code>null</code> for one outside the storage root.
+              <code>localFile.getBlob</code> streams them back. For a key written through{" "}
+              <code>StorageAdaptorRole</code>, <code>resolveLocalPath(path, "public")</code> gives its disk path;{" "}
+              <code>null</code> means the key is refused, so answer 404 rather than fall back to <code>readData</code>.
             </>
           ),
           ko: (
             <>
               기본값이고 디버깅이 가장 쉽습니다. 파일은 <code>{"local/<app>/backend"}</code>에 쌓이고,{" "}
-              <code>localFile.getBlob</code>이 스트림으로 돌려줍니다. <code>resolveLocalPath(path, access?)</code>는
-              저장된 파일의 디스크 경로를 주고, 스토리지 루트 밖이면 <code>null</code>을 돌려줍니다.
+              <code>localFile.getBlob</code>이 스트림으로 돌려줍니다. <code>StorageAdaptorRole</code>로 쓴 키라면{" "}
+              <code>resolveLocalPath(path, "public")</code>이 디스크 경로를 줍니다. <code>null</code>은 거절된 키이므로
+              <code>readData</code>로 우회하지 말고 404로 답하세요.
             </>
           ),
         }),

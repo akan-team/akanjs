@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { resetEnvCache } from "akanjs/base";
 import { BlobStorage } from "./storage.adaptor";
@@ -39,6 +39,9 @@ describe("BlobStorage.resolveLocalPath", () => {
     root: `${workspace}/backend`,
     privateRoot: `${workspace}/server-private`,
   });
+  afterAll(async () => {
+    await Bun.$`rm -rf ${workspace}`.quiet();
+  });
 
   test("resolves a stored path under the root a read of that path uses", () => {
     expect(storage.resolveLocalPath("memo/a.png")).toBe(resolve(workspace, "backend", "memo/a.png"));
@@ -53,7 +56,7 @@ describe("BlobStorage.resolveLocalPath", () => {
   });
 
   test("refuses a path that leaves its root or names the root itself", () => {
-    for (const path of ["../server-private/key.pem", "memo/../../x", "/etc/passwd", "", ".", "memo/.."])
+    for (const path of ["../server-private/key.pem", "memo/../../x", "/etc/passwd", "", ".", "memo/..", "memo/a\0.png"])
       expect(storage.resolveLocalPath(path)).toBeNull();
     expect(storage.resolveLocalPath("../backend/a.png", "private")).toBeNull();
   });
@@ -72,7 +75,6 @@ describe("BlobStorage.resolveLocalPath", () => {
     await Bun.write(local, "hello");
     await storage.uploadDataFromLocal({ path: "memo/b.txt", localPath: local, access: "private" });
     expect(await Bun.file(storage.resolveLocalPath("memo/b.txt", "private") ?? "").text()).toBe("hello");
-    await Bun.$`rm -rf ${workspace}`.quiet();
   });
 });
 

@@ -51,7 +51,12 @@ export interface StorageAdaptor {
   copyData(request: CopyRequest): Promise<string>;
   deleteData(url: string): Promise<boolean>;
   deleteDataByPath(path: string): Promise<boolean>;
-  /** Absolute path of a stored file on this machine's disk, or `null` when it is not on local disk or escapes the storage root. */
+  /**
+   * Absolute path of a stored key on this machine's disk. `null` means the key is refused (rooted, NUL, or outside
+   * its root): reject the request, never fall back to `readData` for it. The method is absent on an adaptor that
+   * keeps no local files. Without `access`, a `private/` key resolves under the private root, so a caller serving
+   * an untrusted key passes `access: "public"`.
+   */
   resolveLocalPath?(path: string, access?: "public" | "private"): string | null;
 }
 
@@ -91,10 +96,9 @@ export class BlobStorage
   #resolveFilePath(path: string) {
     return path.startsWith("private/") ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
   }
-  // Picks the root as the writes do with `access`, and as the reads do (the `private/` prefix) without it.
   resolveLocalPath(path: string, access?: "public" | "private") {
     // A key is always joined under the root (`${root}/${path}`), so a rooted one (`/x`, `C:x`) names another file.
-    if (parse(path).root) return null;
+    if (path.includes("\0") || parse(path).root) return null;
     const isPrivate = access ? access === "private" : path.startsWith("private/");
     const base = resolve(isPrivate ? this.privateRoot : this.root);
     const target = resolve(base, path);
