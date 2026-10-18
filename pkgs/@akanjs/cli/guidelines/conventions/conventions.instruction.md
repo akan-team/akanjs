@@ -266,6 +266,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   never a bare `<input>` for a model field; nested rows use `st.do.writeOnX("payments.3.name", v)` and the generated
   `add<Field>OnX` / `sub<Field>OnX`. Never hand-write `data-akan-*`.
 - Read with `st.use.*`, write with `st.do.*`; client components never call `fetch.*`.
+- A raw `<button>` defaults to `type="submit"`, so a click inside any `<form>` also submits it. Write
+  `type="button"` on every raw `<button>` that does not submit; `<Button>` from `akanjs/ui` already defaults to it.
 - **Never persist form values yourself** — `Load.Edit`, `Model.EditModal` and `Model.New` save and recover the whole
   `<model>Form` per record or route and user (`draft={false}` off, `draft="<scope>"` to name it; secret and hidden
   values never saved; field `cache` / `cacheKey` props are deprecated no-ops — `modelStore`).
@@ -277,8 +279,6 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   `Record<...>`. Shared by a second module, the classes become a recipe variant in `ui/Recipe/`; only an enum→variant
   name map (`BadgeVariants["variant"]`) moves to `webkit/`.
 - `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links.
-- A raw `<button>` defaults to `type="submit"`, so a click inside any `<form>` also submits it. Write
-  `type="button"` on every raw `<button>` that does not submit; `<Button>` from `akanjs/ui` already defaults to it.
 
 ## Naming And Language
 
