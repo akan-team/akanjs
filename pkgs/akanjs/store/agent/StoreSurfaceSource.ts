@@ -162,14 +162,19 @@ export class StoreSurfaceSource implements SurfaceSource {
 
   static #viewImage(viewKey: string): ToolEntry {
     const absent = (src: string) =>
-      `No picture at ${src} is on screen now. Call readScreen with images: true and pass an address exactly as it prints one; a picture that has left the screen cannot be viewed.`;
+      `No picture at ${src} is on screen now. Call readScreen with images: true and pass the <address> of an [image: <alt>](<address>) it prints; a picture that has left the screen cannot be viewed.`;
     return {
       name: "viewImage",
       description:
-        "Look at one picture on screen, to answer from what it shows rather than from its caption. Pass an [image] address readScreen printed with `images: true`. Each picture costs this turn over a thousand tokens, so view only the ones the answer needs.",
+        "Look at one picture on screen, to answer from what it shows rather than from its caption. readScreen with `images: true` prints each picture as `[image: <alt>](<address>)`, or `[image](<address>)` when it has no alt; pass that address. Each picture costs this turn over a thousand tokens, so view only the ones the answer needs.",
       parameters: {
         type: "object",
-        properties: { src: { type: "string", description: "The image address exactly as readScreen printed it." } },
+        properties: {
+          src: {
+            type: "string",
+            description: "The <address> of an [image: <alt>](<address>) readScreen printed, without the parentheses.",
+          },
+        },
         required: ["src"],
         additionalProperties: false,
       },
