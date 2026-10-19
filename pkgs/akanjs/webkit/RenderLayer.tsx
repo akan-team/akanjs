@@ -1,5 +1,13 @@
 "use client";
-import { debugFrame, RouteDefinition, type RouteRender, router, usePathCtx } from "akanjs/client";
+import {
+  csrLocation,
+  debugFrame,
+  RouteDefinition,
+  type RouteRender,
+  router,
+  Translator,
+  usePathCtx,
+} from "akanjs/client";
 import { isThenable, Logger } from "akanjs/common";
 import { createContext, createElement, memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { CsrFrameDump } from "./csrFrameDump";
@@ -66,7 +74,10 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     };
   }, [activity]);
   //? The context's default is an empty object: bootCsr renders root layouts outside any page's wrapper.
-  const path = (usePathCtx() as Partial<ReturnType<typeof usePathCtx>>).location?.pathRoute.path ?? "the root";
+  const location = (usePathCtx() as Partial<ReturnType<typeof usePathCtx>>).location;
+  const path = location?.pathRoute.path ?? "the root";
+  //? A pushed entry renders before the URL moves to it, so its route renders read its own path through usePage().
+  const renderPath = entryPathOf(location?.pathname);
   if (isAsyncRender && routeRender) {
     const argsKey = RouteDefinition.renderArgsKey(
       routeRender.render,
@@ -87,7 +98,10 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
       const redirectsBefore = router.redirectCount();
       const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
       const result = reportFailure(
-        routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
+        Translator.renderAt(
+          renderPath,
+          () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
+        ),
         layer,
       );
       const next: RenderedRoute = {
@@ -136,7 +150,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         }}
       />
     );
-  if (!value) return <>{composeLoadingFallback(renders.slice(index), params)}</>;
+  if (!value) return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return frame(<layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>);
 });
 
@@ -154,6 +168,12 @@ function reportFailure(result: ReactNode | Promise<ReactNode>, layer: string): R
     },
   );
   return result;
+}
+
+//? window.location.pathname is percent-encoded while a pushed href may arrive raw; a memory location keeps it as given.
+function entryPathOf(pathname: string | undefined): string | undefined {
+  if (!pathname || csrLocation.isMemory) return pathname;
+  return new URL(`http://localhost${pathname}`).pathname;
 }
 
 function isAsyncRouteRender(routeRender?: RouteRender): boolean {

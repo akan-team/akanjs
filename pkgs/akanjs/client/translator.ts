@@ -18,6 +18,8 @@ interface TranslatorState {
   activeLocale?: string;
   // Browser-only copy of the server-resolved path, so the first client render matches SSR.
   activePath?: string;
+  // The URL path of the CSR stack entry whose route render is running: a pushed entry renders before the URL moves.
+  renderPath?: string;
 }
 
 const TRANSLATOR_STATE_KEY = "__AKAN_TRANSLATOR_STATE__";
@@ -56,6 +58,20 @@ export class Translator {
   }
   static getActivePath(): string | undefined {
     return getTranslatorState().activePath;
+  }
+  static renderAt<T>(path: string | undefined, render: () => T): T {
+    if (!path) return render();
+    const state = getTranslatorState();
+    const outer = state.renderPath;
+    state.renderPath = path;
+    try {
+      return render();
+    } finally {
+      state.renderPath = outer;
+    }
+  }
+  static getRenderPath(): string | undefined {
+    return getTranslatorState().renderPath;
   }
   static markHydrated() {
     delete getTranslatorState().activePath;

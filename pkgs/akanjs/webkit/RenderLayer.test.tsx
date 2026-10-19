@@ -1,6 +1,6 @@
 import "../test/registerDom";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { type RouteRender, useInHiddenLayout } from "akanjs/client";
+import { pathContext, type RouteRender, Translator, useInHiddenLayout } from "akanjs/client";
 import { act, createContext, type ReactNode, useContext, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AgenticSurface, AgentProvider, useAgentGuide, useAgentTool } from "use-agentic";
@@ -98,6 +98,47 @@ describe("RenderLayer", () => {
     expect(calls).toBe(2);
     expect(container.querySelector("[role=alert]")).toBeNull();
     expect(container.textContent).toBe("loaded");
+  });
+
+  test("hands each chain render and loading fallback the path of the entry it draws, encoded as the URL is", async () => {
+    const seen: Record<string, string | undefined> = {};
+    const tabs = layoutOf(({ children }) => {
+      seen.layout = Translator.getRenderPath();
+      return <div>{children}</div>;
+    }, true);
+    const header: RouteRender = {
+      ...layoutOf(({ children }) => <section>{children}</section>, true),
+      Loading: () => {
+        seen.loading = Translator.getRenderPath();
+        return null;
+      },
+    };
+    const tag: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        seen.page = Translator.getRenderPath();
+        return <p>tag</p>;
+      }) as RouteRender["render"],
+    };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mounted = { root, container };
+    const location = { pathname: "/ko/tag/한글", pathRoute: { path: "/tag/:name" } };
+    await act(async () => {
+      root.render(
+        <pathContext.Provider value={{ location } as never}>
+          <RenderLayer renders={[tabs, header, tag]} index={0} params={{ name: "한글" }} searchParams={{}} />
+        </pathContext.Provider>,
+      );
+    });
+    await settle();
+
+    expect(container.textContent).toBe("tag");
+    const encoded = "/ko/tag/%ED%95%9C%EA%B8%80";
+    expect(seen).toEqual({ layout: encoded, loading: encoded, page: encoded });
+    expect(Translator.getRenderPath()).toBeUndefined();
   });
 
   describe("in an MCP view", () => {

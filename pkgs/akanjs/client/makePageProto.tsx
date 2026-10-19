@@ -28,11 +28,12 @@ const getPageInfo = (): { locale: string; path: string } => {
   const activePath = Translator.getActivePath();
   if (activePath) return { locale: activeLocale ?? defaultLocale, path: activePath };
   if (getEnv().side !== "server") {
-    const [, firstSegment = "", ...rest] = csrLocation.pathname.split("/");
+    const pathname = Translator.getRenderPath() ?? csrLocation.pathname;
+    const [, firstSegment = "", ...rest] = pathname.split("/");
     const hasLocalePrefix = localeSet.has(firstSegment);
     // The server-resolved locale first, so client lookups match SSR when the first URL segment is not the locale.
     const locale = activeLocale ?? (hasLocalePrefix ? firstSegment : defaultLocale);
-    return { locale, path: activePath ?? (hasLocalePrefix ? `/${rest.join("/")}` : csrLocation.pathname) };
+    return { locale, path: hasLocalePrefix ? `/${rest.join("/")}` : pathname };
   }
   const h = untrackedHeaders();
   // Proxy headers when present, else the request URL, so an unadorned dev request (`curl /en/hello`) resolves.

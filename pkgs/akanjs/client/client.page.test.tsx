@@ -159,6 +159,26 @@ describe("makePageProto", () => {
     expect(usePage()).toMatchObject({ lang: "en", path: "/client-path" });
   });
 
+  test("reads the path of the route render it runs in, and the URL outside one", async () => {
+    envState.mode = "browser";
+    installWindow("/en/chat");
+    const { Translator } = await import("./translator");
+    const { makePageProto } = await import("./makePageProto");
+    const { usePage } = makePageProto(dictionary);
+
+    Translator.markHydrated();
+    expect(Translator.renderAt("/en/chat/7", () => usePage().path)).toBe("/chat/7");
+    expect(Translator.renderAt("/en/chat/7", () => Translator.renderAt("/en/chat", () => usePage().path))).toBe(
+      "/chat",
+    );
+    expect(() =>
+      Translator.renderAt("/en/chat/7", () => {
+        throw new Error("render failed");
+      }),
+    ).toThrow("render failed");
+    expect(usePage().path).toBe("/chat");
+  });
+
   test("uses server headers first and falls back to request URL", async () => {
     envState.mode = "server";
     const { makePageProto } = await import("./makePageProto");
