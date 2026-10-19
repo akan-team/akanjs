@@ -140,6 +140,16 @@ body {
   -webkit-user-select: none; */
 }
 
+/* An installed web app's document does not rubber-band; in a browser tab the page keeps the browser's own feel. */
+@layer base {
+  @media (display-mode: standalone) {
+    html,
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
+}
+
 html.akan-mobile-document,
 body.akan-mobile-document {
   width: 100%;
