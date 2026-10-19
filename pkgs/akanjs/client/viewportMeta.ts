@@ -7,6 +7,9 @@ export interface ThemeColorTag {
 
 /** Turns a root layout's `.viewport()` into the `viewport` and `theme-color` meta tags every document shell writes. */
 export class ViewportMeta {
+  static readonly #offMedia = "not all";
+  static readonly #ownAttr = "data-akan-theme-color";
+
   static content(viewport: RouteViewport | undefined, { native = false }: { native?: boolean } = {}): string {
     const parts = ["width=device-width", "initial-scale=1"];
     if (viewport?.fitCover ?? native) parts.push("viewport-fit=cover");
@@ -39,19 +42,30 @@ export class ViewportMeta {
     const tags = ViewportMeta.themeColors(viewport, theme);
     if (!tags.length) return;
     const existing = [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
-    //? React removes the metas a document rendered itself and throws on one detached here, so a spare one is switched
-    //? off with a media query nothing matches instead.
-    for (const meta of existing.slice(tags.length)) meta.setAttribute("media", "not all");
-    tags.forEach((tag, idx) => {
-      const meta = existing[idx] ?? ViewportMeta.#ensureMeta("theme-color", true);
+    const live = existing.filter((meta) => meta.getAttribute("media") !== ViewportMeta.#offMedia);
+    const isCurrent =
+      live.length === tags.length &&
+      tags.every(
+        (tag, idx) => live[idx]?.content === tag.content && live[idx]?.getAttribute("media") === (tag.media ?? null),
+      );
+    if (isCurrent) return;
+    //? iOS repaints the status bar for a new meta, not a changed `content`; React's own metas must stay attached.
+    for (const meta of existing) {
+      if (meta.hasAttribute(ViewportMeta.#ownAttr)) meta.remove();
+      else meta.setAttribute("media", ViewportMeta.#offMedia);
+    }
+    for (const tag of tags) {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
       meta.content = tag.content;
       if (tag.media) meta.setAttribute("media", tag.media);
-      else meta.removeAttribute("media");
-    });
+      meta.setAttribute(ViewportMeta.#ownAttr, "");
+      document.head.appendChild(meta);
+    }
   }
 
-  static #ensureMeta(name: string, fresh = false): HTMLMetaElement {
-    const found = fresh ? null : document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+  static #ensureMeta(name: string): HTMLMetaElement {
+    const found = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
     if (found) return found;
     const meta = document.createElement("meta");
     meta.name = name;

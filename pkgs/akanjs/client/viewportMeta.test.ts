@@ -35,7 +35,7 @@ describe("ViewportMeta", () => {
     expect(ViewportMeta.themeColors(viewport, "constructor")).toEqual(schemes);
   });
 
-  test("rewrites the document's tags in place, one theme-color per scheme or one for the named theme", () => {
+  test("writes new tags when the colors change, one per scheme or one for the named theme, and keeps them otherwise", () => {
     document.head.innerHTML = '<meta name="viewport" content="width=device-width, initial-scale=1">';
     const viewport = { fitCover: true, themeColor: { light: "#fff", dark: "#000" } };
 
@@ -45,19 +45,24 @@ describe("ViewportMeta", () => {
     expect(document.head.querySelector<HTMLMetaElement>('meta[name="viewport"]')?.content).toContain(
       "viewport-fit=cover",
     );
-    expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(2);
+    expect(themeColorTags()).toEqual([
+      ["#fff", "(prefers-color-scheme: light)"],
+      ["#000", "(prefers-color-scheme: dark)"],
+    ]);
 
     ViewportMeta.applyThemeColor(viewport, "dark");
-    expect(themeColorTags()).toEqual([
-      ["#000", null],
-      ["#000", "not all"],
-    ]);
+    const dark = document.head.querySelector('meta[name="theme-color"]');
+    expect(themeColorTags()).toEqual([["#000", null]]);
+
+    ViewportMeta.applyThemeColor(viewport, "dark");
+    expect(document.head.querySelector('meta[name="theme-color"]')).toBe(dark);
 
     ViewportMeta.applyThemeColor(viewport, "system");
     expect(themeColorTags()).toEqual([
       ["#fff", "(prefers-color-scheme: light)"],
       ["#000", "(prefers-color-scheme: dark)"],
     ]);
+    expect([...document.head.querySelectorAll('meta[name="theme-color"]')]).not.toContain(dark);
   });
 
   test("never detaches a theme-color React rendered, so React can still remove it on the next page", async () => {
@@ -76,19 +81,22 @@ describe("ViewportMeta", () => {
 
     ViewportMeta.applyThemeColor({ themeColor: { light: "#fff", dark: "#000" } }, "dark");
     expect(themeColorTags()).toEqual([
-      ["#000", null],
+      ["#fff", "not all"],
       ["#000", "not all"],
+      ["#000", null],
     ]);
 
     await act(async () => {
       root.render([meta("named", "#123")]);
     });
-    expect(themeColorTags()).toEqual([["#123", null]]);
+    ViewportMeta.applyThemeColor({ themeColor: "#123" });
+    expect(themeColorTags().filter(([, media]) => media !== "not all")).toEqual([["#123", null]]);
 
     await act(async () => {
       root.unmount();
     });
     container.remove();
+    expect(themeColorTags()).toEqual([["#123", null]]);
   });
 });
 
