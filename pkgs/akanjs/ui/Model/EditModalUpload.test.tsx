@@ -2,7 +2,7 @@ import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { ProtoFile } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { AgenticSurface, AgentProvider } from "use-agentic";
 import { l, mountSuspense, setTestEnv, waitFor } from "../testHelpers.fixture";
 
@@ -83,7 +83,7 @@ beforeAll(async () => {
   ({ default: ViewEditModal } = await import("./ViewEditModal"));
 });
 
-const open = async () => {
+const open = async (otherEditor: ReactNode = null) => {
   const { uploads } = makeStore();
   const surface = new AgenticSurface();
   const mounted = await mountSuspense(
@@ -91,6 +91,7 @@ const open = async () => {
       <EditModal slice={slice}>
         <div>item form</div>
       </EditModal>
+      {otherEditor}
     </AgentProvider>,
   );
   await act(async () => {
@@ -164,12 +165,18 @@ describe("Model.EditModal upload gating", () => {
   });
 
   test("re-opens submit once a dropped upload settles without touching the form", async () => {
-    const { unmount, uploads, submitDisabled } = await open();
+    const { unmount, uploads, submitDisabled } = await open(
+      <EditModal slice={slice} id="other">
+        <div>other form</div>
+      </EditModal>,
+    );
     let upload: Promise<void> | undefined;
     await act(async () => {
       upload = (st.do as unknown as Do).uploadImageOnUploadModalItem?.(picked);
       await (st.do as unknown as Do).writeOnUploadModalItem?.("id", "other");
     });
+    await waitFor(() => document.body.textContent?.includes("other form") ?? false);
+    expect(document.body.textContent).not.toContain("item form");
     await waitFor(() => submitDisabled() === true);
     expect(submitDisabled()).toBe(true);
     await act(async () => {

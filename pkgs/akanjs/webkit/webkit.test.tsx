@@ -466,6 +466,31 @@ describe("promise and timer hooks", () => {
     intervalHook.unmount();
     expect(timers.intervalCount).toBe(0);
   });
+
+  test("useDebounce keeps one timer when its states change, runs the latest callback, and runs a pending call at unmount", async () => {
+    const { useDebounce } = await import("./useDebounce");
+    installWindow();
+    const timers = new TimerController();
+    timers.install();
+    const searched: string[] = [];
+    let searchText = "";
+    const hook = renderHook(() =>
+      useDebounce((text: string) => searched.push(`${searchText}:${text}`), [searchText], 300),
+    );
+    for (const text of ["a", "ab", "abc"]) {
+      hook.current(text);
+      searchText = text;
+      hook.rerender();
+    }
+    expect(timers.timeoutCount).toBe(1);
+    timers.flushTimeouts();
+    expect(searched).toEqual(["abc:abc"]);
+
+    hook.current("abcd");
+    hook.unmount();
+    expect(searched).toEqual(["abc:abc", "abc:abcd"]);
+    expect(timers.timeoutCount).toBe(0);
+  });
 });
 
 describe("lazy loading", () => {

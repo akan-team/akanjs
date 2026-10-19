@@ -255,8 +255,8 @@ export default page()
         type: "(...args) => unknown",
         tags: [required],
         desc: l.trans({
-          en: "Runs once, with the arguments of the last call.",
-          ko: "마지막 호출의 인자로 한 번 실행됩니다.",
+          en: "Runs once, with the arguments of the last call. The callback from the latest render is the one that runs.",
+          ko: "마지막 호출의 인자로 한 번 실행됩니다. 가장 최근 렌더링에서 넘긴 콜백이 실행됩니다.",
         }),
       },
       {
@@ -264,8 +264,8 @@ export default page()
         type: "unknown[]",
         default: "[]",
         desc: l.trans({
-          en: "The dependency list of the inner `useCallback`: every prop and state the callback reads.",
-          ko: "안쪽 `useCallback`의 의존성 배열입니다. 콜백이 읽는 prop과 state를 모두 넣습니다.",
+          en: "Not read. It stays so existing calls compile; pass `[]` to reach `wait`.",
+          ko: "읽지 않습니다. 기존 호출이 그대로 컴파일되도록 남은 자리이니, `wait`을 넘기려면 `[]`를 넣으세요.",
         }),
       },
       {
@@ -338,8 +338,8 @@ export default page()
       {
         call: "useDebounce(callback, states = [], wait = 100)",
         when: l.trans({
-          en: "Once, after the calls stop for `wait` ms.",
-          ko: "호출이 `wait` ms 동안 멈춘 뒤 한 번 실행합니다.",
+          en: "Once, after the calls stop for `wait` ms, or at unmount if a call is still waiting.",
+          ko: "호출이 `wait` ms 동안 멈춘 뒤 한 번 실행합니다. 기다리던 호출이 있으면 언마운트할 때 실행합니다.",
         }),
       },
       {
@@ -868,7 +868,7 @@ export const Search = ({ className, shopId }: SearchProps) => {
     (query: string) => {
       void st.do.setQueryArgsOfProductInShop(shopId, query);
     },
-    [shopId],
+    [],
     300,
   );
   return (

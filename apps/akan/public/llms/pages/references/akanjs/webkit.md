@@ -125,11 +125,11 @@ useDebounce
 
 `useDebounce` returns a callback that runs only after the calls stop. A search box that queries once the user stops typing is the usual case; an image editor or a costly field update uses it while the user drags or types.
 
-- callback ((...args) => unknown): Runs once, with the arguments of the last call.
+- callback ((...args) => unknown): Runs once, with the arguments of the last call. The callback from the latest render is the one that runs.
 
   - required
 
-- states (unknown[], default []): The dependency list of the inner `useCallback`: every prop and state the callback reads.
+- states (unknown[], default []): Not read. It stays so existing calls compile; pass `[]` to reach `wait`.
 
 - wait (number, default 100): Milliseconds to wait after the last call.
 
@@ -169,7 +169,7 @@ Compared With useDebounce
 
 When it runs
 
-- useDebounce(callback, states = [], wait = 100) — Once, after the calls stop for `wait` ms.
+- useDebounce(callback, states = [], wait = 100) — Once, after the calls stop for `wait` ms, or at unmount if a call is still waiting.
 
 - useThrottle(func, delay = 200, deps = []) — At once, then drops calls for `delay` ms.
 
@@ -395,7 +395,7 @@ export const Search = ({ className, shopId }: SearchProps) => {
     (query: string) => {
       void st.do.setQueryArgsOfProductInShop(shopId, query);
     },
-    [shopId],
+    [],
     300,
   );
   return (
