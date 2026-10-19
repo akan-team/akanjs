@@ -19,7 +19,9 @@ const EMPTY_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAAL
 
 type NativeImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "alt" | "src" | "srcSet"> & {
   fill?: boolean;
+  /** Accepted for next/image compatibility; an `<img>` has no such attribute, so it draws nothing. */
   placeholder?: string;
+  /** Accepted for next/image compatibility; an `<img>` has no such attribute, so it draws nothing. */
   blurDataURL?: string;
 };
 
@@ -27,7 +29,7 @@ type AkanImageProps = NativeImageProps & {
   /** Takes precedence over `file.url`. */
   src?: string;
   file?: ImageLikeFile;
-  /** Overrides `file.abstractData`. */
+  /** Overrides `file.abstractData`, which no render path draws as a placeholder. */
   abstractData?: string | null;
   /** Defaults to "image". */
   alt?: string;
@@ -63,7 +65,6 @@ export const Image = (
   const url = src || file?.url || null;
   const [width, height] = [props.width ?? file?.imageSize[0], props.height ?? file?.imageSize[1]];
 
-  const blurDataURL = abstractData ?? file?.abstractData;
   const isPriority = Boolean(priority || preload);
 
   const optimized = url
@@ -79,7 +80,7 @@ export const Image = (
     });
   }
 
-  const { fill, ...imgProps } = props;
+  const { fill, placeholder, blurDataURL, ...imgProps } = props;
 
   return (
     <img
@@ -93,7 +94,6 @@ export const Image = (
       loading={props.loading ?? (isPriority ? "eager" : "lazy")}
       decoding={props.decoding ?? "async"}
       fetchPriority={props.fetchPriority ?? (isPriority ? "high" : undefined)}
-      {...(blurDataURL ? { placeholder: "blur", blurDataURL } : {})}
       {...imgProps}
     />
   );

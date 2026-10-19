@@ -33,4 +33,24 @@ describe("Image", () => {
     expect(html).toContain("/_akan/image?url=%2Fphoto.png");
     expect(html).not.toContain("bg-muted");
   });
+
+  test("hands no next/image placeholder props to the <img>", async () => {
+    const file = {
+      url: "/photo.png",
+      imageSize: [100, 100] as [number, number],
+      abstractData: "data:image/png;base64,AAAA",
+    };
+    for (const html of [
+      await renderToText(<Image file={file} alt="photo" />),
+      await renderToText(
+        <Image src="/photo.png" alt="photo" placeholder="blur" blurDataURL="data:image/png;base64,AAAA" />,
+      ),
+      await renderToText(
+        <CsrImage file={file} alt="photo" placeholder="blur" blurDataURL="data:image/png;base64,AAAA" />,
+      ),
+    ]) {
+      expect(html.toLowerCase()).not.toContain("blurdataurl");
+      expect(html).not.toContain("placeholder=");
+    }
+  });
 });

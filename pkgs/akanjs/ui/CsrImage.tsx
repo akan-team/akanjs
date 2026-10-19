@@ -13,6 +13,8 @@ type CsrImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "alt" | "src"> & 
   quality?: number;
   unoptimized?: boolean;
   fill?: boolean;
+  placeholder?: string;
+  blurDataURL?: string;
 };
 
 const EMPTY_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -24,7 +26,7 @@ export const CsrImage = ({ src, alt, file, className, abstractData, ...props }: 
   const defaultAbstractData =
     "data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVR42mN8//HLfwYiAOOoQvoqBABbWyZJf74GZgAAAABJRU5ErkJggg==";
   const blurDataURL = abstractData ?? file?.abstractData ?? defaultAbstractData;
-  const { priority, preload, quality, unoptimized, fill, ...csrProps } = props;
+  const { priority, preload, quality, unoptimized, fill, placeholder, blurDataURL: _blurDataURL, ...csrProps } = props;
   return (
     <img
       src={url ?? EMPTY_IMAGE}
