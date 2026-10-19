@@ -10,6 +10,8 @@ export interface AgentWireToolResult {
   result?: unknown;
   changes?: unknown[];
   error?: string;
+  /** Files the call handed the model, as content beside the JSON; one this model cannot read arrives as a `text` note. */
+  attachments?: AgentWireAttachment[];
 }
 
 /** Exactly one carrier reaches the model: `data` (inlined bytes), `url` (fetched by the provider) or `text`. */

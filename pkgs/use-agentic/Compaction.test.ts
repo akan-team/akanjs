@@ -59,6 +59,21 @@ describe("Compaction.tokensOf", () => {
     const notes = { name: "notes.txt", mimeType: "text/plain", text: "x".repeat(40_000) };
     expect(Compaction.tokensOf([{ role: "user", attachments: [notes] }])).toBeGreaterThan(10_000);
   });
+
+  test("a picture a tool returned costs the same, and nothing once a later ask turned it into a note", () => {
+    const picture = { name: "card.jpg", mimeType: "image/jpeg", data: "A".repeat(400_000) };
+    const viewed: ChatMessage = {
+      role: "tool",
+      toolResults: [{ id: "c1", name: "viewImage", result: "Attached card.jpg", attachments: [picture] }],
+    };
+    const latest = Compaction.tokensOf([user("what is she wearing?"), viewed]);
+    expect(latest).toBeGreaterThanOrEqual(Compaction.imageTokens);
+    expect(latest).toBeLessThan(Compaction.imageTokens + 100);
+    expect(Compaction.tokensOf([user("what is she wearing?"), viewed, user("thanks")])).toBeLessThan(200);
+    expect(Compaction.resultTokensOf(viewed.toolResults?.[0] ?? { id: "", name: "" })).toBeLessThan(
+      Compaction.imageTokens + 100,
+    );
+  });
 });
 
 describe("Compaction.promptTokensOf", () => {
@@ -99,6 +114,25 @@ describe("Compaction.digest", () => {
     expect(digest).toContain("user: trim the intro");
     expect(digest).toContain('[called setSeconds {"seconds":4}]');
     expect(digest).toContain("[failed setSeconds: refused]");
+  });
+
+  test("a file a tool returned is named as gone, never carried", () => {
+    const digest = Compaction.digest([
+      user("what is she wearing?"),
+      {
+        role: "tool",
+        toolResults: [
+          {
+            id: "c1",
+            name: "viewImage",
+            result: "Attached card.jpg",
+            attachments: [{ name: "card.jpg", mimeType: "image/jpeg", data: "QUJD" }],
+          },
+        ],
+      },
+    ]);
+    expect(digest).toContain("[viewImage returned card.jpg, content not carried into this summary]");
+    expect(digest).not.toContain("QUJD");
   });
 
   test("a folded reference keeps its pointer and says the value is gone", () => {

@@ -197,6 +197,35 @@ describe("sessionHistoryOf", () => {
     history?.clear();
   });
 
+  test("a picture a tool returned is left out of storage the same way", () => {
+    const history = sessionHistoryOf(true, "toolfile");
+    history?.save([
+      { role: "user", text: "what is she wearing?" },
+      { role: "assistant", toolCalls: [{ id: "c1", name: "viewImage", args: { src: "/card.jpg" } }] },
+      {
+        role: "tool",
+        toolResults: [
+          {
+            id: "c1",
+            name: "viewImage",
+            result: "Attached card.jpg",
+            attachments: [{ name: "card.jpg", mimeType: "image/jpeg", data: "CCCC" }],
+          },
+        ],
+      },
+    ]);
+    expect(window.sessionStorage.getItem("akan.agent.historytest.toolfile") ?? "").not.toContain("CCCC");
+    expect(stored(history)?.[2]?.toolResults).toEqual([
+      {
+        id: "c1",
+        name: "viewImage",
+        result: "Attached card.jpg",
+        attachments: [{ name: "card.jpg", mimeType: "image/jpeg" }],
+      },
+    ]);
+    history?.clear();
+  });
+
   test("persist off or no window answers undefined", () => {
     expect(sessionHistoryOf(undefined)).toBeUndefined();
     expect(sessionHistoryOf(false)).toBeUndefined();

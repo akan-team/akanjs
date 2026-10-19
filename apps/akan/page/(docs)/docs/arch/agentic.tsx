@@ -431,6 +431,13 @@ export default page()
         }),
       },
       {
+        name: "viewImage(src)",
+        desc: l.trans({
+          en: "Attaches one picture on screen to the result, so the answer comes from what it shows.",
+          ko: "화면의 그림 하나를 결과에 붙여, 그림이 보여 주는 대로 답하게 합니다.",
+        }),
+      },
+      {
         name: "askUser(question, choices?)",
         desc: l.trans({
           en: "Hands a decision back to the user on a question card.",
@@ -480,6 +487,22 @@ export default page()
             <strong>이미지는 이름만, 주소는 선택입니다.</strong> alt가 없어도 이미지 자리는 남고,{" "}
             <code>images: true</code>를 주면 주소까지 붙습니다. 갤러리 하나가 썸네일마다 긴 URL이 되므로 기본값은
             꺼짐입니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>viewImage takes an address readScreen printed.</strong> Only a picture on screen is viewed, and each
+            one costs a turn over a thousand tokens. A tool of your own returns one with{" "}
+            <code>ToolReturn.attach(result, [attachment])</code>.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>viewImage는 readScreen이 출력한 주소를 받습니다.</strong> 화면에 있는 그림만 볼 수 있고, 한 장마다
+            한 턴에 천 토큰 넘게 듭니다. 직접 만든 툴은 <code>ToolReturn.attach(result, [attachment])</code>로 그림을
+            돌려줍니다.
           </>
         ),
       }),
@@ -1486,11 +1509,11 @@ st.expose("selectedWaypointId", ID)
               ))}
             </div>
 
-            <Docs.SubSubTitle>{l.trans({ en: "Six built-in tools", ko: "기본 툴 여섯 가지" })}</Docs.SubSubTitle>
+            <Docs.SubSubTitle>{l.trans({ en: "Seven built-in tools", ko: "기본 툴 일곱 가지" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "These are on every screen, whatever it declares. builtins narrows the first five; askUser belongs to the session and always stays.",
-                ko: "화면이 무엇을 선언하든 항상 실리는 툴입니다. 앞의 다섯은 builtins로 줄일 수 있고, askUser는 세션의 것이라 항상 남습니다.",
+                en: "These are on every screen, whatever it declares. builtins narrows the first six; askUser belongs to the session and always stays.",
+                ko: "화면이 무엇을 선언하든 항상 실리는 툴입니다. 앞의 여섯은 builtins로 줄일 수 있고, askUser는 세션의 것이라 항상 남습니다.",
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Tool", ko: "툴" })} items={builtinRows} />

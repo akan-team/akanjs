@@ -60,8 +60,8 @@ export default page()
       {
         name: l.trans({ en: "built-ins", ko: "기본 툴 (builtins)" }),
         desc: l.trans({
-          en: "Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`.",
-          ko: "런타임이 모든 화면에 넣어 주는 툴입니다. `navigate`, `goBack`, `readScreen`, `readState`, `highlight`.",
+          en: "Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`, `viewImage`.",
+          ko: "런타임이 모든 화면에 넣어 주는 툴입니다. `navigate`, `goBack`, `readScreen`, `readState`, `highlight`, `viewImage`.",
         }),
       },
       {
@@ -234,8 +234,8 @@ export default page()
         type: "BuiltinOption",
         default: "true",
         desc: l.trans({
-          en: "`true` gives all five built-ins, `false` none, an array only those named. `askUser` always stays.",
-          ko: "`true`면 기본 툴 다섯 개 전부, `false`면 없음, 배열이면 적은 것만 줍니다. `askUser`는 항상 남습니다.",
+          en: "`true` gives all six built-ins, `false` none, an array only those named. `askUser` always stays.",
+          ko: "`true`면 기본 툴 여섯 개 전부, `false`면 없음, 배열이면 적은 것만 줍니다. `askUser`는 항상 남습니다.",
         }),
       },
       {

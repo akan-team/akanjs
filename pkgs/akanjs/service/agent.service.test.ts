@@ -64,6 +64,61 @@ describe("AgentService.readable", () => {
     const request: LlmTurnRequest = { tools: [], context: [], messages: [{ role: "user", text: "hi" }] };
     expect(AgentService.readable(request, undefined)).toBe(request);
   });
+
+  test("a file a tool returned that the model cannot read stands as a note where it stood, beside the result", () => {
+    const textOnly = AgentService.readable(viewed(), undefined).messages[2].toolResults?.[0];
+    expect(textOnly?.result).toBe("Attached card.jpg");
+    expect(textOnly?.attachments).toEqual([
+      {
+        name: "card.jpg",
+        mimeType: "image/jpeg",
+        text: expect.stringContaining(
+          "[Attachment not read: card.jpg (image/jpeg) — this model cannot read that type.",
+        ) as unknown as string,
+      },
+    ]);
+    const vision = AgentService.readable(viewed(), { image: true }).messages[2].toolResults?.[0];
+    expect(vision?.attachments?.[0]?.data).toBe("QUJD");
+  });
+});
+
+const viewed = (): LlmTurnRequest => ({
+  tools: [],
+  context: [],
+  messages: [
+    { role: "user", text: "what is she wearing?" },
+    { role: "assistant", toolCalls: [{ id: "c1", name: "viewImage", args: { src: "/card.jpg" } }] },
+    {
+      role: "tool",
+      toolResults: [
+        {
+          id: "c1",
+          name: "viewImage",
+          result: "Attached card.jpg",
+          attachments: [{ name: "card.jpg", mimeType: "image/jpeg", data: "QUJD" }],
+        },
+      ],
+    },
+  ],
+});
+
+describe("a tool's file on the provider wire", () => {
+  test("a text-only provider reads the note in the tool message, and is sent no picture", () => {
+    const body = OpenaiDialect.requestBody("deepseek-v4", AgentService.readable(viewed(), undefined));
+    expect(body.messages.map((message) => message.role)).toEqual(["system", "user", "assistant", "tool"]);
+    expect(body.messages[3].content).toContain("[Attachment not read: card.jpg (image/jpeg)");
+  });
+
+  test("a vision provider is sent the picture, on either dialect", () => {
+    const openai = OpenaiDialect.requestBody("gpt-vision", AgentService.readable(viewed(), { image: true }), {
+      accepts: { image: true },
+    });
+    expect(JSON.stringify(openai.messages[4])).toContain("data:image/jpeg;base64,QUJD");
+    const [, , results] = AnthropicLlm.providerMessages(AgentService.readable(viewed(), { image: true }).messages, {
+      image: true,
+    });
+    expect(JSON.stringify(results)).toContain('"data":"QUJD"');
+  });
 });
 
 describe("AgentService.explained", () => {

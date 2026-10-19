@@ -36,7 +36,7 @@ Term
 
 - transcript: The conversation so far. It is sent to the model again on every turn.
 
-- built-ins: Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`.
+- built-ins: Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`, `viewImage`.
 
 - resource: A value a component publishes with `st.expose` or `st.useState` for the agent to read.
 
@@ -106,7 +106,7 @@ How the conversation runs, read once at mount. Inside an `Agent.Zone` or `AgentP
 
 - compact (CompactOptions, default { at: 24_000, keep: 6, buffer: 13_000 }): Summarizes past `at` estimated tokens or `buffer` short of the known window. `{ at: 0 }` turns it off.
 
-- builtins (BuiltinOption, default true): `true` gives all five built-ins, `false` none, an array only those named. `askUser` always stays.
+- builtins (BuiltinOption, default true): `true` gives all six built-ins, `false` none, an array only those named. `askUser` always stays.
 
 - persist (PersistOption | SessionHistory): Transcript survives reloads in sessionStorage; `{ storage: "local" }` or `SessionHistory` moves it.
 

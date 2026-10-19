@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AgenticSurface } from "./AgenticSurface";
 import { AgentProgress } from "./AgentProgress";
+import { ToolOutput } from "./ToolOutput";
+import { ToolReturn } from "./ToolReturn";
 import { type ToolProgress, ToolRunner } from "./ToolRunner";
 import type { ToolActionEntry, ToolActivity, ToolCallRequest, ToolCardEntry, ToolEntry } from "./types";
 
@@ -152,6 +154,33 @@ describe("ToolRunner reporting", () => {
     const result = await runner.run(call("readState"), new AbortController().signal);
     expect(String(result.result)).toContain("Truncated");
     expect(JSON.stringify(result).length).toBeLessThan(30_000);
+  });
+
+  test("files a tool returns beside its value ride as attachments, outside the character ceiling", async () => {
+    const picture = { name: "card.jpg", mimeType: "image/jpeg", data: "A".repeat(100_000) };
+    const runner = new ToolRunner(
+      surfaceWith({ name: "viewCard", run: () => ToolReturn.attach("Attached card.jpg", [picture]) }),
+    );
+    const result = await runner.run(call("viewCard"), new AbortController().signal);
+    expect(result.result).toBe("Attached card.jpg");
+    expect(result.attachments).toEqual([picture]);
+  });
+
+  test("a returned file past the per-file ceiling arrives as a note, and returned text is clipped like a value", async () => {
+    const huge = {
+      name: "scan.png",
+      mimeType: "image/png",
+      data: "A".repeat(Math.ceil((ToolOutput.attachmentBytes * 4) / 3) + 8),
+    };
+    const notes = { name: "notes.txt", mimeType: "text/plain", text: "x".repeat(200_000) };
+    const runner = new ToolRunner(
+      surfaceWith({ name: "export", run: () => ToolReturn.attach(undefined, [huge, notes]) }),
+    );
+    const result = await runner.run(call("export"), new AbortController().signal);
+    expect(result.attachments?.[0]?.data).toBeUndefined();
+    expect(result.attachments?.[0]?.text).toContain("Not attached");
+    expect(result.attachments?.[1]?.text).toContain("Truncated");
+    expect(result.attachments?.[1]?.text?.length).toBeLessThan(30_000);
   });
 
   test("progress rides with the call's own id and the clear only lands for that call", async () => {
@@ -500,6 +529,20 @@ describe("ToolRunner cards", () => {
     const result = await runner.run(call("collectContact"), new AbortController().signal);
     expect(result.result).toEqual({ name: "Bora", phone: "010-0000-0000" });
     expect(result.error).toBeUndefined();
+  });
+
+  test("a card that submits files hands them to the model as attachments", async () => {
+    const photo = { name: "receipt.jpg", mimeType: "image/jpeg", data: "AAAA" };
+    const runner = rendered({
+      name: "scanReceipt",
+      card: ({ submit }) => {
+        submit(ToolReturn.attach({ total: 12_000 }, [photo]));
+        return null;
+      },
+    });
+    const result = await runner.run(call("scanReceipt"), new AbortController().signal);
+    expect(result.result).toEqual({ total: 12_000 });
+    expect(result.attachments).toEqual([photo]);
   });
 
   test("the card's own cancel is the refusal the model reads", async () => {

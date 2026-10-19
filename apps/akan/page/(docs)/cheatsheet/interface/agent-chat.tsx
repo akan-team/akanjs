@@ -225,6 +225,13 @@ export default page()
           ko: "대상을 화면으로 스크롤해 깜빡이며, 사용자에게 위치를 보여 줍니다.",
         }),
       },
+      {
+        name: "viewImage",
+        desc: l.trans({
+          en: "Attaches one picture on screen to the result, so the answer comes from what it shows.",
+          ko: "화면의 그림 하나를 결과에 붙여, 그림이 보여 주는 대로 답하게 합니다.",
+        }),
+      },
     ];
 
     const builtinNotes = [

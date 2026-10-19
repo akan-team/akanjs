@@ -1,7 +1,8 @@
 import { router } from "akanjs/client";
-import { AgenticSurface, type SurfaceSource, type ToolEntry } from "use-agentic";
+import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
 import { AgentBridge } from "./AgentBridge";
 import { ScreenFlash } from "./ScreenFlash";
+import { ScreenImage } from "./ScreenImage";
 import { ScreenReader } from "./ScreenReader";
 import { ScreenSettle } from "./ScreenSettle";
 import { ScreenTarget } from "./ScreenTarget";
@@ -9,7 +10,7 @@ import { ScreenTarget } from "./ScreenTarget";
 /** Every screen's built-in tools. A same-named hook tool shadows one at root scope only; a zone uses `builtins`. */
 export class StoreSurfaceSource implements SurfaceSource {
   /** What a session's `builtins` option selects from, in build order. */
-  static readonly builtins = ["navigate", "goBack", "readScreen", "readState", "highlight"] as const;
+  static readonly builtins = ["navigate", "goBack", "readScreen", "readState", "highlight", "viewImage"] as const;
 
   #bridge: AgentBridge | null;
   readonly #builtins = new Map<string, ToolEntry[]>();
@@ -29,6 +30,7 @@ export class StoreSurfaceSource implements SurfaceSource {
         StoreSurfaceSource.#readScreen(viewKey),
         this.#readState(viewKey),
         StoreSurfaceSource.#highlight(viewKey),
+        StoreSurfaceSource.#viewImage(viewKey),
       ];
       this.#builtins.set(viewKey, builtins);
     }
@@ -154,6 +156,38 @@ export class StoreSurfaceSource implements SurfaceSource {
         }
         ScreenFlash.show(target);
         return `Highlighted ${name} on screen for the user.`;
+      },
+    };
+  }
+
+  static #viewImage(viewKey: string): ToolEntry {
+    const absent = (src: string) =>
+      `No picture at ${src} is on screen now. Call readScreen with images: true and pass an address exactly as it prints one; a picture that has left the screen cannot be viewed.`;
+    return {
+      name: "viewImage",
+      description:
+        "Look at one picture on screen, to answer from what it shows rather than from its caption. Pass an [image] address readScreen printed with `images: true`. Each picture costs this turn over a thousand tokens, so view only the ones the answer needs.",
+      parameters: {
+        type: "object",
+        properties: { src: { type: "string", description: "The image address exactly as readScreen printed it." } },
+        required: ["src"],
+        additionalProperties: false,
+      },
+      settle: false,
+      // Only what the screen shows: an arbitrary address would have the user's browser fetch it for the model.
+      guard: (args) => {
+        const src = typeof args.src === "string" ? args.src.trim() : "";
+        if (!src) return "viewImage needs a src.";
+        if (src.startsWith("data:"))
+          return "A data: address is the picture's bytes, not an address readScreen prints. Pass one readScreen printed.";
+        return ScreenImage.find(src, StoreSurfaceSource.#zoneRoot(viewKey)) ? true : absent(src);
+      },
+      run: async (args) => {
+        const src = String(args.src).trim();
+        const image = ScreenImage.find(src, StoreSurfaceSource.#zoneRoot(viewKey));
+        if (!image) throw new Error(absent(src));
+        const { attachment, size } = await ScreenImage.view(image);
+        return ToolReturn.attach(`Attached ${attachment.name}: ${size}.`, [attachment]);
       },
     };
   }

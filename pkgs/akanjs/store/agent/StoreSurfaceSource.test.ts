@@ -65,7 +65,7 @@ describe("StoreSurfaceSource", () => {
         .tools()
         .map((tool) => tool.name)
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
-    ).toEqual(["goBack", "highlight", "navigate", "readScreen", "readState"]);
+    ).toEqual(["goBack", "highlight", "navigate", "readScreen", "readState", "viewImage"]);
     expect(entryOf("publishNote")).toBeUndefined();
     expect(entryOf("setTitleOnSurfaceNote")).toBeUndefined();
     expect(entryOf("createSurfaceNote")).toBeUndefined();
@@ -152,7 +152,7 @@ describe("StoreSurfaceSource", () => {
   });
 
   test("the built-ins that change nothing a resource holds do not wait for the screen", () => {
-    for (const name of ["readScreen", "readState", "highlight"]) expect(entryOf(name)?.settle).toBe(false);
+    for (const name of ["readScreen", "readState", "highlight", "viewImage"]) expect(entryOf(name)?.settle).toBe(false);
     for (const name of ["navigate", "goBack"]) expect(entryOf(name)?.settle).toBeUndefined();
   });
 
@@ -181,6 +181,18 @@ describe("StoreSurfaceSource", () => {
     expect(await surface.call("highlight", { target: "submitTask" })).toBe("No rendered document is available.");
     await expect(surface.call("highlight", { target: "  " })).rejects.toThrow("highlight needs a target.");
   });
+
+  test("viewImage looks only at a picture on screen, and refuses a data: address outright", async () => {
+    const surface = new AgenticSurface();
+    surface.addSource(source);
+    await expect(surface.call("viewImage", { src: "https://cdn.example/card.jpg" })).rejects.toThrow(
+      "No picture at https://cdn.example/card.jpg is on screen now.",
+    );
+    await expect(surface.call("viewImage", { src: "data:image/png;base64,AAAA" })).rejects.toThrow(
+      "A data: address is the picture's bytes",
+    );
+    await expect(surface.call("viewImage", {})).rejects.toThrow("viewImage needs a src.");
+  });
 });
 
 describe("StoreSurfaceSource zone views", () => {
@@ -199,6 +211,6 @@ describe("StoreSurfaceSource zone views", () => {
 
   test("the built-ins are published to every view, zone or root", () => {
     const zone = source.tools(["notes"]).map((tool) => tool.name);
-    expect(zone).toEqual(["navigate", "goBack", "readScreen", "readState", "highlight"]);
+    expect(zone).toEqual(["navigate", "goBack", "readScreen", "readState", "highlight", "viewImage"]);
   });
 });

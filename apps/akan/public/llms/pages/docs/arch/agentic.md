@@ -178,9 +178,9 @@ Declaring tools and state
 
   - Subscribes without joining the surface. There is no store-level switch; a store class says nothing about agents.
 
-Six built-in tools
+Seven built-in tools
 
-These are on every screen, whatever it declares. builtins narrows the first five; askUser belongs to the session and always stays.
+These are on every screen, whatever it declares. builtins narrows the first six; askUser belongs to the session and always stays.
 
 Tool
 
@@ -194,6 +194,8 @@ Tool
 
 - highlight(target): Scrolls one thing into view and flashes it, to show the user where it is.
 
+- viewImage(src): Attaches one picture on screen to the result, so the answer comes from what it shows.
+
 - askUser(question, choices?): Hands a decision back to the user on a question card.
 
 **goBack is global like navigate.** History is not a control a page owns; a page that draws no back link is not one you may not leave.
@@ -201,6 +203,8 @@ Tool
 **readScreen keeps a long screen reachable.** Headings carry their anchor, and a truncated read names the sections below the cut; pass one of those names, or a heading's text, as `section`.
 
 **Images are named, addresses are opt-in.** Every image is named with or without an alt; `images: true` adds each address, off by default because a gallery is one long URL per thumbnail.
+
+**viewImage takes an address readScreen printed.** Only a picture on screen is viewed, and each one costs a turn over a thousand tokens. A tool of your own returns one with `ToolReturn.attach(result, [attachment])`.
 
 **highlight takes many kinds of target:** a tool name, a state key, a scope path, an anchor or a heading's text. It flashes once the scroll lands, and nothing hidden ever resolves.
 

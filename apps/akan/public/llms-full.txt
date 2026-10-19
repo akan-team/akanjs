@@ -4860,7 +4860,7 @@ Term
 
 - transcript: The conversation so far. It is sent to the model again on every turn.
 
-- built-ins: Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`.
+- built-ins: Runtime tools every screen gets: `navigate`, `goBack`, `readScreen`, `readState`, `highlight`, `viewImage`.
 
 ## Core
 

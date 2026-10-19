@@ -1,7 +1,9 @@
 import { AgentAbort } from "./AgentAbort";
 import { AgentProgress, type AgentProgressReport } from "./AgentProgress";
 import { ToolOutput } from "./ToolOutput";
+import { ToolReturn } from "./ToolReturn";
 import type {
+  ResourceDiff,
   SurfaceView,
   ToolActivity,
   ToolCallRequest,
@@ -155,12 +157,7 @@ export class ToolRunner {
     const answered = await ask({ callId: call.id, name: call.name, args: call.args, render: entry.card }, signal);
     if ("error" in answered) return { ...base, error: answered.error };
     if (entry.settle !== false) await this.#host.settle?.();
-    const changes = this.#surface.diffSince(before);
-    return {
-      ...base,
-      ...(answered.result !== undefined ? { result: answered.result } : {}),
-      ...(changes.length ? { changes } : {}),
-    };
+    return ToolRunner.#answered(base, answered.result, this.#surface.diffSince(before));
   }
 
   async #execute(
@@ -180,7 +177,7 @@ export class ToolRunner {
     try {
       //? Again past the awaited start, in the tick of `surface.call`'s own lookup, so nothing re-registers between.
       if (!this.#stillDecided(call, entry, message)) throw new Error(ToolRunner.#movedError(call.name));
-      const result = await AgentAbort.run(signal, () =>
+      const returned = await AgentAbort.run(signal, () =>
         AgentProgress.run(
           (report) => this.#host.progress?.({ callId: call.id, report }),
           () => ToolRunner.raced(this.#surface.call(call.name, call.args), signal),
@@ -189,12 +186,7 @@ export class ToolRunner {
       // A read returns what is already there; anything else may still be landing, and a report taken now would
       // describe the screen as it was one tick before the call.
       if (entry.settle !== false) await this.#host.settle?.();
-      const changes = this.#surface.diffSince(before);
-      return {
-        ...base,
-        ...(result !== undefined ? { result } : {}),
-        ...(changes.length ? { changes } : {}),
-      };
+      return ToolRunner.#answered(base, returned, this.#surface.diffSince(before));
     } catch (error) {
       failed = error instanceof Error ? error.message : String(error);
       return { ...base, error: failed };
@@ -223,6 +215,16 @@ export class ToolRunner {
       JSON.stringify(shown.parameters) === JSON.stringify(decided.parameters) &&
       ToolRunner.confirmMessage(call.name, shown, call.args) === message
     );
+  }
+
+  static #answered(base: { id: string; name: string }, returned: unknown, changes: ResourceDiff[]): ToolCallResult {
+    const { result, attachments } = ToolReturn.split(returned);
+    return {
+      ...base,
+      ...(result !== undefined ? { result } : {}),
+      ...(changes.length ? { changes } : {}),
+      ...(attachments.length ? { attachments } : {}),
+    };
   }
 
   static #movedError(name: string) {

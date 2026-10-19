@@ -167,6 +167,12 @@ export interface ToolCallResult {
   /** What the call changed on the surface — the whole report for a tool that returns nothing. */
   changes?: ResourceDiff[];
   error?: string;
+  /**
+   * Files the call handed the model — a picture it looked at — in the shape a user's attachment takes. A `result`
+   * cannot carry one: it reaches the model as JSON text, so a URL is read as letters and base64 as a wall of them.
+   * Outside the `ToolOutput` ceiling, and only the latest turn's ride the wire as bytes (`Transcript.wire`).
+   */
+  attachments?: MessageAttachment[];
 }
 
 /**

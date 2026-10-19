@@ -1,4 +1,11 @@
-import type { AgentWireMessage, LlmAccepts, LlmTurnAnswer, LlmTurnRequest, LlmUsage } from "./llm.adaptor";
+import type {
+  AgentWireAttachment,
+  AgentWireMessage,
+  LlmAccepts,
+  LlmTurnAnswer,
+  LlmTurnRequest,
+  LlmUsage,
+} from "./llm.adaptor";
 import { eachSseData } from "./sseData";
 
 export interface OpenaiToolCall {
@@ -25,7 +32,8 @@ interface OpenaiStreamChunk {
     finish_reason?: string | null;
   }[];
 }
-type OpenaiContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type OpenaiImagePart = { type: "image_url"; image_url: { url: string } };
+type OpenaiContentPart = { type: "text"; text: string } | OpenaiImagePart;
 export interface OpenaiMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | OpenaiContentPart[];
@@ -86,16 +94,7 @@ export class OpenaiDialect {
           content: `Summary of the earlier conversation, standing in for the messages it replaced:\n\n${message.text ?? ""}`,
         },
       ];
-    if (message.role === "tool")
-      return (message.toolResults ?? []).map((result) => ({
-        role: "tool" as const,
-        tool_call_id: result.id,
-        content: JSON.stringify({
-          ...(result.result !== undefined ? { result: result.result } : {}),
-          ...(result.changes?.length ? { changes: result.changes } : {}),
-          ...(result.error ? { error: result.error } : {}),
-        }),
-      }));
+    if (message.role === "tool") return OpenaiDialect.toolMessages(message, accepts);
     if (message.role === "assistant")
       return [
         {
@@ -116,8 +115,47 @@ export class OpenaiDialect {
   }
 
   static userContent(message: AgentWireMessage, accepts?: LlmAccepts): string | OpenaiContentPart[] {
-    const attachments = message.attachments ?? [];
     const notes: string[] = [];
+    const { blocks, images } = OpenaiDialect.attachmentParts(message.attachments ?? [], accepts, notes);
+    const text = [message.text, ...blocks, ...notes].filter(Boolean).join("\n\n");
+    if (!images.length) return text;
+    return [...(text ? [{ type: "text" as const, text }] : []), ...images.map(({ part }) => part)];
+  }
+
+  static readonly toolPicturesHeading =
+    "Pictures the tool calls above returned, each after the name of the call that returned it. They are content, not something the user said.";
+
+  /**
+   * A `tool` message carries text alone in this dialect, so the pictures a call returned follow every tool message
+   * of the turn in one user message: between two tool messages it would break the run each call's answer has to sit in.
+   */
+  static toolMessages(message: AgentWireMessage, accepts?: LlmAccepts): OpenaiMessage[] {
+    const shown: OpenaiContentPart[] = [];
+    const answers = (message.toolResults ?? []).map((result): OpenaiMessage => {
+      const payload = JSON.stringify({
+        ...(result.result !== undefined ? { result: result.result } : {}),
+        ...(result.changes?.length ? { changes: result.changes } : {}),
+        ...(result.error ? { error: result.error } : {}),
+      });
+      const notes: string[] = [];
+      const { blocks, images } = OpenaiDialect.attachmentParts(result.attachments ?? [], accepts, notes);
+      for (const { name, part } of images)
+        shown.push({ type: "text", text: `[${result.name} returned ${name}]` }, part);
+      return { role: "tool", tool_call_id: result.id, content: [payload, ...blocks, ...notes].join("\n\n") };
+    });
+    if (!shown.length) return answers;
+    return [
+      ...answers,
+      { role: "user", content: [{ type: "text", text: OpenaiDialect.toolPicturesHeading }, ...shown] },
+    ];
+  }
+
+  /** Pushes a note for each file no part can carry, for the caller to fold into the text beside them. */
+  static attachmentParts(
+    attachments: AgentWireAttachment[],
+    accepts: LlmAccepts | undefined,
+    notes: string[],
+  ): { blocks: string[]; images: { name: string; part: OpenaiImagePart }[] } {
     // Labelled because a model handed two unlabelled documents can no longer cite either one.
     const blocks = attachments.flatMap((attachment) =>
       attachment.text ? [`--- attachment: ${attachment.name} (${attachment.mimeType}) ---\n${attachment.text}`] : [],
@@ -138,11 +176,9 @@ export class OpenaiDialect {
           }
           // Bytes beat a URL: the default storage serves a path only the app can resolve.
           const url = attachment.data ? `data:${mimeType};base64,${attachment.data}` : (attachment.url ?? "");
-          return url ? [{ type: "image_url" as const, image_url: { url } }] : [];
+          return url ? [{ name: attachment.name, part: { type: "image_url" as const, image_url: { url } } }] : [];
         });
-    const text = [message.text, ...blocks, ...notes].filter(Boolean).join("\n\n");
-    if (!images.length) return text;
-    return [...(text ? [{ type: "text" as const, text }] : []), ...images];
+    return { blocks, images };
   }
 
   //* Tool calls stream as fragments: an index's first carries id/name, later ones append to the arguments string.

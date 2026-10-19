@@ -189,6 +189,60 @@ describe("AnthropicLlm attachments", () => {
   });
 });
 
+describe("AnthropicLlm tool result files", () => {
+  const returned = (
+    attachments: NonNullable<LlmTurnRequest["messages"][number]["toolResults"]>[number]["attachments"],
+  ) =>
+    AnthropicLlm.providerMessage(
+      { role: "tool", toolResults: [{ id: "c1", name: "viewImage", result: "Attached card.jpg", attachments }] },
+      { image: true },
+    ).content[0];
+
+  test("a picture is an image block inside the tool_result, after the result's own JSON", () => {
+    expect(returned([{ name: "card.jpg", mimeType: "image/jpeg", data: "QUJD" }])).toEqual({
+      type: "tool_result",
+      tool_use_id: "c1",
+      content: [
+        { type: "text", text: '{"result":"Attached card.jpg"}' },
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "QUJD" } },
+      ],
+    });
+  });
+
+  test("a result with no file posts a string, exactly as before files could ride one", () => {
+    expect(returned(undefined)).toEqual({
+      type: "tool_result",
+      tool_use_id: "c1",
+      content: '{"result":"Attached card.jpg"}',
+    });
+  });
+
+  test("an image type the API does not read is named in the result's text, not sent", () => {
+    expect(returned([{ name: "IMG_0421.heic", mimeType: "image/heic", data: "QUJD" }])).toEqual({
+      type: "tool_result",
+      tool_use_id: "c1",
+      content: [
+        {
+          type: "text",
+          text: '{"result":"Attached card.jpg"}\n\n[Attachment not read: IMG_0421.heic (image/heic) — this API has no block for it.]',
+        },
+      ],
+    });
+  });
+
+  test("a note standing where a file stood is a labelled text block", () => {
+    const block = returned([
+      { name: "card.jpg", mimeType: "image/jpeg", text: "[Seen earlier and no longer attached.]" },
+    ]);
+    expect(block).toMatchObject({
+      content: [
+        { type: "text", text: '{"result":"Attached card.jpg"}' },
+        { type: "text", text: "--- attachment: card.jpg (image/jpeg) ---\n[Seen earlier and no longer attached.]" },
+      ],
+    });
+  });
+});
+
 describe("AnthropicLlm answers", () => {
   test("text blocks join and a tool_use block becomes a wire call", () => {
     expect(

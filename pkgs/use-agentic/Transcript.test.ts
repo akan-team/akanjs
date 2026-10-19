@@ -56,4 +56,57 @@ describe("Transcript", () => {
     ];
     expect(Transcript.wire(messages)).toEqual([messages[0], messages[2]]);
   });
+
+  test("a picture a tool returned before the latest ask rides as a note; the latest turn's keep their bytes", () => {
+    const viewed = (id: string, name: string): ChatMessage[] => [
+      { role: "assistant", toolCalls: [{ id, name: "viewImage", args: { src: `/${name}` } }] },
+      {
+        role: "tool",
+        toolResults: [
+          {
+            id,
+            name: "viewImage",
+            result: `Attached ${name}`,
+            attachments: [
+              { name, mimeType: "image/jpeg", data: "AAAA", ref: "f1" },
+              { name: "caption.txt", mimeType: "text/plain", text: "a red coat" },
+            ],
+          },
+        ],
+      },
+    ];
+    const messages: ChatMessage[] = [
+      { role: "user", text: "what is she wearing?" },
+      ...viewed("c1", "card.jpg"),
+      { role: "assistant", text: "A red coat." },
+      { role: "assistant", text: "/help output", local: true },
+      { role: "user", text: "and this one?" },
+      ...viewed("c2", "other.jpg"),
+    ];
+    const wire = Transcript.wire(messages);
+    const [earlier, caption] = wire[2].toolResults?.[0]?.attachments ?? [];
+    expect(earlier).toEqual({
+      name: "card.jpg",
+      mimeType: "image/jpeg",
+      text: "[Seen earlier and no longer attached. To look at it again, call viewImage again while it is on screen.]",
+    });
+    expect(caption).toEqual({ name: "caption.txt", mimeType: "text/plain", text: "a red coat" });
+    expect(wire[6].toolResults?.[0]?.attachments?.[0]?.data).toBe("AAAA");
+    expect(messages[2].toolResults?.[0]?.attachments?.[0]?.data).toBe("AAAA");
+  });
+
+  test("a compaction summary is not the ask that ends a turn", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", text: "look at the card" },
+      { role: "assistant", toolCalls: [{ id: "c1", name: "viewImage", args: {} }] },
+      {
+        role: "tool",
+        toolResults: [
+          { id: "c1", name: "viewImage", attachments: [{ name: "card.jpg", mimeType: "image/jpeg", data: "AAAA" }] },
+        ],
+      },
+      { role: "user", text: "earlier: the user asked about a card", summary: true },
+    ];
+    expect(Transcript.seen(messages)[2].toolResults?.[0]?.attachments?.[0]?.data).toBe("AAAA");
+  });
 });

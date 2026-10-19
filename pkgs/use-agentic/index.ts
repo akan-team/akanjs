@@ -13,6 +13,7 @@ export * from "./Reference";
 export * from "./sharedContext";
 export * from "./surfaceContext";
 export * from "./ToolOutput";
+export * from "./ToolReturn";
 export * from "./ToolRunner";
 export * from "./Transcript";
 export * from "./types";

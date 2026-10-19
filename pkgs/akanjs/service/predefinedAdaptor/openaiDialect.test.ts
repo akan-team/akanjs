@@ -76,6 +76,93 @@ describe("OpenaiDialect", () => {
     });
   });
 
+  test("pictures the calls returned follow every tool message of the turn, in one user message", () => {
+    const body = OpenaiDialect.requestBody(
+      "gpt-vision",
+      {
+        ...request,
+        messages: [
+          { role: "user", text: "compare them" },
+          {
+            role: "assistant",
+            text: "",
+            toolCalls: [
+              { id: "c1", name: "viewImage", args: { src: "/a.jpg" } },
+              { id: "c2", name: "viewImage", args: { src: "https://cdn.example/b.png" } },
+            ],
+          },
+          {
+            role: "tool",
+            toolResults: [
+              {
+                id: "c1",
+                name: "viewImage",
+                result: "Attached a.jpg",
+                attachments: [{ name: "a.jpg", mimeType: "image/jpeg", data: "QUJD" }],
+              },
+              {
+                id: "c2",
+                name: "viewImage",
+                result: "Attached b.png",
+                attachments: [{ name: "b.png", mimeType: "image/png", url: "https://cdn.example/b.png" }],
+              },
+            ],
+          },
+        ],
+      },
+      { accepts: { image: true } },
+    );
+    expect(body.messages.slice(3)).toEqual([
+      { role: "tool", tool_call_id: "c1", content: '{"result":"Attached a.jpg"}' },
+      { role: "tool", tool_call_id: "c2", content: '{"result":"Attached b.png"}' },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: OpenaiDialect.toolPicturesHeading },
+          { type: "text", text: "[viewImage returned a.jpg]" },
+          { type: "image_url", image_url: { url: "data:image/jpeg;base64,QUJD" } },
+          { type: "text", text: "[viewImage returned b.png]" },
+          { type: "image_url", image_url: { url: "https://cdn.example/b.png" } },
+        ],
+      },
+    ]);
+  });
+
+  test("a tool's text and its notes stay in its own tool message, and add no user message", () => {
+    const body = OpenaiDialect.requestBody(
+      "gpt-vision",
+      {
+        ...request,
+        messages: [
+          { role: "user", text: "look" },
+          { role: "assistant", text: "", toolCalls: [{ id: "c1", name: "viewImage", args: {} }] },
+          {
+            role: "tool",
+            toolResults: [
+              {
+                id: "c1",
+                name: "viewImage",
+                result: "Attached shot.heic",
+                attachments: [
+                  { name: "shot.heic", mimeType: "image/heic", data: "QUJD" },
+                  { name: "card.jpg", mimeType: "image/jpeg", text: "[Seen earlier and no longer attached.]" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { accepts: { image: true } },
+    );
+    expect(body.messages).toHaveLength(4);
+    expect(body.messages[3]).toEqual({
+      role: "tool",
+      tool_call_id: "c1",
+      content:
+        '{"result":"Attached shot.heic"}\n\n--- attachment: card.jpg (image/jpeg) ---\n[Seen earlier and no longer attached.]\n\n[Attachment not read: shot.heic (image/heic) — this API reads no image of that type.]',
+    });
+  });
+
   test("frames a compaction summary as system, not as the newest thing the user asked for", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", {
       ...request,

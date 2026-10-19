@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./types";
+import type { ChatMessage, MessageAttachment, ToolCallResult } from "./types";
 
 /**
  * The transcript's own invariant, in one place because three paths break it: a turn stopped between a tool call
@@ -15,7 +15,43 @@ export class Transcript {
 
   /** What one turn posts: no host-only message, no unanswered call, no result answering a call nobody sees. */
   static wire(messages: readonly ChatMessage[]): ChatMessage[] {
-    return Transcript.sanitize(messages.filter((message) => !message.local).map(Transcript.unmeasured));
+    return Transcript.sanitize(
+      Transcript.seen(messages.filter((message) => !message.local)).map(Transcript.unmeasured),
+    );
+  }
+
+  /**
+   * A file a tool returned before the user's latest message, as a note in its place. A picture costs a turn over a
+   * thousand tokens and would ride every turn after the one that asked for it; a later question about it calls the
+   * tool again, which is why the note says to — and to do it while the picture is on screen, where a tool can reach it.
+   */
+  static seen(messages: readonly ChatMessage[]): ChatMessage[] {
+    const latest = messages.findLastIndex((message) => message.role === "user" && !message.summary && !message.local);
+    if (latest <= 0) return [...messages];
+    return messages.map((message, at) =>
+      at < latest && message.toolResults?.some(Transcript.#carriesFile)
+        ? { ...message, toolResults: message.toolResults.map(Transcript.#noted) }
+        : message,
+    );
+  }
+
+  static #carriesFile(result: ToolCallResult): boolean {
+    return !!result.attachments?.some((attachment) => !attachment.text);
+  }
+
+  static #noted(result: ToolCallResult): ToolCallResult {
+    if (!Transcript.#carriesFile(result)) return result;
+    const attachments = result.attachments?.map(
+      (attachment): MessageAttachment =>
+        attachment.text
+          ? attachment
+          : {
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              text: `[Seen earlier and no longer attached. To look at it again, call ${result.name} again while it is on screen.]`,
+            },
+    );
+    return { ...result, attachments };
   }
 
   /** A message without the provider's count for its turn — what the wire carries and what a compaction keeps. */

@@ -164,6 +164,8 @@ Tool
 
 - highlight: Scrolls one thing into view and flashes it, to show the user where it is.
 
+- viewImage: Attaches one picture on screen to the result, so the answer comes from what it shows.
+
 **Keep a chat on its screen** with `builtins={["readScreen", "readState", "highlight"]}`. Without `navigate` and `goBack` it cannot leave.
 
 **A withheld tool does not exist for the model.** Calling it anyway answers "unknown tool", the same as a name that was never registered.

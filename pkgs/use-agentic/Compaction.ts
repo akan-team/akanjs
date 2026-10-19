@@ -1,4 +1,5 @@
-import type { ChatMessage, MessageAttachment, TurnLimits } from "./types";
+import { Transcript } from "./Transcript";
+import type { ChatMessage, MessageAttachment, ToolCallResult, TurnLimits } from "./types";
 
 export interface CompactOptions {
   /**
@@ -58,8 +59,15 @@ export class Compaction {
    */
   static tokensOf(messages: readonly ChatMessage[]): number {
     let chars = 0;
-    for (const message of messages) if (!message.local) chars += Compaction.#charsOf(message);
+    for (const message of Transcript.seen(messages)) if (!message.local) chars += Compaction.#charsOf(message);
     return Math.ceil(chars / 4);
+  }
+
+  /** One tool result as it rides the wire, by the same rule. */
+  static resultTokensOf(result: ToolCallResult): number {
+    const { attachments, images } = Compaction.#blanked(result.attachments);
+    const chars = JSON.stringify(images ? { ...result, attachments } : result).length;
+    return Math.ceil(chars / 4) + images * Compaction.imageTokens;
   }
 
   /**
@@ -88,12 +96,32 @@ export class Compaction {
 
   static #charsOf(message: ChatMessage): number {
     const posted = message.usage ? { ...message, usage: undefined } : message;
-    const images = message.attachments?.filter(Compaction.#isInlinedImage).length ?? 0;
+    const own = Compaction.#blanked(message.attachments);
+    let images = own.images;
+    const toolResults = message.toolResults?.map((result) => {
+      const blanked = Compaction.#blanked(result.attachments);
+      images += blanked.images;
+      return blanked.images ? { ...result, attachments: blanked.attachments } : result;
+    });
     if (!images) return JSON.stringify(posted).length;
-    const attachments = message.attachments?.map((attachment) =>
-      Compaction.#isInlinedImage(attachment) ? { ...attachment, data: "" } : attachment,
+    return (
+      JSON.stringify({ ...posted, attachments: own.attachments, toolResults }).length +
+      images * Compaction.imageTokens * 4
     );
-    return JSON.stringify({ ...posted, attachments }).length + images * Compaction.imageTokens * 4;
+  }
+
+  static #blanked(attachments: MessageAttachment[] | undefined): {
+    attachments: MessageAttachment[] | undefined;
+    images: number;
+  } {
+    const images = attachments?.filter(Compaction.#isInlinedImage).length ?? 0;
+    if (!images) return { attachments, images };
+    return {
+      attachments: attachments?.map((attachment) =>
+        Compaction.#isInlinedImage(attachment) ? { ...attachment, data: "" } : attachment,
+      ),
+      images,
+    };
   }
 
   static #isInlinedImage(attachment: MessageAttachment): boolean {
@@ -188,13 +216,16 @@ export class Compaction {
       );
     for (const call of message.toolCalls ?? [])
       parts.push(`[called ${call.name} ${Compaction.#clip(JSON.stringify(call.args), 200)}]`);
-    for (const result of message.toolResults ?? [])
+    for (const result of message.toolResults ?? []) {
       parts.push(
         `[${result.error ? "failed" : "result"} ${result.name}: ${Compaction.#clip(
           result.error ?? JSON.stringify(result.result ?? null),
           400,
         )}]`,
       );
+      for (const attachment of result.attachments ?? [])
+        parts.push(`[${result.name} returned ${attachment.name}, content not carried into this summary]`);
+    }
     if (message.error) parts.push(`[turn failed: ${message.error}]`);
     return `${message.role}: ${parts.join(" ")}`.trimEnd();
   }

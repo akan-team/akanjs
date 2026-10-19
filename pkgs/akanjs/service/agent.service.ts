@@ -3,6 +3,7 @@ import type {
   AgentWireAttachment,
   AgentWireMessage,
   AgentWireReference,
+  AgentWireToolResult,
   LlmAccepts,
   LlmTurnRequest,
 } from "./predefinedAdaptor/llm.adaptor";
@@ -106,12 +107,21 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 
   /** Swaps an attachment the provider cannot read for a note; dropped silently, it is guessed at from its name. */
   static readable(request: LlmTurnRequest, accepts: LlmAccepts | undefined): LlmTurnRequest {
-    if (!request.messages.some((message) => message.attachments?.length)) return request;
+    if (!request.messages.some(AgentService.carriesFiles)) return request;
     const messages = request.messages.map((message) => AgentService.readableMessage(message, accepts ?? {}));
     return { ...request, messages };
   }
 
+  private static carriesFiles(message: AgentWireMessage): boolean {
+    return !!message.attachments?.length || !!message.toolResults?.some((result) => result.attachments?.length);
+  }
+
   private static readableMessage(message: AgentWireMessage, accepts: LlmAccepts): AgentWireMessage {
+    if (message.role === "tool")
+      return {
+        ...message,
+        toolResults: (message.toolResults ?? []).map((result) => AgentService.readableResult(result, accepts)),
+      };
     const { attachments = [], ...rest } = message;
     if (!attachments.length) return message;
     const kept = attachments.filter((attachment) => AgentService.isReadable(attachment, accepts));
@@ -122,6 +132,17 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
       ...(kept.length ? { attachments: kept } : {}),
       text: [message.text, ...notes].filter(Boolean).join("\n\n"),
     };
+  }
+
+  //* A tool message has no text a provider mapping reads, so the note stands where the file stood, as a `text` one.
+  private static readableResult(result: AgentWireToolResult, accepts: LlmAccepts): AgentWireToolResult {
+    if (!result.attachments?.length) return result;
+    const attachments = result.attachments.map((attachment) =>
+      AgentService.isReadable(attachment, accepts)
+        ? attachment
+        : { name: attachment.name, mimeType: attachment.mimeType, text: AgentService.note(attachment) },
+    );
+    return { ...result, attachments };
   }
 
   private static isReadable(attachment: AgentWireAttachment, accepts: LlmAccepts): boolean {

@@ -2,6 +2,7 @@ import { adapt } from "../adapt";
 import type {
   AgentWireAttachment,
   AgentWireMessage,
+  AgentWireToolResult,
   LlmAccepts,
   LlmAdaptor,
   LlmLimits,
@@ -14,12 +15,14 @@ import { LlmOverflow } from "./llmOverflow";
 import { eachSseData } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
-type AnthropicBlock =
+type AnthropicContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: AnthropicSource }
-  | { type: "document"; source: AnthropicSource }
+  | { type: "document"; source: AnthropicSource };
+type AnthropicBlock =
+  | AnthropicContentBlock
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string };
+  | { type: "tool_result"; tool_use_id: string; content: string | AnthropicContentBlock[] };
 interface AnthropicMessage {
   role: "user" | "assistant";
   content: AnthropicBlock[];
@@ -223,15 +226,7 @@ export class AnthropicLlm
     if (message.role === "tool")
       return {
         role: "user",
-        content: (message.toolResults ?? []).map((result) => ({
-          type: "tool_result" as const,
-          tool_use_id: result.id,
-          content: JSON.stringify({
-            ...(result.result !== undefined ? { result: result.result } : {}),
-            ...(result.changes?.length ? { changes: result.changes } : {}),
-            ...(result.error ? { error: result.error } : {}),
-          }),
-        })),
+        content: (message.toolResults ?? []).map((result) => AnthropicLlm.toolResult(result, accepts)),
       };
     if (message.role === "assistant")
       return {
@@ -250,9 +245,36 @@ export class AnthropicLlm
   }
 
   static userContent(message: AgentWireMessage, accepts?: LlmAccepts): AnthropicBlock[] {
-    const attachments = message.attachments ?? [];
     const notes: string[] = [];
-    const blocks = attachments.flatMap((attachment): AnthropicBlock[] => {
+    const blocks = AnthropicLlm.attachmentBlocks(message.attachments ?? [], accepts, notes);
+    const text = [message.text, ...notes].filter(Boolean).join("\n\n");
+    return [...(text ? [{ type: "text" as const, text }] : []), ...blocks];
+  }
+
+  /** A string while the call returned no file, so a transcript without one posts what it always did. */
+  static toolResult(result: AgentWireToolResult, accepts?: LlmAccepts): AnthropicBlock {
+    const payload = JSON.stringify({
+      ...(result.result !== undefined ? { result: result.result } : {}),
+      ...(result.changes?.length ? { changes: result.changes } : {}),
+      ...(result.error ? { error: result.error } : {}),
+    });
+    if (!result.attachments?.length) return { type: "tool_result", tool_use_id: result.id, content: payload };
+    const notes: string[] = [];
+    const blocks = AnthropicLlm.attachmentBlocks(result.attachments, accepts, notes);
+    return {
+      type: "tool_result",
+      tool_use_id: result.id,
+      content: [{ type: "text", text: [payload, ...notes].join("\n\n") }, ...blocks],
+    };
+  }
+
+  /** Pushes a note for each file no block can carry, for the caller to fold into the text beside them. */
+  static attachmentBlocks(
+    attachments: AgentWireAttachment[],
+    accepts: LlmAccepts | undefined,
+    notes: string[],
+  ): AnthropicContentBlock[] {
+    return attachments.flatMap((attachment): AnthropicContentBlock[] => {
       if (attachment.text)
         return [
           {
@@ -273,8 +295,6 @@ export class AnthropicLlm
       notes.push(`[Attachment not read: ${attachment.name} (${attachment.mimeType}) — this API has no block for it.]`);
       return [];
     });
-    const text = [message.text, ...notes].filter(Boolean).join("\n\n");
-    return [...(text ? [{ type: "text" as const, text }] : []), ...blocks];
   }
 
   static typed(source: AnthropicSource, mimeType: string): AnthropicSource {

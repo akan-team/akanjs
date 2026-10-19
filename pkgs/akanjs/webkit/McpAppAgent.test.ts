@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
-import { AgenticSurface } from "use-agentic";
+import { AgenticSurface, ToolReturn } from "use-agentic";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge, McpAppToolServer } from "./McpAppBridge";
 
@@ -171,5 +171,32 @@ describe("McpAppAgent", () => {
     globalThis.__AKAN_EMBED__ = { kind: "mcp-app", origin: "https://app.example.com" };
     const agent = new McpAppAgent(fakeBridge().bridge, screen().surface, new McpAppApprovals());
     expect(agent.context()).toContain("open in the chat: https://app.example.com/en/memo\n");
+  });
+
+  test("hands the host a picture a tool returned as image content, and a file it cannot carry as a note", async () => {
+    const surface = new AgenticSurface();
+    surface.registerTool([], {
+      name: "viewCard",
+      description: "Look at the card.",
+      settle: false,
+      run: () =>
+        ToolReturn.attach("Attached card.jpg.", [
+          { name: "card.jpg", mimeType: "image/jpeg", data: "/9j/4AAQ" },
+          { name: "cdn.png", mimeType: "image/png", url: "https://cdn.example/cdn.png" },
+          { name: "notes.txt", mimeType: "text/plain", text: "Front side." },
+        ]),
+    });
+    const agent = new McpAppAgent(fakeBridge().bridge, surface, new McpAppApprovals());
+    expect(await agent.call("viewCard", {}, never)).toEqual({
+      content: [
+        { type: "text", text: "Attached card.jpg." },
+        { type: "image", data: "/9j/4AAQ", mimeType: "image/jpeg" },
+        {
+          type: "text",
+          text: "[cdn.png (image/png) was not attached; it is at https://cdn.example/cdn.png: an MCP tool result carries only pictures, as bytes.]",
+        },
+        { type: "text", text: "--- attachment: notes.txt (text/plain) ---\nFront side." },
+      ],
+    });
   });
 });

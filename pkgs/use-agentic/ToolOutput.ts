@@ -1,4 +1,5 @@
-import type { ResourceDiff, ToolCallResult } from "./types";
+import { Compaction } from "./Compaction";
+import type { MessageAttachment, ResourceDiff, ToolCallResult } from "./types";
 
 /**
  * The ceiling on what one tool call may add to the transcript.
@@ -11,14 +12,20 @@ import type { ResourceDiff, ToolCallResult } from "./types";
  *
  * Clipped rather than dropped, and the note says what happened: a model handed a value it cannot see the end of
  * asks a narrower question, where one handed nothing answers from the field names.
+ *
+ * A file the call attached is bounded apart: a picture is billed by its pixels, not by the length of its base64, so
+ * counting it as characters would clip every one. It meets the per-file ceiling a user's attachment meets instead.
  */
 export class ToolOutput {
   /** Characters, ~5k tokens: comfortably above `ScreenReader.limit` and far below any provider's window. */
   static readonly limit = 20_000;
 
-  /** Four characters per token, over the JSON the result rides as — the same estimate `Compaction` places. */
+  /** Bytes of one attached file, as `maxAttachmentBytes` bounds a user's: a provider refuses a turn past it. */
+  static readonly attachmentBytes = 4 * 1024 * 1024;
+
+  /** The estimate `Compaction` places: four characters per token over the JSON, and a flat rate per picture. */
   static tokensOf(result: ToolCallResult): number {
-    return Math.ceil(JSON.stringify(result).length / 4);
+    return Compaction.resultTokensOf(result);
   }
 
   static clipped(result: ToolCallResult): ToolCallResult {
@@ -27,6 +34,21 @@ export class ToolOutput {
       ...(result.result !== undefined ? { result: ToolOutput.#within(result.result) } : {}),
       ...(result.changes?.length ? { changes: result.changes.map((change) => ToolOutput.#change(change)) } : {}),
       ...(result.error ? { error: ToolOutput.#text(result.error) } : {}),
+      ...(result.attachments?.length
+        ? { attachments: result.attachments.map((attachment) => ToolOutput.#attachment(attachment)) }
+        : {}),
+    };
+  }
+
+  static #attachment(attachment: MessageAttachment): MessageAttachment {
+    if (attachment.text) return { ...attachment, text: ToolOutput.#text(attachment.text) };
+    // base64 carries three bytes in four characters.
+    const bytes = Math.floor(((attachment.data?.length ?? 0) * 3) / 4);
+    if (bytes <= ToolOutput.attachmentBytes) return attachment;
+    return {
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      text: `[Not attached: ${bytes} bytes, past the ${ToolOutput.attachmentBytes}-byte ceiling on one file a tool may return. Tell the user it was too large to look at.]`,
     };
   }
 

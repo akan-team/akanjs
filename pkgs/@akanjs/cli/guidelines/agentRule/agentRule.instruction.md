@@ -180,6 +180,14 @@ pages declaring one name never clash, and a registry kept outside the surface re
   stores its uploads keeps a map beside the transcript keyed on name and size — the same guess `Attachment.same`
   has to make, and the one that is wrong for two crops of one export. So when both sides carry a `ref`, it *is* the
   answer to "the same file twice", and the heuristic is what is left for when they do not.
+- **A tool hands the model a file with `ToolReturn.attach(result, [attachment])`** (`akanjs/store`), which lands in
+  `ToolCallResult.attachments` beside the value — a `result` reaches the model as JSON text, so a URL in it is read
+  as letters and base64 as a wall of them. It takes a user attachment's shape and meets the same `accepts` check and
+  type allow-list; Anthropic carries it inside the `tool_result`, the chat-completions dialect (whose `tool` message
+  holds text alone) in one user message after the turn's tool messages. It is outside the 20,000-character ceiling
+  and held to the 4 MB per-file one, and only the latest turn's ride as bytes: an earlier one becomes a note telling
+  the model to call the tool again while the picture is on screen, since one picture costs over a thousand tokens on
+  every turn it rides.
 - **Speech is one engine contract and the framework's own policy.** `<Agent.Chat voice={engine} />` takes a
   `VoiceEngine` — `listen(handlers)` and `speak(sentence)`, both cancellable — and the chat decides everything
   else: a press-to-talk microphone whose transcript lands in the composer to be corrected, one utterance per
@@ -618,14 +626,17 @@ pages declaring one name never clash, and a registry kept outside the surface re
   row, Tab completing its name, and Escape closing the menu and then, pressed again, the panel.
 
 ## Built-In Tools
-- The framework publishes five built-ins on every store surface: `navigate` (internal paths only, the same router
+- The framework publishes six built-ins on every store surface: `navigate` (internal paths only, the same router
   `Link` rides), `goBack` (this session's history — global, because history is not a control a page owns and a page
   that draws no back link is not one you may not leave — a screen that must not be left withholds them with `builtins`,
   not with prose), `readScreen` (the rendered DOM as compact text — headings, links, control values, and `(disabled)`
   on a control or button that has it; the chat's own UI is skipped via `data-agent-ui`, and a password value is never
   read), `readState(key)` (one masked store key — a key that is unknown or that this screen does not read is refused
-  *with the keys it can* read, the way `readScreen` names its sections), and `highlight(target)`. Declaring a hook tool
-  under one of those names shadows the built-in, so reuse them only to mean that. **There is no general-purpose wait**:
+  *with the keys it can* read, the way `readScreen` names its sections), `highlight(target)`, and `viewImage(src)` (one
+  `<img>` on screen, redrawn as a JPEG at most 1568px long and attached to the result — `src` must be one this view
+  shows, as `readScreen({ images: true })` printed it, so the agent cannot have the browser fetch an address of its
+  own, and a `data:` one is refused). Declaring a hook tool under one of those names shadows the built-in, so reuse
+  them only to mean that. **There is no general-purpose wait**:
   a built-in one was reachable on every screen and a model spent it on whatever key it liked, parking turns nobody
   asked to park. Waiting belongs to the screen that knows what is worth waiting for — publish an `st.tool` beside the
   control that starts the work, and let it await the work.
@@ -634,8 +645,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   awaits `ScreenSettle.wait()` — DOM quiescence, bounded, because the client router hands its promise to nobody —
   and the session awaits it after every tool that did not declare `settle: false` before taking the change report.
   Without it the report describes the moment before the change landed and the `readScreen` that follows reads the
-  page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`) declare it, because a wait
-  costs 120ms of quiet at the very least and they change nothing a resource holds.
+  page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it,
+  because a wait costs 120ms of quiet at the very least and they change nothing a resource holds.
   New tools and state from a fresh route are still only listed from the next turn: the catalogue is snapshotted
   when the turn starts.
 - **A tool that waits for its own work costs no model turns; one that returns early costs one round trip per
@@ -669,8 +680,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
 - **An image is always named, and its address rides only when asked for.** `readScreen` prints `[image: <alt>]`,
   and `[image]` for one with no `alt` — dropping the unlabelled one left a card that renders a picture reading
   exactly like a card that renders nothing, and "this page shows no image" is the one answer the screen cannot
-  support. `readScreen({ images: true })` appends `(<src>)` to each, for handing one to a tool that takes a
-  picture; it is off by default because a gallery is one long URL per thumbnail, which is the read's whole budget
+  support. `readScreen({ images: true })` appends `(<src>)` to each, for handing one to `viewImage` or another tool
+  that takes a picture; it is off by default because a gallery is one long URL per thumbnail, which is the read's whole budget
   spent on the part of the screen it can say the least about. A `data:` URL is never printed — that is the bytes
   themselves rather than somewhere to fetch them.
 - **A screen is only aimable if its names are printed.** `readScreen` writes `(#anchor)` beside a heading that

@@ -4,6 +4,7 @@ import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
 import {
   type AgenticSurface,
+  type MessageAttachment,
   type ToolApprovalRequest,
   type ToolCallResult,
   ToolOutput,
@@ -150,7 +151,7 @@ export class McpAppAgent {
     return JSON.stringify(tools);
   }
 
-  static #resultOf({ result, changes, error }: ToolCallResult): McpToolResult {
+  static #resultOf({ result, changes, error, attachments = [] }: ToolCallResult): McpToolResult {
     if (error !== undefined) return { content: [{ type: "text", text: error }], isError: true };
     const text = changes?.length
       ? JSON.stringify({ ...(result !== undefined ? { result } : {}), changes })
@@ -159,6 +160,15 @@ export class McpAppAgent {
         : typeof result === "string"
           ? result
           : JSON.stringify(result);
-    return { content: [{ type: "text", text }] };
+    return { content: [{ type: "text", text }, ...attachments.map(McpAppAgent.#contentOf)] };
+  }
+
+  static #contentOf({ name, mimeType, data, url, text }: MessageAttachment): McpToolResult["content"][number] {
+    if (data !== undefined && mimeType.startsWith("image/")) return { type: "image", data, mimeType };
+    if (text !== undefined) return { type: "text", text: `--- attachment: ${name} (${mimeType}) ---\n${text}` };
+    return {
+      type: "text",
+      text: `[${name} (${mimeType}) was not attached${url ? `; it is at ${url}` : ""}: an MCP tool result carries only pictures, as bytes.]`,
+    };
   }
 }

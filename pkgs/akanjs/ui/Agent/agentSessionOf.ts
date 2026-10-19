@@ -14,6 +14,7 @@ import {
   type AgentSessionOptions,
   type ChatMessage,
   type CompactOptions,
+  type MessageAttachment,
   type SessionHistory,
   type SurfaceView,
   Transcript,
@@ -103,18 +104,24 @@ export const sessionView = (surface: AgenticSurface, path: string[], builtins?: 
 const restoredValue =
   "the conversation was restored from storage, which keeps what the user pointed at but not the value it held";
 
+const pointerOf = ({ name, mimeType, url, ref }: MessageAttachment): MessageAttachment => ({
+  name,
+  mimeType,
+  ...(url ? { url } : {}),
+  ...(ref ? { ref } : {}),
+});
+
 const withoutContent = (message: ChatMessage): ChatMessage => {
-  if (!message.attachments?.length && !message.references?.length) return message;
+  const toolFiles = message.toolResults?.some((result) => result.attachments?.length);
+  if (!message.attachments?.length && !message.references?.length && !toolFiles) return message;
   return {
     ...message,
-    ...(message.attachments?.length
+    ...(message.attachments?.length ? { attachments: message.attachments.map(pointerOf) } : {}),
+    ...(toolFiles
       ? {
-          attachments: message.attachments.map(({ name, mimeType, url, ref }) => ({
-            name,
-            mimeType,
-            ...(url ? { url } : {}),
-            ...(ref ? { ref } : {}),
-          })),
+          toolResults: message.toolResults?.map((result) =>
+            result.attachments?.length ? { ...result, attachments: result.attachments.map(pointerOf) } : result,
+          ),
         }
       : {}),
     ...(message.references?.length

@@ -64,6 +64,26 @@ of one export.
 
 Nothing here is stored: the wire carries the bytes for exactly one turn's request.
 
+### A tool result's files
+
+A `toolResults` entry may carry `attachments` of the same shape — a picture the call looked at, which its `result`
+cannot hold: that reaches the model as JSON text, so a URL in it is read as letters and base64 as a wall of them.
+
+```jsonc
+{ "role": "tool", "toolResults": [{ "id": "c3", "name": "viewImage", "result": "Attached card.jpg: 782×962, sent as 782×962 JPEG.",
+  "attachments": [{ "name": "card.jpg", "mimeType": "image/jpeg", "data": "/9j/4AAQ…" }] }] }
+```
+
+The same rules apply, and a provider format with no place for a file inside a tool result is still no reason to
+drop one. Hand it to the model in the nearest place it reads — a chat-completions `tool` message carries text alone,
+so the pictures follow the turn's tool messages in one user message, each named after the call that returned it —
+and replace what it cannot read with a note **in the attachment's place**, as a `text` attachment of the same name:
+a tool message has no text of its own for a note to join.
+
+The client sends a tool's file as bytes only in the latest turn. One returned before the user's last message arrives
+as such a note, telling the model to call the tool again, since a picture costs a thousand tokens or more on every
+turn it rides.
+
 ## Response
 
 `200` with a single JSON object:
