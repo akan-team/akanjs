@@ -828,9 +828,10 @@ final class AkanNativeBridge: NSObject, WKScriptMessageHandlerWithReply, WKScrip
     var m: [String: Any] = ["v": 1, "plugin": plugin, "event": event]
     if let data { m["data"] = data }
     // arguments 는 plist 호환 타입(NSString/NSNumber/NSDate/NSArray/NSDictionary/NSNull)만 가능
-    webView.callAsyncJavaScript("window.__AKAN_NATIVE__ && window.__AKAN_NATIVE__.receive(m)", arguments: ["m": m],
-                                in: nil, in: .page) { result in
-      if case .failure(let e) = result { AkanNativeLog.info("emit \(plugin).\(event) failed: \(e)") }
+    // Swift Result 오버레이는 iOS 18.4 미만 타깃에서 libswiftWebKit.dylib 에 링크돼 iOS 18.5 에서 앱이 뜨지 않는다 → ObjC 메서드
+    webView.__callAsyncJavaScript("window.__AKAN_NATIVE__ && window.__AKAN_NATIVE__.receive(m)", arguments: ["m": m],
+                                  inFrame: nil, in: .page) { _, error in
+      if let error { AkanNativeLog.info("emit \(plugin).\(event) failed: \(error)") }
     }
   }
 }

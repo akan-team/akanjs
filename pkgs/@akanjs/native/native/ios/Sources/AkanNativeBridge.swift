@@ -194,8 +194,9 @@ final class AkanNativeBridge: NSObject {
             return AkanNativeLog.info("emit \(plugin).\(event): data is not JSON, dropped")
         }
         // Arguments go in as values, so no JS string escaping is involved.
-        webView.callAsyncJavaScript("window.__AKAN_NATIVE__ && window.__AKAN_NATIVE__.receive(m)", arguments: ["m": text], in: nil, in: .page) { result in
-            if case .failure(let error) = result { AkanNativeLog.info("emit \(plugin).\(event) failed: \(error)") }
+        // The ObjC method: below an iOS 18.4 target Swift's Result overlay links libswiftWebKit.dylib, absent on iOS 18.5.
+        webView.__callAsyncJavaScript("window.__AKAN_NATIVE__ && window.__AKAN_NATIVE__.receive(m)", arguments: ["m": text], inFrame: nil, in: .page) { _, error in
+            if let error { AkanNativeLog.info("emit \(plugin).\(event) failed: \(error)") }
         }
     }
 
