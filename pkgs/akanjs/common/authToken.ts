@@ -1,20 +1,9 @@
 import { getEnv } from "akanjs/base";
+import { legacyAuthTokenKey } from "./authCookie";
 import { decodeJwtPayload } from "./jwtDecode";
-
-/** The pre-scoping key. Read as a fallback, never written; drop it once deployments have rotated past it. */
-export const legacyAuthTokenKey = "jwt";
 
 // Scoped per app: cookies carry no port (RFC 6265), so every app on one host shares a jar.
 export const authTokenKey = (): string => `${legacyAuthTokenKey}:${getEnv().appName}`;
-
-/** Matches both spellings so a signout can sweep a jar written before and after the key was scoped. */
-export const isAuthTokenKey = (key: string): boolean =>
-  key === legacyAuthTokenKey || key.startsWith(`${legacyAuthTokenKey}:`);
-
-const authCookiePattern = new RegExp(`(?:^|;\\s*)${legacyAuthTokenKey}(?::[^=\\s;]+)?=`);
-
-export const cookieHeaderHasAuthToken = (cookieHeader: string | null | undefined): boolean =>
-  !!cookieHeader && authCookiePattern.test(cookieHeader);
 
 export const isOwnAuthToken = (jwt: string): boolean => {
   const { appName, environment } = getEnv();

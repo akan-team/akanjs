@@ -91,6 +91,11 @@ export function createRscRedirectResponse(
   });
 }
 
+// A render's redirect follows the request's cookies, so no cache between here and the browser may keep it.
+function createDocumentRedirectResponse(location: URL, status: RscRedirectStatus): Response {
+  return new Response(null, { status, headers: { Location: location.href, "Cache-Control": "no-store" } });
+}
+
 export function createRscStreamResponse(stream: BodyInit, status = 200): Response {
   return new Response(stream, {
     status,
@@ -639,7 +644,7 @@ export class WebRouter {
             clientIp: SignalContext.clientIpOf(req),
           });
           if (rscResult.type === "redirect")
-            return Response.redirect(new URL(rscResult.location, url.origin), rscResult.status);
+            return createDocumentRedirectResponse(new URL(rscResult.location, url.origin), rscResult.status);
           if (rscResult.type === "not-found") return this.#renderSystemNotFoundFallbackResponse(req, url);
           // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
           const cookieTheme = WebRouter.#cookieValue(req, "theme");
@@ -679,7 +684,7 @@ export class WebRouter {
           const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
           if (lateControl?.type === "redirect") {
             cancelStreamForHeadResponse(htmlStream, new Error("redirected before the response started"));
-            return Response.redirect(new URL(lateControl.location, url.origin), lateControl.status);
+            return createDocumentRedirectResponse(new URL(lateControl.location, url.origin), lateControl.status);
           }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
           const responseHeaders = this.#htmlResponseHeaders(responseStatus);

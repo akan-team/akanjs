@@ -2,6 +2,7 @@ import { createElement, type ReactNode, startTransition, type Usable, use, useLa
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
 import type {} from "../client/rscNavigation";
+import { isAuthTokenKey } from "../common/authCookie";
 import {
   type AkanHeadSnapshotV1,
   type AkanRouterStateV1,
@@ -298,6 +299,13 @@ async function fetchRsc(
   };
 }
 
+// `/__rsc` is sent with cookies alone, so its auth cookies are the account a cached payload was rendered for.
+const readAuthCookies = () =>
+  document.cookie
+    .split("; ")
+    .filter((entry) => isAuthTokenKey(entry.split("=", 1)[0]))
+    .sort()
+    .join("; ");
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
 const initialThenable = createRscThenable(createInitialRscStream());
@@ -314,6 +322,7 @@ let currentFullNode: RscCacheNode = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
+let cachedAuthCookies = readAuthCookies();
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
@@ -331,6 +340,17 @@ function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSe
   currentRouterState = patchedNode.routerState;
   currentSegmentTree = tree;
   currentCommitKind = "patch";
+}
+
+function forgetPagesOfAnotherAccount(): void {
+  const authCookies = readAuthCookies();
+  if (authCookies === cachedAuthCookies) return;
+  cachedAuthCookies = authCookies;
+  rscCache.clear();
+  rscPatchCache.clear();
+  //? The layouts on screen were rendered for the other account too, so the next page is not patched onto them.
+  currentRouterState = null;
+  currentSegmentTree = null;
 }
 
 function Root(): ReactNode {
@@ -415,6 +435,7 @@ function Root(): ReactNode {
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) return;
+    forgetPagesOfAnotherAccount();
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
     const scrollY = options.scrollY ?? ((options.scrollToTop ?? true) ? 0 : undefined);

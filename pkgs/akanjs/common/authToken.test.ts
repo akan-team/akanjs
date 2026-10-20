@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { legacyAuthTokenKey } from "./authCookie";
 
 Object.assign(process.env, {
   AKAN_PUBLIC_APP_NAME: "alpha",
@@ -7,8 +8,7 @@ Object.assign(process.env, {
   AKAN_PUBLIC_ENV: "debug",
 });
 
-const { authTokenKey, cookieHeaderHasAuthToken, isAuthTokenKey, isOwnAuthToken, legacyAuthTokenKey, readAuthToken } =
-  await import("./authToken");
+const { authTokenKey, isOwnAuthToken, readAuthToken } = await import("./authToken");
 
 const makeJwt = (payload: Record<string, unknown>) =>
   `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
@@ -23,29 +23,6 @@ describe("authTokenKey", () => {
   test("scopes the key to this app", () => {
     expect(authTokenKey()).toBe("jwt:alpha");
     expect(legacyAuthTokenKey).toBe("jwt");
-  });
-
-  test("recognises both spellings so a signout can sweep the whole jar", () => {
-    expect(isAuthTokenKey("jwt")).toBe(true);
-    expect(isAuthTokenKey("jwt:alpha")).toBe(true);
-    expect(isAuthTokenKey("jwt:beta")).toBe(true);
-    expect(isAuthTokenKey("jwtish")).toBe(false);
-    expect(isAuthTokenKey("theme")).toBe(false);
-  });
-});
-
-describe("cookieHeaderHasAuthToken", () => {
-  test("matches a scoped and a legacy entry anywhere in the header", () => {
-    expect(cookieHeaderHasAuthToken("jwt:alpha=abc")).toBe(true);
-    expect(cookieHeaderHasAuthToken("theme=dark; jwt:alpha=abc")).toBe(true);
-    expect(cookieHeaderHasAuthToken("theme=dark; jwt=abc")).toBe(true);
-  });
-
-  test("does not match a value that merely mentions the key", () => {
-    expect(cookieHeaderHasAuthToken("theme=jwt=dark")).toBe(false);
-    expect(cookieHeaderHasAuthToken("myjwt=abc")).toBe(false);
-    expect(cookieHeaderHasAuthToken("")).toBe(false);
-    expect(cookieHeaderHasAuthToken(null)).toBe(false);
   });
 });
 

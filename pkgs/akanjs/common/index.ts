@@ -1,12 +1,6 @@
 export { applyMixins, getAllPropertyDescriptors } from "./applyMixins";
-export {
-  authTokenKey,
-  cookieHeaderHasAuthToken,
-  isAuthTokenKey,
-  isOwnAuthToken,
-  legacyAuthTokenKey,
-  readAuthToken,
-} from "./authToken";
+export { cookieHeaderHasAuthToken, isAuthTokenKey, legacyAuthTokenKey } from "./authCookie";
+export { authTokenKey, isOwnAuthToken, readAuthToken } from "./authToken";
 export { Backoff, type BackoffPolicy } from "./backoff";
 export { bearerTokenOf } from "./bearerTokenOf";
 export { CodeAgentClient, type CodeAgentTransport } from "./CodeAgentClient";

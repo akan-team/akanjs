@@ -1385,6 +1385,22 @@ describe("WebRouter full SSR cache orchestration", () => {
         const response = await fullSsr(new Request("https://example.test/docs/redirect"));
         expect(response.status).toBe(307);
         expect(response.headers.get("Location")).toBe("https://example.test/login");
+        expect(response.headers.get("Cache-Control")).toBe("no-store");
+      },
+      { worker: fakeWorker },
+    );
+  });
+
+  test("answers a redirect the render raised before streaming with one no cache keeps", async () => {
+    const fakeWorker = createFakeRscWorker();
+    fakeWorker.renderWithMeta = async () => ({ type: "redirect", location: "/login", method: "replace", status: 308 });
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const response = await fullSsr(new Request("https://example.test/docs/members"));
+        expect(response.status).toBe(308);
+        expect(response.headers.get("Location")).toBe("https://example.test/login");
+        expect(response.headers.get("Cache-Control")).toBe("no-store");
       },
       { worker: fakeWorker },
     );
