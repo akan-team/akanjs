@@ -147,8 +147,13 @@ export class ApplicationRunner extends runner("application") {
     }
     const scriptPath = `script/${scriptName}.ts`;
     if (!(await app.exists(scriptPath))) throw new Error(`Script file not found: apps/${app.name}/${scriptPath}`);
-    await app.spawn("bun", [scriptPath], {
-      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script", ...(await app.getDatabaseModeEnv()) }),
+    await this.#spawnFromRoot(app, "script", [`${app.cwdPath}/${scriptPath}`]);
+  }
+  //* From the workspace root, as `akan start` runs the server: the local SQLite path is resolved from the cwd.
+  async #spawnFromRoot(app: App, commandType: "script" | "console", args: string[]) {
+    await app.spawn("bun", args, {
+      cwd: app.workspace.workspaceRoot,
+      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: commandType, ...(await app.getDatabaseModeEnv()) }),
       stdio: "inherit",
     });
   }
@@ -243,10 +248,7 @@ try {
   await server.stop();
 }
 `;
-    await app.spawn("bun", ["-e", code], {
-      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "console", ...(await app.getDatabaseModeEnv()) }),
-      stdio: "inherit",
-    });
+    await this.#spawnFromRoot(app, "console", ["-e", code]);
   }
   // Booted as a script (no listener, cron or init job), so nothing writes beside the import.
   async transferDatabase(app: App, direction: "export" | "import", dir: string) {
@@ -265,10 +267,7 @@ try {
   await server.stop();
 }
 `;
-    await app.spawn("bun", ["-e", code], {
-      env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script", ...(await app.getDatabaseModeEnv()) }),
-      stdio: "inherit",
-    });
+    await this.#spawnFromRoot(app, "script", ["-e", code]);
   }
   async migrate(app: App, argv: string[]) {
     const serverPath = `${app.cwdPath}/server.ts`;
@@ -278,12 +277,7 @@ const { server, migrations } = await import(${JSON.stringify(serverPath)});
 process.exitCode = await migrations.command(server, ${JSON.stringify(argv)});
 `;
     try {
-      //* From the workspace root, as `akan start` runs the server: the local SQLite path is resolved from the cwd.
-      await app.spawn("bun", ["-e", code], {
-        cwd: app.workspace.workspaceRoot,
-        env: app.getCommandEnv({ AKAN_COMMAND_TYPE: "script", ...(await app.getDatabaseModeEnv()) }),
-        stdio: "inherit",
-      });
+      await this.#spawnFromRoot(app, "script", ["-e", code]);
     } catch (error) {
       //? The child printed its result last, which a `--json` caller parses; its code is the answer, not a crash.
       if (!(error instanceof CommandExecutionError) || error.code === null) throw error;

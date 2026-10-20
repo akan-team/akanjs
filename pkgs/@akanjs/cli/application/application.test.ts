@@ -1083,7 +1083,8 @@ describe("ApplicationRunner", () => {
     await expect(runner.runScript(app, "missing")).rejects.toThrow("Script file not found");
 
     await runner.runScript(app, "hello.ts");
-    expect(spawn).toHaveBeenCalledWith("bun", ["script/hello.ts"], {
+    expect(spawn).toHaveBeenCalledWith("bun", [`${app.cwdPath}/script/hello.ts`], {
+      cwd: app.workspace.workspaceRoot,
       env: {
         AKAN_COMMAND_TYPE: "script",
         AKAN_DATABASE_MODE: "cluster",
@@ -1092,6 +1093,25 @@ describe("ApplicationRunner", () => {
       },
       stdio: "inherit",
     });
+  });
+
+  test("boots the app from the workspace root, where `akan start` keeps its local database", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(`${app.cwdPath}/server.ts`, "export const server = {};\n");
+    await writeText(`${app.cwdPath}/script/hello.ts`, "export default 1;\n");
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    app.spawn = spawn as never;
+    app.getCommandEnv = (env: Record<string, string>) => env;
+    app.getDatabaseModeEnv = async () => ({ AKAN_DATABASE_MODE: "single", AKAN_DATABASE_MODES: "single" });
+
+    await runner.runScript(app, "hello");
+    await runner.runConsole(app);
+    await runner.transferDatabase(app, "export", "local/transfer");
+    await runner.migrate(app, ["list"]);
+
+    const calls = spawn.mock.calls as unknown as [string, string[], { cwd: string }][];
+    expect(calls.map(([, , options]) => options.cwd)).toEqual(Array(4).fill(app.workspace.workspaceRoot));
   });
 
   test("runs bun test through the resolved executor", runsPackageTests);

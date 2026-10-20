@@ -299,14 +299,16 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>It runs from the app folder.</strong> The working directory is <code>apps/koyo/</code>, so
-                      relative paths start there.
+                      <strong>It runs from the workspace root</strong>, like <code>akan start</code>, so it opens the
+                      same local database. Relative paths start at the root; reach a file beside the script through{" "}
+                      <code>import.meta.dir</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>앱 폴더에서 실행됩니다.</strong> 작업 디렉터리가 <code>apps/koyo/</code>이므로 상대 경로는
-                      거기서 시작합니다.
+                      <strong>워크스페이스 루트에서 실행됩니다.</strong> <code>akan start</code>와 같은 곳이라 같은 로컬
+                      DB를 엽니다. 상대 경로는 루트에서 시작하므로, 스크립트 옆의 파일은 <code>import.meta.dir</code>로
+                      찾습니다.
                     </span>
                   ),
                 })}
