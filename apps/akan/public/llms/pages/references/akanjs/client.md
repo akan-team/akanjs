@@ -15,7 +15,9 @@
 - page / layout / rootLayout (#page-layout-rootLayout)
 - layout / rootLayout Stages (#layout-rootLayout-stages)
 - PageConfig (#PageConfig)
+- guard (#guard)
 - prompt (#prompt)
+- app (#app)
 - resolveRouteModule / isRouteDefinition (#resolveRouteModule-isRouteDefinition)
 - Font / createFont (#Font-createFont)
 - usePage / msg / Err (#usePage-msg-Err)
@@ -100,7 +102,7 @@ A store action that opens the record it just created:
 
 **Paths are app-internal.** Write `/profile`, not `/en/profile`. A path that already starts with the locale is accepted too.
 
-**Redirect from a page.** In a page's render, `router.redirect("/signin")` answers the request with a 307 redirect.
+**Redirect from a guard.** In a route's `.guard()`, `router.redirect("/signin")` answers the request with a 307 before anything renders, even after an awaited query.
 
 **`shallow` keeps the page.** On an SSR page, a push or replace that keeps the path writes the URL and the store's search params without asking the server, and back or forward between such entries stays shallow. Client components see the change at once; a server component's `.search()` at the next full navigation. A new path, or a CSR app, navigates normally.
 
@@ -182,13 +184,17 @@ rootLayout
 
   - .head(node | fn): The `<title>`, `<meta>` and `<link>` tags, written as JSX.
 
+  - .guard(fn): Runs before anything on the route renders, and refuses with a redirect or a not-found.
+
   - .loading(fn): Shown while render awaits. It gets path values but no search values.
 
   - .render(fn): The last stage. Draws the route from the typed arguments.
 
 - Page only
 
-  - .prompt(name, desc): Publishes the screen as an MCP prompt.
+  - .prompt(name, desc): Publishes the screen as an MCP prompt: a briefing of what the page fetched.
+
+  - .app(name, desc, load): Publishes one component of the page as an MCP App: a read-only tool with its own view.
 
 - Layouts only
 
@@ -246,13 +252,13 @@ A page that reads one path segment and two query keys:
 
 **Render is not a React component.** Call `usePage()`, `getSelf()` and `fetch.*` inside it, and make it `async` only when it awaits.
 
-**Names are string literals.** A `[projectId]` folder needs `.param("projectId", ID)` with that literal name; the same goes for `.prompt("name", …)`.
+**Names are string literals.** A `[projectId]` folder needs `.param("projectId", ID)` with that literal name; the same goes for `.prompt("name", …)` and `.app("name", …)`.
 
 **A route file exports only its chain.** A named export beside the chain, or `page()` in a `_layout.tsx`, breaks the build.
 
 layout / rootLayout Stages
 
-`layout()` takes every `page()` stage except `.prompt()`, and its render also receives `children`. It may declare only the `[x]` segments it reads.
+`layout()` takes every `page()` stage except `.prompt()` and `.app()`, and its render also receives `children`. It may declare only the `[x]` segments it reads.
 
 layout() adds
 
@@ -320,13 +326,47 @@ A playground page that slides up, pads for the notch, and never ships to product
 
 **Crawlers always get the whole page.** A search engine, an AI crawler or a link preview receives every section already in place, whatever `ssr` says: it runs no script to reveal a streamed one.
 
+guard
+
+`.guard(fn)` decides who may open a route before any of it renders. `rootLayout()`, `layout()` and `page()` each take it at most once: a second `.guard()` throws when the module loads.
+
+`fn` receives the route's typed arguments and `lang`; a layout's guard gets no `children`. It may be `async`, and it refuses with one of these calls:
+
+Call
+
+- router.redirect(href): Sends the visitor to `href`. On the server, a real 307, even after an awaited query.
+
+- router.notFound(): Shows the nearest layout's `.notFound()` view. On the server, a 404.
+
+- getSelf({ unauthorize: "/signin" }): Redirects to `unauthorize` when no one is signed in.
+
+- signedIn(unauthorize = "/signin"): The same check, from `@libs/shared/webkit`. Call it inside an arrow, `.guard(() => signedIn())`: `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
+
+Prefer a guard to `getSelf({ unauthorize })` in a layout body: it runs before anything renders, so the redirect is a real 307 on the server. A layout that lets only a signed-in visitor through:
+
+A page that sends an archived ticket back to the list. A guard may await a query:
+
+Where it runs
+
+Where
+
+What happens
+
+- Server render — Every guard in the chain runs in order, root layout first and the page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.
+
+- Client navigation — A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain, and the page draws nothing. A refused or failed check runs again when the cached page comes back on screen or its layer is retried. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.
+
+- MCP — A page prompt or app tool runs the route's guards before anything else, and a refusal ends it as a redirect or a not-found. `prompts/list` and the page tools in `tools/list` show only the screens whose guards admit the caller. A listing knows no arguments: a guard that reads one admits the caller there and is checked again on the call. If the guards do not answer within 1 s, the list is served unfiltered; the calls are still checked.
+
+**A route guard is not authorization for data.** It decides who may open a screen and redirects early. Every query the screen makes is still judged by its endpoint's signal guards (`guards: [...]`), so keep both.
+
 prompt
 
-`.prompt(name, description)` publishes a page as an MCP prompt, so an agent can open the same screen a person sees. The description is the whole instruction the model gets, in English.
+`.prompt(name, description)` publishes a page as an MCP prompt: a briefing of what the page fetched, for an agent to read. The description is the whole instruction the model gets, in English. A prompt opens no view; a component a host should draw is declared with `.app()`, below.
 
 Declaration
 
-- .prompt(name, …): The prompt name: letters, digits, `_` and `-`, up to 64 characters.
+- .prompt(name, …): The prompt name: letters, digits, `_` and `-`, up to 64 characters. Unique across every page's prompts and apps.
 
 - .prompt(…, description): The whole instruction the model receives. English, and never empty.
 
@@ -338,21 +378,23 @@ A ticket board published as a prompt:
 
 What an agent gets back
 
-`prompts/get` runs the page body under the caller's token and renders nothing. What it answers depends on how the body went:
+`prompts/get` runs the route's guards and then the page body, under the caller's token, and attaches what the body fetched. It draws nothing. What it answers depends on how the run went:
 
 When
 
 prompts/get answers
 
-- The page renders — The description, one resource per `fetch.*` query, and a `Tools for this screen: …` line.
+- The page runs — The description, one resource per `fetch.*` query, and a `Tools for this screen: …` line.
 
 - A required argument is missing — One message per argument, pointing at the `<model>List…` tool that finds the id.
 
-- Redirect or guard refusal, no token — A 401 challenge, so the client signs in first.
+- A redirect, 401 or 403, no token — A 401 challenge, so the client signs in first.
 
-- Redirect or guard refusal, with a token — `This screen is not available to the signed-in account.`
+- A redirect, 401 or 403, with a token — `This screen is not available to the signed-in account.`
 
 - The page answers not-found — `No screen exists for these arguments.`
+
+- Any other error — `The page failed to load.`
 
 **Data is masked.** Each resource is masked by its endpoint's return model and addressed by an `akan://` uri. One document travels once, however many queries read it.
 
@@ -361,6 +403,48 @@ prompts/get answers
 **Tools are the screen's own.** The last line names the published tools of the modules the page fetched from, limited to what this caller may see.
 
 **A prompt is always a page.** `endpoint()` has no `prompt()` kind, and `Msg` is not public.
+
+app
+
+`.app(name, description, load)` publishes one component of a page as an MCP App: a read-only tool, with its own view that an MCP Apps host draws in the chat. On the web, the element `load` returns reaches `.render()` as the argument named `name`, so the page draws it with the rest. A page may declare several apps.
+
+- .app(name, …): The tool name: letters, digits, `_` and `-`, up to 64 characters, as a string literal. Unique across every page's prompts and apps, and never `lang`, a `.param()` or `.search()` name, or the page's `.prompt()`. An endpoint of the same name keeps it, with a boot warning.
+
+- .app(…, description, …): The tool description the model reads. English, and never empty.
+
+- .app(…, load): Gets the page's typed arguments and `lang` and returns the element, usually a `Zone` fed by unawaited `fetch.*` fields. It may only query. Gate with `.guard()`, never inside `load`.
+
+- .param(name, Type, { desc }): A required tool argument. Give it a `desc`.
+
+- .search(name, Type, { desc }): An optional tool argument. A list is comma-separated.
+
+A ticket page that publishes the ticket's view as an app and keeps the close button in `.render()`:
+
+**`load` may only query.** A mutation, a file upload, a room subscription or a message sent while `load` runs throws `base.error.mutationInApp` before anything is built or sent: on the server through every `await`, in a browser for `load`'s synchronous part. Keep writes, such as buttons and forms, in `.render()` around the element.
+
+What a tool call answers
+
+A call checks the arguments against the page's declarations, runs the route's guards, then runs the app's `load` alone: no layout body and no `.render()`. A refusal is a tool error (`isError`):
+
+tools/call answers
+
+- The load runs — The same briefing a prompt gives, of what the load fetched, then `Open the full screen: <page URL>`.
+
+**Read-only by declaration.** The tool carries `readOnlyHint: true` and `openWorldHint: false`, since `load` may only query.
+
+**The view gets more than the model.** A host with the `io.modelcontextprotocol/ui` extension also receives `structuredContent: { href, params, searchParams }`, where the view starts, and in `_meta` the raw values of the load's queries (`akanjs/snapshot`) and the caller's claims (`akanjs/account`). `_meta` is never shown to the model.
+
+The view
+
+**One file per app.** `akan build` writes a single-file `dist/apps/<app>/mcp-apps/<name>.html` beside `csr/`. `akan start` writes `.akan/artifact/mcp-apps/` when a host first reads a view, and again after a save. The tool points at it as `ui://<app>/apps/<name>`. With `web: { csr: false }`, the tool has no view.
+
+**It draws the element alone.** The view runs `load` again, in the host's language when the app speaks it, and draws the element inside the root layout's `McpAppRoot`, which renders `System.App` from `akanjs/ui`: the root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and no `.render()` runs in a view, so a layout's `<Agent.Guide>` does not reach the host; one inside the element does.
+
+**First reads come from the snapshot.** They take no round trip. A later read, such as a refetch or another page of a list, is relayed by the host as `tools/call` under the host's credential, so its endpoint must be a published tool or an app-only one (`mcp: false`).
+
+**Links open the web page.** A link or `router.push` to a screen of your app opens that screen's web page through the host, in the view's language. A view never navigates inside itself.
+
+**Read-only deployments keep apps.** Under `option.setMcp({ readOnly: true })` or `AKAN_MCP_READONLY`, app tools and their views stay. The view refuses a write before it reaches the host with `base.error.readOnlyDeployment`, toasted in the person's language.
 
 resolveRouteModule / isRouteDefinition
 
@@ -413,8 +497,6 @@ A Korean font in two weights, applied to the whole app:
 usePage / msg / Err
 
 Translation, toast messages and the error class. Import them from your app's `@apps/<app>/client`, where the keys are typed by your dictionary.
-
-Call
 
 - usePage(): Returns `{ l, lang, path }`. Works in server components too.
 
@@ -667,6 +749,36 @@ export default page()
   .render(() => <Playground />);
 ```
 
+### apps/myapp/page/project/_layout.tsx
+
+```tsx
+import { signedIn } from "@libs/shared/webkit";
+import { layout } from "akanjs/client";
+
+export default layout()
+  .guard(() => signedIn())
+  .render(({ children }) => <div className="flex flex-col">{children}</div>);
+```
+
+### apps/myapp/page/ticket/[ticketId].tsx
+
+```tsx
+import { fetch, Ticket } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page, router } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID)
+  .guard(async ({ ticketId }) => {
+    const ticket = await fetch.ticket(ticketId);
+    if (ticket.status === "archived") router.redirect("/tickets");
+  })
+  .render(({ ticketId }) => {
+    const { ticketView } = fetch.viewTicket(ticketId);
+    return <Ticket.Zone.View view={ticketView} />;
+  });
+```
+
 ### apps/myapp/page/project/[projectId]/board.tsx
 
 ```tsx
@@ -685,6 +797,31 @@ export default page()
     );
     return <Ticket.Zone.Board init={ticketInitInProject} />;
   });
+```
+
+### apps/myapp/page/ticket/[ticketId].tsx
+
+```tsx
+import { fetch, Ticket } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID, { desc: "The ticket to show." })
+  .app(
+    "showTicket",
+    "Show one ticket with its status and assignee.",
+    ({ ticketId }) => {
+      const { ticketView } = fetch.viewTicket(ticketId);
+      return <Ticket.Zone.View view={ticketView} />;
+    },
+  )
+  .render(({ ticketId, showTicket }) => (
+    <div className="flex flex-col gap-4">
+      {showTicket}
+      <Ticket.Util.Close ticketId={ticketId} />
+    </div>
+  ));
 ```
 
 ### apps/myapp/script/inspectRoute.ts

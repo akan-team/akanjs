@@ -438,8 +438,8 @@ export default page()
             />
             <div>
               {l.trans({
-                en: "An MCP prompt is not an endpoint kind. It is declared on a page with `page().prompt(name, description)`.",
-                ko: "MCP 프롬프트는 엔드포인트 종류가 아닙니다. 페이지에서 `page().prompt(name, description)`로 선언합니다.",
+                en: "An MCP prompt is not an endpoint kind, and neither is an MCP App. Both are declared on a page, with `page().prompt(name, description)` and `page().app(name, description, load)`.",
+                ko: "MCP 프롬프트는 엔드포인트 종류가 아니고, MCP App도 마찬가지입니다. 둘 다 페이지에서 각각 `page().prompt(name, description)`, `page().app(name, description, load)`로 선언합니다.",
               })}
             </div>
             <Docs.LinkGrid items={relatedLinks} />

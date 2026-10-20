@@ -60,7 +60,9 @@ prompt
 
 - Page (page/**)
 
-  - page().prompt(): A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.
+  - page().prompt(): A screen: a slash command for the user, and a tool that briefs the model on what the page loads.
+
+  - page().app(): One component of a screen: a read-only tool whose own view, a `ui://` resource, is drawn in the chat by an MCP Apps client.
 
 Published as
 
@@ -74,13 +76,13 @@ Refused when
 
 Why, and what to do
 
-- It declares `mcp: false` — Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.
+- It declares `mcp: false` — Curated off the shelf on purpose; guards and HTTP stay as they were, and an app's view in the chat still calls it.
 
 - A guard declares `static agents = false`, like `Person` — It is an act reserved for a person, so no model is ever offered it.
 
 - It declares no `guards`, or an empty list — Nobody decided who may call it; write `guards: [Public]` if anonymous access is the intent.
 
-- It is the generated `light<Model>` read — It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; a screen drawn in the chat still calls it, under its guards.
+- It is the generated `light<Model>` read — It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; an app's view in the chat still calls it, under its guards.
 
 - It is a `pubsub` or a `message` — It rides the websocket, and its arguments read a socket an MCP request does not have.
 
@@ -112,7 +114,7 @@ Options
 
 - enabled (boolean, default true, AKAN_MCP, AKAN_PUBLIC_MCP): Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.
 
-- readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow, and turns MCP Apps off; the env turns it on only on `true` or `1`.
+- readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow: app tools and their views stay, and a prompt stays a prompt with no text tool. The env turns it on only on `true` or `1`.
 
 - path (string, default /mcp, AKAN_MCP_PATH): Mount path; the OAuth resource identifier, and so the `aud` a token needs, follows it.
 
@@ -134,9 +136,9 @@ Options
 
 - promptBudget (number, default 60000, AKAN_MCP_PROMPT_BUDGET): Characters of screen data one page prompt may attach before its lists are cut.
 
-- apps (boolean, default true, AKAN_MCP_APPS): Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps. A read-only deployment has none: no page tools, views or app-only tools.
+- apps (boolean, default true, AKAN_MCP_APPS): Publish each `.app()` as a read-only tool, drawn by its own view in a client that renders MCP Apps, and each `.prompt()` as a text tool beside its prompt. `false` publishes no page tools, and prompts stay prompts. With `web: { csr: false }` an app's tool has no view.
 
-- modern (boolean, default true unless a page shows a view, AKAN_MCP_MODERN): Offer the `2026-07-28` revision; withheld while a `.prompt()` page may show as a view, until the RSC worker lists none, as claude.ai draws one only after `initialize`.
+- modern (boolean, default true unless a page has an app, AKAN_MCP_MODERN): Offer the `2026-07-28` revision; withheld while a page may declare an `.app()`, until the RSC worker lists none, as claude.ai draws a view only after `initialize`.
 
 - auth ({ authorizationServers?, scopes?, resource?, verify? }, default {}, AKAN_MCP_AUTH_SERVERS, AKAN_MCP_SCOPES, AKAN_MCP_RESOURCE): The OAuth resource-server identity; naming an authorization server makes a token mandatory.
 
@@ -214,17 +216,17 @@ A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name
 
 **A list argument is typed comma-separated.** Its description gets `Comma-separated list.` appended, and an ID, Int or enum value is checked by the page's own declaration.
 
-**Names are unique.** A name matches `^[A-Za-z0-9_-]{1,64}$` and is unique across pages; `prompts/list` lists every page with `.prompt()`.
+**Names are unique.** A name matches `^[A-Za-z0-9_-]{1,64}$` and is unique across every page's prompts and apps; `prompts/list` lists every page with `.prompt()` whose route guards admit the caller.
 
 **Only pages declare prompts.** A signal has no `prompt()` builder, and `Msg` is not a public API.
 
-**The same page is a tool, and can be the screen itself.** Claude Code reads the briefing and a link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so a `Person` act stays on the web. The tool declares `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included.
+**The same page is a tool too, and it only briefs.** Every client gets the briefing and a link to the page, and none draws it. The tool declares `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included. A component that claude.ai, ChatGPT or VS Code should draw in the chat is declared with `.app()`, as the client reference shows; a tap there acts with the agent's token, so a `Person` act stays on the web.
 
 **A client that renders views is known by a signed session.** A legacy client that declares the MCP Apps extension at `initialize` is issued `Mcp-Session-Id: ui.<nonce>.<signature>`, signed by the app; an id it did not sign is served as a client without views.
 
 What prompts/get sends back
 
-`prompts/get` runs the page body (root layouts, layouts, then `render`) in the RSC worker under the caller's bearer token. Nothing is rendered and no client component runs; each `fetch.*` query the page makes becomes part of the answer:
+`prompts/get` runs the route's guards, then the page body (root layouts, layouts, then `render`), in the RSC worker under the caller's bearer token. Nothing is rendered and no client component runs; each `fetch.*` query the page makes becomes part of the answer:
 
 Part
 

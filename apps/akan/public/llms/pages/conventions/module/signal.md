@@ -390,7 +390,7 @@ Four rules cover most mistakes in a signal file:
 
 **Guards decide what AI agents see.** There is no opt-in: `mcp: false` only removes an already-guarded endpoint, and a slice's `mcp: { cru: false }` mirrors its guards map for the root slice and generated CRUD.
 
-**Prompts live on pages.** `endpoint()` has no prompt builder; a screen is published as an MCP prompt with `page().prompt(name, description)`.
+**Prompts and apps live on pages.** `endpoint()` has no builder for either; a screen is published as an MCP prompt with `page().prompt(name, description)`, and one of its components as an MCP App with `page().app(name, description, load)`.
 
 What reaches an AI agent
 

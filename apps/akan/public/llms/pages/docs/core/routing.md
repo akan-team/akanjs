@@ -14,6 +14,7 @@
 - Chain Stages (#chain-stages)
 - Layout File Shape (#layout-module)
 - Root Layout Stages (#root-layout-exports)
+- Route Guards (#route-guard)
 - Google Analytics (#google-analytics)
 - Search Engines (#search-engines)
 - Base Paths (#base-paths)
@@ -70,11 +71,11 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param(), .prompt() and .app() are string literals.
 
 Chain Stages
 
-There are fifteen stages, and the three chains share most of them. page() adds .prompt(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.
+There are eighteen stages, and the three chains share most of them. page() adds .prompt() and .app(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.
 
 Stage
 
@@ -83,6 +84,8 @@ Stage
   - .param: Declares one [x] path segment, typed; a value the type refuses answers not-found. — (name, Type)
 
   - .search: An optional query key; [String] reads a list, and a value the type refuses is dropped. — (key, Type)
+
+  - .guard: A check that runs before anything renders and refuses with router.redirect() or router.notFound(). — (fn)
 
   - .config: Client frame behaviour such as transition and devOnly; child pages inherit a layout's. — ({ … })
 
@@ -93,6 +96,8 @@ Stage
 - page() only
 
   - .prompt: Publishes the screen as an MCP prompt: .param() args are required, .search() optional. — (name, desc)
+
+  - .app: Publishes one component as an MCP App, a read-only tool; .render() gets its element under that name. — (name, desc, load)
 
 - layout() and rootLayout()
 
@@ -132,6 +137,8 @@ On rootLayout(), the app-wide stages must come before .param() and .search(). Th
 
 lang is never declared. Every route sits under the locale, and the value reaches every stage as lang. A page must declare every [x] segment of its path; a layout may leave some undeclared.
 
+Only `page()` publishes to MCP clients. `.prompt()` briefs a model on what the screen loads, and `.app()` publishes one component as an MCP App: a read-only tool whose own view a host draws in the chat. Both are covered in the client reference, under prompt and app.
+
 Layout File Shape
 
 A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells. Its own .head() covers child pages that declare none, and its .notFound() and .error() are the fallback for everything below it.
@@ -146,7 +153,23 @@ Root Layout Stages
 
 The root _layout.tsx of an app, or of a basePath, is a rootLayout() chain. It is still a layout, but it also carries the app-wide stages for fonts, manifest, theme, viewport, realtime connection, and mobile-style rendering. The stylesheet import stays the first line of the file.
 
-Each of these is one row of the Chain Stages table above, and only .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect() and .layoutStyle() are exclusive to this file. Everything else here — .config(), .head(), .loading(), .notFound(), .error(), .render() — is the ordinary layout surface.
+Each of these is one row of the Chain Stages table above, and only .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect(), .layoutStyle() and .viewport() are exclusive to this file. Everything else here — .config(), .head(), .guard(), .loading(), .notFound(), .error(), .render() — is the ordinary layout surface.
+
+Route Guards
+
+.guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and may be async. It refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: "/signin" }); signedIn() from @libs/shared/webkit makes that last call for you.
+
+Where
+
+- SSR: Every guard in the chain runs in order, root layout first and page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404.
+
+- CSR: A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain.
+
+- MCP: A page prompt or app tool runs the route's guards before anything else, and prompts/list and the page tools in tools/list show only the screens whose guards admit the caller.
+
+A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.
+
+Call `signedIn()`, never pass it: `.guard(signedIn)` would hand the route's arguments to `unauthorize`. In a `_layout.tsx`, prefer `.guard(() => signedIn())` to `getSelf({ unauthorize })` in the layout body: the guard runs before anything renders, so the redirect is a real 307 on the server. The client reference covers the rest.
 
 Google Analytics
 
@@ -299,6 +322,33 @@ export default rootLayout()
     </>,
   )
   .render(({ children }) => children);
+```
+
+### page/(user)/_layout.tsx
+
+```ts
+import { signedIn } from "@libs/shared/webkit";
+import { layout } from "akanjs/client";
+
+export default layout()
+  .guard(() => signedIn())
+  .render(({ children }) => <div className="flex flex-col">{children}</div>);
+```
+
+### page/(user)/ticket/[ticketId].tsx
+
+```ts
+import { fetch } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page, router } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID)
+  .guard(async ({ ticketId }) => {
+    const ticket = await fetch.ticket(ticketId);
+    if (ticket.status === "archived") router.redirect("/tickets");
+  })
+  .render(({ ticketId }) => <div>Ticket {ticketId}</div>);
 ```
 
 ### ui/Analytics.tsx

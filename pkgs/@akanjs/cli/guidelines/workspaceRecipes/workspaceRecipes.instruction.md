@@ -451,7 +451,7 @@ export default page()
 
 Rules the loader and `akan sync` enforce: a chain module has no other export; `page()` belongs in a page file and
 `layout()` / `rootLayout()` in a `_layout.tsx`; a page names every `[x]` of its path, a layout may name a subset;
-`.param()` and `.prompt()` names are string literals; `import "./styles.css"` stays the first line of a root layout;
+`.param()`, `.prompt()` and `.app()` names are string literals; `import "./styles.css"` stays the first line of a root layout;
 `_overrides.tsx` is untouched. MCP: `prompts/get` now runs the page's body under the caller's token and hands the
 model the description, what the page fetched, and the tools of those modules — see `mcpRule`.
 

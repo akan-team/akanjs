@@ -347,6 +347,14 @@ export default page()
             marks: onEvery,
           },
           {
+            name: ".guard(fn)",
+            desc: l.trans({
+              en: "Runs before anything on the route renders, and refuses with a redirect or a not-found.",
+              ko: "route를 그리기 전에 먼저 실행되며, redirect나 not-found로 거절합니다.",
+            }),
+            marks: onEvery,
+          },
+          {
             name: ".loading(fn)",
             desc: l.trans({
               en: "Shown while render awaits. It gets path values but no search values.",
@@ -369,7 +377,18 @@ export default page()
         rows: [
           {
             name: ".prompt(name, desc)",
-            desc: l.trans({ en: "Publishes the screen as an MCP prompt.", ko: "화면을 MCP prompt로 공개합니다." }),
+            desc: l.trans({
+              en: "Publishes the screen as an MCP prompt: a briefing of what the page fetched.",
+              ko: "화면을 MCP prompt로 공개합니다. page가 가져온 데이터를 담은 브리핑입니다.",
+            }),
+            marks: onPage,
+          },
+          {
+            name: ".app(name, desc, load)",
+            desc: l.trans({
+              en: "Publishes one component of the page as an MCP App: a read-only tool with its own view.",
+              ko: "page의 컴포넌트 하나를 MCP App으로 공개합니다. 자기 view가 있는 읽기 전용 tool입니다.",
+            }),
             marks: onPage,
           },
         ],
@@ -647,8 +666,8 @@ export default page()
       {
         name: ".prompt(name, …)",
         desc: l.trans({
-          en: "The prompt name: letters, digits, `_` and `-`, up to 64 characters.",
-          ko: "prompt 이름입니다. 영문자, 숫자, `_`, `-`만 쓰고 64자까지입니다.",
+          en: "The prompt name: letters, digits, `_` and `-`, up to 64 characters. Unique across every page's prompts and apps.",
+          ko: "prompt 이름입니다. 영문자, 숫자, `_`, `-`만 쓰고 64자까지입니다. 모든 page의 prompt와 app을 통틀어 하나뿐이어야 합니다.",
         }),
       },
       {
@@ -674,13 +693,35 @@ export default page()
       },
     ];
 
+    const refusalAnswerRows = [
+      {
+        when: l.trans({ en: "A redirect, 401 or 403, no token", ko: "redirect나 401·403, token 없음" }),
+        answer: l.trans({
+          en: "A 401 challenge, so the client signs in first.",
+          ko: "401 challenge입니다. 클라이언트가 먼저 로그인하게 합니다.",
+        }),
+      },
+      {
+        when: l.trans({ en: "A redirect, 401 or 403, with a token", ko: "redirect나 401·403, token 있음" }),
+        answer: "`This screen is not available to the signed-in account.`",
+      },
+      {
+        when: l.trans({ en: "The page answers not-found", ko: "page가 not-found로 응답함" }),
+        answer: "`No screen exists for these arguments.`",
+      },
+      {
+        when: l.trans({ en: "Any other error", ko: "그 밖의 오류" }),
+        answer: "`The page failed to load.`",
+      },
+    ];
+
     const promptAnswerColumns = [
       { key: "when", label: l.trans({ en: "When", ko: "상황" }) },
       { key: "answer", label: l.trans({ en: "prompts/get answers", ko: "prompts/get의 답" }) },
     ];
     const promptAnswerRows = [
       {
-        when: l.trans({ en: "The page renders", ko: "page가 정상 실행됨" }),
+        when: l.trans({ en: "The page runs", ko: "page가 정상 실행됨" }),
         answer: l.trans({
           en: "The description, one resource per `fetch.*` query, and a `Tools for this screen: …` line.",
           ko: "description, `fetch.*` query마다 resource 하나, 그리고 `Tools for this screen: …` 한 줄입니다.",
@@ -693,20 +734,118 @@ export default page()
           ko: "빠진 인자마다 메시지 하나로, id를 찾을 `<model>List…` tool을 알려 줍니다.",
         }),
       },
+      ...refusalAnswerRows,
+    ];
+
+    const appArgRows = [
       {
-        when: l.trans({ en: "Redirect or guard refusal, no token", ko: "redirect나 guard 거절, token 없음" }),
-        answer: l.trans({
-          en: "A 401 challenge, so the client signs in first.",
-          ko: "401 challenge입니다. 클라이언트가 먼저 로그인하게 합니다.",
+        name: ".app(name, …)",
+        desc: l.trans({
+          en: "The tool name: letters, digits, `_` and `-`, up to 64 characters, as a string literal. Unique across every page's prompts and apps, and never `lang`, a `.param()` or `.search()` name, or the page's `.prompt()`. An endpoint of the same name keeps it, with a boot warning.",
+          ko: "tool 이름입니다. 영문자, 숫자, `_`, `-`만 쓰고 64자까지이며, 문자열 리터럴로 씁니다. 모든 page의 prompt와 app을 통틀어 하나뿐이고, `lang`, `.param()`·`.search()` 이름, 그 page의 `.prompt()`와 같을 수 없습니다. 같은 이름의 endpoint가 있으면 endpoint가 이름을 가지며, 부팅 때 경고가 나옵니다.",
         }),
       },
       {
-        when: l.trans({ en: "Redirect or guard refusal, with a token", ko: "redirect나 guard 거절, token 있음" }),
-        answer: "`This screen is not available to the signed-in account.`",
+        name: ".app(…, description, …)",
+        desc: l.trans({
+          en: "The tool description the model reads. English, and never empty.",
+          ko: "model이 읽는 tool 설명입니다. 영어로, 비워 두지 않고 씁니다.",
+        }),
       },
       {
-        when: l.trans({ en: "The page answers not-found", ko: "page가 not-found로 응답함" }),
-        answer: "`No screen exists for these arguments.`",
+        name: ".app(…, load)",
+        desc: l.trans({
+          en: "Gets the page's typed arguments and `lang` and returns the element, usually a `Zone` fed by unawaited `fetch.*` fields. It may only query. Gate with `.guard()`, never inside `load`.",
+          ko: "page의 타입이 맞춰진 인자와 `lang`을 받아 엘리먼트를 돌려줍니다. 보통 await하지 않은 `fetch.*` 필드를 넘긴 `Zone`입니다. query만 할 수 있으며, 접근 제한은 `load` 안이 아니라 `.guard()`로 합니다.",
+        }),
+      },
+      {
+        name: ".param(name, Type, { desc })",
+        desc: l.trans({
+          en: "A required tool argument. Give it a `desc`.",
+          ko: "필수 tool 인자가 됩니다. `desc`를 적어 주세요.",
+        }),
+      },
+      {
+        name: ".search(name, Type, { desc })",
+        desc: l.trans({
+          en: "An optional tool argument. A list is comma-separated.",
+          ko: "선택 tool 인자가 됩니다. 목록은 쉼표로 구분합니다.",
+        }),
+      },
+    ];
+
+    const appAnswerColumns = [
+      { key: "when", label: l.trans({ en: "When", ko: "상황" }) },
+      { key: "answer", label: l.trans({ en: "tools/call answers", ko: "tools/call의 답" }) },
+    ];
+    const appAnswerRows = [
+      {
+        when: l.trans({ en: "The load runs", ko: "load가 정상 실행됨" }),
+        answer: l.trans({
+          en: "The same briefing a prompt gives, of what the load fetched, then `Open the full screen: <page URL>`.",
+          ko: "load가 가져온 데이터로 만든, prompt와 같은 브리핑과 `Open the full screen: <page URL>` 한 줄입니다.",
+        }),
+      },
+      ...refusalAnswerRows,
+    ];
+
+    const guardRefusalRows = [
+      {
+        name: "router.redirect(href)",
+        desc: l.trans({
+          en: "Sends the visitor to `href`. On the server, a real 307, even after an awaited query.",
+          ko: "방문자를 `href`로 보냅니다. 서버에서는 query를 await한 뒤라도 실제 307 응답입니다.",
+        }),
+      },
+      {
+        name: "router.notFound()",
+        desc: l.trans({
+          en: "Shows the nearest layout's `.notFound()` view. On the server, a 404.",
+          ko: "가장 가까운 layout의 `.notFound()` 화면을 보여 줍니다. 서버에서는 404 응답입니다.",
+        }),
+      },
+      {
+        name: 'getSelf({ unauthorize: "/signin" })',
+        desc: l.trans({
+          en: "Redirects to `unauthorize` when no one is signed in.",
+          ko: "로그인한 계정이 없으면 `unauthorize`로 redirect합니다.",
+        }),
+      },
+      {
+        name: 'signedIn(unauthorize = "/signin")',
+        desc: l.trans({
+          en: "The same check, from `@libs/shared/webkit`. Call it inside an arrow, `.guard(() => signedIn())`: `.guard(signedIn)` would hand the route's arguments to `unauthorize`.",
+          ko: "같은 검사를 하는 `@libs/shared/webkit`의 helper입니다. `.guard(() => signedIn())`처럼 arrow 안에서 부릅니다. `.guard(signedIn)`으로 넘기면 route의 인자가 `unauthorize`로 들어갑니다.",
+        }),
+      },
+    ];
+
+    const guardRunColumns = [
+      { key: "where", label: l.trans({ en: "Where", ko: "실행 위치" }) },
+      { key: "what", label: l.trans({ en: "What happens", ko: "동작" }) },
+    ];
+    const guardRunRows = [
+      {
+        where: l.trans({ en: "Server render", ko: "서버 렌더링" }),
+        what: l.trans({
+          en: "Every guard in the chain runs in order, root layout first and the page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.",
+          ko: "chain의 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저 실행됩니다. query를 await한 뒤라도 redirect는 실제 307, not-found는 404 응답입니다. guard 안의 query를 서버가 403이나 404로 거절하면 not-found로 응답하므로, page가 그 레코드의 존재를 알려 주지 않습니다.",
+        }),
+      },
+      {
+        where: l.trans({ en: "Client navigation", ko: "클라이언트 이동" }),
+        what: l.trans({
+          en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain, and the page draws nothing. A refused or failed check runs again when the cached page comes back on screen or its layer is retried. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.",
+          ko: "page의 layer는 guard를 기다리며, guard는 주소마다 한 번 실행됩니다. guard가 router를 움직이면 chain이 끝나고 page는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 page가 다시 화면에 나오거나 그 layer를 다시 시도할 때 다시 실행됩니다. root layout은 모든 page에 한 번만 그려져서 그 자체는 막히지 않지만, 그 guard는 page마다 chain 안에서 실행됩니다.",
+        }),
+      },
+      {
+        where: "MCP",
+        what: l.trans({
+          en: "A page prompt or app tool runs the route's guards before anything else, and a refusal ends it as a redirect or a not-found. `prompts/list` and the page tools in `tools/list` show only the screens whose guards admit the caller. A listing knows no arguments: a guard that reads one admits the caller there and is checked again on the call. If the guards do not answer within 1 s, the list is served unfiltered; the calls are still checked.",
+          ko: "page prompt와 app tool은 무엇보다 먼저 route의 guard를 실행하고, 거절되면 redirect나 not-found로 끝납니다. `prompts/list`와 `tools/list`의 page tool에는 guard가 호출자를 들여보내는 화면만 나옵니다. 목록에는 인자가 없으므로, 인자를 읽는 guard는 목록에서는 통과로 보고 호출할 때 다시 검사합니다. guard가 1초 안에 답하지 않으면 목록을 거르지 않고 보내지만, 호출은 그대로 검사합니다.",
+        }),
       },
     ];
 
@@ -1138,14 +1277,16 @@ export class ProjectStore extends store(sig.project, () => ({
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Redirect from a page.</strong> In a page's render, <code>router.redirect("/signin")</code>{" "}
-                      answers the request with a 307 redirect.
+                      <strong>Redirect from a guard.</strong> In a route's <code>.guard()</code>,{" "}
+                      <code>router.redirect("/signin")</code> answers the request with a 307 before anything renders,
+                      even after an awaited query.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>page에서는 redirect를 씁니다.</strong> page의 render 안에서{" "}
-                      <code>router.redirect("/signin")</code>을 부르면 307 redirect로 응답합니다.
+                      <strong>redirect는 guard에서 합니다.</strong> route의 <code>.guard()</code> 안에서{" "}
+                      <code>router.redirect("/signin")</code>을 부르면 무엇이든 그리기 전에 307 redirect로 응답하며,
+                      query를 await한 뒤에도 그렇습니다.
                     </span>
                   ),
                 })}
@@ -1508,13 +1649,14 @@ export default page()
                     <span>
                       <strong>Names are string literals.</strong> A <code>[projectId]</code> folder needs{" "}
                       <code>.param("projectId", ID)</code> with that literal name; the same goes for{" "}
-                      <code>.prompt("name", …)</code>.
+                      <code>.prompt("name", …)</code> and <code>.app("name", …)</code>.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>이름은 문자열 리터럴로 씁니다.</strong> <code>[projectId]</code> 폴더에는 그 이름 그대로{" "}
-                      <code>.param("projectId", ID)</code>가 있어야 합니다. <code>.prompt("name", …)</code>도 같습니다.
+                      <code>.param("projectId", ID)</code>가 있어야 합니다. <code>.prompt("name", …)</code>와{" "}
+                      <code>.app("name", …)</code>도 같습니다.
                     </span>
                   ),
                 })}
@@ -1548,8 +1690,8 @@ export default page()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`layout()` takes every `page()` stage except `.prompt()`, and its render also receives `children`. It may declare only the `[x]` segments it reads.",
-                ko: "`layout()`은 `.prompt()`를 뺀 `page()`의 stage를 모두 받고, render에 `children`도 함께 받습니다. 자기가 읽는 `[x]` segment만 선언해도 됩니다.",
+                en: "`layout()` takes every `page()` stage except `.prompt()` and `.app()`, and its render also receives `children`. It may declare only the `[x]` segments it reads.",
+                ko: "`layout()`은 `.prompt()`와 `.app()`을 뺀 `page()`의 stage를 모두 받고, render에 `children`도 함께 받습니다. 자기가 읽는 `[x]` segment만 선언해도 됩니다.",
               })}
             </div>
             <Docs.SubSubTitle>{l.trans({ en: "layout() adds", ko: "layout()이 더하는 것" })}</Docs.SubSubTitle>
@@ -1752,13 +1894,99 @@ export default page()
         </Scroll.Slide>
         <Divider />
 
+        <Scroll.Slide id="guard" title="guard">
+          <Docs.Title>guard</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: "`.guard(fn)` decides who may open a route before any of it renders. `rootLayout()`, `layout()` and `page()` each take it at most once: a second `.guard()` throws when the module loads.",
+                ko: "`.guard(fn)`은 route의 어떤 부분도 그리기 전에 누가 그 route를 열 수 있는지 정합니다. `rootLayout()`, `layout()`, `page()`마다 한 번까지만 쓸 수 있으며, 두 번째 `.guard()`는 module을 불러올 때 오류를 던집니다.",
+              })}
+            </div>
+            <div>
+              {l.trans({
+                en: "`fn` receives the route's typed arguments and `lang`; a layout's guard gets no `children`. It may be `async`, and it refuses with one of these calls:",
+                ko: "`fn`은 route의 타입이 맞춰진 인자와 `lang`을 받으며, layout의 guard는 `children`을 받지 않습니다. `async`여도 되고, 아래 호출 중 하나로 거절합니다:",
+              })}
+            </div>
+            <Docs.IntroTable type={l.trans({ en: "Call", ko: "호출" })} items={guardRefusalRows} />
+            <div>
+              {l.trans({
+                en: "Prefer a guard to `getSelf({ unauthorize })` in a layout body: it runs before anything renders, so the redirect is a real 307 on the server. A layout that lets only a signed-in visitor through:",
+                ko: "layout body 안의 `getSelf({ unauthorize })`보다 guard를 씁니다. guard는 무엇이든 그리기 전에 실행되므로 서버에서 redirect가 실제 307이 됩니다. 로그인한 방문자만 통과시키는 layout입니다:",
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/page/project/_layout.tsx"
+            language="tsx"
+            code={`import { signedIn } from "@libs/shared/webkit";
+import { layout } from "akanjs/client";
+
+export default layout()
+  .guard(() => signedIn())
+  .render(({ children }) => <div className="flex flex-col">{children}</div>);`}
+          />
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: "A page that sends an archived ticket back to the list. A guard may await a query:",
+                ko: "보관된 티켓이면 목록으로 돌려보내는 page입니다. guard 안에서 query를 await해도 됩니다:",
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/page/ticket/[ticketId].tsx"
+            language="tsx"
+            code={`import { fetch, Ticket } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page, router } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID)
+  .guard(async ({ ticketId }) => {
+    const ticket = await fetch.ticket(ticketId);
+    if (ticket.status === "archived") router.redirect("/tickets");
+  })
+  .render(({ ticketId }) => {
+    const { ticketView } = fetch.viewTicket(ticketId);
+    return <Ticket.Zone.View view={ticketView} />;
+  });`}
+          />
+          <Docs.Description>
+            <Docs.SubSubTitle>{l.trans({ en: "Where it runs", ko: "실행되는 곳" })}</Docs.SubSubTitle>
+            <Docs.Table columns={guardRunColumns} rows={guardRunRows} stacked />
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A route guard is not authorization for data.</strong> It decides who may open a screen and
+                    redirects early. Every query the screen makes is still judged by its endpoint's signal guards (
+                    <code>guards: [...]</code>), so keep both.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>route guard는 데이터 권한 검사가 아닙니다.</strong> 누가 화면을 열 수 있는지 정하고 일찍
+                    redirect할 뿐입니다. 화면이 부르는 query는 여전히 그 endpoint의 signal guard(
+                    <code>guards: [...]</code>)가 판단하므로, 둘 다 둡니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
         <Scroll.Slide id="prompt" title="prompt">
           <Docs.Title>prompt</Docs.Title>
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`.prompt(name, description)` publishes a page as an MCP prompt, so an agent can open the same screen a person sees. The description is the whole instruction the model gets, in English.",
-                ko: "`.prompt(name, description)`은 page를 MCP prompt로 공개해서, 에이전트가 사람이 보는 화면을 그대로 열 수 있게 합니다. description은 model이 받는 지시문 전체이며 영어로 씁니다.",
+                en: "`.prompt(name, description)` publishes a page as an MCP prompt: a briefing of what the page fetched, for an agent to read. The description is the whole instruction the model gets, in English. A prompt opens no view; a component a host should draw is declared with `.app()`, below.",
+                ko: "`.prompt(name, description)`은 page를 MCP prompt로 공개합니다. page가 가져온 데이터를 에이전트가 읽도록 정리한 브리핑입니다. description은 model이 받는 지시문 전체이며 영어로 씁니다. prompt는 view를 열지 않으며, 호스트가 그려야 할 컴포넌트는 아래의 `.app()`으로 선언합니다.",
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Declaration", ko: "선언" })} items={promptArgRows} />
@@ -1793,8 +2021,8 @@ export default page()
             <Docs.SubSubTitle>{l.trans({ en: "What an agent gets back", ko: "에이전트가 받는 답" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "`prompts/get` runs the page body under the caller's token and renders nothing. What it answers depends on how the body went:",
-                ko: "`prompts/get`은 호출자의 token으로 page body를 실행하고, 화면은 그리지 않습니다. 실행 결과에 따라 이렇게 답합니다:",
+                en: "`prompts/get` runs the route's guards and then the page body, under the caller's token, and attaches what the body fetched. It draws nothing. What it answers depends on how the run went:",
+                ko: "`prompts/get`은 호출자의 token으로 route의 guard를 먼저, 이어서 page body를 실행하고, body가 가져온 데이터를 붙여 답합니다. 화면은 그리지 않습니다. 실행 결과에 따라 이렇게 답합니다:",
               })}
             </div>
             <Docs.Table columns={promptAnswerColumns} rows={promptAnswerRows} stacked />
@@ -1867,6 +2095,234 @@ export default page()
                 ),
               })}
             </Docs.Alert>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="app" title="app">
+          <Docs.Title>app</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: "`.app(name, description, load)` publishes one component of a page as an MCP App: a read-only tool, with its own view that an MCP Apps host draws in the chat. On the web, the element `load` returns reaches `.render()` as the argument named `name`, so the page draws it with the rest. A page may declare several apps.",
+                ko: "`.app(name, description, load)`은 page의 컴포넌트 하나를 MCP App으로 공개합니다. 읽기 전용 tool이며, MCP Apps 호스트가 채팅 안에 그리는 자기 view를 가집니다. 웹에서는 `load`가 돌려준 엘리먼트가 `name`이라는 인자로 `.render()`에 들어오므로, page가 나머지와 함께 그립니다. page 하나에 app을 여러 개 선언해도 됩니다.",
+              })}
+            </div>
+            <Docs.IntroTable type={l.trans({ en: "Declaration", ko: "선언" })} items={appArgRows} />
+            <div>
+              {l.trans({
+                en: "A ticket page that publishes the ticket's view as an app and keeps the close button in `.render()`:",
+                ko: "티켓 view를 app으로 공개하고, 닫기 버튼은 `.render()`에 두는 page입니다:",
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/page/ticket/[ticketId].tsx"
+            language="tsx"
+            code={`import { fetch, Ticket } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID, { desc: "The ticket to show." })
+  .app(
+    "showTicket",
+    "Show one ticket with its status and assignee.",
+    ({ ticketId }) => {
+      const { ticketView } = fetch.viewTicket(ticketId);
+      return <Ticket.Zone.View view={ticketView} />;
+    },
+  )
+  .render(({ ticketId, showTicket }) => (
+    <div className="flex flex-col gap-4">
+      {showTicket}
+      <Ticket.Util.Close ticketId={ticketId} />
+    </div>
+  ));`}
+          />
+          <Docs.Description>
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>
+                      <code>load</code> may only query.
+                    </strong>{" "}
+                    A mutation, a file upload, a room subscription or a message sent while <code>load</code> runs throws{" "}
+                    <code>base.error.mutationInApp</code> before anything is built or sent: on the server through every{" "}
+                    <code>await</code>, in a browser for <code>load</code>'s synchronous part. Keep writes, such as
+                    buttons and forms, in <code>.render()</code> around the element.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>
+                      <code>load</code>는 query만 할 수 있습니다.
+                    </strong>{" "}
+                    <code>load</code>가 실행되는 동안 mutation, 파일 업로드, room 구독, message 전송을 하면 무엇을
+                    만들거나 보내기 전에 <code>base.error.mutationInApp</code>을 던집니다. 서버에서는 모든{" "}
+                    <code>await</code>에 걸쳐, 브라우저에서는 <code>load</code>의 동기 부분에서 그렇습니다. 버튼이나
+                    form 같은 쓰기는 엘리먼트를 감싸는 <code>.render()</code>에 둡니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+            <Docs.SubSubTitle>
+              {l.trans({ en: "What a tool call answers", ko: "tool 호출이 받는 답" })}
+            </Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: "A call checks the arguments against the page's declarations, runs the route's guards, then runs the app's `load` alone: no layout body and no `.render()`. A refusal is a tool error (`isError`):",
+                ko: "호출은 인자를 page의 선언과 대조하고 route의 guard를 실행한 다음, app의 `load`만 따로 실행합니다. layout body와 `.render()`는 실행하지 않습니다. 거절은 tool 오류(`isError`)로 답합니다:",
+              })}
+            </div>
+            <Docs.Table columns={appAnswerColumns} rows={appAnswerRows} stacked />
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Read-only by declaration.</strong> The tool carries <code>readOnlyHint: true</code> and{" "}
+                      <code>openWorldHint: false</code>, since <code>load</code> may only query.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>읽기 전용으로 선언됩니다.</strong> <code>load</code>는 query만 할 수 있으므로 tool에{" "}
+                      <code>readOnlyHint: true</code>, <code>openWorldHint: false</code>가 붙습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The view gets more than the model.</strong> A host with the{" "}
+                      <code>io.modelcontextprotocol/ui</code> extension also receives{" "}
+                      <code>{"structuredContent: { href, params, searchParams }"}</code>, where the view starts, and in{" "}
+                      <code>_meta</code> the raw values of the load's queries (<code>akanjs/snapshot</code>) and the
+                      caller's claims (<code>akanjs/account</code>). <code>_meta</code> is never shown to the model.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>view는 model보다 많이 받습니다.</strong> <code>io.modelcontextprotocol/ui</code> 확장을
+                      가진 호스트는 view가 시작할 위치인{" "}
+                      <code>{"structuredContent: { href, params, searchParams }"}</code>도 받고, <code>_meta</code>로
+                      load가 부른 query의 원래 값(<code>akanjs/snapshot</code>)과 호출자의 claim(
+                      <code>akanjs/account</code>)을 받습니다. <code>_meta</code>는 model에게 보이지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+            <Docs.SubSubTitle>{l.trans({ en: "The view", ko: "view" })}</Docs.SubSubTitle>
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>One file per app.</strong> <code>akan build</code> writes a single-file{" "}
+                      <code>{"dist/apps/<app>/mcp-apps/<name>.html"}</code> beside <code>csr/</code>.{" "}
+                      <code>akan start</code> writes <code>.akan/artifact/mcp-apps/</code> when a host first reads a
+                      view, and again after a save. The tool points at it as <code>{"ui://<app>/apps/<name>"}</code>.
+                      With <code>{"web: { csr: false }"}</code>, the tool has no view.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>app마다 파일 하나입니다.</strong> <code>akan build</code>는 <code>csr/</code> 옆에 단일
+                      파일 <code>{"dist/apps/<app>/mcp-apps/<name>.html"}</code>을 쓰고, <code>akan start</code>는
+                      호스트가 view를 처음 읽을 때 <code>.akan/artifact/mcp-apps/</code>에 쓰며 파일을 저장하면 다시
+                      씁니다. tool은 이 view를 <code>{"ui://<app>/apps/<name>"}</code>으로 가리키며,{" "}
+                      <code>{"web: { csr: false }"}</code>면 view 없이 tool만 공개됩니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>It draws the element alone.</strong> The view runs <code>load</code> again, in the host's
+                      language when the app speaks it, and draws the element inside the root layout's{" "}
+                      <code>McpAppRoot</code>, which renders <code>System.App</code> from <code>akanjs/ui</code>: the
+                      root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and
+                      no <code>.render()</code> runs in a view, so a layout's <code>{"<Agent.Guide>"}</code> does not
+                      reach the host; one inside the element does.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>엘리먼트만 그립니다.</strong> view는 <code>load</code>를 다시 실행하고(앱이 호스트의
+                      언어를 지원하면 그 언어로), 엘리먼트를 root layout의 <code>McpAppRoot</code> 안에 그립니다.{" "}
+                      <code>McpAppRoot</code>는 <code>akanjs/ui</code>의 <code>System.App</code>을 렌더링하므로,
+                      frame·router·websocket 없이 root layout의 테마, 폰트, provider만 갖춥니다. view에서는 layout
+                      body도 <code>.render()</code>도 실행되지 않으므로 layout의 <code>{"<Agent.Guide>"}</code>는
+                      호스트에 닿지 않고, 엘리먼트 안에 둔 것은 닿습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>First reads come from the snapshot.</strong> They take no round trip. A later read, such
+                      as a refetch or another page of a list, is relayed by the host as <code>tools/call</code> under
+                      the host's credential, so its endpoint must be a published tool or an app-only one (
+                      <code>mcp: false</code>).
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>첫 읽기는 snapshot에서 옵니다.</strong> 왕복 요청이 없습니다. 다시 불러오기나 목록의 다음
+                      페이지 같은 이후의 읽기는 호스트가 자기 자격 증명으로 <code>tools/call</code>을 보내 전달하므로,
+                      그 endpoint는 공개된 tool이거나 app 전용 tool(<code>mcp: false</code>)이어야 합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Links open the web page.</strong> A link or <code>router.push</code> to a screen of your
+                      app opens that screen's web page through the host, in the view's language. A view never navigates
+                      inside itself.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>링크는 웹 페이지를 엽니다.</strong> 앱의 화면으로 가는 링크나 <code>router.push</code>는
+                      호스트를 통해 그 화면의 웹 페이지를 view의 언어로 엽니다. view는 자기 안에서 이동하지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Read-only deployments keep apps.</strong> Under{" "}
+                      <code>option.setMcp({"{ readOnly: true }"})</code> or <code>AKAN_MCP_READONLY</code>, app tools
+                      and their views stay. The view refuses a write before it reaches the host with{" "}
+                      <code>base.error.readOnlyDeployment</code>, toasted in the person's language.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>읽기 전용 배포에도 app은 남습니다.</strong>{" "}
+                      <code>option.setMcp({"{ readOnly: true }"})</code>나 <code>AKAN_MCP_READONLY</code>에서도 app
+                      tool과 view는 그대로입니다. view는 쓰기가 호스트에 닿기 전에{" "}
+                      <code>base.error.readOnlyDeployment</code>로 거절하고, 사용자의 언어로 toast를 띄웁니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
           </Docs.Description>
         </Scroll.Slide>
         <Divider />

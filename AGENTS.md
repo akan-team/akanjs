@@ -242,8 +242,8 @@ Playbook (warning table, code, checklist: `ssrRule`): ① wrap the interaction a
 `useEffect(…, [])` load; ④ a store-reading `Zone` holds no markup and delegates to a server `View`; ⑤ hand each
 promise across — `const { xInitInY, xListInY } = fetch.initXInY(id)`, `xInitInY` to a `Zone`, `xListInY` to
 `<Load.Stream>` (model instances, server-only) — and `await` only what the shell must contain; ⑥ named `ReactNode`
-slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `getSelf({ unauthorize: "/signin" })` in
-`_layout.tsx` (an in-page redirect after I/O; `.config({ ssr: "block" })` for a 3xx); ⑨ CSS (`data-*` +
+slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `.guard(() => signedIn())` on
+`_layout.tsx` (a real 3xx before anything renders; `getSelf({ unauthorize })` in a body redirects in-page after I/O); ⑨ CSS (`data-*` +
 `group-data-[…]`, `<details>`) over client state for visibility; ⑩ heavy islands behind `index_.tsx` + `lazy()`.
 
 ## Runtime & Build Configuration
@@ -420,8 +420,9 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 - **MCP (`mcpRule`)**: `/mcp` publishes every guarded endpoint by default; `mcp: false` (or a `slice()` `mcp` map
   mirroring `guards`) is curation, not authorization. `guards: [Every, Person]` reserves an act for a person;
   `.with(AgentCall)` narrows an agent's call. Settings are `option.setMcp` in `lib/option.ts`; `JWT_SECRET` is
-  required outside `local`. Never make a refusal message more helpful. Every entry needs a `.desc()`; publish a
-  screen with `page().prompt(name, description)`.
+  required outside `local`. Never make a refusal message more helpful. Every entry needs a `.desc()`; brief a
+  screen with `page().prompt(name, description)`, and publish one component a host draws with
+  `page().app(name, description, load)` — a read-only tool whose `load` may only query.
 - **In-page agent (`agentRule`)**: mount `<Agent.Chat />` once in a layout; it never executes tools and refuses
   every call until `option.setAgentAccess(<guard>)`; the LLM is `option.setLlm({ apiKey, model, host })`, never env.
   The surface is what components declare — `st.tool(…).exec(fn)` beside its control, `st.use` / `st.sel` /
@@ -479,15 +480,15 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 
 ## Akan Page Routing (`apps/**/page/**`)
 
-Full contract — heads, CSR root layouts, typed params, lib pages, `devOnly`: `pageRule`.
+Full contract — guards, apps, heads, CSR root layouts, typed params, lib pages, `devOnly`: `pageRule`.
 
 - `page/` holds `.tsx` route modules only: `<routeName>.tsx` or `_index.tsx`, `_layout.tsx`, `_overrides.tsx` — no
   other `_*.tsx`, helpers, `.ts` / `.js` files, or uppercase filenames. `[id]` is a dynamic segment, `(group)` a
   route group.
 - **A route file exports one chain** — `page()`, `layout()` in a `_layout.tsx`, `rootLayout()` in a root
-  `_layout.tsx` — and every setting is a stage (`.param`, `.search`, `.config`, `.head`, `.loading`; `.notFound` /
-  `.error` on layouts; `.fonts` / `.theme` / `.manifest` / … on the root; `.prompt` on a page). A named export
-  beside it fails the build.
+  `_layout.tsx` — and every setting is a stage (`.param`, `.search`, `.config`, `.guard`, `.head`, `.loading`;
+  `.notFound` / `.error` on layouts; `.fonts` / `.theme` / `.manifest` / … on the root; `.prompt` / `.app` on a page).
+  A named export beside it fails the build.
 - **Name every `[x]` segment with `.param("x", Type)`** and read query keys only via `.search("k", Type)`; values
   arrive typed. `lang` is never declared — every stage receives it.
 - `.head()` takes JSX or a function returning it — never a metadata object; deeper heads replace by tag identity,
@@ -503,18 +504,19 @@ Full contract — heads, CSR root layouts, typed params, lib pages, `devOnly`: `
 export default page()
   .param("orgId", ID)
   .config({ transition: "stack" })
+  .guard(() => signedIn())
   .render(({ orgId }) => {
     const { l } = usePage();
-    getSelf({ unauthorize: "/signin" });
     const { taskInitInOrg } = fetch.initTaskInOrg(orgId);
     return <Task.Zone.Card init={taskInitInOrg} prefix={`/org/${orgId}`} />;
   });
 ```
 
-- `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, auth,
-  fetch, return. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
+- `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,
+  return; auth is the chain's `.guard()`, which runs before anything renders. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
   (title, redirect, link id) in one `Promise.all`.
-- Gate auth at `_layout.tsx` (repeating `getSelf` in the page is fine). `async` only when the body awaits; the
+- Gate auth with `.guard(() => signedIn())` (`@libs/shared/webkit`) at `_layout.tsx`, and repeat it on a page that
+  needs more; it is a courtesy, the endpoint guards are the gate. `getSelf({ unauthorize })` in a body still works. `async` only when the body awaits; the
   callback is not a React component, so it takes no name and no return type. No `useState`, `useEffect`, or
   comments in page files.
 

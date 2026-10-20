@@ -114,10 +114,18 @@ export default page()
           {
             name: "page().prompt()",
             desc: l.trans({
-              en: "A screen: a slash command for the user, a tool for the model, and its page alone in the chat of an MCP Apps client.",
-              ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 툴이 되고, MCP Apps 클라이언트에선 레이아웃 없이 페이지만 채팅에 뜹니다.",
+              en: "A screen: a slash command for the user, and a tool that briefs the model on what the page loads.",
+              ko: "화면 하나가 사용자에겐 슬래시 커맨드, 모델에겐 페이지가 불러온 데이터를 브리핑하는 툴이 됩니다.",
             }),
             marks: { tool: true, resource: false, prompt: true },
+          },
+          {
+            name: "page().app()",
+            desc: l.trans({
+              en: "One component of a screen: a read-only tool whose own view, a `ui://` resource, is drawn in the chat by an MCP Apps client.",
+              ko: "화면의 컴포넌트 하나가 읽기 전용 툴이 되고, MCP Apps 클라이언트는 그 툴의 view(`ui://` 리소스)를 채팅 안에 그립니다.",
+            }),
+            marks: { tool: true, resource: true, prompt: false },
           },
         ],
       },
@@ -127,8 +135,8 @@ export default page()
       {
         when: l.trans({ en: "It declares `mcp: false`", ko: "`mcp: false`를 선언했다" }),
         why: l.trans({
-          en: "Curated off the shelf on purpose; guards and HTTP stay as they were, and a screen drawn in the chat still calls it.",
-          ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로이고, 채팅 안에 뜬 화면은 여전히 부를 수 있습니다.",
+          en: "Curated off the shelf on purpose; guards and HTTP stay as they were, and an app's view in the chat still calls it.",
+          ko: "일부러 선반에서 뺀 것입니다. 가드와 HTTP는 그대로이고, 채팅 안에 뜬 앱의 view는 여전히 부를 수 있습니다.",
         }),
       },
       {
@@ -154,8 +162,8 @@ export default page()
       {
         when: l.trans({ en: "It is the generated `light<Model>` read", ko: "생성된 `light<Model>` 조회다" }),
         why: l.trans({
-          en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; a screen drawn in the chat still calls it, under its guards.",
-          ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다. 채팅 안에 뜬 화면은 가드 아래에서 여전히 부를 수 있습니다.",
+          en: "It reads the same document as `<model>` in a smaller shape, so the agent calls `<model>` instead; an app's view in the chat still calls it, under its guards.",
+          ko: "`<model>`과 같은 도큐먼트를 작은 형태로 읽을 뿐이라, 에이전트는 대신 `<model>`을 호출합니다. 채팅 안에 뜬 앱의 view는 가드 아래에서 여전히 부를 수 있습니다.",
         }),
       },
       {
@@ -288,8 +296,8 @@ export default page()
         default: "false",
         tags: ["AKAN_MCP_READONLY", "AKAN_PUBLIC_MCP_READONLY"],
         desc: l.trans({
-          en: "Publishes queries only, whatever the guards allow, and turns MCP Apps off; the env turns it on only on `true` or `1`.",
-          ko: "가드가 무엇을 허용하든 query만 게시하고, MCP Apps를 끕니다. env는 `true`나 `1`일 때만 켭니다.",
+          en: "Publishes queries only, whatever the guards allow: app tools and their views stay, and a prompt stays a prompt with no text tool. The env turns it on only on `true` or `1`.",
+          ko: "가드가 무엇을 허용하든 query만 게시합니다. 앱 툴과 그 view는 남고, 프롬프트는 텍스트 툴 없이 프롬프트로만 남습니다. env는 `true`나 `1`일 때만 켭니다.",
         }),
       },
       {
@@ -399,18 +407,18 @@ export default page()
         default: "true",
         tags: ["AKAN_MCP_APPS"],
         desc: l.trans({
-          en: "Publish each `.prompt()` page as a tool too, drawn in the chat by a client that renders MCP Apps. A read-only deployment has none: no page tools, views or app-only tools.",
-          ko: "`.prompt()` 페이지를 툴로도 게시하고, MCP Apps를 그리는 클라이언트는 그 화면을 채팅 안에 띄웁니다. 읽기 전용 배포에는 페이지 툴, 화면, 앱 전용 툴이 모두 없습니다.",
+          en: "Publish each `.app()` as a read-only tool, drawn by its own view in a client that renders MCP Apps, and each `.prompt()` as a text tool beside its prompt. `false` publishes no page tools, and prompts stay prompts. With `web: { csr: false }` an app's tool has no view.",
+          ko: "`.app()`마다 읽기 전용 툴로 게시하고, MCP Apps를 그리는 클라이언트는 그 툴을 자체 view로 그립니다. `.prompt()`도 프롬프트와 함께 텍스트 툴로 게시합니다. `false`면 페이지 툴을 하나도 게시하지 않고 프롬프트는 프롬프트로만 남습니다. `web: { csr: false }`면 앱의 툴에 view가 없습니다.",
         }),
       },
       {
         key: "modern",
         type: "boolean",
-        default: "true unless a page shows a view",
+        default: "true unless a page has an app",
         tags: ["AKAN_MCP_MODERN"],
         desc: l.trans({
-          en: "Offer the `2026-07-28` revision; withheld while a `.prompt()` page may show as a view, until the RSC worker lists none, as claude.ai draws one only after `initialize`.",
-          ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 화면을 그리므로, `.prompt()` 페이지가 화면으로 뜰 수 있는 동안에는 빼 두고, RSC worker가 그런 페이지가 없다고 하면 제공합니다.",
+          en: "Offer the `2026-07-28` revision; withheld while a page may declare an `.app()`, until the RSC worker lists none, as claude.ai draws a view only after `initialize`.",
+          ko: "`2026-07-28` 리비전을 제공합니다. claude.ai가 `initialize` 뒤에만 view를 그리므로, `.app()`을 선언한 페이지가 있을 수 있는 동안에는 빼 두고, RSC worker가 그런 페이지가 없다고 하면 제공합니다.",
         }),
       },
       {
@@ -738,13 +746,15 @@ export default page()
         en: (
           <>
             <strong>Names are unique.</strong> A name matches <code>{"^[A-Za-z0-9_-]{1,64}$"}</code> and is unique
-            across pages; <code>prompts/list</code> lists every page with <code>.prompt()</code>.
+            across every page's prompts and apps; <code>prompts/list</code> lists every page with <code>.prompt()</code>{" "}
+            whose route guards admit the caller.
           </>
         ),
         ko: (
           <>
-            <strong>이름은 유일해야 합니다.</strong> <code>{"^[A-Za-z0-9_-]{1,64}$"}</code>에 맞고 모든 페이지에서
-            겹치지 않아야 하며, <code>prompts/list</code>는 <code>.prompt()</code>가 있는 페이지를 모두 나열합니다.
+            <strong>이름은 유일해야 합니다.</strong> <code>{"^[A-Za-z0-9_-]{1,64}$"}</code>에 맞고 모든 페이지의
+            프롬프트와 앱 사이에서 겹치지 않아야 하며, <code>prompts/list</code>는 <code>.prompt()</code>가 있는 페이지
+            중 라우트 가드가 호출자를 들여보내는 것을 모두 나열합니다.
           </>
         ),
       }),
@@ -765,18 +775,26 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>The same page is a tool, and can be the screen itself.</strong> Claude Code reads the briefing and a
-            link; claude.ai, ChatGPT and VS Code draw the page in the chat, where a tap acts with the agent's token, so
-            a <code>Person</code> act stays on the web. The tool declares <code>readOnlyHint: false</code>, since
-            running the page makes its own <code>fetch.*</code> calls, mutations included.
+            <strong>The same page is a tool too, and it only briefs.</strong> Every client gets the briefing and a link
+            to the page, and none draws it. The tool declares <code>readOnlyHint: false</code>, since running the page
+            makes its own <code>fetch.*</code> calls, mutations included. A component that claude.ai, ChatGPT or VS Code
+            should draw in the chat is declared with <code>.app()</code>, as the{" "}
+            <Link href="/references/akanjs/client#app" className="text-primary">
+              client reference
+            </Link>{" "}
+            shows; a tap there acts with the agent's token, so a <code>Person</code> act stays on the web.
           </>
         ),
         ko: (
           <>
-            <strong>같은 페이지가 툴이 되고, 화면 자체로도 뜹니다.</strong> Claude Code는 브리핑과 링크를 받고,
-            claude.ai·ChatGPT·VS Code는 채팅 안에 페이지를 그립니다. 거기서 누르는 동작은 에이전트 토큰으로 실행되므로{" "}
-            <code>Person</code> 행위는 웹에서 합니다. 페이지를 실행하면 mutation을 포함한 그 페이지의{" "}
-            <code>fetch.*</code> 호출이 일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다.
+            <strong>같은 페이지가 툴도 되지만, 브리핑만 합니다.</strong> 어느 클라이언트든 브리핑과 페이지 링크를 받고,
+            페이지를 그리지는 않습니다. 페이지를 실행하면 mutation을 포함한 그 페이지의 <code>fetch.*</code> 호출이
+            일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다. claude.ai·ChatGPT·VS Code가 채팅 안에 그릴
+            컴포넌트는 <code>.app()</code>으로 선언하며, 방법은{" "}
+            <Link href="/references/akanjs/client#app" className="text-primary">
+              client 레퍼런스
+            </Link>
+            에 있습니다. 거기서 누르는 동작은 에이전트 토큰으로 실행되므로 <code>Person</code> 행위는 웹에서 합니다.
           </>
         ),
       }),
@@ -1641,16 +1659,17 @@ akan://task/list/inTodo{?skip,limit,sort}`}
               {l.trans({
                 en: (
                   <span>
-                    <code>prompts/get</code> runs the page body (root layouts, layouts, then <code>render</code>) in the
-                    RSC worker under the caller's bearer token. Nothing is rendered and no client component runs; each{" "}
-                    <code>fetch.*</code> query the page makes becomes part of the answer:
+                    <code>prompts/get</code> runs the route's guards, then the page body (root layouts, layouts, then{" "}
+                    <code>render</code>), in the RSC worker under the caller's bearer token. Nothing is rendered and no
+                    client component runs; each <code>fetch.*</code> query the page makes becomes part of the answer:
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>prompts/get</code>은 페이지 body(root layout, layout, 그다음 <code>render</code>)를 호출자의
-                    bearer 토큰으로 RSC worker에서 실행합니다. 렌더링은 하지 않고 클라이언트 컴포넌트도 돌지 않습니다.
-                    페이지가 보낸 <code>fetch.*</code> 조회 하나하나가 응답이 됩니다:
+                    <code>prompts/get</code>은 라우트 가드를 먼저 실행한 뒤 페이지 body(root layout, layout, 그다음{" "}
+                    <code>render</code>)를 호출자의 bearer 토큰으로 RSC worker에서 실행합니다. 렌더링은 하지 않고
+                    클라이언트 컴포넌트도 돌지 않습니다. 페이지가 보낸 <code>fetch.*</code> 조회 하나하나가 응답이
+                    됩니다:
                   </span>
                 ),
               })}

@@ -2081,14 +2081,16 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Prompts live on pages.</strong> <code>endpoint()</code> has no prompt builder; a screen is
-                      published as an MCP prompt with <code>page().prompt(name, description)</code>.
+                      <strong>Prompts and apps live on pages.</strong> <code>endpoint()</code> has no builder for
+                      either; a screen is published as an MCP prompt with <code>page().prompt(name, description)</code>,
+                      and one of its components as an MCP App with <code>page().app(name, description, load)</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>prompt는 page에 둡니다.</strong> <code>endpoint()</code>에는 prompt 빌더가 없고, 화면은{" "}
-                      <code>page().prompt(name, description)</code>로 MCP prompt가 됩니다.
+                      <strong>prompt와 app은 page에 둡니다.</strong> <code>endpoint()</code>에는 둘 다 빌더가 없고,
+                      화면은 <code>page().prompt(name, description)</code>로 MCP prompt가 되며, 화면의 컴포넌트 하나는{" "}
+                      <code>page().app(name, description, load)</code>로 MCP App이 됩니다.
                     </span>
                   ),
                 })}

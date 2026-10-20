@@ -69,7 +69,7 @@ travels over it
 
 does not
 
-An MCP prompt is not an endpoint kind. It is declared on a page with `page().prompt(name, description)`.
+An MCP prompt is not an endpoint kind, and neither is an MCP App. Both are declared on a page, with `page().prompt(name, description)` and `page().app(name, description, load)`.
 
 - The Signal File — How `Internal`, `Slice` and `Endpoint` are laid out in one `*.signal.ts`.
 

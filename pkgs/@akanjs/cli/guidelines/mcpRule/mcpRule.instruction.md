@@ -40,9 +40,9 @@ export class FileSlice extends slice(srv.file, {
   `update`, `remove`), same fallbacks (`create`/`update`/`remove` inherit `cru`), and the same scope: it narrows
   the root slice and the generated CRUD, and never reaches a named slice or a custom endpoint. Those declare
   their own `mcp` beside their own `guards`. The bare `mcp: false` is every key at once, still within that scope.
-- **A screen keeps reaching it.** To a host that renders MCP Apps views, an endpoint refused for `mcp: false` alone
-  is published with `visibility: ["app"]`: the view the page tool opens may call it, the model is never shown it
-  (below). Every other refusal still holds there.
+- **A view keeps reaching it.** To a host that renders MCP Apps views, an endpoint refused for `mcp: false` alone
+  is published with `visibility: ["app"]`: an app's view may call it, the model is never shown it (below). Every
+  other refusal still holds there.
 - **`mcp: true` is the default and is a no-op**; write it only to say out loud that an entry is deliberately on
   the shelf. It does not override a shape refusal (an `Any` return stays refused) and it cannot publish something
   the guard rules keep out.
@@ -203,7 +203,8 @@ export default page()
 - The `readOnly` / `destructive` / `idempotent` hints a client renders are derived from the endpoint type and key
   and are not configurable. Clients are told to distrust hints; they are never a gate.
 - **`AKAN_MCP_READONLY=true` is the read-only-deployment valve, not the exposure switch.** It drops every mutation
-  whatever it declared, and reports each one in the boot log like any other refusal.
+  whatever it declared, and reports each one in the boot log like any other refusal. It also drops each `.prompt()`
+  page's text tool, whose run renders the whole page; the prompts, the `.app()` tools and their views stay.
 - OAuth resource metadata is published at `/.well-known/oauth-protected-resource` (and at that path plus the mount
   path, the spelling most clients try first). `auth.authorizationServers` / `AKAN_MCP_AUTH_SERVERS`,
   `auth.scopes` / `AKAN_MCP_SCOPES`, `auth.resource` / `AKAN_MCP_RESOURCE` and `auth.verify` configure it;
@@ -248,9 +249,9 @@ export default page()
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to
   disconnect. An unknown proposal is answered at whichever end of that list it is closer to, and an unimplemented
   method answers `404` to a modern client but `200` to a legacy one, whose era spends `404` on "your session is
-  gone". **While a `.prompt()` page may show as a view only the legacy pair is spoken**: `server/discover` answers
+  gone". **While an `.app()` may show as a view only the legacy pair is spoken**: `server/discover` answers
   `-32601` and `initialize` settles on `2025-11-25`, because claude.ai renders a view only for a server it reached
-  through `initialize`. An app that renders no view, or whose RSC worker lists no `.prompt()` page, speaks all three.
+  through `initialize`. An app that renders no view, or whose RSC worker lists no `.app()`, speaks all three.
   `modern: true` / `AKAN_MCP_MODERN=true` offers `2026-07-28` anyway; `false` withholds it everywhere.
 - **A modern-era request mirrors `MCP-Protocol-Version` and `Mcp-Method` into headers** (plus `Mcp-Name` when the
   body names one), and one that leaves a mirror out is refused just like one that contradicts the body: a gateway
@@ -349,8 +350,10 @@ delegates to lives in `akanjs/server` (`OAuthAuthorize`, `OAuthToken`, `OAuthReg
 board of one project.").render(…)` — and that is the whole surface. `prompts/list` is every page carrying
 `.prompt()`; its `.param()` stages are the required arguments and its `.search()` stages the optional ones, a list
 argument is comma-separated on the wire and its description says so, and an `ID`/`Int`/`enumOf` value is checked by
-the page's own declaration. **`prompts/get` runs the page's body** — root layouts, layouts, then the page's
-`.render()` — in the RSC worker under the caller's bearer token, the way a tab would open it. Nothing is rendered:
+the page's own declaration. `prompts/list` shows only the screens whose route `.guard()`s admit the caller; a listing
+knows no arguments, so a guard that reads one admits there and is checked again on the call. **`prompts/get` runs the
+route's guards, then the page's body** — root layouts, layouts, then the page's `.render()` — in the RSC worker under
+the caller's bearer token, the way a tab would open it. Nothing is rendered:
 the JSX comes back as an element tree nobody walks, no client component runs, and the screen's data footprint is
 exactly the `fetch.*` queries its body made, with the arguments it made them with. The answer is the description as
 the first message (priority 1), one embedded `resource` per query masked by that endpoint's return model and
@@ -366,74 +369,103 @@ pass. A layout's own queries (a project selector's `projectListInOrg`) are part 
 attached too. **No argument fallback**: a required argument left out answers one message — `No projectId was named for
 "briefProjectTickets". Find it with \`projectListBySearch\`, then run this prompt again with projectId=<id>.` —
 and runs nothing, because a prompt cannot re-run itself and context filled in on a guess would never be used. A
-page that redirects (`getSelf({ unauthorize })`), or whose `fetch.*` a guard refuses with 401/403, answers the 401
+page that redirects (a `.guard()`, `getSelf({ unauthorize })`), or whose `fetch.*` a guard refuses with 401/403, answers the 401
 credential challenge when the call carried no token and `This screen is not available to the signed-in account.`
 when it did — the same sentence for both, so a refused id is never confirmed to exist; `router.notFound()` and a
 404 from a query are `No screen exists for these arguments.`; anything else the body throws is `The page failed to
 load.`, with the cause in the server log only. **The description is the only instruction.** `<Agent.Guide>` is for the in-page agent, whose
 levers are the screen's controls, and is never read here, where the levers are the API — so write the description
 in English, in the API's vocabulary, and put a computed rule (the legal status transitions) into it as a static
-table the model combines with the attached state. Names match `^[A-Za-z0-9_-]{1,64}$` and are unique across pages;
-two pages claiming one name fail the listing. An API-only build (`web: false`) publishes no prompts, and the
+table the model combines with the attached state. Names match `^[A-Za-z0-9_-]{1,64}$` and share one namespace with
+every page's `.app()`s; two pages claiming one name fail the listing. An API-only build (`web: false`) publishes no prompts, and the
 in-page chat lists none of them: its `/` menu is its six built-in commands. Pick which screens to publish by this
 rule: a page taking no arguments is the most useful prompt, since MCP has no completion — one taking an id is for
 when the id is already in hand.
 
-## MCP Apps — The Page, Rendered In The Chat
-**A `.prompt()` page is also a tool**, of the same name and arguments, marked `readOnlyHint: false`, since running
-the page makes its own `fetch.*` calls, mutations included. Its result is the
-prompt's briefing plus `Open this screen in a browser: <url>` — what a client without the
-`io.modelcontextprotocol/ui` extension (Claude Code, Codex) reads. A host that declares the extension (claude.ai,
-Claude Desktop, ChatGPT, VS Code, Goose) is also given `_meta.ui.resourceUri` (`ui://<app>/app`, or
-`ui://<app>/app/<basePath>`) and renders the screen in place of the result: the app's CSR bundle, one HTML document,
-in a sandboxed iframe started on the page the tool ran. Its first queries are answered from that run — carried in
-the result's `_meta`, the one part no host shows the model — so the first paint costs no round trip; every later
-call is relayed by the host as `tools/call` under the host's token. Nothing is declared for any of it.
+## MCP Apps — One Component Of A Page, Drawn In The Chat
+**`page().app(name, description, load)` publishes one component of a screen.** `load` takes the page's typed
+arguments and `lang` and returns the element — usually a `Zone` fed by unawaited `fetch.*` fields — and on the web that
+element reaches `.render()` as the argument named `name`, so the page draws it where it belongs:
 
+```tsx
+export default page()
+  .param("ticketId", ID, { desc: "The ticket to show." })
+  .app("showTicket", "Show one ticket with its status and assignee.", ({ ticketId }) => {
+    const { ticketView } = fetch.viewTicket(ticketId);
+    return <Ticket.Zone.View view={ticketView} />;
+  })
+  .render(({ ticketId, showTicket }) => (
+    <div className="flex flex-col gap-4">
+      {showTicket}
+      <Ticket.Util.Close ticketId={ticketId} />
+    </div>
+  ));
+```
+
+- **Each app is a read-only tool** of its name, whose arguments are the page's `.param()` (required) and `.search()`
+  (optional) stages, marked `readOnlyHint: true`. A call checks the arguments, runs the route's `.guard()`s, then the
+  app's `load` alone — no layout body, no `.render()` — and answers the briefing a prompt would give for what that load
+  fetched, plus `Open the full screen: <url>`: what a client without the `io.modelcontextprotocol/ui` extension
+  (Claude Code, Codex) reads. A refusal is a tool error with the prompt's sentences. Several apps may sit on one page;
+  names share one namespace with the prompts, and an endpoint keeps its name over an app's, with a boot warning.
+- **`load` may only query.** A mutation, a file upload, a room subscription or a message sent while it runs throws
+  `base.error.mutationInApp` before anything is sent — on the server through every `await`, in a browser for its
+  synchronous part. Writes stay in `.render()` around the element (the `Close` above), and gating stays in
+  `.guard()`: a `getSelf({ unauthorize })` inside `load` would redirect a view.
+- **A host that declares the extension** (claude.ai, Claude Desktop, ChatGPT, VS Code, Goose) is also given
+  `_meta.ui.resourceUri` (`ui://<app>/apps/<name>`) and draws the app's own view in place of the result: one HTML
+  document per app, which `akan build` writes to `mcp-apps/<name>.html` beside `csr/` and `akan start` writes to
+  `.akan/artifact/mcp-apps/` when a host first reads it. The view runs `load` again with the route values the result
+  names in `structuredContent`, and its first queries are answered from that call — carried in the result's `_meta`,
+  the one part no host shows the model — so the first paint costs no round trip; every later call is relayed by the
+  host as `tools/call` under the host's token.
+- **The view is the component, not the page.** It bundles the page with `.render()`, `.head()`, `.loading()` and
+  `.guard()` blanked, so it carries what the loads reach and nothing else, and draws the element inside the root
+  layout's `McpAppRoot` (`System.App`: its theme, fonts and providers, with no frame, router or websocket). No layout
+  body runs there, so a layout's `<Agent.Guide>` never reaches the host; one inside the element does. A link or
+  `router.push` to one of the app's screens opens that screen's web page through the host. A host loads one file, so
+  every `lazy(() => import(…))` the loads reach is inlined — write `/* @__PURE__ */ lazy(…)` so a barrel's unused one
+  is dropped.
 - **What a view may call** is every published tool, and every endpoint kept off the shelf by `mcp: false` alone or
   the generated `light<Model>` read, listed with `visibility: ["app"]` — which a host offers to the view and never to
   the model; a `Person` guard still refuses one. Visibility is a host's UX, not authorization: the guards decide, as
   everywhere. A client that did not declare the extension is listed neither those tools nor the `ui://` resources, a
-  call to one answers `Unknown tool`, and a page tool's result carries none of the view's data for it.
+  call to one answers `Unknown tool`, and an app tool's result carries none of the view's data for it.
 - **The capability is read per request.** A legacy client declares it once at `initialize` and is issued an
   `Mcp-Session-Id` (`ui.<nonce>.<signature>`) that stores nothing: the app signs it, and an id the app did not sign is
   served as a client without views. With `modern: true` a modern request carries the capability in `_meta`. A client
   that declares nothing is issued no session, exactly as before.
-- **A read-only deployment has no MCP Apps.** With `readOnly` / `AKAN_MCP_READONLY` there are no page tools, app-only
-  tools, views or UI sessions, since running a page makes its own `fetch.*` calls, mutations included.
-- **The view is the page, not the app around it.** Each layout above it still runs — guards, providers,
-  `<Agent.Guide>` — but what it draws around `{children}` is hidden, with its frame chrome (`Layout.Navbar`,
-  `TopInset`, `BottomInset`, `BottomTab`), the `topInset` / `bottomInset` it reserves and the tools its controls
-  publish. A layout that draws no page, like a gate, is the screen then and is shown. The screen the view opened on
-  has no back button: there is nothing behind it.
+- **A read-only deployment keeps its apps.** With `readOnly` / `AKAN_MCP_READONLY` the app tools, their resources and
+  views stay, since a load may only query, and the result says so in `_meta`; the view refuses a write before it
+  reaches the host with `base.error.readOnlyDeployment`, toasted in the person's language. A `.prompt()` page's text
+  tool is dropped, since its run renders the whole page; the prompt stays.
+- **`.prompt()` is a briefing, never a view.** Its page is also a text tool of the same name, marked
+  `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included. To have a host draw
+  part of that screen, declare an `.app()` beside it.
 - **The view has no network.** `connect-src` stays closed; the app's own origin is opened for what a page loads by
   URL — fonts (served with `Access-Control-Allow-Origin: *`) and stored images — and every root-relative URL the
   page writes is pointed at it, since a host may block the document's `<base>` (Claude does).
-  Cookies and Web Storage are in-memory, history is in-memory, and the websocket, live sync, pubsub, the reconnect
-  overlay and `<Agent.Chat />` are off. A path link routes inside the view; any other link opens through the host.
+  Cookies and Web Storage are in-memory, and the websocket, live sync, pubsub, the reconnect overlay and
+  `<Agent.Chat />` are off.
 - **The view looks like the host.** Its neutrals (`--background`, `--foreground`, `--muted`, `--border`, `--ring`) and
   `--font-sans` / `--font-mono` follow the host's theme variables, its theme follows the host's, and so does its
   language when the app speaks it; the app's brand colors and radii stay its own.
-- **The host's model drives the screen too.** The view offers the host the screen's own tools — the surface
-  `<Agent.Chat />` reads: `st.tool`, the form setters, `fill<Model>Form`, `navigate` / `readScreen` / `readState` /
-  `highlight` — and, to a host that takes it, the screen's context (route, live state, `<Agent.Guide>`) through
+- **The host's model drives the component too.** The view offers the host the tools the element publishes — the
+  surface `<Agent.Chat />` reads: `st.tool`, the form setters, `fill<Model>Form`, `readScreen` / `readState` /
+  `highlight` — and, to a host that takes it, the view's context (route, live state, `<Agent.Guide>`) through
   `ui/update-model-context` whenever it moves. A tool that declares `confirm` asks the person in the view through
   the `AgentApproval` slot, whatever the host asks on its own; a card tool, which a person answers in a chat, is not
   offered.
 - **A person tapping in the view acts with the agent's token**, so `isAgentCall` is true and a `Person` act is
   refused there. That act belongs on the web page the result links to. The view holds no token: it is handed the
-  caller's claims, so `getSelf({ unauthorize })` in a layout renders the screen instead of a sign-in page, and each
-  call it makes is relayed and judged by the guards.
+  caller's claims, and each call it makes is relayed and judged by the guards.
 - **A view's call answers what a browser would get**, in `_meta` beside the masked result: the value with its
   `visual` fields, or the domain `Err` with its key and data, toasted in the user's language. A refusal and a crash
-  stay generalized.
-- **What a document load would do, the view does in place.** `router.refresh()` renders the route afresh, a
-  download (`<a download>`, a data table's export) goes to a host that saves files, and a full navigation off the
-  app shows a notice instead of a blank frame.
-- **A page named like an endpoint stays a prompt only**, published or not, and the boot log says so: the endpoint
-  keeps its name. A refused screen answers as a tool error (`isError`), which the model reads.
-- `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` keeps every page a prompt only. `web: { csr: false }`
-  publishes the tool with no view, and an API-only build (`web: false`) has no pages to publish.
+  stay generalized. A load that throws, or a read that fails while the element draws, shows `The page failed to
+  load.`; a download (`<a download>`, a data table's export) goes to a host that saves files.
+- `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` publishes no page tools: no app is published and every
+  prompt stays a prompt only. `web: { csr: false }` publishes the app tools with no view, and an API-only build
+  (`web: false`) has no pages to publish.
 
 ## Progress Reporting
 **`McpProgress.report(n, { total, message })`** reports progress from anywhere inside a call, a service or adapter
@@ -503,9 +535,9 @@ the same guards.** What stays closed is closed because no agent has a reason to 
 
 ## Writing `instructions`
 
-`*.abstract.md` never reaches an MCP client, and `<Agent.Guide>` only through an MCP Apps view, beside the screen's own
-tools it explains. Exactly three texts reach every client: `instructions`, every published entry's `.desc()`, and a
-page's `.prompt()` description. All three are English, whatever the users speak
+`*.abstract.md` never reaches an MCP client, and `<Agent.Guide>` only through an MCP App's view, from inside the app's
+element, beside the tools it explains. Exactly these texts reach every client: `instructions`, every published entry's
+`.desc()`, and a page's `.prompt()` and `.app()` descriptions. All are English, whatever the users speak
 — the reader is a model, and the catalogue is built once in one `language` and cached by clients.
 
 - **`instructions` is the workflow.** Five to eight sentences, in this order: what the app is and what its nouns
@@ -529,6 +561,9 @@ page's `.prompt()` description. All three are English, whatever the users speak
   report, an onboarding check. Its instruction is the `.prompt()` description alone and its attachments are what
   the screen fetched, masked by their return models — so to change what a prompt hands the model, change what the
   screen loads, and keep the description to the ask.
+- **An app is a tool the model picks**, like a read endpoint: its description says what the component shows and for
+  which arguments (`Show one ticket with its status and assignee.`), and the model reads the briefing of what its load
+  fetched whether or not the host draws the view.
 
 ## Verifying An App
 

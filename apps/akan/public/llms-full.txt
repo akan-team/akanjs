@@ -922,6 +922,7 @@ Headings:
 - Chain Stages
 - Layout File Shape
 - Root Layout Stages
+- Route Guards
 - Google Analytics
 - Search Engines
 - Base Paths
@@ -976,11 +977,11 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param(), .prompt() and .app() are string literals.
 
 Chain Stages
 
-There are fifteen stages, and the three chains share most of them. page() adds .prompt(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.
+There are eighteen stages, and the three chains share most of them. page() adds .prompt() and .app(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.
 
 Stage
 
@@ -1369,7 +1370,9 @@ Headings:
 - page / layout / rootLayout
 - layout / rootLayout Stages
 - PageConfig
+- guard
 - prompt
+- app
 - resolveRouteModule / isRouteDefinition
 - Font / createFont
 - usePage / msg / Err
@@ -1813,7 +1816,7 @@ travels over it
 
 does not
 
-An MCP prompt is not an endpoint kind. It is declared on a page with `page().prompt(name, description)`.
+An MCP prompt is not an endpoint kind, and neither is an MCP App. Both are declared on a page, with `page().prompt(name, description)` and `page().app(name, description, load)`.
 
 - The Signal File — How `Internal`, `Slice` and `Endpoint` are laid out in one `*.signal.ts`.
 

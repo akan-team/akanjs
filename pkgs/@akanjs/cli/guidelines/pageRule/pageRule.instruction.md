@@ -1,7 +1,7 @@
 # Page Rule — Route Files, The Route Chain, Heads, Lib Pages
 
-What a file under `page/` may be, how a route declares its arguments and settings, how heads merge, what a CSR
-bundle shows of a root layout, and how a lib's routes reach an app. `conventions` carries the invariants and the page
+What a file under `page/` may be, how a route declares its arguments and settings, how a route guards itself, how
+heads merge, what a CSR bundle shows of a root layout, and how a lib's routes reach an app. `conventions` carries the invariants and the page
 body shape — this is the full contract behind them. Before changing route behavior, check
 `pkgs/akanjs/server/routeTreeBuilder.ts` and nearby routes for the expected pattern.
 
@@ -25,10 +25,10 @@ body shape — this is the full contract behind them. Before changing route beha
 
 - **A route file exports one thing**: `export default page()…render(…)` for a page, `layout()…render(…)` for a
   `_layout.tsx`, `rootLayout()…render(…)` for the app's (or a basePath's) root `_layout.tsx`. Every route setting is
-  a stage of the chain — `.param()`, `.search()`, `.config()`, `.head()`, `.loading()`; `.notFound()` / `.error()` on
-  a layout; `.fonts()` / `.theme()` / `.manifest()` / `.reconnect()` / `.wsConnect()` / `.layoutStyle()` /
-  `.viewport()` on the root layout; `.prompt()` on a page. A named export beside the chain, or `page()` in a
-  `_layout.tsx`, fails the build.
+  a stage of the chain — `.param()`, `.search()`, `.config()`, `.guard()`, `.head()`, `.loading()`; `.notFound()` /
+  `.error()` on a layout; `.fonts()` / `.theme()` / `.manifest()` / `.reconnect()` / `.wsConnect()` /
+  `.layoutStyle()` / `.viewport()` on the root layout; `.prompt()` and `.app()` on a page. A named export beside the
+  chain, or `page()` in a `_layout.tsx`, fails the build.
 - **A page names every `[x]` segment of its path with `.param("x", Type)`** and reads a query key only through
   `.search("k", Type)`. Values arrive typed — `ID`/`String` → string, `Int`/`Float` → number, `Boolean`, `Date` →
   Dayjs, an `enumOf` class → its union, `[T]` → array — a path value the type refuses answers not-found, and a
@@ -40,6 +40,43 @@ body shape — this is the full contract behind them. Before changing route beha
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - There is no `loader=` / `render=` page prop and no `PageProps` interface: the chain declares the arguments and
   `.render()` receives them flat, typed, with `lang` on every route and `children` added for a layout.
+
+## Route Guards — `.guard()`
+
+- **`.guard(fn)` decides who may open a route before any of it renders.** Every chain takes it, once: a second
+  `.guard()` throws when the module loads. `fn` receives the route's typed arguments and `lang` (a layout's gets no
+  `children`) and may be `async`. It refuses by moving the router — `router.redirect(href)`, `router.notFound()` — or
+  with `getSelf({ unauthorize })`; `signedIn()` from `@libs/shared/webkit` is that last one, called inside an arrow
+  (`.guard(() => signedIn())`), because `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
+- **On the server every guard of the chain runs before any layout body starts**, root layout first, so a redirect is
+  a real 307 even after an awaited query, and a not-found is a 404 — where a `getSelf({ unauthorize })` inside a layout
+  body after I/O redirects late, inside the stream. A query in a guard that the server refuses with 403 or 404 (an
+  owner check) answers not-found, so the page never confirms the record exists.
+- **On a client navigation a page's layers wait for its guards**, run once per location; a guard that moves the
+  router ends the chain and the page draws nothing, and a refused or failed check runs again when the cached page
+  comes back or its layer is retried. Root layouts are drawn once for every page and are not gated themselves; their
+  guards still run in each page's chain.
+- **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and
+  the page tools in `tools/list` show only the screens whose guards admit the caller (a listing knows no arguments,
+  so a guard that reads one admits there and is checked again on the call).
+- **A route guard is not authorization for data.** It keeps a person off a screen and redirects early; every query
+  the screen makes is still judged by that endpoint's own `guards`. Write both: the signal guard is the gate, the
+  route guard is the courtesy that answers before the screen draws.
+
+## MCP Apps — `.app()`
+
+- **`.app(name, description, load)` publishes one component of a page as an MCP App**: a read-only tool of that name,
+  whose arguments are the page's `.param()` and `.search()` stages, and a single-file view of its own. `load` receives
+  the page's typed arguments and `lang` and returns the element (usually a `Zone` fed by unawaited `fetch.*` fields);
+  on the web that element reaches `.render()` as the argument named `name`, so the page places it.
+- A page may declare several. A name matches `^[A-Za-z0-9_-]{1,64}$`, is a string literal (the build reads it off the
+  source), shares one namespace with every page's prompts and apps, and needs an English description. A name
+  `.render()` already receives (`lang`, a `.param()` / `.search()` name, another app) fails to compile and throws when
+  the module loads, as does an app named like the page's `.prompt()`.
+- **`load` may only query** (`base.error.mutationInApp` otherwise): keep writes in `.render()` around the element, and
+  gating in `.guard()`. The view runs `load` with no layout body and no `.render()`: it gets the root layout's theme,
+  fonts and framework providers through the generated `McpAppRoot`, and nothing a layout body provides. Full
+  contract: `mcpRule`.
 
 ## Heads
 
@@ -58,7 +95,7 @@ body shape — this is the full contract behind them. Before changing route beha
   second screen beside the frame. Its components still mount and their effects run (`<Auth.User />` works).
 - Anything a person must see from a root layout — an overlay, a gate, a banner — renders through
   `createPortal(…, document.body)`, as `<Agent.Chat />` and the dialogs already do. A non-root `_layout.tsx` has no
-  such limit.
+  such limit. A gate belongs in the root layout's `.guard()`, which runs in every page's chain.
 
 ## Lib Pages — `syncPageLibs`
 

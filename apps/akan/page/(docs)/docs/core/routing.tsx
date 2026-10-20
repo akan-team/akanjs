@@ -55,6 +55,24 @@ const crawlerFiles = [
   },
 ];
 
+const guardRuns = [
+  {
+    name: "SSR",
+    en: "Every guard in the chain runs in order, root layout first and page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404.",
+    ko: "체인의 모든 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저 실행됩니다. 쿼리를 await한 뒤라도 redirect는 실제 307이 되고, not-found는 404가 됩니다.",
+  },
+  {
+    name: "CSR",
+    en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain.",
+    ko: "페이지의 레이어는 guard를 기다리며, guard는 위치마다 한 번 실행됩니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 페이지가 다시 화면에 오거나 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행됩니다.",
+  },
+  {
+    name: "MCP",
+    en: "A page prompt or app tool runs the route's guards before anything else, and prompts/list and the page tools in tools/list show only the screens whose guards admit the caller.",
+    ko: "page prompt와 app tool은 무엇보다 먼저 라우트의 guard를 실행하고, prompts/list와 tools/list의 페이지 tool에는 guard가 호출자를 들여보내는 화면만 나옵니다.",
+  },
+];
+
 const chainStages = [
   {
     en: "Every chain",
@@ -79,6 +97,16 @@ const chainStages = [
         required: false,
         en: "An optional query key; [String] reads a list, and a value the type refuses is dropped.",
         ko: "선택 사항인 쿼리 키입니다. [String]은 목록을 읽고, 타입이 거부하는 값은 버려집니다.",
+      },
+      {
+        name: ".guard",
+        args: "(fn)",
+        page: true,
+        layout: true,
+        rootLayout: true,
+        required: false,
+        en: "A check that runs before anything renders and refuses with router.redirect() or router.notFound().",
+        ko: "무엇이든 렌더링되기 전에 실행되는 검사이며, router.redirect()나 router.notFound()로 거절합니다.",
       },
       {
         name: ".config",
@@ -125,6 +153,16 @@ const chainStages = [
         required: false,
         en: "Publishes the screen as an MCP prompt: .param() args are required, .search() optional.",
         ko: "화면을 MCP prompt로 공개합니다. .param()은 필수 인자, .search()는 선택 인자가 됩니다.",
+      },
+      {
+        name: ".app",
+        args: "(name, desc, load)",
+        page: true,
+        layout: false,
+        rootLayout: false,
+        required: false,
+        en: "Publishes one component as an MCP App, a read-only tool; .render() gets its element under that name.",
+        ko: "컴포넌트 하나를 읽기 전용 tool인 MCP App으로 공개합니다. .render()는 그 요소를 같은 이름의 인자로 받습니다.",
       },
     ],
   },
@@ -424,8 +462,8 @@ export default page()
           />
           <Docs.Alert type="info">
             {l.trans({
-              en: "Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param() and .prompt() are string literals.",
-              ko: "head는 root부터 아래로 병합됩니다. 더 깊은 .head()는 <title>, name이나 property가 같은 meta, canonical·manifest·icon link를 덮어쓰고 나머지는 그대로 둡니다. canonical link와 og:url은 URL 하나를 가리키므로, 페이지는 레이아웃의 것을 물려받지 않고 자기 .head()에 적은 것만 씁니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param()과 .prompt()의 이름은 문자열 리터럴로 씁니다.",
+              en: "Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param(), .prompt() and .app() are string literals.",
+              ko: "head는 root부터 아래로 병합됩니다. 더 깊은 .head()는 <title>, name이나 property가 같은 meta, canonical·manifest·icon link를 덮어쓰고 나머지는 그대로 둡니다. canonical link와 og:url은 URL 하나를 가리키므로, 페이지는 레이아웃의 것을 물려받지 않고 자기 .head()에 적은 것만 씁니다. <title>의 자식은 문자열 하나로 쓰고, 값이 들어가면 template literal을 사용합니다. hreflang alternate는 Akan이 locale마다 직접 넣으므로 적지 않습니다. page() 체인은 모듈의 유일한 export여야 하며, .param(), .prompt(), .app()의 이름은 문자열 리터럴로 씁니다.",
             })}
           </Docs.Alert>
         </Scroll.Slide>
@@ -436,8 +474,8 @@ export default page()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "There are fifteen stages, and the three chains share most of them. page() adds .prompt(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.",
-                ko: "단계는 모두 열다섯 개이고, 세 체인이 그 대부분을 공유합니다. page()는 .prompt()를, layout()은 .notFound()와 .error()를 더하며, rootLayout()은 앱 공통 단계까지 가진 layout입니다. 세 열은 각 단계를 어느 체인에서 쓸 수 있는지 표시합니다.",
+                en: "There are eighteen stages, and the three chains share most of them. page() adds .prompt() and .app(); layout() adds .notFound() and .error(); rootLayout() is a layout that also carries the app-wide stages. The three columns mark which builder each stage is legal on.",
+                ko: "단계는 모두 열여덟 개이고, 세 체인이 그 대부분을 공유합니다. page()는 .prompt()와 .app()을, layout()은 .notFound()와 .error()를 더하며, rootLayout()은 앱 공통 단계까지 가진 layout입니다. 세 열은 각 단계를 어느 체인에서 쓸 수 있는지 표시합니다.",
               })}
             </div>
             <Docs.Matrix
@@ -476,6 +514,41 @@ export default page()
               {l.trans({
                 en: "lang is never declared. Every route sits under the locale, and the value reaches every stage as lang. A page must declare every [x] segment of its path; a layout may leave some undeclared.",
                 ko: "lang은 선언하지 않습니다. 모든 라우트가 locale 아래에 놓이고 값이 lang으로 모든 단계에 전달됩니다. 페이지는 경로의 [x] 세그먼트를 모두 선언해야 하고, 레이아웃은 일부를 남겨 둘 수 있습니다.",
+              })}
+            </Docs.Alert>
+            <Docs.Alert type="info">
+              {l.trans({
+                en: (
+                  <span>
+                    Only <code>page()</code> publishes to MCP clients. <code>.prompt()</code> briefs a model on what the
+                    screen loads, and <code>.app()</code> publishes one component as an MCP App: a read-only tool whose
+                    own view a host draws in the chat. Both are covered in the client reference, under{" "}
+                    <Link href="/references/akanjs/client#prompt" className="text-primary">
+                      prompt
+                    </Link>{" "}
+                    and{" "}
+                    <Link href="/references/akanjs/client#app" className="text-primary">
+                      app
+                    </Link>
+                    .
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    MCP 클라이언트에 공개할 수 있는 것은 <code>page()</code>뿐입니다. <code>.prompt()</code>는 화면이
+                    불러오는 데이터를 model에게 브리핑하고, <code>.app()</code>은 컴포넌트 하나를 MCP App으로
+                    공개합니다. MCP App은 host가 채팅 안에 자체 view로 그리는 읽기 전용 tool입니다. 자세한 내용은 client
+                    레퍼런스의{" "}
+                    <Link href="/references/akanjs/client#prompt" className="text-primary">
+                      prompt
+                    </Link>
+                    와{" "}
+                    <Link href="/references/akanjs/client#app" className="text-primary">
+                      app
+                    </Link>
+                    에서 다룹니다.
+                  </span>
+                ),
               })}
             </Docs.Alert>
           </Docs.Description>
@@ -582,10 +655,86 @@ export default rootLayout()
           />
           <div>
             {l.trans({
-              en: "Each of these is one row of the Chain Stages table above, and only .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect() and .layoutStyle() are exclusive to this file. Everything else here — .config(), .head(), .loading(), .notFound(), .error(), .render() — is the ordinary layout surface.",
-              ko: "여기 쓰인 단계는 모두 위의 Chain Stages 표에 한 행씩 있으며, 이 파일에만 있는 것은 .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect(), .layoutStyle() 여섯 개뿐입니다. 나머지 .config(), .head(), .loading(), .notFound(), .error(), .render()는 일반 layout에도 있는 단계입니다.",
+              en: "Each of these is one row of the Chain Stages table above, and only .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect(), .layoutStyle() and .viewport() are exclusive to this file. Everything else here — .config(), .head(), .guard(), .loading(), .notFound(), .error(), .render() — is the ordinary layout surface.",
+              ko: "여기 쓰인 단계는 모두 위의 Chain Stages 표에 한 행씩 있으며, 이 파일에만 있는 것은 .fonts(), .manifest(), .theme(), .reconnect(), .wsConnect(), .layoutStyle(), .viewport() 일곱 개뿐입니다. 나머지 .config(), .head(), .guard(), .loading(), .notFound(), .error(), .render()는 일반 layout에도 있는 단계입니다.",
             })}
           </div>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="route-guard" title={l.trans({ en: "Route Guards", ko: "라우트 가드" })}>
+          <Docs.Title>{l.trans({ en: "Route Guards", ko: "라우트 가드" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: ".guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and may be async. It refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: \"/signin\" }); signedIn() from @libs/shared/webkit makes that last call for you.",
+                ko: '.guard(fn)은 무엇이든 렌더링되기 전에 라우트를 열어도 되는지 정합니다. 세 체인 모두에 있고 라우트마다 한 번만 쓰며, 두 번째 .guard()는 모듈을 불러올 때 에러를 던집니다. fn은 라우트의 타입이 붙은 .param()·.search() 값과 lang을 받고, 레이아웃의 children은 받지 않으며, async여도 됩니다. router.redirect(href), router.notFound(), getSelf({ unauthorize: "/signin" }) 중 하나를 호출해 거절하며, @libs/shared/webkit의 signedIn()이 마지막 호출을 대신해 줍니다.',
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            title="page/(user)/_layout.tsx"
+            code={`import { signedIn } from "@libs/shared/webkit";
+import { layout } from "akanjs/client";
+
+export default layout()
+  .guard(() => signedIn())
+  .render(({ children }) => <div className="flex flex-col">{children}</div>);`}
+          />
+          <Code.Snippet
+            className="w-full"
+            title="page/(user)/ticket/[ticketId].tsx"
+            code={`import { fetch } from "@apps/myapp/client";
+import { ID } from "akanjs/base";
+import { page, router } from "akanjs/client";
+
+export default page()
+  .param("ticketId", ID)
+  .guard(async ({ ticketId }) => {
+    const ticket = await fetch.ticket(ticketId);
+    if (ticket.status === "archived") router.redirect("/tickets");
+  })
+  .render(({ ticketId }) => <div>Ticket {ticketId}</div>);`}
+          />
+          <Docs.IntroTable
+            type={l.trans({ en: "Where", ko: "실행 위치" })}
+            items={guardRuns.map(({ name, en, ko }) => ({ name, desc: l.trans({ en, ko }) }))}
+          />
+          <Docs.Alert type="warning">
+            {l.trans({
+              en: "A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.",
+              ko: "라우트 guard는 데이터 권한이 아닙니다. 누가 화면을 열 수 있는지 정하고 일찍 redirect할 뿐이며, 화면이 보내는 모든 쿼리는 여전히 그 endpoint의 signal guard가 판정하므로 둘 다 둡니다. guard 안의 쿼리를 서버가 403이나 404로 거절하면 not-found로 응답하므로, 화면은 그 레코드가 있는지 알려 주지 않습니다.",
+            })}
+          </Docs.Alert>
+          <Docs.Alert type="info">
+            {l.trans({
+              en: (
+                <span>
+                  Call <code>signedIn()</code>, never pass it: <code>.guard(signedIn)</code> would hand the route's
+                  arguments to <code>unauthorize</code>. In a <code>_layout.tsx</code>, prefer{" "}
+                  <code>{".guard(() => signedIn())"}</code> to <code>{"getSelf({ unauthorize })"}</code> in the layout
+                  body: the guard runs before anything renders, so the redirect is a real 307 on the server. The{" "}
+                  <Link href="/references/akanjs/client#guard" className="text-primary">
+                    client reference
+                  </Link>{" "}
+                  covers the rest.
+                </span>
+              ),
+              ko: (
+                <span>
+                  <code>signedIn()</code>은 넘기지 말고 호출합니다. <code>.guard(signedIn)</code>으로 쓰면 라우트 인자가{" "}
+                  <code>unauthorize</code>로 들어갑니다. <code>_layout.tsx</code>에서는 레이아웃 body 안의{" "}
+                  <code>{"getSelf({ unauthorize })"}</code>보다 <code>{".guard(() => signedIn())"}</code>을 씁니다.
+                  guard는 무엇이든 렌더링되기 전에 실행되므로 서버에서 redirect가 실제 307이 됩니다. 나머지는{" "}
+                  <Link href="/references/akanjs/client#guard" className="text-primary">
+                    client 레퍼런스
+                  </Link>
+                  에서 다룹니다.
+                </span>
+              ),
+            })}
+          </Docs.Alert>
         </Scroll.Slide>
         <Divider />
 
