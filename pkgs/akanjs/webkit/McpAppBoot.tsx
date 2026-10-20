@@ -53,6 +53,7 @@ export class McpAppBoot {
       },
     });
     Translator.setActiveLocale(lang);
+    document.documentElement.lang = lang;
     st.set({
       params: { ...start.route.params, lang },
       searchParams: start.route.searchParams,
@@ -63,30 +64,34 @@ export class McpAppBoot {
     new McpAppAgent(bridge).start();
     let element: ReactNode;
     try {
-      element = await McpAppBoot.#load(app, page, { ...start.route, params: { ...start.route.params, lang } });
+      element = await McpAppBoot.#load(app, page, start.route, lang);
     } catch (error) {
-      Logger.error(
-        `[mcp-app] ${app} failed to load: ${error instanceof Error ? (error.stack ?? error.message) : error}`,
-      );
-      view.showUnavailable("The page failed to load.");
+      McpAppBoot.#fail(view, `${app} failed to load`, error);
       return;
     }
     const container = document.getElementById("root");
     if (!container) throw new Error("No root element");
     const Root = root.McpAppRoot ?? McpAppBoot.#bare;
-    ReactDOM.createRoot(container).render(
+    //? No layout's error boundary sits above the element: a read that fails while it draws would leave a blank view.
+    ReactDOM.createRoot(container, {
+      onUncaughtError: (error) => McpAppBoot.#fail(view, `${app} failed to draw`, error),
+    }).render(
       <Root params={{ lang }} path={path}>
         {element}
       </Root>,
     );
   }
 
-  static async #load(app: string, page: RouteModuleSource, route: McpAppRoute): Promise<ReactNode> {
+  static #fail(view: McpAppView, what: string, error: unknown) {
+    Logger.error(`[mcp-app] ${what}: ${error instanceof Error ? (error.stack ?? error.message) : error}`);
+    view.showUnavailable("The page failed to load.");
+  }
+
+  static async #load(app: string, page: RouteModuleSource, route: McpAppRoute, lang: string): Promise<ReactNode> {
     const { definition } = resolveRouteModule(page, `the page of ${app}`, { kind: "page" });
     if (definition?.kind !== "page") throw new Error(`the module handed to the ${app} view is not a page() chain`);
     const pageDefinition = definition as PageDefinition;
-    const args = { lang: route.params.lang ?? parseAkanI18nEnv().defaultLocale, ...pageDefinition.resolveArgs(route) };
-    return await pageDefinition.loadApp(app, args);
+    return await pageDefinition.loadApp(app, { lang, ...pageDefinition.resolveArgs(route) });
   }
 
   static #bare({ children }: McpAppRootProps) {

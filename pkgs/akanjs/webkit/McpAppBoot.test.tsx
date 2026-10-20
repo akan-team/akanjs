@@ -39,6 +39,9 @@ const settle = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 const lastRequest = (method: string) => sent.filter((message) => message.method === method).at(-1);
 
 const memoId = "507f1f77bcf86cd799439011";
+const Broken = () => {
+  throw new Error("a read failed while it drew");
+};
 const memoPage = {
   default: page()
     .param("memoId", ID)
@@ -46,6 +49,7 @@ const memoPage = {
     .app("failMemo", "Fails to load.", () => {
       throw new Error("the load broke");
     })
+    .app("brokenMemo", "Fails to draw.", () => <Broken />)
     .render(() => null),
 };
 const root = {
@@ -79,6 +83,7 @@ describe("McpAppBoot", () => {
     expect(main?.getAttribute("data-lang")).toBe("ko");
     expect(main?.getAttribute("data-path")).toBe(`/memo/${memoId}`);
     expect(main?.textContent).toBe(`memo ${memoId} in ko`);
+    expect(document.documentElement.lang).toBe("ko");
     expect(FetchClient.bridged).toBe(true);
   });
 
@@ -89,13 +94,15 @@ describe("McpAppBoot", () => {
     expect(lastRequest("ui/open-link")?.params).toEqual({ url: "https://app.example.com/en/memo/2" });
   });
 
-  test("says why it draws nothing for a result that starts no app, or an app whose load fails", async () => {
+  test("says why it draws nothing for a result that starts no app, or an app that fails to load or to draw", async () => {
     await boot("showMemo", {
       content: [{ type: "text", text: "No screen exists for these arguments." }],
       isError: true,
     });
     expect(document.body.textContent).toBe("No screen exists for these arguments.");
     await boot("failMemo", started);
+    expect(document.body.textContent).toBe("The page failed to load.");
+    await boot("brokenMemo", started);
     expect(document.body.textContent).toBe("The page failed to load.");
   });
 });
