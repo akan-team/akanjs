@@ -1,5 +1,6 @@
 export { bootCsr, replacePages } from "./bootCsr";
 export { lazy } from "./lazy";
+export { McpAppBoot, type McpAppBootProps, type McpAppRootProps } from "./McpAppBoot";
 export { createRobotPage, createSitemapPage } from "./seoPages";
 export type * from "./types";
 export { useBodyScrollLock } from "./useBodyScrollLock";

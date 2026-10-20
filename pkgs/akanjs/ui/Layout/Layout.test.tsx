@@ -1,18 +1,15 @@
 import "../../test/registerDom";
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import type { CsrContextType, PathContextType } from "akanjs/client";
+import { beforeAll, describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { mount, setTestEnv } from "../testHelpers.fixture";
 
 let Layout: typeof import("./index").Layout;
-let client: typeof import("akanjs/client");
 
 beforeAll(async () => {
   setTestEnv("layouttest");
   process.env.AKAN_PUBLIC_RENDER_ENV = "ssr";
   ({ Layout } = await import("./index"));
-  client = await import("akanjs/client");
 });
 
 const renderToText = async (node: ReactNode) => new Response(await renderToReadableStream(node)).text();
@@ -127,77 +124,5 @@ describe("Layout.BottomTab", () => {
     expect(html).toContain("<s>tasks</s>");
     expect(html).not.toContain("<u>tasks</u>");
     expect(html).toContain(">2</span>");
-  });
-});
-
-describe("Layout chrome in an MCP view", () => {
-  const slots: HTMLElement[] = [];
-  const slotOf = (id: string) => {
-    const slot = document.createElement("div");
-    slot.id = id;
-    document.body.appendChild(slot);
-    slots.push(slot);
-    return slot;
-  };
-  const registered: string[] = [];
-  const inPage = (node: ReactNode, { entryId = "first", isHidden = false } = {}) => {
-    const location = { entryId, pathRoute: { path: "/memo", pageState: { transition: "none" } } };
-    const path = {
-      location,
-      registerFrameSlot: (slot: { type: string }) => {
-        registered.push(slot.type);
-        return () => undefined;
-      },
-    };
-    const csr = { history: { current: { locations: [{ entryId: "first" }, { entryId: "second" }] } } };
-    return (
-      <client.csrContext.Provider value={csr as unknown as CsrContextType}>
-        <client.pathContext.Provider value={path as unknown as PathContextType}>
-          <client.hiddenLayoutContext.Provider value={isHidden}>{node}</client.hiddenLayoutContext.Provider>
-        </client.pathContext.Provider>
-      </client.csrContext.Provider>
-    );
-  };
-  afterEach(() => {
-    for (const slot of slots.splice(0)) slot.remove();
-    registered.length = 0;
-    globalThis.__AKAN_EMBED__ = undefined;
-  });
-
-  test("chrome a hidden layout draws takes no slot and no room", () => {
-    const top = slotOf("topInsetContent");
-    const bottom = slotOf("bottomInsetContent");
-    const { container, unmount } = mount(
-      inPage(
-        <>
-          <Layout.Navbar title="Trips" back />
-          <Layout.TopInset>bar</Layout.TopInset>
-          <Layout.BottomTab tabs={[{ name: "Trips", href: "/trips" }]} />
-        </>,
-        { isHidden: true },
-      ),
-    );
-
-    expect(top.textContent).toBe("");
-    expect(bottom.textContent).toBe("");
-    expect(container.textContent).toBe("");
-    expect(registered).toEqual([]);
-    unmount();
-  });
-
-  test("the navbar of the screen a view opened on has no back, and the one pushed over it does", () => {
-    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
-    const top = slotOf("topInsetContent");
-    const topLeft = slotOf("topLeftActionContent");
-    const first = mount(inPage(<Layout.Navbar title="Trip notes" back />));
-
-    expect(top.textContent).toBe("Trip notes");
-    expect(topLeft.textContent).toBe("");
-    expect(registered).toEqual(["topInset"]);
-    first.unmount();
-
-    const second = mount(inPage(<Layout.Navbar title="Trip note" back />, { entryId: "second" }));
-    expect(topLeft.children.length).toBe(1);
-    second.unmount();
   });
 });

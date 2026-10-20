@@ -35,8 +35,7 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
       const targetRouteGuide = getTargetRouteGuide(pathSegments, routeGuide.current);
       const pathRoute = targetRouteGuide.pathRoute;
       if (!pathRoute) {
-        //? A view in memory has no /404 to load: only the screen it stands on leaves, and a link elsewhere is refused.
-        if (!csrLocation.isMemory || pathname === csrLocation.pathname) csrLocation.assign("/404");
+        csrLocation.assign("/404");
         throw new Error("404");
       }
       return pathRoute;

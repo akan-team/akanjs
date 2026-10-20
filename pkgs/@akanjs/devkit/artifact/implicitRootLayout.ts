@@ -215,6 +215,7 @@ ${layoutBinding}  return `;
 import { loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 import { System } from "akanjs/ui";
+import type { McpAppRootProps } from "akanjs/webkit";
 import { env } from "@apps/${opts.appName}/env/env.client";
 import { allDictionary } from ${JSON.stringify(dictMacroSpecifier)};
 ${clientImport}${inheritedImport}${userImport}
@@ -245,6 +246,22 @@ ${layoutExports}(
     >
       ${layoutChild}
     </System.Provider>
+  );
+}
+
+export function McpAppRoot({ children, params, path }: McpAppRootProps) {
+  return (
+    <System.App
+      params={params}
+      path={path}
+      env={env}
+      theme={theme}
+      viewport={viewport}
+      fonts={loadFonts(userFonts)}
+      className={defaultFontClassName}
+    >
+      {children}
+    </System.App>
   );
 }
 `

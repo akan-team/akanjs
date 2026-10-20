@@ -69,6 +69,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "The {app} app called {endpoint}, a mutation, while it loads: an app loads with queries only.",
       "{app} 앱이 불러오는 중에 mutation인 {endpoint}을(를) 호출했습니다. 앱은 쿼리로만 불러올 수 있습니다.",
     ],
+    readOnlyDeployment: [
+      "This server is read-only, so {endpoint} cannot run here.",
+      "읽기 전용 서버라 {endpoint}을(를) 실행할 수 없습니다.",
+    ],
   })
   .translate({
     somethingWrong: ["Something's wrong!", "문제가 생겼어요!"],

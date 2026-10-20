@@ -1,4 +1,5 @@
 import { getEnv } from "akanjs/base";
+import { AppProvider } from "./App";
 import { default as CSR, type CSRProviderProps } from "./CSR";
 import { Reconnect } from "./Reconnect";
 import { Root } from "./Root";
@@ -14,6 +15,8 @@ export const Provider = (props: CSRProviderProps | SSRProviderProps) => {
 };
 export const System = {
   Provider,
+  /** Around one `.app()`'s element in an MCP host's view; the generated root layout's `McpAppRoot` renders it. */
+  App: AppProvider,
   ThemeToggle,
   /** @deprecated Renders `children` and ignores `st`; render the children directly. */
   Root,

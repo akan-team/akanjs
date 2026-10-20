@@ -3,22 +3,28 @@ import { type ErrorResponsePayload, type FetchBridge, type FetchBridgeCall, rest
 import { MCP_APP_META, type McpAppSnapshotRecord, type McpToolResult } from "../signal/mcp/mcpProtocol";
 import type { McpAppBridge } from "./McpAppBridge";
 
-// The first read of each query the page run already made is answered from its snapshot, so the first paint costs
-// the host no round trip; every later read (a refetch, a page change) goes to the server.
+// The first read of each query the app's load already made is answered from its snapshot, so the first paint costs
+// the host no round trip; every later read (a refetch, a page of a list) goes to the server.
 export class McpAppFetchBridge implements FetchBridge {
   static readonly callTimeoutMs = 30_000;
 
   readonly #bridge: McpAppBridge;
   readonly #seeded: Map<string, unknown>;
+  readonly #readOnly: boolean;
 
-  constructor(bridge: McpAppBridge, snapshot: McpAppSnapshotRecord[]) {
+  constructor(bridge: McpAppBridge, snapshot: McpAppSnapshotRecord[], { readOnly = false } = {}) {
     this.#bridge = bridge;
     this.#seeded = new Map(
       snapshot.map((record) => [McpAppFetchBridge.#callKey(record.key, record.args), record.value]),
     );
+    this.#readOnly = readOnly;
   }
 
   async call(request: FetchBridgeCall) {
+    //? A read-only deployment lists no write, so the host would answer one with "Unknown tool"; this says why instead,
+    //? in the person's language, before anything is sent.
+    if (this.#readOnly && request.type === "mutation")
+      throw restoreRemoteError({ error: "base.error.readOnlyDeployment", data: { endpoint: request.key } }, 403);
     const callKey = McpAppFetchBridge.#callKey(request.key, request.args);
     if (request.type === "query" && this.#seeded.has(callKey)) {
       const value = this.#seeded.get(callKey);

@@ -48,8 +48,9 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain("export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;");
     // The ancestor root is its own level of the stack, so inheriting its loading would nest it inside itself.
     expect(generatedSource).toContain("export const Loading = userLayout.Loading;");
-    // Its guard runs from that level too, ahead of this one.
+    // Its guard runs from that level too, ahead of this one, and an MCP view takes its providers from there.
     expect(generatedSource).toContain("export const guard = userLayout.guard;");
+    expect(generatedSource).not.toContain("McpAppRoot");
     expect(generatedSource).toContain(
       "<UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>",
     );
@@ -82,6 +83,8 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedSource).toContain(
       "export const guard = RouteGuards.compose(inheritedLayout.guard, userLayout.guard);",
     );
+    expect(generatedSource).toContain("export function McpAppRoot({ children, params, path }: McpAppRootProps) {");
+    expect(generatedSource).toContain("<System.App");
     expect(generatedSource).toContain('import { allDictionary } from "../dict/useDict.ts";');
     expect(generatedSource).toContain(
       'allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}',

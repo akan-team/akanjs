@@ -1,6 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, useInHiddenLayout, usePathCtx } from "akanjs/client";
+import { cn, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
 
 import { Portal } from "../Portal";
@@ -81,8 +81,6 @@ interface FrameSlotPortalProps {
 }
 export const FrameSlotPortal = ({ slot, children }: FrameSlotPortalProps) => {
   const pathCtx = usePathCtx();
-  const isHidden = useInHiddenLayout();
-  if (isHidden) return null;
   if (getEnv().renderMode !== "csr") return <SsrFrameSlot slot={slot}>{children}</SsrFrameSlot>;
   //? A CSR frame has no server HTML to keep, and its slots, one set per stacked page, exist before the page renders.
   const path = pathCtx.location?.pathRoute?.path;

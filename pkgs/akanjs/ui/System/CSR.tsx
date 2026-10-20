@@ -7,7 +7,6 @@ import {
   Device,
   debugFrame,
   getPathInfo,
-  isMcpView,
   type PageActivity,
   type ReactFont,
   router,
@@ -28,7 +27,6 @@ import {
 import { createPortal } from "react-dom";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
-import { EmbedApproval } from "../Agent/EmbedApproval";
 import { animated } from "../animated";
 
 import { FontFace } from "../FontFace";
@@ -95,7 +93,6 @@ const CSRProvider = ({
             wsConnect={wsConnect}
           />
           <CSRBridge lang={lang} prefix={prefix} />
-          {isMcpView() ? <EmbedApproval /> : null}
         </>
       )}
     />
@@ -489,13 +486,7 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
             location={location}
             prefix={prefix}
           >
-            <RenderLayer
-              renders={renders}
-              index={0}
-              params={location.params}
-              searchParams={location.searchParams}
-              isEmbedded={isMcpView()}
-            />
+            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,

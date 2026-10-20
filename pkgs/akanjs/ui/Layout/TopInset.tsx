@@ -1,5 +1,5 @@
 "use client";
-import { cn, DEFAULT_TOP_INSET, debugFrame, useInHiddenLayout, usePathCtx } from "akanjs/client";
+import { cn, DEFAULT_TOP_INSET, debugFrame, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect } from "react";
 
 import { FrameSlotPortal } from "./FrameSlotPortal";
@@ -12,7 +12,6 @@ export interface TopInsetProps {
 
 export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_INSET }: TopInsetProps) => {
   const pathCtx = usePathCtx();
-  const isHidden = useInHiddenLayout();
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
 
@@ -22,14 +21,14 @@ export const TopInset = ({ className, children, estimatedHeight = DEFAULT_TOP_IN
     return () => debugFrame("topInset.unmount", { path, estimatedHeight });
   }, [path, estimatedHeight]);
   useLayoutEffect(() => {
-    if (!path || isHidden) return;
+    if (!path) return;
     return registerFrameSlot({
       type: "topInset",
       scope: "page",
       source: "topInset",
       estimatedHeight,
     });
-  }, [registerFrameSlot, estimatedHeight, path, isHidden]);
+  }, [registerFrameSlot, estimatedHeight, path]);
   return (
     <FrameSlotPortal slot="topInset">
       <div data-akan-frame-slot="topInset" data-akan-frame-role="topChrome" className={cn("size-full", className)}>

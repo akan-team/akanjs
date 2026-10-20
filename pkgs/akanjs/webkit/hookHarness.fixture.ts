@@ -81,7 +81,6 @@ export const csrClientBase = () => ({
   csrContext: { Provider: ({ children }: { children: unknown }) => children },
   csrLocation,
   debugFrame: () => undefined,
-  hiddenLayoutContext: createContext(false),
   isMcpView,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },

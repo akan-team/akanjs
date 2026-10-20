@@ -124,32 +124,6 @@ describe("CsrRouteTable lays out a page as the SSR route tree does", () => {
   });
 });
 
-describe("CsrRouteTable in an MCP view", () => {
-  const context: CsrRouteContext = {
-    "./__root_layout.tsx": layout("root"),
-    "./(tab)/_layout.tsx": async () => ({ default: () => "tab", pageConfig: { bottomInset: 64, cache: true } }),
-    "./(tab)/trips.tsx": async () => ({ default: () => "trips", pageConfig: { topInset: 48 } }),
-  };
-  const tripsState = async () => {
-    const table = await CsrRouteTable.boot(context, { device, basePaths: null });
-    const trips = table.snapshot().pathRoutes.find((route) => route.path.endsWith("/trips"));
-    return { state: trips?.pageState, explicit: trips?.explicitPageConfigKeys };
-  };
-  afterEach(() => {
-    globalThis.__AKAN_EMBED__ = undefined;
-  });
-
-  test("keeps no room a layout reserves for chrome the view hides, and the page's own room and the rest", async () => {
-    const web = await tripsState();
-    expect(web.state).toMatchObject({ bottomInset: 64, topInset: 48, cache: true });
-
-    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
-    const view = await tripsState();
-    expect(view.state).toMatchObject({ bottomInset: 0, topInset: 48, cache: true });
-    expect(view.explicit?.bottomInset).toBeUndefined();
-  });
-});
-
 describe("CsrRouteTable as the window resizes", () => {
   const context: CsrRouteContext = {
     "./__root_layout.tsx": layout("root"),

@@ -6,11 +6,10 @@ process.env.AKAN_PUBLIC_APP_NAME = "test";
 process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
-const { csrLocation, router } = await import("akanjs/client");
+const { router } = await import("akanjs/client");
 const { CsrGuards } = await import("./CsrGuards");
 
 const replaced: string[] = [];
-csrLocation.useMemory("/en/memo", { leave: () => undefined, reload: () => undefined });
 router.init({
   type: "csr",
   lang: "en",

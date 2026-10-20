@@ -69,9 +69,9 @@ const call = (returns: FetchBridgeCall["returns"], args: Record<string, unknown>
 });
 
 describe("McpAppBridge", () => {
-  test("introduces the view by `appInfo`, and starts where the result points with its seeded reads", async () => {
-    const { start, initialize } = await started({
-      structuredContent: { href: "/en/memo" },
+  test("introduces the view by `appInfo`, and starts from the route the load ran with and its seeded reads", async () => {
+    const { bridge, start, initialize } = await started({
+      structuredContent: { href: "/en/memo/1?tab=a", params: { lang: "en", memoId: "1" }, searchParams: { tab: "a" } },
       _meta: {
         [MCP_APP_META.snapshot]: [{ key: "memo", args: {}, value: 1 }],
         [MCP_APP_META.account]: { self: { id: "u1" } },
@@ -82,10 +82,18 @@ describe("McpAppBridge", () => {
     expect(sent.some((message) => message.method === "ui/notifications/initialized")).toBe(true);
     expect(start).toEqual({
       ok: true,
-      href: "/en/memo",
+      href: "/en/memo/1?tab=a",
+      route: { params: { lang: "en", memoId: "1" }, searchParams: { tab: "a" } },
       snapshot: [{ key: "memo", args: {}, value: 1 }],
       account: { self: { id: "u1" } },
+      readOnly: false,
     });
+    expect(bridge.href).toBe("/en/memo/1?tab=a");
+    const readOnly = await started({
+      structuredContent: { href: "/en", params: { lang: "en" } },
+      _meta: { [MCP_APP_META.readOnly]: true },
+    });
+    expect(readOnly.start).toMatchObject({ ok: true, readOnly: true, route: { searchParams: {} } });
   });
 
   test("reports a result that names no screen, or an error, or a cancellation, instead of a start", async () => {
@@ -93,6 +101,11 @@ describe("McpAppBridge", () => {
     expect(refused.start).toEqual({ ok: false, message: "No screen exists." });
     const briefOnly = await started({ content: [{ type: "text", text: "Name the memo." }] });
     expect(briefOnly.start).toEqual({ ok: false, message: "Name the memo." });
+    const routeless = await started({
+      content: [{ type: "text", text: "A v1 result." }],
+      structuredContent: { href: "/en" },
+    });
+    expect(routeless.start).toEqual({ ok: false, message: "A v1 result." });
     sent.length = 0;
     listeners.length = 0;
     const connecting = new McpAppBridge().connect();
@@ -121,7 +134,7 @@ describe("McpAppBridge", () => {
   });
 
   test("answers a seeded read once from the snapshot, then asks the host as a view", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const fetchBridge = bridge.fetchBridge([{ key: "probe", args: { id: "1" }, value: "seeded" }]);
     const returns = { refName: "String" };
     expect(await fetchBridge.call(call(returns, { id: "1", skip: undefined }))).toBe("seeded");
@@ -136,8 +149,32 @@ describe("McpAppBridge", () => {
     expect(await asked).toBe("raw");
   });
 
+  test("refuses a write in a read-only deployment before asking the host, and still relays the reads", async () => {
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
+    const fetchBridge = bridge.fetchBridge([], { readOnly: true });
+    sent.length = 0;
+    const write: FetchBridgeCall = {
+      key: "completeMemo",
+      type: "mutation",
+      args: { id: "1" },
+      returns: { refName: "String" },
+    };
+    const refused = (await fetchBridge.call(write).catch((error: unknown) => error)) as RestoredError;
+    expect(refused.toJSON?.()).toEqual({
+      error: "base.error.readOnlyDeployment",
+      statusCode: 403,
+      data: { endpoint: "completeMemo" },
+    });
+    expect(lastRequest("tools/call")).toBeUndefined();
+    const read = fetchBridge.call(call({ refName: "String" }, { id: "1" }));
+    const request = lastRequest("tools/call");
+    expect(request?.params?.name).toBe("probe");
+    fromHost({ id: request?.id, result: { content: [{ type: "text", text: "read" }] } });
+    expect(await read).toBe("read");
+  });
+
   test("sends no argument the caller left unset, so a slice's empty `Any` args never reach the server", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const unset = { args: null, skip: null, limit: undefined };
     const asked = bridge.fetchBridge([]).call(call({ refName: "String" }, { id: "1", sort: "latest", ...unset }));
     const request = lastRequest("tools/call");
@@ -147,7 +184,7 @@ describe("McpAppBridge", () => {
   });
 
   test("gives up on a relayed call the host never answers, as an HTTP call does, unless the call names its budget", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const fetchBridge = bridge.fetchBridge([]);
     jest.useFakeTimers();
     const keyOf = async (asked: Promise<unknown>) =>
@@ -169,7 +206,7 @@ describe("McpAppBridge", () => {
   });
 
   test("reads a masked answer by the declared return when the host dropped the view's value", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const fetchBridge = bridge.fetchBridge([]);
     const answer = async (returns: FetchBridgeCall["returns"], result: object) => {
       const asked = fetchBridge.call(call(returns));
@@ -190,7 +227,7 @@ describe("McpAppBridge", () => {
   });
 
   test("restores a refusal the server described for the view, key and data intact", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const asked = bridge.fetchBridge([]).call(call({ refName: "String" }));
     fromHost({
       id: lastRequest("tools/call")?.id,
@@ -205,7 +242,10 @@ describe("McpAppBridge", () => {
   });
 
   test("serves the screen's own tools to the host, holding an early list, and answers no call it cancelled", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } }, { updateModelContext: { text: {} } });
+    const { bridge } = await started(
+      { structuredContent: { href: "/en", params: { lang: "en" } } },
+      { updateModelContext: { text: {} } },
+    );
     expect(bridge.hostCapabilities).toEqual({ updateModelContext: { text: {} } });
     let release: () => void = () => undefined;
     let cancelled = false;
@@ -252,7 +292,7 @@ describe("McpAppBridge", () => {
   });
 
   test("answers the host's own requests and refuses what it does not implement", async () => {
-    await started({ structuredContent: { href: "/en" } });
+    await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     fromHost({ id: 41, method: "ping", params: {} });
     fromHost({ id: 42, method: "ui/call-app-tool", params: {} });
     expect(sent.find((message) => message.id === 41)?.result).toEqual({});
@@ -260,7 +300,7 @@ describe("McpAppBridge", () => {
   });
 
   test("drops the old theme's styles when the host changes the theme alone", async () => {
-    const { bridge } = await started({ structuredContent: { href: "/en" } });
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const seen: unknown[] = [];
     bridge.onHostContext((context) => void seen.push(context));
     fromHost({ method: "ui/notifications/host-context-changed", params: { displayMode: "fullscreen" } });

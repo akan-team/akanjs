@@ -8,14 +8,13 @@ process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
 const { McpAppAgent } = await import("./McpAppAgent");
-const { csrLocation } = await import("akanjs/client");
-csrLocation.useMemory("/en/memo", { leave: () => undefined, reload: () => undefined });
 
 const fakeBridge = ({ takesContext = false } = {}) => {
   const sent = { contexts: [] as string[], changed: 0, server: null as McpAppToolServer | null };
   const bridge = {
     hostCapabilities: takesContext ? { updateModelContext: { text: {} } } : {},
     toolsListed: false,
+    href: "/en/memo",
     serveTools: (server: McpAppToolServer) => {
       sent.server = server;
     },

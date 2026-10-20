@@ -7,7 +7,6 @@ process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
 const { McpAppView } = await import("./McpAppView");
-const { csrLocation, router } = await import("akanjs/client");
 
 describe("McpAppView.localize", () => {
   const locales = ["en", "ko"];
@@ -21,6 +20,8 @@ describe("McpAppView.localize", () => {
     expect(McpAppView.localize("/en/memo", "ja-JP", locales)).toBe("/en/memo");
     expect(McpAppView.localize("/en/memo", undefined, locales)).toBe("/en/memo");
     expect(McpAppView.localize("/memo", "ko-KR", locales)).toBe("/memo");
+    expect(McpAppView.languageOf("ko-KR", locales)).toBe("ko");
+    expect(McpAppView.languageOf("ja-JP", locales)).toBeUndefined();
   });
 });
 
@@ -31,7 +32,6 @@ describe("McpAppView.localize", () => {
 globalThis.__AKAN_EMBED__ = { kind: "mcp-app", origin: "https://app.example.com" };
 Object.defineProperty(document, "fonts", { configurable: true, value: { ready: Promise.resolve() } });
 
-const pushed: string[] = [];
 const opened: string[] = [];
 const saved: McpDownloadContent[][] = [];
 const sizes: unknown[] = [];
@@ -47,17 +47,6 @@ const bridge = {
   downloadFile: async (contents: McpDownloadContent[]) => void saved.push(contents),
 } as unknown as McpAppBridge;
 
-csrLocation.useMemory("/en/memo", { leave: () => undefined, reload: () => undefined });
-router.init({
-  type: "csr",
-  lang: "en",
-  router: {
-    push: (href) => void pushed.push(href),
-    replace: () => undefined,
-    back: () => undefined,
-    refresh: () => undefined,
-  },
-});
 const view = new McpAppView(bridge);
 view.mount();
 
@@ -73,25 +62,22 @@ const clickOn = (href: string, attributes: Record<string, string> = {}) => {
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
 const reset = () => {
-  for (const sent of [pushed, opened, saved]) sent.length = 0;
+  for (const sent of [opened, saved]) sent.length = 0;
 };
 
 describe("McpAppView links", () => {
-  test("routes a link to one of the app's own screens, in the view's locale", () => {
+  test("opens a link to another of the app's screens as its web page, on the app's origin, not the host's sandbox", () => {
     reset();
     clickOn("/en/memo/2?tab=a#notes");
     clickOn("https://app.example.com/en/memo/3");
-    clickOn("/ko/memo/4");
-    clickOn("/ko");
-    expect(pushed).toEqual(["/en/memo/2?tab=a#notes", "/en/memo/3", "/en/memo/4", "/en"]);
-    expect(opened).toEqual([]);
-  });
-
-  test("opens an address on the app's origin outside its screens there, not on the host's sandbox", () => {
-    reset();
     clickOn("/api/file/photo.png");
-    expect(opened).toEqual(["https://app.example.com/api/file/photo.png"]);
-    expect(pushed).toEqual([]);
+    view.open("/ko/memo/4");
+    expect(opened).toEqual([
+      "https://app.example.com/en/memo/2?tab=a#notes",
+      "https://app.example.com/en/memo/3",
+      "https://app.example.com/api/file/photo.png",
+      "https://app.example.com/ko/memo/4",
+    ]);
   });
 
   test("keeps a fragment on this screen", () => {
@@ -106,7 +92,7 @@ describe("McpAppView links", () => {
     clickOn("#notes");
     target.remove();
     expect(scrolled).toBe(true);
-    expect([...pushed, ...opened]).toEqual([]);
+    expect(opened).toEqual([]);
   });
 
   test("hands the host only a web, mail or phone address, and never a script, whatever the page wrote", () => {
@@ -135,7 +121,6 @@ describe("McpAppView links", () => {
       "mailto:help@example.com",
       "tel:+821012345678",
     ]);
-    expect(pushed).toEqual([]);
   });
 
   test("opens what `window.open` names the way a link would, and hands the page no window", () => {
@@ -143,8 +128,7 @@ describe("McpAppView links", () => {
     expect(window.open("https://other.example/doc", "_blank")).toBeNull();
     expect(window.open("javascript:alert(1)")).toBeNull();
     expect(window.open(new URL("https://app.example.com/en/memo/9"))).toBeNull();
-    expect(opened).toEqual(["https://other.example/doc"]);
-    expect(pushed).toEqual(["/en/memo/9"]);
+    expect(opened).toEqual(["https://other.example/doc", "https://app.example.com/en/memo/9"]);
   });
 });
 

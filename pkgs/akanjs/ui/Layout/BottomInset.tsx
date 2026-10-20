@@ -1,12 +1,5 @@
 "use client";
-import {
-  cn,
-  DEFAULT_BOTTOM_INSET,
-  debugFrame,
-  type FrameSlotRegistration,
-  useInHiddenLayout,
-  usePathCtx,
-} from "akanjs/client";
+import { cn, DEFAULT_BOTTOM_INSET, debugFrame, type FrameSlotRegistration, usePathCtx } from "akanjs/client";
 import { type ReactNode, useLayoutEffect, useState } from "react";
 
 import { FrameSlotPortal } from "./FrameSlotPortal";
@@ -38,7 +31,6 @@ export const BottomInset = ({
   //? State, not a ref: in a CSR frame the content mounts a render later, once its portal has found the slot.
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const pathCtx = usePathCtx();
-  const isHidden = useInHiddenLayout();
   const pathRoute = pathCtx.location?.pathRoute;
   const path = pathCtx.location?.pathRoute?.path;
   const registerFrameSlot = pathCtx.registerFrameSlot ?? (() => () => undefined);
@@ -65,7 +57,7 @@ export const BottomInset = ({
     return () => debugFrame("bottomInset.unmount", { path, frameSource });
   }, [path, keyboardSticky, contentAnchor, frameRole, frameScope, frameSource]);
   useLayoutEffect(() => {
-    if (!path || isHidden) return;
+    if (!path) return;
     const height = useDeclaredHeight ? resolvedEstimatedHeight : (measuredHeight ?? readContentHeight());
     return registerFrameSlot({
       type: "bottomInset",
@@ -88,7 +80,6 @@ export const BottomInset = ({
     frameCache,
     path,
     useDeclaredHeight,
-    isHidden,
   ]);
   useLayoutEffect(() => {
     const element = contentElement;
