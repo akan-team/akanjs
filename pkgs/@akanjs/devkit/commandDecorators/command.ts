@@ -8,6 +8,7 @@ import type {
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { type Command, program } from "commander";
+import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { AppSelectionMemory } from "../appSelectionMemory";
 import { AppExecutor, Executor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
 // Never the root barrel: it drags ink, ssh2 and the cloud stack into every command process.
@@ -31,7 +32,7 @@ const loggedCliErrorObjects = new WeakSet<object>();
 const loggedCliErrorMessages = new Set<string>();
 
 const formatCliError = (error: unknown): string => {
-  if (error instanceof Error) return error.message || error.name;
+  if (error instanceof Error) return ApplicationBuildReporter.formatError(error) || error.name;
   if (typeof error === "string") return error.trim() || "Unknown error";
   if (error === null || error === undefined) return "Unknown error";
   try {

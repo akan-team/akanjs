@@ -166,7 +166,6 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       if (!quiet) ApplicationBuildReporter.printSummary(result);
     } catch (error) {
       Logger.rawLog(`${app.name} build failed in dist/apps/${app.name}`, undefined, "error");
-      Logger.rawLog(ApplicationBuildReporter.formatError(error), undefined, "error");
       throw error;
     }
   }
@@ -190,7 +189,6 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       spinner.succeed(`${exec.name} typechecked`);
     } catch (error) {
       spinner.fail(`${exec.name} typecheck failed`);
-      Logger.rawLog(ApplicationBuildReporter.formatError(error), undefined, "error");
       throw error;
     }
   }
