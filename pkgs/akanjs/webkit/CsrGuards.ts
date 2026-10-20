@@ -64,7 +64,7 @@ export class CsrGuards {
     return CsrGuards.#runs.has(key);
   }
 
-  //? A verdict lasts while a layer of its location is on screen (a hidden page's effects are cleaned up too): a page
+  //? A verdict lasts while a layer of its location is on screen (a parked page's effects are cleaned up too): a page
   //? drawn again after it left asks again, since the session may have changed in between.
   static hold(key: string): () => void {
     CsrGuards.#holds.set(key, (CsrGuards.#holds.get(key) ?? 0) + 1);
@@ -75,7 +75,10 @@ export class CsrGuards {
         return;
       }
       CsrGuards.#holds.delete(key);
-      CsrGuards.#forget(key);
+      //? Forgotten a tick later: StrictMode releases and holds again within one commit, and would drop a run in flight.
+      queueMicrotask(() => {
+        if (!CsrGuards.#holds.has(key)) CsrGuards.#forget(key);
+      });
     };
   }
 

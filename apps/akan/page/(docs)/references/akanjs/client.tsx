@@ -836,8 +836,8 @@ export default page()
       {
         where: l.trans({ en: "Client navigation", ko: "클라이언트 이동" }),
         what: l.trans({
-          en: "A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page that comes back after it left asks again. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.",
-          ko: "page의 layer는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되고 그 주소의 layer가 화면에 있는 동안 유지되며, 화면을 떠났다 돌아온 page는 다시 묻습니다. guard가 router를 움직이면 chain이 끝나고 page는 아무것도 그리지 않습니다. root layout은 모든 page에 한 번만 그려져서 그 자체는 막히지 않지만, 그 guard는 page마다 chain 안에서 실행됩니다.",
+          en: "A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page back on screen asks again in the background while what it drew stays. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.",
+          ko: "page의 layer는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되고 그 주소의 layer가 화면에 있는 동안 유지되며, 화면에 다시 온 page는 그린 내용을 둔 채 뒤에서 다시 묻습니다. guard가 router를 움직이면 chain이 끝나고 page는 아무것도 그리지 않습니다. root layout은 모든 page에 한 번만 그려져서 그 자체는 막히지 않지만, 그 guard는 page마다 chain 안에서 실행됩니다.",
         }),
       },
       {

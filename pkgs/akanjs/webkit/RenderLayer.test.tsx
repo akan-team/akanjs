@@ -1,7 +1,16 @@
 import "../test/registerDom";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { layout, pathContext, type RouteRender, router, Translator } from "akanjs/client";
-import { act, type ReactNode } from "react";
+import {
+  layout,
+  type PageActivity,
+  page,
+  pageActivityContext,
+  pathContext,
+  type RouteRender,
+  router,
+  Translator,
+} from "akanjs/client";
+import { Activity, act, type ReactNode, StrictMode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { RenderLayer } from "./RenderLayer";
 
@@ -47,6 +56,70 @@ afterEach(async () => {
   container.remove();
   mounted = null;
 });
+
+const routerOf = () => {
+  const replaced: string[] = [];
+  router.init({
+    type: "csr",
+    lang: "en",
+    router: {
+      push: () => undefined,
+      replace: (href) => void replaced.push(href),
+      back: () => undefined,
+      refresh: () => undefined,
+    },
+  });
+  return replaced;
+};
+
+interface Shown {
+  activity?: PageActivity;
+  params?: Record<string, string>;
+  searchParams?: Record<string, string>;
+  isStrict?: boolean;
+}
+//? Draws the layers of one stack entry as the CSR stack does: parked pages sit in a hidden `<Activity>`.
+const stackOf = (renders: RouteRender[], pathRoute: { path: string }) => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+  const show = async ({
+    activity = "current",
+    params = { lang: "en" },
+    searchParams = {},
+    isStrict = false,
+  }: Shown) => {
+    const search = new URLSearchParams(searchParams).toString();
+    const location = {
+      href: `/en${pathRoute.path}${search ? `?${search}` : ""}`,
+      entryId: "e1",
+      pathname: `/en${pathRoute.path}`,
+      params,
+      searchParams,
+      pathRoute,
+    };
+    const tree = (
+      <Activity mode={activity === "hidden" ? "hidden" : "visible"}>
+        <pageActivityContext.Provider value={{ activity, focused: activity === "current" }}>
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={renders} index={0} params={params} searchParams={searchParams} />
+          </pathContext.Provider>
+        </pageActivityContext.Provider>
+      </Activity>
+    );
+    await act(async () => root.render(isStrict ? <StrictMode>{tree}</StrictMode> : tree));
+    await settle();
+  };
+  return { container, show };
+};
+const guardedLayoutOf = (guard: () => void): RouteRender => {
+  const shell = layout()
+    .guard(guard)
+    .render(({ children }) => <main>{children}</main>)
+    .toRouteModule();
+  return { kind: "layout", isAsync: true, render: shell.default as never, guard: shell.guard };
+};
 
 describe("RenderLayer", () => {
   test("a page whose render cannot reach the server says so and renders again on retry", async () => {
@@ -379,6 +452,171 @@ describe("RenderLayer", () => {
     expect(container.textContent).toBe("q=a");
     await draw("ab");
     expect(container.textContent).toBe("q=ab");
+    expect(guardRuns).toBe(1);
+  });
+  test("asks nothing for a parked page and keeps its state, then asks again once it is back while it stays drawn", async () => {
+    const replaced = routerOf();
+    const session = { isSignedIn: true };
+    let guardRuns = 0;
+    let instances = 0;
+    const shell = guardedLayoutOf(() => {
+      guardRuns += 1;
+      if (!session.isSignedIn) router.replace("/signin");
+    });
+    const Settings = () => {
+      useState(() => ++instances);
+      return <p>settings</p>;
+    };
+    const legacy: RouteRender = { kind: "page", render: Settings as RouteRender["render"] };
+    const { container, show } = stackOf([shell, legacy], {
+      path: "/settings",
+      renderRootLayouts: [],
+      renderLayouts: [shell],
+      renderPage: legacy,
+    } as never);
+
+    await show({});
+    expect(container.textContent).toBe("settings");
+    await show({ activity: "hidden" });
+    session.isSignedIn = false;
+    await show({ activity: "hidden" });
+    expect([guardRuns, replaced.length, instances]).toEqual([1, 0, 1]);
+
+    await show({});
+    expect([guardRuns, instances]).toEqual([2, 1]);
+    expect(container.textContent).toBe("settings");
+    expect(replaced).toEqual(["/en/signin"]);
+  });
+
+  test("asks a chain page's guards again once it is back on screen, so a sign-out while it was parked moves on", async () => {
+    const replaced = routerOf();
+    const session = { isSignedIn: true };
+    let guardRuns = 0;
+    const inbox = page()
+      .guard(() => {
+        guardRuns += 1;
+        if (!session.isSignedIn) router.replace("/signin");
+      })
+      .render(() => <p>inbox</p>)
+      .toRouteModule();
+    const inboxRender: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: inbox.default as never,
+      guard: inbox.guard,
+    };
+    const pathRoute = { path: "/inbox", renderRootLayouts: [], renderLayouts: [], renderPage: inboxRender };
+    const { container, show } = stackOf([inboxRender], pathRoute);
+
+    await show({});
+    await show({ activity: "hidden" });
+    session.isSignedIn = false;
+    await show({});
+    expect(guardRuns).toBe(2);
+    expect(replaced).toEqual(["/en/signin"]);
+    expect(container.textContent).toBe("inbox");
+  });
+
+  test("keeps a legacy page mounted with the props it was let in with while its next location is checked", async () => {
+    routerOf();
+    let admitOrg2: (() => void) | null = null;
+    let instances = 0;
+    const shell = layout()
+      .param("orgId", String)
+      .guard(async ({ orgId }) => {
+        if (orgId === "2") await new Promise<void>((resolve) => (admitOrg2 = resolve));
+      })
+      .render(({ children }) => <main>{children}</main>)
+      .toRouteModule();
+    const shellRender: RouteRender = {
+      kind: "layout",
+      isAsync: true,
+      render: shell.default as never,
+      guard: shell.guard,
+      paramNames: ["orgId"],
+    };
+    const Home = ({ params }: { params: Record<string, string> }) => {
+      useState(() => ++instances);
+      return <p>{`org ${params.orgId}`}</p>;
+    };
+    const legacy: RouteRender = { kind: "page", render: Home as RouteRender["render"] };
+    const pathRoute = { path: "/org", renderRootLayouts: [], renderLayouts: [shellRender], renderPage: legacy };
+    const { container, show } = stackOf([shellRender, legacy], pathRoute);
+
+    await show({ params: { lang: "en", orgId: "1" } });
+    expect(container.textContent).toBe("org 1");
+    await show({ params: { lang: "en", orgId: "2" } });
+    expect(container.textContent).toBe("org 1");
+    (admitOrg2 as (() => void) | null)?.();
+    await settle();
+    expect(container.textContent).toBe("org 2");
+    expect(instances).toBe(1);
+  });
+
+  test("asks a root layout's guard again when only a query it alone reads moves", async () => {
+    const replaced = routerOf();
+    let guardRuns = 0;
+    const app = layout()
+      .search("invite", String)
+      .guard(({ invite }) => {
+        guardRuns += 1;
+        if (invite === "bad") router.notFound();
+      })
+      .render(({ children }) => children)
+      .toRouteModule();
+    const appRender: RouteRender = { kind: "layout", isAsync: true, render: app.default as never, guard: app.guard };
+    const home = page()
+      .render(() => <p>home</p>)
+      .toRouteModule();
+    const homeRender: RouteRender = { kind: "page", isAsync: true, render: home.default as never };
+    const pathRoute = { path: "/home", renderRootLayouts: [appRender], renderLayouts: [], renderPage: homeRender };
+    const { container, show } = stackOf([homeRender], pathRoute);
+
+    await show({ searchParams: { invite: "ok" } });
+    expect(container.textContent).toBe("home");
+    await show({ searchParams: { invite: "bad" } });
+    expect(guardRuns).toBe(2);
+    expect(replaced).toEqual(["/en/404"]);
+  });
+
+  test("draws the next location after a layout's guard moved the router to a query only the page reads", async () => {
+    const replaced = routerOf();
+    let guardRuns = 0;
+    const shell = guardedLayoutOf(() => {
+      guardRuns += 1;
+      if (guardRuns === 1) router.redirect("/notes?tab=all");
+    });
+    const notes = page()
+      .search("tab", String)
+      .render(({ tab }) => <p>{`notes ${tab}`}</p>)
+      .toRouteModule();
+    const notesRender: RouteRender = { kind: "page", isAsync: true, render: notes.default as never };
+    const pathRoute = { path: "/notes", renderRootLayouts: [], renderLayouts: [shell], renderPage: notesRender };
+    const { container, show } = stackOf([shell, notesRender], pathRoute);
+
+    await show({});
+    expect(replaced).toEqual(["/en/notes?tab=all"]);
+    await show({ searchParams: { tab: "all" } });
+    await settle();
+    expect(container.textContent).toBe("notes all");
+    expect(guardRuns).toBe(2);
+  });
+
+  test("runs a location's guards once under StrictMode", async () => {
+    routerOf();
+    let guardRuns = 0;
+    const shell = guardedLayoutOf(() => {
+      guardRuns += 1;
+    });
+    const home = page()
+      .render(() => <p>home</p>)
+      .toRouteModule();
+    const homeRender: RouteRender = { kind: "page", isAsync: true, render: home.default as never };
+    const pathRoute = { path: "/home", renderRootLayouts: [], renderLayouts: [shell], renderPage: homeRender };
+    const { container, show } = stackOf([shell, homeRender], pathRoute);
+
+    await show({ isStrict: true });
+    expect(container.textContent).toBe("home");
     expect(guardRuns).toBe(1);
   });
 });

@@ -63,8 +63,8 @@ const guardRuns = [
   },
   {
     name: "CSR",
-    en: "A page's layers wait for its guards. Their verdict is kept by what the guards read, so a query only the page reads keeps it, and lasts while a layer of that location is on screen: a page that comes back after it left, a cached one included, asks again. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.",
-    ko: "페이지의 레이어는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되므로 페이지만 읽는 쿼리가 바뀌어도 유지되고, 그 위치의 레이어가 화면에 있는 동안 이어집니다. 화면을 떠났다가 다시 온 페이지는 캐시된 것이라도 다시 묻습니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않으며, 거절되거나 실패한 검사는 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행되고 그 아래의 레거시 페이지도 이 guard를 기다립니다.",
+    en: "A page's layers wait for its guards. Their verdict is kept by what the guards read, so a query only the page reads keeps it, and lasts while a layer of that location is on screen. A parked page asks nothing; back on screen, a cached one included, it asks again in the background while what it drew stays, and a refusal moves the router. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.",
+    ko: "페이지의 레이어는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되므로 페이지만 읽는 쿼리가 바뀌어도 유지되고, 그 위치의 레이어가 화면에 있는 동안 이어집니다. 화면 밖에 보관된 페이지는 아무것도 묻지 않고, 화면에 다시 오면 캐시된 것이라도 그린 내용을 둔 채 뒤에서 다시 물으며, 거절되면 라우터가 옮겨 갑니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않으며, 거절되거나 실패한 검사는 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행되고 그 아래의 레거시 페이지도 이 guard를 기다립니다.",
   },
   {
     name: "MCP",

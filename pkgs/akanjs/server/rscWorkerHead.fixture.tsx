@@ -1,12 +1,16 @@
 import { appendFileSync } from "node:fs";
 import type { ReactNode } from "react";
 import type { Head } from "../client/csrTypes";
-import { page } from "../client/route/routeBuilders";
+import { layout, page } from "../client/route/routeBuilders";
+import { AkanRedirectError } from "../client/router";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 import type { PagesContext } from "./routeTreeBuilder";
 
-const headOf = (name: string) => () => {
+const log = (name: string) => {
   if (process.env.AKAN_TEST_HEAD_LOG) appendFileSync(process.env.AKAN_TEST_HEAD_LOG, `${name}\n`);
+};
+const headOf = (name: string) => () => {
+  log(name);
   return <title>{name}</title>;
 };
 
@@ -25,5 +29,19 @@ export const pages: PagesContext = {
       // No route stage produces a head snapshot today, and without one a patch always falls back to a full render.
       .head((() => ({ node: headOf("safe")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
       .render(() => <p>safe body</p>),
+  }),
+  "./vault/_layout.tsx": async () => ({
+    default: layout()
+      .guard(() => {
+        log("vault guard");
+        throw new AkanRedirectError("/en/signin");
+      })
+      .render(({ children }) => children),
+  }),
+  "./vault/sealed.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head((() => ({ node: headOf("sealed")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
+      .render(() => <p>sealed body</p>),
   }),
 };

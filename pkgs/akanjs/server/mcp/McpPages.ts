@@ -77,8 +77,9 @@ export class McpPages {
   }
 
   async prompts(req: Request): Promise<McpPrompt[]> {
-    const prompts = (await this.#list()).filter((entry) => entry.kind === "prompt");
-    return (await this.#visibleTo(req, prompts)).map(McpPages.#promptOf);
+    const listed = await this.#list();
+    const prompts = listed.filter((entry) => entry.kind === "prompt");
+    return (await this.#visibleTo(req, prompts, listed)).map(McpPages.#promptOf);
   }
 
   async entry(name: string) {
@@ -169,7 +170,8 @@ export class McpPages {
   async tools(ui: boolean, document: McpDocument, req: Request) {
     const apps = this.#props.apps;
     if (!apps) return [];
-    const pages = (await this.#visibleTo(req, await this.#pageTools())).map((entry) => apps.toolOf(entry));
+    const listed = await this.#listedPages();
+    const pages = (await this.#visibleTo(req, this.#pageToolsOf(listed), listed)).map((entry) => apps.toolOf(entry));
     return ui ? [...document.appTools, ...pages] : pages;
   }
 
@@ -178,7 +180,8 @@ export class McpPages {
   async resources(ui: boolean, req: Request) {
     const apps = this.#props.apps;
     if (!apps?.rendersUi || !ui) return [];
-    return apps.resourcesOf(await this.#visibleTo(req, await this.#pageTools()));
+    const listed = await this.#listedPages();
+    return apps.resourcesOf(await this.#visibleTo(req, this.#pageToolsOf(listed), listed));
   }
 
   // Not a credential: visibility is a host's UX, never authorization, so a client claiming the extension falsely gains
@@ -241,10 +244,10 @@ export class McpPages {
   // Route guards decide which screens a caller is shown, never what data it reaches: a call runs them again and the
   // signal guards hold the data. So a verdict the worker cannot give in time lists the pages unfiltered, as the
   // listing itself falls back to the pages listed last.
-  async #visibleTo(req: Request, entries: PagePromptEntry[]): Promise<PagePromptEntry[]> {
+  async #visibleTo(req: Request, entries: PagePromptEntry[], listed: PagePromptEntry[]): Promise<PagePromptEntry[]> {
     if (!this.#props.source || !entries.length) return entries;
-    //? Asked over every page, so the prompts, tools and resources a host lists in a row share one verdict.
-    const names = await McpPages.#withinListWait(this.#verdictOf(req, await this.#listedPages()));
+    //? Asked over every listed page, so the prompts, tools and resources a host lists in a row share one verdict.
+    const names = await McpPages.#withinListWait(this.#verdictOf(req, listed));
     if (!names) return entries;
     const admitted = new Set(names);
     return entries.filter((entry) => admitted.has(entry.name));
@@ -317,11 +320,9 @@ export class McpPages {
     return !!this.#props.document().findTool(name) || this.#props.dispatcher.isEndpoint(name);
   }
 
-  async #pageTools() {
+  #pageToolsOf(listed: PagePromptEntry[]) {
     if (!this.#props.apps) return [];
-    return (await this.#listedPages()).filter(
-      (entry) => !this.#isEndpointName(entry.name) && this.#publishesTool(entry),
-    );
+    return listed.filter((entry) => !this.#isEndpointName(entry.name) && this.#publishesTool(entry));
   }
 
   // A read-only deployment keeps the apps, whose load may only query, and drops a prompt's text tool, whose run renders

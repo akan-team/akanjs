@@ -525,10 +525,15 @@ export class RscRenderer {
                 partialDecision,
               })
             : { status: "full" as const, reason: partialDecision.reason, commonPrefixLength: 0 };
+        //? Security: a head-safe patch reads the page's head before its suffix renders, so the route's guards run
+        //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
+        let admitted = false;
         const safePatchDecision = match
-          ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, () =>
-              this.#resolveRouteHeadSnapshot(urlObj, match, searchParams),
-            )
+          ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, async () => {
+              await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
+              admitted = true;
+              return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
+            })
           : patchDecision;
         const patchCacheEntry = resolveRscWorkerPatchCacheEntry({
           cacheEntry,
@@ -621,6 +626,7 @@ export class RscRenderer {
             safePatchDecision.patch.patchStartIndex,
             searchParams,
             notFound,
+            { guarded: admitted },
           );
           if (suffixElement === null) {
             effectivePatchDecision = {
@@ -1391,6 +1397,7 @@ export class RscRenderer {
     patchStartIndex: number,
     searchParams: Record<string, string | string[]>,
     notFound: RouteNotFoundInPlace,
+    { guarded = false }: { guarded?: boolean } = {},
   ): Promise<ReactNode | null> {
     this.#logger.verbose(
       `composing route suffix pathname=${url.pathname} start=${patchStartIndex} params=${JSON.stringify(match.params)}`,
@@ -1400,7 +1407,7 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
-    await RouteElementComposer.admit({ pathRoute, params: match.params, searchParams });
+    if (!guarded) await RouteElementComposer.admit({ pathRoute, params: match.params, searchParams });
     await RouteElementComposer.resolveSuffixLoadings(pathRoute, patchStartIndex);
     return RouteElementComposer.composeSuffix({
       pathRoute,

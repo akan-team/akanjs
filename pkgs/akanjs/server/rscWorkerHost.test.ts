@@ -756,6 +756,7 @@ describe("RscWorker cached result replay", () => {
 describe("RscWorker route head", () => {
   interface HeadWorker {
     render: (url: string, headers?: Headers) => Promise<{ body: string; trace?: RscTraceMetadata }>;
+    redirectOf: (url: string, headers?: Headers) => Promise<string | null>;
     headRuns: (name: string) => number;
   }
   const withHeadWorker = async (env: Record<string, string>, run: (worker: HeadWorker) => Promise<void>) => {
@@ -783,6 +784,10 @@ describe("RscWorker route head", () => {
           const result = await rsc.renderWithMeta(new Request(url, { headers }));
           if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
           return { body: decoder.decode(await new Response(result.stream).arrayBuffer()), trace: result.trace };
+        },
+        redirectOf: async (url, headers) => {
+          const result = await rsc.renderWithMeta(new Request(url, { headers }));
+          return result.type === "redirect" ? result.location : null;
         },
         headRuns: (name) =>
           (fs.existsSync(headLog) ? fs.readFileSync(headLog, "utf8").split("\n") : []).filter((line) => line === name)
@@ -838,6 +843,23 @@ describe("RscWorker route head", () => {
         expect(unsafe.trace).toMatchObject({ partial: "full", partialReason: "head-unsafe" });
         expect(unsafe.body).toContain("cached body");
         expect(headRuns("cached")).toBe(1);
+      },
+    );
+  }, 20_000);
+
+  test("runs a guarded page's guards before the head a patch decision reads, and only once", async () => {
+    const routes = new RouteTreeBuilder(headFixturePages).build();
+    const pathRoute = routes.find((route) => route.path.endsWith("/vault/sealed"));
+    if (!pathRoute) throw new Error("no route for vault/sealed");
+    const headers = new Headers();
+    const from = "http://localhost/en/vault/sealed?tab=1";
+    appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href: from, buildId: 1 }));
+    await withHeadWorker(
+      { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
+      async ({ redirectOf, headRuns }) => {
+        expect(await redirectOf("http://localhost/en/vault/sealed?tab=2", headers)).toContain("/signin");
+        expect(headRuns("vault guard")).toBe(1);
+        expect(headRuns("sealed")).toBe(0);
       },
     );
   }, 20_000);

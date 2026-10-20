@@ -167,8 +167,6 @@ export abstract class RouteDefinition<
     return args;
   }
 
-  //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
-  //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
   //? Marked with the args it reads, as the render is, so CSR asks the guards again only when one of those moves.
   #guardRouteOf(guard: (args: never) => void | Promise<void>) {
     const route = async (props: RouteGuardProps) => await guard(this.#guardArgsOf(props) as never);
@@ -176,6 +174,8 @@ export abstract class RouteDefinition<
     return route;
   }
 
+  //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
+  //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
   #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
     const kept = this.#renderRoute;
     if (kept?.render === render && kept.argCount === this.args.length) return kept.route;
