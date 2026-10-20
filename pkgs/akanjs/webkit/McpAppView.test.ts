@@ -99,6 +99,24 @@ describe("McpAppView links", () => {
     expect(opened).toEqual(["https://app.example.com/en/memo/2#notes"]);
   });
 
+  test("finds a fragment's target as written or percent-decoded, and survives one that is not valid encoding", () => {
+    reset();
+    const scrolled: string[] = [];
+    const targets = ["50%", "café"].map((id) => {
+      const target = document.createElement("h2");
+      target.id = id;
+      target.scrollIntoView = () => void scrolled.push(id);
+      document.body.append(target);
+      return target;
+    });
+    expect(() => clickOn("#50%")).not.toThrow();
+    clickOn("#caf%C3%A9");
+    expect(() => view.open("#%E0%A4%A")).not.toThrow();
+    for (const target of targets) target.remove();
+    expect(scrolled).toEqual(["50%", "café"]);
+    expect(opened).toEqual([]);
+  });
+
   test("hands the host only a web, mail or phone address, and never a script, whatever the page wrote", () => {
     reset();
     const clicks = [

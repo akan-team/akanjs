@@ -6,7 +6,7 @@ import { EmbedApproval } from "../Agent/EmbedApproval";
 import { FontFace } from "../FontFace";
 import { Client } from "./Client";
 
-export interface AppProviderProps {
+interface AppProviderProps {
   className?: string;
   params: { lang: string };
   /** The app's page path without its locale, as `usePage()` reads it. */
@@ -17,8 +17,6 @@ export interface AppProviderProps {
   fonts?: ReactFont[];
   children: ReactNode;
 }
-
-/** What the root layout provides, around one `.app()`'s element in an MCP host's view: no frame, router or socket. */
 export const AppProvider = ({
   className,
   params,

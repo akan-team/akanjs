@@ -58,6 +58,30 @@ describe("McpAppPageTrimmer", () => {
     expect(await output?.text()).not.toContain("drawn by the render");
   });
 
+  test("drops a lazy component only the page's render drew, with what it imports", async () => {
+    const root = await makeTempRoot();
+    await writeText(path.join(root, "Globe.ts"), 'export default "a heavy globe";\n');
+    await writeText(
+      path.join(root, "trip.tsx"),
+      [
+        "const lazy = (load: () => Promise<unknown>) => ({ load });",
+        'const Globe = lazy(() => import("./Globe"));',
+        "const page = () => ({ app: (name: string, draw: () => unknown) => ({ render: (render: () => unknown) => [name, draw, render] }) });",
+        'export default page().app("showTrip", () => "a trip card").render(() => Globe);',
+      ].join("\n"),
+    );
+    await writeText(path.join(root, "entry.ts"), 'import trip from "./trip.tsx";\nconsole.info(trip);\n');
+    const result = await Bun.build({
+      entrypoints: [path.join(root, "entry.ts")],
+      plugins: [McpAppPageTrimmer.plugin([path.join(root, "trip.tsx")])],
+      splitting: false,
+    });
+    const text = (await result.outputs[0]?.text()) ?? "";
+    expect(result.success).toBe(true);
+    expect(text).toContain("a trip card");
+    expect(text).not.toContain("a heavy globe");
+  });
+
   test("leaves a module with no chain as it is", () => {
     const legacy = "export default function Page() { return <main />; }\nexport const pageConfig = {};";
     expect(McpAppPageTrimmer.trim(legacy, "legacy.tsx")).toBe(legacy);

@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import ts from "typescript";
+import { PureLazyMarker } from "./pureLazyMarker";
 
 type ChainStage = ts.CallExpression & { expression: ts.PropertyAccessExpression };
 
@@ -21,8 +22,9 @@ export class McpAppPageTrimmer {
           pagePaths.flatMap((pagePath) => [pagePath, McpAppPageTrimmer.#realPathOf(pagePath)]),
         );
         const filter = new RegExp(`^(?:${[...loadedPaths].map((pagePath) => RegExp.escape(pagePath)).join("|")})$`);
+        //? The bundler runs one onLoad per module, so this one also marks the page's own `lazy()` components.
         build.onLoad({ filter }, async (args) => ({
-          contents: McpAppPageTrimmer.trim(await Bun.file(args.path).text(), args.path),
+          contents: PureLazyMarker.mark(McpAppPageTrimmer.trim(await Bun.file(args.path).text(), args.path), args.path),
           loader: path.extname(args.path).slice(1) as "tsx" | "ts" | "jsx" | "js",
         }));
       },

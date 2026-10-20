@@ -101,6 +101,8 @@ describe("RouteSourceValidator route chains", () => {
       "export default memo;",
     ];
     expect(() => chain(indirect.join("\n"), "page", "/")).toThrow('exports its chain through "memo"');
+    const renamed = [indirect[0], "export { memo as default };"];
+    expect(() => chain(renamed.join("\n"), "page", "/")).toThrow('exports its chain through "memo"');
   });
 
   test("still reads the legacy shape as before, which never takes a guard", () => {

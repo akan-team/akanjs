@@ -49,10 +49,34 @@ describe("McpAppViewBuilder.discover", () => {
       { key: "./(home)/memo.tsx", moduleAbsPath: file("page/(home)/memo.tsx") },
       { key: "./(home)/memo/_overrides.tsx", moduleAbsPath: file("generated/memo_overrides.tsx") },
       { key: "./_overrides.tsx", moduleAbsPath: file("generated/_overrides.tsx") },
+      { key: "./(home)/_overrides.tsx", moduleAbsPath: file("generated/home_overrides.tsx") },
       { key: "./(tab)/_overrides.tsx", moduleAbsPath: file("generated/tab_overrides.tsx") },
     ];
     const [view] = await McpAppViewBuilder.discover(entries, []);
-    expect(view?.overrides.map((entry) => entry.key)).toEqual(["./_overrides.tsx", "./(home)/memo/_overrides.tsx"]);
+    expect(view?.rootOverrides).toEqual([]);
+    expect(view?.overrides.map((entry) => entry.key)).toEqual([
+      "./_overrides.tsx",
+      "./(home)/_overrides.tsx",
+      "./(home)/memo/_overrides.tsx",
+    ]);
+  });
+
+  test("puts the overrides on the root layout's node and above it outside that layout, as the route tree does", async () => {
+    const appRoot = await makeTempRoot();
+    const file = (rel: string) => path.join(appRoot, rel);
+    await write(file("generated/(home)/__root_layout.tsx"), "export function McpAppRoot() {}\n");
+    await write(file("page/(home)/memo.tsx"), memoPage);
+    const entries = [
+      { key: "./(home)/__root_layout.tsx", moduleAbsPath: file("generated/(home)/__root_layout.tsx") },
+      { key: "./(home)/memo.tsx", moduleAbsPath: file("page/(home)/memo.tsx") },
+      { key: "./(home)/memo/_overrides.tsx", moduleAbsPath: file("generated/memo_overrides.tsx") },
+      { key: "./(home)/_overrides.tsx", moduleAbsPath: file("generated/home_overrides.tsx") },
+      { key: "./_overrides.tsx", moduleAbsPath: file("generated/_overrides.tsx") },
+    ];
+    const [view] = await McpAppViewBuilder.discover(entries, []);
+    expect(view?.root?.key).toBe("./(home)/__root_layout.tsx");
+    expect(view?.rootOverrides.map((entry) => entry.key)).toEqual(["./_overrides.tsx", "./(home)/_overrides.tsx"]);
+    expect(view?.overrides.map((entry) => entry.key)).toEqual(["./(home)/memo/_overrides.tsx"]);
   });
 
   test("names two pages that claim one app, and a page with no root layout to provide for it", async () => {
@@ -91,21 +115,24 @@ describe("McpAppViewBuilder.entryOf", () => {
   test("boots the one app with its page, the root layout and overrides it sits under, by relative path", () => {
     const view = {
       name: "showMemo",
-      page: { key: "./memo.tsx", moduleAbsPath: "/app/page/memo.tsx" },
+      page: { key: "./memo/[memoId].tsx", moduleAbsPath: "/app/page/memo/[memoId].tsx" },
       root: { key: "./__root_layout.tsx", moduleAbsPath: "/app/.akan/generated/root-layouts/__root_layout.tsx" },
-      overrides: [{ key: "./_overrides.tsx", moduleAbsPath: "/app/.akan/generated/overrides/_overrides.tsx" }],
+      rootOverrides: [{ key: "./_overrides.tsx", moduleAbsPath: "/app/.akan/generated/overrides/_overrides.tsx" }],
+      overrides: [{ key: "./memo/_overrides.tsx", moduleAbsPath: "/app/.akan/generated/overrides/memo.tsx" }],
       basePath: "admin",
     };
     expect(McpAppViewBuilder.entryOf(view, "/app/.akan/generated/mcp-apps")).toBe(
       [
         'import { McpAppBoot } from "akanjs/webkit";',
-        'import * as page from "../../../page/memo.tsx";',
+        'import * as page from "../../../page/memo/[memoId].tsx";',
         'import * as root from "../root-layouts/__root_layout.tsx";',
-        'import override0 from "../overrides/_overrides.tsx";',
+        'import rootOverride0 from "../overrides/_overrides.tsx";',
+        'import override0 from "../overrides/memo.tsx";',
         "void McpAppBoot.run({",
         '  app: "showMemo",',
         "  page,",
         "  root,",
+        "  rootOverrides: [rootOverride0],",
         "  overrides: [override0],",
         '  basePath: "admin",',
         "});",
@@ -113,7 +140,10 @@ describe("McpAppViewBuilder.entryOf", () => {
       ].join("\n"),
     );
     expect(
-      McpAppViewBuilder.entryOf({ ...view, root: null, overrides: [] }, "/app/.akan/generated/mcp-apps"),
+      McpAppViewBuilder.entryOf(
+        { ...view, root: null, rootOverrides: [], overrides: [] },
+        "/app/.akan/generated/mcp-apps",
+      ),
     ).toContain("const root = {};\nvoid McpAppBoot.run({");
   });
 });

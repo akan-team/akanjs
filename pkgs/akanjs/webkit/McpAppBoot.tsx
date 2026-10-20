@@ -22,15 +22,18 @@ export interface McpAppRootProps {
   children: ReactNode;
 }
 
+type McpAppOverride = (props: { children?: ReactNode }) => ReactNode;
+
 export interface McpAppBootProps {
-  /** The `.app()` this view draws. */
   app: string;
-  /** The page module that declares it. */
   page: RouteModuleSource;
   /** The generated root layout of the page: its `McpAppRoot` provides what the root layout would, frame aside. */
   root: { McpAppRoot?: (props: McpAppRootProps) => ReactNode };
-  /** The generated wrappers of the `_overrides.tsx` over the page, outermost first. */
-  overrides?: ((props: { children?: ReactNode }) => ReactNode)[];
+  /** The generated wrappers of the `_overrides.tsx` at or above the root layout, outermost first: they also reach
+   * what `McpAppRoot` draws beside the page, its toasts and approvals. */
+  rootOverrides?: McpAppOverride[];
+  /** The generated wrappers of the `_overrides.tsx` below the root layout, outermost first. */
+  overrides?: McpAppOverride[];
   /** The basePath the page sits under, which every app path the view opens keeps. */
   basePath?: string;
 }
@@ -38,7 +41,7 @@ export interface McpAppBootProps {
 //* An MCP host's view of one `.app()`: no router, no layout and no network of its own. Its first reads come from the
 //* tool result's snapshot, and every later call is relayed by the host under the host's credential.
 export class McpAppBoot {
-  static async run({ app, page, root, overrides = [], basePath = "" }: McpAppBootProps) {
+  static async run({ app, page, root, rootOverrides = [], overrides = [], basePath = "" }: McpAppBootProps) {
     const bridge = new McpAppBridge();
     const view = new McpAppView(bridge);
     const start = await bridge.connect();
@@ -89,10 +92,17 @@ export class McpAppBoot {
     ReactDOM.createRoot(container, {
       onUncaughtError: (error) => McpAppBoot.#fail(view, `${app} failed to draw`, error),
     }).render(
-      <Root params={{ lang }} path={path}>
-        {overrides.reduceRight<ReactNode>((children, Override) => createElement(Override, null, children), element)}
-      </Root>,
+      McpAppBoot.#wrap(
+        rootOverrides,
+        <Root params={{ lang }} path={path}>
+          {McpAppBoot.#wrap(overrides, element)}
+        </Root>,
+      ),
     );
+  }
+
+  static #wrap(overrides: McpAppOverride[], element: ReactNode) {
+    return overrides.reduceRight<ReactNode>((children, Override) => createElement(Override, null, children), element);
   }
 
   static #fail(view: McpAppView, what: string, error: unknown) {

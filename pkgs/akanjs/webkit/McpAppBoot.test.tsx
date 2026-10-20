@@ -69,12 +69,12 @@ const boot = async (
   app: string,
   toolResult: object,
   hostContext: object = {},
-  { basePath, overrides }: Pick<McpAppBootProps, "basePath" | "overrides"> = {},
+  { basePath, rootOverrides, overrides }: Pick<McpAppBootProps, "basePath" | "rootOverrides" | "overrides"> = {},
 ) => {
   sent.length = 0;
   fromHostListeners.length = 0;
   document.body.innerHTML = '<div id="root"></div>';
-  const booting = McpAppBoot.run({ app, page: memoPage, root, basePath, overrides });
+  const booting = McpAppBoot.run({ app, page: memoPage, root, basePath, rootOverrides, overrides });
   fromHost({ id: lastRequest("ui/initialize")?.id, result: { hostContext, hostCapabilities: {} } });
   await settle(0);
   fromHost({ method: "ui/notifications/tool-result", params: toolResult });
@@ -93,19 +93,22 @@ describe("McpAppBoot", () => {
     expect(FetchClient.bridged).toBe(true);
   });
 
-  test("draws the element inside the `_overrides.tsx` over its page, outermost first", async () => {
+  test("draws the element inside the `_overrides.tsx` over its page, outermost first, the root layout's around it", async () => {
     await boot(
       "showMemo",
       started,
       {},
       {
+        rootOverrides: [({ children }) => <div data-override="root">{children}</div>],
         overrides: [
           ({ children }) => <section data-override="outer">{children}</section>,
           ({ children }) => <article data-override="inner">{children}</article>,
         ],
       },
     );
-    expect(document.querySelector("main > section > article > p")?.textContent).toBe(`memo ${memoId} in en`);
+    expect(document.querySelector("#root > div > main > section > article > p")?.textContent).toBe(
+      `memo ${memoId} in en`,
+    );
   });
 
   test("opens a screen the app moves to as that screen's web page, through the host", async () => {

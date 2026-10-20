@@ -94,7 +94,7 @@ export class McpAppView {
     //? `<Link href="#x">` arrives as the screen's own path with it.
     const hashAt = raw.indexOf("#");
     if (hashAt === 0 || (hashAt > 0 && raw.slice(0, hashAt) === csrLocation.pathname)) {
-      document.getElementById(decodeURIComponent(raw.slice(hashAt + 1)))?.scrollIntoView();
+      McpAppView.#targetOf(raw.slice(hashAt + 1))?.scrollIntoView();
       return;
     }
     const url = McpAppView.#parse(raw, McpAppView.#baseUrl());
@@ -129,6 +129,18 @@ export class McpAppView {
       if (this.isConnected || !this.hasAttribute("download")) click.call(this);
       else void download(this.getAttribute("href") ?? "", this.getAttribute("download"));
     };
+  }
+
+  //? As a browser finds it: the id as written first, then percent-decoded.
+  static #targetOf(fragment: string) {
+    const written = document.getElementById(fragment);
+    if (written) return written;
+    try {
+      return document.getElementById(decodeURIComponent(fragment));
+    } catch {
+      //? A malformed escape (`#50%`) decodes to nothing but the text already tried.
+      return null;
+    }
   }
 
   //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.

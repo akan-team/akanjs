@@ -111,16 +111,29 @@ export class RouteSourceValidator {
   // Null for the legacy shape. Read off the source because the build enumerates routes without importing them.
   static #readChain(sourceFile: ts.SourceFile, filePath: string) {
     for (const statement of sourceFile.statements) {
-      if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue;
-      const node = RouteSourceValidator.#unwrapExpression(statement.expression);
-      if (node && ts.isIdentifier(node) && RouteSourceValidator.#bindsChain(sourceFile, node.text))
+      const local = RouteSourceValidator.#defaultLocalOf(statement);
+      if (local && RouteSourceValidator.#bindsChain(sourceFile, local))
         throw new Error(
-          `[route-convention] ${filePath} exports its chain through "${node.text}"; write \`export default page()…\` — the build reads the chain without evaluating the module`,
+          `[route-convention] ${filePath} exports its chain through "${local}"; write \`export default page()…\` — the build reads the chain without evaluating the module`,
         );
-      const walked = RouteSourceValidator.#walkChain(node);
+      if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue;
+      const walked = RouteSourceValidator.#walkChain(RouteSourceValidator.#unwrapExpression(statement.expression));
       return walked ? RouteSourceValidator.#chainOf(walked.kind, walked.stages, filePath) : null;
     }
     return null;
+  }
+
+  /** The local name a statement hands out as the default export: `export default x` or `export { x as default }`. */
+  static #defaultLocalOf(statement: ts.Statement): string | undefined {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const node = RouteSourceValidator.#unwrapExpression(statement.expression);
+      return node && ts.isIdentifier(node) ? node.text : undefined;
+    }
+    if (!ts.isExportDeclaration(statement) || statement.moduleSpecifier || statement.isTypeOnly) return undefined;
+    const clause = statement.exportClause;
+    if (!clause || !ts.isNamedExports(clause)) return undefined;
+    const element = clause.elements.find((element) => !element.isTypeOnly && element.name.text === "default");
+    return element?.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName.text : undefined;
   }
 
   static #walkChain(start: ts.Expression | undefined) {

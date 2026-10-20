@@ -23,7 +23,10 @@ export interface McpAppView {
   page: PageEntry;
   /** The generated root layout that renders `System.Provider` for the page, whose `McpAppRoot` the view uses. */
   root: PageEntry | null;
-  /** The generated wrappers of the `_overrides.tsx` over the page, outermost first. */
+  /** The generated wrappers of the `_overrides.tsx` at or above the root layout, outermost first: as on the web, they
+   * also reach what it draws beside the page, its toasts and approvals. */
+  rootOverrides: PageEntry[];
+  /** The generated wrappers of the `_overrides.tsx` below the root layout, outermost first, around the page alone. */
   overrides: PageEntry[];
   basePath: string;
 }
@@ -130,11 +133,12 @@ export class McpAppViewBuilder {
             `[route-convention] apps "${owner.name}" (${owner.key}) and "${name}" (${page.key}) differ only in case; their views would share one file`,
           );
         owners.set(name.toLowerCase(), { name, key: page.key });
+        const root = await McpAppViewBuilder.#rootOf(page.key, roots);
         views.push({
           name,
           page,
-          root: await McpAppViewBuilder.#rootOf(page.key, roots),
-          overrides: McpAppViewBuilder.#overridesOf(page.key, overrides),
+          root,
+          ...McpAppViewBuilder.#overridesOf(page.key, root, overrides),
           basePath: CsrEntryFiles.basePathOfPageKey(page.key, basePaths) ?? "",
         });
       }
@@ -163,31 +167,37 @@ export class McpAppViewBuilder {
       const relative = path.relative(fromDir, absPath).split(path.sep).join("/");
       return JSON.stringify(relative.startsWith(".") ? relative : `./${relative}`);
     };
-    const overrides = view.overrides.map(
-      (entry, idx) => `import override${idx} from ${specifier(entry.moduleAbsPath)};\n`,
-    );
+    const importsOf = (entries: PageEntry[], name: string) =>
+      entries.map((entry, idx) => `import ${name}${idx} from ${specifier(entry.moduleAbsPath)};\n`).join("");
+    const namesOf = (entries: PageEntry[], name: string) => entries.map((_, idx) => `${name}${idx}`).join(", ");
     return `import { McpAppBoot } from "akanjs/webkit";
 import * as page from ${specifier(view.page.moduleAbsPath)};
 ${view.root ? `import * as root from ${specifier(view.root.moduleAbsPath)};` : "const root = {};"}
-${overrides.join("")}void McpAppBoot.run({
+${importsOf(view.rootOverrides, "rootOverride")}${importsOf(view.overrides, "override")}void McpAppBoot.run({
   app: ${JSON.stringify(view.name)},
   page,
   root,
-  overrides: [${view.overrides.map((_, idx) => `override${idx}`).join(", ")}],
+  rootOverrides: [${namesOf(view.rootOverrides, "rootOverride")}],
+  overrides: [${namesOf(view.overrides, "override")}],
   basePath: ${JSON.stringify(view.basePath)},
 });
 `;
   }
 
-  //? By route segments, as the route tree nests them: a folder's `_overrides.tsx` also covers the page file named
-  //? like the folder (`memo/_overrides.tsx` over `memo.tsx`).
-  static #overridesOf(pageKey: string, overrides: PageEntry[]): PageEntry[] {
+  //? By route segments, as the route tree nests them (`RouteLayering`): a folder's `_overrides.tsx` also covers the
+  //? page file named like the folder (`memo/_overrides.tsx` over `memo.tsx`), and one on the root layout's node or
+  //? above it sits outside that layout.
+  static #overridesOf(pageKey: string, root: PageEntry | null, overrides: PageEntry[]) {
     const pageSegments = parseRouteModuleKey(pageKey).routeSegments;
-    return overrides
+    const rootDepth = root ? parseRouteModuleKey(root.key).routeSegments.length : 0;
+    const over = overrides
       .map((entry) => ({ entry, segments: parseRouteModuleKey(entry.key).routeSegments }))
       .filter(({ segments }) => segments.every((segment, idx) => pageSegments[idx] === segment))
-      .sort((a, b) => a.segments.length - b.segments.length)
-      .map(({ entry }) => entry);
+      .sort((a, b) => a.segments.length - b.segments.length);
+    return {
+      rootOverrides: over.filter(({ segments }) => segments.length <= rootDepth).map(({ entry }) => entry),
+      overrides: over.filter(({ segments }) => segments.length > rootDepth).map(({ entry }) => entry),
+    };
   }
 
   //? The outermost root boundary over the page: the one a page is drawn under without an ancestor root, which alone
