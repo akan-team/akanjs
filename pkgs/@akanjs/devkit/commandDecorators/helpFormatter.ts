@@ -143,12 +143,13 @@ export const formatCommandHelp = (command: CommandCls, key: string) => {
       const optName = `${flag}--${kebabName}${negation}`;
       const optDesc = opt.desc ?? "";
       const defaultVal = opt.default !== undefined ? chalk.gray(` [default: ${String(opt.default)}]`) : "";
+      const repeatable = opt.multiple ? chalk.gray(" (repeatable)") : "";
       const choices = opt.enum
         ? chalk.gray(
             typeof opt.enum === "function" ? " ([dynamic choices])" : ` (${opt.enum.map(formatChoice).join(", ")})`,
           )
         : "";
-      lines.push(`      ${chalk.green(optName)}      ${chalk.gray(optDesc)}${defaultVal}${choices}`);
+      lines.push(`      ${chalk.green(optName)}      ${chalk.gray(optDesc)}${defaultVal}${choices}${repeatable}`);
     }
     lines.push("");
   }

@@ -6,6 +6,7 @@ import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/c
 import type { SqlDocumentStore } from "./database.adaptor";
 import { DocumentTransfer } from "./documentTransfer";
 import { searchConfConstant, searchConfDatabase } from "./search.conformance.fixture";
+import { MigrationTables } from "./sql/MigrationTables";
 
 // A single-mode app moving to another database: rows leave SQLite exactly as stored and land in the target the same.
 
@@ -80,6 +81,54 @@ const describeTarget = (kind: SqlDriverKind) => {
       expect(await targetStore.exportRows("", 10)).toEqual(await sourceStore.exportRows("", 10));
       expect(await targetStore.findIds(q.search("kenny"))).toEqual([doc.id]);
       expect(await targetStore.findIds(q.search("edited"))).toEqual([]);
+    });
+
+    test("moves the migration ledger with the rows, so the target knows which scripts its data went through", async () => {
+      const source = await ConformanceEnv.openSqlDriver("sqlite");
+      const target = await ConformanceEnv.openSqlDriver(kind);
+      opened.push(source, target);
+      const { dir, remove } = await ConformanceEnv.tempDir("akan-transfer");
+      cleanups.push(remove);
+      await storeOf(source);
+      const [runTable, changeTable] = MigrationTables.ledger;
+      if (!runTable || !changeTable) throw new Error("the ledger lists its two tables");
+      const run = Object.fromEntries(runTable.columns.map((column) => [column, null]));
+      await MigrationTables.importRows(source.database.getConnection(), runTable, [
+        {
+          ...run,
+          id: "r1",
+          migrationId: "m1",
+          kind: "apply",
+          status: "done",
+          checksum: "c1",
+          startedAt: 1,
+          finishedAt: 2,
+        },
+      ]);
+      const changes = Array.from({ length: 1001 }, (_, idx) => ({
+        runId: "r1",
+        seq: idx + 1,
+        tableName: "searchConf",
+        docId: `d${idx}`,
+        op: "update",
+        before: "{}",
+        after: '{"org":["o1"]}',
+      }));
+      await MigrationTables.importRows(source.database.getConnection(), changeTable, changes);
+
+      expect(await new DocumentTransfer(source.database).exportTo(dir)).toEqual([
+        { table: "searchConf", rows: 0 },
+        { table: runTable.name, rows: 1 },
+        { table: changeTable.name, rows: 1001 },
+      ]);
+      await storeOf(target);
+      await new DocumentTransfer(target.database).importFrom(dir);
+      await new DocumentTransfer(target.database).importFrom(dir);
+
+      for (const table of MigrationTables.ledger)
+        expect(await MigrationTables.exportRows(target.database.getConnection(), table, null, 5000)).toEqual(
+          await MigrationTables.exportRows(source.database.getConnection(), table, null, 5000),
+        );
     });
   });
 };

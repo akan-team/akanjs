@@ -603,6 +603,8 @@ export interface AppInfo {
   readonly service: Map<string, Set<string>>;
   readonly scalar: Map<string, Set<string>>;
   readonly file: FileConventionScanSets;
+  /** `script/migration/*.ts` by id, each with its source's sha256. */
+  readonly migrations: readonly { id: string; checksum: string }[];
   getLibs(): string[];
   getLibInfos(): Map<string, LibInfo>;
   getDatabaseModules(): string[];

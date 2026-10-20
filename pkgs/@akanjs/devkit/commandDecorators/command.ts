@@ -65,10 +65,11 @@ const handleOption = (programCommand: Command, argMeta: ArgMeta) => {
   } = argMeta.argsOption;
   const kebabName = camelToKebabCase(argMeta.name);
   const choices = enumChoices && typeof enumChoices !== "function" ? normalizeEnumChoices(enumChoices) : null;
-  programCommand.option(
-    `-${flag}, --${kebabName}${type === "boolean" ? " [boolean]" : ` <${kebabName}>`}`,
-    `${desc}${ask ? ` (${ask})` : ""}${example ? ` (example: ${example})` : ""}${choices ? ` (choices: ${choices.map((choice) => choice.name).join(", ")})` : ""}`,
-  );
+  const flags = `-${flag}, --${kebabName}${type === "boolean" ? " [boolean]" : ` <${kebabName}>`}`;
+  const description = `${desc}${ask ? ` (${ask})` : ""}${example ? ` (example: ${example})` : ""}${choices ? ` (choices: ${choices.map((choice) => choice.name).join(", ")})` : ""}`;
+  if (argMeta.argsOption.multiple)
+    programCommand.option(flags, description, (value: string, previous: string[] = []) => [...previous, value]);
+  else programCommand.option(flags, description);
   if (type === "boolean" && argMeta.argsOption.default === true)
     programCommand.option(`--no-${kebabName}`, `turn off --${kebabName}`);
   return programCommand;
@@ -135,8 +136,13 @@ const inputMessageOf = ({ name, argsOption: { desc, example, ask } }: ArgMeta) =
 export const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unknown>, context: CommandContext) => {
   const {
     name,
-    argsOption: { enum: enumChoices, default: defaultValue, type, desc, nullable, ask },
+    argsOption: { enum: enumChoices, default: defaultValue, type, desc, nullable, ask, multiple },
   } = argMeta;
+  if (multiple) {
+    const values = (opt[argMeta.name] as string[] | undefined) ?? [];
+    for (const value of values) assertEnumChoice(argMeta, value);
+    return values.map((value) => convertArgValue(value, type ?? "string"));
+  }
   if (opt[argMeta.name] !== undefined) {
     assertEnumChoice(argMeta, opt[argMeta.name]);
     return convertArgValue(opt[argMeta.name] as string, type ?? "string");

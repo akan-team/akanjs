@@ -155,6 +155,11 @@ export default layout()
             audience: "agent",
           },
           { name: l.trans({ en: "Script", ko: "스크립트" }), href: "/cheatsheet/dev/script", audience: "agent" },
+          {
+            name: l.trans({ en: "Migration", ko: "마이그레이션" }),
+            href: "/cheatsheet/dev/migration",
+            audience: "both",
+          },
           { name: l.trans({ en: "Console", ko: "콘솔" }), href: "/cheatsheet/dev/console", audience: "agent" },
           { name: l.trans({ en: "Docker", ko: "도커" }), href: "/cheatsheet/dev/docker", audience: "agent" },
           { name: l.trans({ en: "Kubernetes", ko: "쿠버네티스" }), href: "/cheatsheet/dev/k8s", audience: "agent" },

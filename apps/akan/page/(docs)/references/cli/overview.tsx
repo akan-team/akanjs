@@ -314,6 +314,14 @@ export default page()
             }),
           },
           {
+            name: ["migrate <app> [action]", "create-migration <name> <app>"],
+            href: ["/references/cli/application#migrate", "/references/cli/application#create-migration"],
+            desc: l.trans({
+              en: "Plans, applies and rolls back the data migrations in `apps/<app>/script/migration/`.",
+              ko: "`apps/<app>/script/migration/`의 데이터 마이그레이션을 계획하고, 적용하고, 되돌립니다.",
+            }),
+          },
+          {
             name: "console <app>",
             href: "/references/cli/application#console",
             desc: l.trans({ en: "Opens an interactive server console.", ko: "대화형 서버 콘솔을 엽니다." }),

@@ -130,6 +130,13 @@ export default page()
         }),
       },
       {
+        name: "migration",
+        desc: l.trans({
+          en: "Declares a data migration in `script/migration/`, which `akan migrate` runs.",
+          ko: "`script/migration/`의 데이터 마이그레이션을 선언합니다. `akan migrate`가 실행합니다.",
+        }),
+      },
+      {
         name: "Try",
         href: "#Try",
         desc: l.trans({
@@ -180,6 +187,11 @@ export default page()
           ko: "서버 전용 helper입니다. proxy class와 legacy decorator를 쓰는 class가 있습니다.",
         }),
         example: 'import { AkanResponse, Try, type WebProxy } from "akanjs/server";',
+      },
+      {
+        name: "script/migration/*.ts",
+        desc: l.trans({ en: "One data migration per file.", ko: "파일 하나에 데이터 마이그레이션 하나입니다." }),
+        example: 'import { migration } from "akanjs/server";',
       },
     ];
 
@@ -729,8 +741,8 @@ export default page()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`akanjs/server` is the server half of Akan: it starts the app, holds the server settings, and sees page loads before the router. Import it only from server files — `main.ts`, `lib/option.ts` and `srvkit/`.",
-                ko: "`akanjs/server`는 Akan의 서버 쪽 패키지입니다. 앱을 띄우고, 서버 설정을 담고, 라우터보다 먼저 페이지 로드를 봅니다. `main.ts`, `lib/option.ts`, `srvkit/` 같은 서버 파일에서만 import합니다.",
+                en: "`akanjs/server` is the server half of Akan: it starts the app, holds the server settings, and sees page loads before the router. Import it only from server files — `main.ts`, `lib/option.ts`, `srvkit/` and `script/`.",
+                ko: "`akanjs/server`는 Akan의 서버 쪽 패키지입니다. 앱을 띄우고, 서버 설정을 담고, 라우터보다 먼저 페이지 로드를 봅니다. `main.ts`, `lib/option.ts`, `srvkit/`, `script/` 같은 서버 파일에서만 import합니다.",
               })}
             </div>
             <Docs.SubSubTitle>

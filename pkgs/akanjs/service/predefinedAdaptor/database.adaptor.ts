@@ -19,8 +19,10 @@ import {
   SearchIndex,
 } from "./searchIndex";
 import { PostgresDialect } from "./sql/dialect/postgres";
+import { SqliteDialect } from "./sql/dialect/sqlite";
 import { BunSqliteClient } from "./sql/driver/bunSqlite";
 import { PostgresAkanClient } from "./sql/driver/postgres";
+import { MigrationTables } from "./sql/MigrationTables";
 import { PendingStoreEnsures } from "./sql/PendingStoreEnsures";
 import { PostgresInsightSession } from "./sql/PostgresInsightSession";
 import { SqlDocumentStore } from "./sql/SqlDocumentStore";
@@ -41,6 +43,13 @@ import { defaultSqliteFile } from "./sqlitePath";
 
 export { PostgresDialect } from "./sql/dialect/postgres";
 export { SqliteDialect } from "./sql/dialect/sqlite";
+export { type MigrationLedgerTable, MigrationTables } from "./sql/MigrationTables";
+export {
+  RawDocumentTable,
+  type RawFilter,
+  type RawFilterOperators,
+  type RawFindOptions,
+} from "./sql/RawDocumentTable";
 export { SqlDocumentStore } from "./sql/SqlDocumentStore";
 export type {
   AkanSqlClient,
@@ -55,8 +64,10 @@ export type {
   SqlDialect,
   SqliteDatabaseConfig,
   SqlResultRows,
+  TransferRow,
   UpsertByIdOptions,
 } from "./sql/types";
+export { descriptorHash, stableJson } from "./sql/values";
 
 const searchConfigOf = (env: SqliteEnv): Required<SearchConfig> => ({
   enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),
@@ -87,6 +98,7 @@ export class SqliteDatabase
   }))
   implements DatabaseAdaptor
 {
+  readonly dialect = new SqliteDialect();
   #db!: Database;
   #client!: BunSqliteClient;
   #stores = new Map<string, SqlDocumentStore>();
@@ -112,6 +124,7 @@ export class SqliteDatabase
     this.#db.run(
       `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
     );
+    for (const statement of MigrationTables.schema(this.dialect)) this.#db.run(statement);
     this.#searchIndex = new SearchIndex(this, this.config.search);
     await this.#searchIndex.ensureSchema();
     this.scheduler.registerCron(OPTIMIZE_CRON_KEY, OPTIMIZE_CRON, async () => {
@@ -247,6 +260,7 @@ export class PostgresDatabase
   }))
   implements DatabaseAdaptor
 {
+  readonly dialect = new PostgresDialect();
   #sql!: Sql;
   #client!: PostgresAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
@@ -279,6 +293,7 @@ export class PostgresDatabase
       await this.getConnection().execute(
         `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" BIGINT NOT NULL)`,
       );
+      for (const statement of MigrationTables.schema(this.dialect)) await this.getConnection().execute(statement);
       await this.getConnection().execute(PostgresDialect.schemaSetup());
       await this.#grantInsightSchema();
     });

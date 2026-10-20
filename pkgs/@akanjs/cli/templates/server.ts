@@ -6,7 +6,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const databaseModules = [...scanInfo.database.entries()].filter(([_, files]) => files.has("service"));
   const serviceModules = [...scanInfo.service.entries()].filter(([_, files]) => files.has("service"));
   const scalarModules = [...scanInfo.scalar.entries()];
-  return `import { ${scanInfo.type === "app" ? "AkanServer, " : ""}AkanLib } from "akanjs/server";
+  return `import { ${scanInfo.type === "app" ? "AkanServer, " : ""}AkanLib${scanInfo.type === "app" ? ", Migrations" : ""} } from "akanjs/server";
 import * as cnst from "./lib/cnst";
 import * as db from "./lib/db";
 import * as sig from "./lib/sig";
@@ -29,6 +29,13 @@ ${scalarModules.map(([model]) => `    { constant: cnst.${model}, database: db.${
 });
 
 ${scanInfo.type === "app" ? `export const server = new AkanServer("${scanInfo.name}", env, undefined${libs.length ? `, ${libs.join(", ")}` : ""}, lib);` : ""}
+${
+  scanInfo.type === "app"
+    ? `export const migrations = new Migrations([
+${scanInfo.migrations.map(({ id, checksum }) => `  { id: "${id}", checksum: "${checksum}", load: () => import("./script/migration/${id}") },`).join("\n")}
+]);`
+    : ""
+}
 
 ${scanInfo.type === "lib" ? `export { env } from "./env/env.server.testing";` : ""}
 export * as db from "./lib/db";

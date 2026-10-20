@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
   AppConfigResult,
@@ -295,11 +296,19 @@ class ScanInfo {
 }
 
 export const isAkanFrameworkDependency = (dep: string) => dep === "akanjs" || dep.startsWith("akanjs/");
+export interface MigrationScanEntry {
+  id: string;
+  checksum: string;
+}
+
 export class AppInfo extends ScanInfo {
+  static readonly migrationDir = "script/migration";
+  static readonly #migrationIdRe = /^\d{12}_[A-Za-z][A-Za-z0-9]*$/;
   readonly type = "app";
   readonly exec: AppExecutor;
   readonly akanConfig: AppConfigResult;
   readonly libDeps: string[];
+  readonly migrations: MigrationScanEntry[];
 
   static appInfos = new Map<string, AppInfo>();
   static async fromExecutor(exec: AppExecutor, options: { refresh?: boolean } = {}) {
@@ -314,17 +323,21 @@ export class AppInfo extends ScanInfo {
         LibInfo.libInfos.set(libName, await LibInfo.fromExecutor(libExecutor));
       }),
     );
-    const libDeps = await AppInfo.#getAllLibDeps(exec, scanResult.libDeps);
-    const appInfo = new AppInfo(exec, scanResult as AppScanResult, libDeps);
+    const [libDeps, migrations] = await Promise.all([
+      AppInfo.#getAllLibDeps(exec, scanResult.libDeps),
+      AppInfo.scanMigrations(exec),
+    ]);
+    const appInfo = new AppInfo(exec, scanResult as AppScanResult, libDeps, migrations);
     AppInfo.appInfos.set(exec.name, appInfo);
     return appInfo;
   }
 
-  constructor(exec: AppExecutor, scanResult: AppScanResult, libDeps: string[]) {
+  constructor(exec: AppExecutor, scanResult: AppScanResult, libDeps: string[], migrations: MigrationScanEntry[] = []) {
     super(scanResult);
     this.exec = exec;
     this.akanConfig = scanResult.akanConfig;
     this.libDeps = libDeps;
+    this.migrations = migrations;
   }
   override getScanResult(): AppScanResult {
     return this.scanResult as AppScanResult;
@@ -332,6 +345,24 @@ export class AppInfo extends ScanInfo {
 
   setRoutes(routes: string[]) {
     (this.scanResult as AppScanResult).routes = routes;
+  }
+
+  //* Line endings normalized: a checkout with autocrlf would otherwise record another checksum for the same script.
+  static async scanMigrations(exec: AppExecutor) {
+    const files = (await exec.readdir(AppInfo.migrationDir)).filter(
+      (file) => file.endsWith(".ts") && !/\.(test|spec)\.ts$/.test(file),
+    );
+    return await Promise.all(
+      files.map(async (file) => {
+        const id = file.slice(0, -".ts".length);
+        if (!AppInfo.#migrationIdRe.test(id))
+          throw new Error(
+            `${AppInfo.migrationDir}/${file}: a migration is named <yyyyMMddHHmm>_<camelName>.ts; create one with \`akan create-migration\``,
+          );
+        const source = (await exec.readFile(`${AppInfo.migrationDir}/${file}`)).replaceAll("\r\n", "\n");
+        return { id, checksum: createHash("sha256").update(source).digest("hex") };
+      }),
+    );
   }
 
   static async #getAllLibDeps(exec: AppExecutor, libDeps: string[], libSet = new Set<string>()) {

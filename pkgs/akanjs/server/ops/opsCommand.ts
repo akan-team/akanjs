@@ -1,10 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import type { AkanServer } from "../akanServer";
+import type { Migrations } from "../migration/migrations";
 import { SnapshotRestore } from "./snapshotRestore";
 import type { SnapshotSources } from "./snapshotTypes";
 import { SqliteFiles } from "./sqliteFiles";
 import { SqliteSnapshot } from "./sqliteSnapshot";
+
+/** What `main.js` lends a command that needs the app itself: its server module, imported with a replica's env. */
+export interface OpsHost {
+  importServer(): Promise<{ server?: AkanServer; migrations?: Migrations }>;
+}
 
 // Rides `bun main.js ops …` because a production image carries no `akan` CLI; the container's env names the files.
 export class OpsCommand {
@@ -12,13 +19,15 @@ export class OpsCommand {
     "Usage:",
     "  bun main.js ops snapshot [--id <id>] [--out <dir>] [--include-solid] [--db <file>] [--solid-db <file>] [--json]",
     "  bun main.js ops restore <manifest.json> [--identity <file>] [--db <file>] [--solid-db <file>] [--force]",
+    "  bun main.js ops migrate [list|plan|apply|verify|rollback] [<id>] [--param <name>=<value>]... [--json]",
   ].join("\n");
 
-  static async run(argv: string[]): Promise<number> {
+  static async run(argv: string[], host?: OpsHost): Promise<number> {
     const [command, ...rest] = argv;
     try {
       if (command === "snapshot") return await OpsCommand.#snapshot(rest);
       if (command === "restore") return await OpsCommand.#restore(rest);
+      if (command === "migrate") return await OpsCommand.#migrate(rest, host);
       process.stderr.write(`${OpsCommand.usage}\n`);
       return 2;
     } catch (error) {
@@ -77,6 +86,14 @@ export class OpsCommand {
     for (const { role, target, preservedAs } of restored)
       process.stdout.write(`restored ${role} → ${target}${preservedAs ? ` (previous kept at ${preservedAs})` : ""}\n`);
     return 0;
+  }
+
+  static async #migrate(argv: string[], host?: OpsHost) {
+    if (!host) throw new Error("migrate boots the app's server, so it runs through main.js");
+    const { server, migrations } = await host.importServer();
+    if (!server?.start) throw new Error("server.js must export server");
+    if (!migrations) throw new Error("this build lists no migrations; build it with an akan that writes the manifest");
+    return await migrations.command(server, argv);
   }
 
   static #sources(db?: string, solidDb?: string): SnapshotSources {

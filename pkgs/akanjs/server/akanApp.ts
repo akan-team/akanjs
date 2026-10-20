@@ -19,6 +19,7 @@ import { LogHub } from "./logging/logHub";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { AppInfo } from "./ops/appInfo";
+import type { OpsHost } from "./ops/opsCommand";
 import type { OpsRoute } from "./ops/opsRoute";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
@@ -243,7 +244,9 @@ export class AkanApp {
   async start() {
     if (process.argv[2] === "ops") {
       const { OpsCommand } = await import("./ops/opsCommand");
-      process.exit(await OpsCommand.run(process.argv.slice(3)));
+      process.exit(
+        await OpsCommand.run(process.argv.slice(3), { importServer: async () => await this.#importServer() }),
+      );
     }
     if (this.#solo) return await this.#startSolo();
     if (SelfExec.carried)
@@ -277,6 +280,13 @@ export class AkanApp {
     await new Promise<void>((resolve) => {
       this.#resolveStopped = resolve;
     });
+  }
+
+  // A script boot: replica 0's env, no listener and no parent socket, beside whatever server already serves the app.
+  async #importServer() {
+    Object.assign(process.env, this.#childEnv(0, this.#getRole(0)), { AKAN_COMMAND_TYPE: "script" });
+    resetEnvCache();
+    return (await import(this.#serverPath)) as Awaited<ReturnType<OpsHost["importServer"]>>;
   }
 
   async #startSolo() {

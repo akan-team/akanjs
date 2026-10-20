@@ -298,6 +298,14 @@ export default page()
             }),
           },
           {
+            name: ["migrate", "create-migration"],
+            href: ["#migrate", "#create-migration"],
+            desc: l.trans({
+              en: "Create, plan, apply and roll back the app's data migrations.",
+              ko: "앱의 데이터 마이그레이션을 만들고, 계획하고, 적용하고, 되돌립니다.",
+            }),
+          },
+          {
             name: "console",
             href: "#console",
             desc: l.trans({ en: "Open an interactive server console.", ko: "대화형 서버 콘솔을 엽니다." }),
@@ -794,6 +802,131 @@ AKAN_DATABASE_MODE=cluster \\
         ],
         examples: `akan script myapp
 akan script myapp seed.ts`,
+      },
+      {
+        name: "migrate",
+        signature:
+          "akan migrate <app> [action] [target] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <name>] [--json <boolean>]",
+        desc: l.trans({
+          en: "Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options.",
+          ko: "앱을 sync한 뒤 포트와 스케줄 없이 서버를 띄워 `apps/<app>/script/migration/`의 마이그레이션에 동작 하나를 실행합니다. 빌드된 컨테이너 안에서는 `bun main.js ops migrate`가 같은 동작과 옵션을 받습니다.",
+        }),
+        args: [
+          {
+            name: "action",
+            type: "String",
+            required: "no",
+            defaultValue: "list",
+            enumOrFlag: "list | plan | apply | verify | rollback",
+            desc: l.trans({
+              en: "What to do; every action but `list` takes a target.",
+              ko: "할 일입니다. `list`를 뺀 모든 동작은 대상을 받습니다.",
+            }),
+          },
+          {
+            name: "target",
+            type: "String",
+            required: "no",
+            desc: l.trans({
+              en: "A migration id such as `202610211000_orderToppings`; `rollback` also takes an apply's run id.",
+              ko: "`202610211000_orderToppings` 같은 마이그레이션 id입니다. `rollback`은 apply의 run id도 받습니다.",
+            }),
+          },
+        ],
+        options: [
+          {
+            name: "--param",
+            type: "String",
+            desc: l.trans({
+              en: "A param the migration declares, as `name=value`; repeat the option for each.",
+              ko: "마이그레이션이 선언한 파라미터를 `name=value`로 넘깁니다. 파라미터마다 옵션을 반복합니다.",
+            }),
+          },
+          {
+            name: "--expect",
+            type: "String",
+            desc: l.trans({
+              en: "The `planHash` a reviewed plan printed; `apply` stops if the plan changed since.",
+              ko: "검토한 plan이 출력한 `planHash`입니다. 그 뒤로 계획이 바뀌었으면 `apply`가 멈춥니다.",
+            }),
+          },
+          {
+            name: "--items",
+            type: "Number",
+            defaultValue: "100",
+            desc: l.trans({ en: "How many planned items `plan` prints.", ko: "`plan`이 출력할 계획 항목 수입니다." }),
+          },
+          {
+            name: "--actor",
+            type: "String",
+            desc: l.trans({
+              en: "Who runs it, kept in the run's record.",
+              ko: "실행한 사람이며, 실행 기록에 남습니다.",
+            }),
+          },
+          {
+            name: "--json",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({ en: "Print the result as one JSON line.", ko: "결과를 JSON 한 줄로 출력합니다." }),
+          },
+        ],
+        notes: [
+          {
+            name: l.trans({ en: "status", ko: "상태" }),
+            desc: l.trans({
+              en: "`pending`, `applied`, or `partial` when an apply outside a transaction stopped partway.",
+              ko: "`pending`, `applied`, 그리고 트랜잭션 없이 돌던 apply가 중간에 멈추면 `partial`입니다.",
+            }),
+          },
+          {
+            name: l.trans({ en: "exit code", ko: "종료 코드" }),
+            desc: l.trans({
+              en: "0 on success; 2 for a usage mistake, a bad param or an unknown id; 1 otherwise.",
+              ko: "성공이면 0, 사용법·파라미터·id가 잘못되면 2, 그 밖에는 1입니다.",
+            }),
+          },
+          {
+            name: l.trans({ en: "one at a time", ko: "한 번에 하나" }),
+            desc: l.trans({
+              en: "While one run holds the database's migration lock, a second is refused with `locked`.",
+              ko: "실행 하나가 데이터베이스의 마이그레이션 잠금을 쥐고 있으면 두 번째 실행은 `locked`로 거부됩니다.",
+            }),
+          },
+          {
+            name: l.trans({ en: "record", ko: "기록" }),
+            desc: l.trans({
+              en: "Each run and the values it changed stay in the app's own database.",
+              ko: "실행마다 그 기록과 바꾼 값이 앱의 데이터베이스에 남습니다.",
+            }),
+          },
+        ],
+        examples: `akan migrate myapp
+akan migrate myapp plan 202610211000_orderToppings
+akan migrate myapp apply 202610211000_orderToppings --expect <planHash>
+akan migrate myapp rollback 202610211000_orderToppings
+kubectl exec -n myapp-main deploy/app-deployment -c app -- \\
+  bun main.js ops migrate list --json`,
+      },
+      {
+        name: "create-migration",
+        signature: "akan create-migration <migrationName> <app>",
+        desc: l.trans({
+          en: "Write `apps/<app>/script/migration/<yyyyMMddHHmm>_<migrationName>.ts` with empty plan, apply and verify stages. The timestamp is UTC, so ids sort in the order they were written.",
+          ko: "빈 plan, apply, verify 단계를 담은 `apps/<app>/script/migration/<yyyyMMddHHmm>_<migrationName>.ts`를 만듭니다. 타임스탬프가 UTC라서 id가 작성한 순서대로 정렬됩니다.",
+        }),
+        args: [
+          {
+            name: "migrationName",
+            type: "String",
+            required: "yes",
+            desc: l.trans({
+              en: "What it does, in camelCase, such as `orderToppings`.",
+              ko: "하는 일을 camelCase로 적습니다. 예: `orderToppings`.",
+            }),
+          },
+        ],
+        examples: "akan create-migration orderToppings myapp",
       },
       {
         name: "console",

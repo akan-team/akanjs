@@ -41,6 +41,7 @@ export interface ArgsOption<Context = CommandContext> {
   example?: string | number | boolean;
   enum?: EnumChoices | DynamicEnum<Context>;
   ask?: string;
+  multiple?: boolean;
 }
 export interface ArgMeta<Context = CommandContext> {
   name: string;

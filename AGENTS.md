@@ -73,7 +73,8 @@ not "fix" it back.
   the module dictionary's `.error({})` — imported from `"../dict"` on the server, from `"@libs/<lib>/client"` /
   `"@apps/<app>/client"` in UI. A `throw` is an error; a raw `Error` rejected, returned or stored loses the key and
   status too (a warning for now). Exempt: tests, `*.constant.ts`, a root `native/` folder (plugins throw
-  `AkanNativeError`), and `common/**` / `env/**`, which have no legal `Err` import — keep throwing code out of them.
+  `AkanNativeError`), `script/migration/**` (an operator reads its message), and `common/**` / `env/**`, which have
+  no legal `Err` import — keep throwing code out of them.
 - **Never import a third-party package** from `page/**`, any barrel, a module logic file
   (`*.{constant,dictionary,document,service,signal,store}.ts`) or module component
   (`*.{Template,Unit,Util,View,Zone}.tsx`) — re-export it through a lib first (one-line shims in a lib's `common/`,
@@ -568,6 +569,26 @@ export default page()
 - A layer-root `index.ts` is generated; a `ui/<Folder>/index.tsx` building a namespace is hand-written (a generated
   barrel holds only `export *` lines). `ui/<Folder>/index_.tsx` is the `"use client"` + `lazy()` boundary beside a
   server-safe `index.tsx` — merging the pair breaks RSC.
+
+## Data Migrations (`apps/*/script/migration/**`)
+
+A change that reshapes stored documents ships a migration: `akan create-migration <name> <app>` writes
+`script/migration/<yyyyMMddHHmm>_<name>.ts`, a default-exported `migration(title)` from `akanjs/server`, which
+`akan migrate <app>` runs locally and `bun main.js ops migrate` in a built container (the `cheatsheet/dev/migration`
+docs page).
+
+- The new code reads both shapes until every environment has applied it — a deploy serves traffic first.
+- Write only through `table(refName)`, never a service, a document or raw `sql` — a service write runs the model's
+  hooks, and none of them reaches the change log a rollback reverts. Call nothing outside the database.
+- `plan` reads only and must hash the same on unchanged data: a timestamp, `createId()` or random value in it makes
+  every `apply --expect <planHash>` refuse as `planChanged`.
+- Past about five seconds on SQLite, an apply's one transaction makes the live server's writes fail. Take
+  `.config({ transaction: false })`, which commits each `rewrite` batch and resumes a `partial` run from the top of
+  `apply` — so a second run must change nothing (a `where` the new shape no longer matches).
+- `$ne` leaves out rows missing the path (match them with `$exists: false`); `find`, `count` and `rewrite` include
+  removed rows unless `{ withRemoved: false }`; a `table()` write leaves `updatedAt` alone.
+- Throw a plain `Error` an operator can act on. Never edit a migration an environment has applied — write another;
+  delete it once every environment has.
 
 ## Present In The Code — Do Not Imitate
 

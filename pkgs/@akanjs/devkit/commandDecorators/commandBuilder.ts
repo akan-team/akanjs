@@ -42,7 +42,7 @@ type ArgValue<Type extends PrimitiveArgType, Option> = [EnumValue<Option>] exten
   : EnumValue<Option>;
 type AddArg<Params extends unknown[], Type extends PrimitiveArgType, Option> = [
   ...Params,
-  MaybeNullable<ArgValue<Type, Option>, Option>,
+  Option extends { multiple: true } ? ArgValue<Type, Option>[] : MaybeNullable<ArgValue<Type, Option>, Option>,
 ];
 type AddInternalArg<Params extends unknown[], Token extends InternalArgToken> = [...Params, Token["_value"]];
 type AddInternalArgs<Params extends unknown[], Tokens extends readonly InternalArgToken[]> = Tokens extends readonly [
@@ -79,9 +79,12 @@ const argMetaOf = (
   type: ArgType,
   name: string,
   primitive: PrimitiveArgType,
-  argsOption: object | undefined,
+  argsOption: Pick<ArgsOption, "multiple"> | undefined,
   idx: number,
-): ArgMeta => ({ name, argsOption: { ...argsOption, type: normalizePrimitiveArgType(primitive) }, key: "", idx, type });
+): ArgMeta => {
+  if (type === "Argument" && argsOption?.multiple) throw new Error(`argument '${name}' cannot be multiple`);
+  return { name, argsOption: { ...argsOption, type: normalizePrimitiveArgType(primitive) }, key: "", idx, type };
+};
 
 class TargetBuilder<Deps extends readonly DependencyCls[], Params extends unknown[] = [], Context = object> {
   readonly #args: (ArgMeta | InternalArgMeta)[];

@@ -1,6 +1,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
+import { type MigrationLedgerTable, MigrationTables } from "./sql/MigrationTables";
 import type { DatabaseAdaptor, TransferRow } from "./sql/types";
 
 export interface TransferReport {
@@ -11,6 +12,7 @@ export interface TransferReport {
 /**
  * Model tables to one NDJSON file each and back, rows as stored. `_akan_meta`, the search mirror, the cache and the
  * queue stay behind: the target writes its own meta and rebuilds the mirror; sessions and pending jobs do not move.
+ * The migration ledger moves with the rows, or the target would run again the scripts its data already went through.
  */
 export class DocumentTransfer {
   static readonly #chunk = 1000;
@@ -39,7 +41,33 @@ export class DocumentTransfer {
       await writer.end();
       reports.push({ table: store.table, rows });
     }
+    for (const table of MigrationTables.ledger) {
+      const report = await this.#exportLedger(dir, table);
+      if (report) reports.push(report);
+    }
     return reports;
+  }
+
+  async #exportLedger(dir: string, table: MigrationLedgerTable): Promise<TransferReport | null> {
+    let writer: Bun.FileSink | null = null;
+    let rows = 0;
+    let after: Record<string, unknown> | null = null;
+    for (;;) {
+      const chunk = await MigrationTables.exportRows(
+        this.#database.getConnection(),
+        table,
+        after,
+        DocumentTransfer.#chunk,
+      );
+      if (chunk.length) writer ??= Bun.file(path.join(dir, `${table.name}.ndjson`)).writer();
+      for (const row of chunk) writer?.write(`${JSON.stringify(row)}\n`);
+      rows += chunk.length;
+      const last = chunk.at(-1);
+      if (!last || chunk.length < DocumentTransfer.#chunk) break;
+      after = last;
+    }
+    await writer?.end();
+    return writer ? { table: table.name, rows } : null;
   }
 
   async importFrom(dir: string): Promise<TransferReport[]> {
@@ -66,8 +94,30 @@ export class DocumentTransfer {
         this.#logger.warn(`Another process holds the search rebuild of ${store.table}; it catches up once that ends`);
       reports.push({ table: store.table, rows });
     }
+    for (const table of MigrationTables.ledger) {
+      const file = `${table.name}.ndjson`;
+      if (files.delete(file)) reports.push(await this.#importLedger(path.join(dir, file), table));
+    }
     for (const file of files) this.#logger.warn(`${file} matches no model of this app; skipped`);
     return reports;
+  }
+
+  async #importLedger(file: string, table: MigrationLedgerTable): Promise<TransferReport> {
+    const write = async (chunk: Record<string, unknown>[]) =>
+      await this.#database.transaction(
+        async () => await MigrationTables.importRows(this.#database.getConnection(), table, chunk),
+      );
+    let rows = 0;
+    let chunk: Record<string, unknown>[] = [];
+    for await (const line of DocumentTransfer.#lines(file)) {
+      chunk.push(JSON.parse(line) as Record<string, unknown>);
+      if (chunk.length < DocumentTransfer.#chunk) continue;
+      await write(chunk);
+      rows += chunk.length;
+      chunk = [];
+    }
+    if (chunk.length) await write(chunk);
+    return { table: table.name, rows: rows + chunk.length };
   }
 
   #stores() {

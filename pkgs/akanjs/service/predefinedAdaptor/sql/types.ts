@@ -115,6 +115,7 @@ export interface InsightSession {
 }
 
 export interface DatabaseAdaptor {
+  readonly dialect?: SqlDialect;
   getConnection(): AkanSqlClient;
   getStore(constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema): DocumentStore;
   /** Every model table this process has opened a store for. */
@@ -144,7 +145,8 @@ export interface TransactionContext {
 }
 
 export const BASE_COLUMNS = baseDocumentColumns;
-export const RESERVED_RE = /^sqlite_|^_akan_meta$|^search_doc$|^search_fts$/i;
+export const RESERVED_RE =
+  /^sqlite_|^_akan_meta$|^_akan_migration_run$|^_akan_migration_change$|^search_doc$|^search_fts$/i;
 export const REF_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 export const toSafeRefName = (value: string) => value.replace(/[^A-Za-z0-9_]+/g, "_").replace(/_+/g, "_");
 export type DocumentRecord = Record<string, unknown>;

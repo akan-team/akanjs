@@ -1151,6 +1151,26 @@ describe("scan info construction", () => {
     expect(info.file.dictionary.services.has("auth")).toBe(true);
     expect(info.file.document.scalars.has("money")).toBe(true);
   });
+
+  test("lists script/migration by id with a checksum that ignores line endings, and skips tests", async () => {
+    const { root, app } = await createTempApp("migrating");
+    expect(await AppInfo.scanMigrations(app)).toEqual([]);
+    const dir = path.join(root, "apps", "migrating", "script", "migration");
+    await writeText(path.join(dir, "202610211000_ownership.ts"), "export default 1;\r\nexport const a = 2;\r\n");
+    await writeText(path.join(dir, "202609010900_backfill.ts"), "export default 1;\n");
+    await writeText(path.join(dir, "202609010900_backfill.test.ts"), "test;\n");
+    await writeText(path.join(dir, "README.md"), "# notes\n");
+    await writeText(path.join(root, "apps", "migrating", "script", "seed.ts"), "export {};\n");
+
+    const scanned = await AppInfo.scanMigrations(app);
+    expect(scanned.map(({ id }) => id)).toEqual(["202609010900_backfill", "202610211000_ownership"]);
+    await writeText(path.join(dir, "202610211000_ownership.ts"), "export default 1;\nexport const a = 2;\n");
+    expect(await AppInfo.scanMigrations(app)).toEqual(scanned);
+    expect(scanned[0]?.checksum).toMatch(/^[0-9a-f]{64}$/);
+
+    await writeText(path.join(dir, "fixOwners.ts"), "export default 1;\n");
+    await expect(AppInfo.scanMigrations(app)).rejects.toThrow("akan create-migration");
+  });
 });
 
 describe("WorkspaceExecutor listing", () => {

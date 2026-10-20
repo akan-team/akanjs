@@ -535,3 +535,80 @@ describe("the exit code of a command that failed", () => {
     expect((await run('new Error("broke")')).code).toBe(1);
   }, 30_000);
 });
+
+describe("a repeatable option", () => {
+  const track = tempRoots();
+  const meta: ArgMeta = {
+    name: "param",
+    argsOption: { type: "string", multiple: true },
+    key: "run",
+    idx: 0,
+    type: "Option",
+  };
+  afterEach(() => {
+    CommandContainer.clear();
+  });
+
+  test("reads every value given, in order, each against the choices, and an empty list when left out", async () => {
+    expect(await getOptionValue(meta, { param: ["a=1", "b=2"] }, { values: {} })).toEqual(["a=1", "b=2"]);
+    expect(await getOptionValue(meta, {}, { values: {} })).toEqual([]);
+    const choices = { ...meta, argsOption: { ...meta.argsOption, enum: ["a", "b"] } };
+    await expect(getOptionValue(choices, { param: ["a", "c"] }, { values: {} })).rejects.toThrow(
+      "option '--param' argument 'c' is invalid",
+    );
+  });
+
+  test("types the exec parameter as a list, and a positional argument cannot repeat", () => {
+    const expectType = <Expected>(_value: Expected) => undefined;
+    class RepeatRunner extends runner("repeat") {}
+    class RepeatScript extends script("repeat", [RepeatRunner]) {}
+    class RepeatCommand extends command("repeat", [RepeatScript], ({ public: target }) => ({
+      run: target({ desc: "run" })
+        .option("param", String, { multiple: true })
+        .option("mode", String, { enum: ["a", "b"], multiple: true })
+        .exec(async (param, mode) => {
+          expectType<string[]>(param);
+          expectType<("a" | "b")[]>(mode);
+        }),
+    })) {}
+    expect(getTargetMetas(RepeatCommand)[0]?.key).toBe("run");
+    expect(() =>
+      command("repeatArg", [RepeatScript], ({ public: target }) => ({
+        run: target({ desc: "run" })
+          .arg("names", String, { multiple: true })
+          .exec(async () => undefined),
+      })),
+    ).toThrow("argument 'names' cannot be multiple");
+  });
+
+  test("collects each time the flag is given, long or short", async () => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { command, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class CollectRunner extends runner("collect") {}',
+        'class CollectScript extends script("collect", [CollectRunner]) {}',
+        'class CollectCommand extends command("collect", [CollectScript], ({ public: target }) => ({',
+        '  collect: target({ desc: "collects", stdio: true })',
+        '    .option("param", String, { multiple: true })',
+        "    .exec(async function (param) {",
+        "      process.stdout.write(JSON.stringify(param));",
+        "    }),",
+        "})) {}",
+        "await runCommands(CollectCommand);",
+        "",
+      ].join("\n"),
+    );
+    const collect = async (...args: string[]) => {
+      const proc = Bun.spawn(["bun", entry, "collect", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+      const [stdout] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+      return JSON.parse(stdout) as unknown;
+    };
+    expect(await collect("--param", "a=1", "-p", "b=x=y")).toEqual(["a=1", "b=x=y"]);
+    expect(await collect()).toEqual([]);
+  }, 30_000);
+});

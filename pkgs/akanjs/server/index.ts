@@ -8,6 +8,7 @@ export * from "./decorators";
 export * from "./devtools";
 export type { ChangeBatch, ChangeKind } from "./hmr/wsHub";
 export * from "./machine";
+export * from "./migration";
 export * from "./nativeFile";
 export * from "./oauth";
 export * from "./processMetricsCollector";

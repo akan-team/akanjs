@@ -49,6 +49,36 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, filename) {
       await this.applicationScript.script(app, filename);
     }),
+  migrate: target({ desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration" })
+    .with(App)
+    .arg("action", String, {
+      desc: "what to do",
+      enum: ["list", "plan", "apply", "verify", "rollback"],
+      default: "list",
+    })
+    .arg("target", String, { desc: "migration id; for rollback, an apply's run id too", nullable: true })
+    .option("param", String, { desc: "a param the migration declares, as name=value", multiple: true })
+    .option("expect", String, { desc: "the plan hash an apply must still match", nullable: true })
+    .option("items", Number, { desc: "how many planned decisions to print", nullable: true })
+    .option("actor", String, { desc: "who runs it, as the ledger records", nullable: true })
+    .option("json", Boolean, { desc: "print the result as one JSON line", default: false })
+    .exec(async function (app, action, target, param, expect, items, actor, json) {
+      await this.applicationScript.migrate(app, [
+        action,
+        ...(target ? [target] : []),
+        ...param.flatMap((each) => ["--param", each]),
+        ...(expect ? ["--expect", expect] : []),
+        ...(items === null ? [] : ["--items", String(items)]),
+        ...(actor ? ["--actor", actor] : []),
+        ...(json ? ["--json"] : []),
+      ]);
+    }),
+  createMigration: target({ desc: "Create a data migration in the app's script/migration" })
+    .arg("migrationName", String, { desc: "what it does, in camelCase", example: "bizLicenseOwnership" })
+    .with(App)
+    .exec(async function (migrationName, app) {
+      await this.applicationScript.createMigration(app, migrationName);
+    }),
   console: target({ desc: "Open an interactive server console for the application" })
     .with(App)
     .exec(async function (app) {

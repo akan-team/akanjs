@@ -133,6 +133,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await this.applicationRunner.runConsole(app);
   }
 
+  async migrate(app: App, argv: string[]) {
+    await app.scanSync();
+    await this.applicationRunner.migrate(app, argv);
+  }
+
+  async createMigration(app: App, migrationName: string) {
+    const migrationId = await this.applicationRunner.createMigration(app, migrationName);
+    Logger.rawLog(
+      `Created apps/${app.name}/script/migration/${migrationId}.ts; plan it with \`akan migrate ${app.name} plan ${migrationId}\``,
+    );
+  }
+
   async logs(app: App, options: LogsOptions) {
     await this.applicationRunner.runLogs(app, options);
   }
