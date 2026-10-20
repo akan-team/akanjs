@@ -18,6 +18,8 @@ export class CsrGuards {
   static readonly #runs = new Map<string, Promise<boolean>>();
   static readonly #admitted = new Set<string>();
   static readonly #holds = new Map<string, number>();
+  //? Keys whose last layer let go while their run was in flight: the run forgets itself as it settles.
+  static readonly #released = new Set<string>();
   static readonly #keptRuns = 64;
 
   static declared({ pathRoute }: GuardedLocation): boolean {
@@ -47,7 +49,7 @@ export class CsrGuards {
     //? in by then) or its layer is retried.
     const settle = (admitted: boolean) => {
       if (CsrGuards.#runs.get(key) !== run) return;
-      if (admitted) CsrGuards.#admitted.add(key);
+      if (admitted && !CsrGuards.#released.has(key)) CsrGuards.#admitted.add(key);
       else CsrGuards.#forget(key);
     };
     run.then(settle, () => settle(false));
@@ -68,6 +70,7 @@ export class CsrGuards {
   //? drawn again after it left asks again, since the session may have changed in between.
   static hold(key: string): () => void {
     CsrGuards.#holds.set(key, (CsrGuards.#holds.get(key) ?? 0) + 1);
+    CsrGuards.#released.delete(key);
     return () => {
       const holds = (CsrGuards.#holds.get(key) ?? 1) - 1;
       if (holds > 0) {
@@ -75,9 +78,12 @@ export class CsrGuards {
         return;
       }
       CsrGuards.#holds.delete(key);
-      //? Forgotten a tick later: StrictMode releases and holds again within one commit, and would drop a run in flight.
+      //? A tick later, as StrictMode releases and holds again within one commit. A run in flight stays, so a page back
+      //? before it settles asks no second time; it forgets itself as it settles unless its key is held again.
       queueMicrotask(() => {
-        if (!CsrGuards.#holds.has(key)) CsrGuards.#forget(key);
+        if (CsrGuards.#holds.has(key)) return;
+        if (CsrGuards.#admitted.has(key)) CsrGuards.#forget(key);
+        else if (CsrGuards.#runs.has(key)) CsrGuards.#released.add(key);
       });
     };
   }
@@ -85,6 +91,7 @@ export class CsrGuards {
   static #forget(key: string) {
     CsrGuards.#runs.delete(key);
     CsrGuards.#admitted.delete(key);
+    CsrGuards.#released.delete(key);
   }
 
   static async #run({ pathRoute, params, searchParams }: GuardedLocation): Promise<boolean> {

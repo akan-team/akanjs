@@ -38,6 +38,17 @@ export const pages: PagesContext = {
       })
       .render(({ children }) => children),
   }),
+  "./open/_layout.tsx": async () => ({
+    default: layout()
+      .guard(() => log("open guard"))
+      .render(({ children }) => children),
+  }),
+  "./open/plain.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("plain"))
+      .render(() => <p>plain body</p>),
+  }),
   "./vault/sealed.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })

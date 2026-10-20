@@ -74,6 +74,7 @@ const routerOf = () => {
 
 interface Shown {
   activity?: PageActivity;
+  entryId?: string;
   params?: Record<string, string>;
   searchParams?: Record<string, string>;
   isStrict?: boolean;
@@ -86,6 +87,7 @@ const stackOf = (renders: RouteRender[], pathRoute: { path: string }) => {
   mounted = { root, container };
   const show = async ({
     activity = "current",
+    entryId = "e1",
     params = { lang: "en" },
     searchParams = {},
     isStrict = false,
@@ -93,7 +95,7 @@ const stackOf = (renders: RouteRender[], pathRoute: { path: string }) => {
     const search = new URLSearchParams(searchParams).toString();
     const location = {
       href: `/en${pathRoute.path}${search ? `?${search}` : ""}`,
-      entryId: "e1",
+      entryId,
       pathname: `/en${pathRoute.path}`,
       params,
       searchParams,
@@ -454,7 +456,7 @@ describe("RenderLayer", () => {
     expect(container.textContent).toBe("q=ab");
     expect(guardRuns).toBe(1);
   });
-  test("asks nothing for a parked page and keeps its state, then asks again once it is back while it stays drawn", async () => {
+  test("asks only for the page in front, keeping a parked page's state, and draws nothing once a check refuses", async () => {
     const replaced = routerOf();
     const session = { isSignedIn: true };
     let guardRuns = 0;
@@ -478,14 +480,21 @@ describe("RenderLayer", () => {
     await show({});
     expect(container.textContent).toBe("settings");
     await show({ activity: "hidden" });
-    session.isSignedIn = false;
-    await show({ activity: "hidden" });
-    expect([guardRuns, replaced.length, instances]).toEqual([1, 0, 1]);
-
     await show({});
     expect([guardRuns, instances]).toEqual([2, 1]);
     expect(container.textContent).toBe("settings");
+
+    await show({ activity: "hidden" });
+    session.isSignedIn = false;
+    await show({ activity: "hidden" });
+    await show({ activity: "prev" });
+    expect([guardRuns, replaced.length, instances]).toEqual([2, 0, 1]);
+    expect(container.textContent).toBe("settings");
+
+    await show({});
+    expect(guardRuns).toBe(3);
     expect(replaced).toEqual(["/en/signin"]);
+    expect(container.textContent).toBe("");
   });
 
   test("asks a chain page's guards again once it is back on screen, so a sign-out while it was parked moves on", async () => {
@@ -511,9 +520,69 @@ describe("RenderLayer", () => {
     await show({});
     await show({ activity: "hidden" });
     session.isSignedIn = false;
+    await show({ activity: "prev" });
+    expect([guardRuns, replaced.length]).toEqual([1, 0]);
     await show({});
     expect(guardRuns).toBe(2);
     expect(replaced).toEqual(["/en/signin"]);
+    expect(container.textContent).toBe("");
+
+    await show({ activity: "prev" });
+    await show({});
+    expect(guardRuns).toBe(3);
+  });
+
+  test("draws nothing of another entry's props once a cached route's new entry is refused", async () => {
+    const replaced = routerOf();
+    const session = { isSignedIn: true };
+    const app = layout()
+      .guard(() => {
+        if (!session.isSignedIn) router.replace("/signin");
+      })
+      .render(({ children }) => children)
+      .toRouteModule();
+    const appRender: RouteRender = { kind: "layout", isAsync: true, render: app.default as never, guard: app.guard };
+    const Inbox = ({ searchParams }: { searchParams: Record<string, string> }) => (
+      <p>{`inbox of ${searchParams.who}`}</p>
+    );
+    const legacy: RouteRender = { kind: "page", render: Inbox as RouteRender["render"] };
+    const pathRoute = { path: "/inbox", renderRootLayouts: [appRender], renderLayouts: [], renderPage: legacy };
+    const { container, show } = stackOf([legacy], pathRoute);
+
+    await show({ searchParams: { who: "alice" } });
+    expect(container.textContent).toBe("inbox of alice");
+    session.isSignedIn = false;
+    await show({ entryId: "e2", searchParams: { who: "bob" } });
+    expect(replaced).toEqual(["/en/signin"]);
+    expect(container.textContent).toBe("");
+  });
+
+  test("shows a background check that fails as a failed render, with a retry", async () => {
+    routerOf();
+    const server = { isBroken: false };
+    const inbox = page()
+      .guard(() => {
+        if (server.isBroken) throw new Error("guard broke");
+      })
+      .render(() => <p>inbox</p>)
+      .toRouteModule();
+    const inboxRender: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: inbox.default as never,
+      guard: inbox.guard,
+    };
+    const pathRoute = { path: "/inbox", renderRootLayouts: [], renderLayouts: [], renderPage: inboxRender };
+    const { container, show } = stackOf([inboxRender], pathRoute);
+
+    await show({});
+    await show({ activity: "hidden" });
+    server.isBroken = true;
+    await show({});
+    expect(container.querySelector("[role=alert]")).not.toBeNull();
+    server.isBroken = false;
+    await act(async () => container.querySelector("button")?.click());
+    await settle();
     expect(container.textContent).toBe("inbox");
   });
 

@@ -67,27 +67,46 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   const guarded = location && CsrGuards.declared(location) ? location : null;
   const guardKey = guarded ? CsrGuards.keyOf(guarded) : null;
   const locationId = location ? `${location.entryId ?? ""} ${location.href}` : null;
-  //? React still renders a parked page, whose effects are stopped: it starts no guard run there, so a guard never moves
-  //? the router for a page nobody sees, and the page keeps what it drew.
-  const isParked = activity === "hidden";
-  //? A verdict lasts while a layer of its location is on screen. One that lapsed while the page was parked, or a key
-  //? that moved on args this layer does not read, is asked again in the background: what the layer drew stays, and a
-  //? refusal moves the router.
+  //? Only the page in front asks. React still renders a parked page, whose effects are stopped, and a page under the
+  //? current one (`prev`) is not the one the visitor is on: a guard run for either would move the router off it.
+  const mayAsk = activity !== "hidden" && activity !== "prev";
+  useEffect(() => (guardKey ? CsrGuards.hold(guardKey) : undefined), [guardKey]);
+  //? A verdict lasts while a layer of its location is on screen. One that lapsed while the page was away, or a key that
+  //? moved on args this layer does not read, is asked in the background: what the layer drew stays until a refusal,
+  //? which moves the router and blanks the layer, or a failure, which shows as a render's would.
   useEffect(() => {
-    if (!guarded || !guardKey) return;
-    const release = CsrGuards.hold(guardKey);
-    if (!CsrGuards.asked(guardKey))
-      CsrGuards.of(guarded).catch((error: unknown) => {
-        Logger.warn(`the guards of ${path} failed: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    return release;
-  }, [guardKey]);
+    const rendered = renderedRef.current;
+    if (!guarded || !guardKey || !mayAsk || !rendered || CsrGuards.asked(guardKey)) return;
+    if (rendered.refusedAt === locationId || rendered.failure) return;
+    CsrGuards.of(guarded).then(
+      (admitted) => {
+        if (admitted || renderedRef.current !== rendered) return;
+        renderedRef.current = {
+          ...rendered,
+          result: null,
+          record: null,
+          redirected: true,
+          refusedAt: locationId,
+          admittedKey: null,
+        };
+        setFailures((count) => count + 1);
+      },
+      (error: unknown) => {
+        Logger.error(
+          `the guards of ${path} failed: ${error instanceof Error ? (error.stack ?? error.message) : error}`,
+        );
+        if (renderedRef.current !== rendered) return;
+        rendered.failure = { error };
+        setFailures((count) => count + 1);
+      },
+    );
+  }, [guardKey, activity]);
   //? A sync layer draws only props its location's guards let in: new ones at once once they did, so typing into a
   //? URL-bound field never lags behind a check, and the ones it last drew while a new location is checked.
   const isSyncAdmitted = !isAsyncRender && !!guardKey && CsrGuards.admitted(guardKey);
   const drawnPropsRef = useRef<Pick<RenderLayerProps, "params" | "searchParams"> | null>(null);
   if (isSyncAdmitted) drawnPropsRef.current = { params, searchParams };
-  if (routeRender && !isParked && (isAsyncRender || (guarded && !isSyncAdmitted))) {
+  if (routeRender && mayAsk && (isAsyncRender || (guarded && !isSyncAdmitted))) {
     const argsKey = isAsyncRender
       ? RouteDefinition.renderArgsKey(
           routeRender.render,
@@ -184,9 +203,11 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         }}
       />
     );
-  const drawn = isAsyncRender ? null : drawnPropsRef.current;
+  //? A refused location draws nothing of what it refused, whatever the layer drew for another.
+  const isRefused = !!locationId && renderedRef.current?.refusedAt === locationId;
+  const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
   if (drawn) return createElement(routeRender.render as never, { children, ...drawn } as never);
-  if (!value || !isAsyncRender)
+  if (!value || !isAsyncRender || isRefused)
     return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });

@@ -354,7 +354,7 @@ What happens
 
 - Server render — Every guard in the chain runs in order, root layout first and the page last, before any layout body starts and before the route's arguments are checked. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.
 
-- Client navigation — A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page back on screen asks again in the background while what it drew stays. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.
+- Client navigation — A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page back in front asks again in the background while what it drew stays, and a refusal blanks it. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.
 
 - MCP — A page prompt or app tool runs the route's guards before anything else, and a refusal ends it as a redirect or a not-found. `prompts/list` and the page tools in `tools/list` show only the screens whose guards admit the caller. A listing knows no arguments: a guard that reads one admits the caller there and is checked again on the call. If the guards do not answer within 1 s, the list is served unfiltered; the calls are still checked.
 

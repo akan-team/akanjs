@@ -636,7 +636,8 @@ export class RscRenderer {
             };
             element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: true });
           } else element = suffixElement;
-        } else if (match) element = await this.#renderMatched(urlObj, match, searchParams, notFound);
+        } else if (match)
+          element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: admitted });
         else element = await this.#renderNotFound(urlObj);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;

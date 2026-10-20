@@ -56,10 +56,11 @@ body shape — this is the full contract behind them. Before changing route beha
   record exists. A refusal's not-found keeps only the layouts above the refusing guard, and a path no page matches
   asks the guards of the layouts its not-found would sit under first.
 - **On a client navigation a page's layers wait for its guards.** The verdict is kept by what the guards read (a
-  query only the page reads keeps it) and lasts while a layer of that location is on screen. A parked page asks
-  nothing; back on screen, a cached one included, it asks again in the background while what it drew stays, and a
-  refusal moves the router. A guard that moves the router ends the chain and the page draws nothing; a refused or
-  failed check runs again when its layer is retried. Root layouts are drawn once for every page and are not gated
+  query only the page reads keeps it) and lasts while a layer of that location is on screen. Only the page in front
+  asks — never a parked one, nor the one under it during a swipe back; back in front, a cached page included, it asks
+  again in the background while what it drew stays, and a refusal moves the router and blanks it. A guard that moves
+  the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is
+  retried. Root layouts are drawn once for every page and are not gated
   themselves; their guards still run in each page's chain, and a legacy page under them waits too. `guard` is a stage
   only: a legacy module that exports one, a root layout's included, fails to load and fails `akan build`.
 - **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and

@@ -863,6 +863,24 @@ describe("RscWorker route head", () => {
       },
     );
   }, 20_000);
+
+  test("runs a guarded page's guards once when its head-safe patch falls back to a full render", async () => {
+    const routes = new RouteTreeBuilder(headFixturePages).build();
+    const pathRoute = routes.find((route) => route.path.endsWith("/open/plain"));
+    if (!pathRoute) throw new Error("no route for open/plain");
+    const headers = new Headers();
+    const from = "http://localhost/en/open/plain?tab=1";
+    appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href: from, buildId: 1 }));
+    await withHeadWorker(
+      { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
+      async ({ render, headRuns }) => {
+        const plain = await render("http://localhost/en/open/plain?tab=2", headers);
+        expect(plain.trace).toMatchObject({ partial: "full" });
+        expect(plain.body).toContain("plain body");
+        expect(headRuns("open guard")).toBe(1);
+      },
+    );
+  }, 20_000);
 });
 
 describe("RscWorker reloads", () => {

@@ -97,6 +97,27 @@ describe("CsrGuards", () => {
     expect(runs).toBe(2);
   });
 
+  test("keeps a run in flight past its last holder, so a page back before it settles asks no second time", async () => {
+    let runs = 0;
+    let finish: () => void = () => undefined;
+    const location = locationOf(undefined, async () => {
+      runs += 1;
+      await new Promise<void>((resolve) => (finish = resolve));
+    });
+    const key = CsrGuards.keyOf(location);
+    const release = CsrGuards.hold(key);
+    const run = CsrGuards.of(location);
+    release();
+    await Promise.resolve();
+    const releaseAgain = CsrGuards.hold(key);
+    expect(CsrGuards.of(location)).toBe(run);
+    releaseAgain();
+    await Promise.resolve();
+    finish();
+    expect(await run).toBe(true);
+    expect([runs, CsrGuards.admitted(key), CsrGuards.asked(key)]).toEqual([1, false, false]);
+  });
+
   test("keeps a run in flight when its last holder lets go and holds again within one tick, as StrictMode does", async () => {
     let runs = 0;
     const location = locationOf(undefined, async () => {
