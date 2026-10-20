@@ -532,6 +532,82 @@ describe("RenderLayer", () => {
     expect(guardRuns).toBe(3);
   });
 
+  test("draws nothing of a refused page while it is asked again back in front, chain or legacy", async () => {
+    const replaced = routerOf();
+    const session = { isSignedIn: true };
+    let answer: Promise<void> | null = null;
+    let instances = 0;
+    const guard = async () => {
+      if (answer) await answer;
+      if (!session.isSignedIn) router.replace("/signin");
+    };
+    const refuseAndReturn = async (renders: RouteRender[], pathRoute: { path: string }) => {
+      session.isSignedIn = true;
+      answer = null;
+      const { container, show } = stackOf(renders, pathRoute);
+      await show({});
+      expect(container.textContent).not.toBe("");
+      await show({ activity: "hidden" });
+      session.isSignedIn = false;
+      await show({});
+      expect(container.textContent).toBe("");
+      await show({ activity: "prev" });
+      let answerNow: () => void = () => undefined;
+      answer = new Promise<void>((resolve) => (answerNow = resolve));
+      await show({});
+      expect(container.textContent).toBe("");
+      answerNow();
+      await settle();
+      expect(container.textContent).toBe("");
+      const { root } = mounted as { root: Root };
+      await act(async () => root.unmount());
+      container.remove();
+      mounted = null;
+    };
+    const inbox = page()
+      .guard(guard)
+      .render(() => <p>inbox</p>)
+      .toRouteModule();
+    const inboxRender: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: inbox.default as never,
+      guard: inbox.guard,
+    };
+    await refuseAndReturn([inboxRender], {
+      path: "/inbox-again",
+      renderRootLayouts: [],
+      renderLayouts: [],
+      renderPage: inboxRender,
+    } as never);
+    const app = guardedLayoutOf(() => guard());
+    const Notes = () => {
+      useState(() => ++instances);
+      return <p>notes</p>;
+    };
+    const notes: RouteRender = { kind: "page", render: Notes as RouteRender["render"] };
+    await refuseAndReturn([notes], {
+      path: "/notes-again",
+      renderRootLayouts: [app],
+      renderLayouts: [],
+      renderPage: notes,
+    } as never);
+    expect(replaced).toEqual(["/en/signin", "/en/signin", "/en/signin", "/en/signin"]);
+    expect(instances).toBe(1);
+  });
+
+  test("draws an unguarded page that first renders under the current one", async () => {
+    routerOf();
+    const home = page()
+      .render(() => <p>home</p>)
+      .toRouteModule();
+    const homeRender: RouteRender = { kind: "page", isAsync: true, render: home.default as never };
+    const pathRoute = { path: "/home", renderRootLayouts: [], renderLayouts: [], renderPage: homeRender };
+    const { container, show } = stackOf([homeRender], pathRoute);
+    await show({ activity: "prev" });
+    expect(container.textContent).toBe("home");
+  });
+
   test("draws nothing of another entry's props once a cached route's new entry is refused", async () => {
     const replaced = routerOf();
     const session = { isSignedIn: true };

@@ -27,6 +27,8 @@ interface RenderedRoute {
   admittedKey: string | null;
   /** The render rejected while its page stayed: what the layer draws instead, with a retry. */
   failure: { error: unknown } | null;
+  /** Asked after the layer's last run was refused, so it draws nothing until its own answer arrives. */
+  afterRefusal: boolean;
 }
 
 interface RenderLayerProps {
@@ -106,7 +108,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   const isSyncAdmitted = !isAsyncRender && !!guardKey && CsrGuards.admitted(guardKey);
   const drawnPropsRef = useRef<Pick<RenderLayerProps, "params" | "searchParams"> | null>(null);
   if (isSyncAdmitted) drawnPropsRef.current = { params, searchParams };
-  if (routeRender && mayAsk && (isAsyncRender || (guarded && !isSyncAdmitted))) {
+  if (routeRender && (mayAsk || !guarded) && (isAsyncRender || (guarded && !isSyncAdmitted))) {
     const argsKey = isAsyncRender
       ? RouteDefinition.renderArgsKey(
           routeRender.render,
@@ -162,6 +164,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         refusedAt: null,
         admittedKey: null,
         failure: null,
+        afterRefusal: !!rendered?.refusedAt,
       };
       if (isThenable(result))
         (result as Promise<ReactNode>).then(
@@ -203,8 +206,10 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         }}
       />
     );
-  //? A refused location draws nothing of what it refused, whatever the layer drew for another.
-  const isRefused = !!locationId && renderedRef.current?.refusedAt === locationId;
+  //? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
+  const isRefused =
+    (!!locationId && renderedRef.current?.refusedAt === locationId) ||
+    (!!renderedRef.current?.afterRefusal && !fulfilled);
   const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
   if (drawn) return createElement(routeRender.render as never, { children, ...drawn } as never);
   if (!value || !isAsyncRender || isRefused)
