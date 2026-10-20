@@ -5,7 +5,7 @@ import type { LayoutModule, PageModule, PageProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
 import { RouteDefinition } from "./RouteDefinition";
 import { isRouteDefinition, resolveRouteModule } from "./resolveRouteModule";
-import { RouteArgError } from "./routeArgs";
+import { RouteArgError, RouteArgPending } from "./routeArgs";
 import { layout, page, rootLayout } from "./routeBuilders";
 
 class Period extends enumOf("routeTestPeriod", ["day", "month"] as const) {}
@@ -218,6 +218,86 @@ describe("layout() and rootLayout() chains", () => {
       resolveRouteModule({ default: rootLayout().render(() => null) } as never, "./_layout.tsx", { kind: "layout" })
         .definition?.kind,
     ).toBe("rootLayout");
+  });
+});
+
+describe(".guard() stage", () => {
+  test("is declared once per route, so every check runs from one guard", () => {
+    expect(() =>
+      page()
+        .guard(() => undefined)
+        .guard(() => undefined),
+    ).toThrow("page() declares .guard() twice");
+    expect(() =>
+      layout()
+        .guard(() => undefined)
+        .guard(() => undefined),
+    ).toThrow("layout() declares .guard() twice");
+    expect(
+      page()
+        .render(() => null)
+        .toRouteModule().guard,
+    ).toBeUndefined();
+  });
+
+  test("hands the guard the route's typed arguments and lang, and a layout's no children", async () => {
+    const seen: unknown[] = [];
+    const pageModule = page()
+      .param("projectId", ID)
+      .search("page", Int)
+      .guard((args) => {
+        seen.push(args);
+      })
+      .render(() => null)
+      .toRouteModule();
+    await pageModule.guard?.({ params: { lang: "ko", projectId: pid }, searchParams: { page: "2" } });
+    const rootModule = rootLayout()
+      .guard(async (args) => {
+        seen.push(args);
+      })
+      .render(({ children }) => children)
+      .toRouteModule();
+    await rootModule.guard?.({ params: { lang: "en" }, searchParams: {} });
+    expect(seen).toEqual([{ lang: "ko", projectId: pid, page: 2 }, { lang: "en" }]);
+  });
+
+  test("answers not-found for a path value the type refuses, before the guard runs", async () => {
+    let ran = false;
+    const mod = page()
+      .param("projectId", ID)
+      .guard(() => {
+        ran = true;
+      })
+      .render(() => null)
+      .toRouteModule();
+    await expect(mod.guard?.({ params: { projectId: "nope" }, searchParams: {} })).rejects.toBeInstanceOf(
+      AkanNotFoundError,
+    );
+    expect(ran).toBe(false);
+  });
+
+  test("while MCP lists the screen, refuses the read of a declared argument and keeps lang", async () => {
+    const reads: string[] = [];
+    const listing = { params: { lang: "ko" }, searchParams: {}, listing: true };
+    const byArgument = page()
+      .param("projectId", ID)
+      .guard(({ projectId }) => {
+        reads.push(projectId);
+      })
+      .render(() => null)
+      .toRouteModule();
+    const pending = await byArgument.guard?.(listing).catch((error: unknown) => error);
+    expect(pending).toBeInstanceOf(RouteArgPending);
+    expect((pending as RouteArgPending).digest).toBe("AKAN_ROUTE_ARG_PENDING");
+    const byLang = page()
+      .param("projectId", ID)
+      .guard(({ lang }) => {
+        reads.push(lang);
+      })
+      .render(() => null)
+      .toRouteModule();
+    await byLang.guard?.(listing);
+    expect(reads).toEqual(["ko"]);
   });
 });
 

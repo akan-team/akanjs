@@ -109,6 +109,13 @@ export type PageLoadingRender = (props: PageLoadingProps) => PromiseOrObject<Rea
 export type LayoutLoadingRender = (props: LayoutLoadingProps) => PromiseOrObject<ReactNode>;
 export type LayoutNotFoundRender = (props: LayoutNotFoundProps) => PromiseOrObject<ReactNode>;
 export type LayoutErrorRender = (props: LayoutErrorProps) => PromiseOrObject<ReactNode>;
+export interface RouteGuardProps {
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
+  /** MCP is listing the screen, so no argument is known: a guard reading one throws `RouteArgPending`. */
+  listing?: boolean;
+}
+export type RouteGuard = (props: RouteGuardProps) => Promise<void>;
 export interface RouteRender {
   render: LayoutRender | PageRender;
   isAsync?: boolean;
@@ -125,6 +132,8 @@ export interface RouteRender {
   resolveHead?: ResolveHead;
   /** Parses the declared args without rendering, so a path value the type refuses answers not-found before any byte. */
   checkArgs?: (props: PageProps) => Promise<void>;
+  /** The route's `.guard()`, which `RouteGuards.run` calls root layout first, ahead of every layout body. */
+  guard?: RouteGuard;
   getPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
   getLayoutPageConfig?: () => PromiseOrObject<PageConfig | undefined>;
   /** A root layout's `theme`, readable before it renders. */
@@ -175,12 +184,14 @@ export interface PageModule {
   head?: Head;
   generateHead?: GenerateHead;
   Loading?: PageLoadingRender;
+  guard?: RouteGuard;
 }
 export interface LayoutModule {
   default?: LayoutRender;
   pageConfig?: PageConfig;
   head?: Head;
   generateHead?: GenerateHead;
+  guard?: RouteGuard;
   fonts?: ReactFont[];
   manifest?: WebAppManifest;
   theme?: string;

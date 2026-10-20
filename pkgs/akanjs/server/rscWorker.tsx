@@ -34,7 +34,7 @@ import { renderToReadableStream } from "react-server-dom-webpack/server.node";
 import { RouteHead } from "../client/route/RouteHead";
 import { ViewportMeta } from "../client/viewportMeta";
 import { toManifestJson, webManifestHref } from "../client/webManifest";
-import type { PagePromptRunInput } from "../signal/mcp/pagePrompt";
+import type { PagePromptRunInput, PagePromptVisibleInput } from "../signal/mcp/pagePrompt";
 import { getCurrentTrace, runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
 import {
@@ -138,6 +138,11 @@ interface PagePromptRunMsg {
   requestId: string;
   input: PagePromptRunInput;
 }
+interface PagePromptsVisibleMsg {
+  type: "page-prompts.visible";
+  requestId: string;
+  input: PagePromptVisibleInput;
+}
 interface WebManifestMsg {
   type: "web-manifest";
   requestId: string;
@@ -153,6 +158,7 @@ type InMsg =
   | LogLevelMsg
   | PagePromptsMsg
   | PagePromptRunMsg
+  | PagePromptsVisibleMsg
   | WebManifestMsg;
 type RenderControl =
   | { type: "redirect"; location: string; method: "replace" | "push"; status: RedirectStatus }
@@ -326,6 +332,9 @@ export class RscRenderer {
         return;
       case "page-prompt.run":
         void this.#answer(msg.requestId, "page-prompt.result", () => this.#pagePrompts.run(msg.input));
+        return;
+      case "page-prompts.visible":
+        void this.#answer(msg.requestId, "page-prompts.visible.result", () => this.#pagePrompts.visible(msg.input));
         return;
       case "web-manifest":
         void this.#answer(msg.requestId, "web-manifest.result", () => this.#webManifest(msg.basePath));
@@ -1334,6 +1343,7 @@ export class RscRenderer {
     });
     setRequestFrameState(pathRoute.pageState);
     await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
+    await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
     //? The provider names the theme only as it renders, which can be after the HTML shell and its data-theme are out.
     const rootLayouts = pathRoute.renderRootLayouts;
     const rootTheme = await RscRenderer.#firstRootValue(rootLayouts, (render) => render.getLayoutTheme?.());
@@ -1391,6 +1401,7 @@ export class RscRenderer {
     });
     setRequestFrameState(pathRoute.pageState);
     await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
+    await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
     await RouteElementComposer.resolveSuffixLoadings(pathRoute, patchStartIndex);
     return RouteElementComposer.composeSuffix({
       pathRoute,

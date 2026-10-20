@@ -401,6 +401,7 @@ const okRun = (count = 2): PagePromptRun => ({
 });
 const pagePromptsOf = (run: PagePromptRun, entries: PagePromptEntry[] = [briefEntry]): PagePromptSource => ({
   list: async () => entries,
+  visible: async ({ names }) => names,
   run: async () => run,
 });
 const promptsGet = (args: Record<string, string>) => rpc("prompts/get", { name: "briefItem", arguments: args });
@@ -728,6 +729,29 @@ describe("MCP over a booted container", () => {
     expect(none.result.prompts).toEqual([]);
   });
 
+  test("lists only the page prompts whose route guards admit the caller, asked with the caller's credential", async () => {
+    const asked: [string, string][][] = [];
+    const gated: PagePromptSource = {
+      ...pagePromptsOf(okRun(), [briefEntry, { ...briefEntry, name: "memberDesk" }]),
+      visible: async ({ names, headers }) => {
+        asked.push(headers);
+        return names.filter((name) => name !== "memberDesk");
+      },
+    };
+    const { json } = await postAs(rpc("prompts/list"), { authorization: "Bearer u1" }, { pagePrompts: gated });
+    expect(json.result.prompts.map((prompt: { name: string }) => prompt.name)).toEqual(["briefItem"]);
+    expect(asked).toEqual([[["authorization", "Bearer u1"]]]);
+  });
+
+  test("lists the page prompts unfiltered when their route guards cannot be read in time", async () => {
+    const stalled: PagePromptSource = {
+      ...pagePromptsOf(okRun()),
+      visible: () => new Promise<string[]>(() => {}),
+    };
+    const { json } = await postWith(rpc("prompts/list"), { pagePrompts: stalled });
+    expect(json.result.prompts.map((prompt: { name: string }) => prompt.name)).toEqual(["briefItem"]);
+  });
+
   test("answers a page prompt with the screen's data, addressed and masked, and the tools of its modules", async () => {
     const { json } = await postWith(promptsGet({ serverResolverTestItemId: itemId }), {
       pagePrompts: pagePromptsOf(okRun()),
@@ -906,6 +930,7 @@ describe("MCP over a booted container", () => {
       list: async () => {
         throw new Error("rsc worker is stopped");
       },
+      visible: async ({ names }) => names,
       run: async () => okRun(),
     };
     for (const body of [promptsGet({ serverResolverTestItemId: itemId }), rpc("prompts/list")]) {
@@ -1526,6 +1551,7 @@ describe("MCP Apps", () => {
       list: async () => {
         throw new Error("rsc worker is stopped");
       },
+      visible: async ({ names }) => names,
       run: async () => okRun(),
     };
     const props = { ...apps, pagePrompts: down, rateLimit: { calls: 100, concurrent: 1 } };
@@ -1553,6 +1579,7 @@ describe("MCP Apps", () => {
     const answers = [Promise.resolve([briefEntry])];
     const worker: PagePromptSource = {
       list: () => answers.shift() ?? new Promise<PagePromptEntry[]>(() => {}),
+      visible: async ({ names }) => names,
       run: async () => okRun(),
     };
     const send = sender({ ...apps, pagePrompts: worker });

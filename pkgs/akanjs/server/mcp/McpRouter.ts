@@ -316,13 +316,16 @@ export class McpRouter {
           discoverCache,
         );
       case "tools/list":
-        return await this.#list(call, "tools", [...document.tools, ...(await this.#pages.tools(call.ui, document))]);
+        return await this.#list(call, "tools", [
+          ...document.tools,
+          ...(await this.#pages.tools(call.ui, document, call.req)),
+        ]);
       case "resources/list":
         return await this.#list(call, "resources", [...document.resources, ...(await this.#pages.resources(call.ui))]);
       case "resources/templates/list":
         return await this.#list(call, "resourceTemplates", document.resourceTemplates);
       case "prompts/list":
-        return await this.#list(call, "prompts", await this.#pages.prompts());
+        return await this.#list(call, "prompts", await this.#pages.prompts(call.req));
       case "tools/call": {
         const slot = await this.#acquire(call);
         if ("refused" in slot) return slot.refused;

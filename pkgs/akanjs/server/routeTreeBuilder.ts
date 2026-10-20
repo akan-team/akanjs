@@ -295,6 +295,9 @@ export class RouteTreeBuilder {
       checkArgs: async ({ params, searchParams }: PageProps) => {
         (await loadModule()).definition?.resolveArgs({ params, searchParams });
       },
+      guard: async (props) => {
+        await (await loadModule()).module.guard?.(props);
+      },
     };
     if (kind === "page") {
       routeRender.getPageConfig = pageConfigOf;

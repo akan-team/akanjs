@@ -189,6 +189,7 @@ export class CsrRouteTable {
         kind: parsed.kind === "layout" ? "layout" : "page",
         paramNames: CsrRouteTable.#paramNamesOf(parsed.pattern),
         Loading: page.Loading as never,
+        guard: page.guard,
         NotFound: layoutPage?.NotFound,
         Error: layoutPage?.Error,
         resolveNotFound: layoutPage ? () => layoutPage.NotFound : undefined,

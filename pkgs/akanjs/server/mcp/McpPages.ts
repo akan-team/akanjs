@@ -68,8 +68,8 @@ export class McpPages {
       });
   }
 
-  async prompts(): Promise<McpPrompt[]> {
-    return (await this.#list()).map(McpPages.#promptOf);
+  async prompts(req: Request): Promise<McpPrompt[]> {
+    return (await this.#visibleTo(req, await this.#list())).map(McpPages.#promptOf);
   }
 
   async entry(name: string) {
@@ -151,10 +151,10 @@ export class McpPages {
     return await this.entry(name).catch(() => undefined);
   }
 
-  async tools(ui: boolean, document: McpDocument) {
+  async tools(ui: boolean, document: McpDocument, req: Request) {
     const apps = this.#props.apps;
     if (!apps) return [];
-    const pages = (await this.#pageTools()).map((entry) => apps.toolOf(entry));
+    const pages = (await this.#visibleTo(req, await this.#pageTools())).map((entry) => apps.toolOf(entry));
     return ui ? [...document.appTools, ...pages] : pages;
   }
 
@@ -219,12 +219,41 @@ export class McpPages {
   // A listing never waits out the RSC worker, which queues the call while it (re)starts: the pages it listed last stand
   // in. A stopped worker leaves them out.
   async #listedPages(): Promise<PagePromptEntry[]> {
+    return (await McpPages.#withinListWait(this.#pagesOrNone())) ?? this.#listed ?? [];
+  }
+
+  // Route guards decide which screens a caller is shown, never what data it reaches: a call runs them again and the
+  // signal guards hold the data. So a verdict the worker cannot give in time lists the pages unfiltered, as the
+  // listing itself falls back to the pages listed last.
+  async #visibleTo(req: Request, entries: PagePromptEntry[]): Promise<PagePromptEntry[]> {
+    const source = this.#props.source;
+    if (!source || !entries.length) return entries;
+    const names = await McpPages.#withinListWait(
+      source
+        .visible({
+          names: entries.map((entry) => entry.name),
+          headers: McpPages.#forwardedHeaders(req),
+          language: this.#props.language,
+        })
+        .catch((error: unknown) => {
+          this.#props.logger.warn(
+            `MCP could not run the route guards of its page prompts, so they are listed unfiltered: ${error instanceof Error ? error.message : error}`,
+          );
+          return null;
+        }),
+    );
+    if (!names) return entries;
+    const admitted = new Set(names);
+    return entries.filter((entry) => admitted.has(entry.name));
+  }
+
+  static async #withinListWait<T>(work: Promise<T>): Promise<T | null> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const stalled = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), McpPages.listWaitMs);
     });
     try {
-      return (await Promise.race([this.#pagesOrNone(), stalled])) ?? this.#listed ?? [];
+      return await Promise.race([work, stalled]);
     } finally {
       clearTimeout(timer);
     }

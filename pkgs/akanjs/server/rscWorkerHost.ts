@@ -4,7 +4,12 @@ import { fileURLToPath } from "node:url";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N, Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
-import type { PagePromptEntry, PagePromptRun, PagePromptRunInput } from "../signal/mcp/pagePrompt";
+import type {
+  PagePromptEntry,
+  PagePromptRun,
+  PagePromptRunInput,
+  PagePromptVisibleInput,
+} from "../signal/mcp/pagePrompt";
 import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
 import { ChildOutputReader } from "./logging/childOutputReader";
@@ -337,6 +342,7 @@ type RscInMsg =
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
+  | { type: "page-prompts.visible.result"; requestId: string; result: string[] }
   | { type: "web-manifest.result"; requestId: string; result: unknown }
   | {
       type: "error";
@@ -481,6 +487,10 @@ export class RscWorker {
 
   runPagePrompt(input: PagePromptRunInput): Promise<PagePromptRun> {
     return this.#call<PagePromptRun>((requestId) => ({ type: "page-prompt.run", requestId, input }));
+  }
+
+  visiblePagePrompts(input: PagePromptVisibleInput): Promise<string[]> {
+    return this.#call<string[]>((requestId) => ({ type: "page-prompts.visible", requestId, input }));
   }
 
   /** The root layout's `.manifest()` for `basePath`, in the browser's keys; `null` when it declares none. */
@@ -845,6 +855,7 @@ export class RscWorker {
         return;
       case "page-prompts.result":
       case "page-prompt.result":
+      case "page-prompts.visible.result":
       case "web-manifest.result":
         this.#settleCall(message.requestId, (call) => call.resolve(message.result));
         return;

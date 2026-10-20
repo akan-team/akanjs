@@ -10,6 +10,7 @@ import {
 } from "akanjs/client";
 import { isThenable, Logger } from "akanjs/common";
 import { createContext, createElement, memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { CsrGuards } from "./CsrGuards";
 import { CsrFrameDump } from "./csrFrameDump";
 import { EmbeddedLayout, LayoutOutlet } from "./EmbeddedLayout";
 import { RenderFailure } from "./RenderFailure";
@@ -97,11 +98,20 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     ) {
       const redirectsBefore = router.redirectCount();
       const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
-      const result = reportFailure(
+      let refused = false;
+      const draw = () =>
         Translator.renderAt(
           renderPath,
           () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
-        ),
+        );
+      //? A page's layers wait for its route guards; the root layouts, drawn once for every page, do not.
+      const result = reportFailure(
+        location && CsrGuards.declared(location)
+          ? CsrGuards.of(location).then((admitted) => {
+              refused = !admitted;
+              return admitted ? draw() : null;
+            })
+          : draw(),
         layer,
       );
       const next: RenderedRoute = {
@@ -115,7 +125,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
       if (isThenable(result))
         (result as Promise<ReactNode>).then(
           () => {
-            next.redirected = router.redirectCount() !== redirectsBefore;
+            next.redirected = refused || router.redirectCount() !== redirectsBefore;
           },
           (error: unknown) => {
             if (router.redirectCount() !== redirectsBefore || renderedRef.current !== next) return;

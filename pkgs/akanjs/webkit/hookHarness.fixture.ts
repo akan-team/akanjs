@@ -77,6 +77,7 @@ export const csrClientBase = () => ({
   DEFAULT_BOTTOM_INSET: 34,
   DEFAULT_TOP_INSET: 44,
   RouteDefinition: { renderArgsKey: () => "" },
+  RouteGuards: { refusalOf: (error: unknown) => error },
   csrContext: { Provider: ({ children }: { children: unknown }) => children },
   csrLocation,
   debugFrame: () => undefined,

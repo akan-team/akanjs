@@ -78,6 +78,21 @@ describe("RscWorker not-found raised by a route", () => {
   }, 20_000);
 });
 
+describe("RscWorker route guards", () => {
+  test("answer a refusal before any byte, a leaked 403 as the layout's NotFound, and let the admitted render", async () => {
+    await withNotFoundWorker(async (render) => {
+      const admitted = await render("http://localhost/en/guarded/mine", { "x-signed-in": "yes" });
+      expect(admitted.status).toBe(200);
+      expect(admitted.body).toContain("item mine");
+
+      const leaked = await render("http://localhost/en/guarded/other", { "x-signed-in": "yes" });
+      expect(leaked.status).toBe(404);
+      expect(leaked.body).toContain("root missing /en/guarded/other");
+      expect(leaked.body).not.toContain("guarded:");
+    });
+  }, 20_000);
+});
+
 describe("RscWorker not-found while a layout still renders", () => {
   test("stays a 404, not the abort of the render it cancelled", async () => {
     await withNotFoundWorker(async (render) => {
@@ -127,7 +142,7 @@ describe("RscWorker render request scope", () => {
 });
 
 describe("RscWorker redirect raised by a route", () => {
-  test("is a real redirect when the body awaited no I/O first, a layout's included, and a late one after it", async () => {
+  test("is a real redirect when the body awaited no I/O first, a layout's or a guard's included, and a late one after it", async () => {
     const vars: Record<string, string> = {
       AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
       AKAN_PUBLIC_APP_NAME: "notfound",
@@ -151,6 +166,7 @@ describe("RscWorker redirect raised by a route", () => {
         ["rdresolved", "/en/target"],
         ["gate/inner", "/en/signin"],
         ["pending/moved", "/en/target"],
+        ["guarded/mine", "/en/signin"],
       ] as const) {
         const result = await rsc.renderWithMeta(new Request(`http://localhost/en/${route}`));
         expect(result).toMatchObject({ type: "redirect", location, status: 307 });

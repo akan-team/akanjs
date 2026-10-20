@@ -32,8 +32,17 @@ export interface PagePromptRunInput {
   language?: string;
 }
 
+export interface PagePromptVisibleInput {
+  names: string[];
+  /** The caller's credential, which the route guards read as a browser's would be. */
+  headers: [string, string][];
+  language?: string;
+}
+
 /** Pages live in the RSC worker, a process apart from the one serving `/mcp`, so the router reaches them through this. */
 export interface PagePromptSource {
   list(): Promise<PagePromptEntry[]>;
+  /** The listed names whose route guards admit the caller; one that needs an argument is left to the call. */
+  visible(input: PagePromptVisibleInput): Promise<string[]>;
   run(input: PagePromptRunInput): Promise<PagePromptRun>;
 }

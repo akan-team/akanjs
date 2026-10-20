@@ -1,7 +1,14 @@
 import type { PageDefinition, PathRoute } from "akanjs/client";
 import { Logger, parseSearchParams } from "akanjs/common";
 import { getRequestStore } from "akanjs/fetch";
-import type { PagePromptEntry, PagePromptRecord, PagePromptRun, PagePromptRunInput } from "../signal/mcp/pagePrompt";
+import { RouteGuards } from "../client/route/RouteGuards";
+import type {
+  PagePromptEntry,
+  PagePromptRecord,
+  PagePromptRun,
+  PagePromptRunInput,
+  PagePromptVisibleInput,
+} from "../signal/mcp/pagePrompt";
 
 interface RscPagePromptsProps {
   routes: () => PathRoute[];
@@ -60,15 +67,38 @@ export class RscPagePrompts {
         params: { ...params, lang },
         searchParams: parseSearchParams(new URL(url).search),
       };
+      const renders = RscPagePrompts.#rendersOf(route);
       try {
-        for (const render of [...route.renderRootLayouts, ...route.renderLayouts, route.renderPage])
-          await render.render({ ...props, children: null } as never);
+        await RouteGuards.run(renders, props);
+        for (const render of renders) await render.render({ ...props, children: null } as never);
       } catch (error) {
         return RscPagePrompts.#refusal(error);
       }
       const records = await Promise.all((getRequestStore()?.queryLog ?? []).map(RscPagePrompts.#settle));
       return { ok: true, url, records };
     });
+  }
+
+  /** The names whose route guards let this caller see the screen, read with no arguments as a listing has none. */
+  async visible({ names, headers, language }: PagePromptVisibleInput): Promise<string[]> {
+    const lang = language ?? this.#props.defaultLocale();
+    const routes = this.#props.routes();
+    const entries = (await this.list()).filter((entry) => names.includes(entry.name));
+    const verdicts = await Promise.all(
+      entries.map(async (entry) => {
+        const route = routes.find((candidate) => candidate.path === entry.pattern);
+        if (!route) return false;
+        const request = new Request(RscPagePrompts.#urlOf(entry.pattern, { lang }, {}), { headers });
+        return await this.#props.run(request, route.path, () =>
+          RouteGuards.admits(RscPagePrompts.#rendersOf(route), { params: { lang }, searchParams: {} }),
+        );
+      }),
+    );
+    return entries.filter((_, idx) => verdicts[idx]).map((entry) => entry.name);
+  }
+
+  static #rendersOf(route: PathRoute) {
+    return [...route.renderRootLayouts, ...route.renderLayouts, route.renderPage];
   }
 
   async #collect(routes: PathRoute[]): Promise<PagePromptEntry[]> {

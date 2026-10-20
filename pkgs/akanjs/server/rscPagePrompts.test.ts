@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
-import { createRequestStore, recordRequestQuery, requestStorage } from "../fetch/requestStorage";
+import {
+  createRequestStore,
+  memoizeRequestQuery,
+  recordRequestQuery,
+  requestStorage,
+  untrackedHeaders,
+} from "../fetch/requestStorage";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
 import { RscPagePrompts } from "./rscPagePrompts";
 
@@ -142,5 +148,128 @@ describe("RscPagePrompts", () => {
     }).build();
     const source = new RscPagePrompts({ routes: () => twice, run: (_req, _id, fn) => fn(), defaultLocale: () => "en" });
     await expect(source.list()).rejects.toThrow('prompt "same" is declared by both');
+  });
+});
+
+describe("RscPagePrompts route guards", () => {
+  const trail: string[] = [];
+  const deskItemId = "507f1f77bcf86cd799439012";
+  const signIn = () => {
+    trail.push("desk guard");
+    if (untrackedHeaders().get("authorization") !== "Bearer u1")
+      throw Object.assign(new Error("redirect"), { digest: "AKAN_REDIRECT", location: "/signin" });
+  };
+  const guarded = new RouteTreeBuilder({
+    "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+    "./desk/_layout.tsx": async () => ({
+      default: layout()
+        .guard(signIn)
+        .render(({ children }) => {
+          trail.push("desk");
+          return children;
+        }),
+    }),
+    "./desk/[itemId].tsx": async () => ({
+      default: page()
+        .param("itemId", ID)
+        .prompt("briefDesk", "Brief a desk item.")
+        .guard(({ itemId }) => {
+          trail.push("item guard");
+          if (itemId !== deskItemId) throw Object.assign(new Error("Access denied by guard"), { statusCode: 403 });
+        })
+        .render(() => {
+          trail.push("item");
+          return null;
+        }),
+    }),
+    "./desk/today.tsx": async () => ({
+      default: page()
+        .prompt("briefToday", "Brief today's desk.")
+        .render(() => null),
+    }),
+    "./open.tsx": async () => ({
+      default: page()
+        .prompt("briefOpen", "Brief what is open to all.")
+        .render(() => null),
+    }),
+  }).build();
+  const source = new RscPagePrompts({
+    routes: () => guarded,
+    run: (request, _routeId, fn) => {
+      if (!requestStorage) throw new Error("no request storage");
+      return requestStorage.run(createRequestStore(request), fn);
+    },
+    defaultLocale: () => "en",
+  });
+  const signedIn: [string, string][] = [["authorization", "Bearer u1"]];
+
+  test("runs every guard, root first, before any layout body, and stops the screen at the first refusal", async () => {
+    trail.length = 0;
+    expect(await source.run({ name: "briefDesk", arguments: { itemId: deskItemId }, headers: signedIn })).toMatchObject(
+      {
+        ok: true,
+      },
+    );
+    expect(trail).toEqual(["desk guard", "item guard", "desk", "item"]);
+
+    trail.length = 0;
+    const signedOut = await source.run({ name: "briefDesk", arguments: { itemId: deskItemId }, headers: [] });
+    expect(signedOut).toMatchObject({ ok: false, reason: "redirect" });
+    expect(trail).toEqual(["desk guard"]);
+  });
+
+  test("answers a document the guard's query refuses as one that does not exist", async () => {
+    trail.length = 0;
+    expect(await source.run({ name: "briefDesk", arguments: { itemId }, headers: signedIn })).toEqual({
+      ok: false,
+      reason: "not-found",
+      message: "The page answers not-found for these arguments.",
+    });
+    expect(trail).toEqual(["desk guard", "item guard"]);
+  });
+
+  test("runs the guards in the request scope of the bodies, so a query both ask is fetched once", async () => {
+    let fetched = 0;
+    const ticketOf = (ticketId: string) =>
+      memoizeRequestQuery(`ticket/${ticketId}`, async () => {
+        fetched += 1;
+        return { id: ticketId };
+      });
+    const ticketRoutes = new RouteTreeBuilder({
+      "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+      "./ticket/[ticketId].tsx": async () => ({
+        default: page()
+          .param("ticketId", ID)
+          .prompt("briefTicket", "Brief a ticket.")
+          .guard(async ({ ticketId }) => {
+            await ticketOf(ticketId);
+          })
+          .render(async ({ ticketId }) => {
+            await ticketOf(ticketId);
+            return null;
+          }),
+      }),
+    }).build();
+    const ticketPrompts = new RscPagePrompts({
+      routes: () => ticketRoutes,
+      run: (request, _routeId, fn) => {
+        if (!requestStorage) throw new Error("no request storage");
+        return requestStorage.run(createRequestStore(request), fn);
+      },
+      defaultLocale: () => "en",
+    });
+    expect(
+      await ticketPrompts.run({ name: "briefTicket", arguments: { ticketId: itemId }, headers: [] }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(fetched).toBe(1);
+  });
+
+  test("names the screens the caller may open, passing a guard that waits for an argument", async () => {
+    const names = ["briefDesk", "briefToday", "briefOpen", "unknown"];
+    expect(await source.visible({ names, headers: signedIn })).toEqual(["briefDesk", "briefOpen", "briefToday"]);
+    expect(await source.visible({ names, headers: [] })).toEqual(["briefOpen"]);
+    expect(await source.visible({ names: ["briefOpen"], headers: [] })).toEqual(["briefOpen"]);
   });
 });

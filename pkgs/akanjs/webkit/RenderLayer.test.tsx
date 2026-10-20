@@ -1,6 +1,6 @@
 import "../test/registerDom";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { pathContext, type RouteRender, Translator, useInHiddenLayout } from "akanjs/client";
+import { pathContext, type RouteRender, router, Translator, useInHiddenLayout } from "akanjs/client";
 import { act, createContext, type ReactNode, useContext, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AgenticSurface, AgentProvider, useAgentGuide, useAgentTool } from "use-agentic";
@@ -125,7 +125,10 @@ describe("RenderLayer", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     mounted = { root, container };
-    const location = { pathname: "/ko/tag/한글", pathRoute: { path: "/tag/:name" } };
+    const location = {
+      pathname: "/ko/tag/한글",
+      pathRoute: { path: "/tag/:name", renderRootLayouts: [], renderLayouts: [], renderPage: tag },
+    };
     await act(async () => {
       root.render(
         <pathContext.Provider value={{ location } as never}>
@@ -139,6 +142,70 @@ describe("RenderLayer", () => {
     const encoded = "/ko/tag/%ED%95%9C%EA%B8%80";
     expect(seen).toEqual({ layout: encoded, loading: encoded, page: encoded });
     expect(Translator.getRenderPath()).toBeUndefined();
+  });
+
+  test("draws a page only once its route guards admit the visitor, and nothing while they send them elsewhere", async () => {
+    const replaced: string[] = [];
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: {
+        push: () => undefined,
+        replace: (href) => void replaced.push(href),
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    });
+    const trail: string[] = [];
+    const session = { isSignedIn: false };
+    const notes: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      guard: async () => {
+        trail.push("guard");
+        if (!session.isSignedIn) router.replace("/signin");
+      },
+      render: (async () => {
+        trail.push("render");
+        return <p>notes</p>;
+      }) as RouteRender["render"],
+    };
+    const shell = layoutOf(({ children }) => <main>{children}</main>, true);
+    const visit = async () => {
+      if (mounted) {
+        const { root, container } = mounted;
+        await act(async () => root.unmount());
+        container.remove();
+      }
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      mounted = { root, container };
+      const location = {
+        pathname: "/en/notes",
+        params: {},
+        searchParams: {},
+        pathRoute: { path: "/notes", renderRootLayouts: [], renderLayouts: [shell], renderPage: notes },
+      };
+      await act(async () => {
+        root.render(
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={[shell, notes]} index={0} params={{}} searchParams={{}} />
+          </pathContext.Provider>,
+        );
+      });
+      await settle();
+      return container;
+    };
+
+    expect((await visit()).textContent).toBe("");
+    expect(trail).toEqual(["guard"]);
+    expect(replaced).toEqual(["/en/signin"]);
+
+    session.isSignedIn = true;
+    trail.length = 0;
+    expect((await visit()).textContent).toBe("notes");
+    expect(trail).toEqual(["guard", "render"]);
   });
 
   describe("in an MCP view", () => {

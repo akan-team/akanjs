@@ -10,6 +10,7 @@ import type {
 } from "akanjs/client";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
 import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
+import { RouteGuards } from "../client/route/RouteGuards";
 import { resolveHeadResult } from "./head";
 import {
   type AkanRouteSegmentState,
@@ -103,6 +104,19 @@ export class RouteElementComposer {
         routeRender?.checkArgs?.({ params, searchParams }),
       ),
     );
+  }
+
+  /** Every guard of the route, a patch's included: the layouts it keeps on screen were let in for another URL. */
+  static async runGuards({
+    pathRoute,
+    params,
+    searchParams,
+  }: {
+    pathRoute: PathRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string | string[]>;
+  }): Promise<void> {
+    await RouteGuards.run(RouteElementComposer.#getRenderStack(pathRoute), { params, searchParams });
   }
 
   static composeSuffix({

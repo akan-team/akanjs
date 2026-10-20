@@ -16,6 +16,7 @@ export const PAGE_ROUTE_EXPORTS: ReadonlySet<string> = new Set([
   "head",
   "generateHead",
   "Loading",
+  "guard",
 ]);
 export const LAYOUT_ROUTE_EXPORTS: ReadonlySet<string> = new Set([...PAGE_ROUTE_EXPORTS, "NotFound", "Error"]);
 export const ROOT_LAYOUT_ROUTE_EXPORTS: ReadonlySet<string> = new Set([

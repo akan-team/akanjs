@@ -49,3 +49,12 @@ export class RouteArgError extends Error {
     this.arg = arg;
   }
 }
+
+/** A guard read an argument while MCP listed its screen, when none is known yet: the call decides with them. */
+export class RouteArgPending extends Error {
+  readonly digest = "AKAN_ROUTE_ARG_PENDING";
+  constructor(name: string) {
+    super(`Argument "${name}" is not known while the screen is listed`);
+    this.name = "RouteArgPending";
+  }
+}

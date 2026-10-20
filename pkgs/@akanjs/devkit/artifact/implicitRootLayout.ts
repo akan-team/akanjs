@@ -191,6 +191,10 @@ async function writeGeneratedRootLayoutFile(opts: {
   const layoutReturn = isAsyncUserLayout ? "layout" : userLayoutElement;
   //? Under an ancestor root boundary the route tree merges that root's head itself; merging it here would repeat it.
   const headLayouts = opts.includeSystemProvider ? "[inheritedLayout, userLayout]" : "[userLayout]";
+  //? Likewise for the guard: an ancestor root boundary runs its own from its own layer.
+  const guardExport = opts.includeSystemProvider
+    ? "export const guard = RouteGuards.compose(inheritedLayout.guard, userLayout.guard);"
+    : "export const guard = userLayout.guard;";
   const layoutExports = `export async function generateHead(props: PageProps) {
   const heads = await Promise.all(
     ${headLayouts}.map((layout) => (layout.generateHead ? layout.generateHead(props) : layout.head)),
@@ -202,12 +206,13 @@ export const NotFound = userLayout.NotFound ?? inheritedLayout.NotFound;
 export const Error = userLayout.Error ?? inheritedLayout.Error;
 export const pageConfig = userLayout.pageConfig ?? inheritedLayout.pageConfig;
 export const Loading = userLayout.Loading;
+${guardExport}
 
 ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
-import { loadFonts, resolveRouteModule, RouteHead } from "akanjs/client";
+import { loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 import { System } from "akanjs/ui";
 import { env } from "@apps/${opts.appName}/env/env.client";

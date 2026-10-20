@@ -177,6 +177,7 @@ class Router {
   #listensToPopstate: boolean = false;
   #backsAwaitingPopstate = 0;
   #redirects = 0;
+  #navigations = 0;
   #instance: RouterInstance = {
     push: (href: string) => {
       const { href: fullHref } = this.#getPathInfo(href);
@@ -390,6 +391,7 @@ class Router {
   }
   push(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
+    this.#navigations += 1;
     this.#track(this.#instance.push(href, routeOptions));
     this.#rememberHistoryState("push");
     this.#postDevSyncNavigation("push", href);
@@ -397,6 +399,7 @@ class Router {
   }
   replace(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
+    this.#navigations += 1;
     this.#track(this.#instance.replace(href, routeOptions));
     this.#rememberHistoryState("replace");
     this.#postDevSyncNavigation("replace", href);
@@ -433,6 +436,7 @@ class Router {
   back(routeOptions?: RouteOptions) {
     if (getEnv().side === "server") throw new Error("back is only available in client side");
     this.#checkInitialized();
+    this.#navigations += 1;
     this.#instance.back(routeOptions);
     return undefined as never;
   }
@@ -446,6 +450,11 @@ class Router {
    * for the reason `navigation()` is one. */
   redirectCount(): number {
     return this.#redirects;
+  }
+  /** Client-side moves so far — push, replace, back, redirect, notFound: a route guard that saw this change sent the
+   * visitor elsewhere, so its page does not draw. */
+  navigationCount(): number {
+    return this.#navigations;
   }
   redirect(href: string, options: RedirectOptions = {}): never {
     const method = options.method ?? "replace";
@@ -463,6 +472,7 @@ class Router {
       throw new AkanRedirectError(fullHref, method, status);
     } else {
       this.#redirects += 1;
+      this.#navigations += 1;
       this.#instance[method](href);
     }
     return undefined as never;
@@ -474,6 +484,7 @@ class Router {
     }
     this.#checkInitialized();
     this.#redirects += 1;
+    this.#navigations += 1;
     this.#instance.replace("/404");
     return undefined as never;
   }

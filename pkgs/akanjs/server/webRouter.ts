@@ -775,6 +775,7 @@ export class WebRouter {
   pagePrompts(): PagePromptSource {
     return {
       list: () => this.#rsc.listPagePrompts(),
+      visible: (input) => this.#rsc.visiblePagePrompts(input),
       run: (input) => this.#rsc.runPagePrompt(input),
     };
   }

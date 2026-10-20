@@ -65,6 +65,23 @@ export const pages: PagesContext = {
     }),
   }),
   "./gate/inner.tsx": async () => ({ default: page().render(() => <p>inner</p>) }),
+  "./guarded/_layout.tsx": async () => ({
+    default: layout()
+      .guard(async () => {
+        await Bun.sleep(20);
+        if (untrackedHeaders().get("x-signed-in") !== "yes") router.redirect("/signin");
+      })
+      .render(({ children }) => <section>guarded:{children}</section>),
+  }),
+  "./guarded/[itemId].tsx": async () => ({
+    default: page()
+      .param("itemId", String)
+      .guard(async ({ itemId }) => {
+        await Bun.sleep(10);
+        if (itemId === "other") throw Object.assign(new Error("Access denied by guard"), { statusCode: 403 });
+      })
+      .render(({ itemId }) => <p>{`item ${itemId}`}</p>),
+  }),
   "./drawing/[drawingId]/_index.tsx": async () => ({
     default: page()
       .param("drawingId", ID)
