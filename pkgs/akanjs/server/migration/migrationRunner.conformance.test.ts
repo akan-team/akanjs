@@ -403,16 +403,244 @@ const describeDriver = (kind: SqlDriverKind) => {
       const lock = new MigrationLock(connection, { inBand: true });
       expect(await lock.acquire()).toBe(true);
       await connection().prepare(`UPDATE "_akan_meta" SET "updatedAt" = ? WHERE "key" = ?`).run(T0, MigrationLock.key);
-      await lock.heartbeat(true);
+      await lock.heartbeat({ force: true });
       expect(Number((await leaseOf())?.updatedAt)).toBeGreaterThan(T0);
 
       await connection()
         .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
         .run("another run", MigrationLock.key);
-      expect(await codeOf(lock.heartbeat(true))).toBe("locked");
+      expect(await codeOf(lock.heartbeat({ force: true }))).toBe("locked");
       await lock.release();
       expect((await leaseOf())?.value).toBe("another run");
     });
+
+    test("a renewal made before a write the script caught a failure of stays in", async () => {
+      const { driver, table, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const stored = async () =>
+        Number(
+          (
+            await driver.database
+              .getConnection()
+              .prepare(`SELECT "updatedAt" FROM "_akan_meta" WHERE "key" = ?`)
+              .get<{ updatedAt: number | string }>(MigrationLock.key)
+          )?.updatedAt,
+        );
+      let renewedTo = 0;
+      const tolerant = migration("Skip missing cards")
+        .config({ transaction: false })
+        .apply(async ({ table }) => {
+          await driver.database
+            .getConnection()
+            .prepare(`UPDATE "_akan_meta" SET "updatedAt" = ? WHERE "key" = ?`)
+            .run(T0, MigrationLock.key);
+          try {
+            await table(tableName).set("gone", { org: "o9" });
+          } catch {}
+          renewedTo = await stored();
+        });
+      const renewMs = MigrationLock.renewMs;
+      Object.assign(MigrationLock, { renewMs: 0 });
+      try {
+        await runnerOf([entryOf("m1", tolerant)]).apply("m1");
+      } finally {
+        Object.assign(MigrationLock, { renewMs });
+      }
+      expect(renewedTo).toBeGreaterThan(T0);
+    });
+
+    test("a run whose lease was taken over after its last write stops before it records done", async () => {
+      const { driver, table, ledger, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const takenOver = migration("Taken over after its writes")
+        .config({ transaction: false })
+        .apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o9" });
+          await driver.database
+            .getConnection()
+            .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
+            .run("another run", MigrationLock.key);
+        });
+      const runner = runnerOf([entryOf("m1", takenOver)]);
+
+      expect(await codeOf(runner.apply("m1"))).toBe("locked");
+      expect((await ledger.runsOf("m1"))[0]).toMatchObject({ status: "failed" });
+      expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny", org: "o9" } });
+      expect((await runner.list()).map(({ id, status }) => ({ id, status }))).toEqual([
+        { id: "m1", status: "partial" },
+      ]);
+    });
+
+    //? SQLite's write lock bars other writers mid-transaction: this stands in for a takeover before it opened.
+    test.if(kind === "sqlite")(
+      "in band, a run that finds its lease gone in its own transaction takes its writes back",
+      async () => {
+        const { driver, table, ledger, runnerOf } = await open();
+        await seed(table, [["a1", { name: "Kenny" }]]);
+        const takenOver = migration("Taken over in its transaction").apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o9" });
+          await driver.database
+            .getConnection()
+            .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
+            .run("another run", MigrationLock.key);
+        });
+        const runner = runnerOf([entryOf("m1", takenOver)]);
+
+        expect(await codeOf(runner.apply("m1"))).toBe("locked");
+        expect((await ledger.runsOf("m1"))[0]).toMatchObject({ status: "failed" });
+        expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny" } });
+        expect((await runner.list()).map(({ id, status }) => ({ id, status }))).toEqual([
+          { id: "m1", status: "pending" },
+        ]);
+      },
+    );
+
+    test.if(kind === "postgres")(
+      "a Postgres run another holder took the lease from during its transaction takes its writes back",
+      async () => {
+        const { driver, table, ledger, runnerOf } = await open();
+        await seed(table, [["a1", { name: "Kenny" }]]);
+        const other = await driver.sibling();
+        opened.push(other);
+        const takenOver = migration("Taken over in its transaction").apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o9" });
+          const connection = other.database.getConnection();
+          await connection
+            .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
+            .run("another run", MigrationLock.key);
+          await connection
+            .prepare(
+              `UPDATE "_akan_migration_run" SET "status" = 'failed', "error" = 'interrupted' WHERE "status" = 'running'`,
+            )
+            .run();
+        });
+        const runner = runnerOf([entryOf("m1", takenOver)]);
+
+        expect(await codeOf(runner.apply("m1"))).not.toBeNull();
+        expect((await ledger.runsOf("m1"))[0]).toMatchObject({ status: "failed" });
+        expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny" } });
+        expect((await runner.list()).map(({ id, status }) => ({ id, status }))).toEqual([
+          { id: "m1", status: "pending" },
+        ]);
+        const lease = await driver.database
+          .getConnection()
+          .prepare(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`)
+          .get<{ value: string }>(MigrationLock.key);
+        expect(lease?.value).toBe("another run");
+      },
+    );
+
+    test("a run another holder interrupted is not recorded done, even while it still holds the lease", async () => {
+      const { driver, table, ledger, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const interrupted = migration("Interrupted after its writes")
+        .config({ transaction: false })
+        .apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o9" });
+          await driver.database
+            .getConnection()
+            .prepare(
+              `UPDATE "_akan_migration_run" SET "status" = 'failed', "error" = 'interrupted' WHERE "status" = 'running'`,
+            )
+            .run();
+        });
+      expect(await codeOf(runnerOf([entryOf("m1", interrupted)]).apply("m1"))).toBe("locked");
+      expect((await ledger.runsOf("m1"))[0]).toMatchObject({ status: "failed" });
+    });
+
+    test("a table call that finds a renewal due checks the lease first, so a run that stalled writes no more", async () => {
+      const { driver, table, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const stalled = migration("Stalled between writes")
+        .config({ transaction: false })
+        .apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o1" });
+          await driver.database
+            .getConnection()
+            .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
+            .run("another run", MigrationLock.key);
+          await table(tableName).set("a1", { org: "o2" });
+        });
+      const renewMs = MigrationLock.renewMs;
+      Object.assign(MigrationLock, { renewMs: 0 });
+      try {
+        expect(await codeOf(runnerOf([entryOf("m1", stalled)]).apply("m1"))).toBe("locked");
+      } finally {
+        Object.assign(MigrationLock, { renewMs });
+      }
+      expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny", org: "o1" } });
+    });
+
+    test.if(kind === "postgres")(
+      "inside its own transaction a Postgres run leaves renewing to the timer, which a renewal there would fail",
+      async () => {
+        const { driver, table, runnerOf } = await open();
+        await seed(table, [
+          ["a1", { name: "Kenny" }],
+          ["a2", { name: "Jane" }],
+        ]);
+        const timer = await driver.sibling();
+        opened.push(timer);
+        const long = migration("Outlives a timer renewal").apply(async ({ table }) => {
+          await table(tableName).set("a1", { org: "o9" });
+          await timer.database
+            .getConnection()
+            .prepare(`UPDATE "_akan_meta" SET "updatedAt" = ? WHERE "key" = ?`)
+            .run(Date.now(), MigrationLock.key);
+          await table(tableName).set("a2", { org: "o9" });
+        });
+        const renewMs = MigrationLock.renewMs;
+        Object.assign(MigrationLock, { renewMs: 0 });
+        try {
+          expect(await codeOf(runnerOf([entryOf("m1", long)]).apply("m1"))).toBeNull();
+        } finally {
+          Object.assign(MigrationLock, { renewMs });
+        }
+        expect(await table.count({ org: "o9" })).toBe(2);
+      },
+    );
+
+    test.if(kind === "postgres")(
+      "a beat inside a write's own transaction leaves the lease row to the timer, which then neither waits nor fails",
+      async () => {
+        const { driver, table, runnerOf } = await open();
+        await seed(table, [
+          ["a1", { name: "Kenny" }],
+          ["a2", { name: "Jane" }],
+        ]);
+        const timer = await driver.sibling();
+        opened.push(timer);
+        const leaseFree: boolean[] = [];
+        const renewMs = MigrationLock.renewMs;
+        const nested = migration("Touches a second card from a rewrite")
+          .config({ transaction: false })
+          .apply(async ({ table }) => {
+            Object.assign(MigrationLock, { renewMs: 0 });
+            await table(tableName).rewrite(async (row) => {
+              if (row.id !== "a1") return null;
+              await table(tableName).set("a2", { org: "o9" });
+              leaseFree.push(
+                await timer.database
+                  .getConnection()
+                  .prepare(`SELECT "key" FROM "_akan_meta" WHERE "key" = ? FOR UPDATE NOWAIT`)
+                  .get(MigrationLock.key)
+                  .then(
+                    () => true,
+                    () => false,
+                  ),
+              );
+              return { org: "o9" };
+            });
+          });
+        try {
+          expect(await codeOf(runnerOf([entryOf("m1", nested)]).apply("m1"))).toBeNull();
+        } finally {
+          Object.assign(MigrationLock, { renewMs });
+        }
+        expect(leaseFree).toEqual([true]);
+        expect(await table.count({ org: "o9" })).toBe(2);
+      },
+    );
 
     test("an apply is recorded done with its writes, so a hook failing after the commit leaves it applied", async () => {
       const { driver, table, ledger, runnerOf } = await open();
@@ -521,6 +749,34 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(resumed).toMatchObject({ reverted: 1, skipped: [] });
       expect(await docsOf(table)).toEqual({ a1: { name: "Kenny" }, a3: { name: "Eve" } });
       expect((await runner.list())[0]?.status).toBe("pending");
+    });
+
+    test("an apply records its settings as it starts, so a partial run rolls back as it ran once its script is gone", async () => {
+      const { driver, table, ledger, runnerOf } = await open();
+      await seed(table, [
+        ["a1", { name: "Kenny" }],
+        ["a3", { name: "Eve" }],
+      ]);
+      let whileRunning: unknown = null;
+      const crashing = migration("Two steps, then a crash")
+        .config({ transaction: false, batchSize: 7 })
+        .apply(async ({ table }) => {
+          await table(tableName).set("a3", { org: "o9" });
+          await table(tableName).set("a1", { org: "o9" });
+          whileRunning = (await ledger.runsOf("m1"))[0]?.summary;
+          throw new Error("crash");
+        });
+      expect(await codeOf(runnerOf([entryOf("m1", crashing)]).apply("m1"))).toBe("failed");
+      const [partial] = await ledger.runsOf("m1");
+      expect(whileRunning).toEqual({ settings: { transaction: false, batchSize: 7 } });
+      expect(partial?.summary).toMatchObject({ changes: 2, settings: { transaction: false, batchSize: 7 } });
+
+      await driver.database
+        .getConnection()
+        .prepare(`UPDATE "_akan_migration_change" SET "op" = ? WHERE "runId" = ? AND "docId" = ?`)
+        .run("delete", partial?.id, "a3");
+      expect(await codeOf(runnerOf([]).rollback("m1"))).toBe("failed");
+      expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny" } });
     });
 
     test("a rollback walks a change log longer than one page", async () => {

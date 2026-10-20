@@ -81,17 +81,13 @@ export class MigrationTable {
     this.#assertWritable();
     const base = Object.keys(doc).find((key) => MigrationTable.#baseColumns.has(key));
     if (base) throw new Error(`"${base}" is a column of ${this.name}, not a field of its _doc`);
-    return await this.#scope.transaction(async () => {
-      await this.#scope.beat();
-      return await this.#insert(doc, id ?? this.#scope.createId(), removedAt);
-    });
+    return await this.#transaction(async () => await this.#insert(doc, id ?? this.#scope.createId(), removedAt));
   }
 
   /** A new row holding the source's `_doc` with `patch` applied, removed if the source is. */
   async copy(id: string, patch: MigrationPatch = {}) {
     this.#assertWritable();
-    return await this.#scope.transaction(async () => {
-      await this.#scope.beat();
+    return await this.#transaction(async () => {
       const source = await this.#raw.get(id);
       if (!source) throw new Error(`${this.name} ${id} does not exist`);
       const doc = structuredClone(source._doc);
@@ -116,8 +112,7 @@ export class MigrationTable {
     let scanned = 0;
     let changed = 0;
     for (;;) {
-      const rows = await this.#scope.transaction(async () => {
-        await this.#scope.beat();
+      const rows = await this.#transaction(async () => {
         const batch = await this.#raw.find(where, { after, limit: batchSize, withRemoved, lock: true });
         for (const row of batch) {
           scanned++;
@@ -142,8 +137,7 @@ export class MigrationTable {
   async revert(change: MigrationChange): Promise<MigrationRevertOutcome> {
     this.#assertWritable();
     if (change.op === "delete") throw new Error("A rollback's own deletes are final; restore a backup to undo them");
-    return await this.#scope.transaction(async () => {
-      await this.#scope.beat();
+    return await this.#transaction(async () => {
       const row = await this.#raw.get(change.id, { lock: true });
       if (change.op === "insert") {
         if (!row) return "reverted";
@@ -176,10 +170,15 @@ export class MigrationTable {
     });
   }
 
+  //* Beats before the write's own transaction opens: a renewal inside one that rolls back would be undone with it.
+  async #transaction<T>(fn: () => Promise<T>) {
+    await this.#scope.beat();
+    return await this.#scope.transaction(fn);
+  }
+
   async #write(id: string, fn: (row: TransferRow) => Promise<boolean> | boolean) {
     this.#assertWritable();
-    return await this.#scope.transaction(async () => {
-      await this.#scope.beat();
+    return await this.#transaction(async () => {
       const row = await this.#raw.get(id, { lock: true });
       if (!row) throw new Error(`${this.name} ${id} does not exist`);
       return await fn(row);

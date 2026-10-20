@@ -188,7 +188,8 @@ export class MigrationRunner {
         resumed && !runs.some((run) => run.kind === "rollback" && run.target === resumed.id)
           ? resumed.checkpoint
           : null;
-      const run = await this.#begin("apply", entry, { params, actor, checkpoint });
+      //* Recorded as it starts: a run that crashes keeps them, and a rollback without its script runs as it did.
+      const run = await this.#begin("apply", entry, { params, actor, checkpoint, summary: { settings } });
       const pulse = new MigrationPulse(lock, this.#holdWarning(id, settings.transaction));
       const scope = new MigrationScope({
         database: this.#database,
@@ -211,13 +212,12 @@ export class MigrationRunner {
             throw new MigrationError("planChanged", `${id}'s plan changed since it was approved; plan it again`);
           await applyStage(this.#context(id, params, scope), plan);
           planned.changes = await MigrationChangeLog.count(this.#database.getConnection(), run.id);
+          await pulse.beat({ strict: true, force: true });
           //* Recorded done in the writing transaction, so committed writes are never taken for a run to repeat.
-          await this.#ledger.finish(run.id, {
-            status: "done",
+          await this.#ledger.complete(run.id, {
             planHash: planned.hash,
             summary: { plan: planned.summary, changes: planned.changes, settings },
           });
-          if (settings.transaction) await lock.heartbeat(true);
         });
       } catch (error) {
         if ((await this.#ledger.get(run.id))?.status !== "done") {
@@ -225,7 +225,7 @@ export class MigrationRunner {
           throw await this.#failed(run.id, error, {
             status: MigrationError.codeOf(error) === "planChanged" ? "aborted" : "failed",
             planHash: planned.hash || null,
-            summary: { plan: planned.summary, changes },
+            summary: { plan: planned.summary, changes, settings },
           });
         }
         this.#committedThenFailed(id, error);
@@ -344,8 +344,8 @@ export class MigrationRunner {
       await this.#run(pulse, settings.transaction, async () => {
         if (rollbackStage) await rollbackStage(ctx, changes);
         else await changes.revertAll();
-        await this.#ledger.finish(run.id, { status: "done", summary: summary() });
-        if (settings.transaction) await lock.heartbeat(true);
+        await pulse.beat({ strict: true, force: true });
+        await this.#ledger.complete(run.id, { summary: summary() });
       });
     } catch (error) {
       if ((await this.#ledger.get(run.id))?.status !== "done") {
@@ -449,11 +449,13 @@ export class MigrationRunner {
       actor,
       target = null,
       checkpoint = null,
+      summary = null,
     }: {
       params: Record<string, unknown>;
       actor: string | null;
       target?: string | null;
       checkpoint?: Record<string, string> | null;
+      summary?: Record<string, unknown> | null;
     },
   ) {
     return await this.#ledger.insert({
@@ -466,7 +468,7 @@ export class MigrationRunner {
       buildId: this.#buildId,
       params: MigrationRunner.#json(params),
       planHash: null,
-      summary: null,
+      summary,
       actor,
       checkpoint,
       startedAt: Date.now(),

@@ -1,5 +1,6 @@
 import { type AkanSqlClient, MigrationTables } from "akanjs/service";
 import { MigrationChangeLog } from "./migrationChangeLog";
+import { MigrationError } from "./migrationError";
 
 export type MigrationRunKind = "plan" | "apply" | "verify" | "rollback";
 /** `aborted` is a refusal before any write: the plan no longer hashed to what was approved. */
@@ -76,6 +77,20 @@ export class MigrationLedger {
         `UPDATE "${MigrationTables.run}" SET "status" = ?, "planHash" = COALESCE(?, "planHash"), "summary" = ?, "error" = ?, "finishedAt" = ? WHERE "id" = ?`,
       )
       .run(status, planHash, summary ? JSON.stringify(summary) : null, error, Date.now(), id);
+  }
+
+  /** Only while the run is still `running`: one another holder interrupted is never recorded done after all. */
+  async complete(
+    id: string,
+    { planHash = null, summary }: { planHash?: string | null; summary: Record<string, unknown> },
+  ) {
+    const completed = await this.#connection()
+      .prepare(
+        `UPDATE "${MigrationTables.run}" SET "status" = 'done', "planHash" = COALESCE(?, "planHash"), "summary" = ?, "finishedAt" = ? WHERE "id" = ? AND "status" = 'running' RETURNING "id"`,
+      )
+      .get<{ id: string }>(planHash, JSON.stringify(summary), Date.now(), id);
+    if (!completed)
+      throw new MigrationError("locked", `Another migration run interrupted run ${id}, so it is not recorded done`);
   }
 
   async saveCheckpoint(id: string, checkpoint: Record<string, string>) {

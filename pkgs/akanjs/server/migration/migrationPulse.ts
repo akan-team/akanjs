@@ -14,9 +14,9 @@ export class MigrationPulse {
   }
 
   /** A writer stops once its lease is lost; a reader reads on, as nothing it does clashes with whoever took over. */
-  async beat({ strict }: { strict: boolean }) {
+  async beat({ strict, force = false }: { strict: boolean; force?: boolean }) {
     try {
-      await this.lock.heartbeat();
+      await this.lock.heartbeat({ force });
     } catch (error) {
       if (strict) throw error;
     }
