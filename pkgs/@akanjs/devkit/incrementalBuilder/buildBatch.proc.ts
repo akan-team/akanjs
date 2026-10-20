@@ -108,10 +108,10 @@ class BuildBatch {
   async #buildShell(): Promise<void> {
     const started = Date.now();
     try {
-      await new CsrArtifactBuilder(this.#app, "start", "en", { cssAssets: this.#request.cssAssets }).build();
-      this.#logger.verbose(`csr-shell ok (${Date.now() - started}ms)`);
+      await new CsrArtifactBuilder(this.#app, "start", "en", { cssAssets: this.#request.cssAssets }).buildMcpAppViews();
+      this.#logger.verbose(`mcp-app-views ok (${Date.now() - started}ms)`);
     } catch (err) {
-      this.#fail("shell", "csr-shell", err);
+      this.#fail("shell", "mcp-app-views", err);
     }
   }
 

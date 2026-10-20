@@ -15,6 +15,8 @@ export interface RouteSourceChain {
   params: string[];
   /** The `.prompt()` name, when the page publishes itself as an MCP prompt. */
   prompt?: string;
+  /** The `.app()` names, each one MCP App the build gives a view of its own. */
+  apps: string[];
 }
 
 interface ChainStage {
@@ -93,7 +95,12 @@ export class RouteSourceValidator {
     if (options.pattern) RouteSourceValidator.#assertChainParams(chain, options.pattern, filePath);
     return {
       devOnly: chain.devOnly,
-      chain: { kind: chain.kind, params: chain.params, ...(chain.prompt ? { prompt: chain.prompt } : {}) },
+      chain: {
+        kind: chain.kind,
+        params: chain.params,
+        ...(chain.prompt ? { prompt: chain.prompt } : {}),
+        apps: chain.apps,
+      },
     };
   }
 
@@ -121,6 +128,7 @@ export class RouteSourceValidator {
 
   static #chainOf(kind: RouteSourceChain["kind"], stages: ChainStage[], filePath: string) {
     const params: string[] = [];
+    const apps: string[] = [];
     let prompt: string | undefined;
     let devOnly = false;
     const literal = (stage: ChainStage) => {
@@ -134,10 +142,11 @@ export class RouteSourceValidator {
     for (const stage of stages) {
       if (stage.name === "param") params.push(literal(stage));
       else if (stage.name === "prompt") prompt = literal(stage);
+      else if (stage.name === "app") apps.push(literal(stage));
       else if (stage.name === "config")
         devOnly = RouteSourceValidator.#devOnlyOf(RouteSourceValidator.#unwrapExpression(stage.args[0]), filePath);
     }
-    return { kind, params, prompt, devOnly };
+    return { kind, params, prompt, apps, devOnly };
   }
 
   /** The same rule the loader applies: a page names every `[x]` it sits under, a layout may name a subset. */

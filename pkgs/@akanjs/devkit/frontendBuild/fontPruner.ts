@@ -103,6 +103,7 @@ export class FontPruner {
       { dir: path.join(this.#artifactRoot, "client-ssr"), label: ".akan/artifact/client-ssr", needles: bundled },
       { dir: path.join(this.#artifactRoot, "server"), label: ".akan/artifact/server", needles: bundled },
       { dir: path.join(this.#app.dist.cwdPath, "csr"), label: "csr", needles: bundled },
+      { dir: path.join(this.#app.dist.cwdPath, "mcp-apps"), label: "mcp-apps", needles: bundled },
     ];
     for (const root of roots) {
       const pending = root.needles.filter((candidate) => !referrers.has(candidate.rel));

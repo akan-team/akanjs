@@ -33,6 +33,7 @@ export class DesktopServerStage {
     "console.js",
     "console-runtime.js",
     "csr",
+    "mcp-apps",
     "public",
     ".akan",
   ]);

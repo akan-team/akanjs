@@ -6,6 +6,7 @@ import type { App } from "../commandDecorators";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { bundleDefine } from "./bundleDefine";
 import { CsrEntryFiles } from "./csrEntryFiles";
+import { type McpAppView, McpAppViewBuilder } from "./mcpAppViewBuilder";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
 
@@ -77,9 +78,30 @@ export class CsrArtifactBuilder {
     }
 
     await this.#inlineCsrArtifacts(cssAssets);
+    await this.#buildMcpAppViews(pageEntries, { basePaths, cssAssets, options });
     if (this.#command === "build") await CsrArtifactBuilder.writePublicEnv(this.#app, options.define);
     this.#app.verbose(`[csr-build] output -> ${this.#outputDir}`);
     return { outputDir: this.#outputDir };
+  }
+
+  /** The MCP App views alone: a dev server under the CSR registry reads them, with no `csr/` to build beside them. */
+  async buildMcpAppViews(): Promise<McpAppView[]> {
+    const pageKeys = await this.#app.getPageKeys();
+    if (pageKeys.length === 0) return [];
+    const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
+    const akanConfig = await this.#app.getConfig();
+    return await this.#buildMcpAppViews(pageEntries, {
+      basePaths: [...akanConfig.basePaths],
+      cssAssets: await this.#loadCssAssets(),
+      options: CsrArtifactBuilder.bundleOptions(this.#app, this.#command, akanConfig.optimizeImports),
+    });
+  }
+
+  async #buildMcpAppViews(pageEntries: PageEntry[], option: Parameters<McpAppViewBuilder["build"]>[1]) {
+    const views = await new McpAppViewBuilder(this.#app, this.#command).build(pageEntries, option);
+    if (views.length)
+      this.#app.verbose(`[csr-build] ${views.length} MCP App view(s): ${views.map((view) => view.name).join(", ")}`);
+    return views;
   }
 
   //? No `env` option: Bun inlines the `.env` it read at process start over `define`, so a native build's `--env` lost.
