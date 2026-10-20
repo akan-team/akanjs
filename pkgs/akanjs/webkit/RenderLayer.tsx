@@ -23,6 +23,8 @@ interface RenderedRoute {
   redirected: boolean;
   /** The guarded location whose guards refused, so the layer drew nothing for it. */
   refusedKey: string | null;
+  /** The guarded location whose guards let the layer draw. */
+  admittedKey: string | null;
   /** The render rejected while its page stayed: what the layer draws instead, with a retry. */
   failure: { error: unknown } | null;
 }
@@ -63,42 +65,55 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   //? A page's layers wait for its route guards; the root layouts, drawn once for every page, do not. A sync layer
   //? waits too: under a root layout's guard, a legacy page is the only layer its location has.
   const guarded = location && CsrGuards.declared(location) ? location : null;
-  if ((isAsyncRender || guarded) && routeRender) {
-    const argsKey = RouteDefinition.renderArgsKey(
-      routeRender.render,
-      { params, searchParams },
-      //? A sync layer's kept element holds every prop it was handed, so any of them redraws it.
-      isAsyncRender ? { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames } : { isPage: true },
-    );
+  const guardKey = guarded ? CsrGuards.keyOf(guarded) : null;
+  useEffect(() => (guardKey ? CsrGuards.hold(guardKey) : undefined), [guardKey]);
+  //? Once let in, a sync layer draws at once with the props it is handed, so typing into a URL-bound field never lags
+  //? behind a check; while its location is checked again, it keeps the props it was let in with.
+  const isSyncAdmitted = !isAsyncRender && !!guardKey && CsrGuards.admitted(guardKey);
+  const admittedPropsRef = useRef({ params, searchParams });
+  if (isSyncAdmitted) admittedPropsRef.current = { params, searchParams };
+  if ((isAsyncRender || (guarded && !isSyncAdmitted)) && routeRender) {
+    const argsKey = isAsyncRender
+      ? RouteDefinition.renderArgsKey(
+          routeRender.render,
+          { params, searchParams },
+          { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames },
+        )
+      : (guardKey ?? "");
     const rendered = renderedRef.current;
     //? A cached page back on screen reruns a render that redirected: signed out, a layout redirects to the sign-in
     //? page, and kept, it would stay blank after the sign-in brings the person back.
     const returned = activity === "current" && !onScreenRef.current;
     //? A guard may move the router within its own route (a merged id, a defaulted query), which keeps this layer
     //? mounted with args it does not read: the location it refused is gone, so it asks the new one.
-    const moved = !!rendered?.refusedKey && !!location && rendered.refusedKey !== CsrGuards.keyOf(location);
+    const moved = !!rendered?.refusedKey && rendered.refusedKey !== guardKey;
+    //? A sync layer whose verdict lapsed while its page was off screen asks again before it draws new props.
+    const lapsed = !isAsyncRender && !!guardKey && rendered?.admittedKey === guardKey && !CsrGuards.asked(guardKey);
     //? Rerun only when the render itself (a hot update) or the args it reads change: any other re-render would refetch.
     if (
       !rendered ||
       rendered.render !== routeRender.render ||
       rendered.argsKey !== argsKey ||
       (returned && rendered.redirected) ||
-      moved
+      moved ||
+      lapsed
     ) {
       const redirectsBefore = router.redirectCount();
       const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
       let refusedKey: string | null = null;
+      let admittedKey: string | null = null;
       const draw = () =>
         isAsyncRender
           ? Translator.renderAt(
               renderPath,
               () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
             )
-          : createElement(routeRender.render as never, { children: layerOutlet, params, searchParams } as never);
+          : true;
       const result = reportFailure(
         guarded
           ? CsrGuards.of(guarded).then((admitted) => {
-              if (!admitted) refusedKey = CsrGuards.keyOf(guarded);
+              if (admitted) admittedKey = guardKey;
+              else refusedKey = guardKey;
               return admitted ? draw() : null;
             })
           : draw(),
@@ -111,12 +126,14 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         record: isThenable(result) ? CsrFrameDump.track(layer, result as Promise<ReactNode>) : null,
         redirected: false,
         refusedKey: null,
+        admittedKey: null,
         failure: null,
       };
       if (isThenable(result))
         (result as Promise<ReactNode>).then(
           () => {
             next.refusedKey = refusedKey;
+            next.admittedKey = admittedKey;
             next.redirected = !!refusedKey || router.redirectCount() !== redirectsBefore;
           },
           (error: unknown) => {
@@ -139,7 +156,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     };
   }, [record]);
   if (!routeRender) return null;
-  if (!isAsyncRender && !guarded)
+  if (!isAsyncRender && (!guarded || isSyncAdmitted))
     return createElement(routeRender.render as never, { children, params, searchParams } as never);
   const failure = renderedRef.current?.failure;
   if (failure)
@@ -153,6 +170,8 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
       />
     );
   if (!value) return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
+  if (!isAsyncRender)
+    return createElement(routeRender.render as never, { children, ...admittedPropsRef.current } as never);
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
 

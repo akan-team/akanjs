@@ -82,6 +82,10 @@ export class RouteSourceValidator {
       throw new Error(`[route-convention] head and generateHead cannot both be exported in ${filePath}`);
     }
     const chain = RouteSourceValidator.#readChain(sourceFile, filePath);
+    if (!chain && exported.has("guard"))
+      throw new Error(
+        `[route-convention] ${filePath} exports guard beside a legacy default; declare it with .guard() on its chain`,
+      );
     if (!chain) return { devOnly: RouteSourceValidator.#readDevOnly(sourceFile, filePath) };
     const named = [...exported].filter((name) => name !== "default");
     if (named.length)

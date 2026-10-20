@@ -4,7 +4,7 @@ import { RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
 
 interface Rendered {
-  status: number | "not-found";
+  status: number | "not-found" | "redirect";
   body: string;
   lateNotFound: boolean;
 }
@@ -35,7 +35,7 @@ const withNotFoundWorker = async (
     await run(async (url, headers = {}) => {
       const result = await rsc.renderWithMeta(new Request(url, { headers }));
       if (result.type === "not-found") return { status: "not-found", body: "", lateNotFound: false };
-      if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
+      if (result.type === "redirect") return { status: "redirect", body: result.location, lateNotFound: false };
       const body = await new Response(result.stream).text();
       return { status: result.status ?? 200, body, lateNotFound: (await result.lateControl)?.type === "not-found" };
     });
@@ -89,6 +89,19 @@ describe("RscWorker route guards", () => {
       expect(leaked.status).toBe(404);
       expect(leaked.body).toContain("root missing /en/guarded/other");
       expect(leaked.body).not.toContain("guarded:");
+    });
+  }, 20_000);
+});
+
+describe("RscWorker not-found under a guarded layout", () => {
+  test("is the guard's answer for a visitor it refuses, a bad path value and an unmatched path alike", async () => {
+    await withNotFoundWorker(async (render) => {
+      for (const url of ["http://localhost/en/vault/not-an-id", "http://localhost/en/vault/no/such"]) {
+        expect(await render(url)).toMatchObject({ status: "redirect", body: "/en/signin" });
+        const admitted = await render(url, { "x-signed-in": "yes" });
+        expect(admitted.status).toBe(404);
+        expect(admitted.body).toContain("vault missing");
+      }
     });
   }, 20_000);
 });

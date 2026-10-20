@@ -210,7 +210,6 @@ export class RouteTreeBuilder {
       RouteTreeBuilder.#moduleCacheStats.cacheMisses += 1;
       const resolved = RouteTreeBuilder.#resolveModule(key, kind, await loader());
       RouteTreeBuilder.#validateRouteModuleExports(key, kind, resolved.module);
-      assertGuardOnChain(key, resolved);
       validatePageConfig(key, "pageConfig" in resolved.module ? resolved.module.pageConfig : undefined);
       if (!loaded) {
         RouteTreeBuilder.#moduleCacheStats.loadedModuleCount += 1;
@@ -226,6 +225,7 @@ export class RouteTreeBuilder {
     if (kind === "overrides") return { module: mod as RouteModule };
     const parsed = parseRouteModuleKey(key);
     const resolved = resolveRouteModule(mod, key, { kind, pattern: parsed.pattern });
+    if (!parsed.isInternalRootLayout) assertGuardOnChain(key, resolved);
     if (!resolved.definition && !parsed.isInternalRootLayout && !RouteTreeBuilder.#legacyWarned.has(key)) {
       RouteTreeBuilder.#legacyWarned.add(key);
       RouteTreeBuilder.logger.warn(

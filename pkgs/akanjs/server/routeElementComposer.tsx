@@ -90,7 +90,11 @@ export class RouteElementComposer {
     });
   }
 
-  static async checkArgs({
+  /**
+   * Every guard of the route, a patch's included (the layouts it keeps on screen were let in for another URL), then
+   * every chain's args. Guards first: a not-found for a bad path value is drawn only under layouts that let the visitor in.
+   */
+  static async admit({
     pathRoute,
     params,
     searchParams,
@@ -99,29 +103,14 @@ export class RouteElementComposer {
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
   }): Promise<void> {
-    await Promise.all(
-      RouteElementComposer.#getRenderStack(pathRoute).map((routeRender) =>
-        routeRender?.checkArgs?.({ params, searchParams }),
-      ),
-    );
-  }
-
-  /** Every guard of the route, a patch's included: the layouts it keeps on screen were let in for another URL. */
-  static async runGuards({
-    pathRoute,
-    params,
-    searchParams,
-  }: {
-    pathRoute: PathRoute;
-    params: Record<string, string>;
-    searchParams: Record<string, string | string[]>;
-  }): Promise<void> {
-    await RouteGuards.run(RouteElementComposer.#getRenderStack(pathRoute), { params, searchParams });
+    const renders = RouteElementComposer.#getRenderStack(pathRoute);
+    await RouteGuards.run(renders, { params, searchParams });
+    await Promise.all(renders.map((routeRender) => routeRender?.checkArgs?.({ params, searchParams })));
   }
 
   //? Security: a guard refused everything from its render down, so a fallback drawn after it keeps only the layouts above
   //? it, and no head: those bodies and heads read what the refused visitor may not.
-  static fallbackRouteOf(route: PathRoute, error: unknown): PathRoute | LayoutFallbackRoute {
+  static fallbackRouteOf<Route extends LayoutFallbackRoute>(route: Route, error: unknown): Route | LayoutFallbackRoute {
     const refusedAt = RouteGuards.refusedAt(error);
     if (refusedAt === undefined) return route;
     return {
@@ -130,6 +119,21 @@ export class RouteElementComposer {
       renderRootLayouts: route.renderRootLayouts.slice(0, refusedAt),
       renderLayouts: route.renderLayouts.slice(0, Math.max(0, refusedAt - route.renderRootLayouts.length)),
     };
+  }
+
+  //? Security: an unmatched path draws its layouts' not-found, so their guards first decide which of them it may show,
+  //? and a redirect still answers as one.
+  static async admittedFallbackOf(
+    route: LayoutFallbackRoute,
+    props: { params: Record<string, string>; searchParams: Record<string, string | string[]> },
+  ): Promise<LayoutFallbackRoute> {
+    try {
+      await RouteGuards.run([...route.renderRootLayouts, ...route.renderLayouts], props);
+      return route;
+    } catch (error) {
+      if ((error as { digest?: unknown } | null)?.digest === "AKAN_REDIRECT") throw error;
+      return RouteElementComposer.fallbackRouteOf(route, error);
+    }
   }
 
   static composeSuffix({

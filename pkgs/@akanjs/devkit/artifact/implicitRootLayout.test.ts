@@ -36,7 +36,9 @@ describe("resolveSsrPageEntries", () => {
     const generatedSource = await Bun.file(groupedRoot?.moduleAbsPath ?? "").text();
     // Both user modules go through the route resolver, so a `rootLayout()` chain and the legacy exports read alike.
     expect(generatedSource).toContain('import * as inheritedModule from "../../../page/_layout.tsx";');
-    expect(generatedSource).toContain("const inheritedLayout = resolveRouteModule(inheritedModule as never");
+    expect(generatedSource).toContain(
+      'const inheritedLayout = assertGuardOnChain("page/_layout.tsx", resolveRouteModule(inheritedModule as never',
+    );
     expect(generatedSource).not.toContain("<System.Provider");
     expect(generatedSource).toContain("export async function generateHead(props: PageProps)");
     // The ancestor root is a level of the route tree, which merges its head; this boundary returns only its own.

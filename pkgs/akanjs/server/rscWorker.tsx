@@ -1343,10 +1343,7 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
-    if (!guarded) {
-      await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
-      await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
-    }
+    if (!guarded) await RouteElementComposer.admit({ pathRoute, params: match.params, searchParams });
     //? The provider names the theme only as it renders, which can be after the HTML shell and its data-theme are out.
     const rootLayouts = pathRoute.renderRootLayouts;
     const rootTheme = await RscRenderer.#firstRootValue(rootLayouts, (render) => render.getLayoutTheme?.());
@@ -1403,8 +1400,7 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
-    await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
-    await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
+    await RouteElementComposer.admit({ pathRoute, params: match.params, searchParams });
     await RouteElementComposer.resolveSuffixLoadings(pathRoute, patchStartIndex);
     return RouteElementComposer.composeSuffix({
       pathRoute,
@@ -1419,12 +1415,17 @@ export class RscRenderer {
   async #renderNotFound(url: URL): Promise<ReactNode> {
     const matchedFallback = RouteTreeBuilder.matchFallback(url.pathname, this.#fallbackRoutes);
     if (matchedFallback) {
+      const searchParams = parseSearchParams(url.search);
+      const route = await RouteElementComposer.admittedFallbackOf(matchedFallback.fallbackRoute, {
+        params: matchedFallback.params,
+        searchParams,
+      });
       try {
         const fallback = await this.#renderFallbackDocument({
           kind: "not-found",
-          route: matchedFallback.fallbackRoute,
+          route,
           params: matchedFallback.params,
-          searchParams: parseSearchParams(url.search),
+          searchParams,
           pathname: url.pathname,
           url,
         });

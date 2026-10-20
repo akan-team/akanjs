@@ -752,25 +752,31 @@ describe("MCP over a booted container", () => {
     expect(asked).toEqual([[["authorization", "Bearer u1"]]]);
   });
 
-  test("asks for one caller's verdict once in a few seconds, however often it lists", async () => {
+  test("asks for one caller's verdict once in a few seconds, however often and whatever it lists", async () => {
     const asked: string[] = [];
     const gated: PagePromptSource = {
-      ...pagePromptsOf(okRun()),
+      ...pagePromptsOf(okRun(), [briefEntry, showEntry]),
       visible: async ({ names, headers }) => {
         asked.push(headers[0]?.[1] ?? "anonymous");
         return names;
       },
     };
-    const routes = mcpRoutes({ pagePrompts: gated });
-    const list = (authorization: string) =>
+    const routes = mcpRoutes({ apps: true, pagePrompts: gated });
+    const list = (method: string, authorization: string) =>
       routes["/mcp"].POST(
         new Request("http://127.0.0.1:8080/mcp", {
           method: "POST",
-          body: JSON.stringify(rpc("prompts/list")),
+          body: JSON.stringify(rpc(method)),
           headers: { "Content-Type": "application/json", authorization },
         }),
       );
-    for (const authorization of ["Bearer u1", "Bearer u1", "Bearer u2"]) await list(authorization);
+    for (const [method, authorization] of [
+      ["prompts/list", "Bearer u1"],
+      ["tools/list", "Bearer u1"],
+      ["prompts/list", "Bearer u1"],
+      ["tools/list", "Bearer u2"],
+    ] as const)
+      await list(method, authorization);
     expect(asked).toEqual(["Bearer u1", "Bearer u2"]);
   });
 

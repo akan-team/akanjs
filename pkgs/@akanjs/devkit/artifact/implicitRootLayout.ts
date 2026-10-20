@@ -164,12 +164,12 @@ async function writeGeneratedRootLayoutFile(opts: {
   //? resolveRouteModule reads a rootLayout() chain and the legacy named exports alike.
   const inheritedLabel = inheritedSourceAbsPath ? path.relative(opts.appCwdPath, inheritedSourceAbsPath) : "";
   const inheritedImport = inheritedSourceSpecifier
-    ? `import * as inheritedModule from ${JSON.stringify(inheritedSourceSpecifier)};\nconst inheritedLayout = resolveRouteModule(inheritedModule as never, ${JSON.stringify(inheritedLabel)}).module as LayoutModule;\n`
+    ? `import * as inheritedModule from ${JSON.stringify(inheritedSourceSpecifier)};\nconst inheritedLayout = assertGuardOnChain(${JSON.stringify(inheritedLabel)}, resolveRouteModule(inheritedModule as never, ${JSON.stringify(inheritedLabel)})).module as LayoutModule;\n`
     : "const inheritedLayout: LayoutModule = {};\n";
   const prefix = opts.boundary.segments.find((segment) => !/^\(.+\)$/.test(segment)) ?? null;
   const userLabel = opts.boundary.sourceAbsPath ? path.relative(opts.appCwdPath, opts.boundary.sourceAbsPath) : "";
   const userImport = sourceSpecifier
-    ? `import * as userModule from ${JSON.stringify(sourceSpecifier)};\nconst userLayout = resolveRouteModule(userModule as never, ${JSON.stringify(userLabel)}).module as LayoutModule;\nconst UserLayout = userLayout.default as (props: LayoutProps) => ReactNode | Promise<ReactNode>;\n`
+    ? `import * as userModule from ${JSON.stringify(sourceSpecifier)};\nconst userLayout = assertGuardOnChain(${JSON.stringify(userLabel)}, resolveRouteModule(userModule as never, ${JSON.stringify(userLabel)})).module as LayoutModule;\nconst UserLayout = userLayout.default as (props: LayoutProps) => ReactNode | Promise<ReactNode>;\n`
     : "const UserLayout = ({ children }: LayoutProps) => children;\nconst userLayout: LayoutModule = {};\n";
   const isAsyncUserLayout = opts.boundary.sourceAbsPath
     ? await AsyncDefaultExportDetector.detect(opts.boundary.sourceAbsPath)
@@ -212,7 +212,7 @@ ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
-import { loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
+import { assertGuardOnChain, loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 import { System } from "akanjs/ui";
 import type { McpAppRootProps } from "akanjs/webkit";
@@ -266,7 +266,7 @@ export function McpAppRoot({ children, params, path }: McpAppRootProps) {
 }
 `
     : `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
-import { resolveRouteModule, RouteHead } from "akanjs/client";
+import { assertGuardOnChain, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 ${inheritedImport}${userImport}
 ${layoutExports}${layoutReturn};

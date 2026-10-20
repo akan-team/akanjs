@@ -6,7 +6,7 @@ process.env.AKAN_PUBLIC_APP_NAME = "test";
 process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
-const { router } = await import("akanjs/client");
+const { page, router } = await import("akanjs/client");
 const { CsrGuards } = await import("./CsrGuards");
 
 const replaced: string[] = [];
@@ -24,9 +24,9 @@ router.init({
 const guarded = (guard?: RouteGuard): RouteRender => ({ render: () => null, guard });
 let entries = 0;
 const locationOf = (layout?: RouteGuard, page?: RouteGuard) => ({
-  href: "/en/org/1/home",
   entryId: `entry-${++entries}`,
   pathRoute: {
+    path: "/org/:orgId/home",
     renderRootLayouts: [],
     renderLayouts: [guarded(layout)],
     renderPage: guarded(page),
@@ -52,8 +52,48 @@ describe("CsrGuards", () => {
     expect([first, second]).toEqual([true, true]);
     expect(await CsrGuards.of({ ...location })).toBe(true);
     expect(trail).toEqual(["layout", "page"]);
-    expect(await CsrGuards.of({ ...location, href: "/en/org/1/home?tab=2" })).toBe(true);
+    expect(await CsrGuards.of({ ...location, searchParams: { tab: "2" } })).toBe(true);
     expect(trail).toEqual(["layout", "page", "layout", "page"]);
+  });
+
+  test("keys a chain guard's verdict by the args it reads, so a query it never reads keeps it", async () => {
+    let runs = 0;
+    const { guard } = page()
+      .param("orgId", String)
+      .search("tab", String)
+      .guard(() => {
+        runs += 1;
+      })
+      .render(() => null)
+      .toRouteModule();
+    const location = { ...locationOf(undefined, guard), params: { lang: "en", orgId: "1" } };
+    const moves: Parameters<typeof CsrGuards.of>[0][] = [
+      location,
+      { ...location, searchParams: { q: "typed" } },
+      { ...location, searchParams: { tab: "2" } },
+      { ...location, params: { lang: "en", orgId: "2" } },
+    ];
+    for (const moved of moves) expect(await CsrGuards.of(moved)).toBe(true);
+    expect(runs).toBe(3);
+  });
+
+  test("holds a verdict while a layer of its location is on screen, and asks again once none is", async () => {
+    let runs = 0;
+    const location = locationOf(undefined, async () => {
+      runs += 1;
+    });
+    const key = CsrGuards.keyOf(location);
+    const releaseLayout = CsrGuards.hold(key);
+    const releasePage = CsrGuards.hold(key);
+    expect(await CsrGuards.of(location)).toBe(true);
+    expect([CsrGuards.admitted(key), runs]).toEqual([true, 1]);
+    releaseLayout();
+    expect(await CsrGuards.of(location)).toBe(true);
+    expect(runs).toBe(1);
+    releasePage();
+    expect([CsrGuards.admitted(key), CsrGuards.asked(key)]).toEqual([false, false]);
+    expect(await CsrGuards.of(location)).toBe(true);
+    expect(runs).toBe(2);
   });
 
   test("refuses the location when a guard moves the router, skips the guards below, and asks again next time", async () => {

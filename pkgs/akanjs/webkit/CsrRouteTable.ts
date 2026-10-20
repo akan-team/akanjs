@@ -140,7 +140,7 @@ export class CsrRouteTable {
             : resolveRouteModule(loaded, key, { kind: parsed.kind, pattern: parsed.pattern });
         const pageContent = resolved.module;
         CsrRouteTable.#validateRouteModuleExports(key, pageContent);
-        assertGuardOnChain(key, resolved);
+        if (!parsed.isInternalRootLayout) assertGuardOnChain(key, resolved);
         validatePageConfig(key, (pageContent as RouteModuleWithConfig).pageConfig);
         asyncDefaultMap[key] = entry.isAsyncDefault;
         // `_overrides.tsx` has no default export but must still be kept so its slot bindings can be mounted.

@@ -1,4 +1,3 @@
-import { parseRouteModuleKey } from "akanjs/common";
 import type { RouteModule } from "../csrTypes";
 import { type RouteDefinition, routeDefinitionMarker } from "./RouteDefinition";
 
@@ -43,9 +42,9 @@ export const resolveRouteModule = (
 };
 
 /** The export sets allow `guard` for an unfolded chain and the generated root layout; the legacy shape never gained it. */
-export const assertGuardOnChain = (key: string, { module, definition }: ResolvedRouteModule) => {
-  if (definition || !("guard" in module) || parseRouteModuleKey(key).isInternalRootLayout) return;
+export const assertGuardOnChain = (label: string, resolved: ResolvedRouteModule): ResolvedRouteModule => {
+  if (resolved.definition || !("guard" in resolved.module)) return resolved;
   throw new Error(
-    `[route-convention] ${key} exports guard beside a legacy default; declare it with .guard() on its chain`,
+    `[route-convention] ${label} exports guard beside a legacy default; declare it with .guard() on its chain`,
   );
 };

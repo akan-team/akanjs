@@ -185,7 +185,7 @@ describe("page() chain", () => {
     expect(isRouteDefinition(legacy.default)).toBe(false);
   });
 
-  test("refuses a guard beside a legacy default, and keeps a chain's and the generated root layout's", () => {
+  test("refuses a guard beside a legacy default, and keeps a chain's", () => {
     const guard = async () => undefined;
     const chain = resolveRouteModule(
       {
@@ -195,11 +195,11 @@ describe("page() chain", () => {
       } as never,
       "./a.tsx",
     );
-    expect(() => assertGuardOnChain("./a.tsx", chain)).not.toThrow();
+    expect(assertGuardOnChain("./a.tsx", chain)).toBe(chain);
     const legacy = resolveRouteModule({ default: () => null, guard } as never, "./a.tsx");
     expect(() => assertGuardOnChain("./a.tsx", legacy)).toThrow("exports guard beside a legacy default");
-    const generated = resolveRouteModule({ default: () => null, guard } as never, "./__root_layout.tsx");
-    expect(() => assertGuardOnChain("./__root_layout.tsx", generated)).not.toThrow();
+    const unguarded = resolveRouteModule({ default: () => null } as never, "./a.tsx");
+    expect(assertGuardOnChain("./a.tsx", unguarded)).toBe(unguarded);
   });
 });
 

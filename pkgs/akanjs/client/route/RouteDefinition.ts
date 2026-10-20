@@ -63,7 +63,7 @@ export abstract class RouteDefinition<
     this.#head = head as HeadStage<never>;
     return this;
   }
-  /** Runs before any layout body, once per location; refuses with `router.redirect()` or `router.notFound()`. */
+  /** Runs before any layout body; refuses with `router.redirect()` or `router.notFound()`. */
   guard(guard: (args: RouteBaseArgs & Args) => void | Promise<void>) {
     if (this.#guard)
       throw new Error(`[route-convention] ${this.kind}() declares .guard() twice; run every check from one guard`);
@@ -142,7 +142,7 @@ export abstract class RouteDefinition<
     const module: PageModule & LayoutModule = {
       default: this.#renderRouteOf(render) as never,
       ...(this.#config ? { pageConfig: this.#config } : {}),
-      ...(guard ? { guard: async (props: RouteGuardProps) => await guard(this.#guardArgsOf(props) as never) } : {}),
+      ...(guard ? { guard: this.#guardRouteOf(guard) } : {}),
       ...(head === undefined
         ? {}
         : typeof head === "function"
@@ -169,6 +169,13 @@ export abstract class RouteDefinition<
 
   //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
   //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
+  //? Marked with the args it reads, as the render is, so CSR asks the guards again only when one of those moves.
+  #guardRouteOf(guard: (args: never) => void | Promise<void>) {
+    const route = async (props: RouteGuardProps) => await guard(this.#guardArgsOf(props) as never);
+    Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
+    return route;
+  }
+
   #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
     const kept = this.#renderRoute;
     if (kept?.render === render && kept.argCount === this.args.length) return kept.route;

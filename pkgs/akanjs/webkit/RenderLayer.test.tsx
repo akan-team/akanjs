@@ -1,6 +1,6 @@
 import "../test/registerDom";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { pathContext, type RouteRender, router, Translator } from "akanjs/client";
+import { layout, pathContext, type RouteRender, router, Translator } from "akanjs/client";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { RenderLayer } from "./RenderLayer";
@@ -288,5 +288,97 @@ describe("RenderLayer", () => {
     expect(container.textContent).toBe("notes all");
     await draw("e2", { tab: "mine" });
     expect(container.textContent).toBe("notes mine");
+  });
+
+  test("asks a remounted page's guards again, so a sign-out while it was gone keeps it off screen", async () => {
+    const replaced: string[] = [];
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: {
+        push: () => undefined,
+        replace: (href) => void replaced.push(href),
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    });
+    const session = { isSignedIn: true };
+    const notes: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      guard: async () => {
+        if (!session.isSignedIn) router.replace("/signin");
+      },
+      render: (async () => <p>notes</p>) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/notes", renderRootLayouts: [], renderLayouts: [], renderPage: notes };
+    const location = { entryId: "e1", pathname: "/en/notes", params: {}, searchParams: {}, pathRoute };
+    const visit = async () => {
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={[notes]} index={0} params={{}} searchParams={{}} />
+          </pathContext.Provider>,
+        );
+      });
+      await settle();
+      const text = container.textContent;
+      await act(async () => root.unmount());
+      container.remove();
+      return text;
+    };
+
+    expect(await visit()).toBe("notes");
+    session.isSignedIn = false;
+    expect(await visit()).toBe("");
+    expect(replaced).toEqual(["/en/signin"]);
+  });
+
+  test("draws a legacy page's new query at once once its guards let it in, without asking them again", async () => {
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: { push: () => undefined, replace: () => undefined, back: () => undefined, refresh: () => undefined },
+    });
+    let guardRuns = 0;
+    const shell = layout()
+      .guard(() => {
+        guardRuns += 1;
+      })
+      .render(({ children }) => children)
+      .toRouteModule();
+    const root: RouteRender = { kind: "layout", isAsync: true, render: shell.default as never, guard: shell.guard };
+    const legacy: RouteRender = {
+      kind: "page",
+      render: (({ searchParams }: { searchParams: Record<string, string> }) => (
+        <p>{`q=${searchParams.q}`}</p>
+      )) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/search", renderRootLayouts: [root], renderLayouts: [], renderPage: legacy };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const reactRoot = createRoot(container);
+    mounted = { root: reactRoot, container };
+    const draw = async (q: string) => {
+      const searchParams = { q };
+      const location = { entryId: "e1", pathname: "/en/search", params: { lang: "en" }, searchParams, pathRoute };
+      await act(async () => {
+        reactRoot.render(
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={[legacy]} index={0} params={{ lang: "en" }} searchParams={searchParams} />
+          </pathContext.Provider>,
+        );
+      });
+    };
+
+    await draw("a");
+    await settle();
+    expect(container.textContent).toBe("q=a");
+    await draw("ab");
+    expect(container.textContent).toBe("q=ab");
+    expect(guardRuns).toBe(1);
   });
 });

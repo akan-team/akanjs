@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RouteGuardProps, RouteRender } from "../csrTypes";
 import { AkanNotFoundError, AkanRedirectError } from "../router";
+import { RouteDefinition, routeArgsMarker } from "./RouteDefinition";
 import { RouteGuards } from "./RouteGuards";
 import { RouteArgPending } from "./routeArgs";
 
@@ -39,6 +40,17 @@ describe("RouteGuards.run", () => {
     const broken = new Error("broken");
     await expect(RouteGuards.run([guarded([], "page", broken)], props)).rejects.toBe(broken);
   });
+
+  test("names the index of the guard that refused, a thrown string wrapped so it can still be named", async () => {
+    const redirect = new AkanRedirectError("/signin");
+    const byRedirect = await RouteGuards.run([undefined, guarded([], "layout", redirect)], props).catch((e) => e);
+    expect(RouteGuards.refusedAt(byRedirect)).toBe(1);
+    const byString = await RouteGuards.run([guarded([], "root"), guarded([], "page", "nope")], props).catch((e) => e);
+    expect(byString).toBeInstanceOf(Error);
+    expect((byString as Error).message).toBe("nope");
+    expect(RouteGuards.refusedAt(byString)).toBe(1);
+    expect(RouteGuards.refusedAt("nope")).toBeUndefined();
+  });
 });
 
 describe("RouteGuards.admits", () => {
@@ -75,5 +87,20 @@ describe("RouteGuards.compose", () => {
     );
     await composed?.(props);
     expect(trail).toEqual(["inherited", "own"]);
+  });
+
+  test("reads what the guards it runs read, and everything once one of them names nothing", () => {
+    const reading = (...names: string[]) =>
+      Object.defineProperty(async () => undefined, routeArgsMarker, {
+        value: names.map((name) => ({ kind: "search", name })),
+      });
+    const at = (tab: string, page: string) => ({ params: { lang: "en" }, searchParams: { tab, page } });
+    const keyOf = (guard: unknown, tab: string, page: string) =>
+      RouteDefinition.renderArgsKey(guard, at(tab, page), { isPage: true });
+    const marked = RouteGuards.compose(reading("tab"), reading());
+    expect(keyOf(marked, "a", "1")).toBe(keyOf(marked, "a", "2"));
+    expect(keyOf(marked, "a", "1")).not.toBe(keyOf(marked, "b", "1"));
+    const unmarked = RouteGuards.compose(reading("tab"), async () => undefined);
+    expect(keyOf(unmarked, "a", "1")).not.toBe(keyOf(unmarked, "a", "2"));
   });
 });

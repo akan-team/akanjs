@@ -103,11 +103,14 @@ describe("RouteSourceValidator route chains", () => {
     expect(() => chain(indirect.join("\n"), "page", "/")).toThrow('exports its chain through "memo"');
   });
 
-  test("still reads the legacy shape as before", () => {
+  test("still reads the legacy shape as before, which never takes a guard", () => {
     const source = [
       "export default function Page() { return null; }",
       "export const pageConfig = { devOnly: false };",
     ].join("\n");
     expect(chain(source, "page", "/")).toEqual({ devOnly: false });
+    expect(() => chain(`${source}\nexport const guard = async () => undefined;`, "page", "/")).toThrow(
+      "exports guard beside a legacy default",
+    );
   });
 });

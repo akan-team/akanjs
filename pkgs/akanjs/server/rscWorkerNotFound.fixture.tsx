@@ -82,6 +82,19 @@ export const pages: PagesContext = {
       })
       .render(({ itemId }) => <p>{`item ${itemId}`}</p>),
   }),
+  "./vault/_layout.tsx": async () => ({
+    default: layout()
+      .guard(() => {
+        if (untrackedHeaders().get("x-signed-in") !== "yes") router.redirect("/signin");
+      })
+      .notFound(() => <p>vault missing</p>)
+      .render(({ children }) => <section>vault:{children}</section>),
+  }),
+  "./vault/[noteId].tsx": async () => ({
+    default: page()
+      .param("noteId", ID)
+      .render(({ noteId }) => <p>{`note ${noteId}`}</p>),
+  }),
   "./drawing/[drawingId]/_index.tsx": async () => ({
     default: page()
       .param("drawingId", ID)

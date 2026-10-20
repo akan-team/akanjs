@@ -1,5 +1,6 @@
 import type { RouteGuard, RouteGuardProps, RouteRender } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
+import { routeArgsMarker } from "./RouteDefinition";
 
 /** Runs a route's `.guard()` stages: the root layout's first, the page's last, each before any layout body. */
 export class RouteGuards {
@@ -13,8 +14,10 @@ export class RouteGuards {
         await render.guard(props);
       } catch (error) {
         const refusal = RouteGuards.refusalOf(error);
-        if (typeof refusal === "object" && refusal !== null) RouteGuards.#refusedAt.set(refusal, idx);
-        throw refusal;
+        //? Kept by identity, so a thrown string is wrapped: its index still keeps the refused layouts off the fallback.
+        const thrown = typeof refusal === "object" && refusal !== null ? refusal : new Error(String(refusal));
+        RouteGuards.#refusedAt.set(thrown, idx);
+        throw thrown;
       }
     }
   }
@@ -53,8 +56,12 @@ export class RouteGuards {
   static compose(...guards: (RouteGuard | undefined)[]): RouteGuard | undefined {
     const chain = guards.filter((guard): guard is RouteGuard => !!guard);
     if (chain.length <= 1) return chain[0];
-    return async (props) => {
+    const composed: RouteGuard = async (props) => {
       for (const guard of chain) await guard(props);
     };
+    //? Reads what each of them reads; one that names nothing is taken to read everything, so the union is left off.
+    const reads = chain.map((guard) => (guard as { [routeArgsMarker]?: unknown[] })[routeArgsMarker]);
+    if (reads.every(Array.isArray)) Object.defineProperty(composed, routeArgsMarker, { value: reads.flat() });
+    return composed;
   }
 }

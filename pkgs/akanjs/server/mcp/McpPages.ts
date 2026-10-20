@@ -243,7 +243,8 @@ export class McpPages {
   // listing itself falls back to the pages listed last.
   async #visibleTo(req: Request, entries: PagePromptEntry[]): Promise<PagePromptEntry[]> {
     if (!this.#props.source || !entries.length) return entries;
-    const names = await McpPages.#withinListWait(this.#verdictOf(req, entries));
+    //? Asked over every page, so the prompts, tools and resources a host lists in a row share one verdict.
+    const names = await McpPages.#withinListWait(this.#verdictOf(req, await this.#listedPages()));
     if (!names) return entries;
     const admitted = new Set(names);
     return entries.filter((entry) => admitted.has(entry.name));
@@ -267,7 +268,7 @@ export class McpPages {
         return visible;
       })
       .catch((error: unknown) => {
-        this.#verdicts.delete(key);
+        if (this.#verdicts.get(key)?.names === verdict) this.#verdicts.delete(key);
         if (!this.#guardsFailed)
           this.#props.logger.warn(
             `MCP could not run the route guards of its page prompts, so they are listed unfiltered: ${error instanceof Error ? error.message : error}`,
