@@ -628,7 +628,7 @@ export class RscRenderer {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            element = await this.#renderMatched(urlObj, match, searchParams, notFound);
+            element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: true });
           } else element = suffixElement;
         } else if (match) element = await this.#renderMatched(urlObj, match, searchParams, notFound);
         else element = await this.#renderNotFound(urlObj);
@@ -774,7 +774,7 @@ export class RscRenderer {
           this.#trySendFallbackRender({
             requestId,
             kind,
-            route: fallbackMatch.pathRoute,
+            route: RouteElementComposer.fallbackRouteOf(fallbackMatch.pathRoute, error),
             params: fallbackMatch.params,
             searchParams: parseSearchParams(fallbackUrl.search),
             pathname: fallbackUrl.pathname,
@@ -1333,6 +1333,7 @@ export class RscRenderer {
     match: { pathRoute: PathRoute; params: Record<string, string> },
     searchParams: Record<string, string | string[]>,
     notFound: RouteNotFoundInPlace,
+    { guarded = false }: { guarded?: boolean } = {},
   ): Promise<ReactNode> {
     this.#logger.verbose(
       `composing route element pathname=${url.pathname} search=${url.search || "(none)"} params=${JSON.stringify(match.params)}`,
@@ -1342,8 +1343,10 @@ export class RscRenderer {
       basePath: this.#getBasePath(url),
     });
     setRequestFrameState(pathRoute.pageState);
-    await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
-    await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
+    if (!guarded) {
+      await RouteElementComposer.checkArgs({ pathRoute, params: match.params, searchParams });
+      await RouteElementComposer.runGuards({ pathRoute, params: match.params, searchParams });
+    }
     //? The provider names the theme only as it renders, which can be after the HTML shell and its data-theme are out.
     const rootLayouts = pathRoute.renderRootLayouts;
     const rootTheme = await RscRenderer.#firstRootValue(rootLayouts, (render) => render.getLayoutTheme?.());

@@ -119,6 +119,19 @@ export class RouteElementComposer {
     await RouteGuards.run(RouteElementComposer.#getRenderStack(pathRoute), { params, searchParams });
   }
 
+  //? Security: a guard refused everything from its render down, so a fallback drawn after it keeps only the layouts above
+  //? it, and no head: those bodies and heads read what the refused visitor may not.
+  static fallbackRouteOf(route: PathRoute, error: unknown): PathRoute | LayoutFallbackRoute {
+    const refusedAt = RouteGuards.refusedAt(error);
+    if (refusedAt === undefined) return route;
+    return {
+      path: route.path,
+      pathSegments: route.pathSegments,
+      renderRootLayouts: route.renderRootLayouts.slice(0, refusedAt),
+      renderLayouts: route.renderLayouts.slice(0, Math.max(0, refusedAt - route.renderRootLayouts.length)),
+    };
+  }
+
   static composeSuffix({
     pathRoute,
     params,

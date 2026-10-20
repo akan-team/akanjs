@@ -110,6 +110,7 @@ beforeAll(() => {
     validatePageConfig: () => undefined,
     // The fixtures are legacy-shaped modules, which the real resolver passes through untouched.
     resolveRouteModule: (mod: unknown) => ({ module: mod }),
+    assertGuardOnChain: () => undefined,
   }));
   mock.module("react-dom/client", () => ({
     createRoot: () => ({ render: () => undefined }),

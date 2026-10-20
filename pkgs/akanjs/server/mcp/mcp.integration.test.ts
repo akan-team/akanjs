@@ -752,6 +752,28 @@ describe("MCP over a booted container", () => {
     expect(asked).toEqual([[["authorization", "Bearer u1"]]]);
   });
 
+  test("asks for one caller's verdict once in a few seconds, however often it lists", async () => {
+    const asked: string[] = [];
+    const gated: PagePromptSource = {
+      ...pagePromptsOf(okRun()),
+      visible: async ({ names, headers }) => {
+        asked.push(headers[0]?.[1] ?? "anonymous");
+        return names;
+      },
+    };
+    const routes = mcpRoutes({ pagePrompts: gated });
+    const list = (authorization: string) =>
+      routes["/mcp"].POST(
+        new Request("http://127.0.0.1:8080/mcp", {
+          method: "POST",
+          body: JSON.stringify(rpc("prompts/list")),
+          headers: { "Content-Type": "application/json", authorization },
+        }),
+      );
+    for (const authorization of ["Bearer u1", "Bearer u1", "Bearer u2"]) await list(authorization);
+    expect(asked).toEqual(["Bearer u1", "Bearer u2"]);
+  });
+
   test("lists the page prompts unfiltered when their route guards cannot be read in time", async () => {
     const stalled: PagePromptSource = {
       ...pagePromptsOf(okRun()),
@@ -1672,13 +1694,21 @@ describe("MCP Apps", () => {
     }
   });
 
-  test("offers the view as a resource only to a client that renders it", async () => {
+  test("offers the view as a resource only to a client that renders it, for the apps its tools list shows", async () => {
     const uris = (json: { result: { resources: { uri: string }[] } }) => json.result.resources.map(({ uri }) => uri);
     expect(uris((await postWith(rpc("resources/list"), apps)).json)).toEqual([]);
     const session = { "mcp-session-id": await uiSession() };
     expect(uris((await postAs(rpc("resources/list"), session, apps)).json)).toEqual([
       "ui://mcpintegration/apps/showItem",
     ]);
+    const hidden = {
+      ...apps,
+      pagePrompts: {
+        ...pagePromptsOf(okRun(), [briefEntry, showEntry, { ...showEntry, name: "echoTitle" }]),
+        visible: async ({ names }: { names: string[] }) => names.filter((name) => name !== "showItem"),
+      },
+    };
+    expect(uris((await postAs(rpc("resources/list"), session, hidden)).json)).toEqual([]);
   });
 
   test("keeps an endpoint's name when a page takes it too, and says so at boot", async () => {

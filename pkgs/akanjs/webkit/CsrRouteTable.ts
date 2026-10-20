@@ -1,4 +1,5 @@
 import {
+  assertGuardOnChain,
   type Device,
   getExplicitPageConfigKeys,
   insetBreakpoints,
@@ -133,11 +134,13 @@ export class CsrRouteTable {
         }
         const entry = typeof value === "function" ? { loader: value } : value;
         const loaded = await entry.loader();
-        const pageContent =
+        const resolved =
           parsed.kind === "overrides"
-            ? (loaded as RouteModule)
-            : resolveRouteModule(loaded, key, { kind: parsed.kind, pattern: parsed.pattern }).module;
+            ? { module: loaded as RouteModule }
+            : resolveRouteModule(loaded, key, { kind: parsed.kind, pattern: parsed.pattern });
+        const pageContent = resolved.module;
         CsrRouteTable.#validateRouteModuleExports(key, pageContent);
+        assertGuardOnChain(key, resolved);
         validatePageConfig(key, (pageContent as RouteModuleWithConfig).pageConfig);
         asyncDefaultMap[key] = entry.isAsyncDefault;
         // `_overrides.tsx` has no default export but must still be kept so its slot bindings can be mounted.

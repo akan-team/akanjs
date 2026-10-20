@@ -3,16 +3,25 @@ import { AkanNotFoundError } from "../router";
 
 /** Runs a route's `.guard()` stages: the root layout's first, the page's last, each before any layout body. */
 export class RouteGuards {
+  static readonly #refusedAt = new WeakMap<object, number>();
+
   /** The first refusal stops the chain and is thrown: a redirect, a not-found, or the error a guard leaked. */
   static async run(renders: (RouteRender | undefined)[], props: RouteGuardProps): Promise<void> {
-    for (const render of renders) {
+    for (const [idx, render] of renders.entries()) {
       if (!render?.guard) continue;
       try {
         await render.guard(props);
       } catch (error) {
-        throw RouteGuards.refusalOf(error);
+        const refusal = RouteGuards.refusalOf(error);
+        if (typeof refusal === "object" && refusal !== null) RouteGuards.#refusedAt.set(refusal, idx);
+        throw refusal;
       }
     }
+  }
+
+  /** The index, in the renders `run` was given, whose guard threw `error`; `undefined` for anything else. */
+  static refusedAt(error: unknown): number | undefined {
+    return typeof error === "object" && error !== null ? RouteGuards.#refusedAt.get(error) : undefined;
   }
 
   /** Whether MCP may list the screen to this caller: a guard that reads an argument leaves the verdict to the call. */

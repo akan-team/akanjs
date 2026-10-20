@@ -57,6 +57,7 @@ describe("CSR.Wrapper", () => {
     const pathRoute = {
       path: "/:lang/a",
       pageState: { ...client.defaultPageState, topInset: 48 },
+      renderRootLayouts: [],
       renderLayouts: [],
       renderPage: { kind: "page", render: () => null },
     };

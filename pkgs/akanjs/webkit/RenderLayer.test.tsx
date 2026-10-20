@@ -182,4 +182,111 @@ describe("RenderLayer", () => {
     expect((await visit()).textContent).toBe("notes");
     expect(trail).toEqual(["guard", "render"]);
   });
+
+  test("draws the page once a guard moves the router within its own route, under a layout that reads none of it", async () => {
+    const replaced: string[] = [];
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: {
+        push: () => undefined,
+        replace: (href) => void replaced.push(href),
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    });
+    const notes: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      paramNames: [],
+      guard: async ({ searchParams }) => {
+        if (!searchParams.tab) router.redirect("/notes?tab=all");
+      },
+      render: (async () => <p>notes</p>) as RouteRender["render"],
+    };
+    const shell = layoutOf(({ children }) => <main>{children}</main>, true);
+    const pathRoute = { path: "/notes", renderRootLayouts: [], renderLayouts: [shell], renderPage: notes };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mounted = { root, container };
+    const draw = async (search: string, searchParams: Record<string, string>) => {
+      const location = {
+        href: `/en/notes${search}`,
+        entryId: "e1",
+        pathname: "/en/notes",
+        params: {},
+        searchParams,
+        pathRoute,
+      };
+      await act(async () => {
+        root.render(
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={[shell, notes]} index={0} params={{}} searchParams={searchParams} />
+          </pathContext.Provider>,
+        );
+      });
+      await settle();
+    };
+
+    await draw("", {});
+    expect(container.textContent).toBe("");
+    expect(replaced).toEqual(["/en/notes?tab=all"]);
+    await draw("?tab=all", { tab: "all" });
+    await settle();
+    expect(container.textContent).toBe("notes");
+  });
+
+  test("keeps a sync page off screen until the root layout's guard admits the visitor", async () => {
+    const replaced: string[] = [];
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: {
+        push: () => undefined,
+        replace: (href) => void replaced.push(href),
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    });
+    const session = { isSignedIn: false };
+    const root: RouteRender = {
+      ...layoutOf(({ children }) => children, true),
+      guard: async () => {
+        if (!session.isSignedIn) router.replace("/signin");
+      },
+    };
+    const legacy: RouteRender = {
+      kind: "page",
+      render: (({ searchParams }: { searchParams: Record<string, string> }) => (
+        <p>notes {searchParams.tab}</p>
+      )) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/notes", renderRootLayouts: [root], renderLayouts: [], renderPage: legacy };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const reactRoot = createRoot(container);
+    mounted = { root: reactRoot, container };
+    const draw = async (entryId: string, searchParams: Record<string, string>) => {
+      const location = { href: "/en/notes", entryId, pathname: "/en/notes", params: {}, searchParams, pathRoute };
+      await act(async () => {
+        reactRoot.render(
+          <pathContext.Provider value={{ location } as never}>
+            <RenderLayer renders={[legacy]} index={0} params={{}} searchParams={searchParams} />
+          </pathContext.Provider>,
+        );
+      });
+      await settle();
+    };
+
+    await draw("e1", {});
+    expect(container.textContent).toBe("");
+    expect(replaced).toEqual(["/en/signin"]);
+
+    session.isSignedIn = true;
+    await draw("e2", { tab: "all" });
+    expect(container.textContent).toBe("notes all");
+    await draw("e2", { tab: "mine" });
+    expect(container.textContent).toBe("notes mine");
+  });
 });

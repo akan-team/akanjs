@@ -22,7 +22,10 @@ router.init({
 });
 
 const guarded = (guard?: RouteGuard): RouteRender => ({ render: () => null, guard });
+let entries = 0;
 const locationOf = (layout?: RouteGuard, page?: RouteGuard) => ({
+  href: "/en/org/1/home",
+  entryId: `entry-${++entries}`,
   pathRoute: {
     renderRootLayouts: [],
     renderLayouts: [guarded(layout)],
@@ -39,16 +42,18 @@ describe("CsrGuards", () => {
     expect(CsrGuards.declared(locationOf(undefined, async () => undefined))).toBe(true);
   });
 
-  test("runs a location's guards once, layout first, however many of its layers wait", async () => {
+  test("runs a location's guards once, layout first, however many of its layers wait or render again", async () => {
     const trail: string[] = [];
     const location = locationOf(
       async () => void trail.push("layout"),
       async () => void trail.push("page"),
     );
-    const [first, second] = await Promise.all([CsrGuards.of(location), CsrGuards.of(location)]);
+    const [first, second] = await Promise.all([CsrGuards.of(location), CsrGuards.of({ ...location })]);
     expect([first, second]).toEqual([true, true]);
-    expect(await CsrGuards.of(location)).toBe(true);
+    expect(await CsrGuards.of({ ...location })).toBe(true);
     expect(trail).toEqual(["layout", "page"]);
+    expect(await CsrGuards.of({ ...location, href: "/en/org/1/home?tab=2" })).toBe(true);
+    expect(trail).toEqual(["layout", "page", "layout", "page"]);
   });
 
   test("refuses the location when a guard moves the router, skips the guards below, and asks again next time", async () => {

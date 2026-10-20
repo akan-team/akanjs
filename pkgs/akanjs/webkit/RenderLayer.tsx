@@ -21,6 +21,8 @@ interface RenderedRoute {
   record: ReturnType<typeof CsrFrameDump.track> | null;
   /** A redirect was issued while the render ran, so what it drew is not the page. */
   redirected: boolean;
+  /** The guarded location whose guards refused, so the layer drew nothing for it. */
+  refusedKey: string | null;
   /** The render rejected while its page stayed: what the layer draws instead, with a retry. */
   failure: { error: unknown } | null;
 }
@@ -58,36 +60,45 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   const path = location?.pathRoute.path ?? "the root";
   //? A pushed entry renders before the URL moves to it, so its route renders read its own path through usePage().
   const renderPath = entryPathOf(location?.pathname);
-  if (isAsyncRender && routeRender) {
+  //? A page's layers wait for its route guards; the root layouts, drawn once for every page, do not. A sync layer
+  //? waits too: under a root layout's guard, a legacy page is the only layer its location has.
+  const guarded = location && CsrGuards.declared(location) ? location : null;
+  if ((isAsyncRender || guarded) && routeRender) {
     const argsKey = RouteDefinition.renderArgsKey(
       routeRender.render,
       { params, searchParams },
-      { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames },
+      //? A sync layer's kept element holds every prop it was handed, so any of them redraws it.
+      isAsyncRender ? { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames } : { isPage: true },
     );
     const rendered = renderedRef.current;
     //? A cached page back on screen reruns a render that redirected: signed out, a layout redirects to the sign-in
     //? page, and kept, it would stay blank after the sign-in brings the person back.
     const returned = activity === "current" && !onScreenRef.current;
+    //? A guard may move the router within its own route (a merged id, a defaulted query), which keeps this layer
+    //? mounted with args it does not read: the location it refused is gone, so it asks the new one.
+    const moved = !!rendered?.refusedKey && !!location && rendered.refusedKey !== CsrGuards.keyOf(location);
     //? Rerun only when the render itself (a hot update) or the args it reads change: any other re-render would refetch.
     if (
       !rendered ||
       rendered.render !== routeRender.render ||
       rendered.argsKey !== argsKey ||
-      (returned && rendered.redirected)
+      (returned && rendered.redirected) ||
+      moved
     ) {
       const redirectsBefore = router.redirectCount();
       const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
-      let refused = false;
+      let refusedKey: string | null = null;
       const draw = () =>
-        Translator.renderAt(
-          renderPath,
-          () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
-        );
-      //? A page's layers wait for its route guards; the root layouts, drawn once for every page, do not.
+        isAsyncRender
+          ? Translator.renderAt(
+              renderPath,
+              () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
+            )
+          : createElement(routeRender.render as never, { children: layerOutlet, params, searchParams } as never);
       const result = reportFailure(
-        location && CsrGuards.declared(location)
-          ? CsrGuards.of(location).then((admitted) => {
-              refused = !admitted;
+        guarded
+          ? CsrGuards.of(guarded).then((admitted) => {
+              if (!admitted) refusedKey = CsrGuards.keyOf(guarded);
               return admitted ? draw() : null;
             })
           : draw(),
@@ -99,12 +110,14 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         result,
         record: isThenable(result) ? CsrFrameDump.track(layer, result as Promise<ReactNode>) : null,
         redirected: false,
+        refusedKey: null,
         failure: null,
       };
       if (isThenable(result))
         (result as Promise<ReactNode>).then(
           () => {
-            next.redirected = refused || router.redirectCount() !== redirectsBefore;
+            next.refusedKey = refusedKey;
+            next.redirected = !!refusedKey || router.redirectCount() !== redirectsBefore;
           },
           (error: unknown) => {
             if (router.redirectCount() !== redirectsBefore || renderedRef.current !== next) return;
@@ -126,7 +139,8 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     };
   }, [record]);
   if (!routeRender) return null;
-  if (!isAsyncRender) return createElement(routeRender.render as never, { children, params, searchParams } as never);
+  if (!isAsyncRender && !guarded)
+    return createElement(routeRender.render as never, { children, params, searchParams } as never);
   const failure = renderedRef.current?.failure;
   if (failure)
     return (

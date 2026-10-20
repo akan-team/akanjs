@@ -1,6 +1,8 @@
 import { type PathRoute, RouteGuards, router } from "akanjs/client";
 
 interface GuardedLocation {
+  href: string;
+  entryId?: string;
   pathRoute: PathRoute;
   params: Record<string, string>;
   searchParams: Record<string, string | string[]>;
@@ -12,21 +14,35 @@ interface GuardedLocation {
  * throwing — so a move made while one ran ends the chain.
  */
 export class CsrGuards {
-  static readonly #runs = new WeakMap<GuardedLocation, Promise<boolean>>();
+  //? Keyed by entry and href, not by the location object: the path context makes a new one on every render, so a
+  //? layer mounting after its parent drew would run the chain again.
+  static readonly #runs = new Map<string, Promise<boolean>>();
+  static readonly #keptRuns = 64;
 
   static declared({ pathRoute }: GuardedLocation): boolean {
     return CsrGuards.#rendersOf(pathRoute).some((render) => !!render?.guard);
   }
 
+  static keyOf({ entryId, href }: Pick<GuardedLocation, "entryId" | "href">): string {
+    return `${entryId ?? ""} ${href}`;
+  }
+
   /** `false` when a guard sent the visitor elsewhere: the location's layers draw nothing. */
   static of(location: GuardedLocation): Promise<boolean> {
-    const kept = CsrGuards.#runs.get(location);
+    const key = CsrGuards.keyOf(location);
+    const kept = CsrGuards.#runs.get(key);
     if (kept) return kept;
     const run = CsrGuards.#run(location);
-    CsrGuards.#runs.set(location, run);
+    CsrGuards.#runs.set(key, run);
+    for (const oldest of CsrGuards.#runs.keys()) {
+      if (CsrGuards.#runs.size <= CsrGuards.#keptRuns) break;
+      CsrGuards.#runs.delete(oldest);
+    }
     //? Only an admitting run is kept: a refused or failed one runs again when its cached page is back on screen (signed
     //? in by then) or its layer is retried.
-    const forget = () => CsrGuards.#runs.delete(location);
+    const forget = () => {
+      if (CsrGuards.#runs.get(key) === run) CsrGuards.#runs.delete(key);
+    };
     run.then((admitted) => (admitted ? undefined : forget()), forget);
     return run;
   }

@@ -318,7 +318,10 @@ export class McpRouter {
           ...(await this.#pages.tools(call.ui, document, call.req)),
         ]);
       case "resources/list":
-        return await this.#list(call, "resources", [...document.resources, ...(await this.#pages.resources(call.ui))]);
+        return await this.#list(call, "resources", [
+          ...document.resources,
+          ...(await this.#pages.resources(call.ui, call.req)),
+        ]);
       case "resources/templates/list":
         return await this.#list(call, "resourceTemplates", document.resourceTemplates);
       case "prompts/list":

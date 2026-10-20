@@ -24,6 +24,7 @@ import { createElement } from "react";
 import { defaultPageState, validatePageConfig } from "../client/frameConfig";
 import { RouteHead } from "../client/route/RouteHead";
 import {
+  assertGuardOnChain,
   type ResolvedRouteModule,
   type RouteModuleSource,
   resolveRouteModule,
@@ -209,6 +210,7 @@ export class RouteTreeBuilder {
       RouteTreeBuilder.#moduleCacheStats.cacheMisses += 1;
       const resolved = RouteTreeBuilder.#resolveModule(key, kind, await loader());
       RouteTreeBuilder.#validateRouteModuleExports(key, kind, resolved.module);
+      assertGuardOnChain(key, resolved);
       validatePageConfig(key, "pageConfig" in resolved.module ? resolved.module.pageConfig : undefined);
       if (!loaded) {
         RouteTreeBuilder.#moduleCacheStats.loadedModuleCount += 1;

@@ -63,8 +63,8 @@ const guardRuns = [
   },
   {
     name: "CSR",
-    en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain.",
-    ko: "페이지의 레이어는 guard를 기다리며, guard는 위치마다 한 번 실행됩니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 페이지가 다시 화면에 오거나 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행됩니다.",
+    en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.",
+    ko: "페이지의 레이어는 guard를 기다리며, guard는 위치마다 한 번 실행됩니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 페이지가 다시 화면에 오거나 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행되고 그 아래의 레거시 페이지도 이 guard를 기다립니다.",
   },
   {
     name: "MCP",

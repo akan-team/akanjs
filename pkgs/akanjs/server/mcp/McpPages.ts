@@ -34,10 +34,14 @@ export type McpPageRun =
 
 export class McpPages {
   static readonly listWaitMs = 1_000;
+  static readonly verdictTtlMs = 5_000;
+  static readonly #keptVerdicts = 256;
 
   readonly #props: McpPagesProps;
   #listed: PagePromptEntry[] | null = null;
   #listFailed = false;
+  #guardsFailed = false;
+  readonly #verdicts = new Map<string, { at: number; names: Promise<string[] | null> }>();
 
   constructor(props: McpPagesProps) {
     this.#props = props;
@@ -169,11 +173,12 @@ export class McpPages {
     return ui ? [...document.appTools, ...pages] : pages;
   }
 
-  // Listed only to a client that renders them: any other would offer a megabyte HTML document as an attachment.
-  async resources(ui: boolean) {
+  // Listed only to a client that renders them: any other would offer a megabyte HTML document as an attachment. The same
+  // apps `tools/list` shows this caller, so a hidden app's name and description stay hidden here too.
+  async resources(ui: boolean, req: Request) {
     const apps = this.#props.apps;
     if (!apps?.rendersUi || !ui) return [];
-    return apps.resourcesOf(await this.#listedPages());
+    return apps.resourcesOf(await this.#visibleTo(req, await this.#pageTools()));
   }
 
   // Not a credential: visibility is a host's UX, never authorization, so a client claiming the extension falsely gains
@@ -237,25 +242,46 @@ export class McpPages {
   // signal guards hold the data. So a verdict the worker cannot give in time lists the pages unfiltered, as the
   // listing itself falls back to the pages listed last.
   async #visibleTo(req: Request, entries: PagePromptEntry[]): Promise<PagePromptEntry[]> {
-    const source = this.#props.source;
-    if (!source || !entries.length) return entries;
-    const names = await McpPages.#withinListWait(
-      source
-        .visible({
-          names: entries.map((entry) => entry.name),
-          headers: McpPages.#forwardedHeaders(req),
-          language: this.#props.language,
-        })
-        .catch((error: unknown) => {
-          this.#props.logger.warn(
-            `MCP could not run the route guards of its page prompts, so they are listed unfiltered: ${error instanceof Error ? error.message : error}`,
-          );
-          return null;
-        }),
-    );
+    if (!this.#props.source || !entries.length) return entries;
+    const names = await McpPages.#withinListWait(this.#verdictOf(req, entries));
     if (!names) return entries;
     const admitted = new Set(names);
     return entries.filter((entry) => admitted.has(entry.name));
+  }
+
+  //? A client listing in a loop would run every guard chain, queries and all, on each listing; a verdict stands a few
+  //? seconds per credential, and a call runs the guards again whatever the listing said.
+  #verdictOf(req: Request, entries: PagePromptEntry[]): Promise<string[] | null> {
+    const headers = McpPages.#forwardedHeaders(req);
+    const names = entries.map((entry) => entry.name);
+    const key = JSON.stringify([headers, names]);
+    const now = Date.now();
+    const kept = this.#verdicts.get(key);
+    if (kept && now - kept.at < McpPages.verdictTtlMs) return kept.names;
+    const source = this.#props.source;
+    const verdict = (
+      source ? source.visible({ names, headers, language: this.#props.language }) : Promise.resolve(names)
+    )
+      .then((visible) => {
+        this.#guardsFailed = false;
+        return visible;
+      })
+      .catch((error: unknown) => {
+        this.#verdicts.delete(key);
+        if (!this.#guardsFailed)
+          this.#props.logger.warn(
+            `MCP could not run the route guards of its page prompts, so they are listed unfiltered: ${error instanceof Error ? error.message : error}`,
+          );
+        this.#guardsFailed = true;
+        return null;
+      });
+    this.#verdicts.delete(key);
+    this.#verdicts.set(key, { at: now, names: verdict });
+    for (const [oldest, { at }] of this.#verdicts) {
+      if (this.#verdicts.size <= McpPages.#keptVerdicts && now - at < McpPages.verdictTtlMs) break;
+      this.#verdicts.delete(oldest);
+    }
+    return verdict;
   }
 
   static async #withinListWait<T>(work: Promise<T>): Promise<T | null> {
