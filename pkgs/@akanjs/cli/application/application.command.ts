@@ -51,11 +51,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   migrate: target({ desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration" })
     .with(App)
-    .arg("action", String, {
-      desc: "what to do",
-      enum: ["list", "plan", "apply", "verify", "rollback"],
-      default: "list",
-    })
+    .arg("action", String, { desc: "list, plan, apply, verify or rollback", default: "list" })
     .arg("target", String, { desc: "migration id; for rollback, an apply's run id too", nullable: true })
     .option("param", String, { desc: "a param the migration declares, as name=value", multiple: true })
     .option("expect", String, { desc: "the plan hash an apply must still match", nullable: true })

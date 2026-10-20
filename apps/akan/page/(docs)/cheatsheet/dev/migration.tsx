@@ -169,14 +169,15 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>It plans before it writes.</strong> <code>plan</code> only reads and reports what would
-                      change, and <code>apply</code> can refuse when the data moved since that report.
+                      <strong>It plans before it writes.</strong> <code>plan</code> changes none of your data and
+                      reports what would change, and <code>apply</code> can refuse when the data moved since that
+                      report.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>쓰기 전에 계획합니다.</strong> <code>plan</code>은 읽기만 하고 무엇이 바뀔지 보고하며,{" "}
-                      <code>apply</code>는 그 보고 뒤에 데이터가 바뀌었으면 거부할 수 있습니다.
+                      <strong>쓰기 전에 계획합니다.</strong> <code>plan</code>은 데이터를 바꾸지 않고 무엇이 바뀔지
+                      보고하며, <code>apply</code>는 그 보고 뒤에 데이터가 바뀌었으면 거부할 수 있습니다.
                     </span>
                   ),
                 })}
@@ -621,13 +622,13 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                       <strong>
                         A problem from <code>verify</code> fails the command
                       </strong>{" "}
-                      but leaves the migration applied. Roll it back, fix the file, and apply it again.
+                      with exit code 3 but leaves the migration applied. Roll it back, fix the file, and apply it again.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>
-                        <code>verify</code>가 문제를 찾으면 명령은 실패하지만
+                        <code>verify</code>가 문제를 찾으면 명령은 종료 코드 3으로 실패하지만
                       </strong>{" "}
                       마이그레이션은 적용된 채로 남습니다. 되돌리고, 파일을 고치고, 다시 apply합니다.
                     </span>
@@ -827,7 +828,7 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>--json</code> prints one JSON line last,
                       </strong>{" "}
                       with <code>ok</code> and, on failure, a <code>code</code> naming why. The exit code is 0 on
-                      success, 2 for a mistake in the command and 1 otherwise.
+                      success, 2 for a mistake in the command, 3 when verify finds problems and 1 otherwise.
                     </span>
                   ),
                   ko: (
@@ -836,7 +837,7 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>--json</code>은 마지막 줄에 JSON 한 줄을 출력합니다.
                       </strong>{" "}
                       <code>ok</code>와, 실패하면 이유를 담은 <code>code</code>가 들어 있습니다. 종료 코드는 성공이면 0,
-                      명령을 잘못 쓰면 2, 그 밖에는 1입니다.
+                      명령을 잘못 쓰면 2, verify가 문제를 찾으면 3, 그 밖에는 1입니다.
                     </span>
                   ),
                 })}

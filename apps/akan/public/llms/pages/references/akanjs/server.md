@@ -24,7 +24,7 @@ akanjs/server
 
 AkanServer Web Surfaces
 
-`akanjs/server` is the server half of Akan: it starts the app, holds the server settings, and sees page loads before the router. Import it only from server files — `main.ts`, `lib/option.ts` and `srvkit/`.
+`akanjs/server` is the server half of Akan: it starts the app, holds the server settings, and sees page loads before the router. Import it only from server files — `main.ts`, `lib/option.ts`, `srvkit/` and `script/`.
 
 Words Used On This Page
 
@@ -58,6 +58,8 @@ Exports
 
 - LocaleWebProxy, HostBasePathWebProxy: The two built-in proxies. Every app runs them before its own.
 
+- migration: Declares a data migration in `script/migration/`, which `akan migrate` runs.
+
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
 - Transaction: Legacy decorator: runs a method in a database transaction.
@@ -75,6 +77,8 @@ File
 - lib/option.ts: One per app and one per lib. — Example: `import { AkanOption } from "akanjs/server";`
 
 - srvkit/*.ts: Server-only helpers: proxy classes and legacy decorated classes. — Example: `import { AkanResponse, Try, type WebProxy } from "akanjs/server";`
+
+- script/migration/*.ts: One data migration per file. — Example: `import { migration } from "akanjs/server";`
 
 AkanApp
 

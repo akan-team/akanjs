@@ -71,9 +71,10 @@ export class MigrationCommand {
         action === "apply"
           ? await runner.apply(target, params, { expect, actor })
           : await runner.verify(target, params, { actor });
-      return result.problems.length
-        ? { ok: false, action, code: "verifyFailed", error: `${result.problems.length} problems remain`, ...result }
-        : { ok: true, action, ...result };
+      const problemNum = result.problems.length;
+      if (!problemNum) return { ok: true, action, ...result };
+      const error = problemNum === 1 ? "1 problem remains" : `${problemNum} problems remain`;
+      return { ok: false, action, code: "verifyFailed", error, ...result };
     } catch (error) {
       return MigrationCommand.failure(action, error);
     }
@@ -91,6 +92,7 @@ export class MigrationCommand {
 
   static exitCode(result: MigrationCommandResult) {
     if (result.ok) return 0;
+    if (result.code === "verifyFailed") return 3;
     return result.code && MigrationCommand.#usageCodes.has(result.code) ? 2 : 1;
   }
 

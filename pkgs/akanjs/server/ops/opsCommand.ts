@@ -19,7 +19,7 @@ export class OpsCommand {
     "Usage:",
     "  bun main.js ops snapshot [--id <id>] [--out <dir>] [--include-solid] [--db <file>] [--solid-db <file>] [--json]",
     "  bun main.js ops restore <manifest.json> [--identity <file>] [--db <file>] [--solid-db <file>] [--force]",
-    "  bun main.js ops migrate [list|plan|apply|verify|rollback] [<id>] [--param <name>=<value>]... [--json]",
+    "  bun main.js ops migrate [list|plan|apply|verify|rollback] [<id>] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <id>] [--json]",
   ].join("\n");
 
   static async run(argv: string[], host?: OpsHost): Promise<number> {

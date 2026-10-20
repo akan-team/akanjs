@@ -882,8 +882,8 @@ akan script myapp seed.ts`,
           {
             name: l.trans({ en: "exit code", ko: "종료 코드" }),
             desc: l.trans({
-              en: "0 on success; 2 for a usage mistake, a bad param or an unknown id; 1 otherwise.",
-              ko: "성공이면 0, 사용법·파라미터·id가 잘못되면 2, 그 밖에는 1입니다.",
+              en: "0 on success; 2 for a wrong usage, param or id; 3 when verify finds problems; 1 otherwise.",
+              ko: "성공이면 0, 사용법·파라미터·id가 잘못되면 2, verify가 문제를 찾으면 3, 그 밖에는 1입니다.",
             }),
           },
           {

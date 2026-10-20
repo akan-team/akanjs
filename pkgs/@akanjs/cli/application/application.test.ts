@@ -4,7 +4,13 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
-import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
+import {
+  type ArgMeta,
+  CommandContainer,
+  getArgMetas,
+  getArgumentValue,
+  getTargetMetas,
+} from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { NativeApp } from "@akanjs/devkit/mobile";
 import {
@@ -123,6 +129,15 @@ describe("ApplicationCommand", () => {
     expect(optionNames("startIos")).toEqual(expect.arrayContaining(["device", "team"]));
     expect(optionNames("startAndroid")).toContain("device");
     expect(optionNames("releaseIos")).toEqual(expect.arrayContaining(["team", "adHoc"]));
+  });
+
+  test("migrate leaves a bad action to the app, which refuses it as ops migrate does", async () => {
+    const action = getArgMetas(ApplicationCommand, "migrate")[0].find(
+      (meta): meta is ArgMeta => meta.type === "Argument" && meta.name === "action",
+    );
+    if (!action) throw new Error("migrate takes an action");
+    expect(await getArgumentValue(action, "frobnicate")).toBe("frobnicate");
+    expect(await getArgumentValue(action, undefined)).toBe("list");
   });
 
   test("typecheck picks an app or a library as sync does, and never offers a package", () => {

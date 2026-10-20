@@ -29,7 +29,9 @@ Form
 
 Good for
 
-- `akan script` — A file in `script/` you can review and rerun — Seed data, migrations, checks, small maintenance fixes
+- `akan script` — A file in `script/` you can review and rerun — Seed data, checks, small maintenance fixes
+
+- `akan migrate` — A migration in `script/migration/`, recorded and reversible — Reshaping stored data after a code change, in every environment
 
 - `akan console` — A prompt that is gone when you close it — Inspecting a service, trying a query, one small operator command
 
@@ -38,6 +40,8 @@ Good for
 **No traffic, no schedules.** It opens no port and runs none of the app's init, interval, cron or queue jobs.
 
 **Small and disposable.** Keep one job per script, and delete it once the job is done.
+
+- Data Migrations — Reshape stored data with a plan, a record and a rollback.
 
 - Server Console — Inspect services and try queries at a prompt.
 
@@ -61,9 +65,9 @@ Both arguments may be left out, and the command then asks. They are positional, 
 
 - filename (String): A file directly in `script/`; the `.ts` suffix is optional. Leave it out to pick from a list. — Example: `hello`
 
-**No subfolders.** A name containing `/` or `..` is refused, so keep every script at the top of `script/`.
+**No subfolders.** Keep every script at the top of `script/`. `script/migration/` holds migrations, which `akan migrate` runs.
 
-**It runs from the app folder.** The working directory is `apps/koyo/`, so relative paths start there.
+**It runs from the workspace root**, like `akan start`, so it opens the same local database. Relative paths start at the root; reach a file beside the script through `import.meta.dir`.
 
 Server Lifecycle
 

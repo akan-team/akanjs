@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MigrationCommand } from "./migrationCommand";
 import { MigrationError } from "./migrationError";
+import type { MigrationRunner } from "./migrationRunner";
 
 describe("MigrationCommand", () => {
   test("parses an action, its target and repeated params; list is the default", () => {
@@ -51,14 +52,16 @@ describe("MigrationCommand", () => {
     expect(usage(["plan", "x", "--force"])).toBe("usage");
   });
 
-  test("exits 0 when ok, 2 for a caller's mistake, 1 for anything else", () => {
+  test("exits 0 when ok, 2 for a caller's mistake, 3 when verify finds problems, 1 for anything else", () => {
     const failure = (code: ConstructorParameters<typeof MigrationError>[0]) =>
       MigrationCommand.failure("apply", new MigrationError(code, "no"));
     expect(MigrationCommand.exitCode({ ok: true, action: "list" })).toBe(0);
     expect(MigrationCommand.exitCode(failure("invalidParam"))).toBe(2);
     expect(MigrationCommand.exitCode(failure("notFound"))).toBe(2);
     expect(MigrationCommand.exitCode(failure("locked"))).toBe(1);
-    expect(MigrationCommand.exitCode(failure("verifyFailed"))).toBe(1);
+    expect(MigrationCommand.exitCode(failure("alreadyApplied"))).toBe(1);
+    expect(MigrationCommand.exitCode(failure("planChanged"))).toBe(1);
+    expect(MigrationCommand.exitCode(failure("verifyFailed"))).toBe(3);
     expect(MigrationCommand.failure("plan", new Error("boom"))).toEqual({
       ok: false,
       action: "plan",
@@ -66,6 +69,16 @@ describe("MigrationCommand", () => {
       error: "boom",
       runId: null,
     });
+  });
+
+  test("reports a verify that finds problems as verifyFailed, counting them", async () => {
+    const verify = async (problems: string[]) => {
+      const runner = { verify: async () => ({ id: "m", runId: "r1", problems }) } as unknown as MigrationRunner;
+      return await MigrationCommand.run(runner, MigrationCommand.parse(["verify", "m"]));
+    };
+    expect(await verify([])).toEqual({ ok: true, action: "verify", id: "m", runId: "r1", problems: [] });
+    expect(await verify(["a"])).toMatchObject({ ok: false, code: "verifyFailed", error: "1 problem remains" });
+    expect(await verify(["a", "b"])).toMatchObject({ code: "verifyFailed", error: "2 problems remain" });
   });
 
   test("prints one JSON line with --json, and a list a person reads without it", () => {

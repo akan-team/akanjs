@@ -44,6 +44,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - script: Run a file from the app's `script/` folder.
 
+  - migrate, create-migration: Create, plan, apply and roll back the app's data migrations.
+
   - console: Open an interactive server console.
 
   - logs: Follow a running app's logs, filtered.
@@ -181,6 +183,38 @@ Read the files `db-export` wrote into the database of the mode the shell names. 
 Sync the app, then run `apps/<app>/script/<filename>.ts` with Bun. Leave the filename out to pick one from a list.
 
 - filename (String): A file directly in `script/`; the `.ts` suffix is optional. Subfolder paths are refused.
+
+`akan migrate <app> [action] [target] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <name>] [--json <boolean>]`
+
+Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options.
+
+- action (String, default list, list | plan | apply | verify | rollback): What to do; every action but `list` takes a target.
+
+- target (String): A migration id such as `202610211000_orderToppings`; `rollback` also takes an apply's run id.
+
+- --param (String): A param the migration declares, as `name=value`; repeat the option for each.
+
+- --expect (String): The `planHash` a reviewed plan printed; `apply` stops if the plan changed since.
+
+- --items (Number, default 100): How many planned items `plan` prints.
+
+- --actor (String): Who runs it, kept in the run's record.
+
+- --json (Boolean, default false): Print the result as one JSON line.
+
+- status: `pending`, `applied`, or `partial` when an apply outside a transaction stopped partway.
+
+- exit code: 0 on success; 2 for a wrong usage, param or id; 3 when verify finds problems; 1 otherwise.
+
+- one at a time: While one run holds the database's migration lock, a second is refused with `locked`.
+
+- record: Each run and the values it changed stay in the app's own database.
+
+`akan create-migration <migrationName> <app>`
+
+Write `apps/<app>/script/migration/<yyyyMMddHHmm>_<migrationName>.ts` with empty plan, apply and verify stages. The timestamp is UTC, so ids sort in the order they were written.
+
+- migrationName (String, required): What it does, in camelCase, such as `orderToppings`.
 
 `akan console <app>`
 
@@ -685,6 +719,23 @@ AKAN_DATABASE_MODE=cluster \
 ```bash
 akan script myapp
 akan script myapp seed.ts
+```
+
+### migrate
+
+```bash
+akan migrate myapp
+akan migrate myapp plan 202610211000_orderToppings
+akan migrate myapp apply 202610211000_orderToppings --expect <planHash>
+akan migrate myapp rollback 202610211000_orderToppings
+kubectl exec -n myapp-main deploy/app-deployment -c app -- \
+  bun main.js ops migrate list --json
+```
+
+### create-migration
+
+```bash
+akan create-migration orderToppings myapp
 ```
 
 ### console

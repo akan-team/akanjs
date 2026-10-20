@@ -151,6 +151,8 @@ Internal and development-only commands are left out on purpose.
 
   - script <app> [filename]: Runs `apps/<app>/script/<filename>.ts`, and asks which file when you leave it off.
 
+  - migrate <app> [action], create-migration <name> <app>: Plans, applies and rolls back the data migrations in `apps/<app>/script/migration/`.
+
   - console <app>: Opens an interactive server console.
 
   - logs <app>: Tails the running app's logs, filtered by level, endpoint, trace and more.
