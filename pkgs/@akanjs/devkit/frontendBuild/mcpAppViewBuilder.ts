@@ -5,6 +5,7 @@ import type { BaseBuildArtifact } from "akanjs/server";
 import type { PageEntry } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
 import { McpAppPageTrimmer } from "../transforms/mcpAppPageTrimmer";
+import { PureLazyMarker } from "../transforms/pureLazyMarker";
 import { CsrArtifactBuilder } from "./csrArtifactBuilder";
 import { CsrEntryFiles } from "./csrEntryFiles";
 
@@ -74,7 +75,7 @@ export class McpAppViewBuilder {
     const pagePaths = [...new Set(views.map((view) => view.page.moduleAbsPath))];
     const result = await Bun.build({
       ...options,
-      plugins: [...options.plugins, McpAppPageTrimmer.plugin(pagePaths)],
+      plugins: [...options.plugins, McpAppPageTrimmer.plugin(pagePaths), PureLazyMarker.plugin()],
       entrypoints: views.map((view) => path.join(generatedDir, `${view.name}.html`)),
       files,
       root: generatedDir,

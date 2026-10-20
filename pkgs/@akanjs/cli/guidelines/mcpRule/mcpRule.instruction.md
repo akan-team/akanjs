@@ -425,8 +425,9 @@ export default page()
   no frame, router or websocket). No layout body runs there, so a layout's `<Agent.Guide>` never reaches the host; one
   inside the element does. A view never moves: a link or `router.push` to one of the app's screens opens that screen's
   web page through the host (basePath kept), a fragment of its own screen scrolls it, and `router.back()` /
-  `router.refresh()` do nothing. A host loads one file, so every `lazy(() => import(…))` the loads reach is inlined —
-  write `/* @__PURE__ */ lazy(…)` so a barrel's unused one is dropped.
+  `router.refresh()` do nothing. A host loads one file, so every `lazy(() => import(…))` the loads render is inlined;
+  the view build marks a `const X = lazy(…)` pure, so a barrel's or an override manifest's that nothing renders is
+  dropped, while a `lazy()` called anywhere else stays.
 - **What a view may call** is every published tool, and every endpoint kept off the shelf by `mcp: false` alone or
   the generated `light<Model>` read, listed with `visibility: ["app"]` — which a host offers to the view and never to
   the model; a `Person` guard still refuses one. Visibility is a host's UX, not authorization: the guards decide, as
