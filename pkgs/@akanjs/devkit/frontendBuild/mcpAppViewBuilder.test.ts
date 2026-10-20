@@ -79,6 +79,27 @@ describe("McpAppViewBuilder.discover", () => {
     expect(view?.overrides.map((entry) => entry.key)).toEqual(["./(home)/memo/_overrides.tsx"]);
   });
 
+  test("keeps an override inside the root layout when its folder holds a layout above the root's", async () => {
+    const appRoot = await makeTempRoot();
+    const file = (rel: string) => path.join(appRoot, rel);
+    await write(file("generated/oauth/__root_layout.tsx"), "export function McpAppRoot() {}\n");
+    await write(file("page/(libs)/(shared)/oauth/consent.tsx"), memoPage);
+    const entries = [
+      { key: "./(libs)/(shared)/oauth/__root_layout.tsx", moduleAbsPath: file("generated/oauth/__root_layout.tsx") },
+      { key: "./(libs)/(shared)/_layout.tsx", moduleAbsPath: file("page/(libs)/(shared)/_layout.tsx") },
+      { key: "./(libs)/(shared)/oauth/consent.tsx", moduleAbsPath: file("page/(libs)/(shared)/oauth/consent.tsx") },
+      { key: "./(libs)/(shared)/oauth/_overrides.tsx", moduleAbsPath: file("generated/oauth_overrides.tsx") },
+      { key: "./(libs)/(shared)/_overrides.tsx", moduleAbsPath: file("generated/shared_overrides.tsx") },
+      { key: "./_overrides.tsx", moduleAbsPath: file("generated/_overrides.tsx") },
+    ];
+    const [view] = await McpAppViewBuilder.discover(entries, []);
+    expect(view?.rootOverrides.map((entry) => entry.key)).toEqual([
+      "./_overrides.tsx",
+      "./(libs)/(shared)/oauth/_overrides.tsx",
+    ]);
+    expect(view?.overrides.map((entry) => entry.key)).toEqual(["./(libs)/(shared)/_overrides.tsx"]);
+  });
+
   test("names two pages that claim one app, and a page with no root layout to provide for it", async () => {
     const appRoot = await makeTempRoot();
     const file = (rel: string) => path.join(appRoot, rel);

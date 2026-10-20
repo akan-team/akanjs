@@ -81,8 +81,8 @@ body shape — this is the full contract behind them. Before changing route beha
   the module loads, as does an app named like the page's `.prompt()`.
 - **`load` may only query** (`base.error.mutationInApp` otherwise): keep writes in `.render()` around the element, and
   gating in `.guard()`. The view runs `load` with no layout body and no `.render()`: it gets the root layout's theme,
-  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page (one at the
-  root layout's folder or above wraps `McpAppRoot`, its toasts included), and nothing a layout body provides. The
+  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page (one the web
+  draws outside the root layout wraps `McpAppRoot`, its toasts included), and nothing a layout body provides. The
   chain is the `export default` expression itself: one bound to a name fails the build. Full contract: `mcpRule`.
 
 ## Heads

@@ -123,7 +123,6 @@ export class RouteSourceValidator {
     return null;
   }
 
-  /** The local name a statement hands out as the default export: `export default x` or `export { x as default }`. */
   static #defaultLocalOf(statement: ts.Statement): string | undefined {
     if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
       const node = RouteSourceValidator.#unwrapExpression(statement.expression);

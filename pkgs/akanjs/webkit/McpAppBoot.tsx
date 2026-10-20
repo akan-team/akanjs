@@ -29,10 +29,10 @@ export interface McpAppBootProps {
   page: RouteModuleSource;
   /** The generated root layout of the page: its `McpAppRoot` provides what the root layout would, frame aside. */
   root: { McpAppRoot?: (props: McpAppRootProps) => ReactNode };
-  /** The generated wrappers of the `_overrides.tsx` at or above the root layout, outermost first: they also reach
-   * what `McpAppRoot` draws beside the page, its toasts and approvals. */
+  /** The generated wrappers of the `_overrides.tsx` the web draws outside the root layout, outermost first: they also
+   * reach what `McpAppRoot` draws beside the page, its toasts and approvals. */
   rootOverrides?: McpAppOverride[];
-  /** The generated wrappers of the `_overrides.tsx` below the root layout, outermost first. */
+  /** The generated wrappers of the rest of the `_overrides.tsx` over the page, outermost first. */
   overrides?: McpAppOverride[];
   /** The basePath the page sits under, which every app path the view opens keeps. */
   basePath?: string;

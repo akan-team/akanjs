@@ -2250,10 +2250,10 @@ export default page()
                       language when the app speaks it, and draws the element inside the <code>_overrides.tsx</code> over
                       the page and the root layout's <code>McpAppRoot</code>, which renders <code>System.App</code> from{" "}
                       <code>akanjs/ui</code>: the root layout's theme, fonts and providers, with no frame, router or
-                      websocket. An <code>_overrides.tsx</code> at the root layout's folder or above wraps{" "}
-                      <code>McpAppRoot</code>, as it wraps the root layout on the web, so the toasts and approvals it
-                      draws take it too. No layout body and no <code>.render()</code> runs in a view, so a layout's{" "}
-                      <code>{"<Agent.Guide>"}</code> does not reach the host; one inside the element does.
+                      websocket. An <code>_overrides.tsx</code> the web draws outside the root layout (on its folder, or
+                      on one above it with no layout of its own) wraps <code>McpAppRoot</code>, so the toasts and
+                      approvals it draws take it too. No layout body and no <code>.render()</code> runs in a view, so a
+                      layout's <code>{"<Agent.Guide>"}</code> does not reach the host; one inside the element does.
                     </span>
                   ),
                   ko: (
@@ -2262,10 +2262,11 @@ export default page()
                       언어를 지원하면 그 언어로), 엘리먼트를 페이지 위의 <code>_overrides.tsx</code>와 root layout의{" "}
                       <code>McpAppRoot</code> 안에 그립니다. <code>McpAppRoot</code>는 <code>akanjs/ui</code>의{" "}
                       <code>System.App</code>을 렌더링하므로, frame·router·websocket 없이 root layout의 테마, 폰트,
-                      provider만 갖춥니다. root layout의 폴더나 그 위의 <code>_overrides.tsx</code>는 웹에서 root
-                      layout을 감싸듯 <code>McpAppRoot</code>를 감싸므로, 그 안의 토스트와 승인 창에도 적용됩니다.
-                      view에서는 layout body도 <code>.render()</code>도 실행되지 않으므로 layout의{" "}
-                      <code>{"<Agent.Guide>"}</code>는 호스트에 닿지 않고, 엘리먼트 안에 둔 것은 닿습니다.
+                      provider만 갖춥니다. 웹에서 root layout 바깥에 그려지는 <code>_overrides.tsx</code>(root layout의
+                      폴더, 또는 그 위에서 자기 layout이 없는 폴더의 것)는 <code>McpAppRoot</code>를 감싸므로, 그 안의
+                      토스트와 승인 창에도 적용됩니다. view에서는 layout body도 <code>.render()</code>도 실행되지
+                      않으므로 layout의 <code>{"<Agent.Guide>"}</code>는 호스트에 닿지 않고, 엘리먼트 안에 둔 것은
+                      닿습니다.
                     </span>
                   ),
                 })}

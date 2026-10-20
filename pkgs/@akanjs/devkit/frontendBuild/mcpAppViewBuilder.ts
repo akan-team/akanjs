@@ -23,10 +23,10 @@ export interface McpAppView {
   page: PageEntry;
   /** The generated root layout that renders `System.Provider` for the page, whose `McpAppRoot` the view uses. */
   root: PageEntry | null;
-  /** The generated wrappers of the `_overrides.tsx` at or above the root layout, outermost first: as on the web, they
-   * also reach what it draws beside the page, its toasts and approvals. */
+  /** The generated wrappers of the `_overrides.tsx` the web draws outside the root layout, outermost first: they also
+   * reach what it draws beside the page, its toasts and approvals. */
   rootOverrides: PageEntry[];
-  /** The generated wrappers of the `_overrides.tsx` below the root layout, outermost first, around the page alone. */
+  /** The generated wrappers of the rest of the `_overrides.tsx` over the page, outermost first, around it alone. */
   overrides: PageEntry[];
   basePath: string;
 }
@@ -112,6 +112,12 @@ export class McpAppViewBuilder {
     const { RouteSourceValidator } = await import("../routeSourceValidator");
     const roots = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).isInternalRootLayout);
     const overrides = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).kind === "overrides");
+    const layoutNodes = new Set(
+      pageEntries.flatMap((entry) => {
+        const parsed = parseRouteModuleKey(entry.key);
+        return parsed.kind === "layout" && !parsed.isInternalRootLayout ? [parsed.routeSegments.join("/")] : [];
+      }),
+    );
     const owners = new Map<string, { name: string; key: string }>();
     const views: McpAppView[] = [];
     for (const page of pageEntries) {
@@ -138,7 +144,7 @@ export class McpAppViewBuilder {
           name,
           page,
           root,
-          ...McpAppViewBuilder.#overridesOf(page.key, root, overrides),
+          ...McpAppViewBuilder.#overridesOf(page.key, root, overrides, layoutNodes),
           basePath: CsrEntryFiles.basePathOfPageKey(page.key, basePaths) ?? "",
         });
       }
@@ -185,18 +191,20 @@ ${importsOf(view.rootOverrides, "rootOverride")}${importsOf(view.overrides, "ove
   }
 
   //? By route segments, as the route tree nests them (`RouteLayering`): a folder's `_overrides.tsx` also covers the
-  //? page file named like the folder (`memo/_overrides.tsx` over `memo.tsx`), and one on the root layout's node or
-  //? above it sits outside that layout.
-  static #overridesOf(pageKey: string, root: PageEntry | null, overrides: PageEntry[]) {
+  //? page file named like the folder (`memo/_overrides.tsx` over `memo.tsx`), and one on a root node sits outside the
+  //? root layout — the root layout's own node, or one above it that holds no layout of its own.
+  static #overridesOf(pageKey: string, root: PageEntry | null, overrides: PageEntry[], layoutNodes: Set<string>) {
     const pageSegments = parseRouteModuleKey(pageKey).routeSegments;
     const rootDepth = root ? parseRouteModuleKey(root.key).routeSegments.length : 0;
     const over = overrides
       .map((entry) => ({ entry, segments: parseRouteModuleKey(entry.key).routeSegments }))
       .filter(({ segments }) => segments.every((segment, idx) => pageSegments[idx] === segment))
       .sort((a, b) => a.segments.length - b.segments.length);
+    const onRootNode = (segments: string[]) =>
+      segments.length === rootDepth || (segments.length < rootDepth && !layoutNodes.has(segments.join("/")));
     return {
-      rootOverrides: over.filter(({ segments }) => segments.length <= rootDepth).map(({ entry }) => entry),
-      overrides: over.filter(({ segments }) => segments.length > rootDepth).map(({ entry }) => entry),
+      rootOverrides: over.filter(({ segments }) => onRootNode(segments)).map(({ entry }) => entry),
+      overrides: over.filter(({ segments }) => !onRootNode(segments)).map(({ entry }) => entry),
     };
   }
 

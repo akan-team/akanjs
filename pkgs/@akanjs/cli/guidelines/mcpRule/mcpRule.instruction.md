@@ -422,14 +422,14 @@ export default page()
 - **The view is the component, not the page.** It bundles the page with `.render()`, `.head()`, `.loading()` and
   `.guard()` blanked, so it carries what the loads reach and nothing else, and draws the element inside the
   `_overrides.tsx` over the page and the root layout's `McpAppRoot` (`System.App`: its theme, fonts and providers, with
-  no frame, router or websocket). An `_overrides.tsx` at the root layout's folder or above wraps `McpAppRoot`, as it
-  wraps the root layout on the web, so the toasts and approvals it draws take it too. No layout body runs there, so a
-  layout's `<Agent.Guide>` never reaches the host; one inside the element does. A view never moves: a link or
-  `router.push` to one of the app's screens opens that screen's web page through the host (basePath kept), a fragment
-  of its own screen scrolls it, and `router.back()` / `router.refresh()` do nothing. A host loads one file, so every
-  `lazy(() => import(…))` the loads render is inlined; the view build marks a `const X = lazy(…)` pure, so a barrel's,
-  the page's own that only `.render()` drew, or an override manifest's that nothing renders is dropped, while a
-  `lazy()` called anywhere else stays.
+  no frame, router or websocket). An `_overrides.tsx` the web draws outside the root layout (on its folder, or on one
+  above it with no layout of its own) wraps `McpAppRoot`, so the toasts and approvals it draws take it too. No layout
+  body runs there, so a layout's `<Agent.Guide>` never reaches the host; one inside the element does. A view never
+  moves: a link or `router.push` to one of the app's screens opens that screen's web page through the host (basePath
+  kept), a fragment of its own screen scrolls it, and `router.back()` / `router.refresh()` do nothing. A host loads one
+  file, so every `lazy(() => import(…))` the loads render is inlined; the view build marks a `const X = lazy(…)` pure,
+  so a barrel's, the page's own that only `.render()` drew, or an override manifest's that nothing renders is dropped,
+  while a `lazy()` called anywhere else stays.
 - **What a view may call** is every published tool, and every endpoint kept off the shelf by `mcp: false` alone or
   the generated `light<Model>` read, listed with `visibility: ["app"]` — which a host offers to the view and never to
   the model; a `Person` guard still refuses one. Visibility is a host's UX, not authorization: the guards decide, as

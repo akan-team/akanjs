@@ -102,7 +102,7 @@ describe("McpAppView links", () => {
   test("finds a fragment's target as written or percent-decoded, and survives one that is not valid encoding", () => {
     reset();
     const scrolled: string[] = [];
-    const targets = ["50%", "café"].map((id) => {
+    const targets = ["50%", "café", "100%-ready now"].map((id) => {
       const target = document.createElement("h2");
       target.id = id;
       target.scrollIntoView = () => void scrolled.push(id);
@@ -111,9 +111,10 @@ describe("McpAppView links", () => {
     });
     expect(() => clickOn("#50%")).not.toThrow();
     clickOn("#caf%C3%A9");
+    clickOn("#100%-ready%20now");
     expect(() => view.open("#%E0%A4%A")).not.toThrow();
     for (const target of targets) target.remove();
-    expect(scrolled).toEqual(["50%", "café"]);
+    expect(scrolled).toEqual(["50%", "café", "100%-ready now"]);
     expect(opened).toEqual([]);
   });
 

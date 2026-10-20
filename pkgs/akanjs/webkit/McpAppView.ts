@@ -131,16 +131,17 @@ export class McpAppView {
     };
   }
 
-  //? As a browser finds it: the id as written first, then percent-decoded.
+  //? As a browser finds it: the id as written first, then percent-decoded, where an escape that is not one (`#50%`)
+  //? stays as written instead of failing the whole fragment.
   static #targetOf(fragment: string) {
-    const written = document.getElementById(fragment);
-    if (written) return written;
-    try {
-      return document.getElementById(decodeURIComponent(fragment));
-    } catch {
-      //? A malformed escape (`#50%`) decodes to nothing but the text already tried.
-      return null;
-    }
+    const decoded = fragment.replace(/(?:%[0-9A-Fa-f]{2})+/g, (escapes) => {
+      try {
+        return decodeURIComponent(escapes);
+      } catch {
+        return escapes;
+      }
+    });
+    return document.getElementById(fragment) ?? document.getElementById(decoded);
   }
 
   //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
