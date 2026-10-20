@@ -33,7 +33,8 @@ body shape — this is the full contract behind them. Before changing route beha
   `.search("k", Type)`. Values arrive typed — `ID`/`String` → string, `Int`/`Float` → number, `Boolean`, `Date` →
   Dayjs, an `enumOf` class → its union, `[T]` → array — a path value the type refuses answers not-found, and a
   search value that fails is dropped. A layout may declare a subset. Names are string literals: `akan sync` reads
-  them off the source and refuses a `[projectId]` folder whose page declares no `.param("projectId")`.
+  them off the source and refuses a `[projectId]` folder whose page declares no `.param("projectId")`, so the chain
+  is the `export default` expression itself — one bound to a variable first is refused.
 - **`lang` is never declared**: every route sits under `/:lang`, and the locale segment reaches every stage as
   `lang`.
 - **On a web page's first render `st.use.searchParams()` is still the server's empty snapshot**, synced right after
@@ -55,7 +56,8 @@ body shape — this is the full contract behind them. Before changing route beha
 - **On a client navigation a page's layers wait for its guards**, run once per location; a guard that moves the
   router ends the chain and the page draws nothing, and a refused or failed check runs again when the cached page
   comes back or its layer is retried. Root layouts are drawn once for every page and are not gated themselves; their
-  guards still run in each page's chain.
+  guards still run in each page's chain, and a legacy page under them waits too. `guard` is a stage only: a legacy
+  module that exports one fails to load.
 - **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and
   the page tools in `tools/list` show only the screens whose guards admit the caller (a listing knows no arguments,
   so a guard that reads one admits there and is checked again on the call).
@@ -75,7 +77,8 @@ body shape — this is the full contract behind them. Before changing route beha
   the module loads, as does an app named like the page's `.prompt()`.
 - **`load` may only query** (`base.error.mutationInApp` otherwise): keep writes in `.render()` around the element, and
   gating in `.guard()`. The view runs `load` with no layout body and no `.render()`: it gets the root layout's theme,
-  fonts and framework providers through the generated `McpAppRoot`, and nothing a layout body provides. Full
+  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page, and nothing
+  a layout body provides. Full
   contract: `mcpRule`.
 
 ## Heads

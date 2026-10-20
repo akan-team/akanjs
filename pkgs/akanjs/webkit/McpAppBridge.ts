@@ -68,7 +68,6 @@ export class McpAppBridge {
   #tools: McpAppToolServer | null = null;
   #heldToolRequests: McpJsonRpcMessage[] = [];
   #toolsListed = false;
-  #href = "";
   readonly #toolCalls = new Map<string | number, AbortController>();
   #seq = 0;
 
@@ -96,11 +95,6 @@ export class McpAppBridge {
     return this.#toolsListed;
   }
 
-  /** The page the app belongs to, as path, search and hash on the app's origin; empty until the result arrives. */
-  get href(): string {
-    return this.#href;
-  }
-
   async connect(): Promise<McpAppStart> {
     const initialize = this.request("ui/initialize", {
       protocolVersion: McpAppBridge.protocolVersion,
@@ -123,7 +117,6 @@ export class McpAppBridge {
       return this.#gaveUp(text ?? "This screen is not available here.");
     const snapshot = result._meta?.[MCP_APP_META.snapshot];
     const account = result._meta?.[MCP_APP_META.account];
-    this.#href = start.href;
     return {
       ok: true,
       href: start.href,

@@ -1,4 +1,4 @@
-import { mkdir, rm, unlink } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { parseRouteModuleKey } from "akanjs/common";
 import type { BaseBuildArtifact } from "akanjs/server";
@@ -22,6 +22,8 @@ export interface McpAppView {
   page: PageEntry;
   /** The generated root layout that renders `System.Provider` for the page, whose `McpAppRoot` the view uses. */
   root: PageEntry | null;
+  /** The generated wrappers of the `_overrides.tsx` over the page, outermost first. */
+  overrides: PageEntry[];
   basePath: string;
 }
 
@@ -31,6 +33,8 @@ export interface McpAppView {
 export class McpAppViewBuilder {
   /** The folder the server reads views from: `WebRouter.mcpAppViewDir`. */
   static readonly dirName = "mcp-apps";
+  /** `PageDefinition.promptName`, which also keeps a view's file name inside its folder. */
+  static readonly #appName = /^[A-Za-z0-9_-]{1,64}$/;
 
   readonly #app: App;
   readonly #command: "build" | "start";
@@ -50,9 +54,14 @@ export class McpAppViewBuilder {
     pageEntries: PageEntry[],
     { basePaths, cssAssets, options }: McpAppViewBuildOption,
   ): Promise<McpAppView[]> {
-    await rm(this.outputDir, { recursive: true, force: true });
     const views = await McpAppViewBuilder.discover(pageEntries, basePaths);
-    if (!views.length) return views;
+    if (!views.length) {
+      await rm(this.outputDir, { recursive: true, force: true });
+      return views;
+    }
+    //? Built aside, then moved in a file at a time: a host may read a view while `akan start` rebuilds them.
+    const stagingDir = `${this.outputDir}.next`;
+    await rm(stagingDir, { recursive: true, force: true });
     const generatedDir = path.join(this.#app.cwdPath, ".akan", "generated", McpAppViewBuilder.dirName);
     await rm(generatedDir, { recursive: true, force: true });
     await mkdir(generatedDir, { recursive: true });
@@ -69,21 +78,37 @@ export class McpAppViewBuilder {
       entrypoints: views.map((view) => path.join(generatedDir, `${view.name}.html`)),
       files,
       root: generatedDir,
-      outdir: this.outputDir,
+      outdir: stagingDir,
     });
     if (!result.success) {
       const logs = result.logs.map((log) => log.message).join("\n");
       throw new Error(`[mcp-app-build] failed${logs ? `\n${logs}` : ""}`);
     }
-    for (const view of views) await this.#inline(view, cssAssets[view.basePath]);
+    for (const view of views) await this.#inline(view, stagingDir, cssAssets[view.basePath]);
+    await this.#publish(views, stagingDir);
     return views;
+  }
+
+  async #publish(views: McpAppView[], stagingDir: string) {
+    const names = new Set(views.map((view) => `${view.name}.html`));
+    await mkdir(this.outputDir, { recursive: true });
+    for (const name of names) await rename(path.join(stagingDir, name), path.join(this.outputDir, name));
+    for (const name of await readdir(this.outputDir))
+      if (!names.has(name)) await rm(path.join(this.outputDir, name), { recursive: true, force: true });
+    const strays = await readdir(stagingDir);
+    if (strays.length)
+      this.#app.logger.warn(
+        `[mcp-app-build] ${strays.join(", ")} reached no view; a view loads nothing beside its own file`,
+      );
+    await rm(stagingDir, { recursive: true, force: true });
   }
 
   /** Every `.app()` the pages declare, read off their sources without evaluating them. */
   static async discover(pageEntries: PageEntry[], basePaths: string[]): Promise<McpAppView[]> {
     const { RouteSourceValidator } = await import("../routeSourceValidator");
     const roots = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).isInternalRootLayout);
-    const owners = new Map<string, string>();
+    const overrides = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).kind === "overrides");
+    const owners = new Map<string, { name: string; key: string }>();
     const views: McpAppView[] = [];
     for (const page of pageEntries) {
       if (parseRouteModuleKey(page.key).kind !== "page") continue;
@@ -91,13 +116,24 @@ export class McpAppViewBuilder {
       const apps =
         RouteSourceValidator.validateRouteSourceExports(source, page.moduleAbsPath, "page").chain?.apps ?? [];
       for (const name of apps) {
-        const owner = owners.get(name);
-        if (owner) throw new Error(`[route-convention] app "${name}" is declared by both ${owner} and ${page.key}`);
-        owners.set(name, page.key);
+        if (!McpAppViewBuilder.#appName.test(name))
+          throw new Error(
+            `[route-convention] app name "${name}" in ${page.key} must match ${McpAppViewBuilder.#appName}`,
+          );
+        //? Keyed in lower case: a case-insensitive disk would write two such views to one file.
+        const owner = owners.get(name.toLowerCase());
+        if (owner?.name === name)
+          throw new Error(`[route-convention] app "${name}" is declared by both ${owner.key} and ${page.key}`);
+        if (owner)
+          throw new Error(
+            `[route-convention] apps "${owner.name}" (${owner.key}) and "${name}" (${page.key}) differ only in case; their views would share one file`,
+          );
+        owners.set(name.toLowerCase(), { name, key: page.key });
         views.push({
           name,
           page,
           root: await McpAppViewBuilder.#rootOf(page.key, roots),
+          overrides: McpAppViewBuilder.#overridesOf(page.key, overrides),
           basePath: CsrEntryFiles.basePathOfPageKey(page.key, basePaths) ?? "",
         });
       }
@@ -126,11 +162,31 @@ export class McpAppViewBuilder {
       const relative = path.relative(fromDir, absPath).split(path.sep).join("/");
       return JSON.stringify(relative.startsWith(".") ? relative : `./${relative}`);
     };
+    const overrides = view.overrides.map(
+      (entry, idx) => `import override${idx} from ${specifier(entry.moduleAbsPath)};\n`,
+    );
     return `import { McpAppBoot } from "akanjs/webkit";
 import * as page from ${specifier(view.page.moduleAbsPath)};
 ${view.root ? `import * as root from ${specifier(view.root.moduleAbsPath)};` : "const root = {};"}
-void McpAppBoot.run({ app: ${JSON.stringify(view.name)}, page, root });
+${overrides.join("")}void McpAppBoot.run({
+  app: ${JSON.stringify(view.name)},
+  page,
+  root,
+  overrides: [${view.overrides.map((_, idx) => `override${idx}`).join(", ")}],
+  basePath: ${JSON.stringify(view.basePath)},
+});
 `;
+  }
+
+  //? By route segments, as the route tree nests them: a folder's `_overrides.tsx` also covers the page file named
+  //? like the folder (`memo/_overrides.tsx` over `memo.tsx`).
+  static #overridesOf(pageKey: string, overrides: PageEntry[]): PageEntry[] {
+    const pageSegments = parseRouteModuleKey(pageKey).routeSegments;
+    return overrides
+      .map((entry) => ({ entry, segments: parseRouteModuleKey(entry.key).routeSegments }))
+      .filter(({ segments }) => segments.every((segment, idx) => pageSegments[idx] === segment))
+      .sort((a, b) => a.segments.length - b.segments.length)
+      .map(({ entry }) => entry);
   }
 
   //? The outermost root boundary over the page: the one a page is drawn under without an ancestor root, which alone
@@ -146,8 +202,8 @@ void McpAppBoot.run({ app: ${JSON.stringify(view.name)}, page, root });
     return null;
   }
 
-  async #inline(view: McpAppView, cssAsset: CssAsset | undefined) {
-    const htmlPath = path.join(this.outputDir, `${view.name}.html`);
+  async #inline(view: McpAppView, dir: string, cssAsset: CssAsset | undefined) {
+    const htmlPath = path.join(dir, `${view.name}.html`);
     let html = await Bun.file(htmlPath).text();
     if (cssAsset) {
       const artifactDir = path.join(

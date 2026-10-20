@@ -108,22 +108,45 @@ export class RouteSourceValidator {
   static #readChain(sourceFile: ts.SourceFile, filePath: string) {
     for (const statement of sourceFile.statements) {
       if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue;
-      let node = RouteSourceValidator.#unwrapExpression(statement.expression);
-      const stages: ChainStage[] = [];
-      while (node && ts.isCallExpression(node)) {
-        const callee = node.expression;
-        if (ts.isPropertyAccessExpression(callee)) {
-          stages.unshift({ name: callee.name.text, args: node.arguments });
-          node = callee.expression;
-          continue;
-        }
-        if (ts.isIdentifier(callee) && chainRoots.has(callee.text))
-          return RouteSourceValidator.#chainOf(callee.text as RouteSourceChain["kind"], stages, filePath);
-        return null;
+      const node = RouteSourceValidator.#unwrapExpression(statement.expression);
+      if (node && ts.isIdentifier(node) && RouteSourceValidator.#bindsChain(sourceFile, node.text))
+        throw new Error(
+          `[route-convention] ${filePath} exports its chain through "${node.text}"; write \`export default page()…\` — the build reads the chain without evaluating the module`,
+        );
+      const walked = RouteSourceValidator.#walkChain(node);
+      return walked ? RouteSourceValidator.#chainOf(walked.kind, walked.stages, filePath) : null;
+    }
+    return null;
+  }
+
+  static #walkChain(start: ts.Expression | undefined) {
+    let node = start;
+    const stages: ChainStage[] = [];
+    while (node && ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isPropertyAccessExpression(callee)) {
+        stages.unshift({ name: callee.name.text, args: node.arguments });
+        node = callee.expression;
+        continue;
       }
+      if (ts.isIdentifier(callee) && chainRoots.has(callee.text))
+        return { kind: callee.text as RouteSourceChain["kind"], stages };
       return null;
     }
     return null;
+  }
+
+  static #bindsChain(sourceFile: ts.SourceFile, name: string) {
+    return sourceFile.statements.some(
+      (statement) =>
+        ts.isVariableStatement(statement) &&
+        statement.declarationList.declarations.some(
+          (declaration) =>
+            ts.isIdentifier(declaration.name) &&
+            declaration.name.text === name &&
+            !!RouteSourceValidator.#walkChain(RouteSourceValidator.#unwrapExpression(declaration.initializer)),
+        ),
+    );
   }
 
   static #chainOf(kind: RouteSourceChain["kind"], stages: ChainStage[], filePath: string) {

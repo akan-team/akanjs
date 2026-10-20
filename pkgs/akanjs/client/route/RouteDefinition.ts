@@ -11,6 +11,7 @@ import { deserialize } from "akanjs/constant";
 import type { ReactNode } from "react";
 import type { Head, LayoutModule, PageConfig, PageModule, RouteGuardProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
+import { Translator } from "../translator";
 import { RouteArgError, type RouteArgInfo, type RouteArgInput, RouteArgPending, type RouteBaseArgs } from "./routeArgs";
 
 export type RouteArgsShape = Record<string, unknown>;
@@ -62,7 +63,7 @@ export abstract class RouteDefinition<
     this.#head = head as HeadStage<never>;
     return this;
   }
-  /** Runs before any layout body, on every navigation; refuses with `router.redirect()` or `router.notFound()`. */
+  /** Runs before any layout body, once per location; refuses with `router.redirect()` or `router.notFound()`. */
   guard(guard: (args: RouteBaseArgs & Args) => void | Promise<void>) {
     if (this.#guard)
       throw new Error(`[route-convention] ${this.kind}() declares .guard() twice; run every check from one guard`);
@@ -162,7 +163,7 @@ export abstract class RouteDefinition<
   }
 
   /** What `.render()` receives beyond the declared args; a page adds its apps' elements. */
-  protected async renderArgsOf(args: RouteBaseArgs & Args & Extra): Promise<RouteBaseArgs & Args & Extra> {
+  protected renderArgsOf(args: RouteBaseArgs & Args & Extra): PromiseOrObject<RouteBaseArgs & Args & Extra> {
     return args;
   }
 
@@ -171,8 +172,15 @@ export abstract class RouteDefinition<
   #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
     const kept = this.#renderRoute;
     if (kept?.render === render && kept.argCount === this.args.length) return kept.route;
-    const route = async (props: RouteRenderProps) =>
-      await render((await this.renderArgsOf(this.#argsOf(props))) as never);
+    //? `Translator.renderAt` holds a CSR screen's path only for the render's synchronous part, so a route with no apps
+    //? renders before any await, and one with apps renders at the path it was called at.
+    const route = async (props: RouteRenderProps) => {
+      const args = this.renderArgsOf(this.#argsOf(props));
+      if (!(args instanceof Promise)) return await render(args as never);
+      const path = Translator.getRenderPath();
+      const resolved = await args;
+      return await Translator.renderAt(path, () => render(resolved as never));
+    };
     Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
     this.#renderRoute = { render, argCount: this.args.length, route };
     return route;

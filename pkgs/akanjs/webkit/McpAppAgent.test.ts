@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
+import { csrLocation } from "akanjs/client";
 import { AgenticSurface, ToolReturn } from "use-agentic";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge, McpAppToolServer } from "./McpAppBridge";
@@ -8,13 +9,13 @@ process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
 const { McpAppAgent } = await import("./McpAppAgent");
+csrLocation.view("/en/memo");
 
 const fakeBridge = ({ takesContext = false } = {}) => {
   const sent = { contexts: [] as string[], changed: 0, server: null as McpAppToolServer | null };
   const bridge = {
     hostCapabilities: takesContext ? { updateModelContext: { text: {} } } : {},
     toolsListed: false,
-    href: "/en/memo",
     serveTools: (server: McpAppToolServer) => {
       sent.server = server;
     },

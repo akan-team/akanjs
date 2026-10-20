@@ -1,4 +1,5 @@
 "use client";
+import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
 import {
@@ -93,8 +94,7 @@ export class McpAppAgent {
     const { guides } = this.#surface.snapshot();
     //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
     const base = globalThis.__AKAN_EMBED__?.origin ?? (typeof document === "undefined" ? undefined : document.baseURI);
-    const href = this.#bridge.href;
-    const url = base ? new URL(href, base).href : href;
+    const url = base ? new URL(csrLocation.href, base).href : csrLocation.href;
     const text = [
       `The user has this screen of the app open in the chat: ${url}`,
       ...(this.#bridge.toolsListed

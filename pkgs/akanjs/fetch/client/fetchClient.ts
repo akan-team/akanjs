@@ -445,9 +445,8 @@ export class FetchClient {
           const payload = claim.owned ? response : FetchClient.#deepCopy(response);
           return parseReturn(payload, { crystalize: option?.crystalize ?? true });
         };
-      case "mutation":
-        return async (...argData: unknown[]) => {
-          this.#refuseInApp(key);
+      case "mutation": {
+        const send = async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const bridge = this.#bridgeOf(option?.origin);
           if (bridge)
@@ -464,6 +463,12 @@ export class FetchClient {
           });
           return parseReturn(response, { crystalize: option?.crystalize ?? true });
         };
+        //? Refused as the call is made, not in its promise: a `void fetch.markRead(id)` in a load would drop it unseen.
+        return (...argData: unknown[]) => {
+          this.#refuseInApp(key);
+          return send(...argData);
+        };
+      }
       default:
         throw new Error(`Unsupported endpoint type: ${endpoint.type}`);
     }
@@ -722,33 +727,34 @@ export class FetchClient {
       );
     }
 
-    this.#setHandlerFactory(
-      names.addModelFiles,
-      () =>
-        (async (fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
-          this.#refuseInApp(names.addModelFiles);
-          //? A host relays JSON tool calls and MCP refuses a file upload: a bridged view has no way to send the bytes.
-          if (this.#bridgeOf())
-            throw new Error("File upload is unavailable in an MCP App view: its host relays tool calls, not files.");
-          const cap = resolveFileUploadCapability(this.serializedSignal);
-          const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
-          if (!cap || !endpoint)
-            throw new Error(
-              "File upload is not configured. Mark an upload mutation with { fileUpload: true } (e.g. shared FileEndpoint.addFiles).",
-            );
-          const { fields, buildMetas } = fileUploadContract;
-          const formData = new FormData();
-          for (let i = 0; i < fileList.length; i++) formData.append(fields.files, fileList[i]);
-          formData.append(fields.metas, JSON.stringify(buildMetas(fileList)));
-          formData.append(fields.type, refName);
-          if (parentId) formData.append(fields.parentId, parentId);
-          const url = FetchClient.makeHttpUrl(cap.endpointKey, endpoint, cap.prefix, new Map());
-          return await this.http.post(url, formData, {
-            headers: this.#makeRequestHeaders(option),
-            baseUrl: this.#baseUrlOf(endpoint),
-          });
-        }) as FetchHandler,
-    );
+    this.#setHandlerFactory(names.addModelFiles, () => {
+      const upload = async (fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
+        //? A host relays JSON tool calls and MCP refuses a file upload: a bridged view has no way to send the bytes.
+        if (this.#bridgeOf())
+          throw new Error("File upload is unavailable in an MCP App view: its host relays tool calls, not files.");
+        const cap = resolveFileUploadCapability(this.serializedSignal);
+        const endpoint = cap ? this.serializedSignal[cap.refName]?.endpoint[cap.endpointKey] : undefined;
+        if (!cap || !endpoint)
+          throw new Error(
+            "File upload is not configured. Mark an upload mutation with { fileUpload: true } (e.g. shared FileEndpoint.addFiles).",
+          );
+        const { fields, buildMetas } = fileUploadContract;
+        const formData = new FormData();
+        for (let i = 0; i < fileList.length; i++) formData.append(fields.files, fileList[i]);
+        formData.append(fields.metas, JSON.stringify(buildMetas(fileList)));
+        formData.append(fields.type, refName);
+        if (parentId) formData.append(fields.parentId, parentId);
+        const url = FetchClient.makeHttpUrl(cap.endpointKey, endpoint, cap.prefix, new Map());
+        return await this.http.post(url, formData, {
+          headers: this.#makeRequestHeaders(option),
+          baseUrl: this.#baseUrlOf(endpoint),
+        });
+      };
+      return ((fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
+        this.#refuseInApp(names.addModelFiles);
+        return upload(fileList, parentId, option);
+      }) as FetchHandler;
+    });
   }
 
   #makeModelObjFn(refName: string, callerKey: string) {

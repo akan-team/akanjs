@@ -7,6 +7,7 @@ process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
 process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 //? Imported once the env is set: the store module reads it while it loads.
 const { McpAppView } = await import("./McpAppView");
+const { csrLocation } = await import("akanjs/client");
 
 describe("McpAppView.localize", () => {
   const locales = ["en", "ko"];
@@ -80,19 +81,22 @@ describe("McpAppView links", () => {
     ]);
   });
 
-  test("keeps a fragment on this screen", () => {
+  test("keeps a fragment on this screen, alone or after the screen's own path as a `<Link>` hands it over", () => {
     reset();
+    csrLocation.view("/en/memo/1");
     const target = document.createElement("h2");
     target.id = "notes";
-    let scrolled = false;
+    let scrolls = 0;
     target.scrollIntoView = () => {
-      scrolled = true;
+      scrolls += 1;
     };
     document.body.append(target);
     clickOn("#notes");
+    view.open("/en/memo/1#notes");
+    view.open("/en/memo/2#notes");
     target.remove();
-    expect(scrolled).toBe(true);
-    expect(opened).toEqual([]);
+    expect(scrolls).toBe(2);
+    expect(opened).toEqual(["https://app.example.com/en/memo/2#notes"]);
   });
 
   test("hands the host only a web, mail or phone address, and never a script, whatever the page wrote", () => {

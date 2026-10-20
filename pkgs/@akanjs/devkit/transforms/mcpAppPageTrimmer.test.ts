@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { symlink } from "node:fs/promises";
+import path from "node:path";
+import { tempDirs, writeText } from "../testHelpers";
 import { McpAppPageTrimmer } from "./mcpAppPageTrimmer";
+
+const makeTempRoot = tempDirs("akan-mcp-app-trim-");
 
 describe("McpAppPageTrimmer", () => {
   test("hands every stage but the apps a function that draws nothing, and keeps the rest of the chain as written", () => {
@@ -31,6 +36,26 @@ describe("McpAppPageTrimmer", () => {
         "  .render(() => null);",
       ].join("\n"),
     );
+  });
+
+  test("trims a page reached through a link, as a synced lib page is", async () => {
+    const root = await makeTempRoot();
+    await writeText(
+      path.join(root, "libs/shared/page/login.tsx"),
+      [
+        "const page = () => ({ render: (draw: () => string) => draw });",
+        'export default page().render(() => "drawn by the render");',
+      ].join("\n"),
+    );
+    await symlink(path.join(root, "libs/shared/page"), path.join(root, "linked"));
+    await writeText(path.join(root, "entry.ts"), 'import login from "./linked/login.tsx";\nexport { login };\n');
+    const result = await Bun.build({
+      entrypoints: [path.join(root, "entry.ts")],
+      plugins: [McpAppPageTrimmer.plugin([path.join(root, "linked/login.tsx")])],
+    });
+    const [output] = result.outputs;
+    expect(result.success).toBe(true);
+    expect(await output?.text()).not.toContain("drawn by the render");
   });
 
   test("leaves a module with no chain as it is", () => {

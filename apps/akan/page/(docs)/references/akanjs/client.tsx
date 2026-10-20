@@ -2247,21 +2247,21 @@ export default page()
                   en: (
                     <span>
                       <strong>It draws the element alone.</strong> The view runs <code>load</code> again, in the host's
-                      language when the app speaks it, and draws the element inside the root layout's{" "}
-                      <code>McpAppRoot</code>, which renders <code>System.App</code> from <code>akanjs/ui</code>: the
-                      root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and
-                      no <code>.render()</code> runs in a view, so a layout's <code>{"<Agent.Guide>"}</code> does not
-                      reach the host; one inside the element does.
+                      language when the app speaks it, and draws the element inside the <code>_overrides.tsx</code> over
+                      the page and the root layout's <code>McpAppRoot</code>, which renders <code>System.App</code> from{" "}
+                      <code>akanjs/ui</code>: the root layout's theme, fonts and providers, with no frame, router or
+                      websocket. No layout body and no <code>.render()</code> runs in a view, so a layout's{" "}
+                      <code>{"<Agent.Guide>"}</code> does not reach the host; one inside the element does.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>엘리먼트만 그립니다.</strong> view는 <code>load</code>를 다시 실행하고(앱이 호스트의
-                      언어를 지원하면 그 언어로), 엘리먼트를 root layout의 <code>McpAppRoot</code> 안에 그립니다.{" "}
-                      <code>McpAppRoot</code>는 <code>akanjs/ui</code>의 <code>System.App</code>을 렌더링하므로,
-                      frame·router·websocket 없이 root layout의 테마, 폰트, provider만 갖춥니다. view에서는 layout
-                      body도 <code>.render()</code>도 실행되지 않으므로 layout의 <code>{"<Agent.Guide>"}</code>는
-                      호스트에 닿지 않고, 엘리먼트 안에 둔 것은 닿습니다.
+                      언어를 지원하면 그 언어로), 엘리먼트를 페이지 위의 <code>_overrides.tsx</code>와 root layout의{" "}
+                      <code>McpAppRoot</code> 안에 그립니다. <code>McpAppRoot</code>는 <code>akanjs/ui</code>의{" "}
+                      <code>System.App</code>을 렌더링하므로, frame·router·websocket 없이 root layout의 테마, 폰트,
+                      provider만 갖춥니다. view에서는 layout body도 <code>.render()</code>도 실행되지 않으므로 layout의{" "}
+                      <code>{"<Agent.Guide>"}</code>는 호스트에 닿지 않고, 엘리먼트 안에 둔 것은 닿습니다.
                     </span>
                   ),
                 })}
@@ -2290,14 +2290,17 @@ export default page()
                   en: (
                     <span>
                       <strong>Links open the web page.</strong> A link or <code>router.push</code> to a screen of your
-                      app opens that screen's web page through the host, in the view's language. A view never navigates
-                      inside itself.
+                      app opens that screen's web page through the host, in the view's language and under the page's
+                      basePath. A view never navigates inside itself: a fragment of its own screen scrolls it, and{" "}
+                      <code>router.back()</code> and <code>router.refresh()</code> do nothing.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>링크는 웹 페이지를 엽니다.</strong> 앱의 화면으로 가는 링크나 <code>router.push</code>는
-                      호스트를 통해 그 화면의 웹 페이지를 view의 언어로 엽니다. view는 자기 안에서 이동하지 않습니다.
+                      호스트를 통해 그 화면의 웹 페이지를 view의 언어와 페이지의 basePath로 엽니다. view는 자기 안에서
+                      이동하지 않습니다. 자기 화면의 fragment는 view를 스크롤하고, <code>router.back()</code>과{" "}
+                      <code>router.refresh()</code>는 아무것도 하지 않습니다.
                     </span>
                   ),
                 })}

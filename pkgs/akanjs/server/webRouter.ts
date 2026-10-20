@@ -12,6 +12,7 @@ import {
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
+import { PageDefinition } from "../client/route/PageDefinition";
 import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
@@ -791,6 +792,7 @@ export class WebRouter {
     const views = new Map<string, { stamp: number; html: string }>();
     return {
       read: async (app) => {
+        if (!PageDefinition.promptName.test(app)) return null;
         const viewPath = path.join(viewDir, `${app}.html`);
         if (this.#csrDevShell) await this.#buildMcpAppViews();
         else if (!fs.existsSync(viewPath)) await this.#armCsrArtifact("mcp app view");

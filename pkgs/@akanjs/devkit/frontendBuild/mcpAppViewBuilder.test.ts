@@ -41,6 +41,20 @@ describe("McpAppViewBuilder.discover", () => {
     ]);
   });
 
+  test("takes the overrides over each page by route, outermost first, and none from a sibling group", async () => {
+    const appRoot = await makeTempRoot();
+    const file = (rel: string) => path.join(appRoot, rel);
+    await write(file("page/(home)/memo.tsx"), memoPage);
+    const entries = [
+      { key: "./(home)/memo.tsx", moduleAbsPath: file("page/(home)/memo.tsx") },
+      { key: "./(home)/memo/_overrides.tsx", moduleAbsPath: file("generated/memo_overrides.tsx") },
+      { key: "./_overrides.tsx", moduleAbsPath: file("generated/_overrides.tsx") },
+      { key: "./(tab)/_overrides.tsx", moduleAbsPath: file("generated/tab_overrides.tsx") },
+    ];
+    const [view] = await McpAppViewBuilder.discover(entries, []);
+    expect(view?.overrides.map((entry) => entry.key)).toEqual(["./_overrides.tsx", "./(home)/memo/_overrides.tsx"]);
+  });
+
   test("names two pages that claim one app, and a page with no root layout to provide for it", async () => {
     const appRoot = await makeTempRoot();
     const file = (rel: string) => path.join(appRoot, rel);
@@ -56,27 +70,50 @@ describe("McpAppViewBuilder.discover", () => {
     const [view] = await McpAppViewBuilder.discover(entries.slice(0, 1), []);
     expect(view?.root).toBeNull();
   });
+
+  test("refuses a name MCP would not list, and two that differ only in case", async () => {
+    const appRoot = await makeTempRoot();
+    const file = (rel: string) => path.join(appRoot, rel);
+    await write(file("page/a.tsx"), memoPage);
+    await write(file("page/b.tsx"), memoPage.replace('"showMemo"', '"ShowMemo"'));
+    await write(file("page/c.tsx"), memoPage.replace('"showMemo"', '"../showMemo"'));
+    const entryOf = (name: string) => ({ key: `./${name}.tsx`, moduleAbsPath: file(`page/${name}.tsx`) });
+    await expect(McpAppViewBuilder.discover([entryOf("a"), entryOf("b")], [])).rejects.toThrow(
+      'apps "showMemo" (./a.tsx) and "ShowMemo" (./b.tsx) differ only in case',
+    );
+    await expect(McpAppViewBuilder.discover([entryOf("c")], [])).rejects.toThrow(
+      'app name "../showMemo" in ./c.tsx must match',
+    );
+  });
 });
 
 describe("McpAppViewBuilder.entryOf", () => {
-  test("boots the one app with its page and the root layout it sits under, by relative path", () => {
+  test("boots the one app with its page, the root layout and overrides it sits under, by relative path", () => {
     const view = {
       name: "showMemo",
       page: { key: "./memo.tsx", moduleAbsPath: "/app/page/memo.tsx" },
       root: { key: "./__root_layout.tsx", moduleAbsPath: "/app/.akan/generated/root-layouts/__root_layout.tsx" },
-      basePath: "",
+      overrides: [{ key: "./_overrides.tsx", moduleAbsPath: "/app/.akan/generated/overrides/_overrides.tsx" }],
+      basePath: "admin",
     };
     expect(McpAppViewBuilder.entryOf(view, "/app/.akan/generated/mcp-apps")).toBe(
       [
         'import { McpAppBoot } from "akanjs/webkit";',
         'import * as page from "../../../page/memo.tsx";',
         'import * as root from "../root-layouts/__root_layout.tsx";',
-        'void McpAppBoot.run({ app: "showMemo", page, root });',
+        'import override0 from "../overrides/_overrides.tsx";',
+        "void McpAppBoot.run({",
+        '  app: "showMemo",',
+        "  page,",
+        "  root,",
+        "  overrides: [override0],",
+        '  basePath: "admin",',
+        "});",
         "",
       ].join("\n"),
     );
-    expect(McpAppViewBuilder.entryOf({ ...view, root: null }, "/app/.akan/generated/mcp-apps")).toContain(
-      "const root = {};",
-    );
+    expect(
+      McpAppViewBuilder.entryOf({ ...view, root: null, overrides: [] }, "/app/.akan/generated/mcp-apps"),
+    ).toContain("const root = {};\nvoid McpAppBoot.run({");
   });
 });

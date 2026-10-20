@@ -79,8 +79,15 @@ describe(".app() stage", () => {
     expect(() =>
       page()
         .app("ticketId", "x", () => null)
+        // @ts-expect-error an app of that name already reaches the render
         .param("ticketId", ID),
     ).toThrow(twice);
+    expect(() =>
+      page()
+        .app("tab", "x", () => null)
+        // @ts-expect-error an app of that name already reaches the render
+        .search("tab", String),
+    ).toThrow('names "tab" twice');
     expect(() =>
       page()
         .app("showTicket", "x", () => null)

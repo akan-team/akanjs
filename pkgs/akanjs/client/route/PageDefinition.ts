@@ -40,12 +40,20 @@ export class PageDefinition<
   #prompt?: PagePrompt;
   readonly #apps: PageApp[] = [];
 
-  param<Name extends string, Type extends RouteArgType>(name: Name, type: Type, option: RouteArgOption = {}) {
+  param<Name extends string, Type extends RouteArgType>(
+    name: Name & FreeName<Name, Apps>,
+    type: Type,
+    option: RouteArgOption = {},
+  ) {
     this.declare({ kind: "param", name, type, list: false, desc: option.desc });
     return this as unknown as PageDefinition<Args & { [Key in Name]: RouteArgValue<Type> }, Apps>;
   }
 
-  search<Name extends string, Type extends RouteSearchType>(name: Name, type: Type, option: RouteArgOption = {}) {
+  search<Name extends string, Type extends RouteSearchType>(
+    name: Name & FreeName<Name, Apps>,
+    type: Type,
+    option: RouteArgOption = {},
+  ) {
     const list = Array.isArray(type);
     this.declare({ kind: "search", name, type: (list ? type[0] : type) as RouteArgType, list, desc: option.desc });
     return this as unknown as PageDefinition<Args & { [Key in Name]?: RouteArgValue<Type> }, Apps>;
@@ -111,10 +119,12 @@ export class PageDefinition<
     super.declare(arg);
   }
 
-  protected override async renderArgsOf(args: RouteBaseArgs & Args): Promise<RouteBaseArgs & Args> {
+  protected override renderArgsOf(args: RouteBaseArgs & Args): PromiseOrObject<RouteBaseArgs & Args> {
     if (!this.#apps.length) return args;
-    const elements = await Promise.all(this.#apps.map((app) => PageDefinition.#load(app, args)));
-    return { ...args, ...Object.fromEntries(this.#apps.map((app, idx) => [app.name, elements[idx]])) };
+    return Promise.all(this.#apps.map((app) => PageDefinition.#load(app, args))).then((elements) => ({
+      ...args,
+      ...Object.fromEntries(this.#apps.map((app, idx) => [app.name, elements[idx]])),
+    }));
   }
 
   #entryArguments(): RoutePromptArgument[] {

@@ -70,7 +70,7 @@ const call = (returns: FetchBridgeCall["returns"], args: Record<string, unknown>
 
 describe("McpAppBridge", () => {
   test("introduces the view by `appInfo`, and starts from the route the load ran with and its seeded reads", async () => {
-    const { bridge, start, initialize } = await started({
+    const { start, initialize } = await started({
       structuredContent: { href: "/en/memo/1?tab=a", params: { lang: "en", memoId: "1" }, searchParams: { tab: "a" } },
       _meta: {
         [MCP_APP_META.snapshot]: [{ key: "memo", args: {}, value: 1 }],
@@ -88,7 +88,6 @@ describe("McpAppBridge", () => {
       account: { self: { id: "u1" } },
       readOnly: false,
     });
-    expect(bridge.href).toBe("/en/memo/1?tab=a");
     const readOnly = await started({
       structuredContent: { href: "/en", params: { lang: "en" } },
       _meta: { [MCP_APP_META.readOnly]: true },

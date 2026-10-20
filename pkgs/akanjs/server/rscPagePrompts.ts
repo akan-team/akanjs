@@ -1,6 +1,6 @@
 import type { PageDefinition, PathRoute, RoutePromptMeta } from "akanjs/client";
 import { Logger, parseSearchParams } from "akanjs/common";
-import { getRequestStore } from "akanjs/fetch";
+import { AppScope, getRequestStore } from "akanjs/fetch";
 import { RouteGuards } from "../client/route/RouteGuards";
 import type {
   PagePromptEntry,
@@ -69,15 +69,20 @@ export class RscPagePrompts {
         searchParams: parseSearchParams(new URL(url).search),
       };
       const renders = RscPagePrompts.#rendersOf(route);
+      //? A guard's own reads decide who may see the screen and are no part of it, so the records start after them.
+      let guardReads = 0;
       try {
-        await RouteGuards.run(renders, props);
+        await RscPagePrompts.#scoped(entry, () => RouteGuards.run(renders, props));
+        guardReads = getRequestStore()?.queryLog.length ?? 0;
         //? An app runs its load alone: no layout body and no `.render()`, so the snapshot holds only what it draws.
         if (entry.kind === "app") await (definition as PageDefinition).loadApp(entry.name, { lang, ...resolved });
         else for (const render of renders) await render.render({ ...props, children: null } as never);
       } catch (error) {
         return RscPagePrompts.#refusal(error);
       }
-      const records = await Promise.all((getRequestStore()?.queryLog ?? []).map(RscPagePrompts.#settle));
+      const records = await Promise.all(
+        (getRequestStore()?.queryLog ?? []).slice(guardReads).map(RscPagePrompts.#settle),
+      );
       return { ok: true, url, records, route: props };
     });
   }
@@ -93,11 +98,18 @@ export class RscPagePrompts {
         if (!route) return false;
         const request = new Request(RscPagePrompts.#urlOf(entry.pattern, { lang }, {}), { headers });
         return await this.#props.run(request, route.path, () =>
-          RouteGuards.admits(RscPagePrompts.#rendersOf(route), { params: { lang }, searchParams: {} }),
+          RscPagePrompts.#scoped(entry, () =>
+            RouteGuards.admits(RscPagePrompts.#rendersOf(route), { params: { lang }, searchParams: {} }),
+          ),
         );
       }),
     );
     return entries.filter((_, idx) => verdicts[idx]).map((entry) => entry.name);
+  }
+
+  //? An app's tool is read-only, so its guards run under the load's query-only rule too; a prompt's run may write.
+  static #scoped<T>(entry: PagePromptEntry, run: () => Promise<T>): Promise<T> {
+    return entry.kind === "app" ? AppScope.run(entry.name, run) : run();
   }
 
   static #rendersOf(route: PathRoute) {

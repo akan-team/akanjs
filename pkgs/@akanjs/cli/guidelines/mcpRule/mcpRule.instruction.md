@@ -420,12 +420,13 @@ export default page()
   the one part no host shows the model — so the first paint costs no round trip; every later call is relayed by the
   host as `tools/call` under the host's token.
 - **The view is the component, not the page.** It bundles the page with `.render()`, `.head()`, `.loading()` and
-  `.guard()` blanked, so it carries what the loads reach and nothing else, and draws the element inside the root
-  layout's `McpAppRoot` (`System.App`: its theme, fonts and providers, with no frame, router or websocket). No layout
-  body runs there, so a layout's `<Agent.Guide>` never reaches the host; one inside the element does. A link or
-  `router.push` to one of the app's screens opens that screen's web page through the host. A host loads one file, so
-  every `lazy(() => import(…))` the loads reach is inlined — write `/* @__PURE__ */ lazy(…)` so a barrel's unused one
-  is dropped.
+  `.guard()` blanked, so it carries what the loads reach and nothing else, and draws the element inside the
+  `_overrides.tsx` over the page and the root layout's `McpAppRoot` (`System.App`: its theme, fonts and providers, with
+  no frame, router or websocket). No layout body runs there, so a layout's `<Agent.Guide>` never reaches the host; one
+  inside the element does. A view never moves: a link or `router.push` to one of the app's screens opens that screen's
+  web page through the host (basePath kept), a fragment of its own screen scrolls it, and `router.back()` /
+  `router.refresh()` do nothing. A host loads one file, so every `lazy(() => import(…))` the loads reach is inlined —
+  write `/* @__PURE__ */ lazy(…)` so a barrel's unused one is dropped.
 - **What a view may call** is every published tool, and every endpoint kept off the shelf by `mcp: false` alone or
   the generated `light<Model>` read, listed with `visibility: ["app"]` — which a host offers to the view and never to
   the model; a `Person` guard still refuses one. Visibility is a host's UX, not authorization: the guards decide, as

@@ -1,5 +1,5 @@
 "use client";
-import { setCookie } from "akanjs/client";
+import { csrLocation, setCookie } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { McpAppBridge, McpHostContext } from "./McpAppBridge";
@@ -90,9 +90,11 @@ export class McpAppView {
   //? draws one component and has no router to move to another screen.
   open(raw: string) {
     if (!raw) return;
-    //? Against the `<base>`, a fragment alone would name the app's root route rather than a spot on this screen.
-    if (raw.startsWith("#")) {
-      document.getElementById(decodeURIComponent(raw.slice(1)))?.scrollIntoView();
+    //? A fragment on this screen scrolls the view: against the `<base>` it would name the app's root route, and a
+    //? `<Link href="#x">` arrives as the screen's own path with it.
+    const hashAt = raw.indexOf("#");
+    if (hashAt === 0 || (hashAt > 0 && raw.slice(0, hashAt) === csrLocation.pathname)) {
+      document.getElementById(decodeURIComponent(raw.slice(hashAt + 1)))?.scrollIntoView();
       return;
     }
     const url = McpAppView.#parse(raw, McpAppView.#baseUrl());

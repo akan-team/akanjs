@@ -1,9 +1,16 @@
 "use client";
-import { type PageDefinition, type RouteModuleSource, resolveRouteModule, router, Translator } from "akanjs/client";
+import {
+  csrLocation,
+  type PageDefinition,
+  type RouteModuleSource,
+  resolveRouteModule,
+  router,
+  Translator,
+} from "akanjs/client";
 import { Logger, parseAkanI18nEnv } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import * as ReactDOM from "react-dom/client";
 import { McpAppAgent } from "./McpAppAgent";
 import { McpAppBridge, type McpAppRoute } from "./McpAppBridge";
@@ -22,12 +29,16 @@ export interface McpAppBootProps {
   page: RouteModuleSource;
   /** The generated root layout of the page: its `McpAppRoot` provides what the root layout would, frame aside. */
   root: { McpAppRoot?: (props: McpAppRootProps) => ReactNode };
+  /** The generated wrappers of the `_overrides.tsx` over the page, outermost first. */
+  overrides?: ((props: { children?: ReactNode }) => ReactNode)[];
+  /** The basePath the page sits under, which every app path the view opens keeps. */
+  basePath?: string;
 }
 
 //* An MCP host's view of one `.app()`: no router, no layout and no network of its own. Its first reads come from the
 //* tool result's snapshot, and every later call is relayed by the host under the host's credential.
 export class McpAppBoot {
-  static async run({ app, page, root }: McpAppBootProps) {
+  static async run({ app, page, root, overrides = [], basePath = "" }: McpAppBootProps) {
     const bridge = new McpAppBridge();
     const view = new McpAppView(bridge);
     const start = await bridge.connect();
@@ -38,6 +49,7 @@ export class McpAppBoot {
     const { locales, defaultLocale } = parseAkanI18nEnv();
     const lang = McpAppView.languageOf(bridge.hostContext.locale, locales) ?? start.route.params.lang ?? defaultLocale;
     const href = McpAppView.localize(start.href, bridge.hostContext.locale, locales);
+    csrLocation.view(href);
     const pathname = href.split(/[?#]/)[0] ?? "/";
     const path = `/${pathname.split("/").slice(2).join("/")}`;
     if (globalThis.__AKAN_EMBED__) globalThis.__AKAN_EMBED__.account = start.account;
@@ -45,6 +57,7 @@ export class McpAppBoot {
     router.init({
       type: "csr",
       lang,
+      prefix: basePath,
       router: {
         push: (to) => view.open(to),
         replace: (to) => view.open(to),
@@ -77,7 +90,7 @@ export class McpAppBoot {
       onUncaughtError: (error) => McpAppBoot.#fail(view, `${app} failed to draw`, error),
     }).render(
       <Root params={{ lang }} path={path}>
-        {element}
+        {overrides.reduceRight<ReactNode>((children, Override) => createElement(Override, null, children), element)}
       </Root>,
     );
   }

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
+import { AppScope } from "../fetch/appScope";
 import {
   createRequestStore,
   memoizeRequestQuery,
@@ -281,7 +282,10 @@ describe("RscPagePrompts apps", () => {
     "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
     "./item/[itemId]/_layout.tsx": async () => ({
       default: layout()
-        .guard(() => void trail.push("layout guard"))
+        .guard(async () => {
+          trail.push(`layout guard in ${AppScope.current() ?? "no app"}`);
+          await record("membership", {}, Promise.resolve("member"));
+        })
         .render(({ children }) => {
           trail.push("layout");
           record("self", {}, Promise.resolve("me"));
@@ -328,10 +332,10 @@ describe("RscPagePrompts apps", () => {
     });
   });
 
-  test("runs the route guards and then the app's load alone, and hands back where its view starts", async () => {
+  test("runs the route guards under the app's scope, then its load alone, and hands back where its view starts", async () => {
     trail.length = 0;
     const run = await appPrompts.run({ name: "showItem", arguments: { itemId, tab: "notes" }, headers: [] });
-    expect(trail).toEqual(["layout guard", "app"]);
+    expect(trail).toEqual(["layout guard in showItem", "app"]);
     expect(run).toMatchObject({
       ok: true,
       url: `http://127.0.0.1/en/item/${itemId}?tab=notes`,
@@ -339,6 +343,11 @@ describe("RscPagePrompts apps", () => {
     });
     if (!run.ok) return;
     expect(run.records.map((entry) => entry.key)).toEqual(["item"]);
+
+    trail.length = 0;
+    const prompt = await appPrompts.run({ name: "briefItem", arguments: { itemId }, headers: [] });
+    expect(trail).toEqual(["layout guard in no app", "layout", "app", "render"]);
+    expect(prompt.ok && prompt.records.map((entry) => entry.key)).toEqual(["self", "item"]);
   });
 
   test("answers a load that writes as the page failing, before the write leaves", async () => {

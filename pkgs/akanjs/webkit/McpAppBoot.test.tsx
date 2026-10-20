@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
+import type { McpAppBootProps } from "./McpAppBoot";
 
 process.env.AKAN_PUBLIC_APP_NAME = "test";
 process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
@@ -10,7 +11,7 @@ process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akanjs.com";
 process.env.AKAN_PUBLIC_LOCALES = "en,ko";
 //? Imported once the env is set: the store module reads it while it loads.
 const { McpAppBoot } = await import("./McpAppBoot");
-const { page, router } = await import("akanjs/client");
+const { csrLocation, page, router } = await import("akanjs/client");
 const { FetchClient } = await import("akanjs/fetch");
 
 interface Sent {
@@ -64,11 +65,16 @@ const started = {
   _meta: { [MCP_APP_META.snapshot]: [] },
 };
 
-const boot = async (app: string, toolResult: object, hostContext: object = {}) => {
+const boot = async (
+  app: string,
+  toolResult: object,
+  hostContext: object = {},
+  { basePath, overrides }: Pick<McpAppBootProps, "basePath" | "overrides"> = {},
+) => {
   sent.length = 0;
   fromHostListeners.length = 0;
   document.body.innerHTML = '<div id="root"></div>';
-  const booting = McpAppBoot.run({ app, page: memoPage, root });
+  const booting = McpAppBoot.run({ app, page: memoPage, root, basePath, overrides });
   fromHost({ id: lastRequest("ui/initialize")?.id, result: { hostContext, hostCapabilities: {} } });
   await settle(0);
   fromHost({ method: "ui/notifications/tool-result", params: toolResult });
@@ -87,11 +93,48 @@ describe("McpAppBoot", () => {
     expect(FetchClient.bridged).toBe(true);
   });
 
+  test("draws the element inside the `_overrides.tsx` over its page, outermost first", async () => {
+    await boot(
+      "showMemo",
+      started,
+      {},
+      {
+        overrides: [
+          ({ children }) => <section data-override="outer">{children}</section>,
+          ({ children }) => <article data-override="inner">{children}</article>,
+        ],
+      },
+    );
+    expect(document.querySelector("main > section > article > p")?.textContent).toBe(`memo ${memoId} in en`);
+  });
+
   test("opens a screen the app moves to as that screen's web page, through the host", async () => {
     await boot("showMemo", started);
     router.push("/memo/2");
     await settle();
     expect(lastRequest("ui/open-link")?.params).toEqual({ url: "https://app.example.com/en/memo/2" });
+  });
+
+  test("keeps its basePath and its own screen, not the host's sandbox, in what it opens", async () => {
+    const href = `/en/admin/memo/${memoId}`;
+    await boot(
+      "showMemo",
+      { ...started, structuredContent: { ...started.structuredContent, href } },
+      {},
+      {
+        basePath: "admin",
+      },
+    );
+    expect(csrLocation.pathname).toBe(href);
+    router.push(`${csrLocation.pathname}#notes`);
+    await settle();
+    expect(lastRequest("ui/open-link")).toBeUndefined();
+    router.push("/memo/2");
+    await settle();
+    expect(lastRequest("ui/open-link")?.params).toEqual({ url: "https://app.example.com/en/admin/memo/2" });
+    router.setLang("ko");
+    await settle();
+    expect(lastRequest("ui/open-link")?.params).toEqual({ url: `https://app.example.com/ko/admin/memo/${memoId}` });
   });
 
   test("says why it draws nothing for a result that starts no app, or an app that fails to load or to draw", async () => {

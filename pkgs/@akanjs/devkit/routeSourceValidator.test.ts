@@ -96,6 +96,11 @@ describe("RouteSourceValidator route chains", () => {
     expect(() => chain("export default page().config({ devOnly: flag }).render(() => null);", "page", "/")).toThrow(
       "devOnly must be a literal true or false",
     );
+    const indirect = [
+      'const memo = page().app("showMemo", "x", () => null).render(() => null);',
+      "export default memo;",
+    ];
+    expect(() => chain(indirect.join("\n"), "page", "/")).toThrow('exports its chain through "memo"');
   });
 
   test("still reads the legacy shape as before", () => {

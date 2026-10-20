@@ -15,5 +15,5 @@ export default page()
 ```
 
 - A page may declare several apps. An app name follows the prompt name rule (`^[A-Za-z0-9_-]{1,64}$`) and needs a description.
-- A name that `.render()` already receives fails to compile and throws when the module loads. That covers `lang`, a `.param()` or `.search()` name (whichever is declared first), and another app. An app named like the page's own `.prompt()` also throws.
+- A name that `.render()` already receives fails to compile and throws when the module loads. That covers `lang`, a `.param()` or `.search()` name (in either order), and another app. An app named like the page's own `.prompt()` also throws.
 - `load` may only query. A mutation, a file upload, a room subscription or a message sent while `load` runs throws `base.error.mutationInApp` before anything is built or sent. That holds on the server through every `await`, and in a browser for `load`'s synchronous part. The new `AppScope` (`akanjs/fetch`) marks the run.

@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import ts from "typescript";
@@ -15,7 +16,11 @@ export class McpAppPageTrimmer {
       name: "akan-mcp-app-page",
       setup(build) {
         if (!pagePaths.length) return;
-        const filter = new RegExp(`^(?:${pagePaths.map((pagePath) => RegExp.escape(pagePath)).join("|")})$`);
+        //? The bundler loads a module by the path a link points at: a synced lib page is one under `page/(libs)`.
+        const loadedPaths = new Set(
+          pagePaths.flatMap((pagePath) => [pagePath, McpAppPageTrimmer.#realPathOf(pagePath)]),
+        );
+        const filter = new RegExp(`^(?:${[...loadedPaths].map((pagePath) => RegExp.escape(pagePath)).join("|")})$`);
         build.onLoad({ filter }, async (args) => ({
           contents: McpAppPageTrimmer.trim(await Bun.file(args.path).text(), args.path),
           loader: path.extname(args.path).slice(1) as "tsx" | "ts" | "jsx" | "js",
@@ -36,6 +41,14 @@ export class McpAppPageTrimmer {
     let trimmed = source;
     for (const { start, end } of spans) trimmed = `${trimmed.slice(0, start)}() => null${trimmed.slice(end)}`;
     return trimmed;
+  }
+
+  static #realPathOf(filePath: string) {
+    try {
+      return realpathSync(filePath);
+    } catch {
+      return filePath;
+    }
   }
 
   static #stagesOf(sourceFile: ts.SourceFile): ChainStage[] {

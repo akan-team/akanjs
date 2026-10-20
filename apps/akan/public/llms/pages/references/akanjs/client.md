@@ -438,11 +438,11 @@ The view
 
 **One file per app.** `akan build` writes a single-file `dist/apps/<app>/mcp-apps/<name>.html` beside `csr/`. `akan start` writes `.akan/artifact/mcp-apps/` when a host first reads a view, and again after a save. The tool points at it as `ui://<app>/apps/<name>`. With `web: { csr: false }`, the tool has no view.
 
-**It draws the element alone.** The view runs `load` again, in the host's language when the app speaks it, and draws the element inside the root layout's `McpAppRoot`, which renders `System.App` from `akanjs/ui`: the root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and no `.render()` runs in a view, so a layout's `<Agent.Guide>` does not reach the host; one inside the element does.
+**It draws the element alone.** The view runs `load` again, in the host's language when the app speaks it, and draws the element inside the `_overrides.tsx` over the page and the root layout's `McpAppRoot`, which renders `System.App` from `akanjs/ui`: the root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and no `.render()` runs in a view, so a layout's `<Agent.Guide>` does not reach the host; one inside the element does.
 
 **First reads come from the snapshot.** They take no round trip. A later read, such as a refetch or another page of a list, is relayed by the host as `tools/call` under the host's credential, so its endpoint must be a published tool or an app-only one (`mcp: false`).
 
-**Links open the web page.** A link or `router.push` to a screen of your app opens that screen's web page through the host, in the view's language. A view never navigates inside itself.
+**Links open the web page.** A link or `router.push` to a screen of your app opens that screen's web page through the host, in the view's language and under the page's basePath. A view never navigates inside itself: a fragment of its own screen scrolls it, and `router.back()` and `router.refresh()` do nothing.
 
 **Read-only deployments keep apps.** Under `option.setMcp({ readOnly: true })` or `AKAN_MCP_READONLY`, app tools and their views stay. The view refuses a write before it reaches the host with `base.error.readOnlyDeployment`, toasted in the person's language.
 

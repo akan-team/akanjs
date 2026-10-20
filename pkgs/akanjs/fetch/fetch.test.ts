@@ -1261,10 +1261,7 @@ describe("FetchClient inside an app's load", () => {
     );
     const refusals = await AppScope.run("showThing", async () => {
       const fetched = await client.handler.getThing("1234567890abcdef12345678", [], null);
-      const created = await (client.handler.createThing("Made", 1) as Promise<unknown>).catch((error) => error);
-      const uploaded = await (
-        client.handler.addFetchTestItemFiles([new File(["x"], "x.txt")]) as Promise<unknown>
-      ).catch((error) => error);
+      //? Thrown as the call is made: a `void` write in a load must fail the load, not a promise nobody awaits.
       const thrown = (call: () => unknown) => {
         try {
           call();
@@ -1272,6 +1269,8 @@ describe("FetchClient inside an app's load", () => {
           return error;
         }
       };
+      const created = thrown(() => client.handler.createThing("Made", 1));
+      const uploaded = thrown(() => client.handler.addFetchTestItemFiles([new File(["x"], "x.txt")]));
       const subscribed = thrown(() => client.handler.subscribeRoomThing("room-1", () => undefined));
       const sent = thrown(() => client.handler.sendThing("hello"));
       return { fetched, created, uploaded, subscribed, sent };
@@ -1299,8 +1298,8 @@ describe("FetchClient inside an app's load", () => {
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
     const late = AppScope.run("showThing", async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      return await (client.handler.createThing("Late", 1) as Promise<unknown>).catch((error) => error);
-    });
+      return await client.handler.createThing("Late", 1);
+    }).catch((error: unknown) => error);
     const beside = await client.handler.createThing("Beside", 1);
     expect(beside).toBeInstanceOf(FetchTestFull);
     expect(refusalOf(await late).error).toBe("base.error.mutationInApp");

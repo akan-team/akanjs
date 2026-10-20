@@ -6,21 +6,29 @@ declare global {
 
 /** The document's location and history, as the CSR router reads and moves them. */
 export class CsrLocation {
+  //? An MCP App view's document sits at its host's sandbox address, so it reads the screen it draws instead.
+  #view: URL | null = null;
+
+  /** Reads `href`, a path on the app's origin, as this document's location from now on; a view never moves. */
+  view(href: string) {
+    this.#view = new URL(href, "http://view.invalid");
+  }
+
   /** Path, search and hash, without the origin. */
   get href() {
-    return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    return `${this.pathname}${this.search}${this.hash}`;
   }
 
   get pathname() {
-    return window.location.pathname;
+    return (this.#view ?? window.location).pathname;
   }
 
   get search() {
-    return window.location.search;
+    return (this.#view ?? window.location).search;
   }
 
   get hash() {
-    return window.location.hash;
+    return (this.#view ?? window.location).hash;
   }
 
   get state(): unknown {

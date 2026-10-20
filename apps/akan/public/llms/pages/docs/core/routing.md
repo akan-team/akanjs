@@ -163,7 +163,7 @@ Where
 
 - SSR: Every guard in the chain runs in order, root layout first and page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404.
 
-- CSR: A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain.
+- CSR: A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.
 
 - MCP: A page prompt or app tool runs the route's guards before anything else, and prompts/list and the page tools in tools/list show only the screens whose guards admit the caller.
 

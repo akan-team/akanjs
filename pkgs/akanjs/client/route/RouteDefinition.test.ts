@@ -3,8 +3,9 @@ import { enumOf, ID, Int } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
 import type { LayoutModule, PageModule, PageProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
+import { Translator } from "../translator";
 import { RouteDefinition } from "./RouteDefinition";
-import { isRouteDefinition, resolveRouteModule } from "./resolveRouteModule";
+import { assertGuardOnChain, isRouteDefinition, resolveRouteModule } from "./resolveRouteModule";
 import { RouteArgError, RouteArgPending } from "./routeArgs";
 import { layout, page, rootLayout } from "./routeBuilders";
 
@@ -62,6 +63,7 @@ describe("page() chain", () => {
     expect(await mod.default?.(props({ lang: "ko" }))).toBe("page:ko");
     expect(await mod.generateHead?.(props({ lang: "ko" }))).toBe("head:ko");
     expect(mod.Loading?.({ params: {} })).toBe(`loading:${parseAkanI18nEnv().defaultLocale}`);
+    // @ts-expect-error every route receives lang
     expect(() => page().param("lang", String)).toThrow('receives "lang" on every route');
     expect(() => layout().search("lang", String)).toThrow('receives "lang" on every route');
   });
@@ -182,6 +184,23 @@ describe("page() chain", () => {
     expect(resolved.definition).toBeUndefined();
     expect(isRouteDefinition(legacy.default)).toBe(false);
   });
+
+  test("refuses a guard beside a legacy default, and keeps a chain's and the generated root layout's", () => {
+    const guard = async () => undefined;
+    const chain = resolveRouteModule(
+      {
+        default: page()
+          .guard(guard)
+          .render(() => null),
+      } as never,
+      "./a.tsx",
+    );
+    expect(() => assertGuardOnChain("./a.tsx", chain)).not.toThrow();
+    const legacy = resolveRouteModule({ default: () => null, guard } as never, "./a.tsx");
+    expect(() => assertGuardOnChain("./a.tsx", legacy)).toThrow("exports guard beside a legacy default");
+    const generated = resolveRouteModule({ default: () => null, guard } as never, "./__root_layout.tsx");
+    expect(() => assertGuardOnChain("./__root_layout.tsx", generated)).not.toThrow();
+  });
 });
 
 describe("layout() and rootLayout() chains", () => {
@@ -298,6 +317,38 @@ describe(".guard() stage", () => {
       .toRouteModule();
     await byLang.guard?.(listing);
     expect(reads).toEqual(["ko"]);
+  });
+});
+
+describe("the render path a chain's render reads", () => {
+  //? A CSR screen sets its path only around the route's synchronous part, which `usePage()` in the render reads.
+  const renderAt = (route: unknown, routeProps: object) =>
+    Translator.renderAt("/en/pushed", () => (route as (props: object) => Promise<unknown>)(routeProps));
+
+  test("is the screen's own for a page and a layout, and for a page whose apps load first", async () => {
+    const seen: Record<string, string | undefined> = {};
+    const plain = page().render(() => {
+      seen.page = Translator.getRenderPath();
+      return null;
+    });
+    const wrapping = layout().render(({ children }) => {
+      seen.layout = Translator.getRenderPath();
+      return children;
+    });
+    const withApp = page()
+      .app("showPushed", "Show the pushed screen.", async () => {
+        await Promise.resolve();
+        return "app";
+      })
+      .render(({ showPushed }) => {
+        seen.withApp = Translator.getRenderPath();
+        return showPushed;
+      });
+    await renderAt(plain.toRouteModule().default, props({ lang: "en" }));
+    await renderAt(wrapping.toRouteModule().default, { ...props({ lang: "en" }), children: null });
+    expect(await renderAt(withApp.toRouteModule().default, props({ lang: "en" }))).toBe("app");
+    expect(seen).toEqual({ page: "/en/pushed", layout: "/en/pushed", withApp: "/en/pushed" });
+    expect(Translator.getRenderPath()).toBeUndefined();
   });
 });
 
