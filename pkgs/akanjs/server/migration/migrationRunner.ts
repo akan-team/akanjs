@@ -4,11 +4,12 @@ import { type DatabaseAdaptor, descriptorHash, stableJson } from "akanjs/service
 import { MigrationChangeLog } from "./migrationChangeLog";
 import { MigrationChanges, type MigrationSkip } from "./migrationChanges";
 import { MigrationContext, type MigrationGet } from "./migrationContext";
-import { MigrationDefinition, type MigrationPlan } from "./migrationDefinition";
+import { MigrationDefinition, type MigrationPlan, type MigrationSettings } from "./migrationDefinition";
 import { MigrationError } from "./migrationError";
 import { MigrationLedger, type MigrationRun, type MigrationRunKind } from "./migrationLedger";
 import { MigrationLock } from "./migrationLock";
 import type { MigrationParamSpec } from "./migrationParams";
+import { MigrationPulse } from "./migrationPulse";
 import { MigrationScope } from "./migrationScope";
 
 export interface MigrationEntry {
@@ -80,8 +81,6 @@ export interface MigrationRollbackResult {
 
 export class MigrationRunner {
   static readonly defaultItemNum = 100;
-  //* SQLite's busy_timeout: past it the live server's writes fail rather than wait for the run's transaction.
-  static readonly sqliteHoldWarnMs = 5_000;
   readonly #entries: MigrationEntry[];
   readonly #database: DatabaseAdaptor;
   readonly #get: MigrationGet;
@@ -137,10 +136,10 @@ export class MigrationRunner {
   ): Promise<MigrationPlanResult> {
     const { entry, definition } = await this.#load(id);
     const params = definition.params.parse(raw);
-    return await this.#locked(async () => {
+    return await this.#locked(async (lock) => {
       const run = await this.#begin("plan", entry, { params, actor });
       try {
-        const plan = await this.#plan(definition, id, params);
+        const plan = await this.#plan(definition, id, params, new MigrationPulse(lock));
         const planHash = await MigrationRunner.#planHash(params, plan);
         await this.#ledger.finish(run.id, { status: "done", planHash, summary: { plan: plan.summary } });
         const report = (sanitizeJson(plan.items ?? []) ?? []) as unknown[];
@@ -172,58 +171,79 @@ export class MigrationRunner {
     const applyStage = definition.applyStage;
     if (!applyStage) throw new MigrationError("usage", `${id} declares no .apply()`);
     const params = definition.params.parse(raw);
-    const { transaction, batchSize } = definition.settings;
-    return await this.#locked(async () => {
-      const state = await this.#ledger.state(await this.#ledger.runsOf(id));
+    const settings = definition.settings;
+    return await this.#locked(async (lock) => {
+      const runs = await this.#ledger.runsOf(id);
+      const state = await this.#ledger.state(runs);
       if (state.applied)
         throw new MigrationError("alreadyApplied", `${id} was applied by run ${state.applied.id}; roll it back first`);
-      const resumed = transaction ? null : (state.partial[0] ?? null);
+      const resumed = settings.transaction ? null : (state.partial[0] ?? null);
       if (resumed && MigrationRunner.#hashable(resumed.params) !== MigrationRunner.#hashable(params))
         throw new MigrationError(
           "invalidParam",
           `run ${resumed.id} stopped partway with other params; apply with the same params to resume it, or roll it back`,
         );
-      const run = await this.#begin("apply", entry, { params, actor, checkpoint: resumed?.checkpoint ?? null });
-      const log = new MigrationChangeLog(run.id, () => this.#database.getConnection());
+      //? A rollback cut short reverted rows below the checkpoint as well, so a run one touched starts over.
+      const checkpoint =
+        resumed && !runs.some((run) => run.kind === "rollback" && run.target === resumed.id)
+          ? resumed.checkpoint
+          : null;
+      const run = await this.#begin("apply", entry, { params, actor, checkpoint });
+      const pulse = new MigrationPulse(lock, this.#holdWarning(id, settings.transaction));
       const scope = new MigrationScope({
         database: this.#database,
         readOnly: false,
-        batchSize,
-        log,
-        checkpoints: transaction ? null : { runId: run.id, ledger: this.#ledger, resumed: resumed?.checkpoint ?? {} },
+        batchSize: settings.batchSize,
+        log: new MigrationChangeLog(run.id, () => this.#database.getConnection()),
+        checkpoints: settings.transaction ? null : { runId: run.id, ledger: this.#ledger, resumed: checkpoint ?? {} },
+        beat: async () => await pulse.beat({ strict: true }),
       });
-      const planned: { hash: string; summary: unknown } = { hash: "", summary: null };
-      const warning = this.#warnOnLongHold(id, transaction);
+      const planned: { hash: string; summary: unknown; changes: number } = { hash: "", summary: null, changes: 0 };
       try {
-        await this.#run(transaction, async () => {
-          //* Postgres: the plan and the writes read one snapshot, and a row the live server changed since fails the run.
-          if (transaction && scope.dialect.name === "postgres")
+        await this.#run(pulse, settings.transaction, async () => {
+          //* Postgres: plan and writes read one snapshot, and a row the live server changed since fails the run.
+          if (settings.transaction && scope.dialect.name === "postgres")
             await scope.connection().execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-          const plan = await this.#plan(definition, id, params);
+          const plan = await this.#plan(definition, id, params, pulse);
           planned.hash = await MigrationRunner.#planHash(params, plan);
           planned.summary = sanitizeJson(plan.summary);
           if (expect && expect !== planned.hash)
             throw new MigrationError("planChanged", `${id}'s plan changed since it was approved; plan it again`);
           await applyStage(this.#context(id, params, scope), plan);
+          planned.changes = await MigrationChangeLog.count(this.#database.getConnection(), run.id);
+          //* Recorded done in the writing transaction, so committed writes are never taken for a run to repeat.
+          await this.#ledger.finish(run.id, {
+            status: "done",
+            planHash: planned.hash,
+            summary: { plan: planned.summary, changes: planned.changes, settings },
+          });
+          if (settings.transaction) await lock.heartbeat(true);
         });
       } catch (error) {
-        const changes = await MigrationChangeLog.count(this.#database.getConnection(), run.id);
-        throw await this.#failed(run.id, error, {
-          status: MigrationError.codeOf(error) === "planChanged" ? "aborted" : "failed",
-          planHash: planned.hash || null,
-          summary: { plan: planned.summary, changes },
-        });
-      } finally {
-        if (warning) clearTimeout(warning);
+        if ((await this.#ledger.get(run.id))?.status !== "done") {
+          const changes = await MigrationChangeLog.count(this.#database.getConnection(), run.id);
+          throw await this.#failed(run.id, error, {
+            status: MigrationError.codeOf(error) === "planChanged" ? "aborted" : "failed",
+            planHash: planned.hash || null,
+            summary: { plan: planned.summary, changes },
+          });
+        }
+        this.#committedThenFailed(id, error);
       }
-      const changes = await MigrationChangeLog.count(this.#database.getConnection(), run.id);
-      const problems = await this.#verify(definition, id, params);
+      const problems = await this.#verify(definition, id, params, pulse);
       await this.#ledger.finish(run.id, {
         status: "done",
         planHash: planned.hash,
-        summary: { plan: planned.summary, changes, problems },
+        summary: { plan: planned.summary, changes: planned.changes, settings, problems },
       });
-      return { id, runId: run.id, planHash: planned.hash, summary: planned.summary, changes, problems };
+      return {
+        id,
+        runId: run.id,
+        planHash: planned.hash,
+        summary: planned.summary,
+        changes: planned.changes,
+        problems,
+      };
     });
   }
 
@@ -231,23 +251,28 @@ export class MigrationRunner {
     const { entry, definition } = await this.#load(id);
     if (!definition.verifyStage) throw new MigrationError("usage", `${id} declares no .verify()`);
     const params = definition.params.parse(raw);
-    return await this.#locked(async (): Promise<MigrationVerifyResult> => {
+    return await this.#locked(async (lock): Promise<MigrationVerifyResult> => {
       const run = await this.#begin("verify", entry, { params, actor });
-      const problems = await this.#verify(definition, id, params);
-      await this.#ledger.finish(run.id, { status: "done", summary: { problems } });
+      const problems = await this.#verify(definition, id, params, new MigrationPulse(lock));
+      await this.#ledger.finish(
+        run.id,
+        problems.length
+          ? { status: "failed", summary: { problems }, error: MigrationError.remaining(problems.length) }
+          : { status: "done", summary: { problems } },
+      );
       return { id, runId: run.id, problems };
     });
   }
 
   /**
-   * `target` is an apply run, or a migration id for every run of it not yet rolled back, newest first. Works for a
-   * script this build no longer carries: the change log alone is enough for the default rollback.
+   * `target` is the newest apply run, or a migration id for every run of it not yet rolled back, newest first. Works
+   * for a script this build no longer carries: the change log and the settings the apply ran with are enough.
    */
   async rollback(target: string, { actor = null }: { actor?: string | null } = {}): Promise<MigrationRollbackResult> {
-    return await this.#locked(async () => {
+    return await this.#locked(async (lock) => {
       const applies = await this.#rollbackTargets(target);
       const runs: MigrationRollbackRun[] = [];
-      for (const apply of applies) runs.push(await this.#rollbackRun(apply, actor));
+      for (const apply of applies) runs.push(await this.#rollbackRun(apply, actor, lock));
       return { id: applies[0]?.migrationId ?? target, runs };
     });
   }
@@ -256,16 +281,18 @@ export class MigrationRunner {
     const run = await this.#ledger.get(target);
     if (run) {
       if (run.kind !== "apply") throw new MigrationError("usage", `run ${target} is a ${run.kind}, not an apply`);
-      const runs = await this.#ledger.runsOf(run.migrationId);
-      const state = await this.#ledger.state(runs);
-      if (state.applied?.id !== run.id && !state.partial.some(({ id }) => id === run.id))
+      const live = await this.#liveApplies(run.migrationId);
+      if (!live.some(({ id }) => id === run.id))
         throw new MigrationError("notApplied", `run ${target} has nothing left to roll back`);
+      const newest = live[0];
+      if (newest && newest.id !== run.id)
+        throw new MigrationError(
+          "usage",
+          `run ${newest.id} applied ${run.migrationId} after run ${target} and may build on it; roll back ${run.migrationId} to undo both, newest first`,
+        );
       return [run];
     }
-    const state = await this.#ledger.state(await this.#ledger.runsOf(target));
-    const applies = [state.applied, ...state.partial]
-      .filter((apply): apply is MigrationRun => !!apply)
-      .sort((a, b) => b.startedAt - a.startedAt);
+    const applies = await this.#liveApplies(target);
     if (!applies.length) {
       if (!this.#entries.some(({ id }) => id === target))
         throw new MigrationError("notFound", `${target} is neither a migration of this build nor a run in the ledger`);
@@ -274,58 +301,91 @@ export class MigrationRunner {
     return applies;
   }
 
-  async #rollbackRun(apply: MigrationRun, actor: string | null): Promise<MigrationRollbackRun> {
+  async #liveApplies(migrationId: string) {
+    const state = await this.#ledger.state(await this.#ledger.runsOf(migrationId));
+    return [state.applied, ...state.partial]
+      .filter((apply): apply is MigrationRun => !!apply)
+      .sort((a, b) => b.startedAt - a.startedAt);
+  }
+
+  async #rollbackRun(apply: MigrationRun, actor: string | null, lock: MigrationLock): Promise<MigrationRollbackRun> {
     const entry = this.#entries.find(({ id }) => id === apply.migrationId) ?? null;
     const definition = entry ? await MigrationRunner.#definition(entry) : null;
     if (entry && entry.checksum !== apply.checksum)
       this.#logger.warn(
         `${apply.migrationId} changed since run ${apply.id} applied it; rolling back with this build's`,
       );
-    const params = apply.params ?? {};
+    const settings = definition?.settings ?? MigrationRunner.#settingsOf(apply);
+    const rollbackStage = definition?.rollbackStage ?? null;
+    //? Only the default walk resumes: a custom rollback may visit the changes in any order.
+    const from = rollbackStage || settings.transaction ? null : await this.#reachedBefore(apply);
     const run = await this.#begin("rollback", entry ?? { id: apply.migrationId, checksum: apply.checksum }, {
-      params,
+      params: apply.params ?? {},
       actor,
       target: apply.id,
     });
-    const { transaction, batchSize } = definition?.settings ?? { transaction: true, batchSize: 500 };
-    const log = new MigrationChangeLog(run.id, () => this.#database.getConnection());
-    const scope = new MigrationScope({ database: this.#database, readOnly: false, batchSize, log });
-    const ctx = this.#context(apply.migrationId, params, scope);
-    const entries = await MigrationChangeLog.entries(this.#database.getConnection(), apply.id);
-    const changes = new MigrationChanges(entries, (name) => ctx.table(name));
-    const rollbackStage = definition?.rollbackStage;
-    try {
-      await this.#run(transaction, async () => {
-        if (rollbackStage) await rollbackStage(ctx, changes);
-        else await changes.revertAll();
-      });
-    } catch (error) {
-      throw await this.#failed(run.id, error, { summary: { reverted: changes.reverted, skipped: changes.skipped } });
-    }
-    await this.#ledger.finish(run.id, {
-      status: "done",
-      summary: { reverted: changes.reverted, skipped: changes.skipped },
-    });
-    return { runId: run.id, target: apply.id, reverted: changes.reverted, skipped: changes.skipped };
-  }
-
-  async #plan(definition: MigrationDefinition<Record<string, unknown>>, id: string, params: Record<string, unknown>) {
+    const pulse = new MigrationPulse(lock, this.#holdWarning(apply.migrationId, settings.transaction));
     const scope = new MigrationScope({
       database: this.#database,
-      readOnly: true,
-      batchSize: definition.settings.batchSize,
+      readOnly: false,
+      batchSize: settings.batchSize,
+      log: new MigrationChangeLog(run.id, () => this.#database.getConnection()),
+      beat: async () => await pulse.beat({ strict: true }),
     });
+    const params = definition ? definition.params.revive(apply.params ?? {}) : (apply.params ?? {});
+    const ctx = this.#context(apply.migrationId, params, scope);
+    const changes = new MigrationChanges(
+      async (below, limit) => await MigrationChangeLog.page(this.#database.getConnection(), apply.id, below, limit),
+      (name) => ctx.table(name),
+      from,
+    );
+    const summary = () => ({ reverted: changes.reverted, skipped: changes.skipped });
+    try {
+      await this.#run(pulse, settings.transaction, async () => {
+        if (rollbackStage) await rollbackStage(ctx, changes);
+        else await changes.revertAll();
+        await this.#ledger.finish(run.id, { status: "done", summary: summary() });
+        if (settings.transaction) await lock.heartbeat(true);
+      });
+    } catch (error) {
+      if ((await this.#ledger.get(run.id))?.status !== "done") {
+        if (!rollbackStage && !settings.transaction && changes.reached !== null)
+          await this.#ledger.saveCheckpoint(run.id, { seq: String(changes.reached) });
+        throw await this.#failed(run.id, error, { summary: summary() });
+      }
+      this.#committedThenFailed(apply.migrationId, error);
+    }
+    return { runId: run.id, target: apply.id, ...summary() };
+  }
+
+  /** Where the newest default rollback of `apply` that was cut short got down to: every newer change is handled. */
+  async #reachedBefore(apply: MigrationRun) {
+    const cut = (await this.#ledger.runsOf(apply.migrationId))
+      .filter((run) => run.kind === "rollback" && run.target === apply.id && run.status === "failed")
+      .map((run) => Number(run.checkpoint?.seq))
+      .filter((seq) => Number.isInteger(seq));
+    return cut.at(-1) ?? null;
+  }
+
+  async #plan(
+    definition: MigrationDefinition<Record<string, unknown>>,
+    id: string,
+    params: Record<string, unknown>,
+    pulse: MigrationPulse,
+  ) {
+    const scope = this.#readScope(definition.settings.batchSize, pulse);
     const plan = definition.planStage ? await definition.planStage(this.#context(id, params, scope)) : { summary: {} };
     return plan as MigrationPlan;
   }
 
-  async #verify(definition: MigrationDefinition<Record<string, unknown>>, id: string, params: Record<string, unknown>) {
+  async #verify(
+    definition: MigrationDefinition<Record<string, unknown>>,
+    id: string,
+    params: Record<string, unknown>,
+    pulse: MigrationPulse,
+  ) {
     if (!definition.verifyStage) return [];
-    const scope = new MigrationScope({
-      database: this.#database,
-      readOnly: true,
-      batchSize: definition.settings.batchSize,
-    });
+    const scope = this.#readScope(definition.settings.batchSize, pulse);
     try {
       return (await definition.verifyStage(this.#context(id, params, scope))).map(String);
     } catch (error) {
@@ -340,29 +400,42 @@ export class MigrationRunner {
     return new MigrationContext({ id, params, logger: new Logger(`Migration:${id}`), get: this.#get, scope });
   }
 
-  async #run(transaction: boolean, fn: () => Promise<void>) {
-    if (transaction) await this.#database.transaction(fn);
+  #readScope(batchSize: number, pulse: MigrationPulse) {
+    return new MigrationScope({
+      database: this.#database,
+      readOnly: true,
+      batchSize,
+      beat: async () => await pulse.beat({ strict: false }),
+    });
+  }
+
+  async #run(pulse: MigrationPulse, transaction: boolean, fn: () => Promise<void>) {
+    if (transaction) await this.#database.transaction(async () => await pulse.hold(fn));
     else await fn();
   }
 
-  #warnOnLongHold(id: string, transaction: boolean) {
+  #holdWarning(id: string, transaction: boolean) {
     if (!transaction || this.#database.dialect?.name !== "sqlite") return null;
-    const timer = setTimeout(() => {
+    return (heldMs: number) =>
       this.#logger.warn(
-        `${id} has held the SQLite write lock for ${MigrationRunner.sqliteHoldWarnMs / 1000}s; the live server's writes fail until it commits. A long run belongs in .config({ transaction: false })`,
+        `${id} has held the SQLite write lock for ${Math.round(heldMs / 1000)}s; the live server's writes fail until it commits. A long run belongs in .config({ transaction: false })`,
       );
-    }, MigrationRunner.sqliteHoldWarnMs);
-    timer.unref?.();
-    return timer;
   }
 
-  async #locked<T>(fn: () => Promise<T>) {
-    const lock = new MigrationLock(() => this.#database.getConnection());
+  // A hook the run's writes queued for after their commit, such as a model's post-save, threw once they were in.
+  #committedThenFailed(id: string, error: unknown) {
+    this.#logger.warn(`${id} committed, but what ran after the commit failed: ${MigrationError.messageOf(error)}`);
+  }
+
+  async #locked<T>(fn: (lock: MigrationLock) => Promise<T>) {
+    const lock = new MigrationLock(() => this.#database.getConnection(), {
+      inBand: this.#database.dialect?.name === "sqlite",
+    });
     if (!(await lock.acquire()))
       throw new MigrationError("locked", "Another migration run holds the lock; try again once it finishes");
     try {
       await this.#ledger.interruptRunning();
-      return await fn();
+      return await fn(lock);
     } finally {
       await lock.release();
     }
@@ -428,8 +501,13 @@ export class MigrationRunner {
   static async #definition(entry: MigrationEntry) {
     const definition = (await entry.load()).default;
     if (!MigrationDefinition.is(definition))
-      throw new MigrationError("usage", `script/migration/${entry.id}.ts must export default migration(...)`);
+      throw new MigrationError("failed", `script/migration/${entry.id}.ts must export default migration(...)`);
     return definition;
+  }
+
+  static #settingsOf(apply: MigrationRun): MigrationSettings {
+    const recorded = apply.summary?.settings as Partial<MigrationSettings> | undefined;
+    return { ...MigrationDefinition.defaultSettings, ...recorded };
   }
 
   static async #planHash(params: Record<string, unknown>, plan: MigrationPlan) {

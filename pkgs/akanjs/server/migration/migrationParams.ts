@@ -56,6 +56,21 @@ export class MigrationParams {
     return Object.fromEntries(this.list.map((info) => [info.name, MigrationParams.#value(info, raw[info.name])]));
   }
 
+  /** Params a run recorded as JSON, as their declared types again: what a rollback hands the script. */
+  revive(stored: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      this.list.map((info) => {
+        const value = stored[info.name];
+        if (value === undefined || value === null) return [info.name, value ?? info.default ?? null];
+        try {
+          return [info.name, MigrationParams.#deserialize(info, value)];
+        } catch {
+          return [info.name, value];
+        }
+      }),
+    );
+  }
+
   specs(): MigrationParamSpec[] {
     return this.list.map((info) => ({
       name: info.name,
@@ -73,17 +88,23 @@ export class MigrationParams {
       if (info.nullable) return null;
       throw new MigrationError("invalidParam", `Param "${info.name}" is required`);
     }
-    const enumRef = isEnum(info.type as Cls) ? (info.type as EnumInstance) : undefined;
-    const scalar = (enumRef ? enumRef.type : info.type) as typeof PrimitiveScalar;
+    //* A date alone is midnight UTC, so a plan hashes the same on a laptop and in a container.
+    const input = (info.type as unknown) === Date && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00.000Z` : raw;
     let value: unknown;
     try {
-      value = deserialize(scalar as never, 0, raw, { key: info.name, enum: enumRef });
+      value = MigrationParams.#deserialize(info, input);
     } catch {
       throw new MigrationError("invalidParam", `Param "${info.name}" expects ${MigrationParams.#typeName(info)}`);
     }
     if (info.enum && !info.enum.includes(value as string))
       throw new MigrationError("invalidParam", `Param "${info.name}" expects one of ${info.enum.join(", ")}`);
     return value;
+  }
+
+  static #deserialize(info: MigrationParamInfo, value: unknown) {
+    const enumRef = isEnum(info.type as Cls) ? (info.type as EnumInstance) : undefined;
+    const scalar = (enumRef ? enumRef.type : info.type) as typeof PrimitiveScalar;
+    return deserialize(scalar as never, 0, value, { key: info.name, enum: enumRef });
   }
 
   static #choices(info: MigrationParamInfo): readonly (string | number)[] | undefined {

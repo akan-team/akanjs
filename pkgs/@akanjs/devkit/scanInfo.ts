@@ -347,10 +347,10 @@ export class AppInfo extends ScanInfo {
     (this.scanResult as AppScanResult).routes = routes;
   }
 
-  //* Line endings normalized: a checkout with autocrlf would otherwise record another checksum for the same script.
+  //* Line endings and a BOM dropped: an editor or autocrlf would otherwise record another checksum for the same script.
   static async scanMigrations(exec: AppExecutor) {
     const files = (await exec.readdir(AppInfo.migrationDir)).filter(
-      (file) => file.endsWith(".ts") && !/\.(test|spec)\.ts$/.test(file),
+      (file) => file.endsWith(".ts") && !/\.(test|spec|d)\.ts$/.test(file),
     );
     return await Promise.all(
       files.map(async (file) => {
@@ -359,7 +359,9 @@ export class AppInfo extends ScanInfo {
           throw new Error(
             `${AppInfo.migrationDir}/${file}: a migration is named <yyyyMMddHHmm>_<camelName>.ts; create one with \`akan create-migration\``,
           );
-        const source = (await exec.readFile(`${AppInfo.migrationDir}/${file}`)).replaceAll("\r\n", "\n");
+        const source = (await exec.readFile(`${AppInfo.migrationDir}/${file}`))
+          .replace(/^\uFEFF/, "")
+          .replaceAll("\r\n", "\n");
         return { id, checksum: createHash("sha256").update(source).digest("hex") };
       }),
     );

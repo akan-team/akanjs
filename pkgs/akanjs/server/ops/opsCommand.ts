@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { AkanServer } from "../akanServer";
+import { MigrationCommand } from "../migration/migrationCommand";
 import type { Migrations } from "../migration/migrations";
 import { SnapshotRestore } from "./snapshotRestore";
 import type { SnapshotSources } from "./snapshotTypes";
@@ -89,11 +90,22 @@ export class OpsCommand {
   }
 
   static async #migrate(argv: string[], host?: OpsHost) {
+    let app: { server: AkanServer; migrations: Migrations };
+    try {
+      app = await OpsCommand.#migratingApp(host);
+    } catch (error) {
+      //? A caller parsing the last line gets an answer from an image that cannot run migrations as well.
+      return await MigrationCommand.print(MigrationCommand.failure(null, error), MigrationCommand.jsonOf(argv));
+    }
+    return await app.migrations.command(app.server, argv);
+  }
+
+  static async #migratingApp(host?: OpsHost) {
     if (!host) throw new Error("migrate boots the app's server, so it runs through main.js");
     const { server, migrations } = await host.importServer();
     if (!server?.start) throw new Error("server.js must export server");
     if (!migrations) throw new Error("this build lists no migrations; build it with an akan that writes the manifest");
-    return await migrations.command(server, argv);
+    return { server, migrations };
   }
 
   static #sources(db?: string, solidDb?: string): SnapshotSources {

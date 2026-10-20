@@ -8,7 +8,6 @@ import type {
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { type Command, program } from "commander";
-import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { AppSelectionMemory } from "../appSelectionMemory";
 import { AppExecutor, Executor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
 // Never the root barrel: it drags ink, ssh2 and the cloud stack into every command process.
@@ -31,8 +30,12 @@ import { type CommandCls, getTargetCommandNames, getTargetMetas } from "./target
 const loggedCliErrorObjects = new WeakSet<object>();
 const loggedCliErrorMessages = new Set<string>();
 
+export const markCliErrorPrinted = (error: unknown) => {
+  if (typeof error === "object" && error !== null) loggedCliErrorObjects.add(error);
+};
+
 const formatCliError = (error: unknown): string => {
-  if (error instanceof Error) return ApplicationBuildReporter.formatError(error) || error.name;
+  if (error instanceof Error) return error.message || error.name;
   if (typeof error === "string") return error.trim() || "Unknown error";
   if (error === null || error === undefined) return "Unknown error";
   try {
@@ -379,9 +382,10 @@ It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
           hidden: targetMeta.targetOption.devOnly,
         });
         const targetFailureExitCode = targetMeta.targetOption.failureExitCode;
+        const usageExitCode = targetMeta.targetOption.usageExitCode ?? targetFailureExitCode;
         //? commander exits 1 on a flag or argument it refuses, before any action runs.
-        if (targetFailureExitCode !== undefined)
-          programCommand.exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : targetFailureExitCode));
+        if (usageExitCode !== undefined)
+          programCommand.exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : usageExitCode));
         const [allArgMetas] = getArgMetas(command, targetMeta.key);
         for (const argMeta of allArgMetas) {
           if (argMeta.type === "Option") programCommand = handleOption(programCommand, argMeta);

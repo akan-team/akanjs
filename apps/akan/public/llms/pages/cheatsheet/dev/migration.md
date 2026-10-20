@@ -27,9 +27,9 @@ A code change that renames, moves or splits a field leaves the documents already
 
 **It plans before it writes.** `plan` changes none of your data and reports what would change, and `apply` can refuse when the data moved since that report.
 
-**Every run is recorded.** The app's own database keeps which migration ran, when, by whom and with which params, so each environment knows what it still owes.
+**Every run is recorded.** The app's own database keeps which migration ran, when, with which params and, given `--actor`, by whom, so each environment knows what it still owes.
 
-**It can be rolled back.** Every write keeps the value it replaced. A rollback puts those back and skips a row someone edited since.
+**It can be rolled back.** Every write keeps the value it replaced. A rollback puts those back, deletes for good the rows the migration inserted or copied, and skips a row someone edited since.
 
 - Scripts — Run a one-off job that needs no record.
 
@@ -61,7 +61,7 @@ Write One
 
 A migration's default export is `migration(title)` with three stages. This one moves each order's `topping` into a `toppings` list:
 
-**`plan` only reads.** It returns the report a person reviews: `summary` to read, and optionally `items`, the decisions `apply` receives as its second argument.
+**`plan` only reports.** It returns the report a person reviews: `summary` to read, and optionally `items`, the decisions `apply` receives as its second argument.
 
 **`verify` returns problems,** one string for each thing still wrong. It runs right after every apply, and an empty list means the data is as intended.
 
@@ -87,13 +87,13 @@ Rows And Filters
 
 Call
 
-- find(where?, { after, limit }) — Rows in id order, removed ones included; `{ withRemoved: false }` leaves those out.
+- find(where?, { after, limit }) — Rows in id order, removed ones too (as in `count` and `rewrite`) unless `{ withRemoved: false }`.
 
 - get(id) · count(where?) — One row, or how many match.
 
 - set(id, patch) · unset(id, paths) — Writes or removes dot paths in one row's `_doc`.
 
-- rewrite(fn, { where }) — Walks the matching rows 500 at a time; `fn` returns a patch, or nothing to leave the row be.
+- rewrite(fn, { where }) — Walks matching rows 500 at a time (`batchSize`); `fn` returns a patch, or nothing to skip the row.
 
 - insert(doc) · copy(id, patch) — A new row; `copy` starts from another row's `_doc`.
 
@@ -101,11 +101,11 @@ Call
 
 A filter maps dot paths into `_doc`, or a column such as `removedAt`, to a value or to `$ne`, `$in`, `$nin`, `$exists`, `$gt`, `$gte`, `$lt` or `$lte`. Every key must match.
 
-**`$ne` leaves out missing values.** `{ status: { $ne: "done" } }` skips rows with no `status`; find those with `{ status: { $exists: false } }`.
+**`$ne` leaves out missing and `null` values.** `{ status: { $ne: "done" } }` skips rows whose `status` is absent or `null`; find those with `{ status: null }`.
 
 **`updatedAt` stays as it was.** A migration reshapes data rather than editing it, so nothing sorted by `updatedAt` moves.
 
-**Beside `table`, each stage gets** `params`, `createId()` for a new row's id, `logger`, `sql` for a raw query, and `get(srv.IcecreamOrderService)` for a service of the booted app, with `srv` imported from `../../server`.
+**Beside `table`, each stage gets** `params`, `createId()` for a new row's id, `logger`, `sql` for a raw read, and `get(srv.IcecreamOrderService)` for a service of the booted app, with `srv` imported from `../../server`.
 
 Review, Apply, Roll Back
 
@@ -113,11 +113,11 @@ On data others rely on, put a review between plan and apply. `plan` prints a `pl
 
 **The hash covers the params too,** so apply with the params you planned with.
 
-**A problem from `verify` fails the command** with exit code 3 but leaves the migration applied. Roll it back, fix the file, and apply it again.
+**A problem from `verify` fails the command** with exit code 3 but leaves the migration applied. Roll it back and fix the file, or write a new migration once another environment has applied this one.
 
 **A rollback skips rows edited since.** A row whose value changed after the migration wrote it is left as it is and listed in the result, so a later edit is never overwritten.
 
-**`.rollback(fn)` replaces the default** when undoing needs a judgment, such as keeping a copied row others now point at. It walks `changes.entries` and calls `changes.revert(change)` or `changes.skip(change, reason)`.
+**`.rollback(fn)` replaces the default** when undoing needs a judgment, such as keeping a copied row others now point at. It walks `changes` with `for await`, newest first, and calls `changes.revert(change)` or `changes.skip(change, reason)`.
 
 **One run at a time.** While one runs, a second from another terminal or replica is refused.
 
@@ -125,7 +125,7 @@ Large Tables
 
 An apply runs in one transaction, so a failure leaves nothing half done. On SQLite that transaction holds the only write lock, and once it passes about five seconds the live server's writes start to fail. For a table that takes longer, commit as you go:
 
-**Each `rewrite` batch commits on its own,** with the point it reached. A failed apply leaves the migration `partial`: apply again with the same params to resume there, or roll back what it wrote.
+**Each `rewrite` batch commits on its own,** with the point it reached. A failed apply leaves the migration `partial`: apply again with the same params to resume there, planning it again first if you pass `--expect`, or roll back what it wrote.
 
 **Write it so a second run changes nothing.** A resumed apply runs `apply` from the top again.
 
@@ -135,7 +135,7 @@ In A Container
 
 The built image carries every migration, so nothing is copied into a container. There, `bun main.js ops migrate` takes the same actions and options as `akan migrate`, without the app name:
 
-**`--json` prints one JSON line last,** with `ok` and, on failure, a `code` naming why. The exit code is 0 on success, 2 for a mistake in the command, 3 when verify finds problems and 1 otherwise.
+**`--json` prints one JSON line last,** with `ok` and, on failure, a `code` naming why. The exit code is 0 on success, 2 for a mistake in the command, 3 when verify finds problems and 1 otherwise, `alreadyApplied` included.
 
 **`--actor` names who ran it** in the run's record.
 
@@ -147,13 +147,13 @@ A migration changes production data that a rollback may have to put back. Four h
 
 **New code meets old data first.** A deploy serves traffic before anyone applies the migration, so the new code must read both shapes until it is applied.
 
-**Write through `table()`, not services.** A service write runs the model's hooks, which may notify users, and stays out of the change log, so a rollback cannot undo it.
+**Write through `table()`, not services or `sql`.** A service write runs the model's hooks, which may notify users, and neither reaches the change log, so a rollback cannot undo it.
 
 **Call nothing outside the database.** A rollback can put rows back, but it cannot unsend an email or refund a payment.
 
 **Throw a plain `Error`** with a message an operator can act on. The run's record keeps it.
 
-**Delete a migration once every environment has applied it.** Each database keeps its record, and the change log can still roll it back without the file.
+**Delete a migration once every environment has applied it.** Each database keeps its record, and the change log can still roll it back without the file, but only with the default undo, so keep a file whose `.rollback(fn)` you may still need.
 
 ## Code Examples
 
@@ -176,7 +176,7 @@ akan migrate koyo apply 202610211000_orderToppings
 ```ts
 import { migration } from "akanjs/server";
 
-const hasTopping = { topping: { $exists: true } };
+const hasTopping = { topping: { $ne: null } };
 
 export default migration("Move each order's topping into its toppings list")
   .plan(async ({ table }) => ({
@@ -200,7 +200,7 @@ export default migration("Move each order's topping into its toppings list")
 import { ID } from "akanjs/base";
 import { migration } from "akanjs/server";
 
-const noStore = { store: { $exists: false } };
+const noStore = { store: null };
 
 export default migration("Give storeless orders the fallback store")
   .param("fallbackStore", ID, { desc: "The store those orders join" })
@@ -233,6 +233,10 @@ akan migrate koyo rollback 202610211000_orderToppings
 ### apps/koyo/script/migration/202610211000_orderToppings.ts
 
 ```ts
+import { migration } from "akanjs/server";
+
+const hasTopping = { topping: { $ne: null } };
+
 export default migration("Move each order's topping into its toppings list")
   .config({ transaction: false })
   .apply(async ({ table }) => {

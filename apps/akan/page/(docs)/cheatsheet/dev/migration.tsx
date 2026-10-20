@@ -118,8 +118,8 @@ export default page()
       {
         call: "find(where?, { after, limit })",
         desc: l.trans({
-          en: "Rows in id order, removed ones included; `{ withRemoved: false }` leaves those out.",
-          ko: "id 순서로 행을 읽습니다. 삭제된 행도 읽으며, `{ withRemoved: false }`면 뺍니다.",
+          en: "Rows in id order, removed ones too (as in `count` and `rewrite`) unless `{ withRemoved: false }`.",
+          ko: "id 순서로 행을 읽습니다. `count`, `rewrite`처럼 삭제된 행도 포함하며, `{ withRemoved: false }`면 뺍니다.",
         }),
       },
       {
@@ -136,8 +136,8 @@ export default page()
       {
         call: "rewrite(fn, { where })",
         desc: l.trans({
-          en: "Walks the matching rows 500 at a time; `fn` returns a patch, or nothing to leave the row be.",
-          ko: "맞는 행을 500개씩 돕니다. `fn`이 patch를 돌려주면 쓰고, 아무것도 돌려주지 않으면 둡니다.",
+          en: "Walks matching rows 500 at a time (`batchSize`); `fn` returns a patch, or nothing to skip the row.",
+          ko: "맞는 행을 500개씩(`batchSize`) 돕니다. `fn`이 patch를 돌려주면 쓰고, 아무것도 돌려주지 않으면 둡니다.",
         }),
       },
       {
@@ -186,14 +186,16 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Every run is recorded.</strong> The app's own database keeps which migration ran, when, by
-                      whom and with which params, so each environment knows what it still owes.
+                      <strong>Every run is recorded.</strong> The app's own database keeps which migration ran, when,
+                      with which params and, given <code>--actor</code>, by whom, so each environment knows what it
+                      still owes.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>모든 실행이 기록됩니다.</strong> 앱의 데이터베이스가 어떤 마이그레이션을 언제, 누가, 어떤
-                      파라미터로 실행했는지 남기므로, 환경마다 무엇이 남았는지 압니다.
+                      <strong>모든 실행이 기록됩니다.</strong> 앱의 데이터베이스가 어떤 마이그레이션을 언제, 어떤
+                      파라미터로 실행했는지와 <code>--actor</code>를 주면 누가 실행했는지까지 남기므로, 환경마다 무엇이
+                      남았는지 압니다.
                     </span>
                   ),
                 })}
@@ -203,13 +205,14 @@ export default page()
                   en: (
                     <span>
                       <strong>It can be rolled back.</strong> Every write keeps the value it replaced. A rollback puts
-                      those back and skips a row someone edited since.
+                      those back, deletes for good the rows the migration inserted or copied, and skips a row someone
+                      edited since.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>되돌릴 수 있습니다.</strong> 쓸 때마다 바꾸기 전 값을 남깁니다. 되돌리기는 그 값을
-                      돌려놓되, 그사이 누가 고친 행은 건너뜁니다.
+                      돌려놓고 마이그레이션이 넣거나 복사한 행은 영구히 지우되, 그사이 누가 고친 행은 건너뜁니다.
                     </span>
                   ),
                 })}
@@ -311,7 +314,7 @@ akan migrate koyo apply 202610211000_orderToppings`}
             title="apps/koyo/script/migration/202610211000_orderToppings.ts"
             code={`import { migration } from "akanjs/server";
 
-const hasTopping = { topping: { $exists: true } };
+const hasTopping = { topping: { $ne: null } };
 
 export default migration("Move each order's topping into its toppings list")
   .plan(async ({ table }) => ({
@@ -335,7 +338,7 @@ export default migration("Move each order's topping into its toppings list")
                   en: (
                     <span>
                       <strong>
-                        <code>plan</code> only reads.
+                        <code>plan</code> only reports.
                       </strong>{" "}
                       It returns the report a person reviews: <code>summary</code> to read, and optionally{" "}
                       <code>items</code>, the decisions <code>apply</code> receives as its second argument.
@@ -344,7 +347,7 @@ export default migration("Move each order's topping into its toppings list")
                   ko: (
                     <span>
                       <strong>
-                        <code>plan</code>은 읽기만 합니다.
+                        <code>plan</code>은 보고만 합니다.
                       </strong>{" "}
                       사람이 검토할 보고를 돌려줍니다. <code>summary</code>는 읽을 요약이고, 선택인 <code>items</code>는{" "}
                       <code>apply</code>가 두 번째 인자로 받는 결정 목록입니다.
@@ -416,7 +419,7 @@ export default migration("Move each order's topping into its toppings list")
             code={`import { ID } from "akanjs/base";
 import { migration } from "akanjs/server";
 
-const noStore = { store: { $exists: false } };
+const noStore = { store: null };
 
 export default migration("Give storeless orders the fallback store")
   .param("fallbackStore", ID, { desc: "The store those orders join" })
@@ -501,19 +504,19 @@ export default migration("Give storeless orders the fallback store")
                   en: (
                     <span>
                       <strong>
-                        <code>$ne</code> leaves out missing values.
+                        <code>$ne</code> leaves out missing and <code>null</code> values.
                       </strong>{" "}
-                      <code>{'{ status: { $ne: "done" } }'}</code> skips rows with no <code>status</code>; find those
-                      with <code>{"{ status: { $exists: false } }"}</code>.
+                      <code>{'{ status: { $ne: "done" } }'}</code> skips rows whose <code>status</code> is absent or{" "}
+                      <code>null</code>; find those with <code>{"{ status: null }"}</code>.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>
-                        <code>$ne</code>는 값이 없는 행을 뺍니다.
+                        <code>$ne</code>는 값이 없거나 <code>null</code>인 행을 뺍니다.
                       </strong>{" "}
-                      <code>{'{ status: { $ne: "done" } }'}</code>는 <code>status</code>가 없는 행을 건너뛰므로, 그런
-                      행은 <code>{"{ status: { $exists: false } }"}</code>로 찾습니다.
+                      <code>{'{ status: { $ne: "done" } }'}</code>는 <code>status</code>가 없거나 <code>null</code>인
+                      행을 건너뛰므로, 그런 행은 <code>{"{ status: null }"}</code>로 찾습니다.
                     </span>
                   ),
                 })}
@@ -548,7 +551,7 @@ export default migration("Give storeless orders the fallback store")
                         Beside <code>table</code>, each stage gets
                       </strong>{" "}
                       <code>params</code>, <code>createId()</code> for a new row's id, <code>logger</code>,{" "}
-                      <code>sql</code> for a raw query, and <code>get(srv.IcecreamOrderService)</code> for a service of
+                      <code>sql</code> for a raw read, and <code>get(srv.IcecreamOrderService)</code> for a service of
                       the booted app, with <code>srv</code> imported from <code>../../server</code>.
                     </span>
                   ),
@@ -557,7 +560,7 @@ export default migration("Give storeless orders the fallback store")
                       <strong>
                         각 단계는 <code>table</code> 말고도
                       </strong>{" "}
-                      <code>params</code>, 새 행 id를 만드는 <code>createId()</code>, <code>logger</code>, 원시 쿼리용{" "}
+                      <code>params</code>, 새 행 id를 만드는 <code>createId()</code>, <code>logger</code>, 원시 조회용{" "}
                       <code>sql</code>, 부팅된 앱의 서비스를 꺼내는 <code>get(srv.IcecreamOrderService)</code>를
                       받습니다. <code>srv</code>는 <code>../../server</code>에서 가져옵니다.
                     </span>
@@ -622,7 +625,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                       <strong>
                         A problem from <code>verify</code> fails the command
                       </strong>{" "}
-                      with exit code 3 but leaves the migration applied. Roll it back, fix the file, and apply it again.
+                      with exit code 3 but leaves the migration applied. Roll it back and fix the file, or write a new
+                      migration once another environment has applied this one.
                     </span>
                   ),
                   ko: (
@@ -630,7 +634,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                       <strong>
                         <code>verify</code>가 문제를 찾으면 명령은 종료 코드 3으로 실패하지만
                       </strong>{" "}
-                      마이그레이션은 적용된 채로 남습니다. 되돌리고, 파일을 고치고, 다시 apply합니다.
+                      마이그레이션은 적용된 채로 남습니다. 되돌려서 파일을 고치거나, 다른 환경에 이미 적용됐다면 새
+                      마이그레이션을 씁니다.
                     </span>
                   ),
                 })}
@@ -659,8 +664,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>.rollback(fn)</code> replaces the default
                       </strong>{" "}
                       when undoing needs a judgment, such as keeping a copied row others now point at. It walks{" "}
-                      <code>changes.entries</code> and calls <code>changes.revert(change)</code> or{" "}
-                      <code>changes.skip(change, reason)</code>.
+                      <code>changes</code> with <code>for await</code>, newest first, and calls{" "}
+                      <code>changes.revert(change)</code> or <code>changes.skip(change, reason)</code>.
                     </span>
                   ),
                   ko: (
@@ -668,8 +673,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                       <strong>
                         <code>.rollback(fn)</code>은 기본 되돌리기를 바꿉니다.
                       </strong>{" "}
-                      다른 행이 이미 가리키는 사본을 남겨 두는 것처럼 판단이 필요할 때 씁니다.{" "}
-                      <code>changes.entries</code>를 돌며 <code>changes.revert(change)</code>나{" "}
+                      다른 행이 이미 가리키는 사본을 남겨 두는 것처럼 판단이 필요할 때 씁니다. <code>for await</code>로{" "}
+                      <code>changes</code>를 최신 것부터 돌며 <code>changes.revert(change)</code>나{" "}
                       <code>changes.skip(change, reason)</code>을 부릅니다.
                     </span>
                   ),
@@ -709,7 +714,11 @@ akan migrate koyo rollback 202610211000_orderToppings`}
           <Code.Snippet
             className="w-full"
             title="apps/koyo/script/migration/202610211000_orderToppings.ts"
-            code={`export default migration("Move each order's topping into its toppings list")
+            code={`import { migration } from "akanjs/server";
+
+const hasTopping = { topping: { $ne: null } };
+
+export default migration("Move each order's topping into its toppings list")
   .config({ transaction: false })
   .apply(async ({ table }) => {
     await table("icecreamOrder").rewrite(
@@ -728,7 +737,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         Each <code>rewrite</code> batch commits on its own,
                       </strong>{" "}
                       with the point it reached. A failed apply leaves the migration <code>partial</code>: apply again
-                      with the same params to resume there, or roll back what it wrote.
+                      with the same params to resume there, planning it again first if you pass <code>--expect</code>,
+                      or roll back what it wrote.
                     </span>
                   ),
                   ko: (
@@ -737,7 +747,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>rewrite</code>의 묶음마다 따로 커밋하고
                       </strong>{" "}
                       어디까지 했는지 남깁니다. 실패한 apply는 마이그레이션을 <code>partial</code>로 남깁니다. 같은
-                      파라미터로 다시 apply하면 그 지점부터 이어 가고, 되돌리면 쓴 만큼 되돌립니다.
+                      파라미터로 다시 apply하면 그 지점부터 이어 가고(<code>--expect</code>를 쓴다면 먼저 다시
+                      plan합니다), 되돌리면 쓴 만큼 되돌립니다.
                     </span>
                   ),
                 })}
@@ -828,7 +839,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>--json</code> prints one JSON line last,
                       </strong>{" "}
                       with <code>ok</code> and, on failure, a <code>code</code> naming why. The exit code is 0 on
-                      success, 2 for a mistake in the command, 3 when verify finds problems and 1 otherwise.
+                      success, 2 for a mistake in the command, 3 when verify finds problems and 1 otherwise,{" "}
+                      <code>alreadyApplied</code> included.
                     </span>
                   ),
                   ko: (
@@ -837,7 +849,8 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                         <code>--json</code>은 마지막 줄에 JSON 한 줄을 출력합니다.
                       </strong>{" "}
                       <code>ok</code>와, 실패하면 이유를 담은 <code>code</code>가 들어 있습니다. 종료 코드는 성공이면 0,
-                      명령을 잘못 쓰면 2, verify가 문제를 찾으면 3, 그 밖에는 1입니다.
+                      명령을 잘못 쓰면 2, verify가 문제를 찾으면 3, <code>alreadyApplied</code>를 포함한 그 밖의 경우는
+                      1입니다.
                     </span>
                   ),
                 })}
@@ -914,18 +927,18 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                   en: (
                     <span>
                       <strong>
-                        Write through <code>table()</code>, not services.
+                        Write through <code>table()</code>, not services or <code>sql</code>.
                       </strong>{" "}
-                      A service write runs the model's hooks, which may notify users, and stays out of the change log,
-                      so a rollback cannot undo it.
+                      A service write runs the model's hooks, which may notify users, and neither reaches the change
+                      log, so a rollback cannot undo it.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>
-                        쓰기는 서비스가 아니라 <code>table()</code>로 합니다.
+                        쓰기는 서비스나 <code>sql</code>이 아니라 <code>table()</code>로 합니다.
                       </strong>{" "}
-                      서비스로 쓰면 사용자 알림 같은 모델 훅이 돌고, 변경 기록에도 남지 않아 되돌릴 수 없습니다.
+                      서비스로 쓰면 사용자 알림 같은 모델 훅이 돌고, 둘 다 변경 기록에 남지 않아 되돌릴 수 없습니다.
                     </span>
                   ),
                 })}
@@ -972,13 +985,15 @@ akan migrate koyo rollback 202610211000_orderToppings`}
                 en: (
                   <span>
                     <strong>Delete a migration once every environment has applied it.</strong> Each database keeps its
-                    record, and the change log can still roll it back without the file.
+                    record, and the change log can still roll it back without the file, but only with the default undo,
+                    so keep a file whose <code>.rollback(fn)</code> you may still need.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>모든 환경에 적용된 마이그레이션은 지워도 됩니다.</strong> 데이터베이스마다 기록이 남고,
-                    파일이 없어도 변경 기록으로 되돌릴 수 있습니다.
+                    <strong>모든 환경에 적용된 마이그레이션은 지워도 됩니다.</strong> 데이터베이스마다 기록이 남고
+                    파일이 없어도 변경 기록으로 되돌릴 수 있지만 기본 되돌리기로만 되돌리므로,{" "}
+                    <code>.rollback(fn)</code>이 아직 필요할 수 있는 파일은 남겨 둡니다.
                   </span>
                 ),
               })}

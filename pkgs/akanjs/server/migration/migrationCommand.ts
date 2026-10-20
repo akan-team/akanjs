@@ -4,6 +4,8 @@ import type { MigrationListItem, MigrationRunner } from "./migrationRunner";
 
 export const migrationActions = ["list", "plan", "apply", "verify", "rollback"] as const;
 export type MigrationAction = (typeof migrationActions)[number];
+const migrationOptions = ["param", "expect", "actor", "items"] as const;
+type MigrationOption = (typeof migrationOptions)[number];
 
 export interface MigrationArgs {
   action: MigrationAction;
@@ -26,37 +28,53 @@ export interface MigrationCommandResult {
 }
 
 export class MigrationCommand {
-  static readonly usage = [
-    "Usage:",
-    "  ops migrate list [--json]",
-    "  ops migrate plan <id> [--param <name>=<value>]... [--items <n>] [--actor <id>] [--json]",
-    "  ops migrate apply <id> [--param <name>=<value>]... [--expect <planHash>] [--actor <id>] [--json]",
-    "  ops migrate verify <id> [--param <name>=<value>]... [--actor <id>] [--json]",
-    "  ops migrate rollback <applyRunId|id> [--actor <id>] [--json]",
-  ].join("\n");
   static readonly #usageCodes = new Set<MigrationErrorCode>(["usage", "invalidParam", "notFound"]);
+  static readonly #optionsOf: { [action in MigrationAction]: readonly MigrationOption[] } = {
+    list: [],
+    plan: ["param", "items", "actor"],
+    apply: ["param", "expect", "actor"],
+    verify: ["param", "actor"],
+    rollback: ["actor"],
+  };
 
-  static parse(argv: string[]): MigrationArgs {
-    const { values, positionals } = MigrationCommand.#parseArgs(argv);
-    const [action = "list", target = "", ...extra] = positionals;
-    if (!migrationActions.includes(action as MigrationAction))
-      throw new MigrationError("usage", `Unknown action "${action}"\n${MigrationCommand.usage}`);
+  static usageOf(invokedAs = "ops migrate") {
+    return [
+      "Usage:",
+      `  ${invokedAs} list [--json]`,
+      `  ${invokedAs} plan <id> [--param <name>=<value>]... [--items <n>] [--actor <id>] [--json]`,
+      `  ${invokedAs} apply <id> [--param <name>=<value>]... [--expect <planHash>] [--actor <id>] [--json]`,
+      `  ${invokedAs} verify <id> [--param <name>=<value>]... [--actor <id>] [--json]`,
+      `  ${invokedAs} rollback <applyRunId|id> [--actor <id>] [--json]`,
+    ].join("\n");
+  }
+
+  static jsonOf(argv: string[]) {
+    return argv.some((arg) => arg === "--json" || arg.startsWith("--json="));
+  }
+
+  static parse(argv: string[], invokedAs?: string): MigrationArgs {
+    const usage = MigrationCommand.usageOf(invokedAs);
+    const { values, positionals } = MigrationCommand.#parseArgs(argv, usage);
+    const [name = "list", target = "", ...extra] = positionals;
+    if (!migrationActions.includes(name as MigrationAction))
+      throw new MigrationError("usage", `Unknown action "${name}"\n${usage}`);
+    const action = name as MigrationAction;
     if (action === "list" ? target : !target)
-      throw new MigrationError(
-        "usage",
-        `${action} ${target ? "takes no id" : "needs an id"}\n${MigrationCommand.usage}`,
-      );
+      throw new MigrationError("usage", `${action} ${target ? "takes no id" : "needs an id"}\n${usage}`);
     if (extra.length) throw new MigrationError("usage", `Unexpected arguments: ${extra.join(" ")}`);
-    const items = values.items === undefined ? undefined : Number(values.items);
-    if (items !== undefined && !(Number.isInteger(items) && items >= 0))
+    const refused = migrationOptions.find(
+      (option) => values[option] !== undefined && !MigrationCommand.#optionsOf[action].includes(option),
+    );
+    if (refused) throw new MigrationError("usage", `${action} takes no --${refused}\n${usage}`);
+    if (values.items !== undefined && !/^\d+$/.test(values.items))
       throw new MigrationError("usage", "--items takes a whole number");
     return {
-      action: action as MigrationAction,
+      action,
       target,
       params: MigrationCommand.#params(values.param ?? []),
       expect: values.expect ?? null,
       actor: values.actor ?? null,
-      items,
+      items: values.items === undefined ? undefined : Number(values.items),
       json: values.json,
     };
   }
@@ -71,10 +89,14 @@ export class MigrationCommand {
         action === "apply"
           ? await runner.apply(target, params, { expect, actor })
           : await runner.verify(target, params, { actor });
-      const problemNum = result.problems.length;
-      if (!problemNum) return { ok: true, action, ...result };
-      const error = problemNum === 1 ? "1 problem remains" : `${problemNum} problems remain`;
-      return { ok: false, action, code: "verifyFailed", error, ...result };
+      if (!result.problems.length) return { ok: true, action, ...result };
+      return {
+        ok: false,
+        action,
+        code: "verifyFailed",
+        error: MigrationError.remaining(result.problems.length),
+        ...result,
+      };
     } catch (error) {
       return MigrationCommand.failure(action, error);
     }
@@ -94,6 +116,13 @@ export class MigrationCommand {
     if (result.ok) return 0;
     if (result.code === "verifyFailed") return 3;
     return result.code && MigrationCommand.#usageCodes.has(result.code) ? 2 : 1;
+  }
+
+  //* Waits for stdout to take the line: `ops migrate` exits right after, and an exit drops what a pipe still buffers.
+  static async print(result: MigrationCommandResult, json: boolean) {
+    const text = `${MigrationCommand.render(result, json)}\n`;
+    await new Promise<void>((resolve) => process.stdout.write(text, () => resolve()));
+    return MigrationCommand.exitCode(result);
   }
 
   static render(result: MigrationCommandResult, json: boolean) {
@@ -118,7 +147,7 @@ export class MigrationCommand {
       .join("\n");
   }
 
-  static #parseArgs(argv: string[]) {
+  static #parseArgs(argv: string[], usage: string) {
     try {
       return parseArgs({
         args: argv,
@@ -132,7 +161,7 @@ export class MigrationCommand {
         },
       });
     } catch (error) {
-      throw new MigrationError("usage", `${MigrationError.messageOf(error)}\n${MigrationCommand.usage}`);
+      throw new MigrationError("usage", `${MigrationError.messageOf(error)}\n${usage}`);
     }
   }
 

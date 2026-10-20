@@ -100,6 +100,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       await expect(table.find({ tags: ["x"] })).rejects.toThrow("compares an array");
       await expect(table.find({ profile: { tier: "gold" } })).rejects.toThrow("compares an object");
       await expect(table.find({ "tags.0": "x" })).rejects.toThrow("without array indexes");
+      await expect(table.find({ "tags.-1": "x" })).rejects.toThrow("without array indexes");
       await expect(table.find({ "a,b": 1 })).rejects.toThrow("without array indexes");
       await expect(table.find({ score: { $near: 1 } })).rejects.toThrow('Unknown filter operator "$near"');
     });

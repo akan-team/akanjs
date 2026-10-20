@@ -8,6 +8,7 @@ export * from "./migrationError";
 export * from "./migrationLedger";
 export * from "./migrationLock";
 export * from "./migrationParams";
+export * from "./migrationPulse";
 export * from "./migrationRunner";
 export * from "./migrationScope";
 export * from "./migrations";

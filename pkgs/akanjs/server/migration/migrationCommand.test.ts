@@ -50,6 +50,17 @@ describe("MigrationCommand", () => {
     expect(usage(["plan", "x", "--param", "a=1", "--param", "a=2"])).toBe("usage");
     expect(usage(["plan", "x", "--items", "-1"])).toBe("usage");
     expect(usage(["plan", "x", "--force"])).toBe("usage");
+    expect(usage(["plan", "x", "--items", "1e3"])).toBe("usage");
+    expect(usage(["apply", "x", "--items", "5"])).toBe("usage");
+    expect(usage(["rollback", "x", "--param", "a=1"])).toBe("usage");
+    expect(usage(["list", "--actor", "u1"])).toBe("usage");
+  });
+
+  test("names the command it was invoked as, and finds --json before parsing can fail", () => {
+    expect(() => MigrationCommand.parse(["upgrade"], "akan migrate demo")).toThrow("  akan migrate demo plan <id>");
+    expect(MigrationCommand.usageOf()).toContain("  ops migrate list [--json]");
+    expect(MigrationCommand.jsonOf(["upgrade", "--json"])).toBe(true);
+    expect(MigrationCommand.jsonOf(["list"])).toBe(false);
   });
 
   test("exits 0 when ok, 2 for a caller's mistake, 3 when verify finds problems, 1 for anything else", () => {

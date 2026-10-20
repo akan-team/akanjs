@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { type Dayjs, dayjs } from "akanjs/base";
 import { DocumentSchema } from "akanjs/document";
 import { RawDocumentTable, type SqlDocumentStore, type TransferRow } from "akanjs/service";
 import { searchConfConstant, searchConfDatabase } from "../../service/predefinedAdaptor/search.conformance.fixture";
 import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/conformance";
 import { MigrationChangeLog } from "./migrationChangeLog";
+import { MigrationChanges } from "./migrationChanges";
 import { migration } from "./migrationDefinition";
 import { MigrationError } from "./migrationError";
 import { MigrationLedger } from "./migrationLedger";
@@ -13,14 +15,14 @@ import { type MigrationEntry, MigrationRunner } from "./migrationRunner";
 const T0 = 1_600_000_000_000;
 const tableName = "cardConf";
 
-const createModelTable = async (driver: SqlDriver) => {
+const createModelTable = async (driver: SqlDriver, name = tableName) => {
   const ts = driver.dialect.timestampType();
   await driver.database
     .getConnection()
     .execute(
-      `CREATE TABLE "${tableName}" ("id" TEXT PRIMARY KEY NOT NULL, "createdAt" ${ts} NOT NULL, "updatedAt" ${ts} NOT NULL, "removedAt" ${ts}, "_doc" ${driver.dialect.docColumnType()} NOT NULL)`,
+      `CREATE TABLE "${name}" ("id" TEXT PRIMARY KEY NOT NULL, "createdAt" ${ts} NOT NULL, "updatedAt" ${ts} NOT NULL, "removedAt" ${ts}, "_doc" ${driver.dialect.docColumnType()} NOT NULL)`,
     );
-  return new RawDocumentTable(tableName, () => driver.database.getConnection(), driver.dialect);
+  return new RawDocumentTable(name, () => driver.database.getConnection(), driver.dialect);
 };
 
 const seed = async (table: RawDocumentTable, rows: [string, Record<string, unknown>, number?][]) => {
@@ -45,6 +47,8 @@ const codeOf = async (promise: Promise<unknown>) => {
 
 const docsOf = async (table: RawDocumentTable) =>
   Object.fromEntries((await table.find()).map((row: TransferRow) => [row.id, row._doc]));
+
+const idsOf = (num: number) => Array.from({ length: num }, (_, idx) => `r${String(idx + 1).padStart(4, "0")}`);
 
 const assignOrg = migration("Give every card an org")
   .param("fallbackOrg", String)
@@ -231,7 +235,7 @@ const describeDriver = (kind: SqlDriverKind) => {
 
       const rollbackRun = (await ledger.runsOf("m1")).at(-1);
       expect(rollbackRun).toMatchObject({ kind: "rollback", status: "done", target: applied.runId, actor: "u1" });
-      const undone = await MigrationChangeLog.entries(driver.database.getConnection(), rollbackRun?.id ?? "");
+      const undone = await MigrationChangeLog.page(driver.database.getConnection(), rollbackRun?.id ?? "", null, 100);
       expect(undone.map(({ op }) => op).sort((a, b) => a.localeCompare(b))).toEqual([
         "delete",
         "delete",
@@ -252,7 +256,7 @@ const describeDriver = (kind: SqlDriverKind) => {
           await table(tableName).insert({ name: "Part" }, { id: "p2" });
         })
         .rollback(async ({ table }, changes) => {
-          for (const change of changes.entries) {
+          for await (const change of changes) {
             if (await table(tableName).count({ ref: change.id })) changes.skip(change, "still referenced");
             else await changes.revert(change);
           }
@@ -305,7 +309,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       await driver.database
         .getConnection()
         .prepare(`INSERT INTO "_akan_meta" ("key", "value", "updatedAt") VALUES (?, ?, ?)`)
-        .run(MigrationLock.key, String(Date.now() - MigrationLock.ttlMs - 1_000), Date.now());
+        .run(MigrationLock.key, "a dead run", Date.now() - MigrationLock.ttlMs - 1_000);
       expect(await codeOf(runner.apply("m1", { fallbackOrg: "o9" }))).toBeNull();
       expect(await ledger.get("dead-run")).toMatchObject({ status: "failed", error: "interrupted" });
       const lease = await driver.database
@@ -317,12 +321,12 @@ const describeDriver = (kind: SqlDriverKind) => {
 
     test("outside one transaction each batch commits with its checkpoint, and the next apply resumes after it", async () => {
       const { table, ledger, runnerOf } = await open();
-      const ids = Array.from({ length: 25 }, (_, idx) => `r${String(idx + 1).padStart(2, "0")}`);
+      const ids = idsOf(25);
       await seed(
         table,
         ids.map((id) => [id, { name: id }]),
       );
-      let crashAt: string | null = "r15";
+      let crashAt: string | null = "r0015";
       const seen: string[] = [];
       const backfill = migration("Backfill score")
         .config({ transaction: false, batchSize: 10 })
@@ -337,7 +341,8 @@ const describeDriver = (kind: SqlDriverKind) => {
 
       expect(await codeOf(runner.apply("m1"))).toBe("failed");
       const [failed] = await ledger.runsOf("m1");
-      expect(failed).toMatchObject({ status: "failed", checkpoint: { [`0:${tableName}`]: "r10" } });
+      expect(failed).toMatchObject({ status: "failed" });
+      expect(Object.values(failed?.checkpoint ?? {})).toEqual(["r0010"]);
       expect(failed?.summary).toMatchObject({ changes: 10 });
       expect(await table.count({ score: 0 })).toBe(10);
       expect((await runner.list())[0]?.status).toBe("partial");
@@ -349,8 +354,11 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(seen).toEqual(ids.slice(10));
       expect(await table.count({ score: 0 })).toBe(25);
       expect((await runner.list())[0]?.status).toBe("applied");
-      expect(await ledger.get(resumed.runId)).toMatchObject({ checkpoint: { [`0:${tableName}`]: "r25" } });
+      expect((await ledger.get(resumed.runId))?.checkpoint).toEqual(
+        Object.fromEntries(Object.keys(failed?.checkpoint ?? {}).map((key) => [key, "r0025"])),
+      );
 
+      expect(await codeOf(runner.rollback(failed?.id ?? ""))).toBe("usage");
       const rolledBack = await runner.rollback("m1");
       expect(rolledBack.runs.map(({ target, reverted }) => ({ target, reverted }))).toEqual([
         { target: resumed.runId, reverted: 15 },
@@ -383,6 +391,252 @@ const describeDriver = (kind: SqlDriverKind) => {
       await runner.apply("m1");
       expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny", org: "o9" } });
       expect(await store.count({})).toBe(1);
+    });
+
+    test("a lease renews in band, and the run that lost it stops without deleting the new holder's lease", async () => {
+      const { driver } = await open();
+      const connection = () => driver.database.getConnection();
+      const leaseOf = async () =>
+        await connection()
+          .prepare(`SELECT "value", "updatedAt" FROM "_akan_meta" WHERE "key" = ?`)
+          .get<{ value: string; updatedAt: number | string }>(MigrationLock.key);
+      const lock = new MigrationLock(connection, { inBand: true });
+      expect(await lock.acquire()).toBe(true);
+      await connection().prepare(`UPDATE "_akan_meta" SET "updatedAt" = ? WHERE "key" = ?`).run(T0, MigrationLock.key);
+      await lock.heartbeat(true);
+      expect(Number((await leaseOf())?.updatedAt)).toBeGreaterThan(T0);
+
+      await connection()
+        .prepare(`UPDATE "_akan_meta" SET "value" = ? WHERE "key" = ?`)
+        .run("another run", MigrationLock.key);
+      expect(await codeOf(lock.heartbeat(true))).toBe("locked");
+      await lock.release();
+      expect((await leaseOf())?.value).toBe("another run");
+    });
+
+    test("an apply is recorded done with its writes, so a hook failing after the commit leaves it applied", async () => {
+      const { driver, table, ledger, runnerOf } = await open();
+      await seed(table, [["a1", { price: 100 }]]);
+      const raise = migration("Raise price").apply(async ({ table }) => {
+        await table(tableName).rewrite((row) => ({ price: (row._doc.price as number) + 10 }));
+        await driver.database.afterCommit(() => {
+          throw new Error("post-save hook failed");
+        });
+      });
+      const runner = runnerOf([entryOf("m1", raise)]);
+
+      const applied = await runner.apply("m1");
+      expect(applied.changes).toBe(1);
+      expect(await ledger.get(applied.runId)).toMatchObject({ status: "done" });
+      expect(await codeOf(runner.apply("m1"))).toBe("alreadyApplied");
+      expect(await table.get("a1")).toMatchObject({ _doc: { price: 110 } });
+    });
+
+    test("a resumed apply finds each rewrite's own checkpoint, past a rewrite it no longer calls", async () => {
+      const { table, runnerOf } = await open();
+      await seed(
+        table,
+        idsOf(30).map((id) => [id, { legacy: true, score: null }]),
+      );
+      let crashAt: string | null = "r0015";
+      const twoPasses = migration("Two passes")
+        .config({ transaction: false, batchSize: 10 })
+        .apply(async ({ table }) => {
+          const cards = table(tableName);
+          if (await cards.count({ legacy: true }))
+            await cards.rewrite((row) => (row._doc.legacy ? { legacy: undefined } : null));
+          await cards.rewrite((row) => {
+            if (row.id === crashAt) throw new Error("crash");
+            return row._doc.score === null ? { score: 0 } : null;
+          });
+        });
+      const runner = runnerOf([entryOf("m1", twoPasses)]);
+
+      expect(await codeOf(runner.apply("m1"))).toBe("failed");
+      expect(await table.count({ score: 0 })).toBe(10);
+      crashAt = null;
+      await runner.apply("m1");
+      expect(await table.count({ score: null })).toBe(0);
+    });
+
+    test("an apply a cut-short rollback reached starts over, as rows below its checkpoint were reverted", async () => {
+      const { table, runnerOf } = await open();
+      await seed(
+        table,
+        idsOf(30).map((id) => [id, { name: id }]),
+      );
+      let crashAt: string | null = "r0015";
+      let revertsLeft = 4;
+      const backfill = migration("Backfill score")
+        .config({ transaction: false, batchSize: 10 })
+        .apply(async ({ table }) => {
+          await table(tableName).rewrite((row) => {
+            if (row.id === crashAt) throw new Error("crash");
+            return row._doc.score === undefined ? { score: 0 } : null;
+          });
+        })
+        .rollback(async (_, changes) => {
+          for await (const change of changes) {
+            await changes.revert(change);
+            if (--revertsLeft === 0) throw new Error("rollback cut short");
+          }
+        });
+      const runner = runnerOf([entryOf("m1", backfill)]);
+
+      expect(await codeOf(runner.apply("m1"))).toBe("failed");
+      expect(await codeOf(runner.rollback("m1"))).toBe("failed");
+      expect(await table.count({ score: 0 })).toBe(6);
+      crashAt = null;
+      const restarted = await runner.apply("m1");
+      expect(restarted.changes).toBe(24);
+      expect(await table.count({ score: { $exists: false } })).toBe(0);
+    });
+
+    test("a default rollback cut short resumes below where it got to, rather than calling reverted rows edited", async () => {
+      const { driver, table, runnerOf } = await open();
+      await seed(table, [
+        ["a1", { name: "Kenny" }],
+        ["a3", { name: "Eve" }],
+      ]);
+      const twoSteps = migration("Two steps")
+        .config({ transaction: false })
+        .apply(async ({ table }) => {
+          await table(tableName).set("a3", { org: "o9" });
+          await table(tableName).set("a1", { org: "o9" });
+          await table(tableName).set("a1", { org: "o10" });
+        });
+      const runner = runnerOf([entryOf("m1", twoSteps)]);
+      const applied = await runner.apply("m1");
+      const markA3 = async (op: string) =>
+        await driver.database
+          .getConnection()
+          .prepare(`UPDATE "_akan_migration_change" SET "op" = ? WHERE "runId" = ? AND "docId" = ?`)
+          .run(op, applied.runId, "a3");
+      await markA3("delete");
+
+      expect(await codeOf(runner.rollback("m1"))).toBe("failed");
+      expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny" } });
+      await markA3("update");
+      const [resumed] = (await runner.rollback("m1")).runs;
+      expect(resumed).toMatchObject({ reverted: 1, skipped: [] });
+      expect(await docsOf(table)).toEqual({ a1: { name: "Kenny" }, a3: { name: "Eve" } });
+      expect((await runner.list())[0]?.status).toBe("pending");
+    });
+
+    test("a rollback walks a change log longer than one page", async () => {
+      const { table, runnerOf } = await open();
+      const ids = idsOf(MigrationChanges.pageSize + 20);
+      await seed(
+        table,
+        ids.map((id) => [id, { name: id }]),
+      );
+      const backfill = migration("Backfill score").apply(async ({ table }) => {
+        await table(tableName).rewrite(() => ({ score: 0 }));
+      });
+      const runner = runnerOf([entryOf("m1", backfill)]);
+
+      expect((await runner.apply("m1")).changes).toBe(ids.length);
+      expect((await runner.rollback("m1")).runs[0]).toMatchObject({ reverted: ids.length, skipped: [] });
+      expect(await table.count({ score: { $exists: true } })).toBe(0);
+    });
+
+    test("a rollback puts back whole a container a write created, filled in place of null, or appended to", async () => {
+      const { table, runnerOf } = await open();
+      await seed(table, [
+        ["a1", { name: "Kenny" }],
+        ["a2", { name: "Jane", profile: null }],
+        ["a3", { name: "Eve", items: [] }],
+        ["a4", { tags: ["a"] }],
+      ]);
+      const nested = migration("Nested writes").apply(async ({ table }) => {
+        const cards = table(tableName);
+        await cards.set("a1", { "profile.tier": "gold" });
+        await cards.set("a2", { "profile.tier": "gold" });
+        await cards.set("a3", { "items.0.name": "first" });
+        await cards.set("a4", { "tags.1": "b" });
+      });
+      const runner = runnerOf([entryOf("m1", nested)]);
+      const before = await docsOf(table);
+      await runner.apply("m1");
+      expect(await table.get("a3")).toMatchObject({ _doc: { name: "Eve", items: [{ name: "first" }] } });
+
+      expect((await runner.rollback("m1")).runs[0]).toMatchObject({ reverted: 4, skipped: [] });
+      expect(await docsOf(table)).toEqual(before);
+    });
+
+    test("an unset under a parent the live app cleared or replaced since is skipped, not forced back", async () => {
+      const { table, runnerOf } = await open();
+      await seed(table, [
+        ["a1", { profile: { tier: "gold", nick: "k" } }],
+        ["a2", { profile: { tier: "gold" } }],
+        ["a3", { profile: { tier: "gold" } }],
+      ]);
+      const dropTier = migration("Drop tier").apply(async ({ table }) => {
+        for (const id of ["a1", "a2", "a3"]) await table(tableName).unset(id, ["profile.tier"]);
+      });
+      const runner = runnerOf([entryOf("m1", dropTier)]);
+      await runner.apply("m1");
+      await table.write("a1", { _doc: { profile: null }, removedAt: null });
+      await table.write("a2", { _doc: { profile: "none" }, removedAt: null });
+
+      const [run] = (await runner.rollback("m1")).runs;
+      expect(run?.reverted).toBe(1);
+      expect(run?.skipped.map(({ id }) => id)).toEqual(["a2", "a1"]);
+      expect(await docsOf(table)).toEqual({
+        a1: { profile: null },
+        a2: { profile: "none" },
+        a3: { profile: { tier: "gold" } },
+      });
+    });
+
+    test("verify alone records its run failed while problems remain", async () => {
+      const { table, ledger, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const runner = runnerOf([entryOf("m1", assignOrg)]);
+
+      expect((await runner.verify("m1", { fallbackOrg: "o9" })).problems).toEqual(["1 cards have no org"]);
+      expect((await ledger.runsOf("m1"))[0]).toMatchObject({ status: "failed", error: "1 problem remains" });
+      await runner.apply("m1", { fallbackOrg: "o9" });
+      expect((await runner.verify("m1", { fallbackOrg: "o9" })).problems).toEqual([]);
+      expect((await ledger.runsOf("m1")).at(-1)).toMatchObject({ kind: "verify", status: "done" });
+    });
+
+    test("batchSize takes a whole number of rows, in config and in a rewrite", async () => {
+      expect(() => migration("Zero").config({ batchSize: 0 })).toThrow("whole number");
+      expect(() => migration("Half").config({ batchSize: 2.5 })).toThrow("whole number");
+      const { table, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const fractional = migration("Fractional").apply(async ({ table }) => {
+        await table(tableName).rewrite(() => ({ score: 0 }), { batchSize: 0.5 });
+      });
+
+      expect(await codeOf(runnerOf([entryOf("m1", fractional)]).apply("m1"))).toBe("failed");
+      expect(await docsOf(table)).toEqual({ a1: { name: "Kenny" } });
+    });
+
+    test("a rollback hands the script its params as their declared types", async () => {
+      const { table, runnerOf } = await open();
+      await seed(table, [["a1", { name: "Kenny" }]]);
+      const seen: unknown[] = [];
+      const dated = migration("Dated")
+        .param("since", Date)
+        .apply(async ({ table, params }) => {
+          seen.push(params.since);
+          await table(tableName).set("a1", { since: params.since });
+        })
+        .rollback(async ({ params }, changes) => {
+          seen.push(params.since);
+          await changes.revertAll();
+        });
+      const runner = runnerOf([entryOf("m1", dated)]);
+      await runner.apply("m1", { since: "2026-10-01" });
+      await runner.rollback("m1");
+
+      expect(seen.every((since) => dayjs.isDayjs(since))).toBe(true);
+      expect(seen.map((since) => (since as Dayjs).toISOString())).toEqual([
+        "2026-10-01T00:00:00.000Z",
+        "2026-10-01T00:00:00.000Z",
+      ]);
     });
 
     test.if(kind === "postgres")(

@@ -154,7 +154,7 @@ Stop the local database with `docker compose down` in `local/`. Every service of
 
 `akan db-export <app> [--dir <dir>]`
 
-Write every model table of the app to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.
+Write every model table of the app, and its migration record, to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.
 
 - --dir (String, default local/transfer): Folder to write the files into, relative to the workspace root.
 
@@ -174,6 +174,8 @@ Read the files `db-export` wrote into the database of the mode the shell names. 
 
 - text search: The search index is rebuilt after the import.
 
+- migrations: The migration record moves too, so an applied migration stays applied.
+
 - not moved: Sessions and queued jobs stay behind, so users sign in again. Copy uploads in `local/` yourself.
 
 - no traffic: Boots the app without listening and without running cron or init jobs.
@@ -186,7 +188,7 @@ Sync the app, then run `apps/<app>/script/<filename>.ts` with Bun. Leave the fil
 
 `akan migrate <app> [action] [target] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <name>] [--json <boolean>]`
 
-Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options.
+Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options. See the Data Migrations cheatsheet.
 
 - action (String, default list, list | plan | apply | verify | rollback): What to do; every action but `list` takes a target.
 

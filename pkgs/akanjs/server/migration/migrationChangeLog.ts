@@ -31,12 +31,11 @@ interface MigrationChangeRow {
 export class MigrationChangeLog {
   readonly runId: string;
   readonly #connection: () => AkanSqlClient;
-  #seq: number;
+  #seq = 0;
 
-  constructor(runId: string, connection: () => AkanSqlClient, lastSeq = 0) {
+  constructor(runId: string, connection: () => AkanSqlClient) {
     this.runId = runId;
     this.#connection = connection;
-    this.#seq = lastSeq;
   }
 
   /** Written on the caller's connection, so inside its transaction the entry commits or rolls back with the row. */
@@ -58,13 +57,6 @@ export class MigrationChangeLog {
     this.#seq = seq;
   }
 
-  static async lastSeq(connection: AkanSqlClient, runId: string) {
-    const row = await connection
-      .prepare(`SELECT MAX("seq") AS "seq" FROM "${MigrationTables.change}" WHERE "runId" = ?`)
-      .get<{ seq: number | string | null }>(runId);
-    return Number(row?.seq ?? 0);
-  }
-
   static async count(connection: AkanSqlClient, runId: string) {
     const row = await connection
       .prepare(`SELECT COUNT(*) AS "count" FROM "${MigrationTables.change}" WHERE "runId" = ?`)
@@ -72,21 +64,23 @@ export class MigrationChangeLog {
     return Number(row?.count ?? 0);
   }
 
-  /** Newest first, the order a rollback undoes them in. */
-  static async entries(connection: AkanSqlClient, runId: string): Promise<MigrationChange[]> {
+  /** Newest first, the order a rollback undoes them in: up to `limit` changes, from the newest or under seq `below`. */
+  static async page(connection: AkanSqlClient, runId: string, below: number | null, limit: number) {
     const rows = await connection
       .prepare(
-        `SELECT "runId", "seq", "tableName", "docId", "op", "before", "after" FROM "${MigrationTables.change}" WHERE "runId" = ? ORDER BY "seq" DESC`,
+        `SELECT "runId", "seq", "tableName", "docId", "op", "before", "after" FROM "${MigrationTables.change}" WHERE "runId" = ?${below === null ? "" : ` AND "seq" < ?`} ORDER BY "seq" DESC LIMIT ${Math.trunc(limit)}`,
       )
-      .all<MigrationChangeRow>(runId);
-    return rows.map((row) => ({
-      runId: row.runId,
-      seq: Number(row.seq),
-      table: row.tableName,
-      id: row.docId,
-      op: row.op,
-      before: JSON.parse(row.before) as Record<string, DocSlot>,
-      after: JSON.parse(row.after) as Record<string, DocSlot>,
-    }));
+      .all<MigrationChangeRow>(...(below === null ? [runId] : [runId, below]));
+    return rows.map(
+      (row): MigrationChange => ({
+        runId: row.runId,
+        seq: Number(row.seq),
+        table: row.tableName,
+        id: row.docId,
+        op: row.op,
+        before: JSON.parse(row.before) as Record<string, DocSlot>,
+        after: JSON.parse(row.after) as Record<string, DocSlot>,
+      }),
+    );
   }
 }

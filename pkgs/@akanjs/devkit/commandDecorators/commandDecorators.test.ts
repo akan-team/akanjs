@@ -503,7 +503,7 @@ describe("a Sys that defaults to the only app", () => {
 
 describe("the exit code of a command that failed", () => {
   const track = tempRoots();
-  const run = async (failure: string) => {
+  const run = async (failure: string, { option = "", args = [] as string[] } = {}) => {
     const { root } = track(await makeCliTempWorkspace());
     await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
     await writeText(path.join(root, "tsconfig.json"), "{}\n");
@@ -511,11 +511,11 @@ describe("the exit code of a command that failed", () => {
     await writeText(
       entry,
       [
-        `import { command, ExitCodeError, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        `import { command, ExitCodeError, markCliErrorPrinted, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
         'class VerdictRunner extends runner("verdict") {}',
         'class VerdictScript extends script("verdict", [VerdictRunner]) {}',
         'class VerdictCommand extends command("verdict", [VerdictScript], ({ public: target }) => ({',
-        '  verdict: target({ desc: "fails" }).exec(async function () {',
+        `  verdict: target({ desc: "fails"${option} }).exec(async function () {`,
         `    throw ${failure};`,
         "  }),",
         "})) {}",
@@ -523,9 +523,13 @@ describe("the exit code of a command that failed", () => {
         "",
       ].join("\n"),
     );
-    const proc = Bun.spawn(["bun", entry, "verdict"], { cwd: root, stdout: "pipe", stderr: "pipe" });
-    const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    return { stdout, code };
+    const proc = Bun.spawn(["bun", entry, "verdict", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, code };
   };
 
   test("is the one an ExitCodeError carries, and 1 for any other error", async () => {
@@ -533,6 +537,20 @@ describe("the exit code of a command that failed", () => {
     expect(verdict.stdout).toContain("needs a new store build");
     expect(verdict.code).toBe(2);
     expect((await run('new Error("broke")')).code).toBe(1);
+  }, 30_000);
+
+  test("is usageExitCode for a flag commander refuses before the command runs, failureExitCode after", async () => {
+    const option = ", failureExitCode: 4, usageExitCode: 2";
+    expect((await run('new Error("broke")', { option, args: ["--nope"] })).code).toBe(2);
+    expect((await run('new Error("broke")', { option })).code).toBe(4);
+  }, 30_000);
+
+  test("prints nothing more for an error the command marked as printed", async () => {
+    const marked = await run(
+      '(() => { const error = new Error("printed already"); markCliErrorPrinted(error); return error; })()',
+    );
+    expect(marked.code).toBe(1);
+    expect(`${marked.stdout}${marked.stderr}`).not.toContain("printed already");
   }, 30_000);
 });
 

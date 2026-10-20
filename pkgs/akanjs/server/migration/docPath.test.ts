@@ -28,6 +28,31 @@ describe("DocPath", () => {
     expect(() => DocPath.remove(doc, "tags.0")).toThrow("inside an array");
   });
 
+  test("indexes an array only by a number's canonical spelling", () => {
+    const doc = { tags: ["a", "b"] };
+    expect(DocPath.read(doc, "tags.01")).toEqual([]);
+    expect(DocPath.read(doc, "tags.1")).toEqual(["b"]);
+    expect(() => DocPath.write(doc, "tags.01", "B")).toThrow("not an index within the array");
+    expect(doc).toEqual({ tags: ["a", "b"] });
+  });
+
+  test("anchors a write at the container it creates, fills in place of null, or appends to", () => {
+    const doc = { name: "Kenny", profile: null, items: [], tags: ["a"], meta: { tier: "gold" } };
+    expect(DocPath.anchors(doc, ["meta.tier", "name"])).toEqual(["meta.tier", "name"]);
+    expect(DocPath.anchors(doc, ["settings.theme.color"])).toEqual(["settings"]);
+    expect(DocPath.anchors(doc, ["profile.tier"])).toEqual(["profile"]);
+    expect(DocPath.anchors(doc, ["items.0.name"])).toEqual(["items"]);
+    expect(DocPath.anchors(doc, ["tags.0"])).toEqual(["tags.0"]);
+    expect(DocPath.anchors(doc, ["tags.1", "settings.a", "settings.b"])).toEqual(["tags", "settings"]);
+  });
+
+  test("tells whether every container above a path is still there", () => {
+    expect(DocPath.hasParent({ profile: {} }, "profile.tier")).toBe(true);
+    expect(DocPath.hasParent({ profile: null }, "profile.tier")).toBe(false);
+    expect(DocPath.hasParent({ profile: "none" }, "profile.tier")).toBe(false);
+    expect(DocPath.hasParent({}, "name")).toBe(true);
+  });
+
   test("refuses empty and prototype segments", () => {
     expect(() => DocPath.read({}, "a..b")).toThrow("Invalid document path");
     expect(() => DocPath.write({}, "__proto__.polluted", true)).toThrow("Invalid document path");

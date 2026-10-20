@@ -10,6 +10,8 @@ export interface MigrationScopeOption {
   log?: MigrationChangeLog | null;
   /** Set for a run outside one transaction: each `rewrite` batch commits with where it got to. */
   checkpoints?: { runId: string; ledger: MigrationLedger; resumed: Record<string, string> } | null;
+  /** Called at every table call, so a run keeps its lease however long it holds the event loop. */
+  beat?: () => Promise<void>;
 }
 
 export class MigrationScope {
@@ -20,9 +22,17 @@ export class MigrationScope {
   readonly log: MigrationChangeLog | null;
   readonly #checkpoints: MigrationScopeOption["checkpoints"];
   readonly #reached: Record<string, string>;
-  #rewrites = 0;
+  readonly #rewrites = new Map<string, number>();
+  readonly #beat: () => Promise<void>;
 
-  constructor({ database, readOnly, batchSize, log = null, checkpoints = null }: MigrationScopeOption) {
+  constructor({
+    database,
+    readOnly,
+    batchSize,
+    log = null,
+    checkpoints = null,
+    beat = async () => undefined,
+  }: MigrationScopeOption) {
     if (!database.dialect)
       throw new Error(
         "This database adaptor names no SQL dialect; migrations run on SqliteDatabase or PostgresDatabase",
@@ -34,6 +44,12 @@ export class MigrationScope {
     this.log = log;
     this.#checkpoints = checkpoints;
     this.#reached = { ...checkpoints?.resumed };
+    this.#beat = beat;
+  }
+
+  static assertBatchSize(batchSize: number) {
+    if (!Number.isInteger(batchSize) || batchSize < 1)
+      throw new Error(`batchSize takes a whole number of rows above 0, not ${batchSize}`);
   }
 
   connection(): AkanSqlClient {
@@ -48,14 +64,24 @@ export class MigrationScope {
     return createDocumentId();
   }
 
+  async beat() {
+    await this.#beat();
+  }
+
   /** Joins the transaction already open in this context, or opens one around `fn`. */
   async transaction<T>(fn: () => Promise<T>) {
     return await this.database.transaction(fn);
   }
 
-  /** Rewrites are told apart by the order a run calls them in, so a resumed run finds each one's place again. */
-  nextRewrite(table: string) {
-    const key = `${this.#rewrites++}:${table}`;
+  /**
+   * A rewrite is told apart by its table and `signature`, so a resumed run finds each one's place again even when it
+   * skips a rewrite the first attempt made; only identical rewrites fall back on the order they are called in.
+   */
+  nextRewrite(table: string, signature: string) {
+    const base = `${table}:${signature}`;
+    const occurrence = this.#rewrites.get(base) ?? 0;
+    this.#rewrites.set(base, occurrence + 1);
+    const key = `${base}:${occurrence}`;
     return { key, after: this.#checkpoints ? this.#reached[key] : undefined };
   }
 

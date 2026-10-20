@@ -183,7 +183,8 @@ export class RawDocumentTable {
   // SQLite reads `a.0` as the key "0" and Postgres as the first item, and a comma or brace splits a Postgres path.
   static #assertPath(path: string) {
     const segments = path.split(".");
-    if (segments.some((segment) => !/^[\w$-]+$/.test(segment) || /^\d+$/.test(segment)))
+    // Postgres reads `-1` as the last item of an array, SQLite as a key, so a negative index is refused as well.
+    if (segments.some((segment) => !/^[\w$-]+$/.test(segment) || /^-?\d+$/.test(segment)))
       throw new Error(`Filter path "${path}" must be dot-separated names, without array indexes`);
   }
 

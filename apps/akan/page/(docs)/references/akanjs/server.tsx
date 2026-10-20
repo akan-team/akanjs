@@ -131,6 +131,7 @@ export default page()
       },
       {
         name: "migration",
+        href: "/cheatsheet/dev/migration",
         desc: l.trans({
           en: "Declares a data migration in `script/migration/`, which `akan migrate` runs.",
           ko: "`script/migration/`의 데이터 마이그레이션을 선언합니다. `akan migrate`가 실행합니다.",

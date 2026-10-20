@@ -207,6 +207,11 @@ for (const kind of kinds) {
         }
         expect(await countOf("_akan_meta")).toBeGreaterThan(0);
       });
+
+      test("refuses the migration ledger, which keeps documents as a run found and left them", async () => {
+        await expect(insight.run(`SELECT "op" FROM "_akan_migration_change"`)).rejects.toThrow();
+        await expect(insight.run(`SELECT "migrationId" FROM "_akan_migration_run"`)).rejects.toThrow();
+      });
     });
 
     if (!onPostgres)

@@ -1,20 +1,27 @@
 import type { AkanSqlClient } from "akanjs/service";
+import { MigrationError } from "./migrationError";
 
 /**
- * One run at a time across every replica and channel: a lease in `_akan_meta` whose value is the epoch ms it was last
- * renewed at. A holder that dies is replaced once the lease is `ttlMs` old; a live one renews well inside that.
+ * One run at a time across every replica and channel: a lease in `_akan_meta` holding its holder's token, `updatedAt`
+ * the epoch ms it was last renewed at. A holder that dies is replaced once the lease is `ttlMs` old; a live one renews
+ * well inside that, and every renewal names its token, so a holder that was replaced finds out on its next one.
  */
 export class MigrationLock {
   static readonly key = "migration:lock";
   static readonly ttlMs = 60_000;
   static readonly renewMs = 15_000;
   readonly #connection: () => AkanSqlClient;
+  readonly #inBand: boolean;
   #token: string | null = null;
+  #renewedAt = 0;
+  #lost: boolean = false;
   #timer: ReturnType<typeof setInterval> | null = null;
   #renewing: Promise<void> = Promise.resolve();
 
-  constructor(connection: () => AkanSqlClient) {
+  /** `inBand` for SQLite: bun:sqlite runs each statement synchronously, so a run never lets the renewal timer fire. */
+  constructor(connection: () => AkanSqlClient, { inBand = false }: { inBand?: boolean } = {}) {
     this.#connection = connection;
+    this.#inBand = inBand;
   }
 
   /**
@@ -23,17 +30,25 @@ export class MigrationLock {
    */
   async acquire() {
     const now = Date.now();
-    const token = String(now);
-    const claimed = await this.#connection()
-      .prepare(
-        `INSERT INTO "_akan_meta" ("key", "value", "updatedAt") VALUES (?, ?, ?)
-         ON CONFLICT("key") DO UPDATE SET "value" = ?, "updatedAt" = ?
-         WHERE CAST("_akan_meta"."value" AS BIGINT) < ?
-         RETURNING "value"`,
-      )
-      .get<{ value: string }>(MigrationLock.key, token, now, token, now, now - MigrationLock.ttlMs);
+    const token = crypto.randomUUID();
+    let claimed: { value: string } | null;
+    try {
+      claimed = await this.#connection()
+        .prepare(
+          `INSERT INTO "_akan_meta" ("key", "value", "updatedAt") VALUES (?, ?, ?)
+           ON CONFLICT("key") DO UPDATE SET "value" = ?, "updatedAt" = ?
+           WHERE "_akan_meta"."updatedAt" < ?
+           RETURNING "value"`,
+        )
+        .get<{ value: string }>(MigrationLock.key, token, now, token, now, now - MigrationLock.ttlMs);
+    } catch (error) {
+      //* SQLite: another process's transaction kept the write lock past busy_timeout, as a running apply does.
+      if (/^SQLITE_BUSY/.test(String((error as { code?: unknown } | null)?.code ?? ""))) return false;
+      throw error;
+    }
     if (!claimed) return false;
     this.#token = token;
+    this.#renewedAt = now;
     this.#timer = setInterval(() => {
       this.#renewing = this.#renewing.then(async () => await this.#renew());
     }, MigrationLock.renewMs);
@@ -41,7 +56,17 @@ export class MigrationLock {
     return true;
   }
 
-  // A renewal in flight would leave its new token behind the delete, holding the lease for a whole TTL.
+  /**
+   * Throws once another run has taken the lease over. In-band it renews when due, or at once with `force`: inside a
+   * SQLite transaction the renewal commits with it, and no other process can take the lease while that holds the lock.
+   */
+  async heartbeat(force = false) {
+    if (this.#inBand && (force || Date.now() - this.#renewedAt >= MigrationLock.renewMs)) await this.#renew();
+    if (this.#lost)
+      throw new MigrationError("locked", "Another migration run took the lock over while this one ran, so it stopped");
+  }
+
+  // A renewal in flight would land after the delete and hold the lease for a whole TTL.
   async release() {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
@@ -56,18 +81,16 @@ export class MigrationLock {
 
   async #renew() {
     const held = this.#token;
-    if (!held) return;
+    if (!held || this.#lost) return;
     const now = Date.now();
-    const token = String(now);
     try {
       const renewed = await this.#connection()
-        .prepare(
-          `UPDATE "_akan_meta" SET "value" = ?, "updatedAt" = ? WHERE "key" = ? AND "value" = ? RETURNING "value"`,
-        )
-        .get<{ value: string }>(token, now, MigrationLock.key, held);
-      if (renewed) this.#token = token;
+        .prepare(`UPDATE "_akan_meta" SET "updatedAt" = ? WHERE "key" = ? AND "value" = ? RETURNING "value"`)
+        .get<{ value: string }>(now, MigrationLock.key, held);
+      if (renewed) this.#renewedAt = now;
+      else this.#lost = true;
     } catch {
-      // A missed renewal is retried on the next tick; the lease outlives three of them.
+      // A missed renewal is retried on the next beat or tick; the lease outlives three of them.
     }
   }
 }

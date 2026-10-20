@@ -3,6 +3,7 @@ import type { FieldToValue, ParamFieldType } from "akanjs/constant";
 import type { MigrationChanges } from "./migrationChanges";
 import type { MigrationContext } from "./migrationContext";
 import { type MigrationParamOption, MigrationParams, type MigrationParamValue } from "./migrationParams";
+import { MigrationScope } from "./migrationScope";
 
 export interface MigrationPlan<Item = unknown> {
   /** What a person approving the run reads before it writes anything. */
@@ -22,9 +23,10 @@ type MigrationStage<Params, Result> = (ctx: MigrationContext<Params>) => Promise
 export class MigrationDefinition<Params = Record<never, never>, Plan extends MigrationPlan = MigrationPlan> {
   //* Interned: a definition from a migration chunk is recognised by a runner loaded from another module copy.
   static readonly #marker = Symbol.for("akan.migrationDefinition");
+  static readonly defaultSettings: MigrationSettings = { transaction: true, batchSize: 500 };
   readonly title: string;
   readonly params = new MigrationParams();
-  settings: MigrationSettings = { transaction: true, batchSize: 500 };
+  settings: MigrationSettings = { ...MigrationDefinition.defaultSettings };
   planStage: MigrationStage<Params, Plan> | null = null;
   applyStage: ((ctx: MigrationContext<Params>, plan: Plan) => PromiseOrObject<void>) | null = null;
   verifyStage: MigrationStage<Params, string[]> | null = null;
@@ -75,6 +77,7 @@ export class MigrationDefinition<Params = Record<never, never>, Plan extends Mig
   }
 
   config(settings: Partial<MigrationSettings>) {
+    if (settings.batchSize !== undefined) MigrationScope.assertBatchSize(settings.batchSize);
     this.settings = { ...this.settings, ...settings };
     return this;
   }

@@ -29,6 +29,11 @@ export class MigrationError extends Error {
     return error instanceof Error ? error.message : String(error);
   }
 
+  /** What a verify that found `problemNum` problems reports. */
+  static remaining(problemNum: number) {
+    return problemNum === 1 ? "1 problem remains" : `${problemNum} problems remain`;
+  }
+
   static recorded(error: unknown, runId: string) {
     const recorded =
       error instanceof MigrationError

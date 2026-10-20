@@ -49,7 +49,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, filename) {
       await this.applicationScript.script(app, filename);
     }),
-  migrate: target({ desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration" })
+  migrate: target({
+    desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration",
+    stdio: true,
+    usageExitCode: 2,
+  })
     .with(App)
     .arg("action", String, { desc: "list, plan, apply, verify or rollback", default: "list" })
     .arg("target", String, { desc: "migration id; for rollback, an apply's run id too", nullable: true })
@@ -62,10 +66,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       await this.applicationScript.migrate(app, [
         action,
         ...(target ? [target] : []),
-        ...param.flatMap((each) => ["--param", each]),
-        ...(expect ? ["--expect", expect] : []),
-        ...(items === null ? [] : ["--items", String(items)]),
-        ...(actor ? ["--actor", actor] : []),
+        ...param.map((each) => `--param=${each}`),
+        ...(expect ? [`--expect=${expect}`] : []),
+        ...(items === null ? [] : [`--items=${items}`]),
+        ...(actor ? [`--actor=${actor}`] : []),
         ...(json ? ["--json"] : []),
       ]);
     }),

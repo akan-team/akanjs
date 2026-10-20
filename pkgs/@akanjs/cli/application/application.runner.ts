@@ -273,8 +273,16 @@ try {
     const serverPath = `${app.cwdPath}/server.ts`;
     if (!(await app.exists("server.ts"))) throw new Error(`Server file not found: apps/${app.name}/server.ts`);
     const code = `
-const { server, migrations } = await import(${JSON.stringify(serverPath)});
-process.exitCode = await migrations.command(server, ${JSON.stringify(argv)});
+const argv = ${JSON.stringify(argv)};
+let loaded;
+try {
+  loaded = await import(${JSON.stringify(serverPath)});
+} catch (error) {
+  console.error(error);
+  const { MigrationCommand } = await import("akanjs/server");
+  process.exitCode = await MigrationCommand.print(MigrationCommand.failure(null, error), MigrationCommand.jsonOf(argv));
+}
+if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, argv, ${JSON.stringify(`akan migrate ${app.name}`)});
 `;
     try {
       await this.#spawnFromRoot(app, "script", ["-e", code]);

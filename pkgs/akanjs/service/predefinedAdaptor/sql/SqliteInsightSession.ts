@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { MigrationTables } from "./MigrationTables";
 import type { InsightSession } from "./types";
 import { quoteIdent } from "./values";
 
@@ -14,6 +15,8 @@ import { quoteIdent } from "./values";
 export class SqliteInsightSession implements InsightSession {
   // Refused by name, as a schema argument can be computed: raw pages and ANALYZE's STAT4 index samples.
   static readonly #unnameable = ["sqlite_dbpage", "sqlite_stat3", "sqlite_stat4"];
+  // The migration ledger keeps every document a run rewrote as it was and became, and the params it was run with.
+  static readonly #ledger = [MigrationTables.run, MigrationTables.change];
   static readonly #documentColumn = "_doc";
 
   readonly #db: Database;
@@ -22,7 +25,7 @@ export class SqliteInsightSession implements InsightSession {
 
   private constructor(db: Database, source: string, cleanup: () => Promise<void>) {
     this.#db = db;
-    this.#hidden = [source, ...SqliteInsightSession.#unnameable];
+    this.#hidden = [source, ...SqliteInsightSession.#unnameable, ...SqliteInsightSession.#ledger];
     this.#cleanup = cleanup;
   }
 

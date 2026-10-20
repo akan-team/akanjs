@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs, enumOf, ID, Int } from "akanjs/base";
+import { type Dayjs, dayjs, enumOf, ID, Int } from "akanjs/base";
 import { MigrationParams } from "./migrationParams";
 
 class Policy extends enumOf("migrationPolicy", ["duplicate", "primary"] as const) {}
@@ -52,6 +52,16 @@ describe("MigrationParams", () => {
     const required = new MigrationParams();
     required.declare({ name: "org", type: ID });
     expect(() => required.parse({ org: "" })).toThrow('Param "org" is required');
+  });
+
+  test("reads a date alone as midnight UTC, and revives params a run stored as JSON", () => {
+    const params = declared();
+    const parsed = params.parse({ since: "2026-10-01", limit: "25" });
+    expect((parsed.since as Dayjs).toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    const revived = params.revive(JSON.parse(JSON.stringify({ since: parsed.since, limit: 25 })));
+    expect(dayjs.isDayjs(revived.since)).toBe(true);
+    expect((revived.since as Dayjs).valueOf()).toBe((parsed.since as Dayjs).valueOf());
+    expect(revived).toMatchObject({ limit: 25, shared: "duplicate", fallbackOrg: null });
   });
 
   test("refuses a malformed or repeated declaration", () => {

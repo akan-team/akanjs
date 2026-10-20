@@ -687,8 +687,8 @@ akan dbup --mode cluster`,
         name: "db-export",
         signature: "akan db-export <app> [--dir <dir>]",
         desc: l.trans({
-          en: "Write every model table of the app to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.",
-          ko: "셸이 가리키는 모드의 데이터베이스에서 앱의 model 테이블마다 NDJSON 파일 하나씩을 씁니다. `db-import`와 짝지어 `single`에서 `cluster`처럼 모드 사이에 데이터를 옮깁니다.",
+          en: "Write every model table of the app, and its migration record, to one NDJSON file each, from the database of the mode the shell names. Pair it with `db-import` to move data between modes, such as `single` to `cluster`.",
+          ko: "셸이 가리키는 모드의 데이터베이스에서 앱의 model 테이블과 마이그레이션 기록을 각각 NDJSON 파일 하나로 씁니다. `db-import`와 짝지어 `single`에서 `cluster`처럼 모드 사이에 데이터를 옮깁니다.",
         }),
         options: [
           {
@@ -762,6 +762,13 @@ SQLITE_DATABASE_PATH=$PWD/backup/myapp-main.db \\
             }),
           },
           {
+            name: l.trans({ en: "migrations", ko: "마이그레이션" }),
+            desc: l.trans({
+              en: "The migration record moves too, so an applied migration stays applied.",
+              ko: "마이그레이션 기록도 옮기므로, 적용된 마이그레이션은 적용된 채로 남습니다.",
+            }),
+          },
+          {
             name: l.trans({ en: "not moved", ko: "옮기지 않는 것" }),
             desc: l.trans({
               en: "Sessions and queued jobs stay behind, so users sign in again. Copy uploads in `local/` yourself.",
@@ -808,8 +815,8 @@ akan script myapp seed.ts`,
         signature:
           "akan migrate <app> [action] [target] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <name>] [--json <boolean>]",
         desc: l.trans({
-          en: "Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options.",
-          ko: "앱을 sync한 뒤 포트와 스케줄 없이 서버를 띄워 `apps/<app>/script/migration/`의 마이그레이션에 동작 하나를 실행합니다. 빌드된 컨테이너 안에서는 `bun main.js ops migrate`가 같은 동작과 옵션을 받습니다.",
+          en: "Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options. See the Data Migrations cheatsheet.",
+          ko: "앱을 sync한 뒤 포트와 스케줄 없이 서버를 띄워 `apps/<app>/script/migration/`의 마이그레이션에 동작 하나를 실행합니다. 빌드된 컨테이너 안에서는 `bun main.js ops migrate`가 같은 동작과 옵션을 받습니다. 데이터 마이그레이션 치트시트를 보세요.",
         }),
         args: [
           {

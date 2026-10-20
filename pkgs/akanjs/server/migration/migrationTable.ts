@@ -1,9 +1,15 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { sanitizeJson } from "akanjs/document";
-import { RawDocumentTable, type RawFilter, type RawFindOptions, type TransferRow } from "akanjs/service";
+import {
+  descriptorHash,
+  RawDocumentTable,
+  type RawFilter,
+  type RawFindOptions,
+  type TransferRow,
+} from "akanjs/service";
 import { DocPath, type DocSlot } from "./docPath";
 import type { MigrationChange } from "./migrationChangeLog";
-import type { MigrationScope } from "./migrationScope";
+import { MigrationScope } from "./migrationScope";
 
 /** A path to its new value; `undefined` removes the path. */
 export type MigrationPatch = Record<string, unknown>;
@@ -35,14 +41,17 @@ export class MigrationTable {
   }
 
   async find(where?: RawFilter, options?: RawFindOptions) {
+    await this.#scope.beat();
     return await this.#raw.find(where, options);
   }
 
   async get(id: string) {
+    await this.#scope.beat();
     return await this.#raw.get(id);
   }
 
   async count(where?: RawFilter, options?: Omit<RawFindOptions, "limit">) {
+    await this.#scope.beat();
     return await this.#raw.count(where, options);
   }
 
@@ -72,13 +81,17 @@ export class MigrationTable {
     this.#assertWritable();
     const base = Object.keys(doc).find((key) => MigrationTable.#baseColumns.has(key));
     if (base) throw new Error(`"${base}" is a column of ${this.name}, not a field of its _doc`);
-    return await this.#scope.transaction(async () => await this.#insert(doc, id ?? this.#scope.createId(), removedAt));
+    return await this.#scope.transaction(async () => {
+      await this.#scope.beat();
+      return await this.#insert(doc, id ?? this.#scope.createId(), removedAt);
+    });
   }
 
   /** A new row holding the source's `_doc` with `patch` applied, removed if the source is. */
   async copy(id: string, patch: MigrationPatch = {}) {
     this.#assertWritable();
     return await this.#scope.transaction(async () => {
+      await this.#scope.beat();
       const source = await this.#raw.get(id);
       if (!source) throw new Error(`${this.name} ${id} does not exist`);
       const doc = structuredClone(source._doc);
@@ -96,12 +109,15 @@ export class MigrationTable {
     { where, withRemoved = true, batchSize = this.#scope.batchSize }: MigrationRewriteOption = {},
   ) {
     this.#assertWritable();
-    const { key, after: resumed } = this.#scope.nextRewrite(this.name);
+    MigrationScope.assertBatchSize(batchSize);
+    const signature = await descriptorHash({ where: where ?? null, withRemoved, fn: fn.toString() });
+    const { key, after: resumed } = this.#scope.nextRewrite(this.name, signature.slice(0, 12));
     let after = resumed;
     let scanned = 0;
     let changed = 0;
     for (;;) {
       const rows = await this.#scope.transaction(async () => {
+        await this.#scope.beat();
         const batch = await this.#raw.find(where, { after, limit: batchSize, withRemoved, lock: true });
         for (const row of batch) {
           scanned++;
@@ -110,6 +126,7 @@ export class MigrationTable {
         }
         const last = batch.at(-1);
         if (last) await this.#scope.reach(key, last.id);
+        await this.#scope.beat();
         return batch;
       });
       after = rows.at(-1)?.id ?? after;
@@ -126,6 +143,7 @@ export class MigrationTable {
     this.#assertWritable();
     if (change.op === "delete") throw new Error("A rollback's own deletes are final; restore a backup to undo them");
     return await this.#scope.transaction(async () => {
+      await this.#scope.beat();
       const row = await this.#raw.get(change.id, { lock: true });
       if (change.op === "insert") {
         if (!row) return "reverted";
@@ -148,6 +166,11 @@ export class MigrationTable {
       const patch = Object.fromEntries(
         Object.entries(docSlots).map(([path, slot]) => [path, slot.length ? slot[0] : undefined]),
       );
+      try {
+        MigrationTable.#apply(structuredClone(row._doc), patch);
+      } catch {
+        return "changed";
+      }
       await this.#update(row, patch, removedSlot ? ((removedSlot[0] ?? null) as number | null) : undefined);
       return "reverted";
     });
@@ -156,6 +179,7 @@ export class MigrationTable {
   async #write(id: string, fn: (row: TransferRow) => Promise<boolean> | boolean) {
     this.#assertWritable();
     return await this.#scope.transaction(async () => {
+      await this.#scope.beat();
       const row = await this.#raw.get(id, { lock: true });
       if (!row) throw new Error(`${this.name} ${id} does not exist`);
       return await fn(row);
@@ -167,15 +191,15 @@ export class MigrationTable {
     for (const path of paths) MigrationTable.#assertField(path);
     DocPath.assertDisjoint(paths);
     const doc = structuredClone(row._doc);
+    MigrationTable.#apply(doc, patch);
     const before: Record<string, DocSlot> = {};
     const after: Record<string, DocSlot> = {};
-    for (const path of paths) {
-      const previous = DocPath.read(doc, path);
-      MigrationTable.#apply(doc, { [path]: patch[path] });
-      const next = DocPath.read(doc, path);
+    for (const anchor of DocPath.anchors(row._doc, paths)) {
+      const previous = DocPath.read(row._doc, anchor);
+      const next = DocPath.read(doc, anchor);
       if (DocPath.same(previous, next)) continue;
-      before[path] = previous;
-      after[path] = next;
+      before[anchor] = previous;
+      after[anchor] = next;
     }
     const nextRemovedAt = removedAt === undefined ? row.removedAt : removedAt;
     if (nextRemovedAt !== row.removedAt) {
@@ -214,8 +238,13 @@ export class MigrationTable {
     }
   }
 
+  // An empty slot holds only while its parents are still containers: one replaced since is a change of its own.
   static #holds(row: TransferRow, slots: Record<string, DocSlot>) {
-    return Object.entries(slots).every(([path, slot]) => DocPath.same(MigrationTable.#slot(row, path), slot));
+    return Object.entries(slots).every(
+      ([path, slot]) =>
+        DocPath.same(MigrationTable.#slot(row, path), slot) &&
+        (slot.length > 0 || path.startsWith("$") || DocPath.hasParent(row._doc, path)),
+    );
   }
 
   static #slot(row: TransferRow, path: string): DocSlot {

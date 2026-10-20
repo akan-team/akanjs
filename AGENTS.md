@@ -585,10 +585,12 @@ docs page).
 - Past about five seconds on SQLite, an apply's one transaction makes the live server's writes fail. Take
   `.config({ transaction: false })`, which commits each `rewrite` batch and resumes a `partial` run from the top of
   `apply` — so a second run must change nothing (a `where` the new shape no longer matches).
-- `$ne` leaves out rows missing the path (match them with `$exists: false`); `find`, `count` and `rewrite` include
-  removed rows unless `{ withRemoved: false }`; a `table()` write leaves `updatedAt` alone.
+- `$ne` leaves out rows whose path is missing or `null` (match them with `{ path: null }`; `$exists: false` misses a
+  stored `null`); `find`, `count` and `rewrite` include removed rows unless `{ withRemoved: false }`; a `table()` write
+  leaves `updatedAt` alone.
 - Throw a plain `Error` an operator can act on. Never edit a migration an environment has applied — write another;
-  delete it once every environment has.
+  delete it once every environment has, unless its `.rollback(fn)` may still be needed: without the file a rollback
+  runs the default undo.
 
 ## Present In The Code — Do Not Imitate
 
