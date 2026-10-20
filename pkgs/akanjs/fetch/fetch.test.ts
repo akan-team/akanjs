@@ -13,6 +13,7 @@ import {
   type SerializedSignal,
   type SliceCls,
 } from "akanjs/signal";
+import { AppScope } from "./appScope";
 import { FetchClient, type FetchProxy } from "./client/fetchClient";
 import { HttpClient } from "./client/httpClient";
 import { type ErrorResponsePayload, type RestoredError, restoreRemoteError } from "./client/remoteError";
@@ -1229,6 +1230,81 @@ describe("FetchClient over a bridge", () => {
     } finally {
       FetchClient.setBridge(null);
     }
+  });
+});
+
+describe("FetchClient inside an app's load", () => {
+  const refusalOf = (error: unknown) => {
+    const refused = error as TestErr;
+    return { error: refused.error, statusCode: refused.statusCode, data: refused.data };
+  };
+
+  test("refuses every write before it is built or sent, and lets the queries through", async () => {
+    setMockFetch();
+    setFakeWebSocket();
+    jsonResponses.push("fetched");
+    const uploadSignal: SerializedSignal = {
+      endpoint: {
+        addFiles: {
+          type: "mutation",
+          fileUpload: true,
+          args: [arg("body", "files", { refName: "Upload", arrDepth: 1 }), arg("body", "metas"), arg("body", "type")],
+          returns: { refName: "String" },
+        },
+      },
+    };
+    const client = new FetchClient(
+      "https://api.example",
+      {},
+      { service: serviceSignal, fetchTestItem: databaseSignal, file: uploadSignal },
+      TestErr,
+    );
+    const refusals = await AppScope.run("showThing", async () => {
+      const fetched = await client.handler.getThing("1234567890abcdef12345678", [], null);
+      const created = await (client.handler.createThing("Made", 1) as Promise<unknown>).catch((error) => error);
+      const uploaded = await (
+        client.handler.addFetchTestItemFiles([new File(["x"], "x.txt")]) as Promise<unknown>
+      ).catch((error) => error);
+      const thrown = (call: () => unknown) => {
+        try {
+          call();
+        } catch (error) {
+          return error;
+        }
+      };
+      const subscribed = thrown(() => client.handler.subscribeRoomThing("room-1", () => undefined));
+      const sent = thrown(() => client.handler.sendThing("hello"));
+      return { fetched, created, uploaded, subscribed, sent };
+    });
+
+    expect(refusals.fetched).toBe("fetched");
+    expect(refusalOf(refusals.created)).toEqual({
+      error: "base.error.mutationInApp",
+      statusCode: 400,
+      data: { app: "showThing", endpoint: "createThing" },
+    });
+    expect(refusals.created).toBeInstanceOf(TestErr);
+    expect(refusalOf(refusals.uploaded).data).toEqual({ app: "showThing", endpoint: "addFetchTestItemFiles" });
+    expect(refusalOf(refusals.subscribed).data).toEqual({ app: "showThing", endpoint: "roomThing" });
+    expect(refusalOf(refusals.sent).data).toEqual({ app: "showThing", endpoint: "sendThing" });
+    expect(fetchCalls.map((call) => call.url)).toEqual(["https://api.example/custom/1234567890abcdef12345678"]);
+    expect(FakeWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([]);
+
+    await client.handler.createThing("Made", 1);
+    expect(fetchCalls.map((call) => call.url).at(-1)).toBe("https://api.example/createThing");
+  });
+
+  test("refuses a write the load makes after an await, and none made beside it", async () => {
+    setMockFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const late = AppScope.run("showThing", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return await (client.handler.createThing("Late", 1) as Promise<unknown>).catch((error) => error);
+    });
+    const beside = await client.handler.createThing("Beside", 1);
+    expect(beside).toBeInstanceOf(FetchTestFull);
+    expect(refusalOf(await late).error).toBe("base.error.mutationInApp");
+    expect(fetchCalls).toHaveLength(1);
   });
 });
 

@@ -1,4 +1,5 @@
 export * from "./agentTurn";
+export * from "./appScope";
 export * from "./client";
 export * from "./fetchType";
 export * from "./requestStorage";

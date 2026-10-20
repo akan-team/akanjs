@@ -161,12 +161,18 @@ export abstract class RouteDefinition<
     return module;
   }
 
+  /** What `.render()` receives beyond the declared args; a page adds its apps' elements. */
+  protected async renderArgsOf(args: RouteBaseArgs & Args & Extra): Promise<RouteBaseArgs & Args & Extra> {
+    return args;
+  }
+
   //? Kept while the render stage and the arguments are the same: a dev server swapping route modules unfolds every
   //? route again, and a new function per call would make each mounted layer render again, not just the edited one.
   #renderRouteOf(render: (args: never) => PromiseOrObject<ReactNode>) {
     const kept = this.#renderRoute;
     if (kept?.render === render && kept.argCount === this.args.length) return kept.route;
-    const route = async (props: RouteRenderProps) => await render(this.#argsOf(props) as never);
+    const route = async (props: RouteRenderProps) =>
+      await render((await this.renderArgsOf(this.#argsOf(props))) as never);
     Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
     this.#renderRoute = { render, argCount: this.args.length, route };
     return route;
