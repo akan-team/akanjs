@@ -5,10 +5,12 @@ import { Layout, Model } from "akanjs/ui";
 
 export default page()
   .config({ topInset: 48, transition: "stack" })
-  .prompt("showTripNotes", "Show the notes shared with everyone on this trip.")
-  .render(() => {
-    const { l } = usePage();
+  .app("showTripNotes", "Show the notes shared with everyone on this trip.", () => {
     const { memoInitInPublic } = fetch.initMemoInPublic();
+    return <Memo.Zone.Card className="flex flex-col gap-3" init={memoInitInPublic} />;
+  })
+  .render(({ showTripNotes }) => {
+    const { l } = usePage();
     return (
       <Screen className="pb-10">
         <Layout.Navbar className={appNavClass} back>
@@ -23,7 +25,7 @@ export default page()
               <Memo.Template.General />
             </Model.New>
           </div>
-          <Memo.Zone.Card className="flex flex-col gap-3" init={memoInitInPublic} />
+          {showTripNotes}
         </div>
       </Screen>
     );
