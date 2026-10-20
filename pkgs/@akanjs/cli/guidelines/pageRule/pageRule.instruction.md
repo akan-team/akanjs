@@ -49,15 +49,19 @@ body shape — this is the full contract behind them. Before changing route beha
   `children`) and may be `async`. It refuses by moving the router — `router.redirect(href)`, `router.notFound()` — or
   with `getSelf({ unauthorize })`; `signedIn()` from `@libs/shared/webkit` is that last one, called inside an arrow
   (`.guard(() => signedIn())`), because `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
-- **On the server every guard of the chain runs before any layout body starts**, root layout first, so a redirect is
-  a real 307 even after an awaited query, and a not-found is a 404 — where a `getSelf({ unauthorize })` inside a layout
-  body after I/O redirects late, inside the stream. A query in a guard that the server refuses with 403 or 404 (an
-  owner check) answers not-found, so the page never confirms the record exists.
-- **On a client navigation a page's layers wait for its guards**, run once per location; a guard that moves the
-  router ends the chain and the page draws nothing, and a refused or failed check runs again when the cached page
-  comes back or its layer is retried. Root layouts are drawn once for every page and are not gated themselves; their
-  guards still run in each page's chain, and a legacy page under them waits too. `guard` is a stage only: a legacy
-  module that exports one fails to load.
+- **On the server every guard of the chain runs before any layout body starts**, root layout first and before the
+  route's arguments are checked, so a redirect is a real 307 even after an awaited query, and a not-found is a 404 —
+  where a `getSelf({ unauthorize })` inside a layout body after I/O redirects late, inside the stream. A query in a
+  guard that the server refuses with 403 or 404 (an owner check) answers not-found, so the page never confirms the
+  record exists. A refusal's not-found keeps only the layouts above the refusing guard, and a path no page matches
+  asks the guards of the layouts its not-found would sit under first.
+- **On a client navigation a page's layers wait for its guards.** The verdict is kept by what the guards read (a
+  query only the page reads keeps it) and lasts while a layer of that location is on screen: a page that comes back
+  after it left, a cached one included, asks again. A guard that moves the router ends the chain and the page draws
+  nothing; a refused or failed check runs again when its layer is retried. Root layouts are drawn once for every page
+  and are not gated themselves; their guards still run in each page's chain, and a legacy page under them waits too.
+  `guard` is a stage only: a legacy module that exports one, a root layout's included, fails to load and fails
+  `akan build`.
 - **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and
   the page tools in `tools/list` show only the screens whose guards admit the caller (a listing knows no arguments,
   so a guard that reads one admits there and is checked again on the call).
@@ -77,9 +81,9 @@ body shape — this is the full contract behind them. Before changing route beha
   the module loads, as does an app named like the page's `.prompt()`.
 - **`load` may only query** (`base.error.mutationInApp` otherwise): keep writes in `.render()` around the element, and
   gating in `.guard()`. The view runs `load` with no layout body and no `.render()`: it gets the root layout's theme,
-  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page, and nothing
-  a layout body provides. Full
-  contract: `mcpRule`.
+  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page (one at the
+  root layout's folder or above wraps `McpAppRoot`, its toasts included), and nothing a layout body provides. The
+  chain is the `export default` expression itself: one bound to a name fails the build. Full contract: `mcpRule`.
 
 ## Heads
 

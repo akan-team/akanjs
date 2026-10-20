@@ -58,13 +58,13 @@ const crawlerFiles = [
 const guardRuns = [
   {
     name: "SSR",
-    en: "Every guard in the chain runs in order, root layout first and page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404.",
-    ko: "체인의 모든 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저 실행됩니다. 쿼리를 await한 뒤라도 redirect는 실제 307이 되고, not-found는 404가 됩니다.",
+    en: "Every guard in the chain runs in order, root layout first and page last, before any layout body starts and before the route's arguments are checked. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A refusal's not-found keeps only the layouts above the refusing guard, and a path no page matches asks the guards of the layouts its not-found would sit under first.",
+    ko: "체인의 모든 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저, 라우트 인자를 검사하기 전에 실행됩니다. 쿼리를 await한 뒤라도 redirect는 실제 307이 되고, not-found는 404가 됩니다. 거절로 그리는 not-found에는 거절한 guard 위의 layout만 남고, 어떤 페이지와도 맞지 않는 경로는 not-found를 감쌀 layout들의 guard에 먼저 묻습니다.",
   },
   {
     name: "CSR",
-    en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when the cached page comes back on screen or its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.",
-    ko: "페이지의 레이어는 guard를 기다리며, guard는 위치마다 한 번 실행됩니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 페이지가 다시 화면에 오거나 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행되고 그 아래의 레거시 페이지도 이 guard를 기다립니다.",
+    en: "A page's layers wait for its guards. Their verdict is kept by what the guards read, so a query only the page reads keeps it, and lasts while a layer of that location is on screen: a page that comes back after it left, a cached one included, asks again. A guard that moves the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is retried. A root layout is drawn once for every page and is not gated itself, but its guard still runs in each page's chain, and a legacy page under it waits for it too.",
+    ko: "페이지의 레이어는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되므로 페이지만 읽는 쿼리가 바뀌어도 유지되고, 그 위치의 레이어가 화면에 있는 동안 이어집니다. 화면을 떠났다가 다시 온 페이지는 캐시된 것이라도 다시 묻습니다. 라우터를 옮긴 guard는 체인을 끝내고 페이지는 아무것도 그리지 않으며, 거절되거나 실패한 검사는 레이어를 재시도할 때 다시 실행됩니다. root layout은 모든 페이지에 한 번만 그려지고 그 자체가 막히지는 않지만, 그 guard는 페이지마다 체인 안에서 실행되고 그 아래의 레거시 페이지도 이 guard를 기다립니다.",
   },
   {
     name: "MCP",

@@ -829,15 +829,15 @@ export default page()
       {
         where: l.trans({ en: "Server render", ko: "서버 렌더링" }),
         what: l.trans({
-          en: "Every guard in the chain runs in order, root layout first and the page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.",
-          ko: "chain의 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저 실행됩니다. query를 await한 뒤라도 redirect는 실제 307, not-found는 404 응답입니다. guard 안의 query를 서버가 403이나 404로 거절하면 not-found로 응답하므로, page가 그 레코드의 존재를 알려 주지 않습니다.",
+          en: "Every guard in the chain runs in order, root layout first and the page last, before any layout body starts and before the route's arguments are checked. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.",
+          ko: "chain의 guard가 root layout부터 page까지 차례로, 어떤 layout body보다도 먼저, route 인자를 검사하기 전에 실행됩니다. query를 await한 뒤라도 redirect는 실제 307, not-found는 404 응답입니다. guard 안의 query를 서버가 403이나 404로 거절하면 not-found로 응답하므로, page가 그 레코드의 존재를 알려 주지 않습니다.",
         }),
       },
       {
         where: l.trans({ en: "Client navigation", ko: "클라이언트 이동" }),
         what: l.trans({
-          en: "A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain, and the page draws nothing. A refused or failed check runs again when the cached page comes back on screen or its layer is retried. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.",
-          ko: "page의 layer는 guard를 기다리며, guard는 주소마다 한 번 실행됩니다. guard가 router를 움직이면 chain이 끝나고 page는 아무것도 그리지 않습니다. 거절되거나 실패한 검사는 캐시된 page가 다시 화면에 나오거나 그 layer를 다시 시도할 때 다시 실행됩니다. root layout은 모든 page에 한 번만 그려져서 그 자체는 막히지 않지만, 그 guard는 page마다 chain 안에서 실행됩니다.",
+          en: "A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page that comes back after it left asks again. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.",
+          ko: "page의 layer는 guard를 기다립니다. 판정은 guard가 읽는 값 기준으로 보관되고 그 주소의 layer가 화면에 있는 동안 유지되며, 화면을 떠났다 돌아온 page는 다시 묻습니다. guard가 router를 움직이면 chain이 끝나고 page는 아무것도 그리지 않습니다. root layout은 모든 page에 한 번만 그려져서 그 자체는 막히지 않지만, 그 guard는 page마다 chain 안에서 실행됩니다.",
         }),
       },
       {
@@ -2250,7 +2250,9 @@ export default page()
                       language when the app speaks it, and draws the element inside the <code>_overrides.tsx</code> over
                       the page and the root layout's <code>McpAppRoot</code>, which renders <code>System.App</code> from{" "}
                       <code>akanjs/ui</code>: the root layout's theme, fonts and providers, with no frame, router or
-                      websocket. No layout body and no <code>.render()</code> runs in a view, so a layout's{" "}
+                      websocket. An <code>_overrides.tsx</code> at the root layout's folder or above wraps{" "}
+                      <code>McpAppRoot</code>, as it wraps the root layout on the web, so the toasts and approvals it
+                      draws take it too. No layout body and no <code>.render()</code> runs in a view, so a layout's{" "}
                       <code>{"<Agent.Guide>"}</code> does not reach the host; one inside the element does.
                     </span>
                   ),
@@ -2260,7 +2262,9 @@ export default page()
                       언어를 지원하면 그 언어로), 엘리먼트를 페이지 위의 <code>_overrides.tsx</code>와 root layout의{" "}
                       <code>McpAppRoot</code> 안에 그립니다. <code>McpAppRoot</code>는 <code>akanjs/ui</code>의{" "}
                       <code>System.App</code>을 렌더링하므로, frame·router·websocket 없이 root layout의 테마, 폰트,
-                      provider만 갖춥니다. view에서는 layout body도 <code>.render()</code>도 실행되지 않으므로 layout의{" "}
+                      provider만 갖춥니다. root layout의 폴더나 그 위의 <code>_overrides.tsx</code>는 웹에서 root
+                      layout을 감싸듯 <code>McpAppRoot</code>를 감싸므로, 그 안의 토스트와 승인 창에도 적용됩니다.
+                      view에서는 layout body도 <code>.render()</code>도 실행되지 않으므로 layout의{" "}
                       <code>{"<Agent.Guide>"}</code>는 호스트에 닿지 않고, 엘리먼트 안에 둔 것은 닿습니다.
                     </span>
                   ),

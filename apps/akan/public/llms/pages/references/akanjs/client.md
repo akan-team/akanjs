@@ -352,9 +352,9 @@ Where
 
 What happens
 
-- Server render — Every guard in the chain runs in order, root layout first and the page last, before any layout body starts. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.
+- Server render — Every guard in the chain runs in order, root layout first and the page last, before any layout body starts and before the route's arguments are checked. A redirect is a real 307 even after an awaited query, and a not-found is a 404. A query in a guard that the server refuses with 403 or 404 answers not-found, so the page never confirms the record exists.
 
-- Client navigation — A page's layers wait for its guards, which run once per location. A guard that moves the router ends the chain, and the page draws nothing. A refused or failed check runs again when the cached page comes back on screen or its layer is retried. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.
+- Client navigation — A page's layers wait for its guards. The verdict is kept by what the guards read and lasts while a layer of that location is on screen; a page that comes back after it left asks again. A guard that moves the router ends the chain, and the page draws nothing. Root layouts are drawn once for every page and are not gated themselves, but their guards still run in each page's chain.
 
 - MCP — A page prompt or app tool runs the route's guards before anything else, and a refusal ends it as a redirect or a not-found. `prompts/list` and the page tools in `tools/list` show only the screens whose guards admit the caller. A listing knows no arguments: a guard that reads one admits the caller there and is checked again on the call. If the guards do not answer within 1 s, the list is served unfiltered; the calls are still checked.
 
@@ -438,7 +438,7 @@ The view
 
 **One file per app.** `akan build` writes a single-file `dist/apps/<app>/mcp-apps/<name>.html` beside `csr/`. `akan start` writes `.akan/artifact/mcp-apps/` when a host first reads a view, and again after a save. The tool points at it as `ui://<app>/apps/<name>`. With `web: { csr: false }`, the tool has no view.
 
-**It draws the element alone.** The view runs `load` again, in the host's language when the app speaks it, and draws the element inside the `_overrides.tsx` over the page and the root layout's `McpAppRoot`, which renders `System.App` from `akanjs/ui`: the root layout's theme, fonts and providers, with no frame, router or websocket. No layout body and no `.render()` runs in a view, so a layout's `<Agent.Guide>` does not reach the host; one inside the element does.
+**It draws the element alone.** The view runs `load` again, in the host's language when the app speaks it, and draws the element inside the `_overrides.tsx` over the page and the root layout's `McpAppRoot`, which renders `System.App` from `akanjs/ui`: the root layout's theme, fonts and providers, with no frame, router or websocket. An `_overrides.tsx` at the root layout's folder or above wraps `McpAppRoot`, as it wraps the root layout on the web, so the toasts and approvals it draws take it too. No layout body and no `.render()` runs in a view, so a layout's `<Agent.Guide>` does not reach the host; one inside the element does.
 
 **First reads come from the snapshot.** They take no round trip. A later read, such as a refetch or another page of a list, is relayed by the host as `tools/call` under the host's credential, so its endpoint must be a published tool or an app-only one (`mcp: false`).
 
