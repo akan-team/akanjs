@@ -108,8 +108,8 @@ export class McpRouter {
     // Resolved here so a call's domain error reads in the language its tool was described in.
     this.#dispatcher = new McpDispatcher({ ...props, legacyTextBlock, language: props.language ?? defaultLanguage });
     this.#auth = new McpAuth({ ...props.auth, path: props.path ?? "/mcp" });
-    // Off in a read-only deployment: a page tool runs the page's own `fetch.*` calls, mutations included.
-    this.#apps = props.apps && props.pagePrompts && !props.readOnly ? new McpApps(props.appShell ?? null) : null;
+    this.#apps =
+      props.apps && props.pagePrompts ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly }) : null;
     const cache = props.registry.adaptor.get(CacheAdaptorRole) as (McpSharedCounter & McpUiSessionStore) | undefined;
     this.#pages = new McpPages({
       source: props.pagePrompts,
@@ -121,16 +121,17 @@ export class McpRouter {
       logger: McpRouter.logger,
       promptBudget: props.promptBudget,
       language: props.language,
+      readOnly: props.readOnly,
     });
     this.#limiter = props.rateLimit === false ? null : new McpRateLimiter(props.rateLimit, cache ?? null);
   }
 
   // claude.ai renders a view only for a server it reached through `initialize`; over `server/discover` it reads the
-  // resource and never mounts it. Refusing discovery sends a modern client down that path, which only a page with a
-  // view needs, so it stays refused until the worker has listed no `.prompt()` page.
+  // resource and never mounts it. Refusing discovery sends a modern client down that path, which only an app needs,
+  // so it stays refused until the worker has listed no `.app()`.
   get #versions(): readonly McpProtocolVersion[] {
     const listed = this.#pages.listed;
-    const views = !!this.#apps?.rendersUi && (listed === null || listed.length > 0);
+    const views = !!this.#apps?.rendersUi && (listed === null || listed.some((entry) => entry.kind === "app"));
     const modern = this.#props.modern ?? !views;
     return modern ? MCP_SUPPORTED_VERSIONS : McpRouter.#legacyVersions;
   }
@@ -174,10 +175,6 @@ export class McpRouter {
       if (!tools.length)
         McpRouter.logger.warn(
           "MCP is enabled but published nothing. Every candidate was refused; see the reasons below.",
-        );
-      if (this.#props.apps && this.#props.pagePrompts && this.#props.readOnly)
-        McpRouter.logger.debug(
-          "MCP Apps is off in this read-only deployment: a page tool would run the page's own `fetch.*` calls, mutations included.",
         );
       this.#pages.report();
       this.#reportUnverifiable(tools.map((tool) => tool.name));
@@ -505,7 +502,7 @@ export class McpRouter {
   async #promptsGet(call: McpCall, document: McpDocument) {
     const name = call.params.name;
     if (typeof name !== "string") return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing prompt name.");
-    const entry = await this.#pages.entry(name);
+    const entry = await this.#pages.prompt(name);
     if (!entry) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown prompt: ${name}.`);
     const page = await this.#pages.run(call, document, entry, McpRouter.#arguments(call.params));
     if ("badArguments" in page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, McpRouter.#badArguments);

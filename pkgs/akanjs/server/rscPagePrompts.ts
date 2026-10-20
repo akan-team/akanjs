@@ -1,4 +1,4 @@
-import type { PageDefinition, PathRoute } from "akanjs/client";
+import type { PageDefinition, PathRoute, RoutePromptMeta } from "akanjs/client";
 import { Logger, parseSearchParams } from "akanjs/common";
 import { getRequestStore } from "akanjs/fetch";
 import { RouteGuards } from "../client/route/RouteGuards";
@@ -54,8 +54,9 @@ export class RscPagePrompts {
         .filter((arg) => arg.kind === "search" && input.arguments[arg.name] !== undefined)
         .map((arg) => [arg.name, RscPagePrompts.#searchValue(arg.list, input.arguments[arg.name] as string)]),
     );
+    let resolved: Record<string, unknown>;
     try {
-      definition.resolveArgs({ params, searchParams }, { strict: true });
+      resolved = definition.resolveArgs({ params, searchParams }, { strict: true });
     } catch (error) {
       return { ok: false, reason: "argument", message: error instanceof Error ? error.message : String(error) };
     }
@@ -70,12 +71,14 @@ export class RscPagePrompts {
       const renders = RscPagePrompts.#rendersOf(route);
       try {
         await RouteGuards.run(renders, props);
-        for (const render of renders) await render.render({ ...props, children: null } as never);
+        //? An app runs its load alone: no layout body and no `.render()`, so the snapshot holds only what it draws.
+        if (entry.kind === "app") await (definition as PageDefinition).loadApp(entry.name, { lang, ...resolved });
+        else for (const render of renders) await render.render({ ...props, children: null } as never);
       } catch (error) {
         return RscPagePrompts.#refusal(error);
       }
       const records = await Promise.all((getRequestStore()?.queryLog ?? []).map(RscPagePrompts.#settle));
-      return { ok: true, url, records };
+      return { ok: true, url, records, route: props };
     });
   }
 
@@ -101,18 +104,25 @@ export class RscPagePrompts {
     return [...route.renderRootLayouts, ...route.renderLayouts, route.renderPage];
   }
 
+  //? One namespace for prompts and apps: each `.prompt()` is also a text tool, and MCP keys a tool by its name alone.
   async #collect(routes: PathRoute[]): Promise<PagePromptEntry[]> {
     const entries: PagePromptEntry[] = [];
-    const owners = new Map<string, string>();
-    for (const route of routes) {
-      const definition = await route.renderPage.getRouteDefinition?.();
-      const meta = definition?.kind === "page" ? (definition as PageDefinition).promptMeta : undefined;
-      if (!meta) continue;
+    const owners = new Map<string, { kind: PagePromptEntry["kind"]; path: string }>();
+    const claim = (kind: PagePromptEntry["kind"], meta: RoutePromptMeta, path: string) => {
       const owner = owners.get(meta.name);
       if (owner)
-        throw new Error(`[route-convention] prompt "${meta.name}" is declared by both ${owner} and ${route.path}`);
-      owners.set(meta.name, route.path);
-      entries.push({ ...meta, pattern: route.path });
+        throw new Error(
+          `[route-convention] ${kind} "${meta.name}" is declared by both ${owner.path}${owner.kind === kind ? "" : ` (as its ${owner.kind})`} and ${path}`,
+        );
+      owners.set(meta.name, { kind, path });
+      entries.push({ kind, ...meta, pattern: path });
+    };
+    for (const route of routes) {
+      const definition = await route.renderPage.getRouteDefinition?.();
+      if (definition?.kind !== "page") continue;
+      const page = definition as PageDefinition;
+      if (page.promptMeta) claim("prompt", page.promptMeta, route.path);
+      for (const meta of page.appMetas) claim("app", meta, route.path);
     }
     // Alphabetical, like the tool catalogue: a client's slash menu and a prompt cache both key on order.
     return entries.sort((a, b) => a.name.localeCompare(b.name));

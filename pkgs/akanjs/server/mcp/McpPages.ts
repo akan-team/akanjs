@@ -18,6 +18,7 @@ export interface McpPagesProps {
   logger: Logger;
   promptBudget?: number;
   language?: string;
+  readOnly?: boolean;
 }
 
 interface McpPageCall {
@@ -56,12 +57,15 @@ export class McpPages {
         logger.debug(`MCP page prompts: ${entries.length}${entries.length ? ` (${names})` : ""}`);
         const apps = this.#props.apps;
         if (!apps || !entries.length) return;
-        for (const { name } of entries.filter((entry) => this.#isEndpointName(entry.name)))
+        for (const { kind, name } of entries.filter((entry) => this.#isEndpointName(entry.name)))
           logger.warn(
-            `MCP did not publish page "${name}" as a tool: an endpoint already takes that name, so it stays a prompt only. Rename the prompt.`,
+            kind === "app"
+              ? `MCP did not publish app "${name}": an endpoint already takes that name. Rename the app.`
+              : `MCP did not publish page "${name}" as a tool: an endpoint already takes that name, so it stays a prompt only. Rename the prompt.`,
           );
-        const ui = apps.rendersUi ? "rendered from the CSR shell by an MCP Apps host" : "with no view to render";
-        logger.debug(`MCP page tools: ${ui}`);
+        const appCount = entries.filter((entry) => entry.kind === "app").length;
+        const ui = apps.rendersUi ? "each drawn by its own view in an MCP Apps host" : "with no view to draw them";
+        if (appCount) logger.debug(`MCP apps: ${appCount}, ${ui}`);
       })
       .catch((error: unknown) => {
         logger.warn(`MCP page prompts could not be listed: ${error instanceof Error ? error.message : error}`);
@@ -69,11 +73,17 @@ export class McpPages {
   }
 
   async prompts(req: Request): Promise<McpPrompt[]> {
-    return (await this.#visibleTo(req, await this.#list())).map(McpPages.#promptOf);
+    const prompts = (await this.#list()).filter((entry) => entry.kind === "prompt");
+    return (await this.#visibleTo(req, prompts)).map(McpPages.#promptOf);
   }
 
   async entry(name: string) {
     return (await this.#list()).find((candidate) => candidate.name === name);
+  }
+
+  async prompt(name: string) {
+    const entry = await this.entry(name);
+    return entry?.kind === "prompt" ? entry : undefined;
   }
 
   // A refused screen is a tool error, which the model reads, as an endpoint's refusal is; a prompt's is a JSON-RPC one.
@@ -90,7 +100,7 @@ export class McpPages {
     if (!page.run || !apps) return { result: { content: page.messages.map((message) => message.content) } };
     const origin = this.#props.publicOrigin(call.req);
     const forView = call.ui ? { account: McpApps.accountOf(call.req) } : null;
-    return { result: apps.resultOf(page.run, page.messages, origin, forView) };
+    return { result: apps.resultOf(entry, page.run, page.messages, origin, forView) };
   }
 
   async run(
@@ -148,7 +158,8 @@ export class McpPages {
   // would tell which names the endpoints hold.
   async toolOf(name: unknown) {
     if (!this.#props.apps || typeof name !== "string" || this.#isEndpointName(name)) return undefined;
-    return await this.entry(name).catch(() => undefined);
+    const entry = await this.entry(name).catch(() => undefined);
+    return entry && this.#publishesTool(entry) ? entry : undefined;
   }
 
   async tools(ui: boolean, document: McpDocument, req: Request) {
@@ -158,7 +169,7 @@ export class McpPages {
     return ui ? [...document.appTools, ...pages] : pages;
   }
 
-  // Listed only to a client that renders them: any other would offer a multi-megabyte HTML document as an attachment.
+  // Listed only to a client that renders them: any other would offer a megabyte HTML document as an attachment.
   async resources(ui: boolean) {
     const apps = this.#props.apps;
     if (!apps?.rendersUi || !ui) return [];
@@ -281,6 +292,14 @@ export class McpPages {
 
   async #pageTools() {
     if (!this.#props.apps) return [];
-    return (await this.#listedPages()).filter((entry) => !this.#isEndpointName(entry.name));
+    return (await this.#listedPages()).filter(
+      (entry) => !this.#isEndpointName(entry.name) && this.#publishesTool(entry),
+    );
+  }
+
+  // A read-only deployment keeps the apps, whose load may only query, and drops a prompt's text tool, whose run renders
+  // the whole page and may write; the prompt itself stays, as a person runs it.
+  #publishesTool(entry: PagePromptEntry) {
+    return entry.kind === "app" || !this.#props.readOnly;
   }
 }

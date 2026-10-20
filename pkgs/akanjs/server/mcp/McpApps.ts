@@ -14,25 +14,32 @@ import {
 import type { PagePromptEntry, PagePromptRecord, PagePromptRun } from "../../signal/mcp/pagePrompt";
 import { McpAppShell } from "./McpAppShell";
 
-/** The CSR shell a view boots from: one single-file HTML per basePath, read from the build that serves the web. */
+/** The single-file view each `.app()` boots from, read from the build that serves the web. */
 export interface McpAppShellSource {
-  readonly basePaths: readonly string[];
-  /** `""` is the app without a basePath; `null` when this build has no single-file shell for it. */
-  read(basePath: string): Promise<string | null>;
+  /** `null` when this build has no view for the app. */
+  read(app: string): Promise<string | null>;
 }
 
-// MCP Apps: a `.prompt()` page is also a tool, and a host that speaks the extension renders its result from the app's
-// own CSR shell. Without a shell (an api-only build, `web: { csr: false }`) the tool answers the briefing alone.
+interface McpAppsOption {
+  /** Every write the view sends is refused before it leaves, as the deployment lists no write to relay it to. */
+  readOnly?: boolean;
+}
+
+// MCP Apps: each `.app()` is a read-only tool, and a host that speaks the extension draws its result with that app's
+// own view. A `.prompt()` page is a text tool beside its prompt. Without views (an api-only build,
+// `web: { csr: false }`) an app's tool answers with the briefing alone.
 export class McpApps {
   static readonly scheme = "ui://";
-  // A basePath sits under the root's own segment, so no basePath name can address the root's screens.
-  static readonly rootSegment = "app";
   static readonly #tokenClaims = new Set(["iss", "aud", "exp", "nbf", "iat", "jti", "client_id", "scope"]);
+  //? Checked before the name reaches the shell source, which reads a file named after it.
+  static readonly #appUri = /^ui:\/\/([^/]+)\/apps\/([A-Za-z0-9_-]{1,64})$/;
 
   readonly #shell: McpAppShellSource | null;
+  readonly #readOnly: boolean;
 
-  constructor(shell: McpAppShellSource | null) {
+  constructor(shell: McpAppShellSource | null, { readOnly = false }: McpAppsOption = {}) {
     this.#shell = shell;
+    this.#readOnly = readOnly;
   }
 
   get rendersUi() {
@@ -55,18 +62,19 @@ export class McpApps {
       ]),
     );
     const required = entry.arguments.filter((arg) => arg.required).map((arg) => arg.name);
+    const inputSchema = {
+      type: "object" as const,
+      properties,
+      ...(required.length ? { required } : {}),
+      additionalProperties: false,
+    };
+    const tool = { name: entry.name, description: entry.description, inputSchema };
+    // A prompt's run renders the whole page, whose own `fetch.*` calls may write; an app's load may only query.
+    if (entry.kind === "prompt") return { ...tool, annotations: { readOnlyHint: false, openWorldHint: false } };
     return {
-      name: entry.name,
-      description: entry.description,
-      inputSchema: {
-        type: "object",
-        properties,
-        ...(required.length ? { required } : {}),
-        additionalProperties: false,
-      },
-      // Not read-only: the page run makes the page's own `fetch.*` calls under the caller's token, mutations included.
-      annotations: { readOnlyHint: false, openWorldHint: false },
-      ...(this.#shell ? { _meta: this.#toolMetaOf(this.uriOf(this.#basePathOf(entry.pattern))) } : {}),
+      ...tool,
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      ...(this.#shell ? { _meta: this.#toolMetaOf(this.uriOf(entry.name)) } : {}),
     };
   }
 
@@ -76,34 +84,35 @@ export class McpApps {
 
   resourcesOf(entries: PagePromptEntry[]): McpResource[] {
     if (!this.#shell) return [];
-    const { appName } = getEnv();
-    const basePaths = [...new Set(entries.map((entry) => this.#basePathOf(entry.pattern)))];
-    return basePaths.map((basePath) => ({
-      uri: this.uriOf(basePath),
-      name: basePath || appName,
-      description: `The ${basePath || appName} screens, rendered in place of a tool result.`,
-      mimeType: MCP_UI_MIME_TYPE,
-    }));
+    return entries
+      .filter((entry) => entry.kind === "app")
+      .map((entry) => ({
+        uri: this.uriOf(entry.name),
+        name: entry.name,
+        description: entry.description,
+        mimeType: MCP_UI_MIME_TYPE,
+      }));
   }
 
   //? Lowercased: an authority is case-insensitive (RFC 3986), and a host may normalize it before reading it back.
-  uriOf(basePath: string) {
-    const root = `${McpApps.scheme}${getEnv().appName.toLowerCase()}/${McpApps.rootSegment}`;
-    return basePath ? `${root}/${basePath}` : root;
+  uriOf(app: string) {
+    return `${McpApps.scheme}${getEnv().appName.toLowerCase()}/apps/${app}`;
   }
 
   async read(uri: string, origin: string): Promise<McpResourceContents | null> {
-    const shell = this.#shell;
-    const basePath = shell ? this.#basePathOfUri(uri) : null;
-    if (!shell || basePath === null) return null;
-    const html = await shell.read(basePath);
+    const match = McpApps.#appUri.exec(uri);
+    const app = match?.[1]?.toLowerCase() === getEnv().appName.toLowerCase() ? match[2] : undefined;
+    if (!this.#shell || !app) return null;
+    const html = await this.#shell.read(app);
     return html ? McpAppShell.contentsOf(uri, html, origin) : null;
   }
 
   // The prompt's own blocks are valid tool-result content, so a host without the extension reads the same briefing.
   // Security: the snapshot is the screen's raw values, unmasked for an agent, so it rides `_meta`, which a host passes
-  // to the view and never to the model; some hosts do show `structuredContent` to the model.
+  // to the view and never to the model. `structuredContent`, which some hosts do show the model, holds only where the
+  // view starts: the arguments the model gave.
   resultOf(
+    entry: PagePromptEntry,
     run: Extract<PagePromptRun, { ok: true }>,
     messages: PromptMessage[],
     webOrigin: string,
@@ -113,18 +122,19 @@ export class McpApps {
     const href = `${url.pathname}${url.search}`;
     const content: PromptContent[] = [
       ...messages.map((message) => message.content),
-      { type: "text", text: `Open this screen in a browser: ${webOrigin}${href}` },
+      { type: "text", text: `Open the full screen: ${webOrigin}${href}` },
     ];
-    if (!this.#shell || !forView) return { content, isError: false };
+    if (entry.kind === "prompt" || !this.#shell || !forView) return { content, isError: false };
     const _meta = {
       [MCP_APP_META.snapshot]: McpApps.#snapshotOf(run.records),
       [MCP_APP_META.account]: forView.account,
+      ...(this.#readOnly ? { [MCP_APP_META.readOnly]: true } : {}),
     };
-    return { content, structuredContent: { href }, _meta, isError: false };
+    return { content, structuredContent: { href, ...run.route }, _meta, isError: false };
   }
 
-  // The claims a browser tab reads off its own token to decide what it shows, so a guarded layout renders in the view
-  // instead of sending it to sign in. Security: the token itself never leaves; the guards judge every relayed call.
+  // The claims a browser tab reads off its own token to decide what it shows, so a component that reads the account
+  // draws as it would in the browser. Security: the token itself never leaves; the guards judge every relayed call.
   static accountOf(req: Request): Record<string, unknown> | null {
     const token = bearerTokenOf(req.headers.get("authorization"));
     if (!token) return null;
@@ -134,20 +144,6 @@ export class McpApps {
     } catch {
       return null;
     }
-  }
-
-  #basePathOf(pattern: string) {
-    const [, , segment] = pattern.split("/");
-    return segment && this.#shell?.basePaths.includes(segment) ? segment : "";
-  }
-
-  #basePathOfUri(uri: string) {
-    const match = /^ui:\/\/([^/]+)\/([^?#]*)$/i.exec(uri);
-    if (!match || match[1]?.toLowerCase() !== getEnv().appName.toLowerCase()) return null;
-    const [root, basePath, ...rest] = (match[2] ?? "").split("/");
-    if (root !== McpApps.rootSegment || rest.length) return null;
-    if (!basePath) return "";
-    return this.#shell?.basePaths.includes(basePath) ? basePath : null;
   }
 
   // Raw wire values, exactly what the browser's own call would have received under the same credential.

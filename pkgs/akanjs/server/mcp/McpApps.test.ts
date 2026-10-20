@@ -7,10 +7,10 @@ process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
 process.env.AKAN_PUBLIC_ENV = "local";
 process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
 
-const shellOf = (html: string, basePaths: string[] = []) => new McpApps({ basePaths, read: async () => html });
+const shellOf = (html: string) => new McpApps({ read: async () => html });
 
 const viewOf = async (origin: string) => {
-  const read = await shellOf("<head></head>").read("ui://probe/app", origin);
+  const read = await shellOf("<head></head>").read("ui://probe/apps/showProbe", origin);
   const script = /<script>([\s\S]*)<\/script>/i.exec(read?.text ?? "")?.[1] ?? "";
   class Element {
     tagName = "IMG";
@@ -45,11 +45,11 @@ describe("McpApps", () => {
 
   test("puts the base and the embed flag first in the head, whatever its attributes, and leads without one", async () => {
     const withHead = await shellOf('<html><head data-x="1"><header></header></head></html>').read(
-      "ui://probe/app",
+      "ui://probe/apps/showProbe",
       "https://app.example.com",
     );
     expect(withHead?.text).toStartWith('<html><head data-x="1"><base href="https://app.example.com/"><script>');
-    const headless = await shellOf("<div></div>").read("ui://probe/app", "https://app.example.com");
+    const headless = await shellOf("<div></div>").read("ui://probe/apps/showProbe", "https://app.example.com");
     expect(headless?.text).toStartWith('<base href="https://app.example.com/"><script>');
     expect(headless?.text).toEndWith("</script><div></div>");
   });
@@ -57,7 +57,7 @@ describe("McpApps", () => {
   test("keeps `<meta charset>` ahead of what it injects, where a decoder still finds it", async () => {
     const read = await shellOf(
       '<html><head><meta charset="utf-8" /><title>x</title><script>1</script></head></html>',
-    ).read("ui://probe/app", "https://app.example.com");
+    ).read("ui://probe/apps/showProbe", "https://app.example.com");
     expect(read?.text).toStartWith(
       '<html><head><meta charset="utf-8" /><base href="https://app.example.com/"><script>',
     );
@@ -66,7 +66,7 @@ describe("McpApps", () => {
   test("names the app's origin to the view and roots the shell's stylesheet URLs at it", async () => {
     const read = await shellOf(
       '<head><style>@font-face{src:url(/_akan/f.woff2)}.a{background:url("/a.png")}.b{background:url(//cdn.test/b.png)}</style><script>const css = "url(/kept)";</script></head>',
-    ).read("ui://probe/app", "https://app.example.com");
+    ).read("ui://probe/apps/showProbe", "https://app.example.com");
     expect(read?.text).toContain('window.__AKAN_EMBED__ = {"kind":"mcp-app","origin":"https://app.example.com"};');
     expect(read?.text).toContain(
       '@font-face{src:url(https://app.example.com/_akan/f.woff2)}.a{background:url("https://app.example.com/a.png")}',
@@ -76,7 +76,7 @@ describe("McpApps", () => {
   });
 
   test("opens no origin that is not plain http(s)", async () => {
-    const read = await shellOf("<head></head>").read("ui://probe/app", "javascript:alert(1)");
+    const read = await shellOf("<head></head>").read("ui://probe/apps/showProbe", "javascript:alert(1)");
     expect(read?.text).toStartWith("<head><script>");
     expect(read?._meta).toEqual({ ui: { prefersBorder: false } });
   });
@@ -84,14 +84,14 @@ describe("McpApps", () => {
   test("opens no origin whose host would carry a quote out of the base attribute, a `%22` included", async () => {
     for (const origin of ['https://evil.test"target="_top', "https://evil.test%22target=%22_top"]) {
       const read = await shellOf("<head><style>.a{background:url(/a.png)}</style></head>").read(
-        "ui://probe/app",
+        "ui://probe/apps/showProbe",
         origin,
       );
       expect(read?.text).not.toContain("evil.test");
       expect(read?._meta).toEqual({ ui: { prefersBorder: false } });
     }
     for (const origin of ["https://app.example.com:8443", "http://[::1]:3000", "http://xn--bcher-kva.de"]) {
-      const read = await shellOf("<head></head>").read("ui://probe/app", origin);
+      const read = await shellOf("<head></head>").read("ui://probe/apps/showProbe", origin);
       expect(read?.text).toStartWith(`<head><base href="${origin}/"><script>`);
     }
   });
@@ -124,26 +124,44 @@ describe("McpApps", () => {
       expect(McpApps.accountOf(req(authorization))).toBeNull();
   });
 
-  test("never tells a host a page tool only reads: the run makes the page's own calls", () => {
-    const tool = shellOf("<head></head>").toolOf({
-      name: "brief",
-      description: "",
-      arguments: [],
-      pattern: "/:lang/x",
-    });
-    expect(tool.annotations).toEqual({ readOnlyHint: false, openWorldHint: false });
+  test("tells a host an app only reads, and never says so of a prompt's tool, whose run renders the page", () => {
+    const entry = { kind: "app" as const, name: "showProbe", description: "Show.", arguments: [], pattern: "/:lang/x" };
+    const apps = shellOf("<head></head>");
+    expect(apps.toolOf(entry).annotations).toEqual({ readOnlyHint: true, openWorldHint: false });
+    expect(apps.toolOf(entry)._meta?.ui?.resourceUri).toBe("ui://probe/apps/showProbe");
+    const prompt = apps.toolOf({ ...entry, kind: "prompt", name: "briefProbe" });
+    expect(prompt.annotations).toEqual({ readOnlyHint: false, openWorldHint: false });
+    expect(prompt._meta).toBeUndefined();
+    expect(apps.resourcesOf([entry, { ...entry, kind: "prompt", name: "briefProbe" }])).toEqual([
+      {
+        uri: "ui://probe/apps/showProbe",
+        name: "showProbe",
+        description: "Show.",
+        mimeType: "text/html;profile=mcp-app",
+      },
+    ]);
   });
 
-  test("addresses a basePath's screens under the root's own, so no basePath name reaches the root", async () => {
-    const apps = shellOf("<head></head>", ["admin", "app"]);
-    const entry = { name: "brief", description: "", arguments: [], pattern: "/:lang/admin/item" };
-    expect(apps.toolOf(entry)._meta?.ui?.resourceUri).toBe("ui://probe/app/admin");
-    expect(apps.toolOf({ ...entry, pattern: "/:lang/item" })._meta?.ui?.resourceUri).toBe("ui://probe/app");
-    expect(apps.toolOf({ ...entry, pattern: "/:lang/app/item" })._meta?.ui?.resourceUri).toBe("ui://probe/app/app");
-    expect(await apps.read("ui://probe/app/console", "https://app.example.com")).toBeNull();
-    expect(await apps.read("ui://probe/admin", "https://app.example.com")).toBeNull();
-    expect(await apps.read("ui://PROBE/app/admin", "https://app.example.com")).not.toBeNull();
-    expect(await apps.read("ui://other/app", "https://app.example.com")).toBeNull();
-    expect(await new McpApps(null).read("ui://probe/app", "https://app.example.com")).toBeNull();
+  test("reads only a view named like an app, under this app's own authority, whatever its case", async () => {
+    const asked: string[] = [];
+    const apps = new McpApps({
+      read: async (app) => {
+        asked.push(app);
+        return "<head></head>";
+      },
+    });
+    for (const uri of [
+      "ui://probe/apps/../secrets",
+      "ui://probe/apps/a/b",
+      "ui://probe/apps/",
+      "ui://probe/app",
+      "ui://other/apps/showProbe",
+      `ui://probe/apps/${"a".repeat(65)}`,
+    ])
+      expect(await apps.read(uri, "https://app.example.com")).toBeNull();
+    expect(asked).toEqual([]);
+    expect(await apps.read("ui://PROBE/apps/showProbe", "https://app.example.com")).not.toBeNull();
+    expect(asked).toEqual(["showProbe"]);
+    expect(await new McpApps(null).read("ui://probe/apps/showProbe", "https://app.example.com")).toBeNull();
   });
 });

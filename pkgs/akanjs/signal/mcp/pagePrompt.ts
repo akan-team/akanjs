@@ -1,6 +1,8 @@
 import type { McpPromptArgument } from "./mcpProtocol";
 
 export interface PagePromptEntry {
+  /** A `.prompt()` briefs the whole screen; an `.app()` is one component of it, which a host draws from the result. */
+  kind: "prompt" | "app";
   name: string;
   description: string;
   arguments: McpPromptArgument[];
@@ -19,8 +21,14 @@ export interface PagePromptRecord {
 /** `forbidden` is a data call inside the body refused with 401/403: the screen is not this caller's, like a redirect. */
 export type PagePromptRefusal = "unknown" | "argument" | "redirect" | "forbidden" | "not-found" | "error";
 
+/** The route values the run read, as the page's own route holds them: where an app's view starts. */
+export interface PagePromptRoute {
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
+}
+
 export type PagePromptRun =
-  | { ok: true; url: string; records: PagePromptRecord[] }
+  | { ok: true; url: string; records: PagePromptRecord[]; route: PagePromptRoute }
   | { ok: false; reason: PagePromptRefusal; message: string };
 
 export interface PagePromptRunInput {

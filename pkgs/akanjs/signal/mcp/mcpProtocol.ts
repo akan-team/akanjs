@@ -26,6 +26,7 @@ export const MCP_UI_LEGACY_RESOURCE_URI = "ui/resourceUri";
 export const MCP_APP_META = {
   snapshot: "akanjs/snapshot",
   account: "akanjs/account",
+  readOnly: "akanjs/readOnly",
   view: "akanjs/view",
   value: "akanjs/value",
   error: "akanjs/error",

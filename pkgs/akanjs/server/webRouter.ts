@@ -271,6 +271,8 @@ interface CachedHtmlResult {
 }
 
 export class WebRouter {
+  /** Where the build writes each `.app()`'s view, beside `csr/`: a native app packs `csr/`, which needs none of them. */
+  static readonly mcpAppViewDir = "mcp-apps";
   #logger = new Logger("WebRouter");
   #artifactDir = resolveArtifactDir();
   #artifact: BaseBuildArtifact;
@@ -780,29 +782,24 @@ export class WebRouter {
     };
   }
 
-  // Never the dev registry shell: it loads its modules from this server, which a sandboxed view cannot reach.
+  /** Each `.app()`'s single-file view, which `akan build` writes beside the CSR shell. */
   mcpAppShell(): McpAppShellSource | undefined {
     if (!this.web.csr) return undefined;
-    const localCsrDir = path.join(process.cwd(), "csr");
-    const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
-    const getBasePaths = () => this.#artifact.basePaths;
-    //? Keyed on mtime: a single-file shell is megabytes, a dev rebuild replaces the file, and a stat costs nothing.
-    const shells = new Map<string, { stamp: number; html: string }>();
+    const localDir = path.join(process.cwd(), WebRouter.mcpAppViewDir);
+    const viewDir = fs.existsSync(localDir) ? localDir : path.join(this.#artifactDir, WebRouter.mcpAppViewDir);
+    //? Keyed on mtime: a view is a single-file build of a megabyte, a dev rebuild replaces it, and a stat costs nothing.
+    const views = new Map<string, { stamp: number; html: string }>();
     return {
-      get basePaths() {
-        return getBasePaths();
-      },
-      read: async (basePath) => {
-        const pathname = basePath ? `/${basePath}` : "/";
-        const csrHtml = this.#csrDevShell
-          ? await this.#mcpDevShell(csrOutputDir, pathname)
-          : await this.#resolveCsrHtml(csrOutputDir, pathname);
-        if (!csrHtml) return null;
-        const file = Bun.file(csrHtml);
-        const cached = shells.get(csrHtml);
+      read: async (app) => {
+        const viewPath = path.join(viewDir, `${app}.html`);
+        if (this.#csrDevShell) await this.#buildMcpAppViews();
+        else if (!fs.existsSync(viewPath)) await this.#armCsrArtifact("mcp app view");
+        const file = Bun.file(viewPath);
+        if (!(await file.exists())) return null;
+        const cached = views.get(app);
         if (cached?.stamp === file.lastModified) return cached.html;
         const html = await file.text();
-        shells.set(csrHtml, { stamp: file.lastModified, html });
+        views.set(app, { stamp: file.lastModified, html });
         return html;
       },
     };
@@ -1109,16 +1106,16 @@ export class WebRouter {
         }),
     );
   }
-  //? Awaited on every read: the builder answers at once unless a save moved its generation since its last shell build.
-  async #mcpDevShell(csrOutputDir: string, pathname: string): Promise<string | null> {
+  //? Awaited on every read: the builder answers at once unless a save moved its generation since its last view build.
+  //? Never the dev registry shell, which loads its modules from this server: a sandboxed view cannot reach it.
+  async #buildMcpAppViews(): Promise<void> {
     const rpc = this.#builderRpc;
-    if (rpc)
-      await this.#singleFlight("mcpShell", () =>
-        rpc.buildCsr("mcp app view", { shell: true }).catch((err: unknown) => {
-          this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
-        }),
-      );
-    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
+    if (!rpc) return;
+    await this.#singleFlight("mcpShell", () =>
+      rpc.buildCsr("mcp app view", { shell: true }).catch((err: unknown) => {
+        this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
+      }),
+    );
   }
   #singleFlight(kind: string, run: () => Promise<unknown>): Promise<unknown> {
     const pending = this.#builds.get(kind) ?? run().finally(() => this.#builds.delete(kind));
