@@ -45,6 +45,15 @@ export interface TargetOption {
   stdio?: boolean;
   failureExitCode?: number;
   usageExitCode?: number;
+  /** Runs after the CLI printed a failure and before it exits, so what it writes ends the output. */
+  onFailure?: (error: unknown, failure: TargetFailure) => void | Promise<void>;
+}
+
+export interface TargetFailure {
+  /** commander refused a flag or argument before the command ran, and printed why. */
+  usage: boolean;
+  /** The options given on the command line as the command would receive them, without defaults or prompts. */
+  given: { [name: string]: unknown };
 }
 
 export const Commands = () => {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
@@ -138,6 +138,28 @@ describe("ApplicationCommand", () => {
     if (!action) throw new Error("migrate takes an action");
     expect(await getArgumentValue(action, "frobnicate")).toBe("frobnicate");
     expect(await getArgumentValue(action, undefined)).toBe("list");
+  });
+
+  test("migrate ends a --json caller's output in the app's result shape when it fails before the app ran", async () => {
+    const onFailure = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "migrate")?.targetOption.onFailure;
+    if (!onFailure) throw new Error("migrate reports its failures");
+    const lines: string[] = [];
+    const write = spyOn(process.stdout, "write").mockImplementation(((chunk: string, callback?: () => void) => {
+      lines.push(chunk);
+      callback?.();
+      return true;
+    }) as typeof process.stdout.write);
+    try {
+      await onFailure(new Error("unknown option '--frob'"), { usage: true, given: { json: true } });
+      await onFailure(new Error("Unknown app 'shop'"), { usage: false, given: { json: true } });
+      await onFailure(new Error("unknown option '--frob'"), { usage: true, given: { json: false } });
+    } finally {
+      write.mockRestore();
+    }
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      { ok: false, action: null, code: "usage", error: "unknown option '--frob'", runId: null },
+      { ok: false, action: null, code: "failed", error: "Unknown app 'shop'", runId: null },
+    ]);
   });
 
   test("typecheck picks an app or a library as sync does, and never offers a package", () => {

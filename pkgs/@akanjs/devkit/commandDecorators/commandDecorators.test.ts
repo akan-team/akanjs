@@ -545,6 +545,35 @@ describe("the exit code of a command that failed", () => {
     expect((await run('new Error("broke")', { option })).code).toBe(4);
   }, 30_000);
 
+  test("runs onFailure last, told whether commander refused the line and what was given", async () => {
+    const report = [
+      ", stdio: true, usageExitCode: 2, onFailure: async (error, failure) => {",
+      '  const line = JSON.stringify({ message: error.message, ...failure }) + "\\n";',
+      "  await new Promise((resolve) => process.stdout.write(line, resolve));",
+      "}",
+    ].join("\n");
+    const option = `${report} }).option("json", Boolean, { default: false }).option("count", Number, { nullable: true`;
+    const lastOf = (stdout: string) => JSON.parse(stdout.trim().split("\n").at(-1) ?? "null");
+
+    const refused = await run('new Error("broke")', { option, args: ["--count", "3", "--nope", "--json"] });
+    expect(refused.code).toBe(2);
+    expect(refused.stderr).toContain("unknown option '--nope'");
+    expect(lastOf(refused.stdout)).toEqual({
+      message: "unknown option '--nope'",
+      usage: true,
+      given: { count: 3, json: true },
+    });
+
+    const thrown = await run('new Error("broke")', { option, args: ["--json"] });
+    expect(thrown.code).toBe(1);
+    expect(thrown.stdout).toContain("broke\n");
+    expect(lastOf(thrown.stdout)).toEqual({ message: "broke", usage: false, given: { json: true } });
+
+    const help = await run('new Error("broke")', { option, args: ["--help"] });
+    expect(help.code).toBe(0);
+    expect(help.stdout).not.toContain('"usage"');
+  }, 60_000);
+
   test("prints nothing more for an error the command marked as printed", async () => {
     const marked = await run(
       '(() => { const error = new Error("printed already"); markCliErrorPrinted(error); return error; })()',

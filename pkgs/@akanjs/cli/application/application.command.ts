@@ -1,5 +1,7 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
+import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
+import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
 import { allowLocalOption, nativeTargetOption, publicEnvOption, releaseEnvOption, writeOption } from "./commandOptions";
 
@@ -53,6 +55,12 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration",
     stdio: true,
     usageExitCode: 2,
+    //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
+    onFailure: async (error, { usage, given }) => {
+      if (given.json !== true) return;
+      const failure = usage ? new MigrationError("usage", MigrationError.messageOf(error)) : error;
+      await MigrationCommand.print(MigrationCommand.failure(null, failure), true);
+    },
   })
     .with(App)
     .arg("action", String, { desc: "list, plan, apply, verify or rollback", default: "list" })

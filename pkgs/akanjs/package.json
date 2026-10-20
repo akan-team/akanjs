@@ -169,6 +169,16 @@
       "import": "./server/hmr/runtimeMetadataFile.ts",
       "types": "./server/hmr/runtimeMetadataFile.ts",
       "default": "./server/hmr/runtimeMetadataFile.ts"
+    },
+    "./server/migration/migrationCommand": {
+      "import": "./server/migration/migrationCommand.ts",
+      "types": "./server/migration/migrationCommand.ts",
+      "default": "./server/migration/migrationCommand.ts"
+    },
+    "./server/migration/migrationError": {
+      "import": "./server/migration/migrationError.ts",
+      "types": "./server/migration/migrationError.ts",
+      "default": "./server/migration/migrationError.ts"
     }
   },
   "dependencies": {
