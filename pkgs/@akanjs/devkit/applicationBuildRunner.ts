@@ -18,6 +18,7 @@ import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
 import { ProjectTypecheck } from "./typecheck/projectTypecheck";
+import type { BaseDevEnv } from "./types";
 
 export interface TypecheckOptions {
   clean?: boolean;
@@ -97,14 +98,34 @@ export class ApplicationBuildRunner {
     return path.join(this.#app.cwdPath, "env");
   }
 
+  //? Bundles bake AKAN_PUBLIC_* from process.env, where the shell outranks the .env that the server env and the
+  //? Dockerfile read: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
+  #pinImageEnv(baseDevEnv: BaseDevEnv, environment: string) {
+    const imageEnv = {
+      AKAN_PUBLIC_ENV: environment,
+      AKAN_PUBLIC_REPO_NAME: baseDevEnv.repoName,
+      AKAN_PUBLIC_SERVE_DOMAIN: baseDevEnv.serveDomain,
+    };
+    const outranked = Object.entries(imageEnv).filter(([key, value]) => {
+      const given = process.env[key];
+      return !!given && given !== value && !(key === "AKAN_PUBLIC_ENV" && this.#environment);
+    });
+    if (outranked.length)
+      this.#app.logger.warn(
+        `The workspace .env outranks this process's environment: the bundles and the image take ${outranked
+          .map(([key, value]) => `${key}=${value} (not ${process.env[key]})`)
+          .join(", ")}.`,
+      );
+    Object.assign(process.env, imageEnv);
+  }
+
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
     // serial build is needed because of Bun.build is unstable for parallel build
     this.#spinner = spinner;
     const { web, assets, baseDevEnv } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
     WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
-    //? Bundles bake AKAN_PUBLIC_ENV from process.env, where the shell outranks the .env that picked the server env.
-    process.env.AKAN_PUBLIC_ENV = environment;
+    this.#pinImageEnv(baseDevEnv, environment);
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
     if (this.#profile)
       await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });

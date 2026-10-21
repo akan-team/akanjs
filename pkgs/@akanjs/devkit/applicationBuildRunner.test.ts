@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { describe, expect, spyOn, test } from "bun:test";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
@@ -107,6 +107,45 @@ console.info(new SampleService().name);
     } finally {
       if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
       else process.env.AKAN_PUBLIC_ENV = shellEnv;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bakes into the bundles every AKAN_PUBLIC_* its Dockerfile carries, and names the shell values it outranked", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    await Promise.all(["private", "public"].map((dir) => mkdir(path.join(root, "apps", "portal", dir))));
+    Object.assign(process.env, {
+      AKAN_PUBLIC_ENV: "local",
+      AKAN_PUBLIC_REPO_NAME: "shell-repo",
+      AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+    });
+    const app = AppExecutor.from(workspace, "portal");
+    const warn = spyOn(app.logger, "warn").mockImplementation(() => undefined);
+    const runner = new ApplicationBuildRunner(app);
+    runner.typecheck = async () => {
+      throw new Error("stopped after prepare");
+    };
+    try {
+      await expect(runner.build()).rejects.toThrow("stopped after prepare");
+      const define = bundleDefine(app, "build", "csr") as { [key: string]: string };
+      const imageEnv = (await app.getConfig()).getProductionEnv();
+      for (const key of keys) expect(define[`process.env.${key}`]).toBe(JSON.stringify(imageEnv[key]));
+      expect(imageEnv.AKAN_PUBLIC_SERVE_DOMAIN).toBe("akanjs.com");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toBe(
+        "The workspace .env outranks this process's environment: the bundles and the image take AKAN_PUBLIC_ENV=main (not local), AKAN_PUBLIC_REPO_NAME=repo (not shell-repo), AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com (not localhost).",
+      );
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
       await rm(root, { recursive: true, force: true });
     }
   });
