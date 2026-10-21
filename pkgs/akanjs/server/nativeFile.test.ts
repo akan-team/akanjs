@@ -102,14 +102,18 @@ process.send({ type: "ready", pid: process.pid });`,
       manifest: { entry: "main.js", env: { TEST_GRANTS: `${grant},forged` } },
       freePort: async () => 1,
     });
+    const refused = "[server] refused no file was granted under this id";
     try {
       expect((await server.start()).ready).toBe(true);
+      //? "ready" comes over IPC and the lines over stdout, so the last line can land after it.
+      const until = Date.now() + 5_000;
+      while (!lines.includes(refused) && Date.now() < until) await Bun.sleep(10);
     } finally {
       console.info = realInfo;
       await server.stop();
     }
     expect(lines).toContain("[server] resolved /Users/me/Movies/trip.mov");
-    expect(lines).toContain("[server] refused no file was granted under this id");
+    expect(lines).toContain(refused);
   }, 20_000);
 
   test("a dev build's grant resolves on akan start only, and only with this computer's signature", async () => {

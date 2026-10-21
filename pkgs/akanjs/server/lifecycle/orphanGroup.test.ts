@@ -8,7 +8,8 @@ const zombie = (pid: number) => {
   try {
     return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") ?? false;
   } catch {
-    return false;
+    //? On Linux the entry is missing only once the process was reaped, after it answered signal 0; macOS has no /proc.
+    return process.platform === "linux";
   }
 };
 
