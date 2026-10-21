@@ -343,7 +343,7 @@ The second argument of `schema.index()`:
 
 **A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()`, `.where(query)` and ends with `.done()`.
 
-**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Give a new index a `name`: the indexes made for named sorts come after every `_onSchema` index, so even one added at the end renames them.
+**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Give a new index a `name`, which fixes only its own name: the indexes made for named sorts come after every `_onSchema` index, so adding any index, named or not, renames them, and the next boot builds them again beside the old ones.
 
 Hooks
 

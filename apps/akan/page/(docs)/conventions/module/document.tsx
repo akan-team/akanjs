@@ -2204,16 +2204,18 @@ export class StoryModel extends into(
                   <span>
                     <strong>Leave a shipped index as written.</strong> Every live database remembers its definition, so
                     changing it, even <code>"text"</code> to <code>1</code> or adding <code>unique</code>, breaks them
-                    all. Give a new index a <code>name</code>: the indexes made for named sorts come after every{" "}
-                    <code>_onSchema</code> index, so even one added at the end renames them.
+                    all. Give a new index a <code>name</code>, which fixes only its own name: the indexes made for named
+                    sorts come after every <code>_onSchema</code> index, so adding any index, named or not, renames
+                    them, and the next boot builds them again beside the old ones.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>배포된 인덱스는 적힌 그대로 둡니다.</strong> 운영 중인 데이터베이스가 그 정의를 기억하므로,{" "}
                     <code>"text"</code>를 <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도 모두 깨집니다.
-                    새 인덱스에는 <code>name</code>을 붙입니다. 이름 붙인 정렬의 인덱스가 모든 <code>_onSchema</code>{" "}
-                    인덱스 뒤에 오므로, 맨 끝에 더해도 그 인덱스들의 이름이 바뀝니다.
+                    새 인덱스에는 <code>name</code>을 붙이되, 그것은 그 인덱스 자신의 이름만 고정합니다. 이름 붙인
+                    정렬의 인덱스가 모든 <code>_onSchema</code> 인덱스 뒤에 오므로, 인덱스를 하나 더하면 이름이 있든
+                    없든 그 인덱스들의 이름이 바뀌고, 다음 부팅이 옛 인덱스를 둔 채 새 이름으로 다시 만듭니다.
                   </span>
                 ),
               })}
