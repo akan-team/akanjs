@@ -27,6 +27,7 @@ import {
   getLoaderInfos,
   into,
   isDocumentId,
+  isDocumentQueryNode,
   type ModelCls,
   resolveFilterQuery,
   type SchemaOf,
@@ -660,6 +661,24 @@ describe("document query helpers and schemas", () => {
     expect(q.raw("score > ?", [10])).toEqual({ kind: "raw", sql: "score > ?", params: [10] });
     expect(q.when(true, { title: "Alpha" })).toEqual({ title: "Alpha" });
     expect(q.when(false, { title: "Alpha" })).toEqual({});
+  });
+
+  test("reads a node only from a node's whole shape, so a model's own kind field stays a field", () => {
+    const q = createDocumentQueryHelper();
+    const nodes = [q.all(), q.any({ a: 1 }), q.not({}), q.gte(1), q.raw("1 = 1"), q.search("x", { prefix: true })];
+    for (const node of [...nodes, { kind: "op", op: "exists" }]) expect(isDocumentQueryNode(node)).toBe(true);
+    const fieldQueries = [
+      { kind: "image" },
+      { kind: "all" },
+      { kind: "op" },
+      { kind: "op", op: "image" },
+      { kind: "not", status: "draft" },
+      { kind: "search" },
+      { kind: q.oneOf(["image", "video"]) },
+      { kind: "all", queries: [], title: "Alpha" },
+      [{ kind: "all", queries: [] }],
+    ];
+    for (const query of fieldQueries) expect(isDocumentQueryNode(query)).toBe(false);
   });
 
   test("creates and validates document ids", () => {

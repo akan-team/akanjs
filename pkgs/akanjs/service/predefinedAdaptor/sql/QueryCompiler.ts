@@ -1,5 +1,5 @@
 import { FIELD_META, ID } from "akanjs/base";
-import { type DocumentQuery, type DocumentQueryNode, searchColumns } from "akanjs/document";
+import { type DocumentQuery, type DocumentQueryNode, isDocumentQueryNode, searchColumns } from "akanjs/document";
 import { DEFAULT_SEARCH_WEIGHTS, type SearchIndex } from "../searchIndex";
 import {
   BASE_COLUMNS,
@@ -74,7 +74,7 @@ export class QueryCompiler {
   // A search node accumulates into `ctx.joins`; a JOIN cannot express OR/NOT, so one below `any`/`not` (`conjunctive`
   // false) is rejected rather than silently widening the result.
   private compileNode(query: DocumentQuery, ctx: CompileContext): { sql: string; params: unknown[] } {
-    if (this.isQueryNode(query)) {
+    if (isDocumentQueryNode(query)) {
       if (query.kind === "search") {
         if (!ctx.conjunctive)
           throw new Error(
@@ -150,7 +150,7 @@ export class QueryCompiler {
     const field = this.fields[path]?.getProps?.() ?? this.fields[path];
     const leaf = this.#leaf(path);
     const kind = this.pathKind(path);
-    if (this.isQueryNode(value)) {
+    if (isDocumentQueryNode(value)) {
       if (value.kind !== "op") return this.compileNode({ [path]: value } as DocumentQuery, ctx);
       switch (value.op) {
         case "eq":
@@ -242,9 +242,5 @@ export class QueryCompiler {
         );
       throw new Error(`Unknown document field path: ${path}`);
     }
-  }
-
-  private isQueryNode(value: unknown): value is DocumentQueryNode {
-    return !!value && typeof value === "object" && "kind" in value;
   }
 }

@@ -20,6 +20,9 @@ describe("LiveRowScope", () => {
     expect(LiveRowScope.conflictOf(q.any({ title: "a" }, q.all({ score: 1 }, q.exists("removedAt"))))).toBe(
       "removedAt exists asks for removed rows",
     );
+    expect(LiveRowScope.conflictOf({ kind: "image", removedAt: q.ne(null) })).toBe(
+      "removedAt ne(null) asks for removed rows",
+    );
   });
 
   test("names a removedAt value comparison whatever its polarity", () => {

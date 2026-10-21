@@ -4,6 +4,7 @@ import {
   DocumentQueryEvaluator,
   type DocumentRowView,
   documentQueryHelper,
+  isDocumentQueryNode,
   type QueryFieldMap,
 } from "akanjs/document";
 
@@ -142,7 +143,7 @@ export class LiveSyncHub {
 
   //* A base column is stored encoded and an array field's bare value means membership; indexing either skips a match.
   static #indexOf(query: DocumentQuery | undefined, fields: QueryFieldMap): Map<string, unknown> | null {
-    if (!query || typeof query !== "object" || "kind" in query) return null;
+    if (!query || typeof query !== "object" || isDocumentQueryNode(query)) return null;
     const index = new Map<string, unknown>();
     for (const [path, value] of Object.entries(query)) {
       if (path.includes(".") || baseDocumentColumns.has(path)) return null;

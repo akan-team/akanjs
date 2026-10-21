@@ -14,6 +14,7 @@ import {
   type DocumentUpdateOptions,
   documentQueryHelper,
   isDocumentId,
+  isDocumentQueryNode,
   isDocumentUpdateNode,
   LiveRowScope,
   NoDocumentError,
@@ -623,7 +624,7 @@ export class SqlDocumentStore {
   }
 
   private extractInsertBase(query: DocumentQuery): Record<string, unknown> {
-    if (!query || typeof query !== "object" || Array.isArray(query) || "kind" in query) return {};
+    if (!query || typeof query !== "object" || Array.isArray(query) || isDocumentQueryNode(query)) return {};
     return Object.fromEntries(
       Object.entries(query).flatMap(([key, value]) => {
         if (["all", "any"].includes(key) || key.startsWith("$")) return [];

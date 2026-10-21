@@ -34,6 +34,14 @@ describe("LiveSyncHub routing", () => {
     ]);
   });
 
+  test("a room over a field named kind routes by that field", () => {
+    const hub = hubWith([{ roomId: "images", query: { kind: "image" } }]);
+    expect(hub.route("task", doc({ kind: "image" }))).toEqual([
+      { roomId: "images", op: "enter", invalidate: false, payload: "light" },
+    ]);
+    expect(hub.route("task", doc({ kind: "video" }))).toEqual([]);
+  });
+
   test("an edit inside a room is an update", () => {
     const hub = hubWith([{ roomId: "inOrg-o1", query: { org: "o1" } }]);
     const targets = hub.route("task", doc({ status: "open" }), doc());

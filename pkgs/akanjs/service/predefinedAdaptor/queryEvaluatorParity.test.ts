@@ -27,6 +27,7 @@ class ParityInput extends via((f) => ({
   tags: f([String], { default: [] }),
   note: f(String).optional(),
   dueAt: f(Date).optional(),
+  kind: f(String, { default: "image" }),
 })) {}
 class ParityObject extends via(ParityInput, () => ({})) {}
 class ParityLight extends via(ParityObject, ["title"] as const, () => ({})) {}
@@ -56,11 +57,19 @@ const parityDatabase = DatabaseRegistry.buildModel(
 
 const seeds = [
   { title: "alpha", status: "active", score: 10, ownerId: "u1", tags: ["hot", "new"], note: "Hello World" },
-  { title: "beta", status: "draft", score: 0, ownerId: "u1", tags: [], archived: true },
+  { title: "beta", status: "draft", score: 0, ownerId: "u1", tags: [], archived: true, kind: "video" },
   { title: "gamma", status: "archived", score: 42, ownerId: "u2", tags: ["hot"], dueAt: dayjs(5_000) },
   { title: "delta", status: "active", score: 7, ownerId: "u2", tags: ["cold"], note: "goodbye" },
-  { title: "epsilon", status: "active", score: 42, ownerId: "u3", tags: ["new", "cold"], dueAt: dayjs(50_000) },
-  { title: "zeta", status: "draft", score: 3, ownerId: "u3", tags: [], note: null },
+  {
+    title: "epsilon",
+    status: "active",
+    score: 42,
+    ownerId: "u3",
+    tags: ["new", "cold"],
+    dueAt: dayjs(50_000),
+    kind: "video",
+  },
+  { title: "zeta", status: "draft", score: 3, ownerId: "u3", tags: [], note: null, kind: "all" },
   { title: "Omega", status: "active", score: 1, ownerId: "u4", tags: ["hot"], note: "Élan 50%" },
 ] as const;
 
@@ -107,6 +116,11 @@ const cases: { name: string; query: DocumentQuery }[] = [
   { name: "nested groups", query: q.all(q.any({ ownerId: "u1" }, { ownerId: "u2" }), q.not({ score: 0 })) },
   { name: "base column compare", query: { createdAt: q.gt(dayjs(0)) } },
   { name: "empty group", query: q.all() },
+  { name: "eq on a field named kind", query: { kind: "video" } },
+  { name: "eq on kind with a node's name", query: { kind: "all" } },
+  { name: "kind beside another field", query: { kind: "image", status: "active" } },
+  { name: "oneOf on kind", query: { kind: q.oneOf(["video", "all"]) } },
+  { name: "kind inside a group", query: q.any({ kind: "video" }, { kind: "op", score: 1 }) },
 ];
 
 const describeDriver = (kind: SqlDriverKind) => {
@@ -141,6 +155,20 @@ const describeDriver = (kind: SqlDriverKind) => {
 
     test("every seed is readable", () => {
       expect(all).toHaveLength(seeds.length);
+    });
+
+    test("a field named kind is a field, in a read and in an upsert's inserted row", async () => {
+      const titles = async (query: DocumentQuery) =>
+        (await store.find(query, { skip: null, limit: null })).map(({ title }) => title).sort();
+      expect(await titles({ kind: "video" })).toEqual(["beta", "epsilon"]);
+      expect(await titles({ kind: "all" })).toEqual(["zeta"]);
+      const { upsertedId } = await store.updateOneByQuery(
+        { kind: "audio", title: "eta" },
+        { score: 5 },
+        { upsert: true },
+      );
+      expect(await store.find({ id: upsertedId })).toMatchObject([{ kind: "audio", title: "eta", score: 5 }]);
+      await store.remove(upsertedId as string);
     });
 
     for (const { name, query } of cases) {

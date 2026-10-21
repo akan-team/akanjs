@@ -148,6 +148,29 @@ export type DocumentQuery<T = any> =
       [K in DocumentPath<T>]?: DocumentQueryValue;
     };
 
+// A model may declare its own `kind` field, so `{ kind: "image" }` is a field query; only a node's whole shape is a
+// node. Not a brand: framework code and callers build node literals, and a spread or JSON round trip drops a symbol.
+export const isDocumentQueryNode = (value: unknown): value is DocumentQueryNode => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const node = value as Record<string, unknown>;
+  const fits = (...keys: string[]) => Object.keys(node).every((key) => key === "kind" || keys.includes(key));
+  switch (node.kind) {
+    case "all":
+    case "any":
+      return Array.isArray(node.queries) && fits("queries");
+    case "not":
+      return !!node.query && typeof node.query === "object" && fits("query");
+    case "op":
+      return typeof node.op === "string" && queryOperatorKeys.has(node.op) && fits("op", "value");
+    case "raw":
+      return typeof node.sql === "string" && Array.isArray(node.params) && fits("sql", "params");
+    case "search":
+      return typeof node.text === "string" && fits("text", "columns", "prefix", "weights");
+    default:
+      return false;
+  }
+};
+
 export interface SqlFragment {
   sql: string;
   params: unknown[];

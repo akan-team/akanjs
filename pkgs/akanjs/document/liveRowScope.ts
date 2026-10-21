@@ -1,7 +1,7 @@
 import {
   type DocumentQuery,
-  type DocumentQueryNode,
   type DocumentQueryOperator,
+  isDocumentQueryNode,
   queryOperatorKeys,
 } from "./documentQuery";
 
@@ -14,7 +14,7 @@ type RemovedAtTest = "isNull" | "isNotNull" | "value";
 export class LiveRowScope {
   static conflictOf(query: DocumentQuery | undefined, negated = false): string | null {
     if (!query || typeof query !== "object") return null;
-    if (LiveRowScope.#isNode(query)) {
+    if (isDocumentQueryNode(query)) {
       if (query.kind === "all" || query.kind === "any")
         return query.queries.reduce<string | null>(
           (found, sub) => found ?? LiveRowScope.conflictOf(sub, negated),
@@ -30,7 +30,7 @@ export class LiveRowScope {
   }
 
   static #fieldConflict(path: string, value: unknown, negated: boolean): string | null {
-    if (LiveRowScope.#isNode(value) && value.kind !== "op") return LiveRowScope.conflictOf(value, negated);
+    if (isDocumentQueryNode(value) && value.kind !== "op") return LiveRowScope.conflictOf(value, negated);
     if (path !== "removedAt") return null;
     for (const [test, spelled] of LiveRowScope.#testsOf(value)) {
       const named = negated ? `not(removedAt ${spelled})` : `removedAt ${spelled}`;
@@ -44,7 +44,7 @@ export class LiveRowScope {
   static #testsOf(value: unknown): [RemovedAtTest, string][] {
     if (value === undefined) return [];
     if (value === null) return [["isNull", "null"]];
-    if (LiveRowScope.#isNode(value) && value.kind === "op") {
+    if (isDocumentQueryNode(value) && value.kind === "op") {
       const test = LiveRowScope.#testOf(value.op, value.value);
       return test ? [test] : [];
     }
@@ -71,9 +71,5 @@ export class LiveRowScope {
     // An empty list compiles to a constant (`0 = 1` / `1 = 1`), which no `removedAt` value decides.
     if ((op === "oneOf" || op === "notOneOf") && !(operand as unknown[] | undefined)?.length) return null;
     return ["value", op];
-  }
-
-  static #isNode(value: unknown): value is DocumentQueryNode {
-    return !!value && typeof value === "object" && "kind" in value;
   }
 }

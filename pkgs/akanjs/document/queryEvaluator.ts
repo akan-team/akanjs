@@ -4,6 +4,7 @@ import {
   type DocumentQueryNode,
   type DocumentQueryOperator,
   encodeDocumentValue,
+  isDocumentQueryNode,
   queryOperatorKeys,
   sanitizeJson,
 } from "./documentQuery";
@@ -49,7 +50,7 @@ export class DocumentQueryEvaluator {
    */
   static unevaluableReason(query: DocumentQuery | undefined): string | null {
     if (!query || typeof query !== "object") return null;
-    if (DocumentQueryEvaluator.#isNode(query)) {
+    if (isDocumentQueryNode(query)) {
       if (query.kind === "raw") return "q.raw() carries SQL that only the database can run";
       if (query.kind === "search") return "q.search() compiles to a full-text JOIN with no in-memory equivalent";
       if (query.kind === "all" || query.kind === "any")
@@ -70,7 +71,7 @@ export class DocumentQueryEvaluator {
     if (!value || typeof value !== "object") return null;
     if (baseDocumentColumns.has(path)) return null;
     const keyAbsence = `${path}: exists/missing asks whether the key is in the stored JSON, which a document in hand cannot answer — use q.empty()`;
-    if (DocumentQueryEvaluator.#isNode(value)) {
+    if (isDocumentQueryNode(value)) {
       if (value.kind === "op") return value.op === "exists" || value.op === "missing" ? keyAbsence : null;
       return DocumentQueryEvaluator.unevaluableReason(value as DocumentQuery);
     }
@@ -94,7 +95,7 @@ export class DocumentQueryEvaluator {
 
   evaluate(query: DocumentQuery | undefined, row: DocumentRowView): boolean {
     if (!query || typeof query !== "object") return true;
-    if (DocumentQueryEvaluator.#isNode(query)) return this.#node(query, row);
+    if (isDocumentQueryNode(query)) return this.#node(query, row);
     const entries = Object.entries(query);
     if (!entries.length) return true;
     return entries.every(([path, value]) => this.#field(path, value, row));
@@ -118,7 +119,7 @@ export class DocumentQueryEvaluator {
   }
 
   #field(path: string, value: unknown, row: DocumentRowView): boolean {
-    if (DocumentQueryEvaluator.#isNode(value)) {
+    if (isDocumentQueryNode(value)) {
       if (value.kind !== "op") return this.evaluate({ [path]: value } as DocumentQuery, row);
       return this.#operator(path, value.op, value.value, row);
     }
@@ -295,9 +296,5 @@ export class DocumentQueryEvaluator {
 
   static #foldAscii(text: string) {
     return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
-  }
-
-  static #isNode(value: unknown): value is DocumentQueryNode {
-    return !!value && typeof value === "object" && "kind" in value;
   }
 }
