@@ -39,6 +39,7 @@ describe("MigrateJobs", () => {
       [{ id: "j", action: "rollback", target: "r1" }, undefined, "rollback needs the token's sub"],
       [{ id: "j", action: "plan", target: "--expect=x" }, "u1", "target must match"],
       [{ id: "j", action: "plan", target: "m1", params: { "a b": "1" } }, "u1", "params must map names to strings"],
+      [{ id: "j", action: "plan", target: "m1", params: { _a: "1" } }, "u1", "params must map names to strings"],
       [{ id: "j", action: "plan", target: "m1", params: { a: 1 } }, "u1", "params must map names to strings"],
       [{ id: "j", action: "plan", target: "m1", params: ["a=1"] }, "u1", "params must map names to strings"],
       [{ id: "j", action: "apply", target: "m1", expect: "abc" }, "u1", "expect must be a planHash"],

@@ -30,7 +30,7 @@ export class MigrateJobs {
   static readonly maxRemembered = 20;
   static readonly idPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
   static readonly targetPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-  static readonly paramNamePattern = /^[A-Za-z_$][\w$]*$/;
+  static readonly paramNamePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
   static readonly planHashPattern = /^[0-9a-f]{64}$/;
   static readonly #fields = new Set(["id", "action", "target", "params", "expect", "items"]);
 
