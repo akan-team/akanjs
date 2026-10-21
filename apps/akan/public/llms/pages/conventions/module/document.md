@@ -335,7 +335,7 @@ The second argument of `schema.index()`:
 
 - where (query): Indexes only the rows that match. With `unique`, `{ removedAt: null }` lets a removed document give its value back.
 
-- name (string, default <table>_<fields>_<position>): Fixes the index name. The default depends on the index's position in `_onSchema`.
+- name (string, default <table>_<fields>_<position>): Fixes the index name. The default depends on the index's position in `_onSchema`. Naming a shipped index renames it and leaves the old one built, so a changed index keeps the name it has.
 
 **Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
 

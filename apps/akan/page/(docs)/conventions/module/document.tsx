@@ -520,8 +520,8 @@ export default page()
         type: "string",
         default: "<table>_<fields>_<position>",
         desc: l.trans({
-          en: "Fixes the index name. The default depends on the index's position in `_onSchema`.",
-          ko: "인덱스 이름을 고정합니다. 기본 이름은 `_onSchema` 안에서의 순서에 따라 달라집니다.",
+          en: "Fixes the index name. The default depends on the index's position in `_onSchema`. Naming a shipped index renames it and leaves the old one built, so a changed index keeps the name it has.",
+          ko: "인덱스 이름을 고정합니다. 기본 이름은 `_onSchema` 안에서의 순서에 따라 달라집니다. 배포된 인덱스에 이름을 붙이면 이름이 바뀌고 옛 인덱스는 그대로 남으므로, 정의를 바꿀 때도 지금 이름을 유지합니다.",
         }),
       },
     ];
