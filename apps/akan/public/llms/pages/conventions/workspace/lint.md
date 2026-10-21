@@ -56,6 +56,8 @@ every `.tsx` in `apps/` `libs/`
 
 An arrow that only forwards to a form setter. Pass `st.do.setXOnY` by reference.
 
+An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.
+
 `"use client"` files and `*.store.ts`
 
 `fetch.init<Model><Suffix>` or `fetch.get<Model>Init<Suffix>` on the client. Load it in the route.

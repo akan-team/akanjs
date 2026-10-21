@@ -460,6 +460,14 @@ async refreshStock() {
         }),
       },
       {
+        rule: "no-conditional-st-hook",
+        scope: l.trans({ en: "every `.tsx` in `apps/` `libs/`", ko: "`apps/` `libs/`의 모든 `.tsx`" }),
+        desc: l.trans({
+          en: "An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.",
+          ko: "`||` / `&&`, 삼항, `if`, 반복문, 콜백 안에 둔 `st.use.*`, `st.sel`, `st.ref`, `st.tool(…).exec()`입니다. 각각 먼저 `const`에 읽은 뒤 합칩니다.",
+        }),
+      },
+      {
         rule: "no-init-fetch-in-client",
         scope: l.trans({ en: '`"use client"` files and `*.store.ts`', ko: '`"use client"` 파일과 `*.store.ts`' }),
         desc: l.trans({
