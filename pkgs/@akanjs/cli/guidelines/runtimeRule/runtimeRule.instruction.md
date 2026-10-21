@@ -585,6 +585,8 @@ serving without a key. Everything else is behind the ops channel.
 | `GET /_akan/ops/info` | the public info plus `akanVersion`, `buildId`, `serverMode`, `databaseMode`, `solo`, `startedAt`, `replicaIdx` |
 | `POST /_akan/ops/snapshot` `{ id, includeSolid?, uploadUrls: { main, solid?, manifest } }` | 202; a child process snapshots, then PUTs each file and the manifest **last** |
 | `GET /_akan/ops/snapshot/:id` | `running` → `uploading` → `done` \| `failed`; kept in memory, so a restart answers 404 |
+| `POST /_akan/ops/migrate` `{ id, action, target?, params?, expect?, items? }` | 202; a child runs `ops migrate <action> … --json` for the token's `sub` |
+| `GET /_akan/ops/migrate/:id` | `running` → `done` (`exitCode`, and `result`: the line `--json` printed last) \| `failed` (it printed none) |
 
 - **The entry is the image's own `main.js`** — a production image carries no `akan` CLI. `AkanApp.start()` hands
   `argv[2] === "ops"` to the command before it boots anything. It reads the container's env — the `AKAN_PUBLIC_*`
@@ -593,10 +595,15 @@ serving without a key. Everything else is behind the ops channel.
   `--force` is for a port some other app holds.
 - **The channel exists only when `AKAN_OPS_PUBLIC_KEY` is set** (Ed25519: PEM, JWK, base64 SPKI or raw 32 bytes).
   The control plane signs a short EdDSA JWS — `aud`, `iat`, `exp` at most 300s after `iat`, a `jti` the process
-  refuses twice — and the host holds only the public half, so a machine someone carries off mints nothing.
+  refuses twice, and optionally `sub`, whom it acts for — and the host holds only the public half, so a machine
+  someone carries off mints nothing.
   `aud` is `<appName>/<environment>`, or `<appName>/<environment>/<AKAN_OPS_INSTANCE>` when that is set, and then
   only that: a token minted for the app as a whole would replay across every host sharing the name. 30 calls a
   minute per process; every refusal is the same 401. A malformed key leaves the app serving with the channel off.
+- **A migrate job runs for the token's `sub`**, which the run records as its actor: apply and rollback refuse a
+  token without one, and a body naming `actor` is refused. Each option reaches the command as `--name=value`. One
+  job runs at a time per process (409 meanwhile); the run's own lease keeps two hosts on one database apart. Jobs
+  live in memory, so after a restart read the outcome from `list`. Polls count toward the 30 a minute.
 - **The app holds no storage credential.** It PUTs to the presigned URLs it was handed (`application/octet-stream`,
   the manifest `application/json`), plain http only to loopback. The manifest landing is the commit marker.
 - **Snapshots cover the SQLite modes only.** `single` copies the main file and, with `includeSolid`, the Solid file;
