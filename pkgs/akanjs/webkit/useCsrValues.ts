@@ -596,6 +596,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const navigationIntentId = useRef(0);
   const transitionPlanId = useRef(0);
   const navigationLocked = useRef(false);
+  const pendingNavigation = useRef<NavigationIntent | null>(null);
+  const waitingNavigation = useRef<{ kind: "push" | "replace"; href: string; scrollToTop?: boolean } | null>(null);
   const renderCountRef = useRef(0);
   const basePageStateMap = useRef(new WeakMap<PathRoute, PathRoute["pageState"]>());
   const topSafeAreaRef = useRef<HTMLDivElement>(null);
@@ -853,6 +855,17 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       navigationIntent: null,
       phase: "idle",
     });
+  //? The router counts a navigation as made when it is asked, so a newer move takes the place of one still preparing.
+  const cancelPendingNavigation = useCallback(() => {
+    const pending = pendingNavigation.current;
+    if (!pending) return null;
+    pendingNavigation.current = null;
+    navigationLocked.current = false;
+    clearPendingSlots();
+    debugFrame("navigation.cancel", { reason: "superseded", id: pending.id, to: pending.to.href });
+    setLocationState((current) => ({ ...current, pendingLocation: null, navigationIntent: null, phase: "idle" }));
+    return pending;
+  }, [clearPendingSlots]);
   const applyingSyncNavigation = useRef(false);
   const broadcastSyncNavigation = useCallback((kind: "push" | "replace" | "back" | "pop", href: string) => {
     if (applyingSyncNavigation.current || lastBroadcastSyncHref.current === href) return;
@@ -888,7 +901,10 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       }
 
       if (navigationLocked.current) {
-        debugFrame("navigation.cancel", { reason: "locked", kind, from: fromLocation.href, to: href });
+        //? Run once the page sliding in has settled: dropped, a redirect from that page's guard would leave it blank.
+        const waiting = waitingNavigation.current;
+        waitingNavigation.current = { kind: waiting?.kind === "push" ? "push" : kind, href, scrollToTop };
+        debugFrame("navigation.wait", { kind, from: fromLocation.href, to: href });
         return;
       }
       navigationLocked.current = true;
@@ -901,6 +917,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         scrollToTop,
         createdAt: Date.now(),
       };
+      pendingNavigation.current = intent;
       debugFrame("navigation.intent", { id: intent.id, kind, from: fromLocation.href, to: href });
       clearPendingSlots();
       setLocationState({
@@ -947,6 +964,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
           actions: plan.actions.map((action) => action.type),
         });
         await prepareForFrameTransition();
+        if (pendingNavigation.current !== intent) return;
+        pendingNavigation.current = null;
         setTransitionPageStateSnapshot(new Map(latestPageStates));
         setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
         promotePendingSlots();
@@ -965,6 +984,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
             setTransitionPageStateSnapshot(null);
             setLocationState((current) => ({
               ...current,
+              //? A replace slid out the entry it replaced; settled, the page under is the entry before, as after a push.
+              prevLocation: getPrevLocation(),
               pendingLocation: null,
               navigationIntent: null,
               phase: "idle",
@@ -972,12 +993,16 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
             navigationLocked.current = false;
             clearPendingSlots();
             debugFrame("transition.actionEnd", { id: plan.id, phase: "idle" });
+            const waiting = waitingNavigation.current;
+            waitingNavigation.current = null;
+            if (waiting) latestRouter.current[waiting.kind](waiting.href, { scrollToTop: waiting.scrollToTop });
           },
           Math.max(360, plan.duration),
         );
       };
 
       const waitUntilReady = () => {
+        if (pendingNavigation.current !== intent) return;
         const elapsedMs = Date.now() - intent.createdAt;
         const ready = isPendingFrameReady({
           path: toLocation.pathRoute.path,
@@ -997,6 +1022,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       broadcastSyncNavigation,
       getCurrentLocation,
       getLocation,
+      getPrevLocation,
       prevLocation,
       promotePendingSlots,
       setHistoryForward,
@@ -1053,12 +1079,15 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       (href: string, { scrollToTop }: RouteOptions = {}) => {
         const location = getCurrentLocation();
         debugFrame(`router.${kind}`, { from: location.href, to: href, scrollToTop });
+        if (pendingNavigation.current?.to.href === href) return;
+        //? A replace takes the place of the move it cancels, as a guard refusing the page on its way redirects.
+        const cancelled = cancelPendingNavigation();
         if (location.href === href) {
           if (!pageContentRef.current) return;
           pageContentRef.current.scrollTop = getScrollTop(location);
           return;
         }
-        runForwardNavigation(kind, href, { scrollToTop });
+        runForwardNavigation(cancelled?.kind === "push" ? "push" : kind, href, { scrollToTop });
       };
     const router: RouterInstance = {
       push: forward("push"),
@@ -1067,6 +1096,9 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         csrLocation.reload();
       },
       back: async ({ scrollToTop }: RouteOptions = {}) => {
+        waitingNavigation.current = null;
+        //? Back from a page still preparing returns to the one on screen, which is where the frame already is.
+        if (cancelPendingNavigation()) return;
         const targetLocation = getPrevLocation();
         if (!targetLocation) return;
         const location = getCurrentLocation();
@@ -1092,9 +1124,12 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       const isUaAnimated =
         (event as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition === true;
       debugFrame("router.popstate", { href, routeType, scrollTop });
-      if (!routeType) {
-        const target = history.current.locations.findIndex((candidate) => isAt(candidate));
-        if (target === history.current.idx) return;
+      const target = routeType ? null : history.current.locations.findIndex((candidate) => isAt(candidate));
+      if (target === history.current.idx) return;
+      //? The browser has moved already: a page the frame has not shown yet would be pushed onto the wrong entry.
+      waitingNavigation.current = null;
+      cancelPendingNavigation();
+      if (target !== null) {
         if (target >= 0) setHistoryJump(target, scrollTop);
         else {
           //? An entry this stack never saw: one from before a reload that kept no stack, or a hash the browser pushed.
@@ -1126,7 +1161,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       }
     };
     return router;
-  }, [location, runForwardNavigation, broadcastSyncNavigation, shouldPrepareFrameTransition]);
+  }, [location, runForwardNavigation, cancelPendingNavigation, broadcastSyncNavigation, shouldPrepareFrameTransition]);
   const liveRouter = getRouter();
   const latestRouter = useRef(liveRouter);
   latestRouter.current = liveRouter;

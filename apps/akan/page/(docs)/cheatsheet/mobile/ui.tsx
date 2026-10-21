@@ -810,6 +810,25 @@ export default page()
                 {l.trans({
                   en: (
                     <>
+                      <strong>A move made mid-transition is not lost.</strong> Until a page that slides in shows, a
+                      newer move takes its place: a guard that refuses it redirects before it ever appears, and back
+                      cancels it. A move made while it slides runs once it has settled.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <strong>전환 중에 한 이동도 사라지지 않습니다.</strong> 슬라이드로 들어오는 페이지가 보이기 전에는
+                      더 새로운 이동이 그 자리를 대신합니다. 그 페이지의 guard가 거절하면 페이지는 한 번도 보이지 않은
+                      채 redirect되고, 뒤로가기는 그 이동을 취소합니다. 슬라이드 도중에 한 이동은 전환이 끝난 뒤
+                      실행됩니다.
+                    </>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
                       <strong>The stack outlives a reload.</strong> After a reload, or a WebView crash, back walks the
                       same stack as before.
                     </>

@@ -154,6 +154,8 @@ One `.config()` object sets the whole page frame: animation, gesture, reserved s
 
 **Every history entry is a page of its own.** A push to the route you are on mounts a new page over the old one, which waits under it with its state; a replace updates the page in place. A `cache` route stays one page for the whole session.
 
+**A move made mid-transition is not lost.** Until a page that slides in shows, a newer move takes its place: a guard that refuses it redirects before it ever appears, and back cancels it. A move made while it slides runs once it has settled.
+
 **The stack outlives a reload.** After a reload, or a WebView crash, back walks the same stack as before.
 
 **On Android, back is the page's only while it has somewhere to go.** At the index with nothing under it, the system takes back, and the app stays warm instead of quitting.
