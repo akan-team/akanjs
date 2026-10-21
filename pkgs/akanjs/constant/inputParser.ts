@@ -49,12 +49,12 @@ export class InputParser {
 
   //? A primitive argument may be query-string or path text, so it keeps `deserialize`'s coercion.
   static parse(argRef: Cls, arrDepth: number, value: unknown, option: ParseOption) {
-    if (PrimitiveRegistry.has(argRef)) return deserialize(argRef, arrDepth, value, option);
     const { key, nullable = false } = option;
     if (value === null || value === undefined) {
       if (nullable) return null;
       throw new InvalidInputError(key, null);
     }
+    if (PrimitiveRegistry.has(argRef)) return deserialize(argRef, arrDepth, value, option);
     return InputParser.#walk(value, arrDepth, key, (item, path) => InputParser.#value(argRef, item, path));
   }
 

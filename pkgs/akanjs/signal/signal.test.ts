@@ -1760,6 +1760,34 @@ describe("SignalContext argument parsing", () => {
     expect(received).toEqual([valid]);
   });
 
+  test("answers a primitive body argument left out with a 400 requiredArgument naming it", async () => {
+    const responseWith = async (guards: GuardCls[], body: Record<string, unknown>) => {
+      const endpointInfo = buildEndpoint
+        .mutation(Int, { guards })
+        .body("orderId", String)
+        .exec((orderId) => orderId.length);
+      const adaptor = new (adapt("signalTestMissingBodyArgAdaptor"))();
+      const request = makeHttpRequest({ url: "http://localhost/orders", body });
+      return (await SignalContext.try(adaptor, endpointInfo, "missingBodyArg", async () => {
+        const context = makeSignalContext({ endpointInfo, adaptor, request });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    };
+
+    for (const body of [{}, { orderId: null }]) {
+      const missing = await responseWith([TestAdmin as GuardCls], body);
+      expect(missing.status).toBe(400);
+      expect(await missing.json()).toMatchObject({
+        error: "base.error.requiredArgument",
+        statusCode: 400,
+        data: { name: "orderId" },
+      });
+    }
+    expect((await responseWith([AccountDeny as GuardCls], {})).status).toBe(403);
+    expect(await (await responseWith([TestAdmin as GuardCls], { orderId: "abc" })).json()).toBe(3);
+  });
+
   test("refuses an errors declaration no response could carry, and serializes a valid one", () => {
     const declare = (errors: Record<number, string[]>) => () =>
       buildEndpoint.mutation(String, { guards: [TestAdmin as GuardCls], errors: errors as never }).exec(() => "ok");

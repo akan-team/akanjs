@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs, enumOf, Int } from "akanjs/base";
+import { Any, dayjs, enumOf, Int } from "akanjs/base";
 
 import { ConstantRegistry, InputParser, InvalidInputError, via } from ".";
 
@@ -72,9 +72,9 @@ const body = (patch: Record<string, unknown> = {}) => ({
   ...patch,
 });
 const parse = (value: unknown) => InputParser.parse(InputParserTestInput, 0, value, { key: "data" });
-const refusal = (value: unknown) => {
+const refusal = (value: unknown, run: (value: unknown) => unknown = parse) => {
   try {
-    parse(value);
+    run(value);
   } catch (error) {
     if (error instanceof InvalidInputError) return { path: error.path, expected: error.expected };
     throw error;
@@ -124,5 +124,21 @@ describe("InputParser", () => {
       { x: 2, z: 5, label: "p" },
     ]);
     expect(InputParser.parse(Int, 0, "3", { key: "limit" })).toBe(3);
+  });
+
+  test("refuses an absent primitive argument as missing, and takes null where it is nullable", () => {
+    const parseOrderId = (value: unknown) => InputParser.parse(String, 0, value, { key: "orderId" });
+
+    expect(refusal(undefined, parseOrderId)).toEqual({ path: "orderId", expected: null });
+    expect(refusal(null, parseOrderId)).toEqual({ path: "orderId", expected: null });
+    expect(refusal(null, (value) => InputParser.parse(Int, 1, value, { key: "ids" }))).toEqual({
+      path: "ids",
+      expected: null,
+    });
+    expect(refusal(undefined, (value) => InputParser.parse(Any, 0, value, { key: "args" }))).toEqual({
+      path: "args",
+      expected: null,
+    });
+    expect(InputParser.parse(String, 0, undefined, { key: "orderId", nullable: true })).toBeNull();
   });
 });
