@@ -100,6 +100,8 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     cancel: ["Cancel", "취소"],
     retry: ["Try again", "다시 시도"],
     pageLoadFailed: ["This page could not be loaded.", "이 화면을 불러오지 못했습니다."],
+    pageNotFound: ["This page does not exist.", "없는 화면입니다."],
+    goBack: ["Go back", "돌아가기"],
     unauthorized: ["Unauthorized", "권한 없음"],
     agent: ["Agent", "에이전트"],
     agentIntro: ["Ask about this page or tell the agent what to do.", "이 화면에 대해 묻거나 할 일을 지시해 보세요."],

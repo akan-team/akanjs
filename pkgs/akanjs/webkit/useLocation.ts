@@ -17,28 +17,31 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
         .filter((pathSegment) => !!pathSegment)
         .map((pathSegment) => `/${pathSegment}`);
     const getPathRoute = (pathname: string): PathRoute => {
-      const pathSegments = getPathSegments(pathname);
-      const getTargetRouteGuide = (pathSegments: string[], routeGuide: RouteGuide): RouteGuide => {
-        const pathSegment = pathSegments.shift();
-        if (!pathSegment) return routeGuide;
-        const childrenSegments = Object.keys(routeGuide.children);
+      let target: RouteGuide | null = routeGuide.current;
+      //? A path no page matches draws the not-found of the deepest node it reached, under that node's layouts.
+      let notFoundRouteOf = target.notFoundRouteOf;
+      for (const pathSegment of getPathSegments(pathname)) {
+        const parent: RouteGuide = target;
+        const childrenSegments = Object.keys(parent.children);
         const matchingPathSegment = childrenSegments.find((segment) => segment === pathSegment);
         const paramSegment = childrenSegments.find((segment) => segment.startsWith("/:"));
-        const childRouteGuide = matchingPathSegment
-          ? routeGuide.children[pathSegment]
+        const child = matchingPathSegment
+          ? parent.children[pathSegment]
           : paramSegment
-            ? routeGuide.children[paramSegment]
-            : null;
-        if (!childRouteGuide) throw new Error(`Not found: ${pathname}`);
-        return getTargetRouteGuide(pathSegments, childRouteGuide);
-      };
-      const targetRouteGuide = getTargetRouteGuide(pathSegments, routeGuide.current);
-      const pathRoute = targetRouteGuide.pathRoute;
-      if (!pathRoute) {
-        csrLocation.assign("/404");
-        throw new Error("404");
+            ? parent.children[paramSegment]
+            : undefined;
+        if (!child) {
+          target = null;
+          break;
+        }
+        target = child;
+        notFoundRouteOf = child.notFoundRouteOf ?? notFoundRouteOf;
       }
-      return pathRoute;
+      if (target?.pathRoute) return target.pathRoute;
+      if (notFoundRouteOf) return notFoundRouteOf(pathname);
+      if (!target) throw new Error(`Not found: ${pathname}`);
+      csrLocation.assign("/404");
+      throw new Error("404");
     };
     const getParams = (pathname: string, pathRoute: PathRoute) => {
       const pathSegments = getPathSegments(pathname);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { Device, PathRoute, RouteRender } from "akanjs/client";
+import { type Device, layout as layoutChain, type PathRoute, type RouteRender } from "akanjs/client";
+import type { ReactElement, ReactNode } from "react";
 import { RouteTreeBuilder } from "../server/routeTreeBuilder";
 import { type CsrRouteContext, CsrRouteTable } from "./CsrRouteTable";
 
@@ -121,6 +122,63 @@ describe("CsrRouteTable lays out a page as the SSR route tree does", () => {
     expect(csr).toEqual(ssr);
     expect(csr["/:lang/login"]).toEqual({ root: ["root"], layouts: [] });
     expect(csr["/:lang/oauth/consent"]).toEqual({ root: ["root"], layouts: [] });
+  });
+});
+
+describe("CsrRouteTable's not-found routes", () => {
+  const props = { params: { lang: "en" }, searchParams: {}, children: null } as never;
+  const passThrough = ({ children }: { children: ReactNode }) => children;
+
+  test("a path no page matches draws the deepest .notFound() above it, after the guards of the layouts below it", async () => {
+    const asked: string[] = [];
+    const table = await CsrRouteTable.boot(
+      {
+        "./__root_layout.tsx": layout("root"),
+        "./org/_layout.tsx": async () => ({
+          default: layoutChain()
+            .notFound(({ pathname }) => `no ${pathname}`)
+            .render(passThrough),
+        }),
+        "./org/settings/_layout.tsx": async () => ({
+          default: layoutChain()
+            .guard(() => void asked.push("settings"))
+            .render(passThrough),
+        }),
+        "./org/settings/_index.tsx": page("settings"),
+      },
+      { device, basePaths: null },
+    );
+    const settings = table.snapshot().routeGuide.children["/:lang"]?.children["/org"]?.children["/settings"];
+    const route = settings?.notFoundRouteOf?.("/en/org/settings/missing");
+    if (!route) throw new Error("the settings layout has no not-found route");
+
+    expect(route.path).toBe("/:lang/org/settings/*");
+    expect(await labelsOf(route.renderRootLayouts)).toEqual(["root"]);
+    expect(route.renderLayouts.map((render) => !!render.NotFound)).toEqual([true]);
+    expect(route.pageState.cache).toBe(false);
+    await route.renderPage.guard?.(props);
+    expect(asked).toEqual(["settings"]);
+    expect(await (route.renderPage.render as (props: never) => unknown)(props)).toBe("no /en/org/settings/missing");
+  });
+
+  test("with no .notFound() above it, the default page draws under the root layouts alone", async () => {
+    const table = await CsrRouteTable.boot(
+      {
+        "./__root_layout.tsx": layout("root"),
+        "./admin/_layout.tsx": layout("admin"),
+        "./admin/users.tsx": page("users"),
+      },
+      { device, basePaths: null },
+    );
+    const route = table.snapshot().routeGuide.children["/:lang"]?.children["/admin"]?.notFoundRouteOf?.("/en/admin/x");
+    if (!route) throw new Error("the admin layout has no not-found route");
+    const drawn = (await (route.renderPage.render as (props: never) => unknown)(props)) as ReactElement<{
+      pathname: string;
+    }>;
+
+    expect(await labelsOf(route.renderRootLayouts)).toEqual(["root"]);
+    expect(route.renderLayouts).toEqual([]);
+    expect(drawn.props.pathname).toBe("/en/admin/x");
   });
 });
 

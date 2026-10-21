@@ -195,6 +195,12 @@ const screenRouteOf = ({ segment, transition = "none", guard }: Screen): PathRou
   } as unknown as PathRoute;
 };
 
+const notFoundRouteOf = (pathname: string) =>
+  ({
+    ...pathRouteOf("*"),
+    renderPage: { kind: "page", isAsync: true, render: async () => <main>{`missing ${pathname}`}</main> },
+  }) as unknown as PathRoute;
+
 let unmountFrame: (() => void) | null = null;
 afterEach(() => {
   unmountFrame?.();
@@ -213,6 +219,8 @@ const mountFrame = (path: string, screens: Screen[]) => {
   (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`http://localhost${path}`);
   const pathRoutes = screens.map(screenRouteOf);
   const routeGuide = guideOf(pathRoutes);
+  const langGuide = routeGuide.children["/:lang"];
+  if (langGuide) langGuide.notFoundRouteOf = notFoundRouteOf;
   const seen: { latest?: CsrContextType; shown: string[] } = { shown: [] };
   const Frame = () => {
     const values = useCsrValues(routeGuide, pathRoutes);
@@ -240,10 +248,11 @@ const mountFrame = (path: string, screens: Screen[]) => {
       );
     });
   };
-  const root = createRoot(document.createElement("div"));
+  const container = document.createElement("div");
+  const root = createRoot(container);
   act(() => root.render(<Frame />));
   unmountFrame = () => act(() => root.unmount());
-  return { seen, stack: () => seen.latest?.history.current.locations.map(({ pathname }) => pathname) };
+  return { seen, container, stack: () => seen.latest?.history.current.locations.map(({ pathname }) => pathname) };
 };
 
 const elapse = (ms: number) =>
@@ -395,5 +404,31 @@ describe("useCsrValues while a page slides in", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/comments");
     expect(frame.stack()).toEqual(["/en/home", "/en/detail", "/en/comments"]);
+  });
+});
+
+describe("useCsrValues for a path no page matches", () => {
+  test("a push to it draws its not-found instead of throwing", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }]);
+
+    await act(async () => void client.router.push("/missing"));
+    await elapse(50);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/missing");
+    expect(frame.container.textContent).toContain("missing /en/missing");
+  });
+
+  test("a guard's router.notFound() draws the not-found in place of the refused page, not a blank one", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", guard: () => client.router.notFound() },
+    ]);
+
+    await act(async () => void client.router.push("/detail"));
+    await elapse(100);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/404");
+    expect(frame.stack()).toEqual(["/en/home", "/en/404"]);
+    expect(frame.container.textContent).toContain("missing /en/404");
   });
 });

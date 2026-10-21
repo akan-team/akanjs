@@ -61,7 +61,9 @@ body shape — this is the full contract behind them. Before changing route beha
   again in the background while what it drew stays, and a refusal moves the router and blanks it. A guard that moves
   the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is
   retried. Root layouts are drawn once for every page and are not gated
-  themselves; their guards still run in each page's chain, and a legacy page under them waits too. `guard` is a stage
+  themselves; their guards still run in each page's chain, and a legacy page under them waits too. In a CSR bundle a
+  path no page matches draws the deepest `.notFound()` of the layouts it sits under, or a default page, once those
+  layouts' guards let it in, and `router.notFound()` moves to `/404`, drawn the same way. `guard` is a stage
   only: a legacy module that exports one, a root layout's included, fails to load and fails `akan build`.
 - **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and
   the page tools in `tools/list` show only the screens whose guards admit the caller (a listing knows no arguments,

@@ -499,5 +499,7 @@ export interface LayoutFallbackRoute {
 export interface RouteGuide {
   pathSegment: string;
   pathRoute?: PathRoute;
+  /** CSR: the page a path under this node that no route matches draws, made for the pathname that was asked for. */
+  notFoundRouteOf?: (pathname: string) => PathRoute;
   children: { [key: string]: RouteGuide };
 }

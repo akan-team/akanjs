@@ -5,8 +5,11 @@ import {
   insetBreakpoints,
   type LayoutModule,
   type PageConfig,
+  type PageProps,
+  type PageState,
   type PathRoute,
   type Route,
+  RouteGuards,
   type RouteGuide,
   type RouteModule,
   type RouteModuleSource,
@@ -26,15 +29,24 @@ import {
   RouteLayering,
   routeSegmentToTreePath,
 } from "akanjs/common";
+import { createElement } from "react";
+import { PageNotFound } from "./PageNotFound";
 
 type RouteModuleWithConfig = RouteModule & { pageConfig?: PageConfig };
 type CsrRouteModuleLoader = () => Promise<RouteModuleSource>;
 export type CsrRouteModuleEntry = CsrRouteModuleLoader | { loader: CsrRouteModuleLoader; isAsyncDefault?: boolean };
 export type CsrRouteContext = Record<string, CsrRouteModuleEntry>;
 
+interface NotFoundRoute {
+  pathSegments: string[];
+  routeOf: (pathname: string) => PathRoute;
+}
+
 export interface CsrRoutes {
   pathRoutes: PathRoute[];
   routeGuide: RouteGuide;
+  /** One per layout, from the top: what a path under it that no page matches draws. */
+  notFoundRoutes: NotFoundRoute[];
 }
 
 interface CsrRouteTableOptions {
@@ -66,7 +78,7 @@ export class CsrRouteTable {
   readonly #options: CsrRouteTableOptions;
   readonly #listeners = new Set<() => void>();
   #keys: string[] = [];
-  #routes: CsrRoutes = { pathRoutes: [], routeGuide: { pathSegment: "/", children: {} } };
+  #routes: CsrRoutes = { pathRoutes: [], routeGuide: { pathSegment: "/", children: {} }, notFoundRoutes: [] };
   #generation = 0;
   #cssSafeArea: SafeAreaInsets = { top: 0, bottom: 0 };
   #breakpoint = 0;
@@ -116,7 +128,8 @@ export class CsrRouteTable {
         : { ...pathRoute, pageState };
     });
     if (pathRoutes.every((pathRoute, idx) => pathRoute === current[idx])) return;
-    this.#routes = { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes) };
+    const { notFoundRoutes } = this.#routes;
+    this.#routes = { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes, notFoundRoutes), notFoundRoutes };
     for (const listener of this.#listeners) listener();
   };
 
@@ -214,6 +227,7 @@ export class CsrRouteTable {
       } as Route);
     }
     assertUniqueRoutePatterns(pagePatterns);
+    const notFoundRoutes: NotFoundRoute[] = [];
     const getPathRoutes = (
       route: Route,
       parent: RouteLayer<RouteRender> | null = null,
@@ -228,6 +242,11 @@ export class CsrRouteTable {
       const ownPageConfig = route.renderPage && route.pageConfig ? route.pageConfig : null;
       const finalPageConfigChain = [...pageRenderConfigChain, ...(ownPageConfig ? [ownPageConfig] : [])];
       const pageState = this.#pageStateOf(path, finalPageConfigChain, width);
+      if (route.renderLayout) {
+        const notFoundPath = `${path === "/" ? "" : path}/*`;
+        const notFoundState = { ...this.#pageStateOf(notFoundPath, pageConfigChain, width), cache: false };
+        notFoundRoutes.push(CsrRouteTable.#notFoundOf(layer, notFoundPath, notFoundState));
+      }
       return [
         ...(route.renderPage
           ? [
@@ -251,7 +270,39 @@ export class CsrRouteTable {
     const rootRoute = routeMap.get("/");
     if (!rootRoute) throw new Error("No root route");
     const pathRoutes = getPathRoutes(rootRoute);
-    return { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes) };
+    return { pathRoutes, routeGuide: CsrRouteTable.#guideOf(pathRoutes, notFoundRoutes), notFoundRoutes };
+  }
+
+  //? Drawn as the server draws one: under the layouts down to the deepest `.notFound()`, the root layouts always kept
+  //? since they hold the frame, after the guards of every layout the path sits under, the ones it leaves out included.
+  static #notFoundOf(layer: RouteLayer<RouteRender>, path: string, pageState: PageState): NotFoundRoute {
+    const rootCount = layer.renderRootLayouts.length;
+    const layouts = [...layer.renderRootLayouts, ...layer.renderLayouts];
+    const owner = layouts.findLastIndex((layout) => !!layout.NotFound);
+    const kept = Math.max(owner + 1, rootCount);
+    const NotFound = layouts[owner]?.NotFound;
+    const guard = RouteGuards.compose(...layouts.slice(kept).map((layout) => layout.guard));
+    const pathSegments = [...layer.pathSegments, "/*"];
+    const renderLayouts = layer.renderLayouts.slice(0, kept - rootCount);
+    return {
+      pathSegments: layer.pathSegments,
+      routeOf: (pathname) => ({
+        path,
+        pathSegments,
+        renderRootLayouts: layer.renderRootLayouts,
+        renderLayouts,
+        pageState,
+        renderPage: {
+          kind: "page",
+          isAsync: true,
+          guard,
+          render: (async ({ params, searchParams }: PageProps) =>
+            NotFound
+              ? await NotFound({ params, searchParams, pathname })
+              : createElement(PageNotFound, { pathname })) as RouteRender["render"],
+        },
+      }),
+    };
   }
 
   #pageStateOf(path: string, configChain: PageConfig[], width: number | undefined) {
@@ -267,7 +318,7 @@ export class CsrRouteTable {
     });
   }
 
-  static #guideOf(pathRoutes: PathRoute[]) {
+  static #guideOf(pathRoutes: PathRoute[], notFoundRoutes: NotFoundRoute[]) {
     const routeGuide: RouteGuide = { pathSegment: "/", children: {} };
     pathRoutes.forEach((pathRoute) => {
       const pathSegments = pathRoute.pathSegments.slice(1);
@@ -283,6 +334,16 @@ export class CsrRouteTable {
         return next;
       }, routeGuide);
     });
+    //? A route group's layout shares its parent's path: the first from the top keeps the node, as on the server.
+    for (const { pathSegments, routeOf } of notFoundRoutes) {
+      const node = pathSegments
+        .slice(1)
+        .reduce(
+          (guide: RouteGuide, pathSegment) => (guide.children[pathSegment] ??= { pathSegment, children: {} }),
+          routeGuide,
+        );
+      node.notFoundRouteOf ??= routeOf;
+    }
     return routeGuide;
   }
 
