@@ -8,6 +8,8 @@ export interface OpsTokenClaims {
   exp: number;
   iat: number;
   jti: string;
+  /** Whom the control plane acts for: a migration run records it as its actor. */
+  sub?: string;
 }
 
 export type OpsTokenVerdict = { ok: true; claims: OpsTokenClaims } | { ok: false; reason: string };
@@ -17,6 +19,7 @@ export class OpsTokenVerifier {
   static readonly maxLifetimeSec = 300;
   static readonly clockSkewSec = 30;
   static readonly maxRememberedJti = 10_000;
+  static readonly subPattern = /^[\x21-\x7e]{1,128}$/;
 
   readonly audience: string;
   readonly #key: KeyObject;
@@ -46,14 +49,16 @@ export class OpsTokenVerifier {
   verify(token: string, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
     const verdict = EdDsaJwt.verify(token, this.#key, { audience: this.audience });
     if (!verdict.ok) return verdict;
-    const { exp, iat, jti } = verdict.claims;
+    const { exp, iat, jti, sub } = verdict.claims;
     if (typeof exp !== "number" || typeof iat !== "number" || typeof jti !== "string" || !jti)
       return { ok: false, reason: "exp, iat and jti are required" };
+    if (sub !== undefined && (typeof sub !== "string" || !OpsTokenVerifier.subPattern.test(sub)))
+      return { ok: false, reason: "sub must be 1 to 128 visible ASCII characters" };
     if (exp <= nowSec) return { ok: false, reason: "expired" };
     if (iat > nowSec + OpsTokenVerifier.clockSkewSec) return { ok: false, reason: "issued in the future" };
     if (exp - iat > OpsTokenVerifier.maxLifetimeSec) return { ok: false, reason: "lifetime exceeds 300s" };
     if (!this.#remember(jti, exp, nowSec)) return { ok: false, reason: "replayed jti" };
-    return { ok: true, claims: { aud: this.audience, exp, iat, jti } };
+    return { ok: true, claims: { aud: this.audience, exp, iat, jti, ...(sub === undefined ? {} : { sub }) } };
   }
 
   #remember(jti: string, exp: number, nowSec: number) {

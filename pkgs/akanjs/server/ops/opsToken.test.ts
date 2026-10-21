@@ -66,6 +66,23 @@ describe("OpsTokenVerifier", () => {
     expect(verifier.verify(mint(claims(), { alg: "none" }), now)).toEqual({ ok: false, reason: "alg must be EdDSA" });
   });
 
+  test("hands back a sub of visible ASCII and refuses any other before it spends the jti", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    expect(verifier.verify(mint(claims({ sub: "6a255770c8cc0ef23cc96bc6" })), now)).toMatchObject({
+      ok: true,
+      claims: { sub: "6a255770c8cc0ef23cc96bc6" },
+    });
+    const unnamed = verifier.verify(mint(claims()), now);
+    expect(unnamed.ok && "sub" in unnamed.claims).toBe(false);
+    const jti = crypto.randomUUID();
+    for (const sub of ["", "two words", "line\nbreak", "x".repeat(129), 42, null])
+      expect(verifier.verify(mint(claims({ sub, jti })), now)).toEqual({
+        ok: false,
+        reason: "sub must be 1 to 128 visible ASCII characters",
+      });
+    expect(verifier.verify(mint(claims({ sub: "x".repeat(128), jti })), now).ok).toBe(true);
+  });
+
   test("reads the request's bearer as every other gate does: one word after the scheme, in any case", () => {
     const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
     const requestWith = (authorization: string) =>

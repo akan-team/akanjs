@@ -43,6 +43,11 @@ const memoId = "507f1f77bcf86cd799439011";
 const Broken = () => {
   throw new Error("a read failed while it drew");
 };
+//? What the relay restores from a refused call: the server's error key with its status.
+const refused = (statusCode: number) => Object.assign(new Error("base.error.documentNotFound"), { statusCode });
+const Removed = () => {
+  throw refused(404);
+};
 const memoPage = {
   default: page()
     .param("memoId", ID)
@@ -51,6 +56,13 @@ const memoPage = {
       throw new Error("the load broke");
     })
     .app("brokenMemo", "Fails to draw.", () => <Broken />)
+    .app("goneMemo", "Reads a removed memo.", () => {
+      throw refused(404);
+    })
+    .app("hiddenMemo", "Reads a memo of another account.", () => {
+      throw refused(403);
+    })
+    .app("removedMemo", "Draws a memo removed since the call.", () => <Removed />)
     .render(() => null),
 };
 const root = {
@@ -150,5 +162,14 @@ describe("McpAppBoot", () => {
     expect(document.body.textContent).toBe("The page failed to load.");
     await boot("brokenMemo", started);
     expect(document.body.textContent).toBe("The page failed to load.");
+  });
+
+  test("answers a read the server refused as the call itself would, by its status", async () => {
+    await boot("goneMemo", started);
+    expect(document.body.textContent).toBe("No screen exists for these arguments.");
+    await boot("removedMemo", started);
+    expect(document.body.textContent).toBe("No screen exists for these arguments.");
+    await boot("hiddenMemo", started);
+    expect(document.body.textContent).toBe("This screen is not available to the signed-in account.");
   });
 });

@@ -465,8 +465,10 @@ export default page()
   caller's claims, and each call it makes is relayed and judged by the guards.
 - **A view's call answers what a browser would get**, in `_meta` beside the masked result: the value with its
   `visual` fields, or the domain `Err` with its key and data, toasted in the user's language. A refusal and a crash
-  stay generalized. A load that throws, or a read that fails while the element draws, shows `The page failed to
-  load.`; a download (`<a download>`, a data table's export) goes to a host that saves files.
+  stay generalized. A load that throws, or a read that fails while the element draws, shows what the call would have
+  answered: `No screen exists for these arguments.` for a 404 (a record removed since the call), `This screen is not
+  available to the signed-in account.` for a 401 or 403, and `The page failed to load.` for anything else; a download
+  (`<a download>`, a data table's export) goes to a host that saves files.
 - `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` publishes no page tools: no app is published and every
   prompt stays a prompt only. `web: { csr: false }` publishes the app tools with no view, and an API-only build
   (`web: false`) has no pages to publish.

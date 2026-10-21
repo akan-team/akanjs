@@ -32,6 +32,13 @@ export const MCP_APP_META = {
   error: "akanjs/error",
 } as const;
 
+//? Said by a screen's call the server refuses and by its view when a read fails the same way, so the two never differ.
+export const MCP_SCREEN_REFUSAL = {
+  gated: "This screen is not available to the signed-in account.",
+  notFound: "No screen exists for these arguments.",
+  failed: "The page failed to load.",
+} as const;
+
 export interface McpAppSnapshotRecord {
   key: string;
   args: Record<string, unknown>;

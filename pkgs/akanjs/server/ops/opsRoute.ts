@@ -2,7 +2,8 @@ import { Logger } from "akanjs/common";
 import { getEnv } from "../../base/baseEnv";
 import { SelfExec } from "../selfExec";
 import type { AppDetailInfo } from "./appInfo";
-import { OpsTokenVerifier } from "./opsToken";
+import { MigrateJobs, type MigrateProcessOutput } from "./migrateJobs";
+import { type OpsTokenClaims, OpsTokenVerifier } from "./opsToken";
 import { type SnapshotJobRequest, SnapshotJobs } from "./snapshotJobs";
 import type { SnapshotSources } from "./snapshotTypes";
 import { SqliteFiles } from "./sqliteFiles";
@@ -12,6 +13,7 @@ export interface OpsRouteOptions {
   verifier: OpsTokenVerifier;
   detail: () => AppDetailInfo;
   jobs: SnapshotJobs;
+  migrateJobs: MigrateJobs;
   rateLimitPerMinute?: number;
 }
 
@@ -28,13 +30,15 @@ export class OpsRoute {
   readonly #verifier: OpsTokenVerifier;
   readonly #detail: () => AppDetailInfo;
   readonly #jobs: SnapshotJobs;
+  readonly #migrateJobs: MigrateJobs;
   readonly #rateLimit: number;
   #window: number[] = [];
 
-  constructor({ verifier, detail, jobs, rateLimitPerMinute = 30 }: OpsRouteOptions) {
+  constructor({ verifier, detail, jobs, migrateJobs, rateLimitPerMinute = 30 }: OpsRouteOptions) {
     this.#verifier = verifier;
     this.#detail = detail;
     this.#jobs = jobs;
+    this.#migrateJobs = migrateJobs;
     this.#rateLimit = rateLimitPerMinute;
   }
 
@@ -60,7 +64,8 @@ export class OpsRoute {
       capture: (request) => OpsRoute.captureInChild(request, sources(), snapshotDir),
     });
     logger.info(`Ops channel enabled for audience ${verifier.audience}`);
-    return new OpsRoute({ verifier, detail, jobs });
+    const migrateJobs = new MigrateJobs((argv) => OpsRoute.migrateInChild(argv));
+    return new OpsRoute({ verifier, detail, jobs, migrateJobs });
   }
 
   //* In a child: VACUUM INTO, integrity_check and gzip are sync or CPU-bound and would stall every request meanwhile.
@@ -83,6 +88,21 @@ export class OpsRoute {
     return JSON.parse(lastLine) as SnapshotCapture;
   }
 
+  //* In a child: bun:sqlite would run the migration synchronously and stall every request, and a gateway has no server.
+  static async migrateInChild(argv: string[], script = Bun.main): Promise<MigrateProcessOutput> {
+    const proc = Bun.spawn(SelfExec.command(script, "ops", "migrate", ...argv), {
+      env: SelfExec.env(),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { code, stdout, stderr };
+  }
+
   matches(pathname: string) {
     return pathname.startsWith(OpsRoute.prefix);
   }
@@ -98,12 +118,25 @@ export class OpsRoute {
     const route = url.pathname.slice(OpsRoute.prefix.length);
     if (route === "info" && req.method === "GET") return OpsRoute.#json(this.#detail(), 200);
     if (route === "snapshot" && req.method === "POST") return await this.#startSnapshot(req);
-    const jobMatch = /^snapshot\/([^/]+)$/.exec(route);
-    if (jobMatch?.[1] && req.method === "GET") {
-      const job = this.#jobs.get(decodeURIComponent(jobMatch[1]));
-      return job ? OpsRoute.#json(job, 200) : OpsRoute.#json({ error: "unknown snapshot" }, 404);
+    if (route === "migrate" && req.method === "POST") return await this.#startMigrate(req, verdict.claims);
+    const [kind, jobId, ...extra] = route.split("/");
+    if ((kind === "snapshot" || kind === "migrate") && jobId && !extra.length && req.method === "GET") {
+      const id = decodeURIComponent(jobId);
+      const job = kind === "snapshot" ? this.#jobs.get(id) : this.#migrateJobs.get(id);
+      if (job) return OpsRoute.#json(job, 200);
+      return OpsRoute.#json({ error: kind === "snapshot" ? "unknown snapshot" : "unknown migrate job" }, 404);
     }
     return OpsRoute.#json({ error: "not found" }, 404);
+  }
+
+  async #startMigrate(req: Request, { sub }: OpsTokenClaims) {
+    const request = MigrateJobs.requestOf(await req.json().catch(() => null), sub);
+    if (typeof request === "string") return OpsRoute.#json({ error: request }, 400);
+    const started = this.#migrateJobs.start(request);
+    if (started === "exists") return OpsRoute.#json({ error: "migrate job id already used" }, 409);
+    if (started === "busy") return OpsRoute.#json({ error: "another migrate job is running" }, 409);
+    this.#logger.info(`Migrate job ${request.id} started: ${request.argv.slice(0, -1).join(" ")}`);
+    return OpsRoute.#json(started, 202);
   }
 
   async #startSnapshot(req: Request) {
