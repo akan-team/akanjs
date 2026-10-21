@@ -108,6 +108,10 @@ not "fix" it back.
 - **Never wrap a form setter in a pass-through arrow** — `(v) => st.do.setTypeOnTicket(v)` emits no
   `data-akan-action` and publishes no agent tool. A wrapper that transforms, adds a statement, or calls `writeOnX`
   is legal; publish it with an explicit `st.tool`.
+- **Never call an `st` hook conditionally** — `st.use.*`, `st.sel`, `st.ref` and the last step of `st.tool` /
+  `st.useState` / `st.expose` are hooks Biome's `useHookAtTopLevel` cannot see. Behind `||` / `&&` / `??`, a ternary,
+  an `if`, a loop or a callback, a skipped call shifts every later hook, and production React crashes elsewhere. Read
+  each into its own `const` at the top of the component, then combine.
 - **No deep imports past a barrel**, except cross-module constants (`../map/map.constant`).
 - **Never import across the client/server boundary** (`apps/**`, `libs/**`). Client files (`ui/`, `webkit/`,
   `page/`, `*.store.ts`, every `.tsx`) never import a `*.document|dictionary|service|signal.ts`, `srvkit/`, a

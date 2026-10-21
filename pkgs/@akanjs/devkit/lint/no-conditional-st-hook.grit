@@ -1,0 +1,75 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `st.use.<key>()`, `st.sel()`, `st.ref()` and the builders' last step (`st.tool(…)….exec()` / `.card()`,
+// `st.useState(…)….init()`, `st.expose(…)….value()`) are React hooks that Biome's `useHookAtTopLevel` cannot see:
+// it recognises a hook by a `use` prefix on the called name. A hook a render skips shifts every later hook by one
+// slot, and production React does not check the order — a later `useRef` then receives a frozen store value and
+// the screen dies far from the cause ("Cannot add property current, object is not extensible").
+//
+// Reported: the right operand of `||` / `&&` / `??`, a ternary branch, an `if` / `else` body, a `switch` case, a
+// loop, a `catch` block, and a callback handed to a call or a JSX prop inside a component (`.map`, `useEffect`,
+// an event handler, a render prop — `Load.Units` calls `renderList` only while the list is non-empty). A test
+// position is not reported: `if (st.use.x())` always runs.
+//
+// Not reported: a hook after an early `return` (GritQL sees no statement order), a local helper the component
+// calls (`const tool = (name) => st.tool(name)…exec(…)` runs a fixed number of times when called at top level),
+// and a hook reached through anything but the `st` identifier.
+//
+pattern st_hook_call() {
+  or {
+    `st.use.$key($args)`,
+    `st.slice.$slice.use.$key($args)`,
+    `st.sel($args)`,
+    `st.ref($args)`,
+    `$chain.exec($args)` where { $chain <: r"st\s*\.\s*tool\s*\([\s\S]*" },
+    `$chain.card($args)` where { $chain <: r"st\s*\.\s*tool\s*\([\s\S]*" },
+    `$chain.init($args)` where { $chain <: r"st\s*\.\s*useState\s*\([\s\S]*" },
+    `$chain.value($args)` where { $chain <: r"st\s*\.\s*expose\s*\([\s\S]*" }
+  }
+}
+
+pattern function_like() {
+  or {
+    JsArrowFunctionExpression(),
+    JsFunctionExpression(),
+    JsFunctionDeclaration(),
+    JsMethodObjectMember(),
+    JsMethodClassMember()
+  }
+}
+
+JsCallExpression() as $call where {
+  $call <: st_hook_call(),
+  or {
+    $call <: within JsLogicalExpression(right = $right) where { $right <: contains $call },
+    $call <: within JsConditionalExpression(consequent = $then, alternate = $else) where {
+      or { $then <: contains $call, $else <: contains $call }
+    },
+    $call <: within JsIfStatement(consequent = $then, else_clause = $else) where {
+      or { $then <: contains $call, $else <: contains $call }
+    },
+    $call <: within JsForOfStatement(body = $body) where { $body <: contains $call },
+    $call <: within JsForInStatement(body = $body) where { $body <: contains $call },
+    $call <: within or {
+      JsCaseClause(),
+      JsDefaultClause(),
+      JsForStatement(),
+      JsWhileStatement(),
+      JsDoWhileStatement(),
+      JsCatchClause()
+    },
+    // The callback must be handed over inside another function: a component passed to `memo()` / `forwardRef()`
+    // at module level is not one.
+    $call <: within function_like() as $inner where {
+      $inner <: within or { JsCallArguments(), JsxExpressionAttributeValue(), JsxExpressionChild() } as $slot where {
+        $slot <: within function_like()
+      }
+    }
+  },
+  register_diagnostic(
+    span = $call,
+    message = "This st hook does not run on every render — it sits behind a condition, in a loop, or in a nested function. React matches hooks by call order, so the hooks after it shift by one slot and a later one reads another hook's state; production React does not check, and the screen crashes somewhere else. Read each st.use.* into its own const at the top of the component, then combine the values: const uploading = st.use.xUploading(); const formUploading = st.use.xFormUploading(); const busy = uploading || !!formUploading.voice. For a list, move the hook into a child component rendered per item.",
+    severity = "error"
+  )
+}

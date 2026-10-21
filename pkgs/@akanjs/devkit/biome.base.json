@@ -196,7 +196,10 @@
     },
     {
       "includes": ["{apps,libs}/**/*.tsx", "!**/*.test.tsx", "!**/*.spec.tsx"],
-      "plugins": ["./node_modules/@akanjs/devkit/lint/no-unpublished-form-setter.grit"]
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-unpublished-form-setter.grit",
+        "./node_modules/@akanjs/devkit/lint/no-conditional-st-hook.grit"
+      ]
     },
     {
       "includes": [
