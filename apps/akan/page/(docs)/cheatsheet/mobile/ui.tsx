@@ -794,7 +794,9 @@ export default page()
                     <>
                       <strong>Every history entry is a page of its own.</strong> A push to the route you are on mounts a
                       new page over the old one, which waits under it with its state; a replace updates the page in
-                      place. A <code>cache</code> route stays one page for the whole session.
+                      place. A <code>cache</code> route stays one page for the whole session. When the account changes (
+                      <code>setAuth</code>, <code>resetAuth</code>), the pages kept for the previous one are drawn again
+                      before they are shown, and the page on screen stays as it is until you leave it.
                     </>
                   ),
                   ko: (
@@ -802,6 +804,8 @@ export default page()
                       <strong>히스토리 항목마다 페이지가 따로 있습니다.</strong> 지금 라우트로 push하면 새 페이지가 기존
                       페이지 위에 마운트되고, 기존 페이지는 state를 그대로 가진 채 아래에서 기다립니다. replace는
                       페이지를 그 자리에서 갱신합니다. <code>cache</code> 라우트는 세션 내내 페이지 하나로 유지됩니다.
+                      계정이 바뀌면(<code>setAuth</code>, <code>resetAuth</code>) 이전 계정으로 남겨 둔 페이지는 다시
+                      보이기 전에 새로 그리고, 화면에 떠 있던 페이지는 떠날 때까지 그대로 둡니다.
                     </>
                   ),
                 })}

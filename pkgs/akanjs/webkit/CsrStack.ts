@@ -82,6 +82,28 @@ export class CsrStack {
     return location.pathRoute.pageState.cache ? location.pathRoute.path : (location.entryId ?? location.href);
   }
 
+  /**
+   * When `token` is not the one the stack's pages were drawn for, every page but the one on screen is drawn again for
+   * the new account — the one under it at once, the rest when they are shown — and that one stays until it is left.
+   */
+  static redrawFor(history: History, current: Location, token: string | null) {
+    const account = history.account ?? { token, generation: 0 };
+    history.account = account;
+    if (account.token === token) return false;
+    history.dormant ??= new Set();
+    for (const kept of [...history.locations, ...history.cachedLocationMap.values()])
+      if (kept.entryId && kept.entryId !== current.entryId) history.dormant.add(kept.entryId);
+    const key = CsrStack.keyOf(current);
+    const leaving = account.leaving?.key === key ? account.leaving : { key, generation: account.generation };
+    history.account = { token, generation: account.generation + 1, leaving };
+    return true;
+  }
+
+  static leave(history: History, current: Location) {
+    if (history.account?.leaving && history.account.leaving.key !== CsrStack.keyOf(current))
+      delete history.account.leaving;
+  }
+
   static entriesOf({ history, location, prevLocation, pendingLocation, phase }: CsrStackState): CsrStackEntry[] {
     const entries = new Map<string, CsrStackEntry>();
     const claim = (entryLocation: Location, pageType: CsrPageType, zIndex: number) => {
@@ -100,7 +122,13 @@ export class CsrStack {
       retained += 1;
     }
     for (const cached of history.cachedLocationMap.values()) if (!dormant(cached)) claim(cached, "cached", 0);
+    const { account } = history;
+    const drawn = (entry: CsrStackEntry) => {
+      const kept = account?.leaving?.key === entry.key && (entry.pageType === "current" || phase !== "idle");
+      const generation = (kept ? account?.leaving?.generation : account?.generation) ?? 0;
+      return generation ? { ...entry, key: `${generation}:${entry.key}` } : entry;
+    };
     //? Sorted by key so a page keeps its place among its siblings however its role changes.
-    return [...entries.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+    return [...entries.values()].sort((a, b) => (a.key < b.key ? -1 : 1)).map(drawn);
   }
 }

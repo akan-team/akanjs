@@ -8,6 +8,7 @@ import {
   Device,
   debugFrame,
   defaultPageState,
+  getAuthToken,
   getPathInfo,
   type Location,
   type LocationState,
@@ -622,6 +623,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     getPrevLocation,
     getScrollTop,
   } = useHistory(initialStack.locations, initialStack);
+  history.current.account ??= { token: getAuthToken() ?? null, generation: 0 };
   const [isBackgrounded, setIsBackgrounded] = useState(() => document.visibilityState === "hidden");
   const [locationState, setLocationState] = useState<LocationState>({
     location: getCurrentLocation(),
@@ -1310,6 +1312,18 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       if (pageType === "cached" && hidden.entryId) history.current.dormant.add(hidden.entryId);
     setReleased((count) => count + 1);
   }, []);
+  useEffect(() => {
+    const redraw = () => {
+      if (CsrStack.redrawFor(history.current, getCurrentLocation(), getAuthToken() ?? null))
+        setReleased((count) => count + 1);
+    };
+    redraw();
+    window.addEventListener("akan:auth", redraw);
+    return () => window.removeEventListener("akan:auth", redraw);
+  }, []);
+  useEffect(() => {
+    if (phase === "idle") CsrStack.leave(history.current, location);
+  }, [phase, location]);
 
   useEffect(() => {
     const navigation = new NativeNavigation({

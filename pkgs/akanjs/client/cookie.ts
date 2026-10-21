@@ -129,6 +129,9 @@ export interface GetOption {
 interface SetAuthOption {
   jwt: string;
 }
+const announceAuth = () => {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("akan:auth"));
+};
 /** Sets the active auth token on fetch, the cookie jar (except on a CSR client), and client storage. */
 export const setAuth = ({ jwt }: SetAuthOption) => {
   fetch.setJwt(jwt);
@@ -138,6 +141,7 @@ export const setAuth = ({ jwt }: SetAuthOption) => {
   // The global key is shared by every app on this host; ours would keep feeding the migration fallback a stale token.
   removeCookie(legacyAuthTokenKey);
   void secretStorage.removeItem(legacyAuthTokenKey);
+  announceAuth();
 };
 
 interface InitAuthOption {
@@ -163,4 +167,5 @@ export const resetAuth = () => {
   removeCookie(legacyAuthTokenKey);
   void secretStorage.removeItem(authTokenKey());
   void secretStorage.removeItem(legacyAuthTokenKey);
+  announceAuth();
 };

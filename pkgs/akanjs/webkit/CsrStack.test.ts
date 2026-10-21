@@ -142,3 +142,66 @@ describe("CsrStack across a reload", () => {
     expect(CsrStack.restore(at(item, "i2"), locate)).toBeNull();
   });
 });
+
+describe("CsrStack across an account change", () => {
+  const historyOf = (locations: Location[]): History => ({
+    type: "forward",
+    locations,
+    idx: locations.length - 1,
+    scrollMap: new Map(),
+    idxMap: new Map(),
+    cachedLocationMap: new Map(
+      locations.flatMap((location) =>
+        location.pathRoute.pageState.cache ? [[location.pathRoute.path, location]] : [],
+      ),
+    ),
+  });
+  const keysOf = (
+    history: History,
+    { pending = null, phase = "idle" }: { pending?: Location | null; phase?: CsrNavigationPhase } = {},
+  ) =>
+    CsrStack.entriesOf({
+      history,
+      location: history.locations[history.idx],
+      prevLocation: history.locations[history.idx - 1] ?? null,
+      pendingLocation: pending,
+      phase,
+    }).map(({ key, pageType }) => `${key}:${pageType}`);
+
+  test("the same token changes nothing, and another lets go of every page but the ones on and under the screen", () => {
+    const history = historyOf([at(tab, "t1"), at(item, "i1"), at(item, "i2"), at(item, "i3")]);
+    expect(CsrStack.redrawFor(history, history.locations[3], "someone")).toBe(false);
+    expect(CsrStack.redrawFor(history, history.locations[3], "someone")).toBe(false);
+    expect(keysOf(history)).toEqual(["/tab:cached", "i1:cached", "i2:prev", "i3:current"]);
+
+    expect(CsrStack.redrawFor(history, history.locations[3], null)).toBe(true);
+    expect(keysOf(history)).toEqual(["1:i2:prev", "i3:current"]);
+  });
+
+  test("the page on screen keeps its key through the transition that takes it off, and is drawn again after", () => {
+    const history = historyOf([at(item, "i1"), at(item, "i2")]);
+    CsrStack.redrawFor(history, history.locations[1], "someone");
+    CsrStack.redrawFor(history, history.locations[1], "someone else");
+    const next = at(item, "i3");
+    expect(keysOf(history, { pending: next, phase: "preparing" })).toEqual(["1:i1:prev", "i2:current", "1:i3:pending"]);
+
+    history.locations.push(next);
+    history.idx = 2;
+    expect(keysOf(history, { phase: "transitioning" })).toEqual(["i2:prev", "1:i3:current"]);
+    expect(keysOf(history)).toEqual(["1:i2:prev", "1:i3:current"]);
+
+    CsrStack.leave(history, history.locations[1]);
+    expect(history.account?.leaving).toBeDefined();
+    CsrStack.leave(history, next);
+    expect(history.account?.leaving).toBeUndefined();
+  });
+
+  test("a page that stays on screen through two changes keeps the key it was drawn under", () => {
+    const history = historyOf([at(item, "i1")]);
+    CsrStack.redrawFor(history, history.locations[0], "someone");
+    CsrStack.redrawFor(history, history.locations[0], "someone else");
+    CsrStack.redrawFor(history, history.locations[0], null);
+    expect(history.account?.generation).toBe(2);
+    expect(keysOf(history)).toEqual(["i1:current"]);
+  });
+});

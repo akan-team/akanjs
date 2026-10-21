@@ -290,6 +290,12 @@ export interface History {
   cachedLocationMap: Map<string, Location>;
   idx: number;
   dormant?: Set<string>; // entry ids a restored stack holds without a page until one is visited
+  account?: CsrStackAccount;
+}
+export interface CsrStackAccount {
+  token: string | null; // what `getAuthToken()` answered for the pages the stack holds
+  generation: number; // account changes so far: a page drawn again mounts under a key of its generation
+  leaving?: { key: string; generation: number }; // the page on screen at the change, kept as drawn until it is left
 }
 
 export interface RouterProps {
