@@ -16,8 +16,11 @@ const IMPLICIT_DICT_DIR = path.join(".akan", "generated", "dict");
 const IMPLICIT_OVERRIDES_DIR = path.join(".akan", "generated", "overrides");
 const OVERRIDES_KEY_RE = /^\.\/(.+\/)?_overrides\.(tsx|ts|jsx|js)$/;
 
+const posixRelative = (fromDir: string, toAbsPath: string) =>
+  path.relative(fromDir, toAbsPath).split(path.sep).join("/");
+
 const importSpecifier = (fromAbsPath: string, toAbsPath: string) => {
-  const rel = path.relative(path.dirname(fromAbsPath), toAbsPath).split(path.sep).join("/");
+  const rel = posixRelative(path.dirname(fromAbsPath), toAbsPath);
   return rel.startsWith(".") ? rel : `./${rel}`;
 };
 
@@ -162,12 +165,12 @@ async function writeGeneratedRootLayoutFile(opts: {
     ? `import { st } from "@apps/${opts.appName}/client";\nvoid st;\n`
     : `import "@apps/${opts.appName}/client";\n`;
   //? resolveRouteModule reads a rootLayout() chain and the legacy named exports alike.
-  const inheritedLabel = inheritedSourceAbsPath ? path.relative(opts.appCwdPath, inheritedSourceAbsPath) : "";
+  const inheritedLabel = inheritedSourceAbsPath ? posixRelative(opts.appCwdPath, inheritedSourceAbsPath) : "";
   const inheritedImport = inheritedSourceSpecifier
     ? `import * as inheritedModule from ${JSON.stringify(inheritedSourceSpecifier)};\nconst inheritedLayout = assertGuardOnChain(${JSON.stringify(inheritedLabel)}, resolveRouteModule(inheritedModule as never, ${JSON.stringify(inheritedLabel)})).module as LayoutModule;\n`
     : "const inheritedLayout: LayoutModule = {};\n";
   const prefix = opts.boundary.segments.find((segment) => !/^\(.+\)$/.test(segment)) ?? null;
-  const userLabel = opts.boundary.sourceAbsPath ? path.relative(opts.appCwdPath, opts.boundary.sourceAbsPath) : "";
+  const userLabel = opts.boundary.sourceAbsPath ? posixRelative(opts.appCwdPath, opts.boundary.sourceAbsPath) : "";
   const userImport = sourceSpecifier
     ? `import * as userModule from ${JSON.stringify(sourceSpecifier)};\nconst userLayout = assertGuardOnChain(${JSON.stringify(userLabel)}, resolveRouteModule(userModule as never, ${JSON.stringify(userLabel)})).module as LayoutModule;\nconst UserLayout = userLayout.default as (props: LayoutProps) => ReactNode | Promise<ReactNode>;\n`
     : "const UserLayout = ({ children }: LayoutProps) => children;\nconst userLayout: LayoutModule = {};\n";
