@@ -91,8 +91,8 @@ export class SqliteDialect implements SqlDialect {
   indexName(name: string) {
     return name;
   }
-  createIndex({ name, table, unique, columns }: CreateIndexProps) {
-    return `CREATE ${unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)} (${columns.map(({ expr }) => expr).join(", ")})`;
+  createIndex({ name, table, unique, columns, where }: CreateIndexProps) {
+    return `CREATE ${unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)} (${columns.map(({ expr }) => expr).join(", ")})${where ? ` WHERE ${where}` : ""}`;
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);

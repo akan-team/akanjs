@@ -508,6 +508,14 @@ export default page()
         }),
       },
       {
+        key: "where",
+        type: "query",
+        desc: l.trans({
+          en: "Indexes only the rows that match. With `unique`, `{ removedAt: null }` lets a removed document give its value back.",
+          ko: "조건에 맞는 행만 인덱스에 담습니다. `unique`와 함께 `{ removedAt: null }`을 주면 삭제된 document의 값을 다시 쓸 수 있습니다.",
+        }),
+      },
+      {
         key: "name",
         type: "string",
         default: "<table>_<fields>_<position>",
@@ -2176,14 +2184,15 @@ export class StoryModel extends into(
                   en: (
                     <span>
                       <strong>A builder form exists too.</strong> <code>schema.createIndex(name)</code> chains{" "}
-                      <code>.path(field, order)</code>, <code>.unique()</code> and ends with <code>.done()</code>.
+                      <code>.path(field, order)</code>, <code>.unique()</code>, <code>.where(query)</code> and ends with{" "}
+                      <code>.done()</code>.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>빌더 형태도 있습니다.</strong> <code>schema.createIndex(name)</code>에{" "}
-                      <code>.path(field, order)</code>, <code>.unique()</code>를 이어 붙이고 <code>.done()</code>으로
-                      끝냅니다.
+                      <code>.path(field, order)</code>, <code>.unique()</code>, <code>.where(query)</code>를 이어 붙이고{" "}
+                      <code>.done()</code>으로 끝냅니다.
                     </span>
                   ),
                 })}
@@ -2195,14 +2204,16 @@ export class StoryModel extends into(
                   <span>
                     <strong>Leave a shipped index as written.</strong> Every live database remembers its definition, so
                     changing it, even <code>"text"</code> to <code>1</code> or adding <code>unique</code>, breaks them
-                    all. Add a new index at the end instead, or give it a <code>name</code>.
+                    all. Give a new index a <code>name</code>: the indexes made for named sorts come after every{" "}
+                    <code>_onSchema</code> index, so even one added at the end renames them.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>배포된 인덱스는 적힌 그대로 둡니다.</strong> 운영 중인 데이터베이스가 그 정의를 기억하므로,{" "}
                     <code>"text"</code>를 <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도 모두 깨집니다.
-                    대신 새 인덱스를 맨 끝에 더하거나 <code>name</code>을 붙입니다.
+                    새 인덱스에는 <code>name</code>을 붙입니다. 이름 붙인 정렬의 인덱스가 모든 <code>_onSchema</code>{" "}
+                    인덱스 뒤에 오므로, 맨 끝에 더해도 그 인덱스들의 이름이 바뀝니다.
                   </span>
                 ),
               })}

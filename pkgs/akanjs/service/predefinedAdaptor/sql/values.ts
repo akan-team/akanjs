@@ -83,6 +83,26 @@ export const BASE_COLUMN_LEAF: QueryLeafOps = {
 
 export const quoteIdent = (identifier: string) => `"${identifier.replaceAll('"', '""')}"`;
 
+const sqlLiteral = (value: unknown) => {
+  if (value === null) return "NULL";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "bigint" || (typeof value === "number" && Number.isFinite(value))) return String(value);
+  if (typeof value === "string") return `'${value.replaceAll("'", "''")}'`;
+  throw new Error(`Cannot write ${String(value)} into SQL as a literal`);
+};
+
+// DDL binds no parameter on either dialect, so each `?` outside a quoted span becomes its value's literal.
+export const inlineParams = (sql: string, params: unknown[]) => {
+  let next = 0;
+  const text = sql.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\?/g, (token) => {
+    if (token !== "?") return token;
+    if (next >= params.length) throw new Error(`More placeholders than the ${params.length} values in: ${sql}`);
+    return sqlLiteral(params[next++]);
+  });
+  if (next !== params.length) throw new Error(`${params.length} values for ${next} placeholders in: ${sql}`);
+  return text;
+};
+
 export const jsonPath = (path: string) =>
   `$.${path
     .split(".")

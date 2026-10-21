@@ -163,14 +163,15 @@ export class PostgresDialect implements SqlDialect {
     const hash = createHash("sha256").update(name).digest("hex").slice(0, 8);
     return `${name.slice(0, PostgresDialect.#identifierBytes - hash.length - 1)}_${hash}`;
   }
-  createIndex({ name, table, unique, columns, concurrently = false }: CreateIndexProps) {
+  createIndex({ name, table, unique, columns, concurrently = false, where }: CreateIndexProps) {
     const create = `CREATE ${unique ? "UNIQUE " : ""}INDEX ${concurrently ? "CONCURRENTLY " : ""}IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)}`;
+    const predicate = where ? ` WHERE ${where}` : "";
     const [column] = columns;
     // An array field is matched with `@>`, which a btree cannot serve.
     if (!unique && columns.length === 1 && column.isArray)
-      return `${create} USING GIN (${this.#jsonb(column.path)} jsonb_path_ops)`;
+      return `${create} USING GIN (${this.#jsonb(column.path)} jsonb_path_ops)${predicate}`;
     // `NULLS FIRST` as `orderTerm` sorts: an ascending sort scans the index forward, a descending one backward.
-    return `${create} (${columns.map(({ expr }) => `${expr} NULLS FIRST`).join(", ")})`;
+    return `${create} (${columns.map(({ expr }) => `${expr} NULLS FIRST`).join(", ")})${predicate}`;
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);

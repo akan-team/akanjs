@@ -333,15 +333,17 @@ The second argument of `schema.index()`:
 
 - unique (boolean, default false): Refuses a second document with the same values in these fields.
 
+- where (query): Indexes only the rows that match. With `unique`, `{ removedAt: null }` lets a removed document give its value back.
+
 - name (string, default <table>_<fields>_<position>): Fixes the index name. The default depends on the index's position in `_onSchema`.
 
 **Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
 
 **Named sorts are indexed for you.** Each order in the filter's `sort` already has an index, so declare one only for a lookup you run often.
 
-**A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()` and ends with `.done()`.
+**A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()`, `.where(query)` and ends with `.done()`.
 
-**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Add a new index at the end instead, or give it a `name`.
+**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Give a new index a `name`: the indexes made for named sorts come after every `_onSchema` index, so even one added at the end renames them.
 
 Hooks
 

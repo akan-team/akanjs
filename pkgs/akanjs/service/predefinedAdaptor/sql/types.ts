@@ -246,6 +246,8 @@ export interface CreateIndexProps {
   columns: IndexColumn[];
   /** Build without blocking writes to a table that already holds rows. Postgres only, and never in a transaction. */
   concurrently?: boolean;
+  /** A partial index's predicate, its values written in: neither dialect binds a parameter in DDL. */
+  where?: string;
 }
 
 // `applyUpdate`'s accumulator folds an update into one nested JSON expression the database applies atomically.

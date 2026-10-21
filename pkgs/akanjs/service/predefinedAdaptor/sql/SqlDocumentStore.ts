@@ -54,6 +54,7 @@ import {
   decodeDateValue,
   descriptorHash,
   encodeSqlValue,
+  inlineParams,
   jsonStr,
   quoteIdent,
   stableJson,
@@ -180,11 +181,13 @@ export class SqlDocumentStore {
               expr: this.compiler.fieldExpr(path),
               isArray: this.compiler.isArrayPath(path),
             }));
+        const predicate = unbuilt || !index.where ? undefined : this.#indexPredicate(index.where, name);
         return {
           name,
           next: this.dialect.indexName(`${declared}_next`),
           metaKey: `index:${this.table}:${name}`,
-          hash: await descriptorHash(index),
+          // Hashed with the predicate: before a `where` reached the DDL, the same descriptor built a whole index.
+          hash: await descriptorHash(predicate ? { ...index, predicate } : index),
           fields: index.fields,
           unbuilt,
           create: (target: string, concurrently: boolean) =>
@@ -194,10 +197,18 @@ export class SqlDocumentStore {
               unique: !!index.unique,
               columns,
               concurrently,
+              where: predicate,
             }),
         };
       }),
     );
+  }
+
+  #indexPredicate(where: DocumentQuery, name: string) {
+    const { where: sql, params, joins } = this.compiler.compile(where);
+    if (joins.length)
+      throw new Error(`Index ${name} on ${this.table} filters with q.search(), which an index predicate cannot hold`);
+    return sql === "1 = 1" ? undefined : inlineParams(sql, params);
   }
 
   // Dropped only on proof that this very descriptor built it (the hash `ensure` stored) and no built index has the name.

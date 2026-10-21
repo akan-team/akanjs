@@ -545,6 +545,71 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_code"]);
       await store.create({ label: "again", code: "A" });
     });
+
+    test("a unique index with `where` binds only the rows it matches, so a removed row gives its key back", async () => {
+      const store = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true, where: { removedAt: null } }),
+      );
+      const first = await store.create({ label: "first", code: "A" });
+      await expect(store.create({ label: "repeat", code: "A" })).rejects.toThrow();
+      await store.remove(first.id);
+      await store.create({ label: "again", code: "A" });
+      await expect(store.create({ label: "repeat", code: "A" })).rejects.toThrow();
+    });
+
+    test("a `where` value is written into the predicate, quotes and question marks included", async () => {
+      const draft = "it's a draft?";
+      const store = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema()
+          .createIndex("uniqueConf_code_final")
+          .path("code")
+          .unique()
+          .where((q) => ({ label: q.ne(draft) }))
+          .done(),
+      );
+      await store.create({ label: draft, code: "A" });
+      await store.create({ label: draft, code: "A" });
+      await store.create({ label: "final", code: "A" });
+      await expect(store.create({ label: "final again", code: "A" })).rejects.toThrow();
+    });
+
+    test("a `where` index an earlier boot built whole is rebuilt partial", async () => {
+      const partial = () =>
+        new DocumentSchema().index({ code: 1 }, { name: "uniqueConf_code", unique: true, where: { removedAt: null } });
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      // What a boot before the predicate reached the DDL left: a whole index under the hash of this very descriptor.
+      await driver.database.getConnection().execute(
+        driver.dialect.createIndex({
+          name: "uniqueConf_code",
+          table: "uniqueConf",
+          unique: true,
+          columns: [{ path: "code", expr: legacy.compiler.fieldExpr("code"), isArray: false }],
+        }),
+      );
+      await driver.database.setMeta("index:uniqueConf:uniqueConf_code", await descriptorHash(partial().indexes[0]));
+      await legacy.remove((await legacy.create({ label: "withdrawn", code: "A" })).id);
+
+      const store = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, partial());
+      await store.create({ label: "again", code: "A" });
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_code"]);
+    });
+
+    test("a `where` an index predicate cannot hold refuses to boot", async () => {
+      await expect(
+        storeOf(
+          driver,
+          confConstant,
+          confDatabase,
+          new DocumentSchema().index({ status: 1 }, { where: q.search("x") }),
+        ),
+      ).rejects.toThrow("q.search()");
+    });
   });
 
   // A failed transaction can leave its pooled connection open ([PG-1]), so each of these gets storage of its own.
