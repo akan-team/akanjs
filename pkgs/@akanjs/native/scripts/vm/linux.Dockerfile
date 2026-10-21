@@ -6,7 +6,7 @@
 # scripts/vm/linux.ts builds and uses it.
 FROM ubuntu:24.04
 
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.3
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
