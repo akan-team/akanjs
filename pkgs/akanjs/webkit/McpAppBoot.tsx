@@ -12,6 +12,7 @@ import { FetchClient } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { createElement, type ReactNode } from "react";
 import * as ReactDOM from "react-dom/client";
+import { MCP_SCREEN_REFUSAL } from "../signal/mcp/mcpProtocol";
 import { McpAppAgent } from "./McpAppAgent";
 import { McpAppBridge, type McpAppRoute } from "./McpAppBridge";
 import { McpAppView } from "./McpAppView";
@@ -107,7 +108,15 @@ export class McpAppBoot {
 
   static #fail(view: McpAppView, what: string, error: unknown) {
     Logger.error(`[mcp-app] ${what}: ${error instanceof Error ? (error.stack ?? error.message) : error}`);
-    view.showUnavailable("The page failed to load.");
+    view.showUnavailable(McpAppBoot.#refusalOf(error));
+  }
+
+  //? A read the snapshot lacks is relayed to the server, so a record gone since the call fails here as the call would.
+  static #refusalOf(error: unknown) {
+    const status = (error as { statusCode?: unknown } | null)?.statusCode;
+    if (status === 404) return MCP_SCREEN_REFUSAL.notFound;
+    if (status === 401 || status === 403) return MCP_SCREEN_REFUSAL.gated;
+    return MCP_SCREEN_REFUSAL.failed;
   }
 
   static async #load(app: string, page: RouteModuleSource, route: McpAppRoute, lang: string): Promise<ReactNode> {

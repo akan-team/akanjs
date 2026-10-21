@@ -1,5 +1,11 @@
 import type { Logger } from "akanjs/common";
-import { MCP_APP_META, MCP_META_CLIENT_CAPABILITIES, type McpDocument, type McpEra } from "../../signal/mcp";
+import {
+  MCP_APP_META,
+  MCP_META_CLIENT_CAPABILITIES,
+  MCP_SCREEN_REFUSAL,
+  type McpDocument,
+  type McpEra,
+} from "../../signal/mcp";
 import type { PromptMessage } from "../../signal/mcp/Msg";
 import type { McpPrompt } from "../../signal/mcp/mcpProtocol";
 import type { PagePromptEntry, PagePromptRun, PagePromptSource } from "../../signal/mcp/pagePrompt";
@@ -150,10 +156,10 @@ export class McpPages {
         run.reason === "argument" || run.reason === "unknown"
           ? run.message
           : gated
-            ? "This screen is not available to the signed-in account."
+            ? MCP_SCREEN_REFUSAL.gated
             : run.reason === "not-found"
-              ? "No screen exists for these arguments."
-              : "The page failed to load.";
+              ? MCP_SCREEN_REFUSAL.notFound
+              : MCP_SCREEN_REFUSAL.failed;
       return { refusal: message };
     }
     return { run, messages: await composer.compose(entry, run) };
