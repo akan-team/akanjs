@@ -6,7 +6,7 @@ import { EmbedApproval } from "../Agent/EmbedApproval";
 import { FontFace } from "../FontFace";
 import { Client } from "./Client";
 
-interface AppProviderProps {
+export interface AppProviderProps {
   className?: string;
   params: { lang: string };
   /** The app's page path without its locale, as `usePage()` reads it. */
