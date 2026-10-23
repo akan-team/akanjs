@@ -2,8 +2,9 @@
 // synchronous, so calls run one at a time in call order like the serial queues on iOS and Android.
 // - db.prepare() compiles only the first statement and ignores the rest without a word (checked),
 //   hence checkSql's statement count before it.
-// - Statement.run() reports changes as the difference of total_changes (a trigger's rows count
-//   too; DDL is 0) and the connection's last_insert_rowid: the definition iOS and Android follow.
+// - changes is the difference of total_changes() around the statement (a trigger's rows count
+//   too; DDL is 0), the definition iOS and Android follow. Statement.run()'s own changes leaves a
+//   trigger's rows out since Bun 1.4.4, so it is not used.
 // - Integers within ±(2^53 − 1) bind as INTEGER, other numbers as REAL, booleans as 1/0. bun:sqlite
 //   by itself binds a number as INTEGER only below 2^52 (and -0 as REAL), so checkParams hands it
 //   bigints (checked with typeof(?)). tauri-plugins-workspace/plugins/sql/src/wrapper.rs:164-175
@@ -21,6 +22,10 @@ import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
 import { checkDb, checkName, checkParams, checkSql, columnValue, sqliteCode } from "./common.ts";
 import type { SqliteSpec, StatementArgs } from "./index.ts";
+
+function totalChanges(db: Database): number {
+  return (db.query("SELECT total_changes() AS n").get() as { n: number }).n;
+}
 
 function mapError(error: unknown): AkanNativeError {
   if (error instanceof AkanNativeError) return error;
@@ -65,7 +70,7 @@ export function createDesktopSqlite(dir: (ctx: DesktopContext) => string = (ctx)
   const withStatement = <T>(
     args: StatementArgs,
     ctx: DesktopContext,
-    use: (statement: Statement, values: ReturnType<typeof checkParams>) => T,
+    use: (statement: Statement, values: ReturnType<typeof checkParams>, db: Database) => T,
   ): T => {
     const db = database(args?.db, ctx);
     const sql = checkSql(args.sql);
@@ -80,7 +85,7 @@ export function createDesktopSqlite(dir: (ctx: DesktopContext) => string = (ctx)
       if (statement.paramsCount !== values.length) {
         throw new AkanNativeError("INVALID_ARGS", `sql expects ${statement.paramsCount} values, got ${values.length}`);
       }
-      return use(statement, values);
+      return use(statement, values, db);
     } catch (error) {
       throw mapError(error);
     } finally {
@@ -126,9 +131,10 @@ export function createDesktopSqlite(dir: (ctx: DesktopContext) => string = (ctx)
         return { db: name };
       },
       execute: (args, ctx) =>
-        withStatement(args, ctx, (statement, values) => {
-          const { changes, lastInsertRowid } = statement.run(...values);
-          return { changes, lastInsertId: Number(lastInsertRowid) };
+        withStatement(args, ctx, (statement, values, db) => {
+          const before = totalChanges(db);
+          const { lastInsertRowid } = statement.run(...values);
+          return { changes: totalChanges(db) - before, lastInsertId: Number(lastInsertRowid) };
         }),
       query: (args, ctx) =>
         withStatement(args, ctx, (statement, values) => {
