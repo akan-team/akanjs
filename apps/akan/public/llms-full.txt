@@ -582,7 +582,7 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
 
-- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 

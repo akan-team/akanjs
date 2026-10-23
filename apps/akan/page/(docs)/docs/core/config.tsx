@@ -90,7 +90,7 @@ const configKeys = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1-slim",
+    default: "oven/bun:1.4.4-slim",
     en: "A whole Dockerfile as a string, or the parts akan build assembles one from.",
     ko: "Dockerfile 전체 문자열이거나, akan build가 Dockerfile을 조립할 재료입니다.",
   },
@@ -524,7 +524,7 @@ const buildFields = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1-slim",
+    default: "oven/bun:1.4.4-slim",
     en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
     ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
   },

@@ -351,7 +351,7 @@ docker
 
 The generated image installs `ca-certificates` and `tzdata` and nothing else, so `ffmpeg`, a headless browser or a native toolchain goes into `preRuns`:
 
-- image (string | { amd64?, arm64? }, default oven/bun:1-slim): The base image. The object form picks one per architecture.
+- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim): The base image. The object form picks one per architecture.
 
 - preRuns ((string | { amd64?, arm64? })[], default []): Steps run before `bun install --production`, so native builds find their tools.
 

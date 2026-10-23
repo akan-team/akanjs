@@ -11,6 +11,10 @@ import type { LibConfigInput } from "./types";
 const akanPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../akanjs/package.json"), "utf8"),
 ) as PackageJson;
+const rootPackageJson = JSON.parse(
+  fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../package.json"), "utf8"),
+) as { engines: { bun: string } };
+const pinnedBunImage = `oven/bun:${rootPackageJson.engines.bun}-slim`;
 
 const packageJson: PackageJson = {
   name: "repo",
@@ -206,9 +210,9 @@ describe("AkanAppConfig", () => {
   });
 
   test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
-    //? 9adfb95c's output for this config; only the blank lines its empty interpolations left are gone since.
+    //? 9adfb95c's output for this config, less the blank lines its empty interpolations left and its floating tag.
     const before = [
-      "FROM oven/bun:1-slim",
+      `FROM ${pinnedBunImage}`,
       "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
       "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
       "ARG TARGETARCH",
@@ -266,11 +270,11 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toBe(dockerfile);
   });
 
-  test("resolves the image parts, defaulting the base image and the command", () => {
+  test("resolves the image parts, defaulting the command and the base image to the Bun the repo pins", () => {
     const config = new AkanAppConfig(app, [], packageJson, { docker: { preRuns: ["echo hi"] } }, baseDevEnv);
 
     expect(config.docker).toEqual({
-      image: "oven/bun:1-slim",
+      image: pinnedBunImage,
       preRuns: ["echo hi"],
       postRuns: [],
       command: ["bun", "main.js"],

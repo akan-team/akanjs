@@ -47,7 +47,8 @@ const DEFAULT_OPTIMIZE_IMPORTS = [
   "@material-ui/icons @tabler/icons-react mui-core react-icons/*",
 ].flatMap((line) => line.split(" "));
 const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] as const;
-const DEFAULT_DOCKER_IMAGE = "oven/bun:1-slim";
+// `1-slim` floats to whichever Bun is newest at build time, one the framework was never tested on.
+const DEFAULT_DOCKER_IMAGE = "oven/bun:1.4.4-slim";
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
 const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],

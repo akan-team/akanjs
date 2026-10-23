@@ -424,7 +424,7 @@ export default page()
       {
         key: "image",
         type: "string | { amd64?, arm64? }",
-        default: "oven/bun:1-slim",
+        default: "oven/bun:1.4.4-slim",
         desc: l.trans({
           en: "The base image. The object form picks one per architecture; a missing one uses the default.",
           ko: "베이스 이미지입니다. 객체 형태는 아키텍처마다 고르고, 빠진 아키텍처는 기본값을 씁니다.",

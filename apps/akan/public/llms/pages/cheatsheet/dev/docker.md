@@ -270,7 +270,7 @@ Customize The Image
 
 You do not write a Dockerfile; the `docker` key in `akan.config.ts` shapes the image. The image installs only `ca-certificates` and `tzdata`, so an app that needs ffmpeg or Chromium has to say so.
 
-- image (string | { amd64?, arm64? }, default oven/bun:1-slim): The base image. The object form picks one per architecture; a missing one uses the default.
+- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim): The base image. The object form picks one per architecture; a missing one uses the default.
 
 - preRuns ((string | { amd64?, arm64? })[], default []): Commands run before `bun install`, such as a system package a native dependency needs.
 

@@ -2101,7 +2101,7 @@ export default config;`}
                 {
                   key: "image",
                   type: "string | { amd64?, arm64? }",
-                  default: "oven/bun:1-slim",
+                  default: "oven/bun:1.4.4-slim",
                   desc: l.trans({
                     en: "The base image. The object form picks one per architecture.",
                     ko: "베이스 이미지입니다. 객체 형태로 아키텍처마다 다른 이미지를 고릅니다.",

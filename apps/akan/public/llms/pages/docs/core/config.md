@@ -54,7 +54,7 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
 
-- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 
@@ -308,7 +308,7 @@ The rest of the config is for the build system and the production image. Most ap
 
 - plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
-- docker (string | DockerImageConfig, default oven/bun:1-slim): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.
 
 A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 
