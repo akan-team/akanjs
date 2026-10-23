@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: 1.4.4
       - name: Install dependencies and the matching akan CLI
         shell: bash
         run: |

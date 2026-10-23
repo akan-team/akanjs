@@ -118,7 +118,7 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - TypeScript Akan 워크스페이스
 - 네이티브 빌드: Xcode(iOS), Android SDK와 JDK 21(Android), Rust(데스크톱)
 

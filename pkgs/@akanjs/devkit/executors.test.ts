@@ -1078,7 +1078,7 @@ describe("PkgExecutor package generation", () => {
     expect(distPackageJson).toMatchObject({
       name: "@sample/tool",
       type: "module",
-      engines: { bun: ">=1.4.0" },
+      engines: { bun: ">=1.4.4" },
       dependencies: { lodash: "4.0.0" },
       devDependencies: { typescript: "6.0.0" },
       peerDependencies: { react: "19.0.0" },

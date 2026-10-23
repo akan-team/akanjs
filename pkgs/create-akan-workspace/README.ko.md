@@ -50,7 +50,7 @@ bunx create-akan-workspace@latest my-company --app web
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - 첫 커밋을 위한 Git
 
 ## 더 알아보기

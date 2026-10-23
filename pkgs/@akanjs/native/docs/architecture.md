@@ -1222,7 +1222,7 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 | Android build-tools | 37.0.0 (최소 35.0.0) | SDK의 고정 버전 → 없으면 최소 이상 최신 + 경고 | 사용자의 sdkmanager로, 라이선스를 사용자가 이미 수락했을 때만 (`doctor --fix`, `toolchain install android`) |
 | Android platform | android-36 | SDK | 위와 같음 |
 | Rust | 1.98.1 | `native/desktop/rust-toolchain.toml` (CLI가 cargo를 그 폴더에서 실행) | rustup (`doctor --fix`, 첫 빌드) |
-| Bun | 1.4.3 (최소 1.4.0) | 패키지 `package.json` `engines.bun` | 안 함 (doctor가 경고) |
+| Bun | 1.4.4 (최소 1.4.4) | 패키지 `package.json` `engines.bun` | 안 함 (doctor가 경고) |
 | Xcode·iOS SDK | 26.0 이상 | 설치된 Xcode | 안 함 |
 
 - 설치: `~/.akan/native/toolchains/<tool>/<version>/`(`AKAN_NATIVE_HOME`으로 옮김). 임시 폴더에 받으며 SHA-256을 계산하고, 불일치면 지우고 멈춘다. 풀어 둔 최상위 폴더를 버전 폴더로 `rename`해서 설치가 원자적이다. 같은 버전을 두 빌드가 동시에 설치하면 `<version>.lock`(O_EXCL, pid 기록)으로 한 번만 받는다. 주인 프로세스가 없거나 30분 넘은 잠금은 넘겨받는다.

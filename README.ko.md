@@ -35,7 +35,7 @@ Claude Code·Codex·Cursor에 등록된 Akan MCP 서버입니다. 워크스페�
 
 ### 터미널로 시작하기
 
-[Bun](https://bun.sh) `>=1.4.0`이 필요합니다.
+[Bun](https://bun.sh) `>=1.4.4`이 필요합니다.
 
 ```bash
 bunx create-akan-workspace@latest

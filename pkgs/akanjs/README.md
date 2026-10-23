@@ -34,7 +34,7 @@ Akan MCP server registered for Claude Code, Codex and Cursor. Reopen the agent i
 
 ### In a terminal
 
-Requires [Bun](https://bun.sh) `>=1.4.0`.
+Requires [Bun](https://bun.sh) `>=1.4.4`.
 
 ```bash
 bunx create-akan-workspace@latest

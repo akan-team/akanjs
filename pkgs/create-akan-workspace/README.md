@@ -51,7 +51,7 @@ rules load from there.
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - Git, for the first commit
 
 ## Learn More

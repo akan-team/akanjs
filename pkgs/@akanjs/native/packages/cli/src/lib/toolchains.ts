@@ -130,7 +130,7 @@ export const TOOLCHAIN = {
   /** Must match native/desktop/rust-toolchain.toml (a test checks it). wry 0.57 / tao 0.37 need 1.85+. */
   rust: { version: "1.98.1" },
   /** The Bun akan-native is tested with, and the lowest it runs on (package.json engines.bun; a test checks it). */
-  bun: { version: "1.4.3", min: "1.4.0" },
+  bun: { version: "1.4.4", min: "1.4.4" },
   xcode: { min: "26.0" },
   iosSdk: { min: "26.0" },
 } as const;

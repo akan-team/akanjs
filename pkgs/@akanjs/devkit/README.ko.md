@@ -70,7 +70,7 @@ await runner.build();
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - TypeScript
 - `react`는 optional peer이며, 렌더링하는 기능에서만 필요합니다.
 

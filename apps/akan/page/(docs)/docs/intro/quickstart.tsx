@@ -61,7 +61,7 @@ export default page()
             <div className="flex flex-col gap-1 p-4 font-medium">
               <div>
                 <input className="size-4 rounded border border-input accent-primary" type="checkbox" checked readOnly />{" "}
-                {l.trans({ en: "Bun 1.4.0 or higher", ko: "Bun 1.4.0 이상" })}
+                {l.trans({ en: "Bun 1.4.4 or higher", ko: "Bun 1.4.4 이상" })}
               </div>
               <div>
                 <input

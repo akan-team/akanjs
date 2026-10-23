@@ -119,7 +119,7 @@ artifact is built last and is not overwritten by the root `akan` bootstrap scrip
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - A TypeScript Akan workspace
 - For native builds: Xcode (iOS), the Android SDK and JDK 21 (Android), or Rust (desktop)
 

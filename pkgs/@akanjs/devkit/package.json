@@ -14,7 +14,7 @@
     "directory": "pkgs/@akanjs/devkit"
   },
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.4"
   },
   "exports": {
     ".": {

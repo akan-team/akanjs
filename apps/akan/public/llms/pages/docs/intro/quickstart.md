@@ -28,7 +28,7 @@ Requirements
 
 Bun is the only required dependency for the first run.
 
-Bun 1.4.0 or higher
+Bun 1.4.4 or higher
 
 Git for source code management
 

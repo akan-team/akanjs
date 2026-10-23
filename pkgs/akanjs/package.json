@@ -276,12 +276,12 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@types/bun": "^1.4.3"
+    "@types/bun": "^1.4.4"
   },
   "bun": {
     "platform": "bun"
   },
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.4"
   }
 }

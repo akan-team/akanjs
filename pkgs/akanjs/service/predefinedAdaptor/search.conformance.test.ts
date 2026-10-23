@@ -186,6 +186,17 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await found("renamed")).toEqual([doc.id]);
     });
 
+    // bun:sqlite before 1.4.4 also counted the index rows the fts5 triggers wrote.
+    test("counts the documents a query-level write changed, not the index rows behind them", async () => {
+      await make("Kenny Park", { rank: 1 });
+      await make("Kenny Lee", { rank: 1 });
+      expect(await store.updateManyByQuery({ rank: 1 }, { headline: "Renamed Person" })).toMatchObject({
+        matchedCount: 2,
+        modifiedCount: 2,
+      });
+      expect((await store.removeManyByQuery({ rank: 1 })).modifiedCount).toBe(2);
+    });
+
     test("forgets a removed document and finds it again once revived", async () => {
       const doc = await make("Kenny Park");
       await store.remove(doc.id);

@@ -69,7 +69,7 @@ defaults, the shares they derive from `AKAN_MEMORY_LIMIT`, and what a small cont
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.4.0`
+- [Bun](https://bun.sh) `>=1.4.4`
 - TypeScript
 - `react` is an optional peer, needed only by the features that render.
 
