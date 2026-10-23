@@ -6,9 +6,9 @@ export type SqliteWriteTurn = () => Promise<void> | null;
 
 export const openTurn: SqliteWriteTurn = () => null;
 
-export const waitForTurn = (sql: string, writeTurn: SqliteWriteTurn) => {
-  // Only a plain read may skip its turn. Anything else — `INSERT … RETURNING` read through `get()` included — writes.
-  const writes = !/^\s*select\b/i.test(sql);
+export const waitForTurn = (statement: Statement, writeTurn: SqliteWriteTurn) => {
+  // SQLite reports `BEGIN`, `COMMIT` and `ATTACH` read-only too, so a read must also return rows to skip its turn.
+  const writes = !(statement.readonly && statement.reader);
   return async () => {
     if (!writes) return;
     for (let turn = writeTurn(); turn; turn = writeTurn()) await turn;
@@ -19,10 +19,9 @@ export class BunSqliteStatement implements AkanSqlStatement {
   readonly #turn: () => Promise<void>;
   constructor(
     private readonly statement: Statement,
-    sql: string,
     writeTurn: SqliteWriteTurn = openTurn,
   ) {
-    this.#turn = waitForTurn(sql, writeTurn);
+    this.#turn = waitForTurn(statement, writeTurn);
   }
   async run(...params: unknown[]) {
     await this.#turn();
@@ -48,7 +47,7 @@ export class BunSqliteClient implements AkanSqlClient {
     return await this.prepare(sql).run(...values);
   }
   prepare(sql: string): AkanSqlStatement {
-    return new BunSqliteStatement(this.db.query(sql), sql, this.writeTurn);
+    return new BunSqliteStatement(this.db.query(sql), this.writeTurn);
   }
   async close() {
     this.db.close();
