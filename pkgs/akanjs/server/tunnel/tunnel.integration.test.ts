@@ -269,6 +269,56 @@ class GatewayStub {
   }
 }
 
+// A gateway whose link died without a FIN: it answers the upgrade and says `ready`, then never sends another byte —
+// not a pong, not the Close frame a closing agent waits for. Bun.serve would answer both, so this speaks raw TCP.
+class MuteGatewayStub {
+  readonly #listener: Bun.TCPSocketListener;
+  readonly #upgraded = new WeakSet<Bun.Socket<unknown>>();
+
+  constructor(heartbeatMs: number) {
+    this.#listener = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data: (socket, data) => {
+          if (this.#upgraded.has(socket)) return;
+          const request = Buffer.from(data).toString("latin1");
+          const key = /sec-websocket-key:\s*(\S+)/i.exec(request)?.[1];
+          if (!key) return;
+          this.#upgraded.add(socket);
+          const accept = new Bun.CryptoHasher("sha1")
+            .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+            .digest("base64");
+          socket.write(
+            `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+          );
+          const ready = Buffer.from(
+            JSON.stringify({
+              type: "ready",
+              version: tunnelWireContract.version,
+              sessionId: "mute",
+              hostnames: ["mute.tunnel.akanjs.com"],
+              urls: ["https://mute.tunnel.akanjs.com"],
+              idle: 0,
+              maxSockets: 0,
+              heartbeatMs,
+            }),
+          );
+          socket.write(Buffer.concat([Buffer.from([0x81, 126, ready.length >> 8, ready.length & 0xff]), ready]));
+        },
+      },
+    });
+  }
+
+  get url() {
+    return `ws://127.0.0.1:${this.#listener.port}`;
+  }
+
+  stop() {
+    this.#listener.stop(true);
+  }
+}
+
 const textOf = (body: Uint8Array) => new TextDecoder().decode(body);
 const until = async (check: () => boolean, ms = 2000) => {
   const deadline = Date.now() + ms;
@@ -556,6 +606,28 @@ describe("tunnel agent against a gateway", () => {
 
     silent.stop(true);
   });
+
+  test("drops a gateway gone silent after three heartbeats, without waiting for its Close frame", async () => {
+    const mute = new MuteGatewayStub(1_000);
+    let lostAt = 0;
+    const agent = new TunnelAgent({
+      gatewayUrl: mute.url,
+      token: "test-token",
+      hostnames: ["mute.tunnel.akanjs.com"],
+      origin: "http://127.0.0.1:1",
+      onLost: () => {
+        lostAt ||= Date.now();
+      },
+    });
+    await agent.start();
+    const readyAt = Date.now();
+
+    expect(await until(() => lostAt > 0, 8_000)).toBe(true);
+    expect(lostAt - readyAt).toBeLessThan(6_000);
+
+    await agent.stop();
+    mute.stop();
+  }, 15_000);
 
   test("refills the pool when a data socket dies", async () => {
     const victim = gateway.idle.pop();

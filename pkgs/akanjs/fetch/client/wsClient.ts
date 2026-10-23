@@ -306,7 +306,9 @@ export class WsClient {
     if (Date.now() - this.#lastInboundAt > websocketHeartbeatContract.silenceMs) {
       this.logger.warn(`WebSocket is silent, reconnecting`);
       this.#stopHeartbeat();
-      ws.close();
+      //? Bun's `close()` waits up to 30 s for the Close frame a dead peer never sends; a browser has no `terminate()`.
+      if ("terminate" in ws) (ws as unknown as Bun.WebSocket).terminate();
+      else ws.close();
       return;
     }
     ws.send(JSON.stringify(websocketHeartbeatContract.makeRequest()));

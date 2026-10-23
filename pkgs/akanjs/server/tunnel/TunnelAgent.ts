@@ -194,7 +194,8 @@ export class TunnelAgent {
       // A socket the network dropped without a FIN keeps accepting `send()`, so silence is the only tell.
       if (Date.now() - this.#lastInboundAt > intervalMs * 3) {
         this.logger.warn(`Tunnel control socket is silent, reconnecting`);
-        ws.close();
+        // `close()` would wait up to 30 s for the Close frame a dead gateway never sends before `onclose` reconnects.
+        (ws as unknown as Bun.WebSocket).terminate();
         return;
       }
       this.#say({ type: "ping", at: Date.now() });

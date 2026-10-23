@@ -2654,6 +2654,38 @@ describe("WsClient", () => {
     }
   });
 
+  test("terminates a silent socket in Bun, whose close() waits for a Close frame the dead peer never sends", async () => {
+    class DeadPeerWebSocket extends FakeWebSocket {
+      override close() {
+        this.readyState = FakeWebSocket.CLOSING;
+      }
+      terminate() {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.({ code: 1006, reason: "" });
+      }
+    }
+    setFakeWebSocket();
+    globalThis.WebSocket = DeadPeerWebSocket as unknown as typeof WebSocket;
+    setSystemTime(new Date("2026-10-23T00:00:00Z"));
+    globalThis.setInterval = ((handler: TimerHandler, _interval?: number, ...args: unknown[]) =>
+      originalSetInterval(handler, 1, ...args)) as typeof setInterval;
+    globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
+      originalSetTimeout(handler, 0, ...args)) as typeof setTimeout;
+    const client = new WsClient("ws://example/ws");
+    try {
+      client.connect();
+      FakeWebSocket.instances[0].open();
+
+      setSystemTime(new Date("2026-10-23T00:10:00Z"));
+      await waitUntil(() => FakeWebSocket.instances.length > 1);
+
+      expect(FakeWebSocket.instances[0].readyState).toBe(FakeWebSocket.CLOSED);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+    } finally {
+      client.destroy();
+    }
+  });
+
   test("resubscribes rooms on reconnect and destroy prevents reconnect", async () => {
     setFakeWebSocket();
     globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
