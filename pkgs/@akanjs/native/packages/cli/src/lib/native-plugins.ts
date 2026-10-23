@@ -111,7 +111,7 @@ export function pluginFile(plugin: ResolvedPlugin, relativePath: string, what: s
 function expandSources(plugin: ResolvedPlugin, patterns: string[]): string[] {
   const files = new Set<string>();
   for (const pattern of patterns) {
-    if (!/[*?[{]/.test(pattern)) {
+    if (!/[*?[{]|[!@+]\(/.test(pattern)) {
       files.add(pluginFile(plugin, pattern, "source"));
       continue;
     }

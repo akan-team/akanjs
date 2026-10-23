@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { INIT_PREFIX, renderInitScript } from "../src/lib/boot.ts";
 import { envTypes, loadEnv, parseDotenv, validateEnvConfig, writeEnvTypes } from "../src/lib/env.ts";
 import { findExternalScripts, injectInitScript } from "../src/lib/html.ts";
@@ -243,6 +243,32 @@ describe("native plugin inputs", async () => {
     const kotlin = np.kotlinRegistry(np.androidPlugins(plugins), 29, 36);
     expect(kotlin).toContain('"app-state" to { ctx -> com.akanjs.plugins.appstate.AppStatePlugin(ctx) },');
     expect(np.iosPlugins(plugins)[0]!.sources[0]).toEndWith("plugins/app-state/ios/AppStatePlugin.swift");
+  });
+
+  test("sources expand every Bun.Glob form, extglob included", () => {
+    const dir = mkdtempSync(join(tmpdir(), "akan-native-sources-"));
+    mkdirSync(join(dir, "ios"));
+    for (const name of ["GlobPlugin", "GlobHelper", "GlobSkip"]) writeFileSync(join(dir, "ios", `${name}.swift`), "");
+    const expand = (sources: string[]) =>
+      np
+        .iosPlugins([
+          {
+            spec: "g",
+            dir,
+            manifest: {
+              id: "glob",
+              apiVersion: 1 as const,
+              methods: [],
+              events: [],
+              ios: { sources, class: "GlobPlugin" },
+            },
+          },
+        ])
+        .flatMap((plugin) => plugin.sources.map((source) => relative(dir, source)));
+    expect(expand(["ios/!(GlobSkip).swift"])).toEqual(["ios/GlobHelper.swift", "ios/GlobPlugin.swift"]);
+    expect(expand(["ios/@(GlobPlugin|GlobSkip).swift"])).toEqual(["ios/GlobPlugin.swift", "ios/GlobSkip.swift"]);
+    expect(expand(["ios/+(GlobHelper).swift"])).toEqual(["ios/GlobHelper.swift"]);
+    expect(expand(["ios/GlobPlugin.swift"])).toEqual(["ios/GlobPlugin.swift"]);
   });
 
   test("a plugin above the app's minSdk is created only from its level, UNSUPPORTED below", () => {
