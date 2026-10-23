@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import os from "node:os";
 import { MemoryLimit } from "./memoryLimit";
 
 const withEnv = (values: Record<string, string | undefined>, fn: () => void) => {
@@ -39,6 +40,26 @@ describe("MemoryLimit.parseBytesEnv", () => {
     withEnv({ PROBE: "1.5gb" }, () => expect(MemoryLimit.parseBytesEnv("PROBE")).toBeNull());
     withEnv({ PROBE: "512tb" }, () => expect(MemoryLimit.parseBytesEnv("PROBE")).toBeNull());
     withEnv({ PROBE: "0mb" }, () => expect(MemoryLimit.parseBytesEnv("PROBE")).toBeNull());
+  });
+});
+
+describe("MemoryLimit.readCgroupBytes", () => {
+  const withConstrainedMemory = <T>(bytes: number, fn: () => T) => {
+    const spy = spyOn(process, "constrainedMemory").mockReturnValue(bytes);
+    try {
+      return fn();
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  test("takes the limit Bun reads from the process's own cgroup", () => {
+    expect(withConstrainedMemory(300 * 1024 ** 2, () => MemoryLimit.readCgroupBytes())).toBe(300 * 1024 ** 2);
+  });
+
+  test("reads the cgroup files when Bun reports the whole machine, its answer when nothing limits the process", () => {
+    const fromFiles = withConstrainedMemory(0, () => MemoryLimit.readCgroupBytes());
+    expect(withConstrainedMemory(os.totalmem(), () => MemoryLimit.readCgroupBytes())).toBe(fromFiles);
   });
 });
 

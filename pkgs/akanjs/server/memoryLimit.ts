@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 
 // Its own module: `akanjs/server` and the devkit dev host both need it without importing each other's stack.
 export class MemoryLimit {
@@ -27,6 +28,9 @@ export class MemoryLimit {
   }
 
   static readCgroupBytes(): number | null {
+    // Bun reads this process's cgroup, which the paths below miss under cgroupns=host; with no limit it returns total RAM.
+    const constrained = process.constrainedMemory() ?? 0;
+    if (constrained > 0 && constrained < os.totalmem()) return constrained;
     for (const filePath of MemoryLimit.#cgroupLimitFiles) {
       try {
         if (!fs.existsSync(filePath)) continue;
