@@ -4,6 +4,7 @@ import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
+import { SideEffectImportOrder } from "../transforms/sideEffectImportOrder";
 import { bundleDefine } from "./bundleDefine";
 import { CsrEntryFiles } from "./csrEntryFiles";
 import { type McpAppView, McpAppViewBuilder } from "./mcpAppViewBuilder";
@@ -113,7 +114,7 @@ export class CsrArtifactBuilder {
       define: bundleDefine(app, command, "csr"),
       optimizeImports,
       // A raw `.css` in the route graph is Tailwind source; the base artifact's compiled sheet is the only stylesheet.
-      plugins: [PagesBundleBuilder.createCssStubPlugin(), createBrowserDirnamePlugin()],
+      plugins: [PagesBundleBuilder.createCssStubPlugin(), createBrowserDirnamePlugin(), SideEffectImportOrder.plugin()],
     };
   }
 

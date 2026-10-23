@@ -61,4 +61,44 @@ console.info(await result.outputs[0].text());
     expect(firstOutput).toBe(secondOutput);
     expect(firstOutput).not.toContain(path.basename(first));
   });
+
+  //? The shape of `@lexical/code-prism` under a `lazy()` editor, which threw in every view and CSR shell carrying it.
+  test("runs a lazily imported module's CommonJS side-effect import before the imports after it", async () => {
+    const root = await makeTempRoot();
+    const app = { getPublicEnv: () => ({ AKAN_PUBLIC_ENV: "main" }) };
+    await writeText(path.join(root, "node_modules/core/package.json"), '{ "name": "core", "main": "index.js" }\n');
+    await writeText(
+      path.join(root, "node_modules/core/index.js"),
+      "var Core = { langs: [] };\nglobalThis.Core = Core;\nmodule.exports = Core;\n",
+    );
+    await writeText(path.join(root, "node_modules/core/components/a.js"), 'Core.langs.push("a");\n');
+    await writeText(
+      path.join(root, "node_modules/highlight/package.json"),
+      '{ "name": "highlight", "type": "module", "main": "index.js" }\n',
+    );
+    await writeText(
+      path.join(root, "node_modules/highlight/index.js"),
+      'import "core";\nimport "core/components/a.js";\nexport const langs = () => globalThis.Core.langs;\n',
+    );
+    await writeText(
+      path.join(root, "entry.ts"),
+      'import("highlight").then(({ langs }) => console.info(langs().join()));\n',
+    );
+    const result = await Bun.build({
+      ...CsrArtifactBuilder.bundleOptions(app as never, "build"),
+      entrypoints: [path.join(root, "entry.ts")],
+    });
+    expect(result.success).toBe(true);
+    await Bun.write(path.join(root, "out.js"), (await result.outputs[0]?.text()) ?? "");
+
+    const proc = Bun.spawn([process.execPath, "out.js"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(stdout.trim()).toBe("a");
+  });
 });
