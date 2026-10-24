@@ -1140,7 +1140,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
         if (limitOfModel === limit) return;
         const skip = (pageOfModel - 1) * limitOfModel;
-        const page = Math.max(Math.floor((skip - 1) / limit) + 1, 1);
+        const page = limit > 0 ? Math.max(Math.floor((skip - 1) / limit) + 1, 1) : 1;
         await loadList(
           this,
           () => fetchList(queryArgsOfModel, (page - 1) * limit, limit, sortOfModel, options),
@@ -1254,6 +1254,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
                 row: light as unknown as LiveSortableRow,
                 page: currentState[namesOfSlice.pageOfModel] as number,
                 limit,
+                count: modelInsight.count,
                 cumulative: isCumulative,
                 hasMore: currentState[namesOfSlice.hasMoreOfModel] as boolean,
                 sortKey: String(currentState[namesOfSlice.sortOfModel]),

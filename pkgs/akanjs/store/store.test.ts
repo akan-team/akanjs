@@ -470,6 +470,23 @@ describe("signal generated store contract", () => {
     expect(titles()).toEqual(["row0", "row1", "row2", "row3", "row4"]);
   });
 
+  test("a limit of 0 from a later page lists every row from the first page", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class UnlimitStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(UnlimitStore);
+    const instance = new StoreInstance(makeRoot("unlimitRoot", UnlimitStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { page: 2, limit: 20 });
+
+    await instance.do.setLimitOfStoreTestItemByTitle(0);
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 0, "latest", undefined);
+    expect(instance.get()).toMatchObject({ pageOfStoreTestItemByTitle: 1, lastPageOfStoreTestItemByTitle: 1 });
+
+    await instance.do.setLimitOfStoreTestItemByTitle(20);
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 20, "latest", undefined);
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
+  });
+
   test("clears the list spinner when a page request fails", async () => {
     setupEnv();
     const signal = makeSignal();
@@ -836,6 +853,41 @@ describe("live sync store action", () => {
     expect(liveState(instance).titles.at(-1)).toBe("Cyd");
     expect(liveState(instance).count).toBe(27);
     expect(liveState(instance).lastPage).toBe(1);
+  });
+
+  test("places rows once the limit drops to 0 from a later page", async () => {
+    const { instance } = await arrange();
+    await instance.do.setPageOfStoreTestItemByTitle(2);
+    await instance.do.setLimitOfStoreTestItemByTitle(0);
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "cccccccccccccccccccccccc",
+      light: light("cccccccccccccccccccccccc", "Cyd", 200),
+    });
+    expect(liveState(instance).titles).toEqual(["Ada", "Cyd", "Ben"]);
+  });
+
+  test("a `limit: 0` list the server capped below its count leaves a row past its tail to a refetch", async () => {
+    const { instance, signal } = await arrange();
+    signal.calls.storeTestItemInsightByTitle = mock(async () => new StoreTestInsight({ count: 600 }));
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true, limit: 0 });
+    const before = liveState(instance).staleAt;
+
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "cccccccccccccccccccccccc",
+      light: light("cccccccccccccccccccccccc", "Cyd", 50),
+    });
+    expect(liveState(instance).titles).toEqual(["Ada", "Ben"]);
+    expect(liveState(instance).count).toBe(601);
+    expect(liveState(instance).staleAt).toBeGreaterThanOrEqual(before);
+
+    await instance.do.applyLiveStoreTestItemByTitle({
+      op: "enter",
+      id: "dddddddddddddddddddddddd",
+      light: light("dddddddddddddddddddddddd", "Dee", 200),
+    });
+    expect(liveState(instance).titles).toEqual(["Ada", "Dee", "Ben"]);
   });
 
   test("the same enter twice does not count the row twice", async () => {
