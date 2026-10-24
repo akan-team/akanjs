@@ -429,6 +429,35 @@ describe("Workspace and app executor environment contracts", () => {
     });
   });
 
+  test("reads an explicit env file as Bun's own loader does, leaving inline comments out of the values", async () => {
+    const root = await makeTempRoot();
+    await writeFile(
+      path.join(root, ".env"),
+      [
+        "# the workspace env",
+        "AKAN_PUBLIC_SERVE_DOMAIN=example.com # prod domain",
+        'AKAN_PUBLIC_REPO_NAME="file repo" # note',
+        "AKAN_PUBLIC_ENV=develop#no space needed",
+        "export AKAN_WORKSPACE_ID='ws # kept' # dropped",
+        'AKAN_PUBLIC_APP_NAME="say \\"hi\\"\\nagain" # c',
+        'AKAN_WORKSPACE_ROOT="/unterminated # c',
+        "PORT_OFFSET=7",
+        "",
+      ].join("\r\n"),
+    );
+
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toEqual({
+      appName: 'say \\"hi\\"\nagain',
+      workspaceRoot: '"/unterminated',
+      repoName: "file repo",
+      serveDomain: "example.com",
+      env: "develop",
+      portOffset: 7,
+      workspaceId: "ws # kept",
+      defaulted: [],
+    });
+  });
+
   test("builds app command environment and prepareCommand artifacts", async () => {
     const root = await makeTempRoot();
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";
