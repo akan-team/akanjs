@@ -447,7 +447,10 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
-    if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) return;
+    if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
+      navigationSeq += 1;
+      return;
+    }
     forgetPagesOfAnotherAccount();
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
@@ -593,7 +596,11 @@ window.addEventListener("popstate", (event) => {
     void globalThis
       .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, scrollY })
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
-  else if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
+  else {
+    //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
+    navigationSeq += 1;
+    if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
+  }
   window.setTimeout(() => {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
     const href = globalThis.__AKAN_GET_SYNC_ROUTE_HREF__?.(window.location.href) ?? window.location.href;

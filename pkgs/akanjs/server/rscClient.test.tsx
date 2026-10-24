@@ -36,7 +36,7 @@ const back = async (expected: string) => {
   await act(async () => window.history.back());
   await waitFor(() => shown() === expected);
 };
-const served = new Map<string, () => Response>();
+const served = new Map<string, () => Response | Promise<Response>>();
 const fetched: { pathname: string; sentRouterState: boolean }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
 const sentRouterStateFor = (pathname: string) =>
@@ -141,6 +141,61 @@ describe("rscClient history", () => {
 
     expect(window.location.search).toBe("");
     expect(shown()).toBe("/feed");
+  });
+});
+
+describe("rscClient overtaken navigation", () => {
+  const heldUntilReleased = (text: string) => {
+    const held = { release: () => {} };
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        held.release = () => resolve(responseOf(text));
+      });
+    return { held, respond };
+  };
+
+  test("a move forward that keeps the page drops the move back still loading", async () => {
+    await navigate("/thread/1");
+    await navigate("/thread/2");
+    await refresh();
+    const { held, respond } = heldUntilReleased("/thread/1");
+    served.set("/thread/1", respond);
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(10);
+    });
+    await act(async () => window.history.forward());
+    await act(async () => {
+      await sleep(10);
+    });
+
+    await act(async () => {
+      held.release();
+      await sleep(30);
+    });
+
+    expect(window.location.pathname).toBe("/thread/2");
+    expect(shown()).toBe("/thread/2");
+  });
+
+  test("a shallow push made while a navigation is loading is not overtaken by it", async () => {
+    await navigate("/catalog");
+    const { held, respond } = heldUntilReleased("/catalog/next");
+    served.set("/catalog/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/catalog/next");
+      await sleep(10);
+    });
+    await navigate("/catalog?peek=1", { shallow: true });
+
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+
+    expect(`${window.location.pathname}${window.location.search}`).toBe("/catalog?peek=1");
+    expect(shown()).toBe("/catalog");
   });
 });
 
