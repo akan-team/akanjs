@@ -429,6 +429,41 @@ describe("signal generated store contract", () => {
     expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
   });
 
+  test.each(["refetch", "load-more"] as const)(
+    "drops a %s that answers after the slice was seeded with other arguments",
+    async (request) => {
+      setupEnv();
+      const signal = makeSignal();
+      class SeedStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(SeedStore);
+      const instance = new StoreInstance(makeRoot("seedRoot", SeedStore));
+      await instance.do.initStoreTestItemByTitle("Ada", { limit: 2 });
+      let answer = () => {};
+      signal.calls.storeTestItemListByTitle = mock(
+        async () =>
+          await new Promise<InstanceType<typeof StoreTestLight>[]>((resolve) => {
+            answer = () => resolve([new StoreTestLight({ id: "cccccccccccccccccccccccc", title: "Ada" })]);
+          }),
+      );
+
+      const pending =
+        request === "refetch"
+          ? instance.do.refreshStoreTestItemByTitle({ invalidate: true })
+          : instance.do.loadMoreOfStoreTestItemByTitle();
+      const seeded = new DataList([new StoreTestLight({ id: "dddddddddddddddddddddddd", title: "Ben" })]);
+      instance.set({
+        queryArgsOfStoreTestItemByTitle: ["Ben"],
+        storeTestItemListByTitle: seeded,
+        storeTestItemListLoadingByTitle: false,
+      });
+      answer();
+      await pending;
+
+      expect(instance.get().queryArgsOfStoreTestItemByTitle).toEqual(["Ben"]);
+      expect(instance.get().storeTestItemListByTitle).toBe(seeded);
+    },
+  );
+
   test("loads more from the tail of the list, not from a page number", async () => {
     setupEnv();
     const signal = makeSignal();

@@ -978,6 +978,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       );
     const insightOf = (modelObjInsight: (Insight & BaseInsight) | null, modelDataList: Light[]) =>
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
+    const queryArgsIn = (self: SetGet) =>
+      (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
@@ -990,8 +992,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
           const requestedAt = new Date();
+          const queryArgs = queryArgsIn(self);
           const loaded = await load();
-          if (!requests.isCurrent(ticket)) return;
+          // Arguments seeded meanwhile, as by a `Load.Units` of another page, own the slice now.
+          if (!requests.isCurrent(ticket) || queryArgsIn(self) !== queryArgs) return;
           self.set(commit(loaded, requestedAt));
           const staleAt = (self.get() as { [key: string]: any })[namesOfSlice.modelStaleAt] as Date;
           if (staleAt.getTime() <= requestedAt.getTime()) return;
@@ -1144,7 +1148,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           sortOfModel,
           options,
         );
-        if (!requests.isCurrent(ticket)) return;
+        if (!requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;
         this.set({
