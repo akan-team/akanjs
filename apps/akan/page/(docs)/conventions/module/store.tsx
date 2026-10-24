@@ -629,6 +629,13 @@ this.set((state) => { state.ticketForm.title = ""; });`,
         }),
       },
       {
+        name: "hasInsightOf<Model><Suffix>: boolean",
+        desc: l.trans({
+          en: "`false` after an `init…` with `{ insight: false }`: refetches skip the count until the next `init…`.",
+          ko: "`{ insight: false }`로 `init…`한 뒤에는 `false`입니다. 다음 `init…`까지 다시 불러와도 count를 세지 않습니다.",
+        }),
+      },
+      {
         name: "queryArgsOf<Model><Suffix>: Args",
         desc: l.trans({ en: "Current query arguments.", ko: "현재 쿼리 인자입니다." }),
       },

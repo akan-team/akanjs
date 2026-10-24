@@ -300,6 +300,8 @@ Slice state
 
 - isCumulativeOf<Model><Suffix>: boolean: `true` after `loadMoreOf…`: the list accumulates instead of paging.
 
+- hasInsightOf<Model><Suffix>: boolean: `false` after an `init…` with `{ insight: false }`: refetches skip the count until the next `init…`.
+
 - queryArgsOf<Model><Suffix>: Args: Current query arguments.
 
 - sortOf<Model><Suffix>: Sort: Current sort key, `"latest"` by default.
