@@ -566,8 +566,8 @@ const upgradeGroups = [
     title: { en: "Pages, UI and MCP", ko: "페이지, UI, MCP" },
     notes: [
       {
-        en: "Every .prompt() page is now also listed in tools/list, as a tool with readOnlyHint: false, except on a read-only deployment; option.setMcp({ apps: false }) or AKAN_MCP_APPS=false keeps pages prompts only. An app that serves its CSR bundle and has an .app() page speaks only the legacy MCP revisions unless option.setMcp({ modern: true }) or AKAN_MCP_MODERN=true.",
-        ko: "모든 .prompt() 페이지가 이제 tools/list에도 readOnlyHint: false인 도구로 나열됩니다. 읽기 전용 배포에서는 빠집니다. option.setMcp({ apps: false })나 AKAN_MCP_APPS=false를 주면 페이지는 프롬프트로만 남습니다. CSR 번들을 제공하면서 .app() 페이지가 있는 앱은 option.setMcp({ modern: true })나 AKAN_MCP_MODERN=true가 아니면 레거시 MCP 리비전만 사용합니다.",
+        en: "Every .prompt() page is now also listed in tools/list, as a tool with readOnlyHint: false, except on a read-only deployment. An app that serves its CSR bundle lets a client that declares MCP Apps support call its mcp: false endpoints and light<Model> reads under their guards, which 3.0.2 refused over MCP, and while it has an .app() page it speaks only the legacy MCP revisions unless option.setMcp({ modern: true }) or AKAN_MCP_MODERN=true. option.setMcp({ apps: false }) or AKAN_MCP_APPS=false undoes all three.",
+        ko: "모든 .prompt() 페이지가 이제 tools/list에도 readOnlyHint: false인 도구로 나열됩니다. 읽기 전용 배포에서는 빠집니다. CSR 번들을 제공하는 앱에서는 MCP Apps 지원을 선언한 클라이언트가 mcp: false 엔드포인트와 light<Model> 조회를 가드 아래에서 호출할 수 있습니다. 3.0.2는 MCP에서 이를 거절했습니다. 그런 앱에 .app() 페이지가 있으면 option.setMcp({ modern: true })나 AKAN_MCP_MODERN=true가 아닌 한 레거시 MCP 리비전만 사용합니다. option.setMcp({ apps: false })나 AKAN_MCP_APPS=false를 주면 세 가지 모두 되돌립니다.",
         href: "/cheatsheet/interface/mcp",
       },
       {
