@@ -1028,6 +1028,14 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await store.purgeManyByQuery({ status: "old" })).toBe(0);
     });
 
+    test("q.exists on removedAt purges only the rows already removed, and leaves a live match", async () => {
+      await store.create({ title: "live", status: "old" });
+      const removed = await store.create({ title: "removed", status: "old" });
+      await store.remove(removed.id);
+      expect(await store.purgeManyByQuery(q.all({ status: "old" }, q.exists("removedAt")))).toBe(1);
+      expect(titlesOf(await store.find({}, { withRemoved: true }))).toEqual(["live"]);
+    });
+
     test("a removedAt window purges only the rows removed before it", async () => {
       await store.create({ title: "live" });
       const early = await store.create({ title: "early" });
