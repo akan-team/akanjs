@@ -133,23 +133,28 @@ describe("Tab", () => {
     expect(container.textContent).toContain("review body");
     unmount();
   });
+
   test("an every panel is on screen in the same commit that selects its menu", () => {
     const commits: { menu: string | null; hasReview: boolean }[] = [];
+    let probed: HTMLElement | null = null;
     const { container, unmount } = mount(
       <Profiler
         id="tab"
         onRender={() => {
           commits.push({
-            menu: document.querySelector("[data-menu]")?.getAttribute("data-menu") ?? null,
-            hasReview: document.body.textContent?.includes("review body") ?? false,
+            menu: probed?.querySelector("[data-menu]")?.getAttribute("data-menu") ?? null,
+            hasReview: probed?.textContent?.includes("review body") ?? false,
           });
         }}
       >
         <ReviewLoadingHost initial="every" />
       </Profiler>,
     );
+    probed = container;
     expect(clickReact(container, "Review")).toBe(true);
-    expect(commits.filter(({ menu }) => menu === "review").every(({ hasReview }) => hasReview)).toBe(true);
+    const reviewCommits = commits.filter(({ menu }) => menu === "review");
+    expect(reviewCommits.length).toBeGreaterThan(0);
+    expect(reviewCommits.every(({ hasReview }) => hasReview)).toBe(true);
     unmount();
   });
 });
