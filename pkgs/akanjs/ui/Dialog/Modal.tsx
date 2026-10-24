@@ -1,6 +1,6 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
-import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
+import { useBodyScrollLock, useEscapeKey, usePageActivity } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
@@ -42,6 +42,9 @@ export const Modal = ({
   const contentId = useId();
   const overlayLayerProps = useOverlayLayerProps();
   const portalElement = useOverlayPortal();
+  //? It portals out of its page, so the `inert` on a page the CSR stack keeps drawn underneath never reaches it.
+  const isCurrentPage = usePageActivity() === "current";
+  const isActive = open && isCurrentPage;
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [dragY, setDragY] = useState(0);
   const surface = modalSurfaceOf(presentation, placement);
@@ -65,8 +68,8 @@ export const Modal = ({
   });
   const dragProps = presentation === "dialog" ? {} : bindDismissDrag();
 
-  useBodyScrollLock(open);
-  useEscapeKey(open, requestClose);
+  useBodyScrollLock(isActive);
+  useEscapeKey(isActive, requestClose);
 
   useEffect(() => {
     if (!open || !portalElement) return;
@@ -96,7 +99,7 @@ export const Modal = ({
       {...overlayLayerProps}
       ref={setRoot}
       className={cn("fixed inset-0 flex bg-black/40", surface.root)}
-      style={{ zIndex: overlayZ.modal }}
+      style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden" }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         requestClose();
