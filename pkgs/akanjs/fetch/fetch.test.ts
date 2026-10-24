@@ -886,6 +886,45 @@ describe("HttpClient", () => {
     expect(error.statusCode).toBe(503);
   });
 
+  test("logs a transport failure's detail on the server and keeps it off the wire a rethrow answers with", async () => {
+    class WireErr extends TestErr {
+      static override fromJSON(payload: ErrorResponsePayload) {
+        return new WireErr(payload.error, payload.data, payload);
+      }
+      toJSON() {
+        return { error: this.error, statusCode: this.statusCode, details: this.details, data: this.data };
+      }
+    }
+    setMockFetch();
+    rawResponses.push(new TypeError("getaddrinfo ENOTFOUND orders.internal"));
+    rawResponses.push(new Response("<html>upstream 10.0.3.7:8080 refused</html>", { status: 502 }));
+    const lines: string[] = [];
+    const removeSink = Logger.addSink((entry) => void lines.push(entry.plainMessage), { minLevel: "warn" });
+    try {
+      const unreachable = (await new HttpClient("http://orders.internal")
+        .get("/getOrder?note=private")
+        .catch((error: unknown) => error)) as RestoredError;
+      const proxied = (await new HttpClient("http://orders.internal", { ErrorCls: WireErr })
+        .get("/getOrder")
+        .catch((error: unknown) => error)) as RestoredError;
+
+      expect(unreachable.details).toBe("TypeError: getaddrinfo ENOTFOUND orders.internal");
+      expect(proxied.details).toBe("<html>upstream 10.0.3.7:8080 refused</html>");
+      expect(isExceptionLike(unreachable) && isExceptionLike(proxied)).toBe(true);
+      expect(unreachable.toJSON?.()).toEqual({ error: "base.error.serverUnreachable", statusCode: 503 });
+      expect(proxied.toJSON?.()).toEqual({
+        error: "base.error.serverUnavailable",
+        statusCode: 502,
+        data: { status: 502 },
+      });
+      expect(lines.join("\n")).toContain("getaddrinfo ENOTFOUND orders.internal");
+      expect(lines.join("\n")).toContain("upstream 10.0.3.7:8080 refused");
+      expect(lines.join("\n")).not.toContain("note=private");
+    } finally {
+      removeSink();
+    }
+  });
+
   test("leaves a caller-side abort untouched", async () => {
     setMockFetch();
     const abort = new Error("The operation was aborted.");
