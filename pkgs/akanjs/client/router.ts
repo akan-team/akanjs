@@ -306,7 +306,7 @@ class Router {
   }
   #withCsrRuntimeSearchParams(href: string) {
     const currentSearch = new URLSearchParams(csrLocation.search);
-    if (currentSearch.get("csr") !== "true") return href;
+    if (currentSearch.get("csr") !== "true" || Href.hasWebScheme(href)) return href;
 
     const [hrefWithoutHash, hash = ""] = href.split("#");
     const [pathname, search = ""] = hrefWithoutHash.split("?");
