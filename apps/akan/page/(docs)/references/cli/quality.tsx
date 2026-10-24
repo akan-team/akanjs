@@ -168,8 +168,8 @@ export default page()
           {
             name: l.trans({ en: "where to run", ko: "실행 위치" }),
             desc: l.trans({
-              en: "The workspace root, the folder holding `package.json`, `tsconfig.json` and `.env`.",
-              ko: "`package.json`, `tsconfig.json`, `.env`가 있는 워크스페이스 루트에서 실행합니다.",
+              en: "The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.",
+              ko: "`package.json`, `tsconfig.json`과 `apps/`, `libs/`, `pkgs/` 중 한 폴더가 있는 워크스페이스 루트에서 실행합니다.",
             }),
           },
           {

@@ -386,8 +386,8 @@ async refreshStock() {
       {
         rule: "no-throw-raw-error",
         scope: l.trans({
-          en: "`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`",
-          ko: "`apps/**` `libs/**` (테스트, `*.constant.ts`, `common/**`, `env/**` 제외)",
+          en: "`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`, a root `native/`, `script/migration/**`",
+          ko: "`apps/**` `libs/**` (테스트, `*.constant.ts`, `common/**`, `env/**`, 루트 `native/`, `script/migration/**` 제외)",
         }),
         desc: l.trans({
           en: 'A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key. An `Error` built anywhere else, to reject, return or store, is a warning.',
@@ -578,6 +578,14 @@ async refreshStock() {
         }),
       },
       {
+        rule: "no-import-external-library-in-test",
+        scope: "`*.signal.test.ts` `*.service.test.ts`",
+        desc: l.trans({
+          en: "A third-party package, as in a module file, but `node:*` and `bun:*` pass.",
+          ko: "모듈 파일과 마찬가지로 서드파티 패키지입니다. 단 `node:*`, `bun:*`는 통과합니다.",
+        }),
+      },
+      {
         rule: "no-import-server-in-client",
         scope: l.trans({
           en: "`ui/` `webkit/` `page/` `common/`, `*.store.ts` `*.constant.ts`, every `.tsx`",
@@ -699,14 +707,16 @@ async refreshStock() {
           <>
             <strong>Akan&apos;s own packages pass.</strong> Relative paths, <code>akanjs</code>, <code>@akanjs/*</code>,{" "}
             <code>@apps/*</code>, <code>@libs/*</code>, <code>@pkgs/*</code>, <code>react*</code>,{" "}
-            <code>@playwright/*</code> and <code>bun:test</code> are not third-party imports.
+            <code>@playwright/*</code> and <code>bun:test</code> are not third-party imports; in a module test, neither
+            are <code>bun:*</code> and <code>node:*</code>.
           </>
         ),
         ko: (
           <>
             <strong>Akan 자체 패키지는 통과합니다.</strong> 상대 경로, <code>akanjs</code>, <code>@akanjs/*</code>,{" "}
             <code>@apps/*</code>, <code>@libs/*</code>, <code>@pkgs/*</code>, <code>react*</code>,{" "}
-            <code>@playwright/*</code>, <code>bun:test</code>는 서드파티 import로 보지 않습니다.
+            <code>@playwright/*</code>, <code>bun:test</code>는 서드파티 import로 보지 않고, 모듈 테스트에서는{" "}
+            <code>bun:*</code>, <code>node:*</code>도 마찬가지입니다.
           </>
         ),
       }),
@@ -968,16 +978,16 @@ async refreshStock() {
               {l.trans({
                 en: (
                   <span>
-                    Twenty-eight are grit plugins written for Akan, each an error unless its row names a warning, which
-                    prints without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its
-                    scope, so a plain package under <code>pkgs/</code> never trips the module rules.
+                    Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints
+                    without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its scope, so a
+                    plain package under <code>pkgs/</code> never trips the module rules.
                   </span>
                 ),
                 ko: (
                   <span>
-                    스물여덟 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다.
-                    경고는 출력되지만 빌드를 깨지 않습니다. 나머지는 Biome 자체 규칙입니다. 플러그인은 자기 적용 범위만
-                    보므로, <code>pkgs/</code> 아래의 평범한 패키지는 모듈 규칙에 걸리지 않습니다.
+                    서른 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다. 경고는
+                    출력되지만 빌드를 깨지 않습니다. 나머지는 Biome 자체 규칙입니다. 플러그인은 자기 적용 범위만 보므로,{" "}
+                    <code>pkgs/</code> 아래의 평범한 패키지는 모듈 규칙에 걸리지 않습니다.
                   </span>
                 ),
               })}

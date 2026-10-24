@@ -112,7 +112,7 @@ Why, and what to do
 
 Options
 
-- enabled (boolean, default true, AKAN_MCP, AKAN_PUBLIC_MCP): Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.
+- enabled (boolean, default true, AKAN_MCP, AKAN_PUBLIC_MCP): Whether `/mcp` is mounted; off by default on an edge server. `false` or `0` in the env turns it off regardless.
 
 - readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow: app tools and their views stay, and a prompt stays a prompt with no text tool. The env turns it on only on `true` or `1`.
 

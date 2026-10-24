@@ -29,8 +29,8 @@ export default page()
       {
         name: "filter",
         desc: l.trans({
-          en: "A named, reusable query such as `inProject`. Each one generates fourteen methods.",
-          ko: "`inProject`처럼 이름 붙인 재사용 쿼리입니다. 하나마다 메서드 열네 개가 생깁니다.",
+          en: "A named, reusable query such as `inProject`. Each one generates fifteen methods.",
+          ko: "`inProject`처럼 이름 붙인 재사용 쿼리입니다. 하나마다 메서드 열다섯 개가 생깁니다.",
         }),
       },
       {
@@ -81,8 +81,8 @@ export default page()
       {
         name: "TicketFilter",
         desc: l.trans({
-          en: "Named queries and sort orders. Each query becomes fourteen methods on the model and the service.",
-          ko: "이름 붙인 쿼리와 정렬 순서입니다. 쿼리 하나가 model과 service에 메서드 열네 개로 생깁니다.",
+          en: "Named queries and sort orders. Each query becomes fifteen methods on the model and the service.",
+          ko: "이름 붙인 쿼리와 정렬 순서입니다. 쿼리 하나가 model과 service에 메서드 열다섯 개로 생깁니다.",
         }),
         example: "from(cnst.Ticket, (filter) => ({ query: {}, sort: {} }))",
       },
@@ -309,6 +309,14 @@ export default page()
         key: "removeOne<Filter>",
         type: "Promise<UpdateResult>",
         desc: l.trans({ en: "The same, on the newest match only.", ko: "같은 동작을 가장 최근 매치 하나에만 합니다." }),
+      },
+      {
+        key: "purge<Filter>",
+        type: "Promise<number>",
+        desc: l.trans({
+          en: "Deletes every match for good, removed rows too, and returns the count. No cascade; an empty query is refused.",
+          ko: "삭제된 행까지 매치 전부를 영구히 지우고 지운 개수를 반환합니다. cascade는 없고, 빈 쿼리는 거부합니다.",
+        }),
       },
       {
         key: "update<Filter>",
@@ -998,12 +1006,12 @@ export class TicketModel extends into(
             <Docs.IntroTable type={l.trans({ en: "Helper", ko: "헬퍼" })} items={helperRows} />
 
             <Docs.SubSubTitle>
-              {l.trans({ en: "Fourteen generated methods", ko: "자동 생성되는 메서드 열네 개" })}
+              {l.trans({ en: "Fifteen generated methods", ko: "자동 생성되는 메서드 열다섯 개" })}
             </Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "Every query generates fourteen methods, identically on the model and the service. Ten of them only read:",
-                ko: "쿼리 하나마다 메서드 열네 개가 model과 service에 똑같이 생깁니다. 그중 열 개는 읽기만 합니다:",
+                en: "Every query generates fifteen methods, identically on the model and the service. Ten of them only read:",
+                ko: "쿼리 하나마다 메서드 열다섯 개가 model과 service에 똑같이 생깁니다. 그중 열 개는 읽기만 합니다:",
               })}
             </div>
             <Docs.OptionTable items={readMethods} />
@@ -1011,14 +1019,13 @@ export class TicketModel extends into(
               {l.trans({
                 en: (
                   <span>
-                    The other four are <strong>query-level writes</strong>: one statement straight to the database, with
-                    no hook:
+                    The other five are <strong>query-level writes</strong>, straight to the database with no hook:
                   </span>
                 ),
                 ko: (
                   <span>
-                    나머지 네 개는 <strong>쿼리 단위 쓰기</strong>입니다. 문장 하나로 데이터베이스에 바로 가며 훅을
-                    실행하지 않습니다:
+                    나머지 다섯 개는 <strong>쿼리 단위 쓰기</strong>입니다. 데이터베이스에 바로 가며 훅을 실행하지
+                    않습니다:
                   </span>
                 ),
               })}
@@ -2158,14 +2165,14 @@ export class StoryModel extends into(
                   en: (
                     <span>
                       <strong>Search is not an index.</strong> <code>schema.index()</code> builds plain lookup indexes.
-                      The value <code>"text"</code> is an old alias for a plain index, not search; declare a{" "}
-                      <code>text</code> role on the field instead.
+                      The value <code>"text"</code> builds nothing; declare a <code>text</code> role on the field
+                      instead.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>검색은 인덱스가 아닙니다.</strong> <code>schema.index()</code>는 일반 조회 인덱스만
-                      만듭니다. 값 <code>"text"</code>는 일반 인덱스의 옛 별칭일 뿐 검색이 아닙니다. 검색은 필드에{" "}
+                      만듭니다. 값 <code>"text"</code>로는 아무 인덱스도 만들어지지 않습니다. 검색은 필드에{" "}
                       <code>text</code> 역할을 선언해서 켭니다.
                     </span>
                   ),
@@ -2210,18 +2217,18 @@ export class StoryModel extends into(
               {l.trans({
                 en: (
                   <span>
-                    <strong>Leave a shipped index as written.</strong> Every live database remembers its definition, so
-                    changing it, even <code>"text"</code> to <code>1</code> or adding <code>unique</code>, breaks them
-                    all. Adding or removing another index renames none of them, and an index you delete from{" "}
-                    <code>_onSchema</code> is dropped on the next boot.
+                    <strong>A changed index is rebuilt.</strong> Change a shipped index, even <code>-1</code> to{" "}
+                    <code>1</code> or adding <code>unique</code>, and the next boot builds the new one and drops the
+                    old: a full index build on a large table. Adding or removing another index renames none of them, and
+                    an index you delete from <code>_onSchema</code> is dropped on the next boot.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>배포된 인덱스는 적힌 그대로 둡니다.</strong> 운영 중인 데이터베이스가 그 정의를 기억하므로,{" "}
-                    <code>"text"</code>를 <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도 모두 깨집니다.
-                    다른 인덱스를 더하거나 빼도 이름은 바뀌지 않으며, <code>_onSchema</code>에서 지운 인덱스는 다음
-                    부팅에서 삭제됩니다.
+                    <strong>바꾼 인덱스는 다시 만들어집니다.</strong> 배포된 인덱스를 바꾸면, <code>-1</code>을{" "}
+                    <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도, 다음 부팅에서 새 인덱스를 만들고 옛
+                    인덱스를 삭제합니다. 큰 테이블에서는 인덱스 전체를 새로 만드는 작업입니다. 다른 인덱스를 더하거나
+                    빼도 이름은 바뀌지 않으며, <code>_onSchema</code>에서 지운 인덱스는 다음 부팅에서 삭제됩니다.
                   </span>
                 ),
               })}

@@ -31,7 +31,7 @@ Words used on this page
 
 Term
 
-- filter: A named, reusable query such as `inProject`. Each one generates fourteen methods.
+- filter: A named, reusable query such as `inProject`. Each one generates fifteen methods.
 
 - document: One loaded record: a class instance with `set()`, `save()` and your own chain methods.
 
@@ -51,7 +51,7 @@ A database module's document file declares three classes, always in this order. 
 
 Class
 
-- TicketFilter: Named queries and sort orders. Each query becomes fourteen methods on the model and the service. — Example: `from(cnst.Ticket, (filter) => ({ query: {}, sort: {} }))`
+- TicketFilter: Named queries and sort orders. Each query becomes fifteen methods on the model and the service. — Example: `from(cnst.Ticket, (filter) => ({ query: {}, sort: {} }))`
 
 - Ticket: One loaded record. Its chain methods change state and return the document itself. — Example: `by(cnst.Ticket)`
 
@@ -119,9 +119,9 @@ Helper
 
 - q.raw(sql, params): A raw SQL fragment with bound parameters. It ties the query to one database dialect.
 
-Fourteen generated methods
+Fifteen generated methods
 
-Every query generates fourteen methods, identically on the model and the service. Ten of them only read:
+Every query generates fifteen methods, identically on the model and the service. Ten of them only read:
 
 - list<Filter> (Promise<Doc[]>): Every match. Options: `sort`, `skip`, `limit`, `select`.
 
@@ -143,11 +143,13 @@ Every query generates fourteen methods, identically on the model and the service
 
 - query<Filter> (QueryOf<Doc>): Builds the query without running it, synchronously. A slice's `exec` returns this.
 
-The other four are **query-level writes**: one statement straight to the database, with no hook:
+The other five are **query-level writes**, straight to the database with no hook:
 
 - remove<Filter> (Promise<UpdateResult>): One atomic UPDATE marking every match removed.
 
 - removeOne<Filter> (Promise<UpdateResult>): The same, on the newest match only.
+
+- purge<Filter> (Promise<number>): Deletes every match for good, removed rows too, and returns the count. No cascade; an empty query is refused.
 
 - update<Filter> (UpdateChain<Doc>): A chain; the patch goes on a terminal `.set(patch)`.
 
@@ -339,13 +341,13 @@ The second argument of `schema.index()`:
 
 - name (string, default <table>_<fields>): Fixes the index name. The default joins the table and field names, with `_unique` for a unique index. Naming a shipped index builds it again under the new name and drops the old one.
 
-**Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
+**Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` builds nothing; declare a `text` role on the field instead.
 
 **Named sorts are indexed for you.** Each order in the filter's `sort` already has an index, so declare one only for a lookup you run often.
 
 **A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()`, `.where(query)` and ends with `.done()`.
 
-**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Adding or removing another index renames none of them, and an index you delete from `_onSchema` is dropped on the next boot.
+**A changed index is rebuilt.** Change a shipped index, even `-1` to `1` or adding `unique`, and the next boot builds the new one and drops the old: a full index build on a large table. Adding or removing another index renames none of them, and an index you delete from `_onSchema` is dropped on the next boot.
 
 Hooks
 

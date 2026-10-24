@@ -1546,18 +1546,18 @@ export default layout().render(({ children }) => {
                 ),
               })}
             </div>
-            <Docs.SubSubTitle>{l.trans({ en: "Five built-in tools", ko: "기본 툴 다섯 개" })}</Docs.SubSubTitle>
+            <Docs.SubSubTitle>{l.trans({ en: "Six built-in tools", ko: "기본 툴 여섯 개" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
                 en: (
                   <>
-                    Besides what the screen declares, the runtime gives every chat these five tools.{" "}
+                    Besides what the screen declares, the runtime gives every chat these six tools.{" "}
                     <code>builtins</code> picks which ones this chat's agent gets.
                   </>
                 ),
                 ko: (
                   <>
-                    화면이 선언한 툴 외에도 런타임은 모든 채팅에 이 다섯 툴을 줍니다. <code>builtins</code>로 이 채팅의
+                    화면이 선언한 툴 외에도 런타임은 모든 채팅에 이 여섯 툴을 줍니다. <code>builtins</code>로 이 채팅의
                     에이전트가 받을 툴을 고릅니다.
                   </>
                 ),

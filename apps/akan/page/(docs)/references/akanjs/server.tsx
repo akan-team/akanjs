@@ -492,8 +492,8 @@ export default page()
       {
         name: "setMcp(option | fn)",
         desc: l.trans({
-          en: "Settings for the MCP server at `/mcp`. `false` takes it off.",
-          ko: "`/mcp`에 뜨는 MCP 서버의 설정입니다. `false`를 주면 MCP 서버를 내립니다.",
+          en: "Settings for the MCP server at `/mcp`; `false` takes it off. Off on an edge server until `true` or `AKAN_MCP=true`.",
+          ko: "`/mcp`에 뜨는 MCP 서버의 설정입니다. `false`를 주면 내립니다. 엣지 서버에서는 꺼진 채 시작하며 `true`나 `AKAN_MCP=true`로 켭니다.",
         }),
       },
       {
@@ -1472,7 +1472,7 @@ export const option = new AkanOption<ModulesOptions>().applyWebProxy({
                     <strong>A client-side navigation into the shop still opens it.</strong> The proxy answers page
                     loads, so a visitor already in the app reaches the shop through a <code>{"<Link>"}</code>. Block
                     content with guards on the endpoints it reads, and require sign-in with{" "}
-                    <code>{"getSelf({ unauthorize })"}</code> in the section's <code>_layout.tsx</code>; both apply to a
+                    <code>{".guard(() => signedIn())"}</code> on the section's <code>_layout.tsx</code>; both apply to a
                     client-side navigation too.
                   </span>
                 ),
@@ -1481,7 +1481,7 @@ export const option = new AkanOption<ModulesOptions>().applyWebProxy({
                     <strong>클라이언트 쪽 이동으로는 shop에 그대로 들어갑니다.</strong> proxy는 페이지 로드에만
                     응답하므로, 이미 앱 안에 있는 방문자는 <code>{"<Link>"}</code>로 shop에 들어갑니다. 콘텐츠는 그
                     페이지가 읽는 endpoint의 guard로 막고, 로그인은 해당 구역 <code>_layout.tsx</code>의{" "}
-                    <code>{"getSelf({ unauthorize })"}</code>로 요구합니다. 둘 다 클라이언트 쪽 이동에도 적용됩니다.
+                    <code>{".guard(() => signedIn())"}</code>로 요구합니다. 둘 다 클라이언트 쪽 이동에도 적용됩니다.
                   </span>
                 ),
               })}

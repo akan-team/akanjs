@@ -994,6 +994,13 @@ export default page()
           ko: "각자 status를 가진 하위 클래스입니다. 차례로 400, 401, 403, 404, 409입니다.",
         }),
       },
+      {
+        name: "Err.is(error, ...keys)",
+        desc: l.trans({
+          en: "Narrows an unknown error to an `Err`, one carrying one of `keys` when any are named.",
+          ko: "알 수 없는 error를 `Err`로 좁힙니다. `keys`를 넘기면 그중 하나를 가진 `Err`일 때만 통과합니다.",
+        }),
+      },
     ];
 
     const fetchRows = [
@@ -1146,8 +1153,8 @@ export default page()
         }),
       },
       {
-        name: ["showKeyboard()", "hideKeyboard()"],
-        desc: l.trans({ en: "Opens or closes the native keyboard.", ko: "네이티브 키보드를 열거나 닫습니다." }),
+        name: "hideKeyboard()",
+        desc: l.trans({ en: "Closes the native keyboard.", ko: "네이티브 키보드를 닫습니다." }),
       },
       {
         name: ["listenKeyboardChanged(fn)", "unlistenKeyboardChanged()"],

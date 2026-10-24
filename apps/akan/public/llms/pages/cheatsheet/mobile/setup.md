@@ -336,7 +336,7 @@ An installed app updates itself from releases you sign. `akan update-keygen` pri
 
 **A new release runs on trial** until its first page mounts, and a carried server is up. A failed trial rolls back, and `check()` and `apply()` refuse meanwhile.
 
-**Upload the manifest last.** `<channel>.json` and its `.sig` go up together after `app/` and `files/`, uncached behind a CDN: a manifest paired with another release's signature stops every app updating.
+**Upload the manifest last, uncached behind a CDN.** A phone's is one file, `<platform>/<channel>/<nativeApi>.json`, after `files/`. A desktop app's `<channel>.json` goes up after `app/` and its `.sig`: paired with another release's signature, it stops every app updating.
 
 **`updates.url` is public.** The updater sends no credentials, and a desktop release is the whole app, carried server included.
 

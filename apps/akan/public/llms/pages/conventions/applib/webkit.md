@@ -63,7 +63,7 @@ Client — "use client"
 
   - Render map: A shared table from an enum value to a recipe variant name or icon, never to class strings.
 
-  - Account helper: Reads the signed-in account and sends a guest away, like `getSelf` in `_layout.tsx`.
+  - Account helper: Reads the signed-in account or sends a guest away, like `getSelf` or a layout's `signedIn` guard.
 
 - "use client" — client components only
 
@@ -95,11 +95,11 @@ Account and routing helper
 
 A helper that reads the signed-in account and sends a guest to the sign-in page:
 
-**No `"use client"`.** `_layout.tsx` calls it on the server, so a guest is redirected before any of the page renders.
+**No `"use client"`.** A `_layout.tsx` guard calls it on the server, so a guest is redirected before anything renders.
 
 **`router.redirect`, not `router.replace`.** `redirect` works on both sides, while `replace` only moves a browser tab: on the server the page would render signed-out.
 
-**`libs/shared` already ships one.** Use `getSelf({ unauthorize: "/signin" })` and `getMe` from `@libs/shared/webkit` when the app mounts that lib.
+**`libs/shared` already ships one.** When the app mounts that lib, gate a layout with `.guard(() => signedIn())` and read the account with `getSelf()` or `getMe()`, all three from `@libs/shared/webkit`.
 
 Browser helper
 

@@ -79,6 +79,8 @@ Library
 
   - docker: The production image. A library adds `preRuns` and `postRuns` only.
 
+  - pipeline: The app's build pipeline, `{ stages, env, after }`. Without it the app runs build → docker → deploy.
+
   - assets: Which fonts the build prunes from its `public/` copy. A library sets `keepFonts` only.
 
   - plugins: Akan plugins the CLI reads for runtime packages, native setup and assets.
@@ -639,7 +641,7 @@ import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
   docker: {
-    image: "oven/bun:1-slim",
+    image: "oven/bun:1.4.4-slim",
     preRuns: [
       "apt-get update && apt-get install -y --no-install-recommends ffmpeg imagemagick",
     ],
@@ -657,7 +659,7 @@ import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
   docker: [
-    "FROM oven/bun:1-slim",
+    "FROM oven/bun:1.4.4-slim",
     "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
     "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
     "ARG TARGETARCH",

@@ -1221,7 +1221,7 @@ pathSet(user, "tags[0]", "core"); // creates tags: ["core"]`}
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/lib/story.signal.spec.ts"
+            title="apps/myapp/lib/story/story.signal.spec.ts"
             language="typescript"
             code={`import { randomPick, randomPicks } from "akanjs/common";
 

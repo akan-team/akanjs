@@ -560,8 +560,8 @@ export default page()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells. Its own .head() covers child pages that declare none, and its .notFound() and .error() are the fallback for everything below it.",
-                ko: "레이아웃 파일은 하위 페이지를 감쌉니다. 공통 헤더, 탭, 사이드바, 접근 제어, 페이지 껍데기 같은 UI를 둘 때 사용합니다. 자체 .head()는 head를 선언하지 않은 하위 페이지에 쓰이고, .notFound()와 .error()는 그 아래 전체의 fallback이 됩니다.",
+                en: "A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells. Its .head() tags reach every page below it unless a deeper head repeats them, and its .notFound() and .error() are the fallback for everything below it.",
+                ko: "레이아웃 파일은 하위 페이지를 감쌉니다. 공통 헤더, 탭, 사이드바, 접근 제어, 페이지 껍데기 같은 UI를 둘 때 사용합니다. 자체 .head()의 태그는 더 깊은 head가 같은 태그를 다시 쓰지 않는 한 아래 모든 페이지에 쓰이고, .notFound()와 .error()는 그 아래 전체의 fallback이 됩니다.",
               })}
             </div>
             <Docs.Figure

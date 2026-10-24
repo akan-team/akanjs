@@ -293,7 +293,7 @@ const statusOptions = cnst.PostStatus.map((status) => ({
 }));
 ```
 
-### apps/myapp/lib/user/user.test.ts
+### apps/myapp/lib/user/user.store.test.ts
 
 ```ts
 import { describe, expect, test } from "bun:test";

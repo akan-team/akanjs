@@ -65,7 +65,7 @@ What you get
 
 **One run is the shape for scripts.** It exits when the prompt is done, and `--json` makes its output machine-readable.
 
-`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
+`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--compact-at <10..100>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
 
 Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open the full-screen session.
 
@@ -76,6 +76,8 @@ Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open t
 - --profile (String, default local, local | pod | review | web · flag: -p): Picks what the agent may do: its tools, approvals and session storage. See Profiles below.
 
 - --model (String, nullable · flag: -m): `<provider>/<id>`. Default: `deepseek/deepseek-flash`; without its key, the first available.
+
+- --compact-at (Number, nullable · flag: -c): Compacts the conversation once the context window is this full, in percent: `10`, `20`, … `100`.
 
 - --json (Boolean, default false, flag: -j): Prints one event per line as JSON. The full-screen session then opens only with `--interactive`.
 

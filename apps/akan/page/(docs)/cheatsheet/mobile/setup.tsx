@@ -896,16 +896,18 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Upload the manifest last.</strong> <code>&lt;channel&gt;.json</code> and its <code>.sig</code> go up
-            together after <code>app/</code> and <code>files/</code>, uncached behind a CDN: a manifest paired with
-            another release's signature stops every app updating.
+            <strong>Upload the manifest last, uncached behind a CDN.</strong> A phone's is one file,{" "}
+            <code>&lt;platform&gt;/&lt;channel&gt;/&lt;nativeApi&gt;.json</code>, after <code>files/</code>. A desktop
+            app's <code>&lt;channel&gt;.json</code> goes up after <code>app/</code> and its <code>.sig</code>: paired
+            with another release's signature, it stops every app updating.
           </>
         ),
         ko: (
           <>
-            <strong>매니페스트는 마지막에 올리세요.</strong> <code>app/</code>과 <code>files/</code>를 먼저 올리고{" "}
-            <code>&lt;channel&gt;.json</code>과 <code>.sig</code>를 함께 올리며, CDN에서는 이 둘을 캐시하지 않습니다.
-            다른 릴리스의 서명과 짝지어진 매니페스트는 모든 앱의 업데이트를 멈춥니다.
+            <strong>매니페스트는 마지막에, CDN에서 캐시하지 않고 올리세요.</strong> 폰의 매니페스트는{" "}
+            <code>files/</code> 다음에 올리는 <code>&lt;platform&gt;/&lt;channel&gt;/&lt;nativeApi&gt;.json</code> 파일
+            하나입니다. 데스크톱 앱의 <code>&lt;channel&gt;.json</code>은 <code>app/</code>과 그 <code>.sig</code>{" "}
+            다음에 올리며, 다른 릴리스의 서명과 짝지어지면 모든 앱의 업데이트가 멈춥니다.
           </>
         ),
       }),

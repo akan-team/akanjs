@@ -105,10 +105,10 @@ export default page()
       },
       {
         title: l.trans({ en: "Run From The Workspace Root", ko: "워크스페이스 루트에서 실행" }),
-        code: "package.json · tsconfig.json · .env",
+        code: "package.json · tsconfig.json · apps/",
         desc: l.trans({
-          en: "Run every command except `create-workspace` from the folder that holds these three files. Anywhere else it stops with an error.",
-          ko: "`create-workspace`를 뺀 모든 명령은 이 세 파일이 있는 폴더에서 실행합니다. 다른 곳에서 실행하면 오류를 내고 멈춥니다.",
+          en: "Run every command except `create-workspace` from the folder that holds both files and an `apps/`, `libs/` or `pkgs/` folder. Anywhere else it stops with an error.",
+          ko: "`create-workspace`를 뺀 모든 명령은 두 파일과 `apps/`, `libs/`, `pkgs/` 중 한 폴더가 있는 곳에서 실행합니다. 다른 곳에서 실행하면 오류를 내고 멈춥니다.",
         }),
       },
       {
@@ -267,6 +267,14 @@ export default page()
             desc: l.trans({
               en: "Syncs every library, then every app.",
               ko: "모든 라이브러리를 동기화한 다음, 모든 앱을 동기화합니다.",
+            }),
+          },
+          {
+            name: "machine-keygen <out>",
+            href: "/references/cli/workspace#machine-keygen",
+            desc: l.trans({
+              en: "Writes an Ed25519 private key for machine tokens to `<out>` and prints the public key.",
+              ko: "machine token용 Ed25519 개인 키를 `<out>`에 쓰고 공개 키를 출력합니다.",
             }),
           },
         ],

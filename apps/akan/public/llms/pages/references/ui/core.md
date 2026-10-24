@@ -275,7 +275,7 @@ A trigger and its modal in one line
 
 - Model.New ({ slice, children, trigger?, partial?, renderTitle?, modal?, namespace?, draft?, presentation?, placement? }): `children` is the form body, `partial` seeds it, `trigger` replaces the default New button.
 
-- Model.Edit ({ slice, modelId, children, trigger?, renderTitle?, modal?, draft? }): The same pair for one record; `trigger` defaults to the framework's Edit button.
+- Model.Edit ({ slice, modelId, children, trigger?, renderTitle?, modal?, draft?, presentation?, placement? }): The same pair for one record; `trigger` defaults to the framework's Edit button.
 
 Wrappers: your element becomes the trigger
 

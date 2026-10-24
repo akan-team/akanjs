@@ -157,6 +157,14 @@ export default page()
             marks: appAndLib,
           },
           {
+            name: "pipeline",
+            desc: l.trans({
+              en: "The app's build pipeline, `{ stages, env, after }`. Without it the app runs build → docker → deploy.",
+              ko: "앱의 빌드 파이프라인 `{ stages, env, after }`입니다. 없으면 build → docker → deploy 순서로 실행합니다.",
+            }),
+            marks: appOnly,
+          },
+          {
             name: "assets",
             desc: l.trans({
               en: "Which fonts the build prunes from its `public/` copy. A library sets `keepFonts` only.",
@@ -2086,7 +2094,7 @@ export default config;`}
 
 const config: AppConfig = {
   docker: {
-    image: "oven/bun:1-slim",
+    image: "oven/bun:1.4.4-slim",
     preRuns: [
       "apt-get update && apt-get install -y --no-install-recommends ffmpeg imagemagick",
     ],
@@ -2260,7 +2268,7 @@ export default config;`}
 
 const config: AppConfig = {
   docker: [
-    "FROM oven/bun:1-slim",
+    "FROM oven/bun:1.4.4-slim",
     "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
     "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
     "ARG TARGETARCH",

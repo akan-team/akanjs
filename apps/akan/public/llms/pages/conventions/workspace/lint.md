@@ -30,7 +30,7 @@ Level:
 
 module files, `page/**`, barrels
 
-`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`
+`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`, a root `native/`, `script/migration/**`
 
 A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key. An `Error` built anywhere else, to reject, return or store, is a warning.
 
@@ -87,6 +87,8 @@ An async `ui/` component breaks under a client parent. Await in the page instead
 An `@apps`/`@libs` path past `<name>/<entry>`, `../../` in a module file, or `../` in its `.tsx`.
 
 A third-party package. Re-export it through a lib's `common/`, `webkit/` or `ui/` first.
+
+A third-party package, as in a module file, but `node:*` and `bun:*` pass.
 
 `ui/` `webkit/` `page/` `common/`, `*.store.ts` `*.constant.ts`, every `.tsx`
 
@@ -160,7 +162,7 @@ Each diagnostic prints the name of the rule that fired. Find that name below; th
 
 Every Rule That Breaks The Build
 
-Twenty-eight are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
+Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
 
 Colour vocabulary
 
@@ -216,7 +218,7 @@ Imports
 
 **Barrels count too.** A client file may not import `db`, `srv`, `sig`, `dict`, `option` or `useServer`; a server file may not import `st`, `store` or `useClient`.
 
-**Akan's own packages pass.** Relative paths, `akanjs`, `@akanjs/*`, `@apps/*`, `@libs/*`, `@pkgs/*`, `react*`, `@playwright/*` and `bun:test` are not third-party imports.
+**Akan's own packages pass.** Relative paths, `akanjs`, `@akanjs/*`, `@apps/*`, `@libs/*`, `@pkgs/*`, `react*`, `@playwright/*` and `bun:test` are not third-party imports; in a module test, neither are `bun:*` and `node:*`.
 
 **Cross-module constants are the exception.** A `.ts` module file may import `../map/map.constant`.
 

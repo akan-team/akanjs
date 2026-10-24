@@ -148,9 +148,9 @@ Props
 
 `attach`, `voice`, `visual`, `maxTurns`, `compact` and the rest are listed in the Agent UI reference.
 
-Five built-in tools
+Six built-in tools
 
-Besides what the screen declares, the runtime gives every chat these five tools. `builtins` picks which ones this chat's agent gets.
+Besides what the screen declares, the runtime gives every chat these six tools. `builtins` picks which ones this chat's agent gets.
 
 Tool
 

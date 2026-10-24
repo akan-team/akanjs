@@ -1417,7 +1417,7 @@ export class OrderInternal extends internal(srv.order, ({ resolveField }) => ({
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="libs/shared/lib/banner/banner.test.ts"
+            title="libs/shared/lib/banner/banner.constant.test.ts"
             language="typescript"
             code={`import { expect, test } from "bun:test";
 import { FIELD_META } from "akanjs/base";
@@ -1579,7 +1579,7 @@ test("a new banner starts active", () => {
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="libs/shared/lib/banner/banner.test.ts"
+            title="libs/shared/lib/banner/banner.constant.test.ts"
             language="typescript"
             code={`import { expect, test } from "bun:test";
 import { dayjs } from "akanjs/base";
@@ -1742,7 +1742,7 @@ test("a banner needs an href to purify", () => {
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="libs/shared/lib/banner/banner.test.ts"
+            title="libs/shared/lib/banner/banner.constant.test.ts"
             language="typescript"
             code={`import { expect, test } from "bun:test";
 import { dayjs } from "akanjs/base";

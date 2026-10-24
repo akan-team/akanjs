@@ -242,7 +242,9 @@ Access and caching
 
 - timeout (number (ms), default client's 30 s): Past it the caller gets `base.error.gatewayTimeout`. The client waits the same budget.
 
-- cache (number (ms), default not cached, query): Reuses the answer this long. Only for a query with no `.with()`; looked up after the guards pass.
+- errors ({ [status]: "<module>.error.<key>"[] }, default none): The errors it throws on purpose, by status, with its own dictionary's keys. OpenAPI and MCP publish them.
+
+- cache (number (ms), default not cached, query): Reuses the answer this long, one day at most. Only for a query with no `.with()`; looked up after the guards pass.
 
 - nullable (boolean, default false): Allows a `null` return. Without it, a handler that returns `null` fails.
 
