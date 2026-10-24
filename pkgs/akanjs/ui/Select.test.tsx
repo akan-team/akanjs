@@ -1,12 +1,13 @@
 import "../test/registerDom";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { enumOf } from "akanjs/base";
 import { act, type ReactNode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToReadableStream } from "react-dom/server.browser";
-import { setTestEnv } from "./testHelpers.fixture";
+import { mountAsync, setTestEnv } from "./testHelpers.fixture";
 
 let Select: typeof import("./Select").Select;
+let Modal: typeof import("./Modal").Modal;
 
 beforeAll(async () => {
   setTestEnv("selecttest");
@@ -22,6 +23,7 @@ beforeAll(async () => {
     fetch: { sortKeyMap: new Map() },
   } as never);
   ({ Select } = await import("./Select"));
+  ({ Modal } = await import("./Modal"));
 });
 
 /** Renders with `document` taken away, which is the only difference the server render actually sees. */
@@ -83,7 +85,7 @@ const triggerOf = (container: HTMLElement) => container.querySelector("[role=com
 
 const press = async (container: HTMLElement, key: string) => {
   await act(async () => {
-    triggerOf(container).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    triggerOf(container).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
   });
 };
 
@@ -319,6 +321,26 @@ describe("Select keyboard", () => {
     expect(triggerOf(container).getAttribute("aria-expanded")).toBe("false");
     expect(writes).toEqual([]);
     unmount();
+  });
+
+  test("an Escape that closes the open list leaves the modal around it open", async () => {
+    const onCancel = mock(() => undefined);
+    const { unmount } = await mountAsync(
+      <Modal open onCancel={onCancel}>
+        {field()}
+      </Modal>,
+    );
+    try {
+      await press(document.body, "ArrowDown");
+      await press(document.body, "Escape");
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(triggerOf(document.body).getAttribute("aria-expanded")).toBe("false");
+
+      await press(document.body, "Escape");
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+    }
   });
 
   test("stops at the ends of the list", async () => {

@@ -1,11 +1,13 @@
 import "../../test/registerDom";
 import { beforeAll, describe, expect, mock, test } from "bun:test";
-import { act } from "react";
+import type { PageActivity } from "akanjs/client";
+import { act, type ReactNode, useState } from "react";
 import { AgenticSurface, AgentProvider } from "use-agentic";
 import { l, mountAsync, setTestEnv } from "../testHelpers.fixture";
 
 let Dialog: typeof import("./index").Dialog;
 let DefaultDropdown: typeof import("../Dropdown").DefaultDropdown;
+let pageActivityContext: typeof import("akanjs/client").pageActivityContext;
 
 beforeAll(async () => {
   setTestEnv("dialogtest");
@@ -13,6 +15,7 @@ beforeAll(async () => {
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l }), fetch: {} } as never);
   ({ Dialog } = await import("./index"));
   ({ DefaultDropdown } = await import("../Dropdown"));
+  ({ pageActivityContext } = await import("akanjs/client"));
 });
 
 const settle = async () => {
@@ -267,6 +270,93 @@ describe("Dialog presentation", () => {
     } finally {
       unmount();
       if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+    }
+  });
+});
+
+describe("Dialog page activity", () => {
+  let setPageActivity: ((activity: PageActivity) => void) | undefined;
+  const Stacked = ({ children }: { children: ReactNode }) => {
+    const [activity, setActivity] = useState<PageActivity>("current");
+    setPageActivity = setActivity;
+    return (
+      <pageActivityContext.Provider value={{ activity, focused: activity === "current" }}>
+        {children}
+      </pageActivityContext.Provider>
+    );
+  };
+  const escape = () =>
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+
+  test("an open modal on a page the CSR stack moved off is hidden and lets go of the page, keeping what was typed", async () => {
+    const onCancel = mock(() => undefined);
+    const { unmount } = await mountAsync(
+      <Stacked>
+        <Dialog defaultOpen>
+          <Dialog.Modal onCancel={onCancel}>
+            <input aria-label="note" />
+          </Dialog.Modal>
+        </Dialog>
+      </Stacked>,
+    );
+    try {
+      await settle();
+      const root = document.querySelector('[role="dialog"]')?.parentElement;
+      const note = root?.querySelector("input");
+      if (!root || !note) throw new Error("modal did not render");
+      note.value = "typed";
+      expect(document.body.style.overflow).toBe("hidden");
+
+      act(() => setPageActivity?.("prev"));
+      expect(root.style.visibility).toBe("hidden");
+      expect(document.body.style.overflow).toBe("");
+      escape();
+      expect(onCancel).not.toHaveBeenCalled();
+
+      act(() => setPageActivity?.("current"));
+      expect(root.style.visibility).toBe("");
+      expect(document.body.style.overflow).toBe("hidden");
+      expect(document.querySelector('[role="dialog"] input')).toBe(note);
+      expect(note.value).toBe("typed");
+      escape();
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  test("a legacy modal on a page the CSR stack moved off hides its backdrop too, and ignores Escape there", async () => {
+    const onCancel = mock(() => undefined);
+    const { unmount } = await mountAsync(
+      <Stacked>
+        <Dialog defaultOpen>
+          <Dialog.LegacyModal onCancel={onCancel}>
+            <div>body</div>
+          </Dialog.LegacyModal>
+        </Dialog>
+      </Stacked>,
+    );
+    try {
+      await settle();
+      const root = document.querySelector('[role="dialog"]')?.parentElement;
+      const backdrop = root?.previousElementSibling;
+      if (!(backdrop instanceof HTMLElement) || !root) throw new Error("modal did not render");
+
+      act(() => setPageActivity?.("prev"));
+      expect([backdrop.style.visibility, root.style.visibility]).toEqual(["hidden", "hidden"]);
+      expect(document.body.style.overflow).toBe("");
+      escape();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await settle();
+      expect(onCancel).not.toHaveBeenCalled();
+
+      act(() => setPageActivity?.("current"));
+      expect([backdrop.style.visibility, root.style.visibility]).toEqual(["", ""]);
+      expect(document.body.style.overflow).toBe("hidden");
+    } finally {
+      unmount();
     }
   });
 });
