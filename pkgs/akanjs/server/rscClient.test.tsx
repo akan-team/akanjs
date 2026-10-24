@@ -270,6 +270,27 @@ describe("rscClient fragment navigation", () => {
     expect(idxOfEntry()).toBe(idx);
     expect(fetchCountOf("/guide")).toBe(requests);
   });
+
+  test("a move back from a fragment keeps the index the router stamped on the entry a document opened on", async () => {
+    const asOpened = () => window.history.replaceState({ __akanRouter: { idx: 0 } }, "");
+    asOpened();
+    await navigate("/guide", { replace: true });
+    asOpened();
+
+    window.history.pushState(null, "", "#install");
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    expect(idxOfEntry()).toBe(1);
+
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(idxOfEntry()).toBe(0);
+  });
 });
 
 describe("rscClient redirect", () => {

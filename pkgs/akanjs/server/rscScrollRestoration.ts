@@ -56,10 +56,10 @@ export class RscScrollRestoration {
       this.#idx = entry.idx ?? 0;
       return this.#positions.get(entry.key) ?? entry.scrollY;
     }
-    //? A fragment link pushes an entry with no state, one step past the entry it left; keyed now, a later move back to
-    //? it restores.
+    //? A fragment link pushes an entry with no state, one step past the entry it left, and the entry a document opened
+    //? on holds only the index the router stamped; keyed now, a later move back to either restores.
     this.#key = RscScrollRestoration.#mintKey();
-    this.#idx += 1;
+    this.#idx = entry.idx ?? this.#idx + 1;
     RscScrollRestoration.#writeEntry({ key: this.#key, idx: this.#idx });
     return undefined;
   }

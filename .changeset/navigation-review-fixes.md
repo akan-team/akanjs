@@ -8,7 +8,7 @@ In an SSR app, a back or forward move that keeps the page on screen, and a shall
 
 In an SSR app, a push that the server answers with a redirect, a route guard's for one, keeps the page it left in history, so back returns to it, as it does after a document navigation or in a CSR app. Before, the redirect's target replaced the page being left.
 
-A `.head()` that calls `router.notFound()` renders the nearest `.notFound()` view under its layouts' head, instead of the built-in 404 page.
+A `.head()` that calls `router.notFound()` renders the nearest `.notFound()` view under its layouts' head, instead of the built-in 404 page. Every not-found view that stands in for a refused page now carries only its layouts' head, not the page's own.
 
 In an SSR app, `router.canGoBack()` stays true after an in-page `#anchor` link, so `Link.Back` and `router.backOrFallback()` go back instead of taking their fallback. Moving between a page's anchors no longer asks the server for the page again.
 
