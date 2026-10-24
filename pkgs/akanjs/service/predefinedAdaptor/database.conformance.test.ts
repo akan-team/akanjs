@@ -633,6 +633,22 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(names[1]).toMatch(/^uniqueConf_code_[0-9a-f]{8}$/);
     });
 
+    test("[DDL-6] two declarations of one index trading places rebuild nothing", async () => {
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const declared = (first: 1 | -1, second: 1 | -1) =>
+          new DocumentSchema().index({ code: first }).index({ code: second });
+        await storeOf(driver, uniqueConstant, uniqueDatabase, declared(1, -1));
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared(-1, 1));
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared(1, -1));
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_code"]);
+        expect(warnings.filter((message) => message.includes("changed its descriptor"))).toEqual([]);
+      } finally {
+        removeSink();
+      }
+    });
+
     test("two different indexes given one name refuse to boot", async () => {
       await expect(
         storeOf(

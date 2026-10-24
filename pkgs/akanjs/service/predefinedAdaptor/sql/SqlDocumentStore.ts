@@ -148,7 +148,7 @@ export class SqlDocumentStore {
       for (const index of indexes) {
         if (adopted.has(index.name)) continue;
         const stored = await this.owner.getMeta(index.metaKey);
-        const replace = !!stored && stored !== index.hash;
+        const replace = !!stored && !index.hashes.has(stored);
         if (replace)
           SqlDocumentStore.#logger.warn(
             `Index ${index.name} on ${this.table} changed its descriptor and is rebuilt; on a large table that is a full index build`,
