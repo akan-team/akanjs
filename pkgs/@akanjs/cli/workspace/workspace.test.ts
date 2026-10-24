@@ -375,6 +375,19 @@ describe("WorkspaceRunner", () => {
       ]);
   });
 
+  test("pins react-dom and react-server-dom-webpack in a new workspace to react's exact version", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { dependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    expect(dependencies?.react).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(dependencies?.["react-dom"]).toBe(dependencies?.react);
+    expect(dependencies?.["react-server-dom-webpack"]).toBe(dependencies?.react);
+  });
+
   test("generates agent rule files without overwriting by default", async () => {
     const runner = new WorkspaceRunner();
     const { root, workspace } = track(await createTempApp("demo"));
