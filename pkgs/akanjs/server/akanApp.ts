@@ -110,7 +110,7 @@ export class AkanApp {
   readonly #devHosted = process.env.AKAN_COMMAND_TYPE === "start";
   readonly #healthTimeoutMs = AkanApp.#parseHealthTimeoutMs();
   readonly #upstreamWaitMs = AkanApp.#parseUpstreamWaitMs();
-  /** Child stderr is bundler/runtime noise the gateway cannot act on; it still reaches the rotating log file. */
+  /** Child stderr is mostly bundler/runtime noise, kept to the log file; with none it may be a crash's only trace. */
   readonly #printChildStderr = process.env.AKAN_CHILD_STDERR === "1";
   readonly #serverPath: string;
   readonly #artifactDir: string;
@@ -1358,7 +1358,7 @@ export class AkanApp {
       return;
     }
     const prefixedLine = `[child:${idx} ${role}] [${type}] ${line}`;
-    if (type === "stdout" || this.#printChildStderr) process[type].write(prefixedLine);
+    if (type === "stdout" || this.#printChildStderr || !this.#logWriter) process[type].write(prefixedLine);
     this.#logWriter?.write(`${idx}-${role}`, AkanApp.#stripAnsi(prefixedLine));
   }
 

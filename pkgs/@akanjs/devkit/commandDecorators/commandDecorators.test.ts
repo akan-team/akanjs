@@ -659,3 +659,42 @@ describe("a repeatable option", () => {
     expect(await collect()).toEqual([]);
   }, 30_000);
 });
+
+describe("a workspace whose akanjs is not the CLI's version", () => {
+  const track = tempRoots();
+
+  test("hears so on stderr, leaving stdout to what the command prints", async () => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    await writeText(
+      path.join(root, "node_modules", "akanjs", "package.json"),
+      '{ "name": "akanjs", "version": "0.0.1-older" }\n',
+    );
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { command, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class PlanRunner extends runner("plan") {}',
+        'class PlanScript extends script("plan", [PlanRunner]) {}',
+        'class PlanCommand extends command("plan", [PlanScript], ({ public: target }) => ({',
+        '  plan: target({ desc: "plans", stdio: true }).exec(async function () {',
+        "    process.stdout.write(JSON.stringify({ phases: 1 }));",
+        "  }),",
+        "})) {}",
+        "await runCommands(PlanCommand);",
+        "",
+      ].join("\n"),
+    );
+    const proc = Bun.spawn(["bun", entry, "plan"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(code).toBe(0);
+    expect(stdout).toBe('{"phases":1}');
+    expect(stderr).toContain("0.0.1-older (akanjs)");
+  }, 30_000);
+});

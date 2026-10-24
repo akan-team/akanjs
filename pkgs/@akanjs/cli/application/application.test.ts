@@ -380,6 +380,27 @@ describe("ApplicationScript", () => {
     ]);
   });
 
+  test("tests a library with --write false by scanning it, not syncing it", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("lib", { type: "lib" }, recorder),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    script.libraryScript.syncLibrary = async (target: unknown) => {
+      recorder.record("syncLibrary", target);
+      return undefined as never;
+    };
+    script.applicationRunner.test = async (target: unknown) => {
+      recorder.record("runner.test", target);
+    };
+
+    await script.test(lib, { write: false });
+
+    expect(recorder.names()).toEqual(["lib.scan", "lib.spinning", "spinner.succeed", "runner.test"]);
+    expect(recorder.calls).toContainEqual({ name: "lib.scan", args: [{ write: false }] });
+  });
+
   test("typecheck syncs an app or a library first, and with --write false writes neither", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const recorder = createCallRecorder();
