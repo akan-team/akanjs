@@ -173,7 +173,7 @@ describe("McpAppAgent", () => {
     expect(agent.context()).toContain("open in the chat: https://app.example.com/en/memo\n");
   });
 
-  test("hands the host a picture a tool returned as image content, and a file it cannot carry as a note", async () => {
+  test("hands the host a picture a tool returned as image content, and a file it cannot carry, an SVG included, as a note", async () => {
     const surface = new AgenticSurface();
     surface.registerTool([], {
       name: "viewCard",
@@ -183,18 +183,22 @@ describe("McpAppAgent", () => {
         ToolReturn.attach("Attached card.jpg.", [
           { name: "card.jpg", mimeType: "image/jpeg", data: "/9j/4AAQ" },
           { name: "cdn.png", mimeType: "image/png", url: "https://cdn.example/cdn.png" },
+          { name: "logo.svg", mimeType: "image/svg+xml", data: "PHN2Zy8+" },
           { name: "notes.txt", mimeType: "text/plain", text: "Front side." },
         ]),
     });
     const agent = new McpAppAgent(fakeBridge().bridge, surface, new McpAppApprovals());
+    const carried =
+      "an MCP tool result carries only pictures (image/png, image/jpeg, image/webp, image/gif), as bytes.";
     expect(await agent.call("viewCard", {}, never)).toEqual({
       content: [
         { type: "text", text: "Attached card.jpg." },
         { type: "image", data: "/9j/4AAQ", mimeType: "image/jpeg" },
         {
           type: "text",
-          text: "[cdn.png (image/png) was not attached; it is at https://cdn.example/cdn.png: an MCP tool result carries only pictures, as bytes.]",
+          text: `[cdn.png (image/png) was not attached; it is at https://cdn.example/cdn.png: ${carried}]`,
         },
+        { type: "text", text: `[logo.svg (image/svg+xml) was not attached: ${carried}]` },
         { type: "text", text: "--- attachment: notes.txt (text/plain) ---\nFront side." },
       ],
     });
