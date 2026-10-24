@@ -233,8 +233,12 @@ const areas = [
         ko: "조건부 updateOne과 removeOne이 Postgres에서도 compare-and-set이 됩니다. 같은 행을 조건에 맞는다고 읽은 동시 호출 둘 중 하나만 적용되므로, balance >= amount로 지키던 잔액이 더는 음수가 되지 않습니다.",
       },
       {
-        en: "An index declared without a name is named by its table and fields, never its position, so adding an index no longer renames and rebuilds the others. An index akan built that nothing declares any more is dropped, concurrently on Postgres.",
-        ko: "name 없이 선언한 인덱스는 위치가 아니라 테이블과 필드로 이름이 붙으므로, 인덱스를 하나 추가해도 다른 인덱스의 이름이 바뀌어 다시 빌드되지 않습니다. akan이 만들었지만 더는 아무도 선언하지 않는 인덱스는 삭제되며, Postgres에서는 동시성 있게 삭제됩니다.",
+        en: "An index declared without a name is named by its table and fields, never its position, so adding or reordering declarations no longer renames and rebuilds the others. An index akan built that nothing declares any more is dropped, concurrently on Postgres; one made by hand is left alone, even under a name akan would give.",
+        ko: "name 없이 선언한 인덱스는 위치가 아니라 테이블과 필드로 이름이 붙으므로, 선언을 추가하거나 순서를 바꿔도 다른 인덱스의 이름이 바뀌어 다시 빌드되지 않습니다. akan이 만들었지만 더는 아무도 선언하지 않는 인덱스는 삭제되며(Postgres에서는 동시성 있게), 직접 만든 인덱스는 akan이 붙일 이름을 쓰고 있어도 건드리지 않습니다.",
+      },
+      {
+        en: "In the single database mode, a job whose process died on its last attempt fails and reaches onFailed, instead of running again past its attempts.",
+        ko: "single 데이터베이스 모드에서 마지막 시도 중에 프로세스가 죽은 job은 attempts를 넘겨 다시 실행되지 않고 실패로 처리되어 onFailed에 도달합니다.",
       },
       {
         en: "schema.index(fields, { where }) builds a real partial index on SQLite and Postgres; with unique, where: { removedAt: null } lets a soft-removed row give its key back.",
@@ -435,6 +439,10 @@ const areas = [
         en: "Scaffolds write files that pass biome check and hand fetch.* results to sections unawaited, the CLI runs in a workspace with no root .env, and generated files name paths with / on Windows.",
         ko: "스캐폴드가 biome check를 통과하는 파일을 쓰고 fetch.* 결과를 await하지 않은 채 섹션에 넘기며, CLI가 루트 .env 없는 워크스페이스에서도 동작하고, 생성 파일이 Windows에서도 경로를 /로 씁니다.",
       },
+      {
+        en: "akan install-library copies a library from the installed akanjs version's tag in one shallow clone, the version-mismatch warning goes to stderr so JSON output stays parseable, and a gateway with no log file, as in the image, prints its children's stderr.",
+        ko: "akan install-library가 설치된 akanjs 버전의 태그에서 얕은 clone 한 번으로 라이브러리를 복사하고, 버전 불일치 경고가 stderr로 나가 JSON 출력이 깨지지 않으며, 이미지처럼 로그 파일이 없는 gateway는 자식 프로세스의 stderr를 출력합니다.",
+      },
     ],
   },
 ] as const;
@@ -551,9 +559,14 @@ const upgradeGroups = [
         href: "/docs/core/config",
       },
       {
-        en: "An index that declared a where is rebuilt once on the next boot as a real partial index, and two different indexes given the same name stop the boot.",
-        ko: "where를 선언했던 인덱스는 다음 부팅 때 실제 부분 인덱스로 한 번 다시 빌드되고, 서로 다른 인덱스에 같은 name을 주면 부팅이 멈춥니다.",
+        en: "An index that declared a where is rebuilt once on the next boot as a real partial index. A where no index can hold (q.search(), or a member test on an array field) stops the boot, and so do two different indexes given the same name.",
+        ko: "where를 선언했던 인덱스는 다음 부팅 때 실제 부분 인덱스로 한 번 다시 빌드됩니다. 인덱스가 담을 수 없는 where(q.search(), 배열 필드의 원소 검사)와 같은 name을 받은 서로 다른 두 인덱스는 부팅을 멈춥니다.",
         href: "/cheatsheet/general/schema",
+      },
+      {
+        en: "In the single database mode, a queued job whose process dies on its last attempt is failed and handed to onFailed instead of running again: a job left at the default attempts: 1 needs attempts: 2 to keep that retry.",
+        ko: "single 데이터베이스 모드에서 마지막 시도 중에 프로세스가 죽은 job은 다시 실행되지 않고 실패로 처리되어 onFailed로 넘어갑니다. 기본값 attempts: 1로 둔 job이 그 재시도를 유지하려면 attempts: 2를 줍니다.",
+        href: "/cheatsheet/performance/queue",
       },
       {
         en: "An edge server serves /mcp only with AKAN_MCP=true or option.setMcp(true), and a log search on a newly masked key sees [redacted].",
@@ -659,6 +672,11 @@ const upgradeGroups = [
         en: "akan script, console, db-export and db-import resolve relative paths from the workspace root, so build a script's paths from import.meta.dir.",
         ko: "akan script, console, db-export, db-import는 상대 경로를 워크스페이스 루트에서 풀므로 스크립트의 경로는 import.meta.dir로 만듭니다.",
         href: "/cheatsheet/dev/script",
+      },
+      {
+        en: "A workspace with the shared or util library adds the type packages they compile against: bun add -d @types/react @types/react-dom, plus @types/nodemailer with util. Pin react-server-dom-webpack to 19.3.1, as react and react-dom are; akan now stops on a Bun older than 1.4.4.",
+        ko: "shared나 util 라이브러리를 쓰는 워크스페이스는 컴파일에 필요한 타입 패키지를 추가합니다. bun add -d @types/react @types/react-dom을 실행하고, util을 쓰면 @types/nodemailer도 넣습니다. react-server-dom-webpack은 react, react-dom처럼 19.3.1로 고정합니다. akan은 이제 1.4.4보다 오래된 Bun에서 멈춥니다.",
+        href: "/references/cli/library",
       },
       {
         en: "Run akan login again if a saved host was spelled with a trailing slash, uppercase or :443, and set docker.image to run another Bun than 1.4.4 in the image.",
