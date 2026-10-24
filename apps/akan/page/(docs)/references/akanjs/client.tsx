@@ -136,17 +136,17 @@ export default page()
 
     const routerRows = [
       {
-        name: "push(href, { scrollToTop, shallow })",
+        name: "push(href, { scrollToTop, shallow, external })",
         desc: l.trans({
-          en: "Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.",
-          ko: "route로 이동하고 history 항목을 하나 추가합니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
+          en: "Goes to a route and adds a history entry. A URL on another origin is refused unless `external: true`. Browser only; on the server, use `redirect()`.",
+          ko: "route로 이동하고 history 항목을 하나 추가합니다. 다른 origin의 URL은 `external: true` 없이는 거부합니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
         }),
       },
       {
-        name: "replace(href, { shallow })",
+        name: "replace(href, { shallow, external })",
         desc: l.trans({
-          en: "Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.",
-          ko: "현재 history 항목을 바꾸면서 이동합니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
+          en: "Goes to a route in place of the current history entry. Takes `external` as `push` does. Browser only; on the server, use `redirect()`.",
+          ko: "현재 history 항목을 바꾸면서 이동합니다. `external`은 `push`와 같습니다. 브라우저에서만 되며, 서버에서는 `redirect()`를 씁니다.",
         }),
       },
       {
@@ -175,10 +175,10 @@ export default page()
         }),
       },
       {
-        name: "redirect(href, { method, status })",
+        name: "redirect(href, { method, status, external })",
         desc: l.trans({
-          en: "On the server, answers with a redirect (307 by default). In the browser, navigates.",
-          ko: "서버에서는 redirect로 응답하고(기본 307), 브라우저에서는 그냥 이동합니다.",
+          en: "On the server, answers with a redirect (307 by default). In the browser, navigates. A URL on another origin goes to the index path instead unless `external: true`.",
+          ko: "서버에서는 redirect로 응답하고(기본 307), 브라우저에서는 그냥 이동합니다. 다른 origin의 URL은 `external: true`가 없으면 대신 index 경로로 갑니다.",
         }),
       },
       {

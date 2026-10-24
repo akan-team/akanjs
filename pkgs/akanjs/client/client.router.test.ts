@@ -463,6 +463,50 @@ describe("router", () => {
     await expect(router.navigation()).rejects.toThrow("no route at /nope");
   });
 
+  test("refuses a push or replace that leaves the origin unless it is external, and keeps //host a path", async () => {
+    envState.side = "client";
+    installClientWindow("/en/org");
+    Object.assign(window, { history: { state: null, replaceState: () => undefined } });
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls) });
+
+    router.push("https://evil.example/steal");
+    await expect(router.navigation()).rejects.toThrow("leaves this origin");
+    router.replace("HTTP://evil.example/steal");
+    await expect(router.navigation()).rejects.toThrow("leaves this origin");
+    expect(calls).toEqual([]);
+    expect(router.navigationCount()).toBe(0);
+    expect(warnings.filter((warning) => warning.includes("{ external: true }"))).toHaveLength(2);
+
+    router.push("https://example.test/en/org/2");
+    router.push("//evil.example/x");
+    router.replace("https://pay.example/checkout", { external: true });
+    expect(calls).toEqual([
+      ["push", "https://example.test/en/org/2", undefined],
+      ["push", "/en//evil.example/x", undefined],
+      ["replace", "https://pay.example/checkout", { external: true }],
+    ]);
+  });
+
+  test("a client redirect that would leave the origin lands on the index path instead", async () => {
+    envState.side = "client";
+    installClientWindow("/en/signin");
+    Object.assign(window, { history: { state: null, replaceState: () => undefined } });
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls), indexPath: "/home" });
+
+    router.redirect("https://evil.example/after-signin");
+    router.redirect("https://sso.example/authorize", { external: true });
+
+    expect(calls).toEqual([
+      ["replace", "/en/home", undefined],
+      ["replace", "https://sso.example/authorize", undefined],
+    ]);
+    expect(warnings.filter((warning) => warning.includes("redirects to /home instead"))).toHaveLength(1);
+  });
+
   test("csr navigation preserves csr runtime search params", async () => {
     envState.side = "client";
     installClientWindow("/en/admin/current", "?csr=true&akanMobileTarget=default&akanMobileBasePath=admin");
@@ -578,6 +622,37 @@ describe("router", () => {
       expect((error as Error & { location: string; method: string }).location).toBe("/en/users?tab=a");
     }
     expect(() => router.notFound()).toThrow(AkanNotFoundError);
+  });
+
+  test("a server redirect weighs its target against the origin the browser asked for", async () => {
+    envState.side = "server";
+    envState.operationMode = "main";
+    const { AkanRedirectError, router } = await import("./router");
+    const locationOf = (redirect: () => void) => {
+      try {
+        redirect();
+      } catch (error) {
+        if (error instanceof AkanRedirectError) return error.location;
+        throw error;
+      }
+      throw new Error("no redirect");
+    };
+    requestState.request = new Request("http://10.0.0.7:4200/en/signin");
+    requestState.headers = new Map([
+      ["x-locale", "en"],
+      ["x-forwarded-host", "site.test"],
+      ["x-forwarded-proto", "https"],
+    ]);
+
+    expect(locationOf(() => router.redirect("https://evil.example/x"))).toBe("/en");
+    expect(locationOf(() => router.redirect("https://site.test/en/x"))).toBe("https://site.test/en/x");
+    expect(locationOf(() => router.redirect("https://sso.example/authorize", { external: true }))).toBe(
+      "https://sso.example/authorize",
+    );
+
+    requestState.request = undefined;
+    requestState.headers = new Map([["x-locale", "en"]]);
+    expect(locationOf(() => router.redirect("https://site.test/en/x"))).toBe("/en");
   });
 
   test("points a server-side push or replace at redirect(), which is what redirects there", async () => {

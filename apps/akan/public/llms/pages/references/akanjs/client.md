@@ -74,9 +74,9 @@ router
 
 Method
 
-- push(href, { scrollToTop, shallow }): Goes to a route and adds a history entry. Browser only; on the server, use `redirect()`.
+- push(href, { scrollToTop, shallow, external }): Goes to a route and adds a history entry. A URL on another origin is refused unless `external: true`. Browser only; on the server, use `redirect()`.
 
-- replace(href, { shallow }): Goes to a route in place of the current history entry. Browser only; on the server, use `redirect()`.
+- replace(href, { shallow, external }): Goes to a route in place of the current history entry. Takes `external` as `push` does. Browser only; on the server, use `redirect()`.
 
 - back(): Goes back one entry. Browser only.
 
@@ -86,7 +86,7 @@ Method
 
 - refresh(): Renders the current route again. Browser only.
 
-- redirect(href, { method, status }): On the server, answers with a redirect (307 by default). In the browser, navigates.
+- redirect(href, { method, status, external }): On the server, answers with a redirect (307 by default). In the browser, navigates. A URL on another origin goes to the index path instead unless `external: true`.
 
 - notFound(): Shows the nearest layout's .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
 

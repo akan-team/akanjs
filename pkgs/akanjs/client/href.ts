@@ -26,6 +26,14 @@ export class Href {
     return /^https?:/i.test(href);
   }
 
+  /** Whether an http(s) href resolves, against `base`, to another origin than `base`'s. Any other href stays a path in
+   * the app; no base, as outside a request, leaves for anywhere. */
+  static leavesOrigin(href: string, base: string | undefined): boolean {
+    if (!Href.hasWebScheme(href)) return false;
+    const origin = base === undefined ? undefined : Href.#parse(base)?.origin;
+    return !origin || Href.#parse(href, base)?.origin !== origin;
+  }
+
   /** Canonical absolute URL for an external href: follows the browser on an http(s) document base; on a native
    * `app://` base an absolute URL resolves as written and a network path resolves against https:. */
   static toExternalUrl(href: string, base: string): string {

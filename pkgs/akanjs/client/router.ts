@@ -12,6 +12,9 @@ export interface RouteOptions {
    * navigation.
    */
   shallow?: boolean;
+  /** Lets an absolute URL on another origin through; without it the router refuses one, so a `?redirect=` handed on
+   * unchecked cannot send a visitor off-site. */
+  external?: boolean;
 }
 export interface RouteManifest {
   routes: string[];
@@ -55,6 +58,8 @@ export type RedirectStatus = 303 | 307 | 308;
 export interface RedirectOptions {
   method?: RedirectMethod;
   status?: RedirectStatus;
+  /** As `RouteOptions.external`; a target it refuses redirects to the index path instead. */
+  external?: boolean;
 }
 
 export class AkanRedirectError extends Error {
@@ -84,6 +89,17 @@ function getServerRequestContext() {
     headers: () => Map<string, string>;
   };
 }
+
+//? The origin the browser asked for: behind the gateway `req.url` names the replica.
+const getServerPublicOrigin = () => {
+  const { getRequest, headers } = getServerRequestContext();
+  const h = headers();
+  const url = getRequest()?.url;
+  const host = h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host");
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (!host) return url;
+  return `${proto ?? (url ? new URL(url).protocol.replace(":", "") : "https")}://${host}`;
+};
 
 const getConfiguredBasePaths = () => new Set(parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS));
 
@@ -391,6 +407,7 @@ class Router {
   }
   push(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
+    if (this.#refusesOffsite("push", href, routeOptions)) return undefined as never;
     this.#navigations += 1;
     this.#track(this.#instance.push(href, routeOptions));
     this.#rememberHistoryState("push");
@@ -399,6 +416,7 @@ class Router {
   }
   replace(href: string, routeOptions?: RouteOptions) {
     this.#checkInitialized();
+    if (this.#refusesOffsite("replace", href, routeOptions)) return undefined as never;
     this.#navigations += 1;
     this.#track(this.#instance.replace(href, routeOptions));
     this.#rememberHistoryState("replace");
@@ -409,6 +427,20 @@ class Router {
    * Proxy a getter would run with the Proxy as `this` and fail on the private field. */
   navigation(): Promise<void> {
     return this.#navigation;
+  }
+  #leavesOrigin(href: string, external?: boolean) {
+    if (external || !Href.hasWebScheme(href)) return false;
+    return Href.leavesOrigin(
+      href,
+      getEnv().side === "server" ? getServerPublicOrigin() : globalThis.window?.location?.href,
+    );
+  }
+  #refusesOffsite(method: "push" | "replace", href: string, routeOptions?: RouteOptions) {
+    if (!this.#leavesOrigin(href, routeOptions?.external)) return false;
+    const message = `router.${method}(${href}) leaves this origin and was refused; pass { external: true } to leave on purpose`;
+    Logger.warn(message);
+    this.#track(Promise.reject(new Error(message)));
+    return true;
   }
   #track(result: void | Promise<void>) {
     this.#navigation = Promise.resolve(result);
@@ -456,9 +488,16 @@ class Router {
   navigationCount(): number {
     return this.#navigations;
   }
-  redirect(href: string, options: RedirectOptions = {}): never {
+  redirect(target: string, options: RedirectOptions = {}): never {
     const method = options.method ?? "replace";
     const status = options.status ?? 307;
+    //? A guard that redirects must still leave the page, so a refused target lands on the index rather than staying.
+    const offsite = this.#leavesOrigin(target, options.external);
+    if (offsite)
+      Logger.warn(
+        `router.redirect(${target}) leaves this origin, so it redirects to ${this.#indexPath} instead; pass { external: true } to leave on purpose`,
+      );
+    const href = offsite ? this.#indexPath : target;
     if (getEnv().side === "server") {
       const { getRequest, headers: requestHeaders } = getServerRequestContext();
       const h = requestHeaders();
