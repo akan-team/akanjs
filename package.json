@@ -26,7 +26,7 @@
     "registerSecret": "chmod +x infra/master/jenkins/registerSecret.sh && chmod +x infra/master/jenkins/getSecrets.sh && bash infra/master/jenkins/registerSecret.sh",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish",
+    "changeset:publish": "echo 'Publish with: bun run akan deploy-akan --registry npm (changeset publish would ship the unbuilt pkgs/* source folders)' 1>&2; exit 1",
     "changeset:status": "changeset status",
     "release:build-packages": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js build-package akanjs && bun dist/pkgs/@akanjs/cli/index.js build-package @akanjs/devkit && bun dist/pkgs/@akanjs/cli/index.js build-package create-akan-workspace && bun dist/pkgs/@akanjs/cli/index.js build-package @akanjs/cli",
     "release:verify-packages": "bun dist/pkgs/@akanjs/cli/index.js verify-akan-publish-packages",
