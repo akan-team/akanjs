@@ -84,6 +84,8 @@ export type Mdl<
   ): Promise<UpdateResult>;
   removeOne(query: _RawQuery): Promise<UpdateResult>;
   removeMany(query: _RawQuery): Promise<UpdateResult>;
+  /** Deletes every row the query matches, removed ones too, and answers how many: no hook, cascade or undo. */
+  purgeMany(query: _RawQuery): Promise<number>;
   updateById(id: string, update: DocumentUpdateInput<_RawDoc>, options?: DocumentUpdateOptions): Promise<UpdateResult>;
   removeById(id: string): Promise<UpdateResult>;
   /**

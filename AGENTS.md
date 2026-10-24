@@ -342,9 +342,10 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   `sort: {}` always present. Chain methods validate → mutate → `return this`, never `save()` (the caller saves, so
   `org.removeUser(id).removeInvite(id).save()` composes), with a one-line transition comment above each. Atomic
   counters live on the Model class with the updater callback, returning `!!modifiedCount`; indexes and derived
-  totals go in `static override _onSchema`. **Removal is always soft** and reads see live rows unless
-  `{ withRemoved: true }`. `updateById` / `removeById` fire no hooks — a cascading or `_postRemove` model removes
-  through `remove<Model>(id)`, and `pickAndWrite` writes through the save hooks (`queryRule`).
+  totals go in `static override _onSchema`. **Removal is soft** and reads see live rows unless
+  `{ withRemoved: true }`; the one hard delete is `purge<Filter>` / `purgeMany`, for data past retention.
+  `updateById` / `removeById` fire no hooks — a cascading or `_postRemove` model removes through
+  `remove<Model>(id)`, and `pickAndWrite` writes through the save hooks (`queryRule`).
 - **`<model>.service.ts`** — a few lines: load → chain → `return await ….save()` (keep the `return await`). Side
   effects go in `override async _preUpdate` / `_postCreate`; fire-and-forget is `void`-ed. Load every referenced
   document, then save, then notify. Return `null` / `false` for not allowed or not found; the signal decides

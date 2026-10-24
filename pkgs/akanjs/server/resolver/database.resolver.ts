@@ -293,6 +293,7 @@ export class DatabaseResolver {
             timedQuery(() => store.updateManyByQuery(query, update, ...scopeArgs(options))),
           removeOne: (query: QueryOf<any>) => timedQuery(() => store.removeOneByQuery(query)),
           removeMany: (query: QueryOf<any>) => timedQuery(() => store.removeManyByQuery(query)),
+          purgeMany: (query: QueryOf<any>) => timedQuery(() => store.purgeManyByQuery(query)),
           updateById: (id: string, update: DocumentUpdateInput, options?: DocumentUpdateOptions) =>
             timedQuery(() => store.updateOneByQuery({ id }, update, options)),
           removeById: (id: string) => timedQuery(() => store.removeOneByQuery({ id })),
@@ -398,6 +399,9 @@ export class DatabaseResolver {
       }
       async __removeOne(query: QueryOf<any>) {
         return await timedQuery(() => this.__store.removeOneByQuery(query));
+      }
+      async __purgeMany(query: QueryOf<any>) {
+        return await timedQuery(() => this.__store.purgeManyByQuery(query));
       }
       async __updateMany(query: QueryOf<any>, update: DocumentUpdateInput) {
         return await timedQuery(() => this.__store.updateManyByQuery(query, update));

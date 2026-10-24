@@ -98,6 +98,8 @@ type QueryMethodOfKey<
 } & {
   [K in `removeOne${CapitalizedK}`]: (...args: _Args) => Promise<UpdateResult>;
 } & {
+  [K in `purge${CapitalizedK}`]: (...args: _Args) => Promise<number>;
+} & {
   [K in `update${CapitalizedK}`]: (...args: _Args) => UpdateChain<Doc>;
 } & {
   [K in `updateOne${CapitalizedK}`]: (...args: _Args) => UpdateChain<Doc>;
@@ -155,6 +157,7 @@ export type DatabaseInstanceWithQuerySort<
   __remove: (id: string) => Promise<Doc>;
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __removeOne: (query: _QueryOfDoc) => Promise<UpdateResult>;
+  __purgeMany: (query: _QueryOfDoc) => Promise<number>;
   __updateMany: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
   __updateOne: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
   __list(query: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<Doc[]>;

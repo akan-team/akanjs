@@ -57,11 +57,13 @@ cascade
 
   - doc.set(data).save(): The same thing, spelled out, when you already hold the document.
 
-- Query write: one SQL statement, nothing loaded
+- Query write: SQL alone, nothing loaded
 
   - updateOne · updateMany: Change the newest match, or every match.
 
   - removeOne · removeMany: Soft-remove the newest match, or every match.
+
+  - purge<Filter> · purgeMany: Delete every match for good, removed rows too, 1,000 rows a statement.
 
   - updateById · removeById: The same query writes, narrowed to one id.
 

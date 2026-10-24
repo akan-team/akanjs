@@ -202,6 +202,9 @@ export class ServiceModel<
       [`removeOne${key}`]: async function (this: DatabaseService, ...args: any) {
         return this.__removeOne(queryOf(args));
       },
+      [`purge${key}`]: async function (this: DatabaseService, ...args: any) {
+        return this.__purgeMany(queryOf(args));
+      },
       [`update${key}`]: function (this: DatabaseService, ...args: any): UpdateChain {
         const query = queryOf(args);
         return { set: (update) => this.__updateMany(query, update) };

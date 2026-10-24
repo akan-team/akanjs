@@ -245,7 +245,7 @@ Work on the whole collection goes on the model class: atomic updates, bulk write
 
 **Updater helpers:** `set`, `unset`, `inc`, `mul`, `min`, `max`, `push`, `pull`, `addToSet`, `setOnInsert`. A bare value means `set`.
 
-**Removal is always soft.** Every remove stamps `removedAt`, and every query already skips removed rows, so a filter does not need to check `removedAt`.
+**Removal is soft.** Every remove stamps `removedAt`, and every query already skips removed rows, so a filter does not need to check `removedAt`. Only `purge` deletes, for data past its retention.
 
 The table facade
 
@@ -262,6 +262,8 @@ Method
 - updateOne, updateMany, removeOne, removeMany: Query-level writes: one statement, no hooks. `One` hits the newest match.
 
 - updateById, removeById: The same hookless writes, narrowed to one id. Not the document path.
+
+- purgeMany: Deletes every match for good, removed rows too, and returns the count. No hooks, cascade or undo.
 
 - new this.Story(data): Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks. — Example: `return await new this.Story(data).save();`
 

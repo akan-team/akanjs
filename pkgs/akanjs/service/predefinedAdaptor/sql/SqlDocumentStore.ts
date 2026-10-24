@@ -92,6 +92,7 @@ export class SqlDocumentStore {
   static readonly #storedRow = Symbol("akan.storedRow");
   /** Set on a document read as removed, which only a `withRemoved` read hands out. */
   static readonly #readRemoved = Symbol("akan.readRemoved");
+  static readonly #purgeBatchRows = 1000;
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -399,13 +400,52 @@ export class SqlDocumentStore {
 
   // No scope: an already-removed row keeps its `removedAt`, so a cascade reaching it again changes nothing.
   async removeManyByQuery(query: DocumentQuery) {
-    // "remove", not "delete": the row survives, and `delete` stays free to mean an actual DELETE some day.
+    // "remove", not "delete": the row survives; `purgeManyByQuery` is the DELETE.
     return await this.#updateMany(query, { removedAt: dayjs() }, {}, "removeManyByQuery");
   }
 
   async removeOneByQuery(query: DocumentQuery) {
     // The newest match, reported as counts rather than an id: for "at most one of these", not a queue.
     return await this.#updateOne(query, { removedAt: dayjs() }, {}, "removeOneByQuery");
+  }
+
+  //* Live and removed rows alike, unlike every other write: retention purges by age, and most rows past it were removed
+  //* long ago. The search mirror's rows go through its AFTER DELETE trigger; no hook, cascade or live room runs.
+  async purgeManyByQuery(query: DocumentQuery) {
+    // A filter whose arguments all fell through `q.when` builds `{}`, and a purge has no undo.
+    if (SqlDocumentStore.#matchesEveryRow(query))
+      throw new Error(
+        `purgeManyByQuery on "${this.table}" matches every row; a purge cannot be undone, so name a condition`,
+      );
+    const { where, params, joins } = this.compiler.compile(query);
+    if (joins.length)
+      throw new Error(
+        `q.search() cannot be used in purgeManyByQuery on "${this.table}"; query-level writes take no join.`,
+      );
+    const table = quoteIdent(this.table);
+    const batch = SqlDocumentStore.#purgeBatchRows;
+    // The outer condition is repeated for Postgres's re-check of a row changed meanwhile, as in `#updateOne`.
+    const statement = this.owner
+      .getConnection()
+      .prepare(
+        `DELETE FROM ${table} WHERE ${quoteIdent("id")} IN (SELECT ${quoteIdent("id")} FROM ${table} WHERE ${where} LIMIT ${batch}) AND (${where})`,
+      );
+    let purged = 0;
+    for (;;) {
+      const changes = this.dialect.affectedRows(await statement.run(...params, ...params));
+      purged += changes;
+      if (changes < batch) return purged;
+      //* bun:sqlite deletes synchronously: a timer turn between batches lets this process's other requests write.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  static #matchesEveryRow(query: DocumentQuery): boolean {
+    if (!isDocumentQueryNode(query)) return Object.keys(query).length === 0;
+    if (query.kind === "all") return query.queries.every((sub) => SqlDocumentStore.#matchesEveryRow(sub));
+    if (query.kind === "any")
+      return !query.queries.length || query.queries.some((sub) => SqlDocumentStore.#matchesEveryRow(sub));
+    return false;
   }
 
   private compiledUpdate(update: DocumentUpdate) {

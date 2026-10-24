@@ -159,6 +159,7 @@ const makeFakeStore = () => {
     updateManyByQuery: async (...args: unknown[]) => rec("updateManyByQuery", args, written()),
     removeManyByQuery: async (query: unknown) => rec("removeManyByQuery", [query], written()),
     removeOneByQuery: async (query: unknown) => rec("removeOneByQuery", [query], written()),
+    purgeManyByQuery: async (query: unknown) => rec("purgeManyByQuery", [query], 2),
     bulkWrite: async (operations: unknown) => rec("bulkWrite", [operations], written()),
   };
 };
@@ -540,6 +541,22 @@ describe("DatabaseResolver declaration contracts", () => {
 
     await instance.ServerResolverTestItem.removeById("doc-1");
     expect(instance.__store.calls.at(-1)).toEqual({ method: "removeOneByQuery", args: [{ id: "doc-1" }] });
+  });
+
+  test("hands a purge to the store as written, from the facade and from a filter, and answers its count", async () => {
+    const { instance } = await bootModel<{
+      __store: ReturnType<typeof makeFakeStore>;
+      ServerResolverTestItem: { purgeMany: (query: unknown) => Promise<unknown> };
+      purgeInCategory: (...args: unknown[]) => Promise<unknown>;
+    }>();
+
+    expect(await instance.ServerResolverTestItem.purgeMany({ category: "news" })).toBe(2);
+    expect(instance.__store.calls.at(-1)).toEqual({ method: "purgeManyByQuery", args: [{ category: "news" }] });
+    expect(await instance.purgeInCategory("news", true)).toBe(2);
+    expect(instance.__store.calls.at(-1)).toEqual({
+      method: "purgeManyByQuery",
+      args: [{ kind: "all", queries: [{ category: "news" }, {}] }],
+    });
   });
 
   test("indexes the column a removeWith child is found by", () => {
@@ -1104,6 +1121,7 @@ describe("ServiceResolver declaration contracts", () => {
       __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
       removeInCategory: (...args: unknown[]) => Promise<unknown>;
       removeOneInCategory: (...args: unknown[]) => Promise<unknown>;
+      purgeInCategory: (...args: unknown[]) => Promise<unknown>;
       updateInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
       updateOneInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
     };
@@ -1125,6 +1143,8 @@ describe("ServiceResolver declaration contracts", () => {
     expect(calls.at(-1)).toEqual({ method: "__removeMany", args: [query] });
     await service.removeOneInCategory("news");
     expect(calls.at(-1)).toEqual({ method: "__removeOne", args: [query] });
+    await service.purgeInCategory("news");
+    expect(calls.at(-1)).toEqual({ method: "__purgeMany", args: [query] });
     await service.updateInCategory("news").set({ title: "Beta" });
     expect(calls.at(-1)).toEqual({ method: "__updateMany", args: [query, { title: "Beta" }] });
     await service.updateOneInCategory("news").set({ title: "Beta" });

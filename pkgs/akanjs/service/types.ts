@@ -105,6 +105,7 @@ export type DatabaseService<
   __remove: (id: string) => Promise<Doc>;
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __removeOne: (query: _QueryOfDoc) => Promise<UpdateResult>;
+  __purgeMany: (query: _QueryOfDoc) => Promise<number>;
   __updateMany: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
   __updateOne: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
   __list(query?: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<Doc[]>;

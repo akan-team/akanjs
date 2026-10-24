@@ -74,6 +74,7 @@ export interface DocumentStore {
   removeOneByQuery(
     query: DocumentQuery,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;
+  purgeManyByQuery(query: DocumentQuery): Promise<number>;
   bulkWrite(
     operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number; upsertedId: string | null }>;

@@ -115,8 +115,8 @@ export default page()
       },
       {
         label: l.trans({
-          en: "Query write: one SQL statement, nothing loaded",
-          ko: "쿼리 쓰기: SQL 문 하나, 아무것도 읽지 않음",
+          en: "Query write: SQL alone, nothing loaded",
+          ko: "쿼리 쓰기: SQL만 실행, 아무것도 읽지 않음",
         }),
         rows: [
           {
@@ -132,6 +132,14 @@ export default page()
             desc: l.trans({
               en: "Soft-remove the newest match, or every match.",
               ko: "가장 최근에 만든 행 하나, 또는 맞는 행 전부를 soft 삭제합니다.",
+            }),
+            marks: { schema: false, service: false, cascade: false },
+          },
+          {
+            name: "purge<Filter> · purgeMany",
+            desc: l.trans({
+              en: "Delete every match for good, removed rows too, 1,000 rows a statement.",
+              ko: "맞는 행을 삭제된 행까지 영구히 지웁니다. 한 문장에 1,000행씩 지웁니다.",
             }),
             marks: { schema: false, service: false, cascade: false },
           },

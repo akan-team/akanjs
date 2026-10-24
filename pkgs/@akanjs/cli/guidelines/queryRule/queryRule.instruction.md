@@ -88,8 +88,12 @@ this is the full contract behind them.
 
 ## Soft Removal And The Facade's Writes
 
-- **Removal is always soft** — the framework has no hard delete for a model table, and `delete` is deliberately
-  left unused so it can mean one later. Every read and query-level write sees live rows only (`removedAt IS NULL`).
+- **Removal is soft** — every remove stamps `removedAt`, and every read and query-level write sees live rows only
+  (`removedAt IS NULL`).
+- **`purge<Filter>(...)` / `purgeMany(query)` is the one hard delete**, for data you mean to lose, such as logs past
+  their retention. It deletes every row the query matches, removed rows too (`{ removedAt: q.lt(cutoff) }` clears old
+  removals), and returns the count. The search mirror's rows go with each row, and it runs no hook, cascade or live
+  event and has no undo. It deletes 1,000 rows per statement, and it refuses a query that matches every row.
 - **`{ withRemoved: true }` reaches removed rows**: the third argument of `find` / `findOne` / `findById`
   (projection second, `null` when none), the last of `count` / `exists` / `updateMany`, or inside `updateOne` /
   `updateById`'s options. Without it, a `removedAt` condition only a removed row can meet (`q.exists("removedAt")`,

@@ -450,6 +450,13 @@ export default page()
         }),
       },
       {
+        name: ["purgeMany"],
+        desc: l.trans({
+          en: "Deletes every match for good, removed rows too, and returns the count. No hooks, cascade or undo.",
+          ko: "맞는 행을 삭제된 행까지 영구히 지우고 지운 개수를 돌려줍니다. 훅도 cascade도 없고 되돌릴 수 없습니다.",
+        }),
+      },
+      {
         name: ["new this.Story(data)"],
         desc: l.trans({
           en: "Builds an unsaved document. Its `save()` inserts it and runs the `save` and `create` hooks.",
@@ -1685,15 +1692,16 @@ export class Ticket extends by(cnst.Ticket) {
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Removal is always soft.</strong> Every remove stamps <code>removedAt</code>, and every
-                      query already skips removed rows, so a filter does not need to check <code>removedAt</code>.
+                      <strong>Removal is soft.</strong> Every remove stamps <code>removedAt</code>, and every query
+                      already skips removed rows, so a filter does not need to check <code>removedAt</code>. Only{" "}
+                      <code>purge</code> deletes, for data past its retention.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>삭제는 늘 소프트 삭제입니다.</strong> 모든 삭제는 <code>removedAt</code>을 찍을 뿐입니다.
+                      <strong>삭제는 소프트 삭제입니다.</strong> 모든 삭제는 <code>removedAt</code>을 찍을 뿐입니다.
                       모든 쿼리가 삭제된 행을 이미 걸러 내므로, filter에서 <code>removedAt</code>을 따로 검사할 필요가
-                      없습니다.
+                      없습니다. 실제로 지우는 것은 보존 기간이 지난 데이터를 위한 <code>purge</code>뿐입니다.
                     </span>
                   ),
                 })}

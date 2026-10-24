@@ -35,6 +35,9 @@ export class ServiceResolver {
       async __removeOne(this: DatabaseService, query: QueryOf<any>) {
         return await this.__databaseModel.__removeOne(query);
       },
+      async __purgeMany(this: DatabaseService, query: QueryOf<any>) {
+        return await this.__databaseModel.__purgeMany(query);
+      },
       async __updateMany(this: DatabaseService, query: QueryOf<any>, update: DocumentUpdateInput) {
         return await this.__databaseModel.__updateMany(query, update);
       },

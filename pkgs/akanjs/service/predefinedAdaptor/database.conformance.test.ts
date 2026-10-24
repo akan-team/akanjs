@@ -4,6 +4,7 @@ import { Logger } from "akanjs/common";
 import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
 import {
   by,
+  createDocumentId,
   createDocumentQueryHelper,
   type DatabaseCls,
   type DatabaseModel,
@@ -990,6 +991,110 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(dayjs.isDayjs(projected?.removedAt)).toBe(true);
       await expect(projected.set({ title: "edited" }).save()).rejects.toThrow("read-only: a removed dialectConf");
       expect(await store.find({ id }, { select: { title: true } })).toEqual([]);
+    });
+  });
+
+  describe(`sql purge (${kind})`, () => {
+    let driver: SqlDriver;
+    let store: SqlDocumentStore;
+    const sorted = (titles: string[]) => titles.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const oldRows = (length: number) =>
+      Array.from({ length }, (_, idx) => ({
+        id: createDocumentId(),
+        createdAt: 1,
+        updatedAt: 1,
+        removedAt: null,
+        _doc: { title: `row ${idx}`, status: "old", score: idx, meta: {}, tags: [] },
+      }));
+
+    beforeAll(async () => {
+      driver = await ConformanceEnv.openSqlDriver(kind);
+      store = await storeOf(driver, confConstant, confDatabase);
+    });
+    afterAll(async () => {
+      await driver?.close();
+    });
+    beforeEach(async () => {
+      await driver.database.getConnection().execute(`DELETE FROM "dialectConf"`);
+    });
+
+    test("a purge deletes every match, removed rows too, and answers how many", async () => {
+      await store.create({ title: "kept", status: "fresh" });
+      await store.create({ title: "live", status: "old" });
+      const removed = await store.create({ title: "removed", status: "old" });
+      await store.remove(removed.id);
+      expect(await store.purgeManyByQuery({ status: "old" })).toBe(2);
+      expect(titlesOf(await store.find({}, { withRemoved: true }))).toEqual(["kept"]);
+      expect(await store.purgeManyByQuery({ status: "old" })).toBe(0);
+    });
+
+    test("a removedAt window purges only the rows removed before it", async () => {
+      await store.create({ title: "live" });
+      const early = await store.create({ title: "early" });
+      const late = await store.create({ title: "late" });
+      await store.updateOneByQuery({ id: early.id }, { removedAt: dayjs().subtract(10, "day") });
+      await store.updateOneByQuery({ id: late.id }, { removedAt: dayjs().subtract(1, "day") });
+      expect(await store.purgeManyByQuery({ removedAt: q.lt(dayjs().subtract(5, "day")) })).toBe(1);
+      expect(sorted(titlesOf(await store.find({}, { withRemoved: true })))).toEqual(["late", "live"]);
+    });
+
+    test("a purged row takes its search mirror row with it", async () => {
+      const { id } = await store.create({ title: "Quarterly revenue report" });
+      const mirrorRows = async () =>
+        Number(
+          (
+            await driver.database
+              .getConnection()
+              .prepare(`SELECT COUNT(*) AS "count" FROM "search_doc" WHERE "ref" = 'dialectConf' AND "refId" = ?`)
+              .get<{ count: number | string }>(id)
+          )?.count,
+        );
+      expect(await mirrorRows()).toBe(1);
+      expect(await store.purgeManyByQuery({ id })).toBe(1);
+      expect(await mirrorRows()).toBe(0);
+      expect(titlesOf(await store.find(q.search("revenue")))).toEqual([]);
+    });
+
+    test("a purge past one batch deletes every match", async () => {
+      await store.importRows(oldRows(2_500));
+      await store.create({ title: "kept" });
+      expect(await store.purgeManyByQuery({ status: "old" })).toBe(2_500);
+      expect(titlesOf(await store.find({}, { withRemoved: true }))).toEqual(["kept"]);
+    });
+
+    test.if(!onPostgres)("a purge lets a timer run after each batch, while the rest still waits", async () => {
+      await store.importRows(oldRows(2_500));
+      let remaining: number | null = null;
+      setTimeout(() => {
+        void store.count({ status: "old" }).then((count) => {
+          remaining = count;
+        });
+      }, 0);
+      expect(await store.purgeManyByQuery({ status: "old" })).toBe(2_500);
+      expect(remaining).toBe(1_500);
+    });
+
+    test("a purge refuses a query that matches every row, and one with q.search()", async () => {
+      await store.create({ title: "Quarterly revenue report" });
+      for (const query of [{}, q.all(), q.all({}, q.when(false, { status: "old" })), q.any(), q.any({}, { score: 1 })])
+        await expect(store.purgeManyByQuery(query)).rejects.toThrow(
+          'purgeManyByQuery on "dialectConf" matches every row; a purge cannot be undone, so name a condition',
+        );
+      await expect(store.purgeManyByQuery(q.search("revenue"))).rejects.toThrow(
+        'q.search() cannot be used in purgeManyByQuery on "dialectConf"',
+      );
+      expect(await store.count({})).toBe(1);
+    });
+
+    test("a purge inside a transaction rolls back with it", async () => {
+      await store.create({ title: "old", status: "old" });
+      await expect(
+        driver.database.transaction(async () => {
+          expect(await store.purgeManyByQuery({ status: "old" })).toBe(1);
+          throw new Error("rolled back");
+        }),
+      ).rejects.toThrow("rolled back");
+      expect(titlesOf(await store.find({}))).toEqual(["old"]);
     });
   });
 };
