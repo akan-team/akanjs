@@ -593,6 +593,12 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       await DraftStore.remove(draft.key);
       return;
     }
+    // Earlier releases could save another record's form under this key, which must never fill this one's.
+    const draftedId = record.form.id;
+    if (typeof draftedId === "string" && draftedId && draftedId !== (openedForm as { id?: unknown }).id) {
+      await DraftStore.remove(draft.key);
+      return;
+    }
     let form: object;
     try {
       form = DraftStore.decodeForm(refName, record.form);
