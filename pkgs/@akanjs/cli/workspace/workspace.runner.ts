@@ -32,6 +32,7 @@ const defaultWorkspacePeerDependencies = new Set([
   "tailwindcss",
   "typescript",
 ]);
+const defaultWorkspaceTypeDependencies = { "@types/react": "^19.3.0", "@types/react-dom": "^19.3.0" } as const;
 
 /** High enough that a real cleanup pass sees every finding at once; `0` on the CLI lifts the cap entirely. */
 export const defaultMaxDiagnostics = 200;
@@ -110,6 +111,7 @@ export class WorkspaceRunner extends runner("workspace") {
         ...rootPackageJson.devDependencies,
         "@biomejs/biome": biomeVersion,
         "@types/bun": latestTypesBunVersion,
+        ...defaultWorkspaceTypeDependencies,
         "@akanjs/devkit": akanVersion,
         ...(typescript ? { typescript } : {}),
       },

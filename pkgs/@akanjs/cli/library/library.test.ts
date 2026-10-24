@@ -19,6 +19,7 @@ afterEach(() => {
   mock.restore();
 });
 const track = tempRoots();
+const repoRoot = path.resolve(import.meta.dir, "../../../..");
 
 describe("LibraryScript", () => {
   test("syncs and installs libraries through runner boundaries", async () => {
@@ -101,6 +102,27 @@ describe("LibraryRunner", () => {
     expect(warn).not.toHaveBeenCalled();
     expect(workspace.spawn).not.toHaveBeenCalled();
     expect(workspace.commit).not.toHaveBeenCalled();
+  });
+
+  test("brings the type packages the shipped shared and util libraries compile against into the root", async () => {
+    const repoPackageJson = (await Bun.file(path.join(repoRoot, "package.json")).json()) as PackageJson;
+    for (const [libName, typesPackage] of [
+      ["shared", "@types/react-dom"],
+      ["util", "@types/nodemailer"],
+    ] as const) {
+      const { root, lib, readRoot } = await mergeFixture(libName, { changed: true });
+      await Bun.write(
+        `${root}/libs/${libName}/package.json`,
+        Bun.file(path.join(repoRoot, "libs", libName, "package.json")),
+      );
+
+      await new LibraryRunner().mergeLibraryDependencies(lib);
+
+      expect([libName, (await readRoot()).devDependencies?.[typesPackage]]).toEqual([
+        libName,
+        repoPackageJson.devDependencies?.[typesPackage] ?? `${typesPackage} missing from the repo root`,
+      ]);
+    }
   });
 
   test("a new library holds an empty barrel in each facet folder, the one sync writes, and no placeholder", async () => {
