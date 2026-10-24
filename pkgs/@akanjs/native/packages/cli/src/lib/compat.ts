@@ -14,7 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import type { Platform, PluginDecl, ResolvedAcl } from "../../../core/src/index.ts";
 import { BRIDGE_FEATURES } from "../../../core/src/protocol.ts";
 import { CliError } from "./log.ts";
@@ -162,6 +162,10 @@ export function compatProblems(installed: NativeApi, bundle: NativeApi): string[
   return problems;
 }
 
+/** A web file's path in its bundle, as a manifest lists it: "/" between folders on every OS, since phones refuse "\". */
+export const webPath = (webDir: string, file: string, path = { relative, sep }) =>
+  path.relative(webDir, file).split(path.sep).join("/");
+
 function webHash(webDir: string, html: string): { hash: string; files: number } {
   const hash = createHash("sha256");
   const files: string[] = [];
@@ -174,7 +178,7 @@ function webHash(webDir: string, html: string): { hash: string; files: number } 
   };
   walk(webDir);
   for (const file of files) {
-    const rel = relative(webDir, file);
+    const rel = webPath(webDir, file);
     hash.update(`${rel}\0`);
     hash.update(rel === "index.html" ? html : readFileSync(file));
     hash.update("\0");
