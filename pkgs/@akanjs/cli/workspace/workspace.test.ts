@@ -11,6 +11,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
 import { WorkspaceCommand } from "./workspace.command";
 import { defaultMaxDiagnostics, WorkspaceRunner } from "./workspace.runner";
@@ -18,6 +19,7 @@ import { WorkspaceScript } from "./workspace.script";
 
 const originalCwd = process.cwd();
 const originalFetch = globalThis.fetch;
+const repoRoot = path.resolve(import.meta.dir, "../../../..");
 
 const stubNpmLatest = (latest = "1.0.0") => {
   globalThis.fetch = mock(
@@ -355,6 +357,35 @@ describe("WorkspaceRunner", () => {
     expect(workspacePackageJson.dependencies).not.toHaveProperty("@playwright/test");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("cordova-plugin-purchase");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("capacitor-plugin-safe-area");
+  });
+
+  test("gives a new workspace React's type packages at the versions the repo root uses", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { devDependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    const repoPackageJson = (await Bun.file(path.join(repoRoot, "package.json")).json()) as PackageJson;
+    for (const typesPackage of ["@types/react", "@types/react-dom"])
+      expect([typesPackage, devDependencies?.[typesPackage]]).toEqual([
+        typesPackage,
+        repoPackageJson.devDependencies?.[typesPackage] ?? `${typesPackage} missing from the repo root`,
+      ]);
+  });
+
+  test("pins react-dom and react-server-dom-webpack in a new workspace to react's exact version", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { dependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    expect(dependencies?.react).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(dependencies?.["react-dom"]).toBe(dependencies?.react);
+    expect(dependencies?.["react-server-dom-webpack"]).toBe(dependencies?.react);
   });
 
   test("generates agent rule files without overwriting by default", async () => {

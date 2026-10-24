@@ -314,8 +314,8 @@ akan sync-library`,
           {
             name: l.trans({ en: "source", ko: "원본" }),
             desc: l.trans({
-              en: "The installed `akanjs` package when it ships the library; otherwise the Akan.js GitHub repository.",
-              ko: "설치된 `akanjs` 패키지에 라이브러리가 있으면 거기서, 없으면 Akan.js GitHub 저장소에서 복사합니다.",
+              en: "The installed `akanjs` package when it ships the library; otherwise its version's tag in the Akan.js repository.",
+              ko: "설치된 `akanjs` 패키지에 라이브러리가 있으면 거기서, 없으면 Akan.js 저장소의 그 버전 태그에서 복사합니다.",
             }),
           },
           {

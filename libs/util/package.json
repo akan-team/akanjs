@@ -28,6 +28,7 @@
     "swiper": "^12.1.4"
   },
   "devDependencies": {
-    "@octokit/webhooks-types": "^7.6.1"
+    "@octokit/webhooks-types": "^7.6.1",
+    "@types/nodemailer": "^8.0.0"
   }
 }

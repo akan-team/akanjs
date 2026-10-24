@@ -1,10 +1,12 @@
 import { type Lib, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { LibExecutor } from "@akanjs/devkit/executors";
+import { CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import { LibSource } from "@akanjs/devkit/libSource";
 import { compareSemver } from "@akanjs/devkit/semver";
 
 export class LibraryRunner extends runner("library") {
   static readonly libraryRepository = "https://github.com/akan-team/akanjs.git";
+  static readonly #cloneDir = "node_modules/.akan/akanjs";
+  readonly #clones = new Map<string, { origin: string; sha: string }>();
   async createLibrary(libName: string, workspace: Workspace) {
     await workspace.mkdir(`libs/${libName}`);
     await workspace.applyTemplate({ basePath: `libs/${libName}`, template: "libRoot", dict: { libName } });
@@ -28,13 +30,41 @@ export class LibraryRunner extends runner("library") {
     return version ?? "unknown";
   }
 
+  //? `--exit-code` exits 2 only for a missing ref; an unreachable remote exits 128, as `clone --branch` does for both.
+  async #hasTag(workspace: Workspace, tag: string) {
+    try {
+      await workspace.spawn("git", ["ls-remote", "--exit-code", LibraryRunner.libraryRepository, `refs/tags/${tag}`]);
+      return true;
+    } catch (error) {
+      if (error instanceof CommandExecutionError && error.code === 2) return false;
+      throw error;
+    }
+  }
+
+  async #cloneRepository(workspace: Workspace) {
+    const repository = LibraryRunner.libraryRepository;
+    const version = await this.#installedAkanVersion(workspace);
+    const tag = version === "unknown" ? null : `v${version}`;
+    const branch = tag && (await this.#hasTag(workspace, tag)) ? ["--branch", tag] : [];
+    if (!branch.length) {
+      const reason = tag ? `akanjs ${version} has no ${tag} tag` : "akanjs is not installed in this workspace";
+      workspace.logger.warn(
+        `${reason}; installing libraries from the default branch of ${repository}, which may expect a newer akanjs`,
+      );
+    }
+    if (await workspace.exists(LibraryRunner.#cloneDir)) await workspace.removeDir(LibraryRunner.#cloneDir);
+    await workspace.spawn("git", ["clone", "--depth", "1", ...branch, repository, LibraryRunner.#cloneDir]);
+    const sha = await workspace.spawn("git", ["-C", LibraryRunner.#cloneDir, "rev-parse", "HEAD"]);
+    return { origin: repository, sha: sha.trim().slice(0, 12) };
+  }
+
   async #copyLibraryFromRepository(workspace: Workspace, libName: string) {
-    await workspace.mkdir("node_modules/.akan");
-    if (await workspace.exists("node_modules/.akan/akanjs")) await workspace.removeDir("node_modules/.akan/akanjs");
-    await workspace.exec(`cd node_modules/.akan && git clone ${LibraryRunner.libraryRepository}`);
-    await workspace.cp(`node_modules/.akan/akanjs/libs/${libName}`, `libs/${libName}`);
-    const sha = await workspace.spawn("git", ["-C", "node_modules/.akan/akanjs", "rev-parse", "HEAD"]);
-    return { origin: LibraryRunner.libraryRepository, sha: sha.trim().slice(0, 12) };
+    const cloned = this.#clones.get(workspace.workspaceRoot);
+    const source =
+      cloned && (await workspace.exists(LibraryRunner.#cloneDir)) ? cloned : await this.#cloneRepository(workspace);
+    this.#clones.set(workspace.workspaceRoot, source);
+    await workspace.cp(`${LibraryRunner.#cloneDir}/libs/${libName}`, `libs/${libName}`);
+    return source;
   }
 
   // Re-runnable: the source is overwritten, the testing env (the installer's own values) is kept, and an empty

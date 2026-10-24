@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { type SpawnOptions, spawn } from "node:child_process";
 import { Command } from "commander";
+import { engines } from "./package.json";
 
 type SpawnCommand = typeof spawn;
 interface PackageJson {
@@ -36,10 +37,20 @@ const normalizeRegistryUrl = (registryUrl: string) => registryUrl.replace(/\/+$/
 export const run = async ({
   argv = process.argv,
   spawnCommand = spawn,
+  bunVersion = Bun.version,
 }: {
   argv?: string[];
   spawnCommand?: SpawnCommand;
+  bunVersion?: string;
 } = {}) => {
+  //? A range admits no prerelease of a later release (`1.4.5-canary.1`), so a canary build is judged by its release.
+  if (!Bun.semver.satisfies(bunVersion.replace(/-.*$/, ""), engines.bun)) {
+    console.error(
+      `create-akan-workspace requires Bun ${engines.bun}, but this is Bun ${bunVersion}. Run \`bun upgrade\`, then try again.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const program = new Command().name("create-akan-workspace");
 
   program
