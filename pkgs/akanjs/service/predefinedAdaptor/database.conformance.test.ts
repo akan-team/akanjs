@@ -649,6 +649,35 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
+    test("[DDL-6] reordering the fields of an index builds it in the new order", async () => {
+      await storeOf(driver, uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1, label: 1 }));
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code"]);
+    });
+
+    test("[DDL-6] of the copies an earlier release left in both field orders, the declared order serves on", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const legacyIndex = async (name: string, paths: string[]) => {
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique: false,
+            columns: paths.map((path) => ({ path, expr: legacy.compiler.fieldExpr(path), isArray: false })),
+          }),
+        );
+        const fields = Object.fromEntries(paths.map((path) => [path, 1]));
+        await driver.database.setMeta(`index:uniqueConf:${name}`, await descriptorHash({ fields }));
+      };
+      // What a release naming indexes by position left once the fields of its first index were swapped.
+      await legacyIndex("uniqueConf_code_label_0", ["code", "label"]);
+      await legacyIndex("uniqueConf_label_code_0", ["label", "code"]);
+
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code_0"]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_label_0")).toBeUndefined();
+    });
+
     test("two different indexes given one name refuse to boot", async () => {
       await expect(
         storeOf(
