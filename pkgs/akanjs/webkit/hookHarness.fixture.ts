@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import { csrLocation } from "../client/csrLocation";
+import { Href } from "../client/href";
 import { isMcpView } from "../client/mcpView";
 
 export const hooks = {
@@ -81,6 +82,7 @@ export const csrClientBase = () => ({
   csrContext: { Provider: ({ children }: { children: unknown }) => children },
   csrLocation,
   debugFrame: () => undefined,
+  Href,
   isMcpView,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },
