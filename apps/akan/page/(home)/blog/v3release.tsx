@@ -74,21 +74,6 @@ return <Button onClick={publish}>{l("plan.publishPlan")}</Button>;`,
     code: `export default page()
   .param("projectId", ID, { desc: "The project to brief." })
   .prompt("briefProjectTickets", "Brief the ticket board of one project.")
-  .config({ transition: "stack" })
-  .head(({ lang }) => {
-    const title =
-      lang === "ko" ? "Akan.js v3: 풀스택에 에이전트까지 | Akan.js 블로그" : "Akan.js v3: agents join the full stack | Akan.js Blog";
-    const description =
-      lang === "ko" ? "모든 앱이 MCP 서버가 되고 페이지가 프롬프트가 되며, UI는 네이티브 토큰과 레시피로 다시 지어집니다." : "Every app becomes an MCP server, pages become prompts, and the UI is rebuilt on native tokens and recipes.";
-    return (
-      <>
-        <title>{title}</title>
-        <meta name="description" content={description} />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-      </>
-    );
-  })
   .render(async ({ projectId }) => {
     const [{ project }, { ticketInitInProject }] = await Promise.all([
       fetch.viewProject(projectId),
