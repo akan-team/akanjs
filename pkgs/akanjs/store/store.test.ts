@@ -972,7 +972,57 @@ describe("live sync store action", () => {
     expect(signal.rooms[1].args).toEqual(["Ben"]);
 
     await instance.do.watchLiveStoreTestItemByTitle(null);
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    await instance.do.watchLiveStoreTestItemByTitle(null);
     expect(signal.rooms[1].open).toBe(false);
+  });
+
+  test("a room stays open until the last of its watchers releases it", async () => {
+    const { instance, signal } = await arrange();
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    expect(signal.rooms).toHaveLength(1);
+    expect(signal.rooms[0].open).toBe(true);
+
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    expect(signal.rooms[0].open).toBe(false);
+  });
+
+  test("a release and a watch of the same query within one tick keep the room", async () => {
+    const { instance, signal } = await arrange();
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    const release = instance.do.watchLiveStoreTestItemByTitle(null);
+    const watch = instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    await Promise.all([release, watch]);
+    expect(signal.rooms).toHaveLength(1);
+    expect(signal.rooms[0].open).toBe(true);
+  });
+
+  test("a room reopened over rows it stopped covering marks the list stale", async () => {
+    const { instance } = await arrange();
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    const initAt = (instance.get().storeTestItemInitAtByTitle as Date).getTime();
+    expect(liveState(instance).staleAt).toBeGreaterThan(initAt);
+  });
+
+  test("a room reopened over rows loaded since it closed, or for other arguments, leaves the list fresh", async () => {
+    const { instance } = await arrange();
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    expect(liveState(instance).staleAt).toBe(0);
+
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await instance.do.watchLiveStoreTestItemByTitle(["Ben"]);
+    expect(liveState(instance).staleAt).toBe(0);
   });
 
   test("a filled pauseOn argument opens no room, and clearing it opens one", async () => {
@@ -999,30 +1049,54 @@ describe("live sync store action", () => {
     expect(signal.calls.storeTestItemListByTitle).toHaveBeenCalled();
   });
 
-  test("an event that lands during a refetch is not applied, yet leaves the refetched list stale", async () => {
+  test("an event that lands during a refetch is not applied, and the refetch reads the rows once more", async () => {
     const { instance, signal } = await arrange();
-    let release = () => {};
+    const ada = light("aaaaaaaaaaaaaaaaaaaaaaaa", "Ada", 300);
+    const cyd = light("cccccccccccccccccccccccc", "Cyd", 400);
+    const releases: (() => void)[] = [];
     signal.calls.storeTestItemListByTitle = mock(
       async () =>
         await new Promise<unknown[]>((resolve) => {
-          release = () => resolve([light("aaaaaaaaaaaaaaaaaaaaaaaa", "Ada", 300)]);
+          const rows = releases.length ? [cyd, ada] : [ada];
+          releases.push(() => resolve(rows));
         }),
     );
     const refetch = instance.do.refreshStoreTestItemByTitle({ invalidate: true });
     await new Promise((resolve) => setTimeout(resolve, 2));
-    const stampedFrom = Date.now();
-    await instance.do.applyLiveStoreTestItemByTitle({
-      op: "enter",
-      id: "cccccccccccccccccccccccc",
-      light: light("cccccccccccccccccccccccc", "Cyd", 400),
-    });
-    release();
+    await instance.do.applyLiveStoreTestItemByTitle({ op: "enter", id: cyd.id, light: cyd });
+    expect(liveState(instance).ids).not.toContain(cyd.id);
+
+    releases[0]?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(releases).toHaveLength(2);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(true);
+    releases[1]?.();
     await refetch;
 
     const after = liveState(instance);
-    expect(after.ids).toEqual(["aaaaaaaaaaaaaaaaaaaaaaaa"]);
-    expect(after.staleAt).toBeGreaterThanOrEqual(stampedFrom);
-    expect((instance.get().storeTestItemInitAtByTitle as Date).getTime()).toBeLessThan(after.staleAt);
+    expect(after.titles).toEqual(["Cyd", "Ada"]);
+    expect((instance.get().storeTestItemInitAtByTitle as Date).getTime()).toBeGreaterThanOrEqual(after.staleAt);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+  });
+
+  test("a load reads its rows at most twice, however many events land meanwhile", async () => {
+    const { instance, signal } = await arrange();
+    const releases: (() => void)[] = [];
+    signal.calls.storeTestItemListByTitle = mock(
+      async () =>
+        await new Promise<unknown[]>((resolve) => {
+          releases.push(() => resolve([light("aaaaaaaaaaaaaaaaaaaaaaaa", "Ada", 300)]));
+        }),
+    );
+    const refetch = instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    for (const round of [0, 1]) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await instance.do.applyLiveStoreTestItemByTitle({ op: "invalidate", id: "cccccccccccccccccccccccc" });
+      releases[round]?.();
+    }
+    await refetch;
+    expect(releases).toHaveLength(2);
+    expect(liveState(instance).staleAt).toBeGreaterThan((instance.get().storeTestItemInitAtByTitle as Date).getTime());
   });
 
   test("an invalidate stamps the list stale and touches nothing else", async () => {

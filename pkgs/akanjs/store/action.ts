@@ -943,6 +943,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const requests = new SliceRequest();
     // One room per slice, not per component: a second room would apply every event to the one list twice.
     let liveWatch: { signature: string; dispose: () => void } | null = null;
+    let liveWatchers = 0;
+    let liveClosed: { signature: string; at: Date } | null = null;
+    const closeLiveWatch = () => {
+      if (!liveWatch) return;
+      liveWatch.dispose();
+      liveClosed = { signature: liveWatch.signature, at: new Date() };
+      liveWatch = null;
+    };
     const livePauseIdxs = (slice.live?.pauseOn ?? [])
       .map((name) => slice.args.findIndex((arg) => arg.name === name))
       .filter((idx) => idx >= 0);
@@ -970,12 +978,24 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       );
     const insightOf = (modelObjInsight: (Insight & BaseInsight) | null, modelDataList: Light[]) =>
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
-    const loadList = async <T>(self: SetGet, load: () => Promise<T>, commit: (loaded: T) => object) => {
+    // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
+    const loadList = async <T>(
+      self: SetGet,
+      load: () => Promise<T>,
+      commit: (loaded: T, requestedAt: Date) => object,
+    ) => {
       self.set({ [namesOfSlice.modelListLoading]: true });
       const ticket = requests.claim();
       try {
-        const loaded = await load();
-        if (requests.isCurrent(ticket)) self.set(commit(loaded));
+        for (let round = 0; round < 2; round += 1) {
+          // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
+          const requestedAt = new Date();
+          const loaded = await load();
+          if (!requests.isCurrent(ticket)) return;
+          self.set(commit(loaded, requestedAt));
+          const staleAt = (self.get() as { [key: string]: any })[namesOfSlice.modelStaleAt] as Date;
+          if (staleAt.getTime() <= requestedAt.getTime()) return;
+        }
       } finally {
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
@@ -1042,8 +1062,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           isQueryEqual(sort as unknown as object, sortOfModel as unknown as object)
         )
           return;
-        // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
-        const requestedAt = new Date();
         await loadList(
           this,
           () =>
@@ -1051,7 +1069,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               fetchList(queryArgs, (page - 1) * limit, fetchLimit, sort, { ...fetchPolicy, onError: initForm.onError }),
               insight === false ? null : fetchInsight(queryArgs, { ...fetchPolicy, onError: initForm.onError }),
             ]),
-          ([modelDataList, modelObjInsight]) => {
+          ([modelDataList, modelObjInsight], requestedAt) => {
             const modelList = new DataList(modelDataList);
             const modelInsight = insightOf(modelObjInsight, modelDataList);
             return {
@@ -1283,18 +1301,25 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           ...staleAt,
         });
       },
-      // Opens this slice's live room for `queryArgs`, or closes it on null.
+      // Points this slice's live room at `queryArgs` for one more watcher, or lets one go on null; the last one closes it.
       [namesOfSlice.watchLiveModel]: function (this: SetGet, queryArgs: unknown[] | null) {
         if (!slice.live) return;
-        const args = queryArgs ? expandQueryArgs(normalizeQueryArgs(queryArgs, slice.args), slice.args) : null;
-        // A filled `pauseOn` argument closes the room as null does, until it is cleared.
-        const paused = !!args && livePauseIdxs.some((idx) => args[idx] != null);
-        const signature = args && !paused ? JSON.stringify(args) : null;
-        if (liveWatch && signature !== liveWatch.signature) {
-          liveWatch.dispose();
-          liveWatch = null;
+        if (!queryArgs) {
+          liveWatchers = Math.max(liveWatchers - 1, 0);
+          //? A tick later, as StrictMode or a remount lets go and watches again within one commit.
+          if (!liveWatchers)
+            queueMicrotask(() => {
+              if (!liveWatchers) closeLiveWatch();
+            });
+          return;
         }
-        if (!args || paused || liveWatch) return;
+        liveWatchers += 1;
+        const args = expandQueryArgs(normalizeQueryArgs(queryArgs, slice.args), slice.args);
+        // A filled `pauseOn` argument closes the room as null does, until it is cleared.
+        const paused = livePauseIdxs.some((idx) => args[idx] != null);
+        const signature = paused ? null : JSON.stringify(args);
+        if (liveWatch && signature !== liveWatch.signature) closeLiveWatch();
+        if (!signature || liveWatch) return;
         const self = this as unknown as DynamicRecord;
         const apply = self[namesOfSlice.applyLiveModel] as (event: unknown) => void;
         const refresh = self[namesOfSlice.refreshModel] as (form: object) => Promise<void>;
@@ -1308,7 +1333,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           // The events missed while the socket was down are gone, so the list is refetched rather than patched.
           onResync: () => void refresh({ invalidate: true }),
         });
-        liveWatch = { signature: signature ?? "", dispose };
+        liveWatch = { signature, dispose };
+        // Rows older than the room's last close missed the events sent while it was closed, as on a page shown again.
+        const modelInitAt = (this.get() as { [key: string]: any })[namesOfSlice.modelInitAt] as Date;
+        if (liveClosed?.signature === signature && modelInitAt < liveClosed.at)
+          this.set({ [namesOfSlice.modelStaleAt]: new Date() });
       },
     };
     return Object.assign(acc, singleSliceAction);
