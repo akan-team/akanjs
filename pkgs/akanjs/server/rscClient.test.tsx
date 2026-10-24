@@ -241,6 +241,37 @@ describe("rscClient scroll restoration", () => {
   });
 });
 
+describe("rscClient fragment navigation", () => {
+  const idxOfEntry = () => (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
+
+  test("a fragment link keeps the page, asks the server nothing, and counts one step past the entry it left", async () => {
+    await navigate("/guide");
+    const idx = idxOfEntry() as number;
+    const requests = fetchCountOf("/guide");
+
+    window.history.pushState(null, "", "#install");
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(idxOfEntry()).toBe(idx + 1);
+    expect(shown()).toBe("/guide");
+    expect(fetchCountOf("/guide")).toBe(requests);
+
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(idxOfEntry()).toBe(idx);
+    expect(fetchCountOf("/guide")).toBe(requests);
+  });
+});
+
 describe("rscClient redirect", () => {
   test("a push the server answers with a redirect keeps the page it left one step back", async () => {
     await navigate("/porch");
