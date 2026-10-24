@@ -14,15 +14,18 @@ import type {
   SliceCls,
 } from "akanjs/signal";
 
-type ExtendedEndpointReturn<ClientReturns, Full, Light, Insight> = ClientReturns extends (infer R)[]
-  ? ExtendedEndpointReturn<R, Full, Light, Insight>[]
-  : Full extends ClientReturns
-    ? Full
-    : Light extends ClientReturns
-      ? Light
-      : Insight extends ClientReturns
-        ? Insight
-        : ClientReturns;
+// `Any` returns `unknown`, which every model extends, so it is let through before the model mapping below.
+type ExtendedEndpointReturn<ClientReturns, Full, Light, Insight> = unknown extends ClientReturns
+  ? ClientReturns
+  : ClientReturns extends (infer R)[]
+    ? ExtendedEndpointReturn<R, Full, Light, Insight>[]
+    : Full extends ClientReturns
+      ? Full
+      : Light extends ClientReturns
+        ? Light
+        : Insight extends ClientReturns
+          ? Insight
+          : ClientReturns;
 
 type EndpointClientReturns<E, SlceCls extends SliceCls | never> = [SlceCls] extends [never]
   ? EndpInfoClientReturns<E>

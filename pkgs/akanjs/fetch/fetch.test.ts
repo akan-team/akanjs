@@ -116,6 +116,22 @@ type TypeRegressionUserFetch = FetchTypeOfSignal<
 type _DatabaseEndpointReturnExtendsToAppFullRegression = Expect<
   Mutual<Awaited<ReturnType<TypeRegressionUserFetch["getSelf"]>>, TypeRegressionAppUser>
 >;
+type TypeRegressionOpenEndpoint = EndpointCls<
+  never,
+  {
+    iceServers: ReturnType<ReturnType<typeof buildEndpoint.query<typeof Any>>["exec"]>;
+    iceServerList: ReturnType<ReturnType<typeof buildEndpoint.mutation<[typeof Any]>>["exec"]>;
+  }
+>;
+type TypeRegressionOpenFetch = FetchTypeOfSignal<
+  DatabaseSignal<never, TypeRegressionOpenEndpoint, TypeRegressionUserSlice, never>
+>;
+type _AnyEndpointReturnStaysOpenRegression = Expect<
+  Equal<Awaited<ReturnType<TypeRegressionOpenFetch["iceServers"]>>, unknown>
+>;
+type _AnyListEndpointReturnStaysOpenRegression = Expect<
+  Equal<Awaited<ReturnType<TypeRegressionOpenFetch["iceServerList"]>>, unknown[]>
+>;
 
 type FetchCall = { url: string; init?: RequestInit };
 const originalFetch = globalThis.fetch;
