@@ -78,6 +78,31 @@ describe("RscWorker not-found raised by a route", () => {
   }, 20_000);
 });
 
+describe("RscWorker not-found raised by a head", () => {
+  test("renders the layout's NotFound under the layouts' head, whether a page's or a layout's head raised it", async () => {
+    await withNotFoundWorker(async (render) => {
+      for (const [url, pathname] of [
+        ["http://localhost/en/titled/headgone", "/en/titled/headgone"],
+        ["http://localhost/en/shelf/gone", "/en/shelf/gone"],
+      ] as const) {
+        const rendered = await render(url);
+        expect(rendered.status).toBe(404);
+        expect(rendered.body).toContain(`root missing ${pathname}`);
+        expect(rendered.body).not.toContain("off the flight path");
+      }
+      expect((await render("http://localhost/en/titled/headgone")).body).toContain("Titled Layout");
+
+      const bodyRefused = await render("http://localhost/en/titled/gone");
+      expect(bodyRefused.body).toContain("Titled Layout");
+      expect(bodyRefused.body).not.toContain("Gone Title");
+
+      const shelf = await render("http://localhost/en/shelf/open");
+      expect(shelf.status).toBe(200);
+      expect(shelf.body).toContain("shelf open");
+    });
+  }, 20_000);
+});
+
 describe("RscWorker route guards", () => {
   test("answer a refusal before any byte, a leaked 403 as the layout's NotFound, and let the admitted render", async () => {
     await withNotFoundWorker(async (render) => {

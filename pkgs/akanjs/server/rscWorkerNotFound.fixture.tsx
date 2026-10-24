@@ -116,6 +116,32 @@ export const pages: PagesContext = {
   }),
   "./pending/gone.tsx": async () => ({ default: page().render(() => router.notFound()) }),
   "./pending/moved.tsx": async () => ({ default: page().render(() => router.redirect("/target")) }),
+  "./titled/_layout.tsx": async () => ({
+    default: layout()
+      .head(<title>Titled Layout</title>)
+      .render(({ children }) => <section>titled:{children}</section>),
+  }),
+  "./titled/headgone.tsx": async () => ({
+    default: page()
+      .head(() => router.notFound())
+      .render(() => <p>headgone body</p>),
+  }),
+  "./titled/gone.tsx": async () => ({
+    default: page()
+      .head(<title>Gone Title</title>)
+      .render(() => router.notFound()),
+  }),
+  "./shelf/[shelfId]/_layout.tsx": async () => ({
+    default: layout()
+      .param("shelfId", String)
+      .head(({ shelfId }) => (shelfId === "gone" ? router.notFound() : <title>Shelf</title>))
+      .render(({ children }) => <section>shelf:{children}</section>),
+  }),
+  "./shelf/[shelfId]/_index.tsx": async () => ({
+    default: page()
+      .param("shelfId", String)
+      .render(({ shelfId }) => <p>{`shelf ${shelfId}`}</p>),
+  }),
   "./docs/gone.tsx": async () => ({
     default: page().render(async () => {
       await Bun.sleep(20);
