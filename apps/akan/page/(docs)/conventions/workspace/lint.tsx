@@ -463,8 +463,8 @@ async refreshStock() {
         rule: "no-conditional-st-hook",
         scope: l.trans({ en: "every `.tsx` in `apps/` `libs/`", ko: "`apps/` `libs/`의 모든 `.tsx`" }),
         desc: l.trans({
-          en: "An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.",
-          ko: "`||` / `&&`, 삼항, `if`, 반복문, 콜백 안에 둔 `st.use.*`, `st.sel`, `st.ref`, `st.tool(…).exec()`입니다. 각각 먼저 `const`에 읽은 뒤 합칩니다.",
+          en: "An `st` hook that a render can skip. Read each into its own `const` at the top of the component, then combine.",
+          ko: "렌더에 따라 건너뛸 수 있는 `st` 훅입니다. 각각 컴포넌트 맨 위에서 `const`에 읽은 뒤 합칩니다.",
         }),
       },
       {
@@ -1036,6 +1036,59 @@ async refreshStock() {
             </Docs.SubSubTitle>
             <Docs.IntroTable type={ruleType} items={scopedItems(storeRows)} />
             <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
+                      <strong>Two rules check hooks.</strong> Biome&apos;s <code>useHookAtTopLevel</code> checks plain
+                      hooks like <code>useState</code> and <code>useEffect</code> on the same files, after an early{" "}
+                      <code>return</code> too. It cannot see the <code>st</code> hooks, whose names do not start with{" "}
+                      <code>use</code>, so <code>no-conditional-st-hook</code> checks those: <code>st.use.*</code>,{" "}
+                      <code>{"st.slice.<x>.use.*"}</code>, <code>st.sel</code>, <code>st.ref</code>,{" "}
+                      <code>st.tool(…).exec()</code> / <code>.card()</code>, <code>st.useState(…).init()</code> and{" "}
+                      <code>st.expose(…).value()</code>.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <strong>훅은 두 규칙이 검사합니다.</strong> Biome의 <code>useHookAtTopLevel</code>은 같은 파일에서{" "}
+                      <code>useState</code>, <code>useEffect</code> 같은 일반 훅을 early <code>return</code> 뒤까지
+                      검사합니다. 이름이 <code>use</code>로 시작하지 않는 <code>st</code> 훅은 보지 못하므로{" "}
+                      <code>no-conditional-st-hook</code>이 <code>st.use.*</code>, <code>{"st.slice.<x>.use.*"}</code>,{" "}
+                      <code>st.sel</code>, <code>st.ref</code>, <code>st.tool(…).exec()</code> / <code>.card()</code>,{" "}
+                      <code>st.useState(…).init()</code>, <code>st.expose(…).value()</code>를 검사합니다.
+                    </>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
+                      <strong>
+                        Where an <code>st</code> hook is reported.
+                      </strong>{" "}
+                      On the right of <code>{"||"}</code>, <code>{"&&"}</code>, <code>??</code>, <code>{"||="}</code>,{" "}
+                      <code>{"&&="}</code> or <code>??=</code>, in a ternary branch, an <code>if</code> body, a{" "}
+                      <code>switch</code> case, a loop, a <code>catch</code>, a default value, an optional call&apos;s
+                      arguments, or a callback a component hands to a call or a JSX prop. An early <code>return</code>{" "}
+                      before an <code>st</code> hook, and a helper the component calls, are not checked.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <strong>
+                        <code>st</code> 훅을 보고하는 자리입니다.
+                      </strong>{" "}
+                      <code>{"||"}</code>, <code>{"&&"}</code>, <code>??</code>, <code>{"||="}</code>,{" "}
+                      <code>{"&&="}</code>, <code>??=</code>의 오른쪽, 삼항 분기, <code>if</code> 본문,{" "}
+                      <code>switch</code> case, 반복문, <code>catch</code>, 기본값, <code>{"f?.(…)"}</code>의 인자,
+                      그리고 컴포넌트가 호출이나 JSX prop에 넘기는 콜백입니다. early <code>return</code> 뒤의{" "}
+                      <code>st</code> 훅과 컴포넌트가 부르는 helper 안의 훅은 검사하지 않습니다.
+                    </>
+                  ),
+                })}
+              </li>
               <li>
                 {l.trans({
                   en: (
