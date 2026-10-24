@@ -227,7 +227,7 @@ async function fetchRsc(
   href: string,
   options: {
     buildId?: number;
-    replaceOnRedirect?: boolean;
+    replaceOnRedirect?: () => boolean;
     shouldApplyNavigation?: () => boolean;
     sendRouterState?: boolean;
     navId?: number;
@@ -238,6 +238,7 @@ async function fetchRsc(
     buildId: options.buildId,
     currentRouterState,
     navigate: globalThis.__AKAN_RSC_NAVIGATE__,
+    replaceOnRedirect: options.replaceOnRedirect,
     sendRouterState: options.sendRouterState,
     shouldApplyNavigation,
   });
@@ -278,10 +279,7 @@ async function fetchRsc(
     if (!shouldApplyNavigation()) return;
     const location = redirect.location ? normalizeHref(redirect.location) : href;
     if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
-    navigateAfterRscRedirect(
-      location,
-      redirect.method ? redirect.method !== "push" : (options.replaceOnRedirect ?? true),
-    );
+    navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
   };
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
@@ -401,7 +399,7 @@ function Root(): ReactNode {
     try {
       const next = await fetchRsc(target, {
         ...options,
-        replaceOnRedirect: true,
+        replaceOnRedirect: () => true,
         sendRouterState: false,
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
@@ -454,6 +452,9 @@ function Root(): ReactNode {
     forgetPagesOfAnotherAccount();
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
+    //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
+    let ownsEntry = !!options.replace;
+    const replaceOnRedirect = () => ownsEntry;
     const scrollY = options.scrollY ?? ((options.scrollToTop ?? true) ? 0 : undefined);
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY });
     try {
@@ -496,7 +497,7 @@ function Root(): ReactNode {
           rscPatchCache.delete(target);
         }
         const fetched = await fetchRsc(target, {
-          replaceOnRedirect: options.replace,
+          replaceOnRedirect,
           navId,
           shouldApplyNavigation: () => navId === navigationSeq,
         });
@@ -526,7 +527,7 @@ function Root(): ReactNode {
           }
           rscPatchCache.delete(target);
           const fallback = await fetchRsc(target, {
-            replaceOnRedirect: options.replace,
+            replaceOnRedirect,
             sendRouterState: false,
             navId,
             shouldApplyNavigation: () => navId === navigationSeq,
@@ -566,6 +567,7 @@ function Root(): ReactNode {
         },
         updateHistory: () => {
           commitHistory(target, options.replace);
+          ownsEntry = true;
         },
         requestScroll,
         navId,

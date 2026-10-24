@@ -78,6 +78,11 @@ const lateRedirectTo = (location: string) => () => {
   });
   return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
 };
+const redirectInFirstChunkTo = (location: string) => () => {
+  const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
+  const rows = `${rowOf("$L1")}1:E${JSON.stringify({ digest, message: `Redirect to ${location}` })}\n`;
+  return new Response(rows, { headers: { "Content-Type": "text/x-component" } });
+};
 const notFoundViewOf = (text: string) => () =>
   new Response(rowOf(text), {
     status: 404,
@@ -233,6 +238,47 @@ describe("rscClient scroll restoration", () => {
 
     expect(shown()).toBe("/shop");
     expect(window.scrollY).toBe(250);
+  });
+});
+
+describe("rscClient redirect", () => {
+  test("a push the server answers with a redirect keeps the page it left one step back", async () => {
+    await navigate("/porch");
+    const entries = window.history.length;
+    served.set("/members", preStreamRedirectTo("/door"));
+
+    await navigate("/members");
+    await waitFor(() => shown() === "/door");
+
+    expect(window.location.pathname).toBe("/door");
+    expect(window.history.length).toBe(entries + 1);
+    await back("/porch");
+    expect(window.location.pathname).toBe("/porch");
+  });
+
+  test("a push redirected in its stream before its page commits keeps the page it left one step back", async () => {
+    await navigate("/atrium");
+    const entries = window.history.length;
+    served.set("/annex", redirectInFirstChunkTo("/gate"));
+
+    await navigate("/annex");
+    await waitFor(() => shown() === "/gate");
+
+    expect(window.location.pathname).toBe("/gate");
+    expect(window.history.length).toBe(entries + 1);
+    await back("/atrium");
+  });
+
+  test("a redirect raised after the pushed page committed replaces that page", async () => {
+    await navigate("/foyer");
+    const entries = window.history.length;
+    served.set("/wing", lateRedirectTo("/exit"));
+
+    await navigate("/wing");
+    await waitFor(() => shown() === "/exit");
+
+    expect(window.history.length).toBe(entries + 1);
+    await back("/foyer");
   });
 });
 

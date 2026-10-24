@@ -111,6 +111,33 @@ describe("fetchRscNavigationResponse", () => {
     expect(requests[1].headers.get(AKAN_RSC_CURRENT_STATE_HEADER)).toBeNull();
   });
 
+  test("follows a replace redirect with a push while the navigation owns no entry yet", async () => {
+    globalThis.fetch = (async () =>
+      new Response(null, {
+        headers: { "X-Akan-Redirect": "/signin", "X-Akan-Redirect-Method": "replace" },
+      })) as unknown as typeof fetch;
+    const followed: { href: string; replace?: boolean }[] = [];
+    const navigate = (href: string, options?: { replace?: boolean }) => {
+      followed.push({ href, replace: options?.replace });
+    };
+
+    await fetchRscNavigationResponse("https://example.test/private", {
+      currentRouterState: null,
+      navigate,
+      replaceOnRedirect: () => false,
+    });
+    await fetchRscNavigationResponse("https://example.test/private", {
+      currentRouterState: null,
+      navigate,
+      replaceOnRedirect: () => true,
+    });
+
+    expect(followed).toEqual([
+      { href: "/signin", replace: false },
+      { href: "/signin", replace: true },
+    ]);
+  });
+
   test("reports a 404 as not-found and never hands its body to the decoder", async () => {
     let bodyCancelled = false;
     globalThis.fetch = (async () =>

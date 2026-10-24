@@ -18,6 +18,7 @@ export async function fetchRscNavigationResponse(
     buildId?: number;
     currentRouterState: AkanRouterStateV1 | null;
     navigate?: (href: string, options?: { replace?: boolean; scrollToTop?: boolean }) => Promise<void> | void;
+    replaceOnRedirect?: () => boolean;
     sendRouterState?: boolean;
     shouldApplyNavigation?: () => boolean;
   },
@@ -38,7 +39,8 @@ export async function fetchRscNavigationResponse(
     const method = response.headers.get("X-Akan-Redirect-Method");
     const statusHeader = response.headers.get("X-Akan-Redirect-Status");
     const status = statusHeader ? Number(statusHeader) : undefined;
-    if (shouldApplyNavigation()) await options.navigate?.(redirect, { replace: method !== "push", scrollToTop: true });
+    const replace = method !== "push" && (options.replaceOnRedirect?.() ?? true);
+    if (shouldApplyNavigation()) await options.navigate?.(redirect, { replace, scrollToTop: true });
     return { type: "redirected", status };
   }
   if (response.status === 404) {
