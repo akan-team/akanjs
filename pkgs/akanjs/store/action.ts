@@ -943,6 +943,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const requests = new SliceRequest();
     // One room per slice, not per component: a second room would apply every event to the one list twice.
     let liveWatch: { signature: string; dispose: () => void } | null = null;
+    let liveWatchers = 0;
+    let liveClosed: { signature: string; at: Date } | null = null;
+    const closeLiveWatch = () => {
+      if (!liveWatch) return;
+      liveWatch.dispose();
+      liveClosed = { signature: liveWatch.signature, at: new Date() };
+      liveWatch = null;
+    };
     const livePauseIdxs = (slice.live?.pauseOn ?? [])
       .map((name) => slice.args.findIndex((arg) => arg.name === name))
       .filter((idx) => idx >= 0);
@@ -968,12 +976,30 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         ...expandQueryArgs(queryArgs, slice.args),
         options,
       );
-    const loadList = async <T>(self: SetGet, load: () => Promise<T>, commit: (loaded: T) => object) => {
+    const insightOf = (modelObjInsight: (Insight & BaseInsight) | null, modelDataList: Light[]) =>
+      modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
+    const queryArgsIn = (self: SetGet) =>
+      (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
+    // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
+    const loadList = async <T>(
+      self: SetGet,
+      load: () => Promise<T>,
+      commit: (loaded: T, requestedAt: Date) => object,
+    ) => {
       self.set({ [namesOfSlice.modelListLoading]: true });
       const ticket = requests.claim();
       try {
-        const loaded = await load();
-        if (requests.isCurrent(ticket)) self.set(commit(loaded));
+        for (let round = 0; round < 2; round += 1) {
+          // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
+          const requestedAt = new Date();
+          const queryArgs = queryArgsIn(self);
+          const loaded = await load();
+          // Arguments seeded meanwhile, as by a `Load.Units` of another page, own the slice now.
+          if (!requests.isCurrent(ticket) || queryArgsIn(self) !== queryArgs) return;
+          self.set(commit(loaded, requestedAt));
+          const staleAt = (self.get() as { [key: string]: any })[namesOfSlice.modelStaleAt] as Date;
+          if (staleAt.getTime() <= requestedAt.getTime()) return;
+        }
       } finally {
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
@@ -984,8 +1010,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         ...args: [...args: any[], initForm: FetchInitForm<Input, Filter> & FetchPolicy]
       ) {
         const initArgLength = Math.min(args.length, slice.args.length);
-        const initForm = { invalidate: false, ...(args[slice.args.length] ?? {}) } as FetchInitForm<Input, Filter> &
-          FetchPolicy;
+        const initForm = {
+          invalidate: false,
+          insight: true,
+          ...(args[slice.args.length] ?? {}),
+        } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
         this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
@@ -1011,7 +1040,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         );
         const {
           default: defaultFromInitForm,
-          insight,
+          insight = currentState[namesOfSlice.hasInsightOfModel] as boolean,
           page = currentState[namesOfSlice.pageOfModel] as number,
           limit = currentState[namesOfSlice.limitOfModel] as number,
           sort = currentState[namesOfSlice.sortOfModel] as Sort,
@@ -1037,8 +1066,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           isQueryEqual(sort as unknown as object, sortOfModel as unknown as object)
         )
           return;
-        // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
-        const requestedAt = new Date();
         await loadList(
           this,
           () =>
@@ -1046,14 +1073,13 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               fetchList(queryArgs, (page - 1) * limit, fetchLimit, sort, { ...fetchPolicy, onError: initForm.onError }),
               insight === false ? null : fetchInsight(queryArgs, { ...fetchPolicy, onError: initForm.onError }),
             ]),
-          ([modelDataList, modelObjInsight]) => {
+          ([modelDataList, modelObjInsight], requestedAt) => {
             const modelList = new DataList(modelDataList);
-            const modelInsight =
-              modelObjInsight ??
-              (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
+            const modelInsight = insightOf(modelObjInsight, modelDataList);
             return {
               [namesOfSlice.modelList]: modelList,
               [namesOfSlice.modelInsight]: modelInsight,
+              [namesOfSlice.hasInsightOfModel]: insight !== false,
               [namesOfSlice.modelInitList]: modelList,
               [namesOfSlice.modelInitAt]: requestedAt,
               ...lastPageFrom(modelInsight.count, limit),
@@ -1122,7 +1148,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           sortOfModel,
           options,
         );
-        if (!requests.isCurrent(ticket)) return;
+        if (!requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;
         this.set({
@@ -1140,7 +1166,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
         if (limitOfModel === limit) return;
         const skip = (pageOfModel - 1) * limitOfModel;
-        const page = Math.max(Math.floor((skip - 1) / limit) + 1, 1);
+        const page = limit > 0 ? Math.max(Math.floor((skip - 1) / limit) + 1, 1) : 1;
         await loadList(
           this,
           () => fetchList(queryArgsOfModel, (page - 1) * limit, limit, sortOfModel, options),
@@ -1172,6 +1198,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         );
         const limitOfModel = currentState[namesOfSlice.limitOfModel] as number;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
+        const hasInsightOfModel = currentState[namesOfSlice.hasInsightOfModel] as boolean;
         if (isQueryEqual(queryArgsOfModel, queryArgs)) {
           Logger.trace(`${namesOfSlice.queryArgsOfModel} store-level cache hit`);
           return;
@@ -1181,18 +1208,21 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           () =>
             Promise.all([
               fetchList(queryArgs, 0, limitOfModel, sortOfModel, options),
-              fetchInsight(queryArgs, options),
+              hasInsightOfModel === false ? null : fetchInsight(queryArgs, options),
             ]),
-          ([modelDataList, modelInsight]) => ({
-            [namesOfSlice.queryArgsOfModel]: queryArgs,
-            [namesOfSlice.modelList]: new DataList(modelDataList),
-            [namesOfSlice.modelInsight]: modelInsight,
-            ...lastPageFrom(modelInsight.count, limitOfModel),
-            [namesOfSlice.pageOfModel]: 1,
-            [namesOfSlice.isCumulativeOfModel]: false,
-            ...hasMoreFrom(modelDataList, limitOfModel),
-            [namesOfSlice.modelSelection]: new Map(),
-          }),
+          ([modelDataList, modelObjInsight]) => {
+            const modelInsight = insightOf(modelObjInsight, modelDataList);
+            return {
+              [namesOfSlice.queryArgsOfModel]: queryArgs,
+              [namesOfSlice.modelList]: new DataList(modelDataList),
+              [namesOfSlice.modelInsight]: modelInsight,
+              ...lastPageFrom(modelInsight.count, limitOfModel),
+              [namesOfSlice.pageOfModel]: 1,
+              [namesOfSlice.isCumulativeOfModel]: false,
+              ...hasMoreFrom(modelDataList, limitOfModel),
+              [namesOfSlice.modelSelection]: new Map(),
+            };
+          },
         );
       },
       [namesOfSlice.setSortOfModel]: async function (this: SetGet, sort: Sort, options?: FetchPolicy) {
@@ -1254,6 +1284,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
                 row: light as unknown as LiveSortableRow,
                 page: currentState[namesOfSlice.pageOfModel] as number,
                 limit,
+                count: modelInsight.count,
                 cumulative: isCumulative,
                 hasMore: currentState[namesOfSlice.hasMoreOfModel] as boolean,
                 sortKey: String(currentState[namesOfSlice.sortOfModel]),
@@ -1274,18 +1305,25 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           ...staleAt,
         });
       },
-      // Opens this slice's live room for `queryArgs`, or closes it on null.
+      // Points this slice's live room at `queryArgs` for one more watcher, or lets one go on null; the last one closes it.
       [namesOfSlice.watchLiveModel]: function (this: SetGet, queryArgs: unknown[] | null) {
         if (!slice.live) return;
-        const args = queryArgs ? expandQueryArgs(normalizeQueryArgs(queryArgs, slice.args), slice.args) : null;
-        // A filled `pauseOn` argument closes the room as null does, until it is cleared.
-        const paused = !!args && livePauseIdxs.some((idx) => args[idx] != null);
-        const signature = args && !paused ? JSON.stringify(args) : null;
-        if (liveWatch && signature !== liveWatch.signature) {
-          liveWatch.dispose();
-          liveWatch = null;
+        if (!queryArgs) {
+          liveWatchers = Math.max(liveWatchers - 1, 0);
+          //? A tick later, as StrictMode or a remount lets go and watches again within one commit.
+          if (!liveWatchers)
+            queueMicrotask(() => {
+              if (!liveWatchers) closeLiveWatch();
+            });
+          return;
         }
-        if (!args || paused || liveWatch) return;
+        liveWatchers += 1;
+        const args = expandQueryArgs(normalizeQueryArgs(queryArgs, slice.args), slice.args);
+        // A filled `pauseOn` argument closes the room as null does, until it is cleared.
+        const paused = livePauseIdxs.some((idx) => args[idx] != null);
+        const signature = paused ? null : JSON.stringify(args);
+        if (liveWatch && signature !== liveWatch.signature) closeLiveWatch();
+        if (!signature || liveWatch) return;
         const self = this as unknown as DynamicRecord;
         const apply = self[namesOfSlice.applyLiveModel] as (event: unknown) => void;
         const refresh = self[namesOfSlice.refreshModel] as (form: object) => Promise<void>;
@@ -1299,7 +1337,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           // The events missed while the socket was down are gone, so the list is refetched rather than patched.
           onResync: () => void refresh({ invalidate: true }),
         });
-        liveWatch = { signature: signature ?? "", dispose };
+        liveWatch = { signature, dispose };
+        // Rows older than the room's last close missed the events sent while it was closed, as on a page shown again.
+        const modelInitAt = (this.get() as { [key: string]: any })[namesOfSlice.modelInitAt] as Date;
+        if (liveClosed?.signature === signature && modelInitAt < liveClosed.at)
+          this.set({ [namesOfSlice.modelStaleAt]: new Date() });
       },
     };
     return Object.assign(acc, singleSliceAction);
