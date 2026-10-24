@@ -10,6 +10,7 @@ import {
   defaultPageState,
   getAuthToken,
   getPathInfo,
+  Href,
   type Location,
   type LocationState,
   type NavigationIntent,
@@ -23,6 +24,7 @@ import {
   type TransitionType,
   type UseCsrTransition,
 } from "akanjs/client";
+import { isNativeApp, openExternalUrl } from "akanjs/client/native";
 import { clamp, parseAkanI18nEnv, parseBasePaths } from "akanjs/common";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CsrStack } from "./CsrStack";
@@ -1081,6 +1083,16 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       (href: string, { scrollToTop }: RouteOptions = {}) => {
         const location = getCurrentLocation();
         debugFrame(`router.${kind}`, { from: location.href, to: href, scrollToTop });
+        //? Another document, which pushState refuses. The tab leaves rather than opening a new one as `CsrLink` does: a
+        //? redirect has no click for a popup blocker to let through. A native app keeps `CsrLink`'s in-app browser.
+        if (Href.hasWebScheme(href)) {
+          const target = Href.toExternalUrl(href, document.baseURI);
+          if (isNativeApp())
+            void openExternalUrl(target).catch(() => window.open(target, "_blank", "noopener,noreferrer"));
+          else if (kind === "push") csrLocation.assign(target);
+          else window.location.replace(target);
+          return;
+        }
         if (pendingNavigation.current?.to.href === href) return;
         //? A replace takes the place of the move it cancels, as a guard refusing the page on its way redirects.
         const cancelled = cancelPendingNavigation();

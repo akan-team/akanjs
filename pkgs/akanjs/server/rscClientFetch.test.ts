@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   AKAN_RSC_CURRENT_STATE_HEADER,
+  AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
@@ -110,6 +111,33 @@ describe("fetchRscNavigationResponse", () => {
     expect(requests[1].headers.get(AKAN_RSC_CURRENT_STATE_HEADER)).toBeNull();
   });
 
+  test("follows a replace redirect with a push while the navigation owns no entry yet", async () => {
+    globalThis.fetch = (async () =>
+      new Response(null, {
+        headers: { "X-Akan-Redirect": "/signin", "X-Akan-Redirect-Method": "replace" },
+      })) as unknown as typeof fetch;
+    const followed: { href: string; replace?: boolean }[] = [];
+    const navigate = (href: string, options?: { replace?: boolean }) => {
+      followed.push({ href, replace: options?.replace });
+    };
+
+    await fetchRscNavigationResponse("https://example.test/private", {
+      currentRouterState: null,
+      navigate,
+      replaceOnRedirect: () => false,
+    });
+    await fetchRscNavigationResponse("https://example.test/private", {
+      currentRouterState: null,
+      navigate,
+      replaceOnRedirect: () => true,
+    });
+
+    expect(followed).toEqual([
+      { href: "/signin", replace: false },
+      { href: "/signin", replace: true },
+    ]);
+  });
+
   test("reports a 404 as not-found and never hands its body to the decoder", async () => {
     let bodyCancelled = false;
     globalThis.fetch = (async () =>
@@ -130,5 +158,43 @@ describe("fetchRscNavigationResponse", () => {
 
     expect(result.type).toBe("not-found");
     expect(bodyCancelled).toBe(true);
+  });
+
+  test("hands a rendered not-found view to the decoder whole, even when it carries a patch decision", async () => {
+    let bodyCancelled = false;
+    const requests: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      requests.push(String(input));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('0:"vault missing"\n'));
+            controller.close();
+          },
+          cancel() {
+            bodyCancelled = true;
+          },
+        }),
+        {
+          status: 404,
+          headers: {
+            "Content-Type": RSC_CONTENT_TYPE,
+            [AKAN_RSC_NOT_FOUND_HEADER]: "view",
+            "X-Akan-Rsc-Partial": "patch",
+            [AKAN_RSC_PATCH_START_INDEX_HEADER]: "1",
+            [AKAN_RSC_PATCH_SEGMENT_PATH_HEADER]: encodeAkanRscPatchSegmentPath(["root:/:0", "page:/vault:1"]),
+            [AKAN_RSC_PATCH_START_SEGMENT_HEADER]: "page:/vault:1",
+          },
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await fetchRscNavigationResponse("https://example.test/vault", {
+      currentRouterState: makeRouterState("https://example.test/docs/intro", "/docs/intro"),
+    });
+
+    expect(result).toMatchObject({ type: "response", notFound: true });
+    expect(bodyCancelled).toBe(false);
+    expect(requests).toHaveLength(1);
   });
 });

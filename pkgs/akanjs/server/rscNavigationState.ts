@@ -305,7 +305,7 @@ function isSupportedSinglePagePatch(targetRouterState: AkanRouterStateV1, patch:
 }
 
 interface CommitRscNavigationInput<T> {
-  cache: RscNavigationCache<T>;
+  cache?: RscNavigationCache<T>;
   href: string;
   thenable: T;
   maxEntries: number;
@@ -325,7 +325,7 @@ export function commitRscNavigation<T>({
   updateHistory,
   requestScroll,
 }: CommitRscNavigationInput<T>): void {
-  rememberRscCacheEntry(cache, href, thenable, maxEntries);
+  if (cache) rememberRscCacheEntry(cache, href, thenable, maxEntries);
   startTransition(() => {
     commitThenable(thenable);
     updateHistory?.();

@@ -178,6 +178,24 @@ describe("CsrStack across an account change", () => {
     expect(keysOf(history)).toEqual(["1:i2:prev", "i3:current"]);
   });
 
+  test("a token refreshed for the same account keeps every page, and one for another account draws them again", () => {
+    const encode = (part: object) => Buffer.from(JSON.stringify(part)).toString("base64url");
+    const jwtOf = (claims: object) => `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}.sig`;
+    const account = { appName: "app", environment: "local", sid: "s1", self: { id: "u1", roles: ["user"] } };
+    const history = historyOf([at(tab, "t1"), at(item, "i1"), at(item, "i2"), at(item, "i3")]);
+    expect(CsrStack.redrawFor(history, history.locations[3], jwtOf({ ...account, iat: 1, exp: 2, jti: "a" }))).toBe(
+      false,
+    );
+    expect(CsrStack.redrawFor(history, history.locations[3], jwtOf({ jti: "b", exp: 4, iat: 3, ...account }))).toBe(
+      false,
+    );
+    expect(keysOf(history)).toEqual(["/tab:cached", "i1:cached", "i2:prev", "i3:current"]);
+
+    const other = { ...account, sid: "s2", self: { id: "u2", roles: ["user"] } };
+    expect(CsrStack.redrawFor(history, history.locations[3], jwtOf({ ...other, iat: 5, exp: 6, jti: "c" }))).toBe(true);
+    expect(keysOf(history)).toEqual(["1:i2:prev", "i3:current"]);
+  });
+
   test("the page on screen keeps its key through the transition that takes it off, and is drawn again after", () => {
     const history = historyOf([at(item, "i1"), at(item, "i2")]);
     CsrStack.redrawFor(history, history.locations[1], "someone");
