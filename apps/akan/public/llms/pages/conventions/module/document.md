@@ -337,7 +337,7 @@ The second argument of `schema.index()`:
 
 - where (query): Indexes only the rows that match. With `unique`, `{ removedAt: null }` lets a removed document give its value back.
 
-- name (string, default <table>_<fields>_<position>): Fixes the index name. The default depends on the index's position in `_onSchema`. Naming a shipped index renames it and leaves the old one built, so a changed index keeps the name it has.
+- name (string, default <table>_<fields>): Fixes the index name. The default joins the table and field names, with `_unique` for a unique index. Naming a shipped index builds it again under the new name and drops the old one.
 
 **Search is not an index.** `schema.index()` builds plain lookup indexes. The value `"text"` is an old alias for a plain index, not search; declare a `text` role on the field instead.
 
@@ -345,7 +345,7 @@ The second argument of `schema.index()`:
 
 **A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()`, `.where(query)` and ends with `.done()`.
 
-**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Give a new index a `name`, which fixes only its own name: the indexes made for named sorts come after every `_onSchema` index, so adding any index, named or not, renames them, and the next boot builds them again beside the old ones.
+**Leave a shipped index as written.** Every live database remembers its definition, so changing it, even `"text"` to `1` or adding `unique`, breaks them all. Adding or removing another index renames none of them, and an index you delete from `_onSchema` is dropped on the next boot.
 
 Hooks
 

@@ -525,10 +525,10 @@ export default page()
       {
         key: "name",
         type: "string",
-        default: "<table>_<fields>_<position>",
+        default: "<table>_<fields>",
         desc: l.trans({
-          en: "Fixes the index name. The default depends on the index's position in `_onSchema`. Naming a shipped index renames it and leaves the old one built, so a changed index keeps the name it has.",
-          ko: "인덱스 이름을 고정합니다. 기본 이름은 `_onSchema` 안에서의 순서에 따라 달라집니다. 배포된 인덱스에 이름을 붙이면 이름이 바뀌고 옛 인덱스는 그대로 남으므로, 정의를 바꿀 때도 지금 이름을 유지합니다.",
+          en: "Fixes the index name. The default joins the table and field names, with `_unique` for a unique index. Naming a shipped index builds it again under the new name and drops the old one.",
+          ko: "인덱스 이름을 고정합니다. 기본 이름은 테이블과 필드 이름을 잇고, unique 인덱스에는 `_unique`를 붙입니다. 배포된 인덱스에 이름을 붙이면 새 이름으로 다시 만들고 옛 인덱스는 지웁니다.",
         }),
       },
     ];
@@ -2212,18 +2212,16 @@ export class StoryModel extends into(
                   <span>
                     <strong>Leave a shipped index as written.</strong> Every live database remembers its definition, so
                     changing it, even <code>"text"</code> to <code>1</code> or adding <code>unique</code>, breaks them
-                    all. Give a new index a <code>name</code>, which fixes only its own name: the indexes made for named
-                    sorts come after every <code>_onSchema</code> index, so adding any index, named or not, renames
-                    them, and the next boot builds them again beside the old ones.
+                    all. Adding or removing another index renames none of them, and an index you delete from{" "}
+                    <code>_onSchema</code> is dropped on the next boot.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>배포된 인덱스는 적힌 그대로 둡니다.</strong> 운영 중인 데이터베이스가 그 정의를 기억하므로,{" "}
                     <code>"text"</code>를 <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도 모두 깨집니다.
-                    새 인덱스에는 <code>name</code>을 붙이되, 그것은 그 인덱스 자신의 이름만 고정합니다. 이름 붙인
-                    정렬의 인덱스가 모든 <code>_onSchema</code> 인덱스 뒤에 오므로, 인덱스를 하나 더하면 이름이 있든
-                    없든 그 인덱스들의 이름이 바뀌고, 다음 부팅이 옛 인덱스를 둔 채 새 이름으로 다시 만듭니다.
+                    다른 인덱스를 더하거나 빼도 이름은 바뀌지 않으며, <code>_onSchema</code>에서 지운 인덱스는 다음
+                    부팅에서 삭제됩니다.
                   </span>
                 ),
               })}

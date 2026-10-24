@@ -5,6 +5,7 @@ import { Err } from "akanjs/dictionary";
 import {
   createDocumentId,
   type DatabaseModel,
+  type DocumentIndexDescriptor,
   type DocumentQuery,
   type DocumentSchema,
   type DocumentScopeOptions,
@@ -66,10 +67,15 @@ interface DeclaredIndex {
   next: string;
   metaKey: string;
   hash: string;
-  fields: Record<string, unknown>;
-  /** A key ordered neither 1 nor -1, as MongoDB's `"text"`: no SQL index here stands for it. */
-  unbuilt: boolean;
+  /** Every descriptor that declares this very index, so a copy an earlier release built under any of them serves it. */
+  hashes: Set<string>;
   create: (name: string, concurrently: boolean) => string;
+}
+
+interface StaleIndex {
+  name: string;
+  metaKey: string;
+  exists: boolean;
 }
 
 type StoredRow = Omit<SqliteDocumentRow, "id">;
@@ -117,8 +123,8 @@ export class SqlDocumentStore {
 
   async #ensure() {
     this.assertValidRefName(this.table);
-    const declared = await this.#declaredIndexes();
-    const indexes = declared.filter((index) => !index.unbuilt);
+    const indexes = await this.#declaredIndexes();
+    for (const index of this.schema.indexes) if (!SqlDocumentStore.#builds(index)) this.#warnUnbuilt(index);
     const createSchema = async () => {
       const db = this.owner.getConnection();
       const existed = !!this.owner.buildIndexConcurrently && !!(await this.owner.hasTable?.(this.table));
@@ -137,9 +143,10 @@ export class SqlDocumentStore {
         `table:${this.table}`,
         await descriptorHash({ table: this.table, columns: ["id", "createdAt", "updatedAt", "removedAt", "_doc"] }),
       );
-      for (const index of declared) if (index.unbuilt) await this.#skipUnbuiltIndex(index, indexes);
+      const { adopted, stale } = await this.#reconcileIndexes(indexes);
       const concurrent: (DeclaredIndex & { replace: boolean })[] = [];
       for (const index of indexes) {
+        if (adopted.has(index.name)) continue;
         const stored = await this.owner.getMeta(index.metaKey);
         const replace = !!stored && stored !== index.hash;
         if (replace)
@@ -158,52 +165,144 @@ export class SqlDocumentStore {
         else await db.execute(index.create(index.name, false));
         await this.owner.setMeta(index.metaKey, index.hash);
       }
-      return concurrent;
+      const drops: StaleIndex[] = [];
+      for (const index of stale) {
+        if (!index.exists) await this.owner.deleteMeta(index.metaKey);
+        else if (this.owner.dropIndexConcurrently) drops.push(index);
+        else await this.#dropStaleIndex(index);
+      }
+      return { concurrent, drops };
     };
-    const concurrent = this.owner.lockSchema ? await this.owner.lockSchema(createSchema) : await createSchema();
+    const { concurrent, drops } = this.owner.lockSchema
+      ? await this.owner.lockSchema(createSchema)
+      : await createSchema();
     for (const { name, next, create, replace, metaKey, hash } of concurrent) {
       await this.owner.buildIndexConcurrently?.({ name, next, create: (target) => create(target, true), replace });
       await this.owner.setMeta(metaKey, hash);
     }
+    for (const index of drops) await this.#dropStaleIndex(index);
     await this.owner.getSearchIndex()?.ensureRef(this.constant, this.database);
   }
 
-  // A skipped declaration keeps its position: a name carries its index, so filtering first would rename the rest.
+  static #builds(index: DocumentIndexDescriptor) {
+    return Object.values(index.fields).every((order) => order === 1 || order === -1);
+  }
+
+  // Named by what it indexes, never by position: a name that moved when an index was added rebuilt every later one.
   async #declaredIndexes(): Promise<DeclaredIndex[]> {
-    return await Promise.all(
-      this.schema.indexes.map(async (index, idx) => {
-        const declared = index.name ?? `${this.table}_${Object.keys(index.fields).map(toSafeRefName).join("_")}_${idx}`;
-        this.assertValidRefName(declared);
-        const name = this.dialect.indexName(declared);
-        const unbuilt = Object.values(index.fields).some((order) => order !== 1 && order !== -1);
-        const columns = unbuilt
-          ? []
-          : Object.keys(index.fields).map((path) => ({
-              path,
-              expr: this.compiler.fieldExpr(path),
-              isArray: this.compiler.isArrayPath(path),
-            }));
-        const predicate = unbuilt || !index.where ? undefined : this.#indexPredicate(index.where, name);
+    const candidates = await Promise.all(
+      this.schema.indexes.filter(SqlDocumentStore.#builds).map(async (descriptor) => {
+        const paths = Object.keys(descriptor.fields);
+        const base =
+          descriptor.name ??
+          [this.table, ...paths.map(toSafeRefName), ...(descriptor.unique ? ["unique"] : [])].join("_");
+        const columns = paths.map((path) => ({
+          path,
+          expr: this.compiler.fieldExpr(path),
+          isArray: this.compiler.isArrayPath(path),
+        }));
+        const predicate = descriptor.where ? this.#indexPredicate(descriptor.where, base) : undefined;
+        const create = (target: string, concurrently: boolean) =>
+          this.dialect.createIndex({
+            name: target,
+            table: this.table,
+            unique: !!descriptor.unique,
+            columns,
+            concurrently,
+            where: predicate,
+          });
+        const definition = create("", false);
         return {
-          name,
-          next: this.dialect.indexName(`${declared}_next`),
-          metaKey: `index:${this.table}:${name}`,
+          named: !!descriptor.name,
+          base,
+          definition,
           // Hashed with the predicate: before a `where` reached the DDL, the same descriptor built a whole index.
-          hash: await descriptorHash(predicate ? { ...index, predicate } : index),
-          fields: index.fields,
-          unbuilt,
-          create: (target: string, concurrently: boolean) =>
-            this.dialect.createIndex({
-              name: target,
-              table: this.table,
-              unique: !!index.unique,
-              columns,
-              concurrently,
-              where: predicate,
-            }),
+          hash: await descriptorHash(predicate ? { ...descriptor, predicate } : descriptor),
+          suffix: (await descriptorHash(definition)).slice(0, 8),
+          create,
         };
       }),
     );
+    const definitionsOf = new Map<string, Set<string>>();
+    for (const { base, definition } of candidates)
+      definitionsOf.set(base, (definitionsOf.get(base) ?? new Set()).add(definition));
+    const namedDefinitions = new Set(candidates.filter(({ named }) => named).map(({ definition }) => definition));
+    const indexes = new Map<string, DeclaredIndex>();
+    for (const { named, base, definition, hash, suffix, create } of candidates) {
+      if (!named && namedDefinitions.has(definition)) continue;
+      // Two different indexes claiming one name: a named one keeps it, an automatic one adds what tells it apart.
+      const shared = (definitionsOf.get(base)?.size ?? 0) > 1;
+      if (
+        named &&
+        shared &&
+        candidates.some((other) => other.named && other.base === base && other.definition !== definition)
+      )
+        throw new Error(`Two different indexes on ${this.table} are both named ${base}`);
+      const declared = named || !shared ? base : `${base}_${suffix}`;
+      this.assertValidRefName(declared);
+      const name = this.dialect.indexName(declared);
+      const existing = indexes.get(name);
+      if (existing) {
+        existing.hashes.add(hash);
+        continue;
+      }
+      indexes.set(name, {
+        name,
+        next: this.dialect.indexName(`${declared}_next`),
+        metaKey: `index:${this.table}:${name}`,
+        hash,
+        hashes: new Set([hash]),
+        create,
+      });
+    }
+    return [...indexes.values()];
+  }
+
+  // Only an index whose meta key says an earlier boot built it is adopted or dropped; one made by hand has none.
+  async #reconcileIndexes(indexes: DeclaredIndex[]) {
+    const prefix = `index:${this.table}:`;
+    const { sql, params } = this.dialect.indexesOf(this.table);
+    const rows = await this.owner
+      .getConnection()
+      .prepare(sql)
+      .all<{ name: string; valid: unknown }>(...params);
+    const physical = new Map(rows.map(({ name, valid }) => [name, !!valid]));
+    const declared = new Set(indexes.map(({ name }) => name));
+    const recorded = (await this.owner.listMeta(prefix)).map(({ key, value }) => ({
+      name: key.slice(prefix.length),
+      metaKey: key,
+      hash: value,
+    }));
+    const recordedNames = new Set(recorded.map(({ name }) => name));
+    const undeclared = recorded.filter(({ name }) => !declared.has(name)).sort((a, b) => a.name.localeCompare(b.name));
+    // SQLite cannot rename an index, so a copy an earlier release built under its positional name serves on unrebuilt.
+    const kept = new Set<string>();
+    const adopted = new Set<string>();
+    for (const index of indexes) {
+      if (recordedNames.has(index.name) || physical.has(index.name)) continue;
+      const copy = undeclared.find(({ name, hash }) => !kept.has(name) && index.hashes.has(hash) && physical.get(name));
+      if (!copy) continue;
+      kept.add(copy.name);
+      adopted.add(index.name);
+    }
+    const stale: StaleIndex[] = undeclared
+      .filter(({ name }) => !kept.has(name))
+      .map(({ name, metaKey }) => ({ name, metaKey, exists: physical.has(name) }));
+    return { adopted, stale };
+  }
+
+  // An index no declaration builds costs only its upkeep on writes, so failing to drop it must not fail the boot.
+  async #dropStaleIndex({ name, metaKey }: StaleIndex) {
+    try {
+      if (this.owner.dropIndexConcurrently) await this.owner.dropIndexConcurrently(name);
+      else await this.owner.getConnection().execute(`DROP INDEX IF EXISTS ${quoteIdent(name)}`);
+      await this.owner.deleteMeta(metaKey);
+      SqlDocumentStore.#logger.info(`Dropped index ${name} on ${this.table}, which no declaration builds any more`);
+    } catch (error) {
+      SqlDocumentStore.#logger.warn(
+        `Index ${name} on ${this.table} is no longer declared, and dropping it failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   #indexPredicate(where: DocumentQuery, name: string) {
@@ -213,21 +312,13 @@ export class SqlDocumentStore {
     return sql === "1 = 1" ? undefined : inlineParams(sql, params);
   }
 
-  // Dropped only on proof that this very descriptor built it (the hash `ensure` stored) and no built index has the name.
-  async #skipUnbuiltIndex(index: DeclaredIndex, built: DeclaredIndex[]) {
-    const dropped =
-      (await this.owner.getMeta(index.metaKey)) === index.hash && !built.some(({ name }) => name === index.name);
-    if (dropped) {
-      await this.owner.getConnection().execute(`DROP INDEX IF EXISTS ${quoteIdent(index.name)}`);
-      // Emptied, not deleted (the owner has no delete): an empty hash reads as no index, so no later boot drops again.
-      await this.owner.setMeta(index.metaKey, "");
-    }
+  #warnUnbuilt(index: DocumentIndexDescriptor) {
     const paths = Object.keys(index.fields);
     SqlDocumentStore.#logger.warn(
       `Index ${JSON.stringify(index.fields)} on ${this.table} is not built: only 1 and -1 order a key, and "text" is ` +
         `MongoDB's text index, which as a B-tree would copy each whole value and fail long writes on Postgres. Search ` +
         `${paths.join(", ")} through the full-text role, field(String, { text: "desc" }), or declare ` +
-        `{ ${paths[0]}: 1 } to look it up by equality.${dropped ? ` Dropped ${index.name}, which an earlier boot built from it.` : ""}`,
+        `{ ${paths[0]}: 1 } to look it up by equality.`,
     );
   }
 

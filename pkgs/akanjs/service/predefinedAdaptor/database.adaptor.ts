@@ -5,7 +5,7 @@ import path from "node:path";
 import type { PromiseOrObject } from "akanjs/base";
 import type { ConstantModel } from "akanjs/constant";
 import type { DatabaseModel, DocumentSchema, SchemaOf } from "akanjs/document";
-import type { Sql } from "postgres";
+import type { ReservedSql, Sql } from "postgres";
 import { adapt } from "../adapt";
 import { ScheduleAdaptorRole } from "./role.adaptor";
 import {
@@ -184,6 +184,16 @@ export class SqliteDatabase
         `INSERT INTO "_akan_meta" ("key", "value", "updatedAt") VALUES (?, ?, ?) ON CONFLICT("key") DO UPDATE SET "value" = excluded."value", "updatedAt" = excluded."updatedAt"`,
       )
       .run(key, value, Date.now());
+  }
+
+  listMeta(prefix: string) {
+    return this.#db
+      .query(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
+      .all(prefix.length, prefix) as { key: string; value: string }[];
+  }
+
+  async deleteMeta(key: string) {
+    await this.#client.prepare(`DELETE FROM "_akan_meta" WHERE "key" = ?`).run(key);
   }
 
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
@@ -442,6 +452,16 @@ export class PostgresDatabase
       .run(key, value, Date.now());
   }
 
+  async listMeta(prefix: string) {
+    return await this.getConnection()
+      .prepare(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, $1) = $2`)
+      .all<{ key: string; value: string }>(prefix.length, prefix);
+  }
+
+  async deleteMeta(key: string) {
+    await this.getConnection().prepare(`DELETE FROM "_akan_meta" WHERE "key" = $1`).run(key);
+  }
+
   // `BEGIN` through the pool stays open on whichever connection ran it; `begin()` reserves one for the transaction.
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
     const active = this.#transaction.getStore();
@@ -497,37 +517,50 @@ export class PostgresDatabase
   }
 
   // `CREATE INDEX` blocks writes; `CONCURRENTLY` cannot run in a transaction, and a failed build leaves an invalid
-  // index `IF NOT EXISTS` keeps. A per-index session lock replaces the schema lock, which would stall other schemas.
+  // index `IF NOT EXISTS` keeps.
   async buildIndexConcurrently({ name, next, create, replace }: ConcurrentIndexBuild) {
+    await this.#underIndexLock(name, async (reserved) => {
+      const valid = async (index: string) =>
+        (
+          await reserved.unsafe(`SELECT indisvalid AS "valid" FROM pg_index WHERE indexrelid = to_regclass($1)`, [
+            quoteIdent(index),
+          ])
+        ).at(0)?.valid as boolean | undefined;
+      if (!replace) {
+        const state = await valid(name);
+        if (state) return;
+        if (state === false) await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(name)}`);
+        await reserved.unsafe(create(name));
+        return;
+      }
+      // Built beside the old one and swapped in, so the rows refusing the new definition leaves the old in place.
+      await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(next)}`);
+      try {
+        await reserved.unsafe(create(next));
+      } catch (error) {
+        await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(next)}`);
+        throw error;
+      }
+      await reserved.unsafe(
+        `DROP INDEX IF EXISTS ${quoteIdent(name)}; ALTER INDEX ${quoteIdent(next)} RENAME TO ${quoteIdent(name)}`,
+      );
+    });
+  }
+
+  async dropIndexConcurrently(name: string) {
+    await this.#underIndexLock(name, async (reserved) => {
+      await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(name)}`);
+    });
+  }
+
+  // A per-index session lock replaces the schema lock, which would stall other schemas.
+  async #underIndexLock(name: string, fn: (reserved: ReservedSql) => Promise<void>) {
     const reserved = await this.#sql.reserve();
     const key = `akan:index:${name}`;
-    const valid = async (index: string) =>
-      (
-        await reserved.unsafe(`SELECT indisvalid AS "valid" FROM pg_index WHERE indexrelid = to_regclass($1)`, [
-          quoteIdent(index),
-        ])
-      ).at(0)?.valid as boolean | undefined;
     try {
       await reserved.unsafe(`SELECT pg_advisory_lock(hashtext(current_schema() || $1))`, [key]);
       try {
-        if (!replace) {
-          const state = await valid(name);
-          if (state) return;
-          if (state === false) await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(name)}`);
-          await reserved.unsafe(create(name));
-          return;
-        }
-        // Built beside the old one and swapped in, so the rows refusing the new definition leaves the old in place.
-        await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(next)}`);
-        try {
-          await reserved.unsafe(create(next));
-        } catch (error) {
-          await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(next)}`);
-          throw error;
-        }
-        await reserved.unsafe(
-          `DROP INDEX IF EXISTS ${quoteIdent(name)}; ALTER INDEX ${quoteIdent(next)} RENAME TO ${quoteIdent(name)}`,
-        );
+        await fn(reserved);
       } finally {
         await reserved.unsafe(`SELECT pg_advisory_unlock(hashtext(current_schema() || $1))`, [key]);
       }

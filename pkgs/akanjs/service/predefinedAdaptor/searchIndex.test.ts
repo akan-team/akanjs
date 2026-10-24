@@ -107,6 +107,14 @@ class TestOwner {
       )
       .run(key, value, Date.now());
   }
+  listMeta(prefix: string) {
+    return this.db
+      .query(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
+      .all(prefix.length, prefix) as { key: string; value: string }[];
+  }
+  async deleteMeta(key: string) {
+    this.db.query(`DELETE FROM "_akan_meta" WHERE "key" = ?`).run(key);
+  }
 }
 
 interface DocInput {
@@ -151,6 +159,8 @@ const storeOwnerFor = (index: SearchIndex) => ({
   getSearchIndex: () => index,
   getMeta: (key: string) => owner.getMeta(key),
   setMeta: (key: string, value: string) => owner.setMeta(key, value),
+  listMeta: (prefix: string) => owner.listMeta(prefix),
+  deleteMeta: (key: string) => owner.deleteMeta(key),
   afterCommit: async (fn: () => unknown) => {
     await fn();
   },

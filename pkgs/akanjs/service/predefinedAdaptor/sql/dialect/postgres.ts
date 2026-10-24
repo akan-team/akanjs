@@ -173,6 +173,13 @@ export class PostgresDialect implements SqlDialect {
     // `NULLS FIRST` as `orderTerm` sorts: an ascending sort scans the index forward, a descending one backward.
     return `${create} (${columns.map(({ expr }) => `${expr} NULLS FIRST`).join(", ")})${predicate}`;
   }
+  // A concurrent build that failed leaves its index behind, marked invalid.
+  indexesOf(table: string): SqlFrag {
+    return {
+      sql: `SELECT c.relname AS "name", i.indisvalid AS "valid" FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indrelid = to_regclass(?) AND NOT i.indisprimary`,
+      params: [quoteIdent(table)],
+    };
+  }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
     // Reads target the param-free original `_doc`, so folding never duplicates placeholders; `acc` is only written.

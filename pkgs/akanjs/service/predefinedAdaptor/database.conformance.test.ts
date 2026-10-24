@@ -387,7 +387,7 @@ const describeDriver = (kind: SqlDriverKind) => {
         driver,
         idxConstant,
         idxDatabase,
-        new DocumentSchema().index({ [longField]: 1 }).index({ [longField]: -1 }),
+        new DocumentSchema().index({ [longField]: 1 }).index({ [longField]: 1 }, { unique: true }),
       );
       expect(await indexNamesOf(driver, "idxConf")).toHaveLength(2);
     });
@@ -456,7 +456,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       const [index] = await driver.database
         .getConnection()
         .prepare(
-          `SELECT indexdef AS "definition" FROM pg_indexes WHERE tablename = 'dialectConf' AND indexname LIKE '%_tags_%'`,
+          `SELECT indexdef AS "definition" FROM pg_indexes WHERE tablename = 'dialectConf' AND indexname = 'dialectConf_tags'`,
         )
         .all<{ definition: string }>();
       expect(index?.definition).toContain("USING gin");
@@ -470,7 +470,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_code"]);
     });
 
-    test("a MongoDB text index builds nothing and warns, the next index keeps its name, and a long value is written", async () => {
+    test("a MongoDB text index builds nothing and warns, and a long value is written", async () => {
       const warnings: string[] = [];
       const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "warn" });
       try {
@@ -480,12 +480,12 @@ const describeDriver = (kind: SqlDriverKind) => {
           confDatabase,
           new DocumentSchema().index({ note: "text" }).index({ status: 1 }),
         );
-        expect(await validIndexNamesOf(driver, "dialectConf")).toEqual(["dialectConf_status_1"]);
+        expect(await validIndexNamesOf(driver, "dialectConf")).toEqual(["dialectConf_status"]);
         const textWarnings = warnings.filter((message) => message.includes("MongoDB's text index"));
         expect(textWarnings).toHaveLength(1);
         expect(textWarnings[0]).toContain('Index {"note":"text"} on dialectConf is not built');
         expect(textWarnings[0]).toContain('field(String, { text: "desc" })');
-        expect(textWarnings[0]).not.toContain("Dropped");
+
         const long = Array.from(crypto.getRandomValues(new Uint8Array(6000)), (byte) => byte.toString(16)).join("");
         await store.create({ title: "long", note: long });
         expect(titlesOf(await store.find({ note: long }))).toEqual(["long"]);
@@ -494,7 +494,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("the B-tree an earlier boot built from a text index is dropped on proof, and no other index", async () => {
+    test("the B-tree an earlier boot built from a text index is dropped, and an index without a meta key is kept", async () => {
       const legacy = await storeOf(driver, confConstant, confDatabase);
       const connection = driver.database.getConnection();
       const legacyIndex = (name: string, path: string) =>
@@ -513,14 +513,14 @@ const describeDriver = (kind: SqlDriverKind) => {
       await connection.execute(legacyIndex("dialectConf_title_1", "title"));
 
       const warnings: string[] = [];
-      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "warn" });
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
       const textIndexes = () => new DocumentSchema().index({ note: "text" }).index({ title: "text" });
       try {
         await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
         expect(await validIndexNamesOf(driver, "dialectConf")).toEqual(["dialectConf_title_1"]);
-        expect(await driver.database.getMeta("index:dialectConf:dialectConf_note_0")).toBe("");
-        expect(warnings.filter((message) => message.includes("Dropped dialectConf_note_0"))).toHaveLength(1);
-        expect(warnings.filter((message) => message.includes("Dropped dialectConf_title_1"))).toHaveLength(0);
+        expect(await driver.database.getMeta("index:dialectConf:dialectConf_note_0")).toBeUndefined();
+        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_note_0"))).toHaveLength(1);
+        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_title_1"))).toHaveLength(0);
 
         warnings.length = 0;
         await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
@@ -529,13 +529,121 @@ const describeDriver = (kind: SqlDriverKind) => {
 
         await storeOf(await sibling(), confConstant, confDatabase, new DocumentSchema().index({ note: 1 }));
         expect((await validIndexNamesOf(driver, "dialectConf")).sort()).toEqual([
-          "dialectConf_note_0",
+          "dialectConf_note",
           "dialectConf_title_1",
         ]);
         expect(warnings.filter((message) => message.includes("changed its descriptor"))).toHaveLength(0);
       } finally {
         removeSink();
       }
+    });
+
+    test("[DDL-6] an index declared before the others renames none of them", async () => {
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        await storeOf(driver, uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1 }));
+        const grown = () => new DocumentSchema().index({ label: 1 }).index({ code: 1 });
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, grown());
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(["uniqueConf_code", "uniqueConf_label"]);
+        expect(warnings.filter((message) => message.includes("Dropped") || message.includes("changed"))).toEqual([]);
+      } finally {
+        removeSink();
+      }
+    });
+
+    test("[DDL-6] an index no declaration builds any more is dropped, and one made by hand is kept", async () => {
+      const store = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }).index({ label: 1 }),
+      );
+      await driver.database.getConnection().execute(
+        driver.dialect.createIndex({
+          name: "uniqueConf_byHand",
+          table: "uniqueConf",
+          unique: false,
+          columns: [{ path: "label", expr: store.compiler.fieldExpr("label"), isArray: false }],
+        }),
+      );
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1 }));
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(["uniqueConf_byHand", "uniqueConf_code"]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeUndefined();
+    });
+
+    test("[DDL-6] the positional copies an earlier release built serve on, and their duplicates are dropped", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const legacyIndex = async (name: string, path: string) => {
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique: false,
+            columns: [{ path, expr: legacy.compiler.fieldExpr(path), isArray: false }],
+          }),
+        );
+        await driver.database.setMeta(`index:uniqueConf:${name}`, await descriptorHash({ fields: { [path]: 1 } }));
+      };
+      // What a release naming indexes by position left once an index was added in front: a copy under each position.
+      await legacyIndex("uniqueConf_code_0", "code");
+      await legacyIndex("uniqueConf_label_1", "label");
+      await legacyIndex("uniqueConf_code_2", "code");
+      await driver.database.setMeta(
+        "index:uniqueConf:uniqueConf_label_3",
+        await descriptorHash({ fields: { label: 1 } }),
+      );
+
+      const current = () => new DocumentSchema().index({ code: 1 }).index({ label: 1 });
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_code_0",
+        "uniqueConf_label_1",
+      ]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_2")).toBeUndefined();
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label_3")).toBeUndefined();
+
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_code_0",
+        "uniqueConf_label_1",
+      ]);
+
+      const changed = new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, changed);
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_code_0",
+        "uniqueConf_label_unique",
+      ]);
+    });
+
+    test("[DDL-6] two declarations of one index build it once, and one a named index differs from takes a suffix", async () => {
+      await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema()
+          .index({ code: 1 })
+          .index({ code: -1 })
+          .index({ code: 1 }, { unique: true, name: "uniqueConf_code" }),
+      );
+      const names = (await validIndexNamesOf(driver, "uniqueConf")).sort();
+      expect(names).toHaveLength(2);
+      expect(names[0]).toBe("uniqueConf_code");
+      expect(names[1]).toMatch(/^uniqueConf_code_[0-9a-f]{8}$/);
+    });
+
+    test("two different indexes given one name refuse to boot", async () => {
+      await expect(
+        storeOf(
+          driver,
+          uniqueConstant,
+          uniqueDatabase,
+          new DocumentSchema()
+            .index({ code: 1 }, { name: "uniqueConf_key" })
+            .index({ label: 1 }, { name: "uniqueConf_key" }),
+        ),
+      ).rejects.toThrow("both named uniqueConf_key");
     });
 
     test("[DDL-4] a rebuild the rows refuse leaves the old index in place", async () => {

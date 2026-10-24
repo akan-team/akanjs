@@ -290,6 +290,14 @@ class TestDatabaseOwner implements DocumentDatabaseOwner {
     this.meta.set(key, value);
   }
 
+  listMeta(prefix: string) {
+    return [...this.meta].filter(([key]) => key.startsWith(prefix)).map(([key, value]) => ({ key, value }));
+  }
+
+  async deleteMeta(key: string) {
+    this.meta.delete(key);
+  }
+
   async afterCommit(fn: () => PromiseOrObject<void>) {
     this.afterCommitCallbacks.push(fn);
     await fn();

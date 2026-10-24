@@ -94,6 +94,13 @@ export class SqliteDialect implements SqlDialect {
   createIndex({ name, table, unique, columns, where }: CreateIndexProps) {
     return `CREATE ${unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quoteIdent(name)} ON ${quoteIdent(table)} (${columns.map(({ expr }) => expr).join(", ")})${where ? ` WHERE ${where}` : ""}`;
   }
+  // An index SQLite makes for a UNIQUE or PRIMARY KEY constraint has no `sql`.
+  indexesOf(table: string): SqlFrag {
+    return {
+      sql: `SELECT "name", 1 AS "valid" FROM "sqlite_master" WHERE "type" = 'index' AND "tbl_name" = ? AND "sql" IS NOT NULL`,
+      params: [table],
+    };
+  }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);
     // Reads target the param-free original `_doc`, so every operator of one update sees the pre-update document.

@@ -194,6 +194,8 @@ export interface DocumentDatabaseOwner {
   getSearchIndex(): SearchIndex | null;
   getMeta(key: string): Promise<string | undefined> | string | undefined;
   setMeta(key: string, value: string): Promise<void>;
+  listMeta(prefix: string): Promise<{ key: string; value: string }[]> | { key: string; value: string }[];
+  deleteMeta(key: string): Promise<void>;
   afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
   transaction?<T>(fn: () => PromiseOrObject<T>): Promise<T>;
   /** Runs `fn` as the only schema change: Postgres races two `CREATE … IF NOT EXISTS` into a duplicate-key error. */
@@ -204,6 +206,8 @@ export interface DocumentDatabaseOwner {
   grantInsight?(table: string): Promise<void>;
   /** Builds an index on a table that already holds rows without blocking its writes; never inside a transaction. */
   buildIndexConcurrently?(build: ConcurrentIndexBuild): Promise<void>;
+  /** Drops an index without blocking its table's reads and writes; never inside a transaction. */
+  dropIndexConcurrently?(name: string): Promise<void>;
 }
 
 export const QUERY_OPERATOR_KEYS = queryOperatorKeys;
@@ -277,6 +281,8 @@ export interface SqlDialect {
   orderTerm(expr: string, direction: 1 | -1): string;
   indexName(name: string): string;
   createIndex(props: CreateIndexProps): string;
+  /** Rows `{ name, valid }`, one per index on `table` besides its primary key. */
+  indexesOf(table: string): SqlFrag;
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
   /** The stored document with these top-level fields replaced (value as JSON text) and these removed. */
   mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag;
