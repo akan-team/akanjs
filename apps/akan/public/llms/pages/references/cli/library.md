@@ -128,7 +128,7 @@ Install a ready-made library template such as `shared` or `util` into `libs/<lib
 
 - lib-name (String, required): Template name, such as `shared` or `util`; asked for if left out.
 
-- source: The installed `akanjs` package when it ships the library; otherwise the Akan.js GitHub repository.
+- source: The installed `akanjs` package when it ships the library; otherwise its version's tag in the Akan.js repository.
 
 - testing env: `env/env.server.testing.ts` is copied from `env.server.example.ts` only when it is missing.
 
