@@ -487,6 +487,25 @@ describe("signal generated store contract", () => {
     expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
   });
 
+  test("a refetch keeps the slice's `insight: false` until the next init", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class CountlessStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(CountlessStore);
+    const instance = new StoreInstance(makeRoot("countlessRoot", CountlessStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { insight: false });
+    expect(signal.calls.storeTestItemInsightByTitle).not.toHaveBeenCalled();
+
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    await instance.do.setQueryArgsOfStoreTestItemByTitle("Ben");
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenCalledTimes(3);
+    expect(signal.calls.storeTestItemInsightByTitle).not.toHaveBeenCalled();
+    expect((instance.get().storeTestItemInsightByTitle as { count: number }).count).toBe(2);
+
+    await instance.do.initStoreTestItemByTitle("Cyd");
+    expect(signal.calls.storeTestItemInsightByTitle).toHaveBeenCalledTimes(1);
+  });
+
   test("clears the list spinner when a page request fails", async () => {
     setupEnv();
     const signal = makeSignal();

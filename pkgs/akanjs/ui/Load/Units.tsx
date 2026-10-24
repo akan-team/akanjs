@@ -121,6 +121,7 @@ function Render<RefName extends string, Light extends { id: string }>({
       [namesOfSlice.modelInitAt]: initModelInitAt,
       [namesOfSlice.modelListLoading]: false,
       [namesOfSlice.modelInsight]: insight,
+      [namesOfSlice.hasInsightOfModel]: modelObjInsight !== null,
       [namesOfSlice.pageOfModel]: initPageOfModel,
       [namesOfSlice.lastPageOfModel]: initLastPageOfModel,
       [namesOfSlice.limitOfModel]: initLimitOfModel,

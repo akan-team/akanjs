@@ -17,6 +17,7 @@ export const sliceKeysOf = (refName: string, suffix = "") => {
     limitOfModel: `limitOf${Model}${Suffix}`,
     hasMoreOfModel: `hasMoreOf${Model}${Suffix}`,
     isCumulativeOfModel: `isCumulativeOf${Model}${Suffix}`,
+    hasInsightOfModel: `hasInsightOf${Model}${Suffix}`,
     queryArgsOfModel: `queryArgsOf${Model}${Suffix}`,
     sortOfModel: `sortOf${Model}${Suffix}`,
     modelSelection: `${refName}Selection${Suffix}`,

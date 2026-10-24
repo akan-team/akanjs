@@ -968,6 +968,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         ...expandQueryArgs(queryArgs, slice.args),
         options,
       );
+    const insightOf = (modelObjInsight: (Insight & BaseInsight) | null, modelDataList: Light[]) =>
+      modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const loadList = async <T>(self: SetGet, load: () => Promise<T>, commit: (loaded: T) => object) => {
       self.set({ [namesOfSlice.modelListLoading]: true });
       const ticket = requests.claim();
@@ -984,8 +986,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         ...args: [...args: any[], initForm: FetchInitForm<Input, Filter> & FetchPolicy]
       ) {
         const initArgLength = Math.min(args.length, slice.args.length);
-        const initForm = { invalidate: false, ...(args[slice.args.length] ?? {}) } as FetchInitForm<Input, Filter> &
-          FetchPolicy;
+        const initForm = {
+          invalidate: false,
+          insight: true,
+          ...(args[slice.args.length] ?? {}),
+        } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
         this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
@@ -1011,7 +1016,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         );
         const {
           default: defaultFromInitForm,
-          insight,
+          insight = currentState[namesOfSlice.hasInsightOfModel] as boolean,
           page = currentState[namesOfSlice.pageOfModel] as number,
           limit = currentState[namesOfSlice.limitOfModel] as number,
           sort = currentState[namesOfSlice.sortOfModel] as Sort,
@@ -1048,12 +1053,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
             ]),
           ([modelDataList, modelObjInsight]) => {
             const modelList = new DataList(modelDataList);
-            const modelInsight =
-              modelObjInsight ??
-              (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
+            const modelInsight = insightOf(modelObjInsight, modelDataList);
             return {
               [namesOfSlice.modelList]: modelList,
               [namesOfSlice.modelInsight]: modelInsight,
+              [namesOfSlice.hasInsightOfModel]: insight !== false,
               [namesOfSlice.modelInitList]: modelList,
               [namesOfSlice.modelInitAt]: requestedAt,
               ...lastPageFrom(modelInsight.count, limit),
@@ -1172,6 +1176,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         );
         const limitOfModel = currentState[namesOfSlice.limitOfModel] as number;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
+        const hasInsightOfModel = currentState[namesOfSlice.hasInsightOfModel] as boolean;
         if (isQueryEqual(queryArgsOfModel, queryArgs)) {
           Logger.trace(`${namesOfSlice.queryArgsOfModel} store-level cache hit`);
           return;
@@ -1181,18 +1186,21 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           () =>
             Promise.all([
               fetchList(queryArgs, 0, limitOfModel, sortOfModel, options),
-              fetchInsight(queryArgs, options),
+              hasInsightOfModel === false ? null : fetchInsight(queryArgs, options),
             ]),
-          ([modelDataList, modelInsight]) => ({
-            [namesOfSlice.queryArgsOfModel]: queryArgs,
-            [namesOfSlice.modelList]: new DataList(modelDataList),
-            [namesOfSlice.modelInsight]: modelInsight,
-            ...lastPageFrom(modelInsight.count, limitOfModel),
-            [namesOfSlice.pageOfModel]: 1,
-            [namesOfSlice.isCumulativeOfModel]: false,
-            ...hasMoreFrom(modelDataList, limitOfModel),
-            [namesOfSlice.modelSelection]: new Map(),
-          }),
+          ([modelDataList, modelObjInsight]) => {
+            const modelInsight = insightOf(modelObjInsight, modelDataList);
+            return {
+              [namesOfSlice.queryArgsOfModel]: queryArgs,
+              [namesOfSlice.modelList]: new DataList(modelDataList),
+              [namesOfSlice.modelInsight]: modelInsight,
+              ...lastPageFrom(modelInsight.count, limitOfModel),
+              [namesOfSlice.pageOfModel]: 1,
+              [namesOfSlice.isCumulativeOfModel]: false,
+              ...hasMoreFrom(modelDataList, limitOfModel),
+              [namesOfSlice.modelSelection]: new Map(),
+            };
+          },
         );
       },
       [namesOfSlice.setSortOfModel]: async function (this: SetGet, sort: Sort, options?: FetchPolicy) {

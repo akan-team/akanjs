@@ -169,6 +169,21 @@ describe("Load.Units", () => {
     await unmount();
   });
 
+  test("refetches without the insight an init opted out of", async () => {
+    makeStore();
+    const { flush, unmount } = mount(
+      <Units<"loadTestItem", Item>
+        init={serverInit({ insight: false, initAt: new Date(Date.now() - 1000) })}
+        staleTime={0}
+        renderItem={(item: Item) => <span>{item.title}</span>}
+      />,
+    );
+    await flush();
+    expect(calls.loadTestItemList).toHaveBeenCalled();
+    expect(calls.loadTestItemInsight).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   test("rehydrates when a route change hands the mounted instance an init with different query args", async () => {
     makeStore();
     const renderItem = (item: Item) => <span>{item.title}</span>;
