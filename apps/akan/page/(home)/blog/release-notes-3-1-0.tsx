@@ -641,14 +641,19 @@ const upgradeGroups = [
         href: "/references/cli/workspace",
       },
       {
-        en: "akan typecheck checks tests and specs by default (--tests false for the old scope), akan sync refuses a test at the lib/ root or one not named after the file it covers, no-conditional-st-hook fails lint on an st hook a render can skip, and the theme contrast check reads every theme block.",
-        ko: "akan typecheck은 기본으로 테스트와 스펙까지 검사하고(예전 범위는 --tests false), akan sync는 lib/ 루트의 테스트와 다루는 파일 이름을 따르지 않은 테스트를 거절하며, no-conditional-st-hook은 건너뛸 수 있는 st 훅에서 린트를 실패시키고, 테마 대비 검사는 모든 테마 블록을 읽습니다.",
+        en: "akan typecheck checks tests and specs by default (--tests false for the old scope), akan sync refuses a test at the lib/ root or one not named after the file it covers, lint fails on a hook a render can skip (useHookAtTopLevel for React's own, no-conditional-st-hook for st hooks), and the theme contrast check reads every theme block.",
+        ko: "akan typecheck은 기본으로 테스트와 스펙까지 검사하고(예전 범위는 --tests false), akan sync는 lib/ 루트의 테스트와 다루는 파일 이름을 따르지 않은 테스트를 거절하며, 린트는 렌더가 건너뛸 수 있는 훅에서 실패하고(React 훅은 useHookAtTopLevel, st 훅은 no-conditional-st-hook), 테마 대비 검사는 모든 테마 블록을 읽습니다.",
         href: "/conventions/workspace/lint",
       },
       {
         en: "akan.subspace.ts is no longer read: move it under subspace in the workspace-root akan.config.ts, then delete it, since subspace push and pull refuse while it exists.",
         ko: "akan.subspace.ts는 더는 읽지 않습니다. 내용을 워크스페이스 루트 akan.config.ts의 subspace로 옮긴 뒤 파일을 지웁니다. 파일이 남아 있으면 subspace push와 pull이 거절합니다.",
         href: "/references/cli/workspace",
+      },
+      {
+        en: "A subspace no longer receives the workspace's Jenkinsfile: the copy a 3.0.2 push left becomes its own, so change it there. Quote a .env value that holds a #, since the build now ends an unquoted value there, as Bun does.",
+        ko: "subspace는 더는 워크스페이스의 Jenkinsfile을 받지 않습니다. 3.0.2의 push가 남긴 사본이 subspace 자신의 파일이 되므로 그곳에서 고칩니다. 빌드도 이제 Bun처럼 따옴표 없는 값을 #에서 끝내므로, #이 들어간 .env 값은 따옴표로 감쌉니다.",
+        href: "/docs/core/config",
       },
       {
         en: "akan script, console, db-export and db-import resolve relative paths from the workspace root, so build a script's paths from import.meta.dir.",
