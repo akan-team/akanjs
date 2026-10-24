@@ -426,9 +426,9 @@ export default page()
   .config({ transition: "stack" })
   .head(({ projectId }) => <title>{projectId}</title>)
   .prompt("briefProject", "Brief one project: its status and what is due.")
-  .render(async ({ projectId, tab }) => {
+  .render(({ projectId, tab }) => {
     const { l } = usePage();
-    const { projectView } = await fetch.viewProject(projectId);
+    const { projectView } = fetch.viewProject(projectId);
     return <Project.Zone.View view={projectView} tab={tab} />;
   });
 ```
@@ -570,6 +570,7 @@ akan sync automatically generates APIs across all layers. Only write custom logi
 | `new[Model](partial)`, `edit[Model](model)`, `view[Model](model)` | Form/view state actions |
 | `[slice]List`, `[slice]InitList`, `[slice]Insight`, `[slice]Selection`, `hasMoreOf[Slice]` | Slice states |
 | `init[Slice](args)`, `refresh[Slice]()`, `setPageOf[Slice](page)`, `loadMoreOf[Slice]()` | Slice actions |
+| `invalidate[Model]()` | Marks every slice stale without a request, so the next `Load.Units` / `Load.View` mount refetches — for a custom mutation whose changed rows the store never received |
 | `set[Field]On[Model](value)` | Auto-setters for each model field |
 | `upload[Field]On[Model](fileList, idx?)` | Upload into a `File` field, scoped to the form that started it |
 | `[model]FormUploading` | Pending uploads per `File` field (`{}` when idle); submits save nothing until empty |
@@ -586,8 +587,9 @@ akan sync automatically generates APIs across all layers. Only write custom logi
 | `exists[Query](args)`, `count[Query](args)` | Existence check and count |
 | `insight[Query](args)`, `query[Query](args)` | Insight and raw query |
 | `remove[Query](args)`, `removeOne[Query](args)` | Query-level soft remove — all matches, or the newest one (`createdAt` desc, not caller-chosen) |
+| `purge[Query](args)` | Hard delete of every match, removed rows too, returning the count — no undo |
 | `update[Query](args).set(patch)`, `updateOne[Query](args).set(patch)` | Query-level update — the patch lands on a terminal `.set()`, because a filter's trailing args may be optional |
 
-**Rule**: Define `Filter` with `.query()` conditions in `document.ts`. akan sync auto-generates all 14 query helper methods per filter. Write `Document` chain methods only for state transitions with validation.
+**Rule**: Define `Filter` with `.query()` conditions in `document.ts`. akan sync auto-generates all 15 query helper methods per filter. Write `Document` chain methods only for state transitions with validation.
 
-**The four query-level writes fire no hooks**, so no `_pre`/`_postRemove` and no cascade run — same as `updateManyByQuery`. Reach for them when the model carries no removal side effect; otherwise remove documents one at a time. A filter keyed after its own model (filter `chat` on model `chat`) is rejected at boot, because `removeChat`/`updateChat` would otherwise shadow the generated single-document CRUD.
+**The five query-level writes fire no hooks**, so no `_pre`/`_postRemove` and no cascade run — same as `updateManyByQuery`. Reach for them when the model carries no removal side effect; otherwise remove documents one at a time. A filter keyed after its own model (filter `chat` on model `chat`) is rejected at boot, because `removeChat`/`updateChat` would otherwise shadow the generated single-document CRUD.

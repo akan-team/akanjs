@@ -160,7 +160,7 @@ not "fix" it back.
   security-relevant behaviour gets a real suite.
 - Run `bun run akan test <pkg>` from the root, or `cd <pkg> && bun test --isolate`. Plain `bun test` shares one
   global object across files and fails dozens of tests from that pollution (`bunfig.toml` `[test] isolate` is not
-  honored as of Bun 1.3); from the repo root it breaks subprocess stdio pipes.
+  honored as of Bun 1.4.4); from the repo root it breaks subprocess stdio pipes.
 - Signal tests split in two: `<model>.signal.spec.ts` holds fixtures on `sampleOf(cnst.XInput)` with explicit
   `Promise<cnst.X>` returns and **no assertions**; `<model>.signal.test.ts` holds `describe("<Model> Signal")`,
   describe-scope `let` fixtures, one `beforeAll`, story-ordered `it`s, negatives via
@@ -228,9 +228,10 @@ Playbook (warning table, code, checklist: `ssrRule`): ① wrap the interaction a
 `useEffect(…, [])` load; ④ a store-reading `Zone` holds no markup and delegates to a server `View`; ⑤ hand each
 promise across — `const { xInitInY, xListInY } = fetch.initXInY(id)`, `xInitInY` to a `Zone`, `xListInY` to
 `<Load.Stream>` (model instances, server-only) — and `await` only what the shell must contain; ⑥ named `ReactNode`
-slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `.guard(() => signedIn())` on
-`_layout.tsx` (a real 3xx before anything renders; `getSelf({ unauthorize })` in a body redirects in-page after I/O); ⑨ CSS (`data-*` +
-`group-data-[…]`, `<details>`) over client state for visibility; ⑩ heavy islands behind `index_.tsx` + `lazy()`.
+slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `.guard(() => signedIn())`
+(`@libs/shared/webkit`) on `_layout.tsx` (a real 3xx before anything renders; `getSelf({ unauthorize })` in a body
+redirects in-page after I/O); ⑨ CSS (`data-*` + `group-data-[…]`, `<details>`) over client state for visibility;
+⑩ heavy islands behind `index_.tsx` + `lazy()`.
 
 ## Runtime & Build Configuration
 
@@ -502,9 +503,10 @@ export default page()
 - `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,
   return; auth is the chain's `.guard()`, which runs before anything renders. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
   (title, redirect, link id) in one `Promise.all`.
-- Gate auth with `.guard(() => signedIn())` (`@libs/shared/webkit`) at `_layout.tsx`, and repeat it on a page that
-  needs more; it is a courtesy, the endpoint guards are the gate. `getSelf({ unauthorize })` in a body still works. `async` only when the body awaits; the
-  callback is not a React component, so it takes no name and no return type. No `useState`, `useEffect`, or
+- Gate auth with `.guard(() => signedIn())` (`@libs/shared/webkit`; a new workspace has that lib only with
+  `create-workspace --libs true`) at `_layout.tsx`, and repeat it on a page that needs more; it is a courtesy, the
+  endpoint guards are the gate. `getSelf({ unauthorize })` in a body still works. `async` only when the body awaits;
+  the callback is not a React component, so it takes no name and no return type. No `useState`, `useEffect`, or
   comments in page files.
 
 ## Akan Sync Conventions (`apps/**`, `libs/**`)

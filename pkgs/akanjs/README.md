@@ -22,7 +22,7 @@ or let the agent ask.
 ```text
 Set up a new Akan.js workspace for me (https://akanjs.com).
 
-1. Check that Bun 1.4 or newer is installed (`bun --version`). If it isn't, install or upgrade it as https://bun.sh describes.
+1. Check that Bun 1.4.4 or newer is installed (`bun --version`). If it isn't, install or upgrade it as https://bun.sh describes.
 2. Ask me for a workspace name and a first app name, short and lowercase, unless I wrote them below.
 3. In this directory, run `bunx create-akan-workspace@latest <workspace> --app <app>`. It installs the akan CLI globally, creates ./<workspace> and installs its dependencies.
 4. Inside ./<workspace>, start the dev server in the background with `akan start <app>` and check that the URL it prints (http://localhost:8282 by default) loads.

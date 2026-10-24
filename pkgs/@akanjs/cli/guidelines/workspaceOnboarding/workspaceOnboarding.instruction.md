@@ -127,7 +127,7 @@ akan start-ios <%= appName %>                       # Run it in a simulator or o
 akan build-desktop <%= appName %>                   # Build it for this computer into dist/native/<%= appName %>/<target>/build
 akan build-desktop <%= appName %> --installer true  # Windows: add a per-user setup program
 akan update-keygen <%= appName %>                   # Make the update signing key once; print its public key
-akan publish-update <%= appName %>                  # Build and sign a desktop release to upload to updates.url
+akan publish-update <%= appName %>                  # Build a key-signed release for updates.url; --sign true also code-signs it
 ```
 
 ### The Essential Loop: Workflow -> Sync -> Check
@@ -283,6 +283,8 @@ core framework. The core framework gives you the composition points below; wire 
 - **Auto-generated CRUD and `serve()` service methods / lifecycle hooks do not receive session context.** If an
   operation needs the acting user, expose a custom endpoint that takes it via `.with(CurrentUserId)` — never trust a
   client-supplied user id.
-- **SSR auth-gated pages: guard at the layout.** Check the session inside the `_layout.tsx` chain's `.render()` and
-  redirect when it is absent, so nested pages never render for signed-out users.
+- **SSR auth-gated pages: guard at the layout.** `.guard(() => signedIn())` on the `_layout.tsx` chain answers a
+  real 307 before any of it renders, so nested pages never render for signed-out users; a check in `.render()`
+  after awaited I/O redirects in-page, as an HTTP 200. `signedIn()` comes from `@libs/shared/webkit`, which a new
+  workspace has only with `create-workspace --libs true`.
 
