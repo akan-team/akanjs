@@ -20,10 +20,10 @@ import {
 import { endpoint } from "../../signal/endpoint";
 import { Public } from "../../signal/guards";
 import { type Internal, internal } from "../../signal/internal";
-import { type MachineIdentity, Ws } from "../../signal/internalArg";
+import { CallerAccount, type MachineIdentity, Ws } from "../../signal/internalArg";
 import { FetchSerializer } from "../../signal/serializer";
 import type { SignalContext } from "../../signal/signalContext";
-import { slice } from "../../signal/slice";
+import { type SliceCls, slice } from "../../signal/slice";
 import type { WebsocketSubscribeAck } from "../../signal/types";
 import { ConformanceEnv } from "../../test/conformance";
 import { Ed25519Key } from "../ed25519Key";
@@ -39,6 +39,7 @@ import {
   ServerResolverTestLight,
   ServerResolverTestMiddleware,
   ServerResolverTestModelMixin,
+  ServerResolverTestRoomGuard,
   ServerResolverTestServerSignal,
   ServerResolverTestService,
   ServerResolverTestSlice,
@@ -1611,6 +1612,77 @@ describe("SignalResolver declaration contracts", () => {
     expect(cleaned).toEqual([`unsubscribe:${validId}`, `unsubscribe:${validId}`]);
   });
 
+  test("runs an unsubscribe cleanup once when its socket closes while the cleanup runs", async () => {
+    const cleaned: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    class SlowCleanupEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      slowCleanupRoom: builder
+        .pubsub(ServerResolverTestLight, { guards: [Public] })
+        .room("roomId", ID)
+        .with(Ws)
+        .exec((roomId, ws) => {
+          ws.on("unsubscribe", async () => {
+            cleaned.push(`unsubscribe:${roomId as string}`);
+            await held;
+          });
+          ws.on("disconnect", () => {
+            cleaned.push(`disconnect:${roomId as string}`);
+          });
+        }),
+    })) {}
+    const { registry } = withFakeWebsocket();
+    const resolved = resolveWith(SlowCleanupEndpoint, new SlowCleanupEndpoint(), { registry });
+
+    const ws = makeWs();
+    await resolved.wsRoutes.slowCleanupRoom(ws, [validId], "subscribe");
+    const unsubscribing = resolved.wsRoutes.slowCleanupRoom(ws, [validId], "unsubscribe");
+    while (!cleaned.length) await Bun.sleep(1);
+    const closing = SignalResolver.handleWsClose(ws, registry);
+    release();
+    await Promise.all([unsubscribing, closing]);
+    expect(cleaned).toEqual([`unsubscribe:${validId}`]);
+  });
+
+  test("keeps a room its socket joined again while the cleanup of its unsubscribe ran", async () => {
+    const cleaned: string[] = [];
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    class RejoinEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      rejoinRoom: builder
+        .pubsub(ServerResolverTestLight, { guards: [Public] })
+        .room("roomId", ID)
+        .with(Ws)
+        .exec((roomId, ws) => {
+          ws.on("unsubscribe", async () => {
+            cleaned.push(`unsubscribe:${roomId as string}`);
+            await held;
+          });
+        }),
+    })) {}
+    const { registry, websocket } = withFakeWebsocket();
+    const resolved = resolveWith(RejoinEndpoint, new RejoinEndpoint(), { registry });
+
+    const ws = makeWs();
+    await resolved.wsRoutes.rejoinRoom(ws, [validId], "subscribe");
+    const unsubscribing = resolved.wsRoutes.rejoinRoom(ws, [validId], "unsubscribe");
+    while (!cleaned.length) await Bun.sleep(1);
+    await resolved.wsRoutes.rejoinRoom(ws, [validId], "subscribe");
+    release();
+    await unsubscribing;
+    expect(websocket.instance.calls.map((call: { method: string }) => call.method)).toEqual([
+      "joinRoom",
+      "leaveRoom",
+      "joinRoom",
+    ]);
+    await SignalResolver.handleWsClose(ws, registry);
+    expect(cleaned).toEqual([`unsubscribe:${validId}`, `unsubscribe:${validId}`]);
+  });
+
   test("runs a cleanup registered for both endings once when the socket closes subscribed", async () => {
     const cleaned: string[] = [];
     class SharedCleanupEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
@@ -1821,6 +1893,103 @@ describe("SignalResolver declaration contracts", () => {
     ]);
   });
 
+  test("keeps another socket's live room when a socket's auth recheck overlaps its unsubscribe or its close", async () => {
+    let gate: Promise<void> | null = null;
+    class MemberOnly {
+      static name = "MemberOnly";
+      static scope = "account" as const;
+      async canPass(context: SignalContext) {
+        if (gate) await gate;
+        return context.get<{ role?: string }>("account")?.role === "member";
+      }
+    }
+    class MemberLiveSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [MemberOnly] })
+          .search("category", String)
+          .live()
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    const { registry, live, route } = resolveLiveRoute(MemberLiveSlice);
+    for (const [category, overlap] of [
+      ["news", "unsubscribe"],
+      ["sports", "close"],
+    ] as const) {
+      const [signedOut, other] = [makeWs(), makeWs()];
+      for (const ws of [signedOut, other]) {
+        ws.data.account = { role: "member" };
+        await route(ws, [category], "subscribe");
+      }
+      signedOut.data.account = { role: "guest" };
+      let open: () => void = () => undefined;
+      gate = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      const revalidating = SignalResolver.revalidateWsRooms(signedOut, registry, live);
+      if (overlap === "unsubscribe") await route(signedOut, [category], "unsubscribe");
+      else await SignalResolver.handleWsClose(signedOut, registry, live);
+      open();
+      gate = null;
+      expect(await revalidating).toEqual([]);
+      expect(live.syncHub.roomIds()).toContain(`serverResolverTestItemLiveInCategory-${category}`);
+    }
+  });
+
+  test("leaves a live room by the id it was joined with, though its internal arguments read differently now", async () => {
+    const cleaned: string[] = [];
+    class WsLiveSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [Public] })
+          .search("category", String)
+          .with(Ws)
+          .live()
+          .exec(function (category, ws) {
+            ws.on("unsubscribe", () => {
+              cleaned.push(`unsubscribe:${category}`);
+            });
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    class AccountLiveSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [Public] })
+          .search("category", String)
+          .with(CallerAccount)
+          .live()
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    for (const LiveSlice of [WsLiveSlice, AccountLiveSlice]) {
+      const { live, route, websocket } = resolveLiveRoute(LiveSlice);
+      const ws = makeWs();
+      ws.data.account = { role: "member", exp: 1 };
+      const joined = (await route(ws, ["news"], "subscribe")) as WebsocketSubscribeAck;
+      ws.data.account = { role: "member", exp: 2 };
+      expect(await route(ws, ["news"], "unsubscribe")).toEqual({
+        type: "sub",
+        roomId: joined.roomId,
+        requestRoomId: joined.requestRoomId,
+        subscribe: false,
+      });
+      expect(ws.unsubscribed).toEqual([joined.roomId]);
+      expect(websocket.instance.calls).toContainEqual({ method: "leaveRoom", args: [ws, joined.roomId] });
+      expect(live.syncHub.roomIds()).toEqual([]);
+    }
+    expect(cleaned).toEqual(["unsubscribe:news"]);
+  });
+
   test("joins no room for a subscribe still running when its socket closes", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
@@ -1931,6 +2100,39 @@ describe("SignalResolver declaration contracts", () => {
 
     await expect(subscribeTo(["news", "lovelace"])).rejects.toThrow(/paused while "text" carries a value/);
     expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
+  });
+
+  test("refuses a subscribe by its account guards before it reads an argument", async () => {
+    const { registry } = withFakeWebsocket();
+    const resolved = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry });
+    await expect(resolved.wsRoutes.guardedRoomFeed(makeWs(), ["not-an-id"], "subscribe")).rejects.toThrow(
+      "Access denied by guard: ServerResolverTestRoomGuard",
+    );
+
+    const queried: string[] = [];
+    class PausedMemberSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [ServerResolverTestRoomGuard] })
+          .search("category", String)
+          .live({ pauseOn: ["category"] })
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    const { route } = resolveLiveRoute(PausedMemberSlice, (category) => {
+      queried.push(category);
+      return { category };
+    });
+    await expect(route(makeWs(), ["news"], "subscribe")).rejects.toThrow(
+      "Access denied by guard: ServerResolverTestRoomGuard",
+    );
+    const member = makeWs();
+    member.data.account = { role: "member" };
+    await expect(route(member, ["news"], "subscribe")).rejects.toThrow(/paused while "category" carries a value/);
+    expect(queried).toEqual([]);
   });
 
   test("joins a live room with the payload its slice declares", async () => {
@@ -2440,17 +2642,21 @@ const resolveLiveCategoryRoute = ({
         }),
     }),
   ) {}
-  const SliceEndpoint = SignalResolver.resolveSlice(LiveCategorySlice);
+  return resolveLiveRoute(LiveCategorySlice, queryInCategory);
+};
+
+const resolveLiveRoute = (LiveSlice: SliceCls, queryInCategory = (category: string): unknown => ({ category })) => {
+  const SliceEndpoint = SignalResolver.resolveSlice(LiveSlice);
   const sliceEndpoint = new SliceEndpoint() as InstanceType<typeof SliceEndpoint> & Record<string, unknown>;
   sliceEndpoint.serverResolverTestItemService = { queryInCategory };
   const { registry, websocket } = withFakeWebsocket();
   const live = getDefaultLiveRegistry();
-  live.sliceCls.set(LiveCategorySlice.baseName, LiveCategorySlice as never);
+  live.sliceCls.set(LiveSlice.baseName, LiveSlice);
   live.service.set("serverResolverTestItem", {
     listenPost: () => undefined,
     __databaseModel: { __store: makeTextStore() },
   } as never);
-  SignalResolver.registerLiveSync(LiveCategorySlice, { registry, live });
+  SignalResolver.registerLiveSync(LiveSlice, { registry, live });
   const route = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live }).wsRoutes
     .serverResolverTestItemLiveInCategory;
   return { registry, live, route, websocket };
