@@ -678,6 +678,40 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_label_0")).toBeUndefined();
     });
 
+    test("[DDL-6] an index made by hand under a declared name is left alone unless it is the declared one", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const byHand = async (name: string, paths: string[]) =>
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique: false,
+            columns: paths.map((path) => ({ path, expr: legacy.compiler.fieldExpr(path), isArray: false })),
+          }),
+        );
+      await byHand("uniqueConf_label", ["label", "code"]);
+      await byHand("uniqueConf_code", ["code"]);
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const declared = () => new DocumentSchema().index({ label: 1 }).index({ code: 1 });
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared());
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared());
+        const names = (await validIndexNamesOf(driver, "uniqueConf")).sort();
+        expect(names).toHaveLength(3);
+        expect(names.slice(0, 2)).toEqual(["uniqueConf_code", "uniqueConf_label"]);
+        expect(names[2]).toMatch(/^uniqueConf_label_[0-9a-f]{8}$/);
+        expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeUndefined();
+        expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code")).toBeDefined();
+        expect(warnings.filter((message) => message.includes("Index uniqueConf_label on uniqueConf"))).toHaveLength(2);
+
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label"]);
+      } finally {
+        removeSink();
+      }
+    });
+
     test("two different indexes given one name refuse to boot", async () => {
       await expect(
         storeOf(

@@ -67,6 +67,8 @@ interface DeclaredIndex {
   name: string;
   next: string;
   metaKey: string;
+  /** The name it is built under instead while an index made outside akan holds `name`. */
+  aside: string;
   hash: string;
   /** Every descriptor that declares this very index, so a copy an earlier release built under any of them serves it. */
   hashes: Set<string>;
@@ -125,7 +127,7 @@ export class SqlDocumentStore {
 
   async #ensure() {
     this.assertValidRefName(this.table);
-    const indexes = await this.#declaredIndexes();
+    const declared = await this.#declaredIndexes();
     for (const index of this.schema.indexes) if (!SqlDocumentStore.#builds(index)) this.#warnUnbuilt(index);
     const createSchema = async () => {
       const db = this.owner.getConnection();
@@ -145,7 +147,7 @@ export class SqlDocumentStore {
         `table:${this.table}`,
         await descriptorHash({ table: this.table, columns: ["id", "createdAt", "updatedAt", "removedAt", "_doc"] }),
       );
-      const { adopted, stale } = await this.#reconcileIndexes(indexes);
+      const { indexes, adopted, stale } = await this.#reconcileIndexes(declared);
       const concurrent: (DeclaredIndex & { replace: boolean })[] = [];
       for (const index of indexes) {
         if (adopted.has(index.name)) continue;
@@ -237,16 +239,15 @@ export class SqlDocumentStore {
         throw new Error(`Two different indexes on ${this.table} are both named ${base}`);
       const declared = named || !shared ? base : `${base}_${suffix}`;
       this.assertValidRefName(declared);
-      const name = this.dialect.indexName(declared);
-      const existing = indexes.get(name);
+      const naming = this.#indexNamed(declared);
+      const existing = indexes.get(naming.name);
       if (existing) {
         existing.hashes.add(hash);
         continue;
       }
-      indexes.set(name, {
-        name,
-        next: this.dialect.indexName(`${declared}_next`),
-        metaKey: `index:${this.table}:${name}`,
+      indexes.set(naming.name, {
+        ...naming,
+        aside: `${declared}_${suffix}`,
         hash,
         hashes: new Set([hash]),
         props,
@@ -256,8 +257,13 @@ export class SqlDocumentStore {
     return [...indexes.values()];
   }
 
+  #indexNamed(declared: string) {
+    const name = this.dialect.indexName(declared);
+    return { name, next: this.dialect.indexName(`${declared}_next`), metaKey: `index:${this.table}:${name}` };
+  }
+
   // Only an index whose meta key says an earlier boot built it is adopted or dropped; one made by hand has none.
-  async #reconcileIndexes(indexes: DeclaredIndex[]) {
+  async #reconcileIndexes(declared: DeclaredIndex[]) {
     const prefix = `index:${this.table}:`;
     const { sql, params } = this.dialect.indexesOf(this.table);
     const rows = await this.owner
@@ -265,26 +271,34 @@ export class SqlDocumentStore {
       .prepare(sql)
       .all<{ name: string; valid: unknown; definition: string }>(...params);
     const physical = new Map(rows.map(({ name, valid, definition }) => [name, { valid: !!valid, definition }]));
-    const declared = new Set(indexes.map(({ name }) => name));
-    const recorded = (await this.owner.listMeta(prefix)).map(({ key, value }) => ({
-      name: key.slice(prefix.length),
-      metaKey: key,
-      hash: value,
-    }));
+    const recorded = (await this.owner.listMeta(prefix))
+      .map(({ key, value }) => ({ name: key.slice(prefix.length), metaKey: key, hash: value }))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const recordedNames = new Set(recorded.map(({ name }) => name));
-    const undeclared = recorded.filter(({ name }) => !declared.has(name)).sort((a, b) => a.name.localeCompare(b.name));
-    const unbuilt = indexes.filter(({ name }) => !recordedNames.has(name) && !physical.has(name));
-    const copiesOf = (index: DeclaredIndex) =>
-      undeclared.filter(({ name, hash }) => index.hashes.has(hash) && physical.get(name)?.valid);
+    const copiesOf = (index: DeclaredIndex, among = recorded) =>
+      among.filter(({ name, hash }) => index.hashes.has(hash) && physical.get(name)?.valid);
+    const unrecorded = declared.filter(({ name }) => !recordedNames.has(name));
     const holds = await this.#definitionMatcher(
-      unbuilt.filter((index) => copiesOf(index).length),
+      unrecorded.filter((index) => physical.has(index.name) || copiesOf(index).length),
       physical,
     );
+    // Unrecorded under a declared name, an index is taken only as that very index: a boot may stop before recording it.
+    const indexes = declared.map((index) => {
+      if (recordedNames.has(index.name) || !physical.has(index.name) || holds(index.name, index)) return index;
+      const aside = { ...index, ...this.#indexNamed(index.aside) };
+      SqlDocumentStore.#logger.warn(
+        `Index ${index.name} on ${this.table} was not built by akan and differs from the declared one, so it is left alone and the declared index is built as ${aside.name}`,
+      );
+      return aside;
+    });
+    const names = new Set(indexes.map(({ name }) => name));
+    const undeclared = recorded.filter(({ name }) => !names.has(name));
     // SQLite cannot rename an index, so a copy an earlier release built under its positional name serves on unrebuilt.
     const kept = new Set<string>();
     const adopted = new Set<string>();
-    for (const index of unbuilt) {
-      const copy = copiesOf(index).find(({ name }) => !kept.has(name) && holds(name, index));
+    for (const index of indexes) {
+      if (recordedNames.has(index.name) || physical.has(index.name)) continue;
+      const copy = copiesOf(index, undeclared).find(({ name }) => !kept.has(name) && holds(name, index));
       if (!copy) continue;
       kept.add(copy.name);
       adopted.add(index.name);
@@ -292,7 +306,7 @@ export class SqlDocumentStore {
     const stale: StaleIndex[] = undeclared
       .filter(({ name }) => !kept.has(name))
       .map(({ name, metaKey }) => ({ name, metaKey, exists: physical.has(name) }));
-    return { adopted, stale };
+    return { indexes, adopted, stale };
   }
 
   // A descriptor hash ignores field order, so only the definition the database holds tells two indexes apart.
