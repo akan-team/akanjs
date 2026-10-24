@@ -3,7 +3,7 @@ import { cn, isRscNavigationFromCache, router, usePage } from "akanjs/client";
 import { capitalize, type DynamicRecord, deepObjectify, lowerlize } from "akanjs/common";
 import { ConstantRegistry, immerify } from "akanjs/constant";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
-import { type CreateOption, type Submit, st } from "akanjs/store";
+import { type CreateOption, StoreRegistry, type Submit, st } from "akanjs/store";
 import { useDebounce } from "akanjs/webkit";
 import { type ReactNode, type Usable, use, useCallback, useEffect, useMemo, useRef } from "react";
 import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
@@ -182,6 +182,7 @@ export default function EditModal<Full extends { id: string }>({
       modelLoading: `${modelName}Loading`,
       modelViewAt: `${modelName}ViewAt`,
       editModel: `edit${ModelName}`,
+      modelDraft: `${modelName}FormDraft`,
       loadModelDraft: `load${ModelName}FormDraft`,
       newModel: `new${ModelName}`,
       crystalizeModel: `crystalize${ModelName}`,
@@ -227,6 +228,8 @@ export default function EditModal<Full extends { id: string }>({
       const viewAt = (modelEdit as DynamicRecord)[names.modelViewAt] as Date;
       const crystal = new modelRef().set(modelObj) as unknown as Full;
       const draftScope = editDraftScope(draft, modelObj.id);
+      // Left armed, the previous slot would save this fill as typing; flush its pending write before dropping it.
+      StoreRegistry.instance.flushDrafts();
       st.set({
         [names.model]: crystal,
         [names.modelLoading]: false,
@@ -234,6 +237,7 @@ export default function EditModal<Full extends { id: string }>({
         [names.modelFormLoading]: false,
         [names.modelModal]: modal ?? "edit",
         [names.modelViewAt]: viewAt,
+        [names.modelDraft]: null,
       });
       if (isEditPayloadStale(viewAt))
         void storeDo[names.editModel](modelObj.id, { modal, draftScope }).catch(() => {

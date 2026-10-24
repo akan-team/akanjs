@@ -530,6 +530,11 @@ export class StoreInstance {
         this.#cancelDraftTimer(meta.formKey);
         continue;
       }
+      const prevDraft = prev[meta.draftKey] as DraftState | null;
+      if (prevDraft && this.#draftTimers.has(meta.formKey) && !StoreInstance.#isSameOpening(prevDraft, draft)) {
+        this.#cancelDraftTimer(meta.formKey);
+        void this.#writeDraft(meta.refName, meta.formKey, meta.draftKey, prev);
+      }
       if (Object.is(prev[meta.formKey], next[meta.formKey])) continue;
       // A `set` that also moves the draft slot (open, apply, restore, discard) is not typing, so it schedules nothing.
       if (!Object.is(prev[meta.draftKey], next[meta.draftKey])) continue;
@@ -545,6 +550,11 @@ export class StoreInstance {
     }
   }
 
+  // Not object identity: apply, restore and discard replace the slot within one opening.
+  static #isSameOpening(a: DraftState, b: DraftState) {
+    return a.key === b.key && a.baseHash === b.baseHash && a.baseUpdatedAt === b.baseUpdatedAt;
+  }
+
   #cancelDraftTimer(formKey: string) {
     const timer = this.#draftTimers.get(formKey);
     if (!timer) return;
@@ -552,9 +562,9 @@ export class StoreInstance {
     this.#draftTimers.delete(formKey);
   }
 
-  async #writeDraft(refName: string, formKey: string, draftKey: string) {
-    const draft = this.#state[draftKey] as DraftState | null;
-    const form = this.#state[formKey] as object | null;
+  async #writeDraft(refName: string, formKey: string, draftKey: string, state = this.#state) {
+    const draft = state[draftKey] as DraftState | null;
+    const form = state[formKey] as object | null;
     if (!draft?.key || !form) return;
     try {
       const hash = DraftStore.formHash(refName, form);

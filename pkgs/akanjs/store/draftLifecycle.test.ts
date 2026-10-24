@@ -256,6 +256,24 @@ describe("form draft lifecycle", () => {
     expect(draftCount()).toBe(0);
   });
 
+  test("drops a draft holding another record's form instead of opening that record", async () => {
+    storage.setItem(
+      DraftStore.keyOf("draftNote", DraftStore.editScope(NOTE_ID)),
+      JSON.stringify({
+        v: 1,
+        savedAt: new Date().toISOString(),
+        baseUpdatedAt: serverUpdatedAt.toISOString(),
+        form: { id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "another note", count: 0 },
+      }),
+    );
+    const instance = makeInstance();
+    await instance.do.editDraftNote(NOTE_ID, { draftScope: DraftStore.editScope(NOTE_ID) });
+    await settle();
+    expect(instance.get().draftNoteForm).toMatchObject({ id: NOTE_ID, title: "from server" });
+    expect(instance.get().draftNoteFormDraft).toMatchObject({ pending: null, appliedAt: null });
+    expect(draftCount()).toBe(0);
+  });
+
   test("discarding an applied draft puts back the form the editor opened with", async () => {
     const first = makeInstance();
     first.do.newDraftNote({ title: "seeded" }, { draftScope: "new:scope-a" });
