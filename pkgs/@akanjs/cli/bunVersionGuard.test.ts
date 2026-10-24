@@ -16,4 +16,9 @@ describe("BunVersionGuard", () => {
     expect(BunVersionGuard.refusal(Bun.version, engines.bun)).toBeNull();
     expect(BunVersionGuard.refusal("1.5.0", engines.bun)).toBeNull();
   });
+
+  test("judges a canary build by its release", () => {
+    expect(BunVersionGuard.refusal("1.4.5-canary.1", engines.bun)).toBeNull();
+    expect(BunVersionGuard.refusal("1.4.3-canary.9", engines.bun)).toContain("bun upgrade");
+  });
 });

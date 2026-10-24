@@ -43,7 +43,8 @@ export const run = async ({
   spawnCommand?: SpawnCommand;
   bunVersion?: string;
 } = {}) => {
-  if (!Bun.semver.satisfies(bunVersion, engines.bun)) {
+  //? A range admits no prerelease of a later release (`1.4.5-canary.1`), so a canary build is judged by its release.
+  if (!Bun.semver.satisfies(bunVersion.replace(/-.*$/, ""), engines.bun)) {
     console.error(
       `create-akan-workspace requires Bun ${engines.bun}, but this is Bun ${bunVersion}. Run \`bun upgrade\`, then try again.`,
     );
