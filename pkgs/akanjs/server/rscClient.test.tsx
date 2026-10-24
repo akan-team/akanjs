@@ -2,7 +2,12 @@ import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
-import { AKAN_RSC_CURRENT_ROUTE_HEADER, AKAN_RSC_RESPONSE_STATE_HEADER, encodeAkanRouterState } from "./routeState";
+import {
+  AKAN_RSC_CURRENT_ROUTE_HEADER,
+  AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_RESPONSE_STATE_HEADER,
+  encodeAkanRouterState,
+} from "./routeState";
 
 const origin = "http://localhost";
 //? A Flight row for the whole document, so the root that hydrates `document` gets a tree it can own.
@@ -73,6 +78,12 @@ const lateRedirectTo = (location: string) => () => {
   });
   return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
 };
+const notFoundViewOf = (text: string) => () =>
+  new Response(rowOf(text), {
+    status: 404,
+    headers: { "Content-Type": "text/x-component", [AKAN_RSC_NOT_FOUND_HEADER]: "view" },
+  });
+const bareNotFound = () => new Response("0:null\n", { status: 404, headers: { "Content-Type": "text/x-component" } });
 const writeCookie = (entry: string) => {
   // biome-ignore lint/suspicious/noDocumentCookie: setAuth signs a page in through the jar, the one `/__rsc` carries.
   document.cookie = entry;
@@ -276,5 +287,62 @@ describe("rscClient account change", () => {
     await navigate("/team/plan");
 
     expect(sentRouterStateFor("/team/plan")).toBe(false);
+  });
+});
+
+describe("rscClient not-found", () => {
+  test("a page answered with its not-found view shows the view at the URL it was asked for", async () => {
+    served.set("/vault/7", notFoundViewOf("vault missing"));
+    await navigate("/vaults");
+    const entries = window.history.length;
+
+    await navigate("/vault/7");
+
+    expect(shown()).toBe("vault missing");
+    expect(window.location.pathname).toBe("/vault/7");
+    expect(window.history.length).toBe(entries + 1);
+  });
+
+  test("a not-found view is asked for again, and the page after it is rendered whole", async () => {
+    served.set("/shelf", () => routedResponseOf("/shelf"));
+    await navigate("/shelf");
+    served.set("/shelf/9", notFoundViewOf("book missing"));
+    await navigate("/shelf/9");
+    await navigate("/shelf/1");
+    expect(sentRouterStateFor("/shelf/1")).toBe(false);
+
+    served.set("/shelf/9", () => responseOf("book found"));
+    await navigate("/shelf/9");
+
+    expect(fetchCountOf("/shelf/9")).toBe(2);
+    expect(shown()).toBe("book found");
+  });
+
+  test("a bare not-found leaves the page where it was and rejects", async () => {
+    served.set("/nowhere", bareNotFound);
+    await navigate("/here");
+    let refusal: unknown;
+    await act(async () => {
+      await globalThis.__AKAN_RSC_NAVIGATE__?.("/nowhere")?.catch((error: unknown) => {
+        refusal = error;
+      });
+    });
+
+    expect((refusal as Error | undefined)?.name).toBe("RscRouteNotFound");
+    expect(shown()).toBe("/here");
+    expect(window.location.pathname).toBe("/here");
+  });
+
+  test("a refresh answered with a not-found view shows it, while a bare one keeps the page", async () => {
+    await navigate("/report");
+    served.set("/report", bareNotFound);
+    await refresh();
+    expect(shown()).toBe("/report");
+
+    served.set("/report", notFoundViewOf("report removed"));
+    await refresh();
+
+    expect(shown()).toBe("report removed");
+    expect(window.location.pathname).toBe("/report");
   });
 });

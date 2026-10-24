@@ -52,6 +52,7 @@ import type { McpAppShellSource } from "./mcp/McpApps";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
 import { createDefaultRobotsTxt } from "./robots";
 import {
+  AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
   AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
@@ -214,6 +215,7 @@ export async function createRscNavigationStreamResponse(
   // A redirect found after Flight bytes left the worker stays in-stream: an Akan digest the client strips before RSDW.
   const response = createRscStreamResponse(result.stream, result.status ?? 200);
   appendRscTraceHeaders(response.headers, result.trace);
+  if (result.status === 404) response.headers.set(AKAN_RSC_NOT_FOUND_HEADER, "view");
   return response;
 }
 

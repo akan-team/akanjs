@@ -62,7 +62,7 @@ type RscThenable = Promise<ReactNode> & {
 type RscCacheNode = RscNavigationCacheNode<RscThenable>;
 type RscSegmentCacheNode = AkanSegmentCacheNode<RscThenable>;
 type RscFetchResult =
-  | { type: "rsc"; node: RscCacheNode }
+  | { type: "rsc"; node: RscCacheNode; notFound?: boolean }
   | {
       type: "patched";
       tree: RscSegmentCacheNode;
@@ -290,12 +290,13 @@ async function fetchRsc(
   const node = createRscNavigationCacheNode({
     href,
     thenable,
-    routerState: readAkanRouterStateResponseHeader(res.headers),
+    routerState: responseResult.notFound ? null : readAkanRouterStateResponseHeader(res.headers),
   });
   nodeRef.current = node;
   return {
     type: "rsc",
     node,
+    notFound: responseResult.notFound,
   };
 }
 
@@ -318,7 +319,7 @@ const initialNode = createRscNavigationCacheNode({
 rscCache.set(initialNode.href, initialNode);
 let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
-let currentFullNode: RscCacheNode = initialNode;
+let currentFullNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
@@ -333,6 +334,15 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
   currentFullNode = node;
+  currentCommitKind = "full";
+}
+
+//? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
+function forgetCommittedRouteState(): void {
+  rscPatchCache.clear();
+  currentRouterState = null;
+  currentSegmentTree = null;
+  currentFullNode = null;
   currentCommitKind = "full";
 }
 
@@ -369,6 +379,7 @@ function Root(): ReactNode {
       return;
     }
     const href = normalizeHref(window.location.href);
+    if (!currentFullNode) return;
     const currentFullState = currentFullNode.routerState;
     const canRestoreFullNode =
       currentFullNode.href === href &&
@@ -412,7 +423,7 @@ function Root(): ReactNode {
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await next.node.thenable;
       const committed = commitLatestRscNavigation({
-        cache: rscCache,
+        cache: next.notFound ? undefined : rscCache,
         href: target,
         thenable: next.node,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -426,7 +437,9 @@ function Root(): ReactNode {
         navId,
         getCurrentNavId: () => navigationSeq,
       });
-      if (committed) rememberCommittedRouteState(next.node);
+      if (!committed) return;
+      if (next.notFound) forgetCommittedRouteState();
+      else rememberCommittedRouteState(next.node);
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, true, error);
@@ -442,6 +455,7 @@ function Root(): ReactNode {
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY });
     try {
       let nextNode = rscCache.get(target);
+      let notFound = false;
       const servedFromCache = !!nextNode;
       if (!nextNode) {
         const cachedPatch = rscPatchCache.get(target);
@@ -518,8 +532,10 @@ function Root(): ReactNode {
           if (fallback.type === "not-found") throw new RscRouteNotFound(target);
           if (fallback.type === "patched") throw new Error("[rscClient] full fallback unexpectedly returned a patch");
           nextNode = fallback.node;
+          notFound = !!fallback.notFound;
         } else {
           nextNode = fetched.node;
+          notFound = !!fetched.notFound;
         }
       } else {
         rememberRscCacheNode(rscCache, nextNode, MAX_RSC_CACHE_ENTRIES);
@@ -535,7 +551,7 @@ function Root(): ReactNode {
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
       const committed = commitLatestRscNavigation({
-        cache: rscCache,
+        cache: notFound ? undefined : rscCache,
         href: target,
         thenable: nextNode,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -552,7 +568,9 @@ function Root(): ReactNode {
         navId,
         getCurrentNavId: () => navigationSeq,
       });
-      if (committed) rememberCommittedRouteState(nextNode);
+      if (!committed) return;
+      if (notFound) forgetCommittedRouteState();
+      else rememberCommittedRouteState(nextNode);
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       // Rethrown before the fallback: a document navigation would land on the very 404 this refusal exists to avoid.
