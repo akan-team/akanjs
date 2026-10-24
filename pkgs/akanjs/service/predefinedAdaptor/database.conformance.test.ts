@@ -735,6 +735,16 @@ const describeDriver = (kind: SqlDriverKind) => {
         ),
       ).rejects.toThrow("q.search()");
     });
+
+    test("a `where` testing an array field for a member refuses to boot, naming the index", async () => {
+      const filtered = (where: Parameters<DocumentSchema["index"]>[1]) =>
+        storeOf(driver, confConstant, confDatabase, new DocumentSchema().index({ status: 1 }, where));
+      await expect(filtered({ where: { tags: q.has("vip") } })).rejects.toThrow(
+        "Index dialectConf_status on dialectConf tests tags for a member (q.has())",
+      );
+      await expect(filtered({ where: { tags: "vip" } })).rejects.toThrow("q.has()");
+      await expect(filtered({ where: { tags: q.oneOf(["vip", "new"]) } })).rejects.toThrow("q.has()");
+    });
   });
 
   // A failed transaction can leave its pooled connection open ([PG-1]), so each of these gets storage of its own.

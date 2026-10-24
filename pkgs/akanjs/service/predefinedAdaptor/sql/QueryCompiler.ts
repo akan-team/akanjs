@@ -29,11 +29,12 @@ export class QueryCompiler {
 
   compile(query?: DocumentQuery): CompiledQuery {
     const joins: SearchJoin[] = [];
+    const memberTests: string[] = [];
     if (!query || (typeof query === "object" && !Array.isArray(query) && Object.keys(query).length === 0)) {
-      return { where: "1 = 1", params: [], joins };
+      return { where: "1 = 1", params: [], joins, memberTests };
     }
-    const compiled = this.compileNode(query, { joins, conjunctive: true });
-    return { where: compiled.sql || "1 = 1", params: compiled.params, joins };
+    const compiled = this.compileNode(query, { joins, memberTests, conjunctive: true });
+    return { where: compiled.sql || "1 = 1", params: compiled.params, joins, memberTests };
   }
 
   // Rows the keys tie on would come back in plan order, which varies per query: a row repeats or vanishes across
@@ -161,7 +162,7 @@ export class QueryCompiler {
           const values = (value.value as unknown[]) ?? [];
           if (!values.length) return { sql: "0 = 1", params: [] };
           if (field?.isArray) {
-            const parts = values.map((item) => leaf.arrayHas(path, item));
+            const parts = values.map((item) => this.#arrayHas(leaf, path, item, ctx));
             return {
               sql: `(${parts.map((part) => part.sql).join(" OR ")})`,
               params: parts.flatMap((part) => part.params),
@@ -173,7 +174,7 @@ export class QueryCompiler {
           const values = (value.value as unknown[]) ?? [];
           if (!values.length) return { sql: "1 = 1", params: [] };
           if (field?.isArray) {
-            const parts = values.map((item) => leaf.arrayHas(path, item));
+            const parts = values.map((item) => this.#arrayHas(leaf, path, item, ctx));
             return {
               sql: `NOT (${parts.map((part) => part.sql).join(" OR ")})`,
               params: parts.flatMap((part) => part.params),
@@ -197,7 +198,7 @@ export class QueryCompiler {
         case "empty":
           return leaf.empty(path);
         case "has":
-          return leaf.arrayHas(path, value.value);
+          return this.#arrayHas(leaf, path, value.value, ctx);
         case "contains":
           return leaf.contains(path, value.value);
       }
@@ -222,8 +223,13 @@ export class QueryCompiler {
         };
       }
     }
-    if (field?.isArray && !Array.isArray(value)) return leaf.arrayHas(path, value);
+    if (field?.isArray && !Array.isArray(value)) return this.#arrayHas(leaf, path, value, ctx);
     return leaf.eq(path, value, kind);
+  }
+
+  #arrayHas(leaf: QueryLeafOps, path: string, value: unknown, ctx: CompileContext) {
+    if (!ctx.memberTests.includes(path)) ctx.memberTests.push(path);
+    return leaf.arrayHas(path, value);
   }
 
   /**

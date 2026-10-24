@@ -306,9 +306,14 @@ export class SqlDocumentStore {
   }
 
   #indexPredicate(where: DocumentQuery, name: string) {
-    const { where: sql, params, joins } = this.compiler.compile(where);
+    const { where: sql, params, joins, memberTests } = this.compiler.compile(where);
     if (joins.length)
       throw new Error(`Index ${name} on ${this.table} filters with q.search(), which an index predicate cannot hold`);
+    // SQLite holds no subquery in an index predicate, so every mode refuses a member test: one app boots in each.
+    if (memberTests.length)
+      throw new Error(
+        `Index ${name} on ${this.table} tests ${memberTests.join(", ")} for a member (q.has()), which an index predicate cannot hold`,
+      );
     return sql === "1 = 1" ? undefined : inlineParams(sql, params);
   }
 

@@ -225,10 +225,13 @@ export interface CompiledQuery {
   where: string;
   params: unknown[];
   joins: SearchJoin[];
+  /** The array fields it tests for a member, a subquery on SQLite. */
+  memberTests: string[];
 }
 
 export interface CompileContext {
   joins: SearchJoin[];
+  memberTests: string[];
   conjunctive: boolean;
 }
 
