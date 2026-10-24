@@ -148,14 +148,12 @@ export interface PanelProps {
 }
 export const Panel = ({ className, menu, children, loading = "eager" }: PanelProps) => {
   const { menu: currentMenu } = useContext(TabContext);
-  const [loaded, setLoaded] = useState(menu === currentMenu);
-
+  const isShown = currentMenu === menu;
+  const [loaded, setLoaded] = useState(isShown);
+  const isMounted = loading === "eager" || isShown || (loading === "lazy" && loaded);
   useEffect(() => {
-    if (loading === "eager") setLoaded(true);
-    else if (loading === "lazy" && !loaded && currentMenu === menu) setLoaded(true);
-    else if (loading === "every") setLoaded(currentMenu === menu);
-  }, [currentMenu]);
+    setLoaded(isMounted);
+  }, [isMounted]);
 
-  if (loading === "eager") return <div className={cn(className, currentMenu !== menu && "hidden")}>{children}</div>;
-  else return loaded ? <div className={cn(className, currentMenu !== menu && "hidden")}>{children}</div> : null;
+  return isMounted ? <div className={cn(className, !isShown && "hidden")}>{children}</div> : null;
 };

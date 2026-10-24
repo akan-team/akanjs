@@ -710,7 +710,8 @@ export default page().render(() => (
                 </strong>{" "}
                 <code>"eager"</code>, the default, renders every panel up front and hides the others.{" "}
                 <code>"lazy"</code> mounts a panel on its first selection and keeps it; <code>"every"</code> mounts it
-                on each selection and unmounts it on leave.
+                on each selection and unmounts it on leave. A change of <code>loading</code> applies at once, to a
+                hidden panel too.
               </span>
             ),
             ko: (
@@ -719,7 +720,8 @@ export default page().render(() => (
                   <code>loading</code>이 패널의 마운트 시점을 정합니다.
                 </strong>{" "}
                 기본값 <code>"eager"</code>는 모든 패널을 처음부터 그리고 나머지를 숨깁니다. <code>"lazy"</code>는 처음
-                선택될 때 마운트해 계속 두고, <code>"every"</code>는 선택될 때마다 마운트하고 떠나면 내립니다.
+                선택될 때 마운트해 계속 두고, <code>"every"</code>는 선택될 때마다 마운트하고 떠나면 내립니다.{" "}
+                <code>loading</code>을 바꾸면 숨겨진 패널에도 바로 적용됩니다.
               </span>
             ),
           }),

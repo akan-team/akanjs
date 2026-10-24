@@ -158,7 +158,7 @@ Related pages
 
   - Tab.Panel ({ menu, children?, className?, loading?: "eager" | "lazy" | "every" }): The body shown while its `menu` is selected; `loading` decides when it mounts.
 
-  - **`loading` decides when a panel mounts.** `"eager"`, the default, renders every panel up front and hides the others. `"lazy"` mounts a panel on its first selection and keeps it; `"every"` mounts it on each selection and unmounts it on leave.
+  - **`loading` decides when a panel mounts.** `"eager"`, the default, renders every panel up front and hides the others. `"lazy"` mounts a panel on its first selection and keeps it; `"every"` mounts it on each selection and unmounts it on leave. A change of `loading` applies at once, to a hidden panel too.
 
   - **`namespace` publishes the tab to the in-page agent.** `namespace="product"` adds the `tabsInProduct` state and the `switchTabInProduct` tool. Without it the tab set publishes nothing.
 

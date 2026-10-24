@@ -1,8 +1,9 @@
 import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, Profiler, useState } from "react";
 import { AgenticSurface, AgentProvider } from "use-agentic";
 import { mount, setTestEnv } from "../testHelpers.fixture";
+import type { PanelProps } from "./Provider";
 
 let Tab: typeof import("./index").Tab;
 
@@ -39,6 +40,28 @@ const tabs = (surface: AgenticSurface, namespace?: string) => (
     </Tab>
   </AgentProvider>
 );
+
+type PanelLoading = NonNullable<PanelProps["loading"]>;
+let setReviewLoading: (loading: PanelLoading) => void = () => undefined;
+const ReviewLoadingHost = ({ initial }: { initial: PanelLoading }) => {
+  const [loading, setLoading] = useState(initial);
+  setReviewLoading = setLoading;
+  return (
+    <AgentProvider surface={new AgenticSurface()}>
+      <Tab defaultMenu="spec">
+        <Tab.Menus>
+          <Tab.Menu menu="spec">Spec</Tab.Menu>
+          <Tab.Menu menu="review">Review</Tab.Menu>
+        </Tab.Menus>
+        <Tab.Panel menu="spec">spec body</Tab.Panel>
+        <Tab.Panel menu="review" loading={loading}>
+          review body
+        </Tab.Panel>
+      </Tab>
+    </AgentProvider>
+  );
+};
+const loadReview = (loading: PanelLoading) => act(() => setReviewLoading(loading));
 
 describe("Tab", () => {
   test("publishes its menus and the switch its own buttons dispatch", async () => {
@@ -82,6 +105,51 @@ describe("Tab", () => {
 
     expect(clickReact(container, "Review")).toBe(true);
     expect(container.querySelector("[data-menu]")?.getAttribute("data-menu")).toBe("review");
+    unmount();
+  });
+
+  test("a hidden panel unmounts the moment its loading turns to every, and mounts again for eager", () => {
+    const { container, unmount } = mount(<ReviewLoadingHost initial="eager" />);
+    expect(container.textContent).toContain("review body");
+
+    loadReview("every");
+    expect(container.textContent).not.toContain("review body");
+    loadReview("eager");
+    expect(container.textContent).toContain("review body");
+    unmount();
+  });
+
+  test("a panel turned lazy keeps what it had mounted, and mounts on its first selection", () => {
+    const { container, unmount } = mount(<ReviewLoadingHost initial="eager" />);
+    loadReview("lazy");
+    expect(container.textContent).toContain("review body");
+    loadReview("every");
+    loadReview("lazy");
+    expect(container.textContent).not.toContain("review body");
+
+    expect(clickReact(container, "Review")).toBe(true);
+    expect(container.textContent).toContain("review body");
+    expect(clickReact(container, "Spec")).toBe(true);
+    expect(container.textContent).toContain("review body");
+    unmount();
+  });
+  test("an every panel is on screen in the same commit that selects its menu", () => {
+    const commits: { menu: string | null; hasReview: boolean }[] = [];
+    const { container, unmount } = mount(
+      <Profiler
+        id="tab"
+        onRender={() => {
+          commits.push({
+            menu: document.querySelector("[data-menu]")?.getAttribute("data-menu") ?? null,
+            hasReview: document.body.textContent?.includes("review body") ?? false,
+          });
+        }}
+      >
+        <ReviewLoadingHost initial="every" />
+      </Profiler>,
+    );
+    expect(clickReact(container, "Review")).toBe(true);
+    expect(commits.filter(({ menu }) => menu === "review").every(({ hasReview }) => hasReview)).toBe(true);
     unmount();
   });
 });
