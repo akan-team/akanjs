@@ -226,11 +226,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   nobody to close it. It never carries the visitor's session either: a call to another origin sends only the `jwt`
   its caller gave the clone.
 - **Retry a call with `retry`, never with a loop of your own.** `fetch.clone({ origin, retry: {} })` (or a call's
-  own `{ retry }`) tries again on an unreachable server, a 502/503/504 and a 429 after its Retry-After, backing off
-  with jitter until the call's one deadline runs out. A mutation retries under one `Idempotency-Key` it mints, or
-  the `idempotencyKey` you name, and the server runs it once per key, caller and arguments (Repeated Mutations
-  above); a signed-out call, one whose handler returns a `Response`, and a call through MCP run every time. A 4xx
-  is never retried.
+  own `{ retry }`) tries again on an unreachable server, a 408/502/503/504, a 429 after its Retry-After and a 409
+  `idempotencyInFlight`, backing off with jitter until the call's one deadline runs out. A mutation retries under
+  one `Idempotency-Key` it mints, or the `idempotencyKey` you name, and the server runs it once per key, caller and
+  arguments (Repeated Mutations above); a signed-out call, one whose handler returns a `Response`, and a call
+  through MCP run every time. No other error is retried.
 - **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(..., { origin })`
   restores the remote `Err` — the same class, key and `data` — so a hop that rethrows it answers its own caller
   with that error and the dictionary translates it. Never wrap the catch in a `new Error`, and never re-key it as a

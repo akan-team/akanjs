@@ -19,7 +19,8 @@ For a model `comment` (`<Slice>` is a signal slice suffix, e.g. `InPublic`):
   `add<Field>OnComment(value)` / `sub<Field>OnComment(idx)` for arrays, `upload<Field>OnComment(fileList)`
   for file fields, `checkCommentSubmitable()`, `submitComment()`, `createCommentInForm()`,
   `updateCommentInForm()`
-- single: `viewComment(model)`, `mergeComment(model, data)`, `setComment(...models)`, `resetComment()`
+- single: `viewComment(model)`, `mergeComment(model, data)`, `setComment(...models)`, `resetComment()`,
+  `invalidateComment()` (marks every slice stale after a custom mutation, so the next mount refetches)
 - per slice: `initComment<Slice>(...args)`, `refreshComment<Slice>()`, `selectComment<Slice>(model)`,
   `setPageOfComment<Slice>(page)`, `loadMoreOfComment<Slice>()`, `setLimitOfComment<Slice>(limit)`,
   `setQueryArgsOfComment<Slice>(...)`, `setSortOfComment<Slice>(sort)`
