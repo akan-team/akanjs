@@ -310,6 +310,10 @@ const areas = [
         ko: "limit 0인 라이브 목록이 모든 행을 유지하고, loading={null}인 Load.Units는 다시 불러올 때 오버레이를 그리지 않으며, renderItem으로 그린 행은 라이브 이벤트에도 마운트를 유지합니다.",
       },
       {
+        en: "Model.LoadInit renders nothing. A list shown again from a CSR stack reloads its own query instead of keeping the rows of the page pushed over it, a live slice's room stays open until the last list showing it unmounts, and a slice loaded with { insight: false } skips the count on refetches until its next init.",
+        ko: "Model.LoadInit은 아무것도 그리지 않습니다. CSR 스택에서 다시 보이는 목록은 위에 쌓였던 페이지의 행을 두지 않고 자기 쿼리를 다시 불러오며, 라이브 슬라이스의 방은 그 슬라이스를 보여 주는 마지막 목록이 언마운트될 때까지 열려 있고, { insight: false }로 불러온 슬라이스는 다음 init 전까지 다시 불러와도 count를 세지 않습니다.",
+      },
+      {
         en: "Select lists an enumOf class under its dictionary names, Model.ViewEditModal shows only the verbs the slice's guards open, Model.New opens under its own modal, and a store action for a verb the slice leaves closed fails with base.error.endpointClosed.",
         ko: "Select가 enumOf 클래스를 딕셔너리 이름으로 나열하고, Model.ViewEditModal은 슬라이스 가드가 연 동작만 보여 주며, Model.New는 자기 모달 아래에서 열리고, 슬라이스가 닫아 둔 동작의 스토어 액션은 base.error.endpointClosed로 실패합니다.",
       },
