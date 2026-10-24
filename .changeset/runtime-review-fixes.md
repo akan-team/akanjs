@@ -5,7 +5,7 @@
 Runtime fixes:
 
 - **A disabled module takes its relations with it.** A module whose model relates to a module that `enabled: false`, `disableModules`, `disableLibs` or an operation mode left out is not mounted either, where it used to mount and answer 500 for every response that resolved the relation.
-- **An untyped queue backoff waits.** `backoff: { delay }` without a `type` now waits its delay on bullmq too, as it did on SolidQueue; bullmq used to throw, and with this branch's backoff cap it retried at once.
+- **An untyped queue backoff waits.** `backoff: { delay }` without a `type` now waits its delay on bullmq too, as it did on SolidQueue; bullmq used to throw.
 - **Fonts in `public/`** are served with `Access-Control-Allow-Origin: *`, so an app's `@font-face` loads in an MCP App view.
 - **Router:**
   - A basePath is stripped only on a segment boundary: under basePath `office`, `/officers` stays `/officers`.
