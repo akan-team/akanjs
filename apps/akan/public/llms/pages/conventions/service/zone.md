@@ -189,20 +189,21 @@ export const Console = ({ className, header, templates }: ConsoleProps) => {
 
 ```ts
 import { fetch, Receipt, usePage } from "@apps/koyo/client";
-import { getSelf } from "@libs/shared/webkit";
+import { signedIn } from "@libs/shared/webkit";
 import { page } from "akanjs/client";
 
-export default page().render(async () => {
-  const { l } = usePage();
-  getSelf({ unauthorize: "/signin" });
-  const [templates] = await Promise.all([fetch.listReceiptTemplates()]);
-  return (
-    <Receipt.Zone.Console
-      header={<h1 className="font-bold text-2xl">{l("receipt.console")}</h1>}
-      templates={templates}
-    />
-  );
-});
+export default page()
+  .guard(() => signedIn())
+  .render(async () => {
+    const { l } = usePage();
+    const [templates] = await Promise.all([fetch.listReceiptTemplates()]);
+    return (
+      <Receipt.Zone.Console
+        header={<h1 className="font-bold text-2xl">{l("receipt.console")}</h1>}
+        templates={templates}
+      />
+    );
+  });
 ```
 
 ### apps/koyo/akan.config.ts

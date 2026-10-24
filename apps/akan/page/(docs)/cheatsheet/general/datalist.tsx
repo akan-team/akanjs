@@ -634,7 +634,7 @@ const statusOptions = cnst.PostStatus.map((status) => ({
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="apps/myapp/lib/user/user.test.ts"
+            title="apps/myapp/lib/user/user.store.test.ts"
             code={`import { describe, expect, test } from "bun:test";
 import { DataList } from "akanjs/base";
 

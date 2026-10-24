@@ -17,7 +17,7 @@ Workspace
 
 Workspace CLI
 
-These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
+These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.
 
 Command
 
@@ -29,11 +29,13 @@ Command
 
 - sync-all: Run `akan sync` on every library, then on every app.
 
+- machine-keygen: Make the Ed25519 key a server signs machine tokens with.
+
 Words Used On This Page
 
 Term
 
-- workspace root: The repo's top folder, the one holding `package.json`, `tsconfig.json` and `.env`.
+- workspace root: The repo's top folder, the one holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 - sync: Rescans an app or library and rewrites its generated files. `akan sync <app|lib>` does one.
 
@@ -115,9 +117,15 @@ Sync every app and library, then lint every app, library and package. Each one g
 
 Run `akan sync` on every library, then on every app. Use it when generated files look stale, or after a change to the shared workspace setup.
 
+`akan machine-keygen <out>`
+
+Write a new Ed25519 private key for machine tokens to `<out>` and print its public key. The server that issues tokens takes the private key as `AKAN_MACHINE_PRIVATE_KEY`; one that only verifies them takes `AKAN_MACHINE_PUBLIC_KEY`.
+
+- out (String, required): File the private key is written to, with mode 600. An existing file is refused, never overwritten.
+
 Rules Every Command Shares
 
-**Run from the workspace root.** Every command here except `create-workspace` runs from the folder holding `package.json`, `tsconfig.json` and `.env`.
+**Run from the workspace root.** Every command here except `create-workspace` runs from the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 **Boolean options.** `--fix` on its own means true. To turn an option off, give the value: `--fix false`.
 
@@ -167,6 +175,12 @@ akan lint-all --max-diagnostics 0
 
 ```bash
 akan sync-all
+```
+
+### machine-keygen
+
+```bash
+akan machine-keygen ~/keys/akan-machine.pem
 ```
 
 ## Agent Notes

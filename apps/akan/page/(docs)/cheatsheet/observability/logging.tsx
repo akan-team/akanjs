@@ -1046,14 +1046,16 @@ Logger.emit({
                   en: (
                     <>
                       <strong>Secret-looking keys are masked before the record exists.</strong> A key containing token,
-                      password, passwd, jwt, authorization, cookie, secret, api_key or private_key, in any case, becomes{" "}
+                      password, passwd, jwt, authorization, cookie, secret, credential, webhook, api_key, private_key or
+                      access_key, in any case, or <code>cred</code> as a word of its own, becomes{" "}
                       <code>&quot;[redacted]&quot;</code>, so no sink ever sees the value.
                     </>
                   ),
                   ko: (
                     <>
                       <strong>비밀값처럼 보이는 키는 레코드가 만들어질 때 가려집니다.</strong> token, password, passwd,
-                      jwt, authorization, cookie, secret, api_key, private_key를 포함하는 키는 대소문자와 상관없이{" "}
+                      jwt, authorization, cookie, secret, credential, webhook, api_key, private_key, access_key를
+                      대소문자와 상관없이 포함하거나 <code>cred</code>를 독립된 단어로 가진 키는{" "}
                       <code>&quot;[redacted]&quot;</code>가 되므로, 어떤 sink도 원래 값을 보지 못합니다.
                     </>
                   ),

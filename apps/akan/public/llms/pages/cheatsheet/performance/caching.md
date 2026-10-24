@@ -42,7 +42,7 @@ Four ways to cache
 
 - Local Memory — A plain field on this process only. Fastest, but not shared, and gone after a restart. — `memory(Int, { local: true, default: 0 })`
 
-- Endpoint Cache — Reuses a query's whole answer for every caller for the milliseconds you declare. — `query(T, { guards, cache: 1000 })`
+- Endpoint Cache — Reuses a query's whole answer for every caller for the milliseconds you declare, one day at most. — `query(T, { guards, cache: 1000 })`
 
 Where cached values live
 
@@ -154,7 +154,7 @@ Use
 
 - Each replica may keep its own copy. — memory(T, { local: true }) — This process only
 
-- A query answers every caller the same. — query(T, { guards, cache: ms }) — Every caller, one entry per argument set
+- A query answers every caller the same. — query(T, { guards, cache: ms }) — Every caller, one entry per argument set, kept a day at most
 
 **Local memory only for what need not be shared.** A value another replica must see belongs in `memory()` or the document cache.
 

@@ -513,8 +513,16 @@ export const StoreLocation = () => {
             name: "Signal.Doc",
             type: ".Zone · .Explorer · .Setting · .AuthModal · .DocSignals · .DocSignal",
             desc: l.trans({
-              en: "`Zone({ refName })` documents one signal; `Explorer({ include?, exclude? })` puts them all behind a sidebar.",
-              ko: "`Zone({ refName })`은 signal 하나를 문서로 그리고, `Explorer({ include?, exclude? })`는 전체를 사이드바 뒤에 둡니다.",
+              en: "`Zone({ refName })` documents one signal; `Explorer` puts them all behind a sidebar.",
+              ko: "`Zone({ refName })`은 signal 하나를 문서로 그리고, `Explorer`는 전체를 사이드바 뒤에 둡니다.",
+            }),
+          },
+          {
+            name: "Signal.Doc.Explorer",
+            type: '{ include?, exclude?, libs?: string[], groupBy?: "lib", defaultRefName? }',
+            desc: l.trans({
+              en: '`libs` keeps the signals those apps or libs own, `groupBy: "lib"` groups them by owner, `defaultRefName` opens first.',
+              ko: '`libs`는 그 앱이나 lib이 소유한 signal만 남기고, `groupBy: "lib"`는 소유자별로 묶으며, `defaultRefName`이 처음 열립니다.',
             }),
           },
           {

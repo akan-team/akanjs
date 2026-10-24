@@ -51,7 +51,7 @@ Scan every app and library for code quality warnings, or measure the server/clie
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
 
-- where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and `.env`.
+- where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 - what is read: `.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md`.
 

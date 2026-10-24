@@ -163,7 +163,7 @@ Here is the manager's half of the shift:
 
 - timeout (number, default 30000 (client)): Milliseconds this call may take; the `Timeout` middleware and the client both enforce it.
 
-- cache (number): Milliseconds the answer may be reused. **Only a query taking no internal argument** may carry one.
+- cache (number): Milliseconds the answer may be reused, one day at most. **Only a query taking no internal argument** may carry one.
 
 - mcp (boolean, default true): `false` takes the endpoint out of the MCP catalogue without touching its guards.
 

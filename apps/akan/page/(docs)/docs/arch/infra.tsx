@@ -360,8 +360,9 @@ export default page()
                     deployment control area only, so an edge site is one container you run yourself: set{" "}
                     <code>AKAN_PUBLIC_OPERATION_MODE=edge</code> and <code>AKAN_DATABASE_MODE=single</code>, and point{" "}
                     <code>AKAN_SQLITE_DIR</code> at a volume, which then holds its database and its cache and queue
-                    file. The operation mode is independent of the database mode, and only an <code>internal</code> job
-                    can be scoped to it (<code>{'operationMode: ["cloud"]'}</code>), never an endpoint.
+                    file. The operation mode is independent of the database mode, and a whole module, endpoints
+                    included, or a single <code>internal</code> job can be scoped to it (
+                    <code>{'operationMode: ["cloud"]'}</code>).
                   </span>
                 ),
                 ko: (
@@ -370,8 +371,8 @@ export default page()
                     있으므로, 엣지 사이트는 직접 실행하는 컨테이너 하나입니다.{" "}
                     <code>AKAN_PUBLIC_OPERATION_MODE=edge</code>와 <code>AKAN_DATABASE_MODE=single</code>을 설정하고,{" "}
                     <code>AKAN_SQLITE_DIR</code>이 볼륨을 가리키게 하면 데이터베이스 파일과 캐시·큐 파일이 모두 그
-                    볼륨에 놓입니다. operation mode는 데이터베이스 모드와 별개이며, 이 모드로 한정할 수 있는 것은
-                    endpoint가 아니라 <code>internal</code> 작업뿐입니다(
+                    볼륨에 놓입니다. operation mode는 데이터베이스 모드와 별개이며, endpoint까지 포함한 모듈 전체나{" "}
+                    <code>internal</code> 작업 하나를 이 모드로 한정할 수 있습니다(
                     <code>{'operationMode: ["cloud"]'}</code>).
                   </span>
                 ),

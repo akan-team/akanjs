@@ -160,7 +160,7 @@ Cloud cluster
 
 **The operation mode and the database mode are independent.** `edge` or `cloud` says where the server runs; `single` or `cluster` says where its data lives.
 
-**Only internals follow the operation mode.** An internal declared as `cron("0 4 * * *", { operationMode: ["cloud"] })` never runs on the edge, while every endpoint is served on both sides.
+**A module or an internal can follow the operation mode.** `serve(ref, { operationMode: ["edge"] })` mounts the whole module, endpoints included, only on the edge, and `modules: ["@edge"]` selects every such module. An internal declared as `cron("0 4 * * *", { operationMode: ["cloud"] })` never runs on the edge.
 
 **Every deployment names its mode.** With two modes declared, `AKAN_DATABASE_MODE` is required; only a developer machine falls back to the first.
 

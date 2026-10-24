@@ -334,13 +334,22 @@ export default page()
         }),
       },
       {
+        key: "errors",
+        type: '{ [status]: "<module>.error.<key>"[] }',
+        default: l.trans({ en: "none", ko: "없음" }),
+        desc: l.trans({
+          en: "The errors it throws on purpose, by status, with its own dictionary's keys. OpenAPI and MCP publish them.",
+          ko: "일부러 던지는 에러를 status별로, 자기 dictionary의 key로 적습니다. OpenAPI와 MCP가 이를 공개합니다.",
+        }),
+      },
+      {
         key: "cache",
         type: "number (ms)",
         default: l.trans({ en: "not cached", ko: "캐시 안 함" }),
         tags: ["query"],
         desc: l.trans({
-          en: "Reuses the answer this long. Only for a query with no `.with()`; looked up after the guards pass.",
-          ko: "이 시간 동안 응답을 재사용합니다. `.with()`가 없는 query만 쓸 수 있고, guard를 통과한 뒤에 조회합니다.",
+          en: "Reuses the answer this long, one day at most. Only for a query with no `.with()`; looked up after the guards pass.",
+          ko: "이 시간 동안, 최대 하루까지 응답을 재사용합니다. `.with()`가 없는 query만 쓸 수 있고, guard를 통과한 뒤에 조회합니다.",
         }),
       },
       {

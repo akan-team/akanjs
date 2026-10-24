@@ -466,7 +466,7 @@ export class OrderInternal extends internal(srv.order, ({ resolveField }) => ({
 })) {}
 ```
 
-### libs/shared/lib/banner/banner.test.ts
+### libs/shared/lib/banner/banner.constant.test.ts
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -481,7 +481,7 @@ test("a new banner starts active", () => {
 });
 ```
 
-### libs/shared/lib/banner/banner.test.ts
+### libs/shared/lib/banner/banner.constant.test.ts
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -497,7 +497,7 @@ test("a banner needs an href to purify", () => {
 });
 ```
 
-### libs/shared/lib/banner/banner.test.ts
+### libs/shared/lib/banner/banner.constant.test.ts
 
 ```typescript
 import { expect, test } from "bun:test";

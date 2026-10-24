@@ -518,7 +518,7 @@ export class LegacyPageRedirect implements WebProxy {
                       <code>/ko/old-docs</code> or a <code>router.push</code> there is not redirected and renders{" "}
                       <code>/ko/old-docs</code> itself, usually a 404; the built-in locale and basePath handling still
                       applies. Link to the new page directly, and keep access control out of proxies: guards on the
-                      endpoints, and <code>{"getSelf({ unauthorize })"}</code> in a <code>_layout.tsx</code>.
+                      endpoints, and <code>{".guard(() => signedIn())"}</code> on a <code>_layout.tsx</code>.
                     </>
                   ),
                   ko: (
@@ -527,7 +527,7 @@ export class LegacyPageRedirect implements WebProxy {
                       <code>{"<Link>"}</code>나 <code>router.push</code>는 redirect되지 않고 <code>/ko/old-docs</code>{" "}
                       자체를 그리며, 대개 404가 됩니다. 기본 locale·basePath 처리는 그대로 적용됩니다. 새 페이지로 바로
                       링크하고, 접근 제어는 proxy가 아니라 endpoint의 guard와 <code>_layout.tsx</code>의{" "}
-                      <code>{"getSelf({ unauthorize })"}</code>로 합니다.
+                      <code>{".guard(() => signedIn())"}</code>로 합니다.
                     </>
                   ),
                 })}

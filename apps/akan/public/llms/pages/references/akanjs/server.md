@@ -252,7 +252,7 @@ Method
 
 - applyWebProxy(...proxies): Adds web proxies, each as a class or `{ proxy, matcher }`.
 
-- setMcp(option | fn): Settings for the MCP server at `/mcp`. `false` takes it off.
+- setMcp(option | fn): Settings for the MCP server at `/mcp`; `false` takes it off. Off on an edge server until `true` or `AKAN_MCP=true`.
 
 - setAgentAccess(guards): Guards a caller must pass to spend the LLM key through the agent chat. Several are ANDed.
 
@@ -328,7 +328,7 @@ A proxy that closes the shop pages during maintenance:
 
 Register it in `lib/option.ts`, narrowed to the shop pages with a matcher:
 
-**A client-side navigation into the shop still opens it.** The proxy answers page loads, so a visitor already in the app reaches the shop through a `<Link>`. Block content with guards on the endpoints it reads, and require sign-in with `getSelf({ unauthorize })` in the section's `_layout.tsx`; both apply to a client-side navigation too.
+**A client-side navigation into the shop still opens it.** The proxy answers page loads, so a visitor already in the app reaches the shop through a `<Link>`. Block content with guards on the endpoints it reads, and require sign-in with `.guard(() => signedIn())` on the section's `_layout.tsx`; both apply to a client-side navigation too.
 
 **Page loads only.** Endpoints under the API prefix, the WebSocket, `/_akan/*` and client-side navigations, which load from `/__rsc`, never reach a proxy. A navigation still gets the built-in locale and basePath handling.
 

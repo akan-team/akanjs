@@ -122,8 +122,8 @@ export default page()
       {
         name: ".env",
         desc: l.trans({
-          en: "Workspace-wide settings such as `AKAN_PUBLIC_ENV` and the serve domain, kept out of git.",
-          ko: "`AKAN_PUBLIC_ENV`, 서비스 도메인 같은 워크스페이스 공통 설정으로, git에는 올리지 않습니다.",
+          en: "Optional workspace-wide settings such as `AKAN_PUBLIC_ENV` and the serve domain, kept out of git.",
+          ko: "`AKAN_PUBLIC_ENV`, 서비스 도메인 같은 워크스페이스 공통 설정으로, 없어도 되며 git에는 올리지 않습니다.",
         }),
       },
       {
@@ -152,6 +152,13 @@ export default page()
         desc: l.trans({
           en: "Bun's own config, which adds the Tailwind plugin and the `AKAN_PUBLIC_*` browser env prefix.",
           ko: "Tailwind 플러그인과 브라우저용 환경 변수 접두사 `AKAN_PUBLIC_*`를 지정하는 Bun 설정입니다.",
+        }),
+      },
+      {
+        name: "akan.config.ts",
+        desc: l.trans({
+          en: "Optional settings that belong to no app: `subspace` mirrors, the `pipeline` around every app, the `cloud` host.",
+          ko: "어느 앱에도 속하지 않는 선택 설정입니다. `subspace` 미러, 모든 앱을 감싸는 `pipeline`, `cloud` 호스트입니다.",
         }),
       },
       {
@@ -267,6 +274,7 @@ export default page()
 ├── tsconfig.json
 ├── biome.json
 ├── bunfig.toml
+├── akan.config.ts
 ├── AGENTS.md
 └── CLAUDE.md`}
           />
@@ -505,16 +513,17 @@ akan sync-all                         # 모든 라이브러리, 그다음 모든
                 en: (
                   <span>
                     <strong>Run these commands from the workspace root.</strong> That is the folder holding{" "}
-                    <code>package.json</code>, <code>tsconfig.json</code> and <code>.env</code>; anywhere else the
-                    command stops with an error. <code>create-workspace</code>, which makes that folder, is the
-                    exception.
+                    <code>package.json</code>, <code>tsconfig.json</code> and an <code>apps/</code>, <code>libs/</code>{" "}
+                    or <code>pkgs/</code> folder; anywhere else the command stops with an error.{" "}
+                    <code>create-workspace</code>, which makes that folder, is the exception.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>이 명령들은 워크스페이스 루트에서 실행합니다.</strong> <code>package.json</code>,{" "}
-                    <code>tsconfig.json</code>, <code>.env</code>가 있는 폴더이며, 다른 곳에서는 오류를 내고 멈춥니다.
-                    그 폴더를 만드는 <code>create-workspace</code>만 예외입니다.
+                    <code>tsconfig.json</code>과 <code>apps/</code>, <code>libs/</code>, <code>pkgs/</code> 중 한 폴더가
+                    있는 곳이며, 다른 곳에서는 오류를 내고 멈춥니다. 그 폴더를 만드는 <code>create-workspace</code>만
+                    예외입니다.
                   </span>
                 ),
               })}

@@ -53,7 +53,7 @@ These hold for every command, so the detail pages do not repeat them.
 
 - Help — `akan <command> --help` — Prints the command's arguments and options with their defaults and choices. Bare `akan` lists every command.
 
-- Run From The Workspace Root — `package.json · tsconfig.json · .env` — Run every command except `create-workspace` from the folder that holds these three files. Anywhere else it stops with an error.
+- Run From The Workspace Root — `package.json · tsconfig.json · apps/` — Run every command except `create-workspace` from the folder that holds both files and an `apps/`, `libs/` or `pkgs/` folder. Anywhere else it stops with an error.
 
 - Short Aliases — `akan ba = akan build-android` — Nine commands also answer to the first letter of each dashed word. The table below lists all of them.
 
@@ -138,6 +138,8 @@ Internal and development-only commands are left out on purpose.
   - lint-all: Syncs every app and lib, then lints every app, lib and package.
 
   - sync-all: Syncs every library, then every app.
+
+  - machine-keygen <out>: Writes an Ed25519 private key for machine tokens to `<out>` and prints the public key.
 
 - Application: Develop — Create and remove apps, run them locally, and look into a running server.
 

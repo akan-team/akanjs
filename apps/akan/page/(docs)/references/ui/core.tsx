@@ -608,7 +608,7 @@ export default page()
       },
       {
         key: "Model.Edit",
-        type: "{ slice, modelId, children, trigger?, renderTitle?, modal?, draft? }",
+        type: "{ slice, modelId, children, trigger?, renderTitle?, modal?, draft?, presentation?, placement? }",
         desc: l.trans({
           en: "The same pair for one record; `trigger` defaults to the framework's Edit button.",
           ko: "레코드 하나에 대한 같은 묶음입니다. `trigger` 기본값은 framework의 수정 버튼입니다.",

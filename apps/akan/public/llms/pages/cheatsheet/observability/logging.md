@@ -103,7 +103,7 @@ A value you will filter or query on belongs in `attrs`, not in the message text:
 
 **Values are primitives:** `string`, `number`, `boolean` or `null`.
 
-**Secret-looking keys are masked before the record exists.** A key containing token, password, passwd, jwt, authorization, cookie, secret, api_key or private_key, in any case, becomes `"[redacted]"`, so no sink ever sees the value.
+**Secret-looking keys are masked before the record exists.** A key containing token, password, passwd, jwt, authorization, cookie, secret, credential, webhook, api_key, private_key or access_key, in any case, or `cred` as a word of its own, becomes `"[redacted]"`, so no sink ever sees the value.
 
 Log Levels
 

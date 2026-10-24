@@ -130,8 +130,8 @@ export default page()
           {
             name: <span className="font-sans">{l.trans({ en: "Account helper", ko: "계정·라우팅 헬퍼" })}</span>,
             desc: l.trans({
-              en: "Reads the signed-in account and sends a guest away, like `getSelf` in `_layout.tsx`.",
-              ko: "로그인한 계정을 읽고 비로그인 사용자를 돌려보냅니다. `_layout.tsx`의 `getSelf`가 그 예입니다.",
+              en: "Reads the signed-in account or sends a guest away, like `getSelf` or a layout's `signedIn` guard.",
+              ko: "로그인한 계정을 읽거나 비로그인 사용자를 돌려보냅니다. `getSelf`나 layout guard의 `signedIn`이 그 예입니다.",
             }),
             marks: onBoth,
           },
@@ -490,7 +490,7 @@ export const getSignedInUser = () => {
                       <strong>
                         No <code>{'"use client"'}</code>.
                       </strong>{" "}
-                      <code>_layout.tsx</code> calls it on the server, so a guest is redirected before any of the page
+                      A <code>_layout.tsx</code> guard calls it on the server, so a guest is redirected before anything
                       renders.
                     </span>
                   ),
@@ -499,8 +499,8 @@ export const getSignedInUser = () => {
                       <strong>
                         <code>{'"use client"'}</code>가 없습니다.
                       </strong>{" "}
-                      <code>_layout.tsx</code>가 서버에서 호출하므로, 로그인하지 않은 사용자는 페이지가 렌더링되기 전에
-                      로그인 페이지로 이동합니다.
+                      <code>_layout.tsx</code>의 guard가 서버에서 호출하므로, 로그인하지 않은 사용자는 무엇이든
+                      렌더링되기 전에 로그인 페이지로 이동합니다.
                     </span>
                   ),
                 })}
@@ -534,8 +534,9 @@ export const getSignedInUser = () => {
                       <strong>
                         <code>libs/shared</code> already ships one.
                       </strong>{" "}
-                      Use <code>{'getSelf({ unauthorize: "/signin" })'}</code> and <code>getMe</code> from{" "}
-                      <code>@libs/shared/webkit</code> when the app mounts that lib.
+                      When the app mounts that lib, gate a layout with <code>{".guard(() => signedIn())"}</code> and
+                      read the account with <code>getSelf()</code> or <code>getMe()</code>, all three from{" "}
+                      <code>@libs/shared/webkit</code>.
                     </span>
                   ),
                   ko: (
@@ -543,8 +544,9 @@ export const getSignedInUser = () => {
                       <strong>
                         <code>libs/shared</code>에 이미 있습니다.
                       </strong>{" "}
-                      앱이 그 lib을 쓴다면 <code>@libs/shared/webkit</code>의{" "}
-                      <code>{'getSelf({ unauthorize: "/signin" })'}</code>와 <code>getMe</code>를 씁니다.
+                      앱이 그 lib을 쓴다면 layout은 <code>{".guard(() => signedIn())"}</code>로 막고, 계정은{" "}
+                      <code>getSelf()</code>나 <code>getMe()</code>로 읽습니다. 셋 다 <code>@libs/shared/webkit</code>에
+                      있습니다.
                     </span>
                   ),
                 })}

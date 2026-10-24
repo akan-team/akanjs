@@ -159,13 +159,15 @@ export default page()
         en: (
           <>
             <strong>Run them from the workspace root.</strong> Like most <code>akan</code> commands, they need the
-            folder that holds <code>package.json</code>, <code>tsconfig.json</code> and <code>.env</code>.
+            folder that holds <code>package.json</code>, <code>tsconfig.json</code> and an <code>apps/</code>,{" "}
+            <code>libs/</code> or <code>pkgs/</code> folder.
           </>
         ),
         ko: (
           <>
             <strong>워크스페이스 루트에서 실행합니다.</strong> 대부분의 <code>akan</code> 명령처럼{" "}
-            <code>package.json</code>, <code>tsconfig.json</code>, <code>.env</code>가 있는 폴더에서 실행해야 합니다.
+            <code>package.json</code>, <code>tsconfig.json</code>과 <code>apps/</code>, <code>libs/</code>,{" "}
+            <code>pkgs/</code> 중 한 폴더가 있는 곳에서 실행해야 합니다.
           </>
         ),
       }),
