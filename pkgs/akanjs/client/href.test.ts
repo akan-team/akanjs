@@ -82,6 +82,31 @@ describe("Href.hasWebScheme", () => {
   }
 });
 
+const leavesOriginTable: Array<[string, string | undefined, boolean]> = [
+  ["https://evil.example/", "https://site.test/en/a", true],
+  ["https://site.test/en/b", "https://site.test/en/a", false],
+  ["HTTPS://SITE.test/en/b", "https://site.test/en/a", false],
+  ["http://site.test/en/b", "https://site.test/en/a", true],
+  ["https://site.test:8443/en/b", "https://site.test/en/a", true],
+  ["https://site.test@evil.example/", "https://site.test/en/a", true],
+  ["https://evil.example\\@site.test/", "https://site.test/en/a", true],
+  ["http:evil.example/x", "https://site.test/en/a", true],
+  ["https:evil.example/x", "https://site.test/en/a", false],
+  ["//evil.example/x", "https://site.test/en/a", false],
+  ["/en/b", "https://site.test/en/a", false],
+  ["javascript:alert(1)", "https://site.test/en/a", false],
+  ["https://localhost/en/b", "app://localhost/en", true],
+  ["https://site.test/en/b", undefined, true],
+];
+
+describe("Href.leavesOrigin", () => {
+  for (const [href, base, expected] of leavesOriginTable) {
+    test(`${JSON.stringify(href)} on ${JSON.stringify(base)} -> ${expected}`, () => {
+      expect(Href.leavesOrigin(href, base)).toBe(expected);
+    });
+  }
+});
+
 const toExternalUrlTable: Array<[string, string, string]> = [
   ["//example.com/x", "http://site.test/en/a", "http://example.com/x"],
   ["//example.com/x", "app://localhost/en", "https://example.com/x"],

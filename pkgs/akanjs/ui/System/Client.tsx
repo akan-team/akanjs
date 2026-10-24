@@ -9,6 +9,7 @@ import {
   fetch,
   getCookie,
   getPathInfo,
+  Href,
   initAuth,
   isMcpView,
   type Location,
@@ -401,10 +402,12 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       prefix,
       router: {
         push: (href, routeOptions) => {
+          if (Href.leavesOrigin(href, window.location.href)) return window.location.assign(href);
           syncHref(href);
           return navigateRscWithFallback(href, routeOptions, () => window.location.assign(href));
         },
         replace: (href, routeOptions) => {
+          if (Href.leavesOrigin(href, window.location.href)) return window.location.replace(href);
           syncHref(href);
           return navigateRscWithFallback(href, { ...routeOptions, replace: true }, () => window.location.replace(href));
         },
