@@ -1072,14 +1072,14 @@ const describeDriver = (kind: SqlDriverKind) => {
 
     test.if(!onPostgres)("a purge lets a timer run after each batch, while the rest still waits", async () => {
       await store.importRows(oldRows(2_500));
-      let remaining: number | null = null;
+      const remaining: number[] = [];
       setTimeout(() => {
         void store.count({ status: "old" }).then((count) => {
-          remaining = count;
+          remaining.push(count);
         });
       }, 0);
       expect(await store.purgeManyByQuery({ status: "old" })).toBe(2_500);
-      expect(remaining).toBe(1_500);
+      expect(remaining).toEqual([1_500]);
     });
 
     test("a purge refuses a query that matches every row, and one with q.search()", async () => {
