@@ -14,6 +14,7 @@ import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
+import { EditSeed } from "./editSeed";
 import { NewFormOrigin } from "./newFormOrigin";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
@@ -210,10 +211,15 @@ export default function EditModal<Full extends { id: string }>({
       Date.now() - viewAt.getTime() > EDIT_PAYLOAD_MAX_AGE_MS
     );
   }, []);
+  const filledSeedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!modelEdit) return;
     const refName = (modelEdit as ServerEdit<string, Full>).refName;
     const editType: "edit" | "new" = refName && (modelEdit as DynamicRecord)[names.modelObj] ? "edit" : "new";
+    const seedKey = EditSeed.keyOf(modelEdit as DynamicRecord, names.modelObj, names.modelViewAt);
+    // While any form of the model is open it may hold typing, this editor's or another's; a closed one reopens as before.
+    if (seedKey === filledSeedRef.current && (st.get() as unknown as DynamicRecord)[names.modelModal]) return;
+    filledSeedRef.current = seedKey;
     const cnst = ConstantRegistry.getDatabase(modelName);
     const modelRef = cnst.full;
     if (editType === "edit") {
