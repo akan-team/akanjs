@@ -249,7 +249,8 @@ export const Tags = ({
             }}
             onBlur={addTag}
             onPressEnter={addTag}
-            onPressEscape={() => {
+            onPressEscape={(e) => {
+              e.preventDefault();
               setInputVisible(false);
               setTag("");
             }}
