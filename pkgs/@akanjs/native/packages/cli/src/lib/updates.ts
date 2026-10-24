@@ -15,7 +15,7 @@
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
 import {
   checkUpdateEnvelope,
@@ -26,7 +26,7 @@ import {
   RESERVED_CHANNELS,
 } from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
-import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
+import { BUNDLE_FILE, readBundleInfo, webPath } from "./compat.ts";
 import { CliError } from "./log.ts";
 import { akanNativeHome } from "./toolchains.ts";
 
@@ -122,7 +122,7 @@ export function webFiles(
       const path = join(dir, name);
       if (statSync(path).isDirectory()) walk(path);
       else {
-        const rel = relative(webDir, path);
+        const rel = webPath(webDir, path);
         files.push({ path: rel, data: rel === "index.html" ? new TextEncoder().encode(html) : readFileSync(path) });
       }
     }
