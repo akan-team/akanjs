@@ -748,14 +748,6 @@ export class SignalContext<
     }
     return hash.toString(36);
   }
-  /** Without guards or the handler: an unsubscribe needs the room id, and leaving a room authorizes nothing. */
-  async resolveInternalArgs() {
-    if (this.internalArgs.length || !this.endpointInfo.internalArgs.length) return this.internalArgs;
-    this.internalArgs = await Promise.all(
-      this.endpointInfo.internalArgs.map(async (arg) => (await new arg.argRef().getArg(this)) ?? null),
-    );
-    return this.internalArgs;
-  }
   getEnv() {
     return this.#env;
   }

@@ -384,6 +384,8 @@ export const runCommands = async (...commands: CommandCls[]) => {
 Akan CLI version is mismatch with installed package. ${process.env.AKAN_VERSION} (global) vs ${installedAkanPackageJson.version} (akanjs)
 It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
       ),
+      undefined,
+      "error",
     );
   }
 

@@ -62,7 +62,7 @@ type RscThenable = Promise<ReactNode> & {
 type RscCacheNode = RscNavigationCacheNode<RscThenable>;
 type RscSegmentCacheNode = AkanSegmentCacheNode<RscThenable>;
 type RscFetchResult =
-  | { type: "rsc"; node: RscCacheNode }
+  | { type: "rsc"; node: RscCacheNode; notFound?: boolean }
   | {
       type: "patched";
       tree: RscSegmentCacheNode;
@@ -195,19 +195,17 @@ function commitRscPatchNavigation({
   return outletCommitted && headApplied;
 }
 
-//? `router.canGoBack()` reads the index off the entry, so a push records one step past the entry it leaves.
 function akanHistoryState(replace: boolean, shallow = false) {
-  const idx = (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
-  const current = Number.isInteger(idx) ? (idx as number) : 0;
   const shallowState = shallow ? { shallow: true, rendered: renderedHref } : {};
-  const scrollState = replace ? scrollRestoration.replaceEntry() : scrollRestoration.pushEntry();
-  return { __akanRouter: { idx: replace ? current : current + 1, ...scrollState, ...shallowState } };
+  const entryState = replace ? scrollRestoration.replaceEntry() : scrollRestoration.pushEntry();
+  return { __akanRouter: { ...entryState, ...shallowState } };
 }
 
 // The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
 let renderedHref = normalizeHref(window.location.href);
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
+const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
 
 function commitHistory(target: string, replace: boolean | undefined) {
   if (replace) window.history.replaceState(akanHistoryState(true), "", target);
@@ -227,7 +225,7 @@ async function fetchRsc(
   href: string,
   options: {
     buildId?: number;
-    replaceOnRedirect?: boolean;
+    replaceOnRedirect?: () => boolean;
     shouldApplyNavigation?: () => boolean;
     sendRouterState?: boolean;
     navId?: number;
@@ -238,6 +236,7 @@ async function fetchRsc(
     buildId: options.buildId,
     currentRouterState,
     navigate: globalThis.__AKAN_RSC_NAVIGATE__,
+    replaceOnRedirect: options.replaceOnRedirect,
     sendRouterState: options.sendRouterState,
     shouldApplyNavigation,
   });
@@ -278,10 +277,7 @@ async function fetchRsc(
     if (!shouldApplyNavigation()) return;
     const location = redirect.location ? normalizeHref(redirect.location) : href;
     if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
-    navigateAfterRscRedirect(
-      location,
-      redirect.method ? redirect.method !== "push" : (options.replaceOnRedirect ?? true),
-    );
+    navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
   };
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
@@ -290,12 +286,13 @@ async function fetchRsc(
   const node = createRscNavigationCacheNode({
     href,
     thenable,
-    routerState: readAkanRouterStateResponseHeader(res.headers),
+    routerState: responseResult.notFound ? null : readAkanRouterStateResponseHeader(res.headers),
   });
   nodeRef.current = node;
   return {
     type: "rsc",
     node,
+    notFound: responseResult.notFound,
   };
 }
 
@@ -318,7 +315,7 @@ const initialNode = createRscNavigationCacheNode({
 rscCache.set(initialNode.href, initialNode);
 let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
-let currentFullNode: RscCacheNode = initialNode;
+let currentFullNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
@@ -333,6 +330,15 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
   currentFullNode = node;
+  currentCommitKind = "full";
+}
+
+//? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
+function forgetCommittedRouteState(): void {
+  rscPatchCache.clear();
+  currentRouterState = null;
+  currentSegmentTree = null;
+  currentFullNode = null;
   currentCommitKind = "full";
 }
 
@@ -369,6 +375,7 @@ function Root(): ReactNode {
       return;
     }
     const href = normalizeHref(window.location.href);
+    if (!currentFullNode) return;
     const currentFullState = currentFullNode.routerState;
     const canRestoreFullNode =
       currentFullNode.href === href &&
@@ -390,7 +397,7 @@ function Root(): ReactNode {
     try {
       const next = await fetchRsc(target, {
         ...options,
-        replaceOnRedirect: true,
+        replaceOnRedirect: () => true,
         sendRouterState: false,
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
@@ -412,7 +419,7 @@ function Root(): ReactNode {
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await next.node.thenable;
       const committed = commitLatestRscNavigation({
-        cache: rscCache,
+        cache: next.notFound ? undefined : rscCache,
         href: target,
         thenable: next.node,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -426,7 +433,9 @@ function Root(): ReactNode {
         navId,
         getCurrentNavId: () => navigationSeq,
       });
-      if (committed) rememberCommittedRouteState(next.node);
+      if (!committed) return;
+      if (next.notFound) forgetCommittedRouteState();
+      else rememberCommittedRouteState(next.node);
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, true, error);
@@ -434,14 +443,21 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
-    if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) return;
+    if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
+      navigationSeq += 1;
+      return;
+    }
     forgetPagesOfAnotherAccount();
     const navId = ++navigationSeq;
     const target = normalizeHref(href);
+    //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
+    let ownsEntry = !!options.replace;
+    const replaceOnRedirect = () => ownsEntry;
     const scrollY = options.scrollY ?? ((options.scrollToTop ?? true) ? 0 : undefined);
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY });
     try {
       let nextNode = rscCache.get(target);
+      let notFound = false;
       const servedFromCache = !!nextNode;
       if (!nextNode) {
         const cachedPatch = rscPatchCache.get(target);
@@ -479,7 +495,7 @@ function Root(): ReactNode {
           rscPatchCache.delete(target);
         }
         const fetched = await fetchRsc(target, {
-          replaceOnRedirect: options.replace,
+          replaceOnRedirect,
           navId,
           shouldApplyNavigation: () => navId === navigationSeq,
         });
@@ -509,7 +525,7 @@ function Root(): ReactNode {
           }
           rscPatchCache.delete(target);
           const fallback = await fetchRsc(target, {
-            replaceOnRedirect: options.replace,
+            replaceOnRedirect,
             sendRouterState: false,
             navId,
             shouldApplyNavigation: () => navId === navigationSeq,
@@ -518,8 +534,10 @@ function Root(): ReactNode {
           if (fallback.type === "not-found") throw new RscRouteNotFound(target);
           if (fallback.type === "patched") throw new Error("[rscClient] full fallback unexpectedly returned a patch");
           nextNode = fallback.node;
+          notFound = !!fallback.notFound;
         } else {
           nextNode = fetched.node;
+          notFound = !!fetched.notFound;
         }
       } else {
         rememberRscCacheNode(rscCache, nextNode, MAX_RSC_CACHE_ENTRIES);
@@ -535,7 +553,7 @@ function Root(): ReactNode {
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
       const committed = commitLatestRscNavigation({
-        cache: rscCache,
+        cache: notFound ? undefined : rscCache,
         href: target,
         thenable: nextNode,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -547,12 +565,15 @@ function Root(): ReactNode {
         },
         updateHistory: () => {
           commitHistory(target, options.replace);
+          ownsEntry = true;
         },
         requestScroll,
         navId,
         getCurrentNavId: () => navigationSeq,
       });
-      if (committed) rememberCommittedRouteState(nextNode);
+      if (!committed) return;
+      if (notFound) forgetCommittedRouteState();
+      else rememberCommittedRouteState(nextNode);
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       // Rethrown before the fallback: a document navigation would land on the very 404 this refusal exists to avoid.
@@ -569,13 +590,17 @@ window.addEventListener("popstate", (event) => {
   const entry = (event.state as { __akanRouter?: { shallow?: boolean; rendered?: string } } | null)?.__akanRouter;
   const scrollY = scrollRestoration.traverseTo(event.state);
   //? A shallow entry shows the render that was on screen when it was written, which a later same-path push replaces.
-  const keepsPage = (entry?.shallow ? entry.rendered : here) === renderedHref;
+  const keepsPage = withoutHash(entry?.shallow ? entry.rendered : here) === withoutHash(renderedHref);
   // The URL already moved, so a refused route falls back to the document route's real not-found page.
   if (!keepsPage)
     void globalThis
       .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, scrollY })
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
-  else if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
+  else {
+    //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
+    navigationSeq += 1;
+    if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
+  }
   window.setTimeout(() => {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
     const href = globalThis.__AKAN_GET_SYNC_ROUTE_HREF__?.(window.location.href) ?? window.location.href;

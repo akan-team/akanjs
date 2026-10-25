@@ -245,7 +245,7 @@ describe("Subspace push", () => {
     expect(second.sha).not.toBe(first.sha);
   });
 
-  test("keeps the subspace's own root config and drops a Jenkinsfile an earlier push left there", async () => {
+  test("keeps the subspace's own root config and a Jenkinsfile an earlier push left there, never the workspace's", async () => {
     const { workRoot, bareRoot, subspace } = await makeMirror("own-served", "own-private", "own-kit");
     const customer = await cloneSubspace(workRoot, bareRoot, "own-customer");
     await write(path.join(customer, "akan.config.ts"), "export default { pipeline: {} };\n");
@@ -261,7 +261,8 @@ describe("Subspace push", () => {
     expect(await FileSys.readText(path.join(subspaceRoot, "akan.config.ts"))).toContain(
       "export default { pipeline: {} };",
     );
-    expect(await FileSys.fileExists(path.join(subspaceRoot, "Jenkinsfile"))).toBe(false);
+    expect(await FileSys.fileExists(path.join(subspaceRoot, "Jenkinsfile"))).toBe(true);
+    expect(await FileSys.readText(path.join(subspaceRoot, "Jenkinsfile"))).toContain("pipeline { agent none }");
   });
 
   test("refuses a lock that resolves from a registry only this machine reaches, before it clones", async () => {

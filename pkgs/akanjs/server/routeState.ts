@@ -5,6 +5,7 @@ export const AKAN_RSC_STATE_VERSION_HEADER = "X-Akan-Rsc-State-Version";
 export const AKAN_RSC_CURRENT_ROUTE_HEADER = "X-Akan-Rsc-Current-Route";
 export const AKAN_RSC_CURRENT_STATE_HEADER = "X-Akan-Rsc-Current-State";
 export const AKAN_RSC_RESPONSE_STATE_HEADER = "X-Akan-Rsc-State";
+export const AKAN_RSC_NOT_FOUND_HEADER = "X-Akan-Rsc-Not-Found";
 export const AKAN_RSC_PATCH_START_INDEX_HEADER = "X-Akan-Rsc-Patch-Start-Index";
 export const AKAN_RSC_PATCH_SEGMENT_PATH_HEADER = "X-Akan-Rsc-Patch-Segment-Path";
 export const AKAN_RSC_PATCH_START_SEGMENT_HEADER = "X-Akan-Rsc-Patch-Start-Segment";

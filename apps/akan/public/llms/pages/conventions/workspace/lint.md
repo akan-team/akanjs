@@ -56,7 +56,7 @@ every `.tsx` in `apps/` `libs/`
 
 An arrow that only forwards to a form setter. Pass `st.do.setXOnY` by reference.
 
-An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.
+An `st` hook that a render can skip. Read each into its own `const` at the top of the component, then combine.
 
 `"use client"` files and `*.store.ts`
 
@@ -201,6 +201,10 @@ Errors, logs and comments
 **`no-bang-comment-in-client` always points at line 1.** It is a file-level diagnostic, so search the file for the marker.
 
 Stores, forms and module files
+
+**Two rules check hooks.** Biome's `useHookAtTopLevel` checks plain hooks like `useState` and `useEffect` on the same files, after an early `return` too. It cannot see the `st` hooks, whose names do not start with `use`, so `no-conditional-st-hook` checks those: `st.use.*`, `st.slice.<x>.use.*`, `st.sel`, `st.ref`, `st.tool(…).exec()` / `.card()`, `st.useState(…).init()` and `st.expose(…).value()`.
+
+**Where an `st` hook is reported.** On the right of `||`, `&&`, `??`, `||=`, `&&=` or `??=`, in a ternary branch, an `if` body, a `switch` case, a loop, a `catch`, a default value, an optional call's arguments, or a callback a component hands to a call or a JSX prop. An early `return` before an `st` hook, and a helper the component calls, are not checked.
 
 **Generated CRUD names are taken.** `<model>`, `light<Model>`, `create<Model>`, `update<Model>`, `remove<Model>`, `view<Model>`, `edit<Model>` and `merge<Model>` already exist, so give a custom endpoint another name.
 

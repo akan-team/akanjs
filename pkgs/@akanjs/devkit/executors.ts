@@ -140,6 +140,14 @@ export const execEmoji = {
   default: "✈️",
 };
 
+//? As Bun's own .env loader reads it (1.4.4), which fills process.env too: `#` ends an unquoted value even mid-word.
+const parseEnvValue = (value: string) => {
+  const [, quote, inner] = value.match(/^(["'`])((?:\\.|(?!\1)[^\\])*)\1/) ?? [];
+  if (!quote) return value.replace(/#.*/, "").trim();
+  if (quote !== '"') return inner;
+  return inner.replace(/\\(.)/g, (pair, char: string) => (char === "n" ? "\n" : char === "r" ? "\r" : pair));
+};
+
 const parseEnvFile = (envPath: string): Record<string, string> => {
   const env: Record<string, string> = {};
   const content = (() => {
@@ -156,11 +164,7 @@ const parseEnvFile = (envPath: string): Record<string, string> => {
     const separatorIndex = normalized.indexOf("=");
     if (separatorIndex <= 0) continue;
     const key = normalized.slice(0, separatorIndex).trim();
-    let value = normalized.slice(separatorIndex + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    env[key] = value;
+    env[key] = parseEnvValue(normalized.slice(separatorIndex + 1).trim());
   }
   return env;
 };

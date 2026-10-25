@@ -1,7 +1,7 @@
 import "../test/registerDom";
 import { describe, expect, test } from "bun:test";
 import { ID } from "akanjs/base";
-import type { ReactNode } from "react";
+import { type ReactNode, use } from "react";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import type { McpAppBootProps } from "./McpAppBoot";
 
@@ -21,7 +21,26 @@ interface Sent {
 }
 const sent: Sent[] = [];
 const fromHostListeners: ((event: { source: unknown; data: unknown }) => void)[] = [];
-const host = { postMessage: (message: Sent) => void sent.push(message) };
+//? What the server answers a view's read it refused, relayed by the host: a missing record's `Err`, a refusal's status.
+const refusals: Record<string, object> = {
+  memo: {
+    content: [{ type: "text", text: "No memo found for the arguments given." }],
+    isError: true,
+    _meta: { [MCP_APP_META.error]: { error: "base.error.documentNotFound", statusCode: 404 } },
+  },
+  othersMemo: {
+    content: [{ type: "text", text: "You are not permitted to perform this action." }],
+    isError: true,
+    _meta: { [MCP_APP_META.error]: { statusCode: 403 } },
+  },
+};
+const host = {
+  postMessage: (message: Sent) => {
+    sent.push(message);
+    const refusal = message.method === "tools/call" ? refusals[String(message.params?.name)] : undefined;
+    if (refusal) setTimeout(() => fromHost({ id: message.id, result: refusal }));
+  },
+};
 Object.defineProperty(window, "parent", { configurable: true, value: host });
 const addEventListener = window.addEventListener.bind(window);
 window.addEventListener = ((type: string, listener: never, options?: never) => {
@@ -43,11 +62,9 @@ const memoId = "507f1f77bcf86cd799439011";
 const Broken = () => {
   throw new Error("a read failed while it drew");
 };
-//? What the relay restores from a refused call: the server's error key with its status.
-const refused = (statusCode: number) => Object.assign(new Error("base.error.documentNotFound"), { statusCode });
-const Removed = () => {
-  throw refused(404);
-};
+const read = async (key: string) =>
+  await FetchClient.bridge?.call({ key, type: "query", args: { memoId }, returns: { refName: "String" } });
+const Removed = ({ memo }: { memo: Promise<unknown> }) => <p>{String(use(memo))}</p>;
 const memoPage = {
   default: page()
     .param("memoId", ID)
@@ -56,13 +73,9 @@ const memoPage = {
       throw new Error("the load broke");
     })
     .app("brokenMemo", "Fails to draw.", () => <Broken />)
-    .app("goneMemo", "Reads a removed memo.", () => {
-      throw refused(404);
-    })
-    .app("hiddenMemo", "Reads a memo of another account.", () => {
-      throw refused(403);
-    })
-    .app("removedMemo", "Draws a memo removed since the call.", () => <Removed />)
+    .app("goneMemo", "Reads a removed memo.", async () => <p>{String(await read("memo"))}</p>)
+    .app("hiddenMemo", "Reads a memo of another account.", async () => <p>{String(await read("othersMemo"))}</p>)
+    .app("removedMemo", "Draws a memo removed since the call.", () => <Removed memo={read("memo")} />)
     .render(() => null),
 };
 const root = {

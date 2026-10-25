@@ -1,16 +1,20 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
-// `st.use.<key>()`, `st.sel()`, `st.ref()` and the builders' last step (`st.tool(…)….exec()` / `.card()`,
-// `st.useState(…)….init()`, `st.expose(…)….value()`) are React hooks that Biome's `useHookAtTopLevel` cannot see:
-// it recognises a hook by a `use` prefix on the called name. A hook a render skips shifts every later hook by one
-// slot, and production React does not check the order — a later `useRef` then receives a frozen store value and
-// the screen dies far from the cause ("Cannot add property current, object is not extensible").
+// `st.use.<key>()`, `st.slice.<name>.use.<key>()`, `st.sel()`, `st.ref()` and the builders' last step
+// (`st.tool(…)….exec()` / `.card()`, `st.useState(…)….init()`, `st.expose(…)….value()`) are React hooks that Biome's
+// `useHookAtTopLevel` cannot see: it recognises a hook by a `use` prefix on the called name. A hook a render skips
+// shifts every later hook by one slot, and production React does not check the order — a later `useRef` then
+// receives a frozen store value and the screen dies far from the cause ("Cannot add property current, object is not
+// extensible").
 //
-// Reported: the right operand of `||` / `&&` / `??`, a ternary branch, an `if` / `else` body, a `switch` case, a
-// loop, a `catch` block, and a callback handed to a call or a JSX prop inside a component (`.map`, `useEffect`,
-// an event handler, a render prop — `Load.Units` calls `renderList` only while the list is non-empty). A test
-// position is not reported: `if (st.use.x())` always runs.
+// Reported: the right operand of `||` / `&&` / `??` and of `||=` / `&&=` / `??=`, a ternary branch, an `if` / `else`
+// body, a `switch` case, a loop (a `for` initializer runs once and is not one), a `catch` block, a default value,
+// the arguments of an optional call, and a callback handed to a call or a JSX prop inside a component, inline or by
+// a camelCase name (`.map`, `useEffect`, an event handler, a render prop — `Load.Units` calls `renderList` only while
+// the list is non-empty). A test position is not reported: `if (st.use.x())` always runs. Each position counts up to
+// the nearest function only, so a component defined in `useMemo` or picked by a module-level ternary is its own
+// render; a PascalCase name is a component, which React renders rather than calls.
 //
 // Not reported: a hook after an early `return` (GritQL sees no statement order), a local helper the component
 // calls (`const tool = (name) => st.tool(name)…exec(…)` runs a fixed number of times when called at top level),
@@ -25,7 +29,15 @@ pattern st_hook_call() {
     `$chain.exec($args)` where { $chain <: r"st\s*\.\s*tool\s*\([\s\S]*" },
     `$chain.card($args)` where { $chain <: r"st\s*\.\s*tool\s*\([\s\S]*" },
     `$chain.init($args)` where { $chain <: r"st\s*\.\s*useState\s*\([\s\S]*" },
-    `$chain.value($args)` where { $chain <: r"st\s*\.\s*expose\s*\([\s\S]*" }
+    `$chain.value($args)` where { $chain <: r"st\s*\.\s*expose\s*\([\s\S]*" },
+    // Computed access (`st["use"].x()`, `st.use[key]()`) at any step, which would take a snippet per combination.
+    JsCallExpression(callee = $callee) where {
+      $callee <: or {
+        r"st\s*(?:\.\s*use|\[\s*[\x27\x22`]use[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])",
+        r"st\s*(?:\.\s*slice|\[\s*[\x27\x22`]slice[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])\s*(?:\.\s*use|\[\s*[\x27\x22`]use[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])",
+        r"st\s*\[\s*[\x27\x22`](?:sel|ref)[\x27\x22`]\s*\]"
+      }
+    }
   }
 }
 
@@ -34,36 +46,95 @@ pattern function_like() {
     JsArrowFunctionExpression(),
     JsFunctionExpression(),
     JsFunctionDeclaration(),
+    JsFunctionExportDefaultDeclaration(),
     JsMethodObjectMember(),
-    JsMethodClassMember()
+    JsGetterObjectMember(),
+    JsSetterObjectMember(),
+    JsMethodClassMember(),
+    JsGetterClassMember(),
+    JsSetterClassMember(),
+    JsConstructorClassMember()
+  }
+}
+
+// An IIFE runs where it stands, so the position around it still decides whether its hooks run.
+pattern function_boundary() {
+  function_like() as $boundary where {
+    not $boundary <: within JsCallExpression(callee = $iifeCallee) where {
+      $iifeCallee <: or { $boundary, JsParenthesizedExpression(expression = $boundary) }
+    }
+  }
+}
+
+pattern callback_slot() {
+  or { JsCallArguments(), JsxExpressionAttributeValue(), JsxExpressionChild() }
+}
+
+pattern passed_by_name($name) {
+  or {
+    JsCallArguments(args = [..., $arg where { $arg <: $name }, ...]),
+    JsxExpressionAttributeValue(expression = $arg) where { $arg <: $name },
+    JsxExpressionChild(expression = $arg) where { $arg <: $name }
   }
 }
 
 JsCallExpression() as $call where {
   $call <: st_hook_call(),
   or {
-    $call <: within JsLogicalExpression(right = $right) where { $right <: contains $call },
+    $call <: within JsLogicalExpression(right = $right) where { $right <: contains $call } until function_boundary(),
+    // The operator token is not a field GritQL can read; `[^=]*` makes the first `=` in the text the operator's.
+    $call <: within JsAssignmentExpression(right = $right) as $assignment where {
+      $assignment <: r"[^=]*(?:\|\||&&|\?\?)=[\s\S]*",
+      $right <: contains $call
+    } until function_boundary(),
     $call <: within JsConditionalExpression(consequent = $then, alternate = $else) where {
       or { $then <: contains $call, $else <: contains $call }
-    },
+    } until function_boundary(),
     $call <: within JsIfStatement(consequent = $then, else_clause = $else) where {
       or { $then <: contains $call, $else <: contains $call }
-    },
-    $call <: within JsForOfStatement(body = $body) where { $body <: contains $call },
-    $call <: within JsForInStatement(body = $body) where { $body <: contains $call },
+    } until function_boundary(),
+    $call <: within JsForStatement(initializer = $init) where { not $init <: contains $call } until function_boundary(),
+    $call <: within JsForOfStatement(body = $body) where { $body <: contains $call } until function_boundary(),
+    $call <: within JsForInStatement(body = $body) where { $body <: contains $call } until function_boundary(),
     $call <: within or {
       JsCaseClause(),
       JsDefaultClause(),
-      JsForStatement(),
       JsWhileStatement(),
       JsDoWhileStatement(),
       JsCatchClause()
-    },
-    // The callback must be handed over inside another function: a component passed to `memo()` / `forwardRef()`
-    // at module level is not one.
-    $call <: within function_like() as $inner where {
-      $inner <: within or { JsCallArguments(), JsxExpressionAttributeValue(), JsxExpressionChild() } as $slot where {
-        $slot <: within function_like()
+    } until function_boundary(),
+    $call <: within or {
+      JsFormalParameter(initializer = $default),
+      JsObjectBindingPatternShorthandProperty(init = $default),
+      JsObjectBindingPatternProperty(init = $default),
+      JsArrayBindingPatternElement(init = $default),
+      JsObjectAssignmentPatternShorthandProperty(init = $default),
+      JsObjectAssignmentPatternProperty(init = $default),
+      JsArrayAssignmentPatternElement(init = $default)
+    } where { $default <: contains $call } until function_boundary(),
+    // A `?.` ahead of the callee's first `(` or `[` sits on its own chain, so a nullish link skips the arguments.
+    $call <: within JsCallExpression(callee = $callee, arguments = $arguments) as $outerCall where {
+      $arguments <: contains $call,
+      or { $outerCall <: `$optionalCallee?.($optionalArgs)`, $callee <: r"[^\[\(]*\?\.[\s\S]*" }
+    } until function_boundary(),
+    and {
+      $call <: within function_boundary() as $nearest until function_boundary(),
+      or {
+        // The callback must be handed over inside another function: a component passed to `memo()` /
+        // `forwardRef()` at module level is not one.
+        $nearest <: within callback_slot() as $slot where { $slot <: within function_boundary() } until function_boundary(),
+        and {
+          or {
+            $nearest <: JsFunctionDeclaration(id = $name),
+            $nearest <: within JsVariableDeclarator(id = $name, initializer = JsInitializerClause(expression = $value)) where {
+              $value <: $nearest
+            } until function_boundary()
+          },
+          $name <: r"[a-z_$][\w$]*",
+          $nearest <: within or { JsFunctionBody(), JsModule() } as $scope where {
+            $scope <: contains passed_by_name($name) as $handover where { $handover <: within function_boundary() }
+          } until or { JsFunctionBody(), JsModule() }
+        }
       }
     }
   },

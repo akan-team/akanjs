@@ -633,6 +633,85 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(names[1]).toMatch(/^uniqueConf_code_[0-9a-f]{8}$/);
     });
 
+    test("[DDL-6] two declarations of one index trading places rebuild nothing", async () => {
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const declared = (first: 1 | -1, second: 1 | -1) =>
+          new DocumentSchema().index({ code: first }).index({ code: second });
+        await storeOf(driver, uniqueConstant, uniqueDatabase, declared(1, -1));
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared(-1, 1));
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared(1, -1));
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_code"]);
+        expect(warnings.filter((message) => message.includes("changed its descriptor"))).toEqual([]);
+      } finally {
+        removeSink();
+      }
+    });
+
+    test("[DDL-6] reordering the fields of an index builds it in the new order", async () => {
+      await storeOf(driver, uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1, label: 1 }));
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code"]);
+    });
+
+    test("[DDL-6] of the copies an earlier release left in both field orders, the declared order serves on", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const legacyIndex = async (name: string, paths: string[]) => {
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique: false,
+            columns: paths.map((path) => ({ path, expr: legacy.compiler.fieldExpr(path), isArray: false })),
+          }),
+        );
+        const fields = Object.fromEntries(paths.map((path) => [path, 1]));
+        await driver.database.setMeta(`index:uniqueConf:${name}`, await descriptorHash({ fields }));
+      };
+      // What a release naming indexes by position left once the fields of its first index were swapped.
+      await legacyIndex("uniqueConf_code_label_0", ["code", "label"]);
+      await legacyIndex("uniqueConf_label_code_0", ["label", "code"]);
+
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code_0"]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_label_0")).toBeUndefined();
+    });
+
+    test("[DDL-6] an index made by hand under a declared name is left alone unless it is the declared one", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const byHand = async (name: string, paths: string[]) =>
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique: false,
+            columns: paths.map((path) => ({ path, expr: legacy.compiler.fieldExpr(path), isArray: false })),
+          }),
+        );
+      await byHand("uniqueConf_label", ["label", "code"]);
+      await byHand("uniqueConf_code", ["code"]);
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const declared = () => new DocumentSchema().index({ label: 1 }).index({ code: 1 });
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared());
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, declared());
+        const names = (await validIndexNamesOf(driver, "uniqueConf")).sort();
+        expect(names).toHaveLength(3);
+        expect(names.slice(0, 2)).toEqual(["uniqueConf_code", "uniqueConf_label"]);
+        expect(names[2]).toMatch(/^uniqueConf_label_[0-9a-f]{8}$/);
+        expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeUndefined();
+        expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code")).toBeDefined();
+        expect(warnings.filter((message) => message.includes("Index uniqueConf_label on uniqueConf"))).toHaveLength(2);
+
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label"]);
+      } finally {
+        removeSink();
+      }
+    });
+
     test("two different indexes given one name refuse to boot", async () => {
       await expect(
         storeOf(
@@ -718,6 +797,16 @@ const describeDriver = (kind: SqlDriverKind) => {
           new DocumentSchema().index({ status: 1 }, { where: q.search("x") }),
         ),
       ).rejects.toThrow("q.search()");
+    });
+
+    test("a `where` testing an array field for a member refuses to boot, naming the index", async () => {
+      const filtered = (where: Parameters<DocumentSchema["index"]>[1]) =>
+        storeOf(driver, confConstant, confDatabase, new DocumentSchema().index({ status: 1 }, where));
+      await expect(filtered({ where: { tags: q.has("vip") } })).rejects.toThrow(
+        "Index dialectConf_status on dialectConf tests tags for a member (q.has())",
+      );
+      await expect(filtered({ where: { tags: "vip" } })).rejects.toThrow("q.has()");
+      await expect(filtered({ where: { tags: q.oneOf(["vip", "new"]) } })).rejects.toThrow("q.has()");
     });
   });
 

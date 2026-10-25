@@ -4,6 +4,7 @@ const userScrollEvents = ["wheel", "touchstart", "keydown", "pointerdown"] as co
 
 interface AkanEntryState {
   key?: unknown;
+  idx?: unknown;
   scrollY?: unknown;
 }
 
@@ -12,12 +13,15 @@ interface AkanEntryState {
 export class RscScrollRestoration {
   #positions = new Map<string, number>();
   #key: string;
+  #idx: number;
   #manual: boolean = false;
   #persistTimer: ReturnType<typeof setTimeout> | null = null;
   #cancelPending: (() => void) | null = null;
 
   constructor() {
-    this.#key = RscScrollRestoration.#entryOf(window.history.state).key ?? RscScrollRestoration.#mintKey();
+    const entry = RscScrollRestoration.#entryOf(window.history.state);
+    this.#key = entry.key ?? RscScrollRestoration.#mintKey();
+    this.#idx = entry.idx ?? 0;
     //? The browser restores no manual entry, so a reload or a document load back into one reads the offset from its state.
     window.addEventListener("scroll", () => this.#schedulePersist(), { passive: true });
     window.addEventListener("pagehide", () => {
@@ -25,19 +29,22 @@ export class RscScrollRestoration {
     });
   }
 
-  pushEntry(): { key: string } {
+  //? `router.canGoBack()` reads the index off the entry, so a push records one step past the entry it leaves.
+  pushEntry(): { key: string; idx: number } {
     this.#settle();
     this.#manual = true;
     window.history.scrollRestoration = "manual";
     this.#positions.set(this.#key, window.scrollY);
     this.#persist();
     this.#key = RscScrollRestoration.#mintKey();
-    return { key: this.#key };
+    this.#idx = this.#liveIdx() + 1;
+    return { key: this.#key, idx: this.#idx };
   }
 
-  replaceEntry(): { key: string; scrollY?: number } {
+  replaceEntry(): { key: string; idx: number; scrollY?: number } {
     const { scrollY } = RscScrollRestoration.#entryOf(window.history.state);
-    return { key: this.#key, ...(scrollY === undefined ? {} : { scrollY }) };
+    this.#idx = this.#liveIdx();
+    return { key: this.#key, idx: this.#idx, ...(scrollY === undefined ? {} : { scrollY }) };
   }
 
   traverseTo(state: unknown): number | undefined {
@@ -46,11 +53,14 @@ export class RscScrollRestoration {
     const entry = RscScrollRestoration.#entryOf(state);
     if (entry.key) {
       this.#key = entry.key;
+      this.#idx = entry.idx ?? 0;
       return this.#positions.get(entry.key) ?? entry.scrollY;
     }
-    //? A fragment link pushes an entry with no state; keyed now, a later move back to it restores.
+    //? A fragment link pushes an entry with no state, one step past the entry it left, and the entry a document opened
+    //? on holds only the index the router stamped; keyed now, a later move back to either restores.
     this.#key = RscScrollRestoration.#mintKey();
-    RscScrollRestoration.#writeEntry({ key: this.#key });
+    this.#idx = entry.idx ?? this.#idx + 1;
+    RscScrollRestoration.#writeEntry({ key: this.#key, idx: this.#idx });
     return undefined;
   }
 
@@ -93,16 +103,21 @@ export class RscScrollRestoration {
     RscScrollRestoration.#writeEntry({ key: this.#key, scrollY: window.scrollY });
   }
 
+  #liveIdx(): number {
+    return RscScrollRestoration.#entryOf(window.history.state).idx ?? this.#idx;
+  }
+
   #settle() {
     this.#cancelPending?.();
     if (this.#persistTimer) clearTimeout(this.#persistTimer);
     this.#persistTimer = null;
   }
 
-  static #entryOf(state: unknown): { key?: string; scrollY?: number } {
+  static #entryOf(state: unknown): { key?: string; idx?: number; scrollY?: number } {
     const entry = (state as { __akanRouter?: AkanEntryState } | null)?.__akanRouter;
     return {
       key: typeof entry?.key === "string" ? entry.key : undefined,
+      idx: Number.isInteger(entry?.idx) ? (entry?.idx as number) : undefined,
       scrollY: typeof entry?.scrollY === "number" && Number.isFinite(entry.scrollY) ? entry.scrollY : undefined,
     };
   }

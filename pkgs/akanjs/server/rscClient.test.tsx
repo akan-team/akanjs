@@ -2,7 +2,12 @@ import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
-import { AKAN_RSC_CURRENT_ROUTE_HEADER, AKAN_RSC_RESPONSE_STATE_HEADER, encodeAkanRouterState } from "./routeState";
+import {
+  AKAN_RSC_CURRENT_ROUTE_HEADER,
+  AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_RESPONSE_STATE_HEADER,
+  encodeAkanRouterState,
+} from "./routeState";
 
 const origin = "http://localhost";
 //? A Flight row for the whole document, so the root that hydrates `document` gets a tree it can own.
@@ -31,7 +36,7 @@ const back = async (expected: string) => {
   await act(async () => window.history.back());
   await waitFor(() => shown() === expected);
 };
-const served = new Map<string, () => Response>();
+const served = new Map<string, () => Response | Promise<Response>>();
 const fetched: { pathname: string; sentRouterState: boolean }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
 const sentRouterStateFor = (pathname: string) =>
@@ -73,6 +78,17 @@ const lateRedirectTo = (location: string) => () => {
   });
   return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
 };
+const redirectInFirstChunkTo = (location: string) => () => {
+  const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
+  const rows = `${rowOf("$L1")}1:E${JSON.stringify({ digest, message: `Redirect to ${location}` })}\n`;
+  return new Response(rows, { headers: { "Content-Type": "text/x-component" } });
+};
+const notFoundViewOf = (text: string) => () =>
+  new Response(rowOf(text), {
+    status: 404,
+    headers: { "Content-Type": "text/x-component", [AKAN_RSC_NOT_FOUND_HEADER]: "view" },
+  });
+const bareNotFound = () => new Response("0:null\n", { status: 404, headers: { "Content-Type": "text/x-component" } });
 const writeCookie = (entry: string) => {
   // biome-ignore lint/suspicious/noDocumentCookie: setAuth signs a page in through the jar, the one `/__rsc` carries.
   document.cookie = entry;
@@ -133,6 +149,61 @@ describe("rscClient history", () => {
   });
 });
 
+describe("rscClient overtaken navigation", () => {
+  const heldUntilReleased = (text: string) => {
+    const held = { release: () => {} };
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        held.release = () => resolve(responseOf(text));
+      });
+    return { held, respond };
+  };
+
+  test("a move forward that keeps the page drops the move back still loading", async () => {
+    await navigate("/thread/1");
+    await navigate("/thread/2");
+    await refresh();
+    const { held, respond } = heldUntilReleased("/thread/1");
+    served.set("/thread/1", respond);
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(10);
+    });
+    await act(async () => window.history.forward());
+    await act(async () => {
+      await sleep(10);
+    });
+
+    await act(async () => {
+      held.release();
+      await sleep(30);
+    });
+
+    expect(window.location.pathname).toBe("/thread/2");
+    expect(shown()).toBe("/thread/2");
+  });
+
+  test("a shallow push made while a navigation is loading is not overtaken by it", async () => {
+    await navigate("/catalog");
+    const { held, respond } = heldUntilReleased("/catalog/next");
+    served.set("/catalog/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/catalog/next");
+      await sleep(10);
+    });
+    await navigate("/catalog?peek=1", { shallow: true });
+
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+
+    expect(`${window.location.pathname}${window.location.search}`).toBe("/catalog?peek=1");
+    expect(shown()).toBe("/catalog");
+  });
+});
+
 describe("rscClient scroll restoration", () => {
   test("a move back restores the offset its entry was left at, and a push starts at the top", async () => {
     await navigate("/blog");
@@ -167,6 +238,99 @@ describe("rscClient scroll restoration", () => {
 
     expect(shown()).toBe("/shop");
     expect(window.scrollY).toBe(250);
+  });
+});
+
+describe("rscClient fragment navigation", () => {
+  const idxOfEntry = () => (window.history.state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
+
+  test("a fragment link keeps the page, asks the server nothing, and counts one step past the entry it left", async () => {
+    await navigate("/guide");
+    const idx = idxOfEntry() as number;
+    const requests = fetchCountOf("/guide");
+
+    window.history.pushState(null, "", "#install");
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(idxOfEntry()).toBe(idx + 1);
+    expect(shown()).toBe("/guide");
+    expect(fetchCountOf("/guide")).toBe(requests);
+
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(idxOfEntry()).toBe(idx);
+    expect(fetchCountOf("/guide")).toBe(requests);
+  });
+
+  test("a move back from a fragment keeps the index the router stamped on the entry a document opened on", async () => {
+    const asOpened = () => window.history.replaceState({ __akanRouter: { idx: 0 } }, "");
+    asOpened();
+    await navigate("/guide", { replace: true });
+    asOpened();
+
+    window.history.pushState(null, "", "#install");
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    expect(idxOfEntry()).toBe(1);
+
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(20);
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(idxOfEntry()).toBe(0);
+  });
+});
+
+describe("rscClient redirect", () => {
+  test("a push the server answers with a redirect keeps the page it left one step back", async () => {
+    await navigate("/porch");
+    const entries = window.history.length;
+    served.set("/members", preStreamRedirectTo("/door"));
+
+    await navigate("/members");
+    await waitFor(() => shown() === "/door");
+
+    expect(window.location.pathname).toBe("/door");
+    expect(window.history.length).toBe(entries + 1);
+    await back("/porch");
+    expect(window.location.pathname).toBe("/porch");
+  });
+
+  test("a push redirected in its stream before its page commits keeps the page it left one step back", async () => {
+    await navigate("/atrium");
+    const entries = window.history.length;
+    served.set("/annex", redirectInFirstChunkTo("/gate"));
+
+    await navigate("/annex");
+    await waitFor(() => shown() === "/gate");
+
+    expect(window.location.pathname).toBe("/gate");
+    expect(window.history.length).toBe(entries + 1);
+    await back("/atrium");
+  });
+
+  test("a redirect raised after the pushed page committed replaces that page", async () => {
+    await navigate("/foyer");
+    const entries = window.history.length;
+    served.set("/wing", lateRedirectTo("/exit"));
+
+    await navigate("/wing");
+    await waitFor(() => shown() === "/exit");
+
+    expect(window.history.length).toBe(entries + 1);
+    await back("/foyer");
   });
 });
 
@@ -276,5 +440,62 @@ describe("rscClient account change", () => {
     await navigate("/team/plan");
 
     expect(sentRouterStateFor("/team/plan")).toBe(false);
+  });
+});
+
+describe("rscClient not-found", () => {
+  test("a page answered with its not-found view shows the view at the URL it was asked for", async () => {
+    served.set("/vault/7", notFoundViewOf("vault missing"));
+    await navigate("/vaults");
+    const entries = window.history.length;
+
+    await navigate("/vault/7");
+
+    expect(shown()).toBe("vault missing");
+    expect(window.location.pathname).toBe("/vault/7");
+    expect(window.history.length).toBe(entries + 1);
+  });
+
+  test("a not-found view is asked for again, and the page after it is rendered whole", async () => {
+    served.set("/shelf", () => routedResponseOf("/shelf"));
+    await navigate("/shelf");
+    served.set("/shelf/9", notFoundViewOf("book missing"));
+    await navigate("/shelf/9");
+    await navigate("/shelf/1");
+    expect(sentRouterStateFor("/shelf/1")).toBe(false);
+
+    served.set("/shelf/9", () => responseOf("book found"));
+    await navigate("/shelf/9");
+
+    expect(fetchCountOf("/shelf/9")).toBe(2);
+    expect(shown()).toBe("book found");
+  });
+
+  test("a bare not-found leaves the page where it was and rejects", async () => {
+    served.set("/nowhere", bareNotFound);
+    await navigate("/here");
+    let refusal: unknown;
+    await act(async () => {
+      await globalThis.__AKAN_RSC_NAVIGATE__?.("/nowhere")?.catch((error: unknown) => {
+        refusal = error;
+      });
+    });
+
+    expect((refusal as Error | undefined)?.name).toBe("RscRouteNotFound");
+    expect(shown()).toBe("/here");
+    expect(window.location.pathname).toBe("/here");
+  });
+
+  test("a refresh answered with a not-found view shows it, while a bare one keeps the page", async () => {
+    await navigate("/report");
+    served.set("/report", bareNotFound);
+    await refresh();
+    expect(shown()).toBe("/report");
+
+    served.set("/report", notFoundViewOf("report removed"));
+    await refresh();
+
+    expect(shown()).toBe("report removed");
+    expect(window.location.pathname).toBe("/report");
   });
 });

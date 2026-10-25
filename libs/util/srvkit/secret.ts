@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type BackendEnv, type BaseEnv, type Environment, getEnv } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { bearerTokenOf, Logger } from "akanjs/common";
 import { Err } from "../lib/dict";
 import { jwtVerify } from "./jwt";
 
@@ -14,7 +14,7 @@ export const resolveJwt = async <Resolved extends ResolvedToken>(
   defaultResolved: Resolved,
 ): Promise<Resolved> => {
   // McpAuth's parse, exactly: a token read here that /mcp's gate ignores would skip its aud and expiry checks.
-  const token = /^Bearer +([^ ]+)/i.exec(authorization ?? "")?.[1];
+  const token = bearerTokenOf(authorization);
   if (!token) return defaultResolved;
   try {
     const resolved = (await jwtVerify(token, secret)) as Resolved;

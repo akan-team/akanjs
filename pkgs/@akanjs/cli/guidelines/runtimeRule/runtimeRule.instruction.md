@@ -228,7 +228,7 @@ assembles one from. There is no `content` field; the string *is* the content.
 const config: AppConfig = {
   docker: { preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg"] },
 };
-const config: AppConfig = { docker: "FROM oven/bun:1-slim\n…" }; // verbatim, nothing merged in
+const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbatim, nothing merged in
 ```
 
 - `image` and each run entry take `string | { amd64?, arm64? }`; the object form compiles to a
@@ -618,8 +618,9 @@ serving without a key. Everything else is behind the ops channel.
 - **`buildId` is `AKAN_BUILD_ID` when the deployment sets it**, else the git sha `akan build` wrote into
   `akan.build.json` beside `main.js` (`-dirty` when the tree was).
 - **`operationMode` does not gate any of this** — the key does. `edge` means a production host outside the
-  cluster: the console refuses it like `cloud`, and `init` / `interval` / `cron` take `operationMode: ["edge"]` to
-  run only there. Everything else behaves as `cloud`; `local` is a developer machine.
+  cluster: the console refuses it like `cloud`, `/mcp` starts off unless `AKAN_MCP=true` or `setMcp(true)`, and
+  `operationMode: ["edge"]` on a `serve()` (the whole module, endpoints included) or an `init` / `interval` / `cron`
+  runs it only there; `local` is a developer machine.
 
 ## Shipped Assets — `assets` In `akan.config.ts`
 

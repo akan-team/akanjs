@@ -59,10 +59,10 @@ this is the full contract behind them.
   `Unknown document field path`. The facade's third argument is the scope (`{ withRemoved: true }`), never a field.
   This is the only way to read a `field.secret(...)` value, which is otherwise stripped.
 - **Hydrated vs raw:** server queries return hydrated `cnst.<Model>` instances (with `set`/`save`/`refresh`), and so do client fetch results — `FetchClient` parses every return with `crystalize` defaulting to **true** (`pkgs/akanjs/fetch/client/fetchClient.ts`). The raw `GetStateObject` shape (functions stripped, `pkgs/akanjs/base/types.ts`) is what the `<ref>Obj` / `<ref>ObjList` / `<ref>ObjInsight` handles carry, because those pass `crystalize: false` on purpose so the value can cross the RSC boundary as a client prop.
-- Every filter generates fourteen methods: `list` · `listIds` · `find` · `findId` · `pick` · `pickId` · `exists` ·
-  `count` · `insight` · `query` · **`remove`** · **`removeOne`** · **`update`** · **`updateOne`**. The last four are
-  query-level writes — one atomic UPDATE, **no hooks**, and therefore no `_postRemove` and no cascade. Use them on a
-  model that carries no removal side effect; otherwise remove documents one at a time.
+- Every filter generates fifteen methods: `list` · `listIds` · `find` · `findId` · `pick` · `pickId` · `exists` ·
+  `count` · `insight` · `query` · **`remove`** · **`removeOne`** · **`purge`** · **`update`** · **`updateOne`**. The
+  last five are query-level writes — one atomic UPDATE, a DELETE for `purge` — with **no hooks**, so no `_postRemove`
+  and no cascade. Use them on a model that carries no removal side effect; otherwise remove documents one at a time.
 - **`update<Filter>` / `updateOne<Filter>` are chains, not calls:** `await updateInRoot(rootId).set({ status:
   "archived" })`. The patch cannot trail the filter args — a filter's own args may be optional and no tuple type
   puts a required element after those — so it lands on a terminal `.set()`, mirroring the `UPDATE … SET …` it
@@ -88,12 +88,14 @@ this is the full contract behind them.
 
 ## Soft Removal And The Facade's Writes
 
-- **Removal is soft** — every remove stamps `removedAt`, and every read and query-level write sees live rows only
-  (`removedAt IS NULL`).
+- **Removal is soft** — every remove stamps `removedAt`, and every read and every query-level write but `purge` sees
+  live rows only (`removedAt IS NULL`).
 - **`purge<Filter>(...)` / `purgeMany(query)` is the one hard delete**, for data you mean to lose, such as logs past
   their retention. It deletes every row the query matches, removed rows too (`{ removedAt: q.lt(cutoff) }` clears old
   removals), and returns the count. The search mirror's rows go with each row, and it runs no hook, cascade or live
-  event and has no undo. It deletes 1,000 rows per statement, and it refuses a query that matches every row.
+  event and has no undo. It deletes 1,000 rows per statement and refuses `q.search()` and a query empty in shape —
+  `{}` (a fallen-through `q.when` builds one), a `q.all()` of only those or nothing, a `q.any()` holding one or
+  nothing — but not a condition that happens to match every row: `{ id: q.notOneOf([]) }` deletes them all.
 - **`{ withRemoved: true }` reaches removed rows**: the third argument of `find` / `findOne` / `findById`
   (projection second, `null` when none), the last of `count` / `exists` / `updateMany`, or inside `updateOne` /
   `updateById`'s options. Without it, a `removedAt` condition only a removed row can meet (`q.exists("removedAt")`,

@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-agent";
 import { type CodeAgentProfile, codeAgentClip } from "akanjs/common";
@@ -8,6 +9,7 @@ export interface WebToolPackOptions {
   profile: CodeAgentProfile;
   /** Serves search after any key-named provider, and reads public pages to Markdown ahead of a direct fetch. */
   deepseek?: DeepSeekWeb | undefined;
+  lookup?: ((host: string) => Promise<string[]>) | undefined;
 }
 
 interface SearchProvider {
@@ -163,7 +165,7 @@ export class WebToolPack {
 
   async #read(url: string, signal?: AbortSignal): Promise<WebPage> {
     const deepseek = this.#options.deepseek;
-    if (deepseek && !WebToolPack.#isLocal(new URL(url).hostname)) {
+    if (deepseek && !(await this.#isLocal(new URL(url).hostname))) {
       try {
         const page = await deepseek.fetch(url, signal);
         return { status: 200, ok: true, title: page.title, text: page.content };
@@ -196,23 +198,46 @@ export class WebToolPack {
   }
 
   // DeepSeek's servers cannot reach these, and an intranet name has no business leaving the machine.
-  static #isLocal(hostname: string) {
-    const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-    const family = isIP(host);
-    if (family === 6) return host === "::1" || /^(f[cd]|fe[89ab])/.test(host);
-    if (family === 4) {
-      const [a = 0, b = 0] = host.split(".").map(Number);
-      return (
-        a === 0 ||
-        a === 10 ||
-        a === 127 ||
-        (a === 100 && b >= 64 && b <= 127) ||
-        (a === 169 && b === 254) ||
-        (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && b === 168)
-      );
+  async #isLocal(hostname: string) {
+    const host = hostname.replace(/^\[|\]$|\.$/g, "").toLowerCase();
+    if (isIP(host)) return WebToolPack.#isLocalAddress(host);
+    if (!host.includes(".") || /\.(localhost|local|internal|lan|home\.arpa)$/.test(host)) return true;
+    try {
+      const addresses = await (this.#options.lookup ?? WebToolPack.#lookup)(host);
+      return !addresses.length || addresses.some((address) => WebToolPack.#isLocalAddress(address));
+    } catch {
+      // Fails closed: an intranet name this machine cannot resolve right now is still an intranet name.
+      return true;
     }
-    return !host.includes(".") || /\.(localhost|local|internal|lan|home\.arpa)$/.test(host);
+  }
+
+  static async #lookup(host: string) {
+    return (await lookup(host, { all: true })).map((entry) => entry.address);
+  }
+
+  static #isLocalAddress(literal: string) {
+    const address = WebToolPack.#unmapped(literal);
+    if (isIP(address) === 6) return address === "::" || address === "::1" || /^(f[cd]|fe[89ab])/.test(address);
+    const [a = 0, b = 0] = address.split(".").map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+
+  // The URL parser writes `[::ffff:127.0.0.1]` as `::ffff:7f00:1`; a resolver hands a mapped address back dotted.
+  static #unmapped(address: string) {
+    const mapped = /^::ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i.exec(address);
+    if (!mapped) return address;
+    if (mapped[1]) return mapped[1];
+    const high = Number.parseInt(mapped[2] ?? "0", 16);
+    const low = Number.parseInt(mapped[3] ?? "0", 16);
+    return [high >> 8, high & 255, low >> 8, low & 255].join(".");
   }
 
   static #refuseHost(url: string, allowHosts: string[] | undefined) {

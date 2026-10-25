@@ -488,6 +488,26 @@ describe("router", () => {
     restoreTimeout();
   });
 
+  test("csr navigation hands an http(s) URL on as written, with no csr runtime search params", async () => {
+    envState.side = "client";
+    installClientWindow("/en/admin/current", "?csr=true&akanMobileTarget=default&akanMobileBasePath=admin");
+    const restoreTimeout = queueTimeouts();
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.init({ type: "csr", lang: "en", prefix: "admin", router: recordingRouter(calls) });
+
+    router.push("https://pay.example.com/checkout?sig=abc#top");
+    router.redirect("HTTPS://auth.example.com/signin");
+    flushTimeouts();
+
+    expect(calls).toEqual([
+      ["push", "https://pay.example.com/checkout?sig=abc#top", undefined],
+      ["replace", "HTTPS://auth.example.com/signin", undefined],
+    ]);
+    restoreTimeout();
+  });
+
   test("ssr client navigation hides base path outside local mode", async () => {
     envState.side = "client";
     envState.operationMode = "main";
