@@ -1,5 +1,12 @@
 import { getEnv } from "akanjs/base";
-import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths, trimSlashes } from "akanjs/common";
+import {
+  getBasePathFromPathname,
+  Logger,
+  originFromRequest,
+  parseAkanI18nEnv,
+  parseBasePaths,
+  trimSlashes,
+} from "akanjs/common";
 import { csrLocation } from "./csrLocation";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
@@ -90,15 +97,9 @@ function getServerRequestContext() {
   };
 }
 
-//? The origin the browser asked for: behind the gateway `req.url` names the replica.
 const getServerPublicOrigin = () => {
-  const { getRequest, headers } = getServerRequestContext();
-  const h = headers();
-  const url = getRequest()?.url;
-  const host = h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host");
-  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  if (!host) return url;
-  return `${proto ?? (url ? new URL(url).protocol.replace(":", "") : "https")}://${host}`;
+  const request = getServerRequestContext().getRequest();
+  return request ? originFromRequest(request.headers, new URL(request.url)) : undefined;
 };
 
 const getConfiguredBasePaths = () => new Set(parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS));
