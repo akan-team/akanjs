@@ -13,7 +13,8 @@ Generate persistence behavior for a collection-backed Akan module. This file tur
 ## Current Akan Patterns
 - Query names become generated helpers such as list, find, pick, exists, count, and insight variants.
 - Use filter args for required query inputs and optional args only when absence has a clear query meaning.
-- Use schema indexes for fields that are frequently filtered, sorted, uniquely constrained, or text searched.
+- Use schema indexes for fields that are frequently filtered, sorted, or uniquely constrained; a `"text"` index builds
+  nothing, so give a searched field a `text` role (`field(String, { text: "title" })`) instead.
 - Use hooks for persistence lifecycle behavior that must always run with document saves.
 
 ## Codegen Rules

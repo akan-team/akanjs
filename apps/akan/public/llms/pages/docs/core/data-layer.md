@@ -65,13 +65,13 @@ The service loads a document from the database, the document validates and chang
 
 What A Filter Generates
 
-A query you declare in the document file is not one method. Akan generates fourteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and eleven more, on both the model and the service.
+A query you declare in the document file is not one method. Akan generates fifteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and twelve more, on both the model and the service.
 
-One filter, fourteen methods
+One filter, fifteen methods
 
-One filter such as byOwner generates nine reads, one query descriptor for a slice, and four writes that run no hooks.
+One filter such as byOwner generates nine reads, one query descriptor for a slice, and five writes that run no hooks.
 
-Nine of the fourteen read, one only builds a query descriptor, and the remaining four write. Those four are the ones to be careful with: each is a single atomic statement against the database, so none of the model's document hooks run:
+Nine of the fifteen read, one only builds a query descriptor, and the remaining five write. Those five are the ones to be careful with: each writes straight to the database, so none of the model's document hooks run:
 
 Method
 
@@ -99,11 +99,13 @@ Method
 
 - removeOne<Filter>: Write, NO hooks. The same on the newest match; for at-most-one rows, not queue claims. — Example: `await removeOneByOwner(ownerId)`
 
+- purge<Filter>: Write, NO hooks or cascade. Hard-deletes every match, removed rows too; returns the count. Refuses an empty query. — Example: `await purgeByOwner(ownerId)`
+
 - update<Filter>: Write, NO hooks. A chain: the patch goes on a terminal .set(); building it does nothing. — Example: `await updateByOwner(ownerId).set({ status: "archived" })`
 
 - updateOne<Filter>: Write, NO hooks. The same chain, narrowed to the newest match. — Example: `await updateOneByOwner(ownerId).set({ status: "archived" })`
 
-Reach for the four writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — one atomic UPDATE cannot run any of that.
+Reach for the five writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — a query-level write cannot run any of that.
 
 Every model already carries an any filter, so listAny and countAny exist before you declare anything.
 

@@ -122,7 +122,9 @@ Related pages
 
 - Signal: The API explorer, split into parts. It reads the serialized signal the server ships with the app — every endpoint, its arguments, guards and return model — and renders a document you can also call endpoints from.
 
-  - Signal.Doc (.Zone · .Explorer · .Setting · .AuthModal · .DocSignals · .DocSignal): `Zone({ refName })` documents one signal; `Explorer({ include?, exclude? })` puts them all behind a sidebar.
+  - Signal.Doc (.Zone · .Explorer · .Setting · .AuthModal · .DocSignals · .DocSignal): `Zone({ refName })` documents one signal; `Explorer` puts them all behind a sidebar.
+
+  - Signal.Doc.Explorer ({ include?, exclude?, libs?: string[], groupBy?: "lib", defaultRefName? }): `libs` keeps the signals those apps or libs own, `groupBy: "lib"` groups them by owner, `defaultRefName` opens first.
 
   - Signal.RestApi (.Endpoints · .Endpoint · .Interface · .Try): The HTTP side: `Endpoints` lists queries and mutations, or only the ones named in `endpoints`.
 

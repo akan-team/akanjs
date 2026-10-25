@@ -8,7 +8,7 @@ const telemetry = [
     label: { en: "Current stage", ko: "현재 단계" },
     value: { en: "v3 · Agentic framework", ko: "v3 · 에이전틱 프레임워크" },
   },
-  { label: { en: "Release", ko: "릴리즈" }, value: { en: "akanjs 3.0.0", ko: "akanjs 3.0.0" } },
+  { label: { en: "Release", ko: "릴리즈" }, value: { en: "akanjs 3.1.0", ko: "akanjs 3.1.0" } },
   { label: { en: "Committed stages", ko: "확정 단계" }, value: { en: "2", ko: "2" } },
   { label: { en: "Proposed stages", ko: "제안 단계" }, value: { en: "2", ko: "2" } },
 ] as const;
@@ -358,9 +358,12 @@ export default page()
               </div>
             ))}
           </div>
-          <p className="mt-6 text-sm">
+          <p className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
             <Link href="/blog/v3release" className="font-bold text-primary hover:underline">
               {l.trans({ en: "Read what changed in v3", ko: "v3에서 바뀐 것 읽기" })}
+            </Link>
+            <Link href="/blog/v3-1release" className="font-bold text-primary hover:underline">
+              {l.trans({ en: "Read what changed in 3.1", ko: "3.1에서 바뀐 것 읽기" })}
             </Link>
           </p>
         </section>

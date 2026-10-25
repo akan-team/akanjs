@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { act, type ReactNode, useState } from "react";
 import { AgenticSurface, AgentProvider } from "use-agentic";
 import { itemFixtureOf, l, mountSuspense, setTestEnv, waitFor } from "../testHelpers.fixture";
@@ -7,21 +7,28 @@ import { itemFixtureOf, l, mountSuspense, setTestEnv, waitFor } from "../testHel
 let EditModal: typeof import("./EditModal").default;
 let NewWrapper: typeof import("./NewWrapper").default;
 let st: typeof import("akanjs/store").st;
+let DraftStore: typeof import("akanjs/store").DraftStore;
+let ItemFull: Awaited<ReturnType<typeof itemFixtureOf<"editModalTestItem">>>["Full"];
 let makeStore: () => void;
+let refetchOf: (id: string) => Promise<unknown> = async () => null;
 
 const slice = { refName: "editModalTestItem", sliceName: "editModalTestItem", argLength: 1 };
 const inParent = { ...slice, sliceName: "editModalTestItemInParent" };
 
 beforeAll(async () => {
   setTestEnv("editmodaltest");
-  const { storeMaker } = await itemFixtureOf("editModalTestItem");
+  const { Full, storeMaker } = await itemFixtureOf("editModalTestItem");
+  ItemFull = Full;
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({
     usePage: () => ({ path: "/", lang: "en", l }),
     fetch: { sortKeyMap: new Map([["editModalTestItem", ["latest"]]]) },
   } as never);
-  makeStore = storeMaker({ root: "editModalRoot" });
-  ({ st } = await import("akanjs/store"));
+  makeStore = storeMaker({
+    root: "editModalRoot",
+    calls: { editModalTestItem: mock((id: string) => refetchOf(id)) },
+  });
+  ({ st, DraftStore } = await import("akanjs/store"));
   ({ default: EditModal } = await import("./EditModal"));
   ({ default: NewWrapper } = await import("./NewWrapper"));
 });
@@ -47,9 +54,14 @@ const openFromParentTrigger = async (editors: ReactNode) => {
 };
 
 type Seed = Record<string, unknown>;
+interface ItemForm {
+  id: string | null;
+  title: string;
+}
 interface ItemState {
-  editModalTestItemForm: { id: string | null; title: string };
+  editModalTestItemForm: ItemForm;
   editModalTestItemModal: string | null;
+  editModalTestItemFormDraft: { pending: { form: ItemForm } | null } | null;
 }
 interface ItemDo {
   setTitleOnEditModalTestItem: (title: string) => void;
@@ -59,15 +71,13 @@ interface ItemDo {
 const itemState = () => st.get() as unknown as ItemState;
 const itemDo = () => st.do as unknown as ItemDo;
 
-const mountSeeded = async (first: Seed) => {
-  makeStore();
-  st.set({ editModalTestItemModal: null } as never);
+const mountEditor = async (first: Seed, draft: boolean) => {
   let reseed: (seed: Seed) => void = () => undefined;
   const Host = () => {
     const [seed, setSeed] = useState(first);
     reseed = setSeed;
     return (
-      <EditModal slice={slice} type="empty" edit={seed as never} draft={false}>
+      <EditModal slice={slice} type="empty" edit={seed as never} draft={draft}>
         <div>item form</div>
       </EditModal>
     );
@@ -89,10 +99,17 @@ const mountSeeded = async (first: Seed) => {
   return { ...mounted, rerender, typeTitle };
 };
 
+const mountSeeded = async (first: Seed) => {
+  makeStore();
+  st.set({ editModalTestItemModal: null } as never);
+  return mountEditor(first, false);
+};
+
 const itemId = "6ad7bb63f23a4492fe89855b";
-const editOf = (title: string, updatedAt: Date) => ({
+const otherItemId = "6ad7bb63f23a4492fe89855c";
+const editOf = (title: string, updatedAt: Date, id = itemId) => ({
   refName: "editModalTestItem",
-  editModalTestItemObj: { id: itemId, title, updatedAt },
+  editModalTestItemObj: { id, title, updatedAt },
   editModalTestItemViewAt: new Date(),
 });
 
@@ -168,5 +185,103 @@ describe("Model.EditModal", () => {
     expect(document.body.textContent).toContain("parent form");
     expect(document.body.textContent).not.toContain("item form");
     unmount();
+  });
+});
+
+describe("Model.EditModal form drafts", () => {
+  const savedAt = new Date("2026-10-24T00:00:00.000Z");
+
+  const startDrafts = () => {
+    makeStore();
+    st.set({ editModalTestItemModal: null, editModalTestItemFormDraft: null } as never);
+    localStorage.clear();
+  };
+  const storedFormOf = (id: string) => {
+    const raw = localStorage.getItem(DraftStore.keyOf("editModalTestItem", DraftStore.editScope(id)));
+    return raw ? (JSON.parse(raw) as { form: ItemForm }).form : null;
+  };
+  const pastDraftDebounce = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+  const holdRefetch = (record: Seed) => {
+    let release: () => void = () => undefined;
+    refetchOf = () =>
+      new Promise((resolve) => {
+        release = () => resolve(new ItemFull().set(record as never));
+      });
+    return () =>
+      act(async () => {
+        release();
+      });
+  };
+  const replayedFromCache = async <T,>(open: () => Promise<T>) => {
+    globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => true;
+    try {
+      return await open();
+    } finally {
+      globalThis.__AKAN_RSC_IS_FROM_CACHE__ = undefined;
+    }
+  };
+  const leave = async ({ unmount }: { unmount: () => void }) => {
+    unmount();
+    await act(async () => undefined);
+  };
+
+  afterEach(() => {
+    refetchOf = async () => null;
+    st.set({ editModalTestItemModal: null, editModalTestItemFormDraft: null } as never);
+    localStorage.clear();
+  });
+
+  test("restores the draft when Back replays the edit page and its refetch outlasts the save delay", async () => {
+    startDrafts();
+    const first = await mountEditor(editOf("saved", savedAt), true);
+    await first.typeTitle("typed");
+    await pastDraftDebounce();
+    expect(storedFormOf(itemId)?.title).toBe("typed");
+    await leave(first);
+
+    const releaseRefetch = holdRefetch({ id: itemId, title: "saved", updatedAt: savedAt });
+    const back = await replayedFromCache(() => mountEditor(editOf("saved", savedAt), true));
+    await pastDraftDebounce();
+    await releaseRefetch();
+    expect(storedFormOf(itemId)?.title).toBe("typed");
+    expect(itemState().editModalTestItemForm.title).toBe("typed");
+    back.unmount();
+  });
+
+  test("keeps the offered draft stored when a refresh refills the form with a newer version", async () => {
+    startDrafts();
+    const editor = await mountEditor(editOf("saved", savedAt), true);
+    await editor.typeTitle("typed");
+    await pastDraftDebounce();
+    await editor.typeTitle("typed more");
+    await editor.rerender(editOf("remote", new Date(savedAt.getTime() + 1_000)));
+    expect(itemState().editModalTestItemForm.title).toBe("remote");
+    await pastDraftDebounce();
+    expect(storedFormOf(itemId)?.title).toBe("typed more");
+    expect(itemState().editModalTestItemFormDraft?.pending?.form.title).toBe("typed more");
+    editor.unmount();
+  });
+
+  test("never stores another record's form under the draft of the record edited before it", async () => {
+    startDrafts();
+    const first = await mountEditor(editOf("saved", savedAt), true);
+    await first.typeTitle("typed");
+    await pastDraftDebounce();
+    await leave(first);
+
+    const releaseRefetch = holdRefetch({ id: otherItemId, title: "other", updatedAt: savedAt });
+    const other = await replayedFromCache(() => mountEditor(editOf("other", savedAt, otherItemId), true));
+    await pastDraftDebounce();
+    await releaseRefetch();
+    expect(storedFormOf(itemId)).toMatchObject({ id: itemId, title: "typed" });
+    await leave(other);
+
+    const again = await mountEditor(editOf("saved", savedAt), true);
+    expect(itemState().editModalTestItemForm).toMatchObject({ id: itemId, title: "typed" });
+    expect(document.body.textContent).toContain("item form");
+    again.unmount();
   });
 });

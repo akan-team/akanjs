@@ -286,8 +286,8 @@ export default page()
         default: "true",
         tags: ["AKAN_MCP", "AKAN_PUBLIC_MCP"],
         desc: l.trans({
-          en: "Whether `/mcp` is mounted; `false` or `0` in the env turns it off whatever the code says.",
-          ko: "`/mcp`를 마운트할지 정합니다. env에 `false`나 `0`을 주면 코드와 상관없이 꺼집니다.",
+          en: "Whether `/mcp` is mounted; off by default on an edge server. `false` or `0` in the env turns it off regardless.",
+          ko: "`/mcp`를 마운트할지 정하며, 엣지 서버에서는 기본으로 꺼져 있습니다. env에 `false`나 `0`을 주면 코드와 상관없이 꺼집니다.",
         }),
       },
       {

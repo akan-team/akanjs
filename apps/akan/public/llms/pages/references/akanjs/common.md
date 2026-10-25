@@ -387,7 +387,7 @@ pathSet(user, "profile.nickname", "Akan"); // returns user, now changed
 pathSet(user, "tags[0]", "core"); // creates tags: ["core"]
 ```
 
-### apps/myapp/lib/story.signal.spec.ts
+### apps/myapp/lib/story/story.signal.spec.ts
 
 ```typescript
 import { randomPick, randomPicks } from "akanjs/common";

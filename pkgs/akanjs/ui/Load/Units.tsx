@@ -1,19 +1,20 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { cn, isRscNavigationFromCache, router } from "akanjs/client";
+import { cn, isRscNavigationFromCache, router, usePathCtx } from "akanjs/client";
 import { type DynamicRecord, isQueryEqual, lowerlize } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import { ConstantRegistry, labelOf, withSharedInstances } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { usePageTool, useScreenScope } from "akanjs/webkit";
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
+import { usePageActivity, usePageTool, useScreenScope } from "akanjs/webkit";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 
 import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import { More } from "../More";
 import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
+import { SliceClaim } from "./sliceClaim";
 
 interface DefaultProps<L extends { id: string }> {
   containerRef?: RefObject<HTMLDivElement | null>;
@@ -70,13 +71,16 @@ function Render<RefName extends string, Light extends { id: string }>({
   staleTime,
 }: RenderProps<RefName, Light>) {
   const loadedQueryArgs = useRef<object[] | null>(null);
-  const storeUse = st.use as { [key: string]: () => unknown };
+  const storeUse = st.use as { [key: string]: (option?: { agent?: boolean }) => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const storeGet = st.get as unknown as <T>() => { [key: string]: T };
   const { refName, sliceName } = init;
   const modelName = lowerlize(refName);
   const cnst = ConstantRegistry.getDatabase(refName);
   const { names, namesOfSlice } = sliceNamesOf(modelName, sliceName);
+  const { pageKey } = usePathCtx();
+  const activity = usePageActivity();
+  const [claim] = useState(() => new SliceClaim(sliceName, namesOfSlice, pageKey));
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
   const initQueryArgs = (init as DynamicRecord)[names.queryArgsOfModel] as object[];
@@ -121,6 +125,7 @@ function Render<RefName extends string, Light extends { id: string }>({
       [namesOfSlice.modelInitAt]: initModelInitAt,
       [namesOfSlice.modelListLoading]: false,
       [namesOfSlice.modelInsight]: insight,
+      [namesOfSlice.hasInsightOfModel]: modelObjInsight !== null,
       [namesOfSlice.pageOfModel]: initPageOfModel,
       [namesOfSlice.lastPageOfModel]: initLastPageOfModel,
       [namesOfSlice.limitOfModel]: initLimitOfModel,
@@ -131,6 +136,7 @@ function Render<RefName extends string, Light extends { id: string }>({
       [namesOfSlice.sortOfModel]: initSortOfModel,
     });
     loadedQueryArgs.current = initQueryArgs;
+    claim.seeded(initQueryArgsOfModel);
   }, [initSignature]);
 
   // A no-op without `.live()`. Follows the store's args, not `init` (a browser filter changes only the store), read
@@ -143,6 +149,14 @@ function Render<RefName extends string, Light extends { id: string }>({
     };
   }, [initSignature, queryArgsSignature]);
 
+  const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
+  const pageOfModel = storeUse[namesOfSlice.pageOfModel]() as number;
+  const sortOfModel = storeUse[namesOfSlice.sortOfModel]({ agent: false }) as string;
+  useEffect(() => claim.show(), []);
+  useEffect(() => {
+    claim.sync(activity);
+  }, [activity, queryArgsSignature, pageOfModel, limitOfModel, sortOfModel]);
+
   useEffect(() => {
     // The navigation cache replays an earlier visit's payload with no TTL, and no live room kept those rows current.
     const seededFromReplay = !loaded && isRscNavigationFromCache();
@@ -154,8 +168,6 @@ function Render<RefName extends string, Light extends { id: string }>({
   }, [initSignature]);
 
   const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
-  const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
-  const pageOfModel = storeUse[namesOfSlice.pageOfModel]() as number;
   const hasMoreOfModel = storeUse[namesOfSlice.hasMoreOfModel]() as boolean;
   const insight = loaded ? modelInsight : initModelObjInsight;
   const limit = loaded ? limitOfModel : initLimitOfModel;

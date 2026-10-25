@@ -118,7 +118,7 @@ What happens
 
 **Page loads only.** API routes, the websocket and `/_akan/*` paths never pass through a WebProxy. Static files (a path with an extension) skip it too, unless a matcher names them.
 
-**A client-side navigation skips it.** A `<Link>` to `/ko/old-docs` or a `router.push` there is not redirected and renders `/ko/old-docs` itself, usually a 404; the built-in locale and basePath handling still applies. Link to the new page directly, and keep access control out of proxies: guards on the endpoints, and `getSelf({ unauthorize })` in a `_layout.tsx`.
+**A client-side navigation skips it.** A `<Link>` to `/ko/old-docs` or a `router.push` there is not redirected and renders `/ko/old-docs` itself, usually a 404; the built-in locale and basePath handling still applies. Link to the new page directly, and keep access control out of proxies: guards on the endpoints, and `.guard(() => signedIn())` on a `_layout.tsx`.
 
 **The locale redirect runs first.** The built-in proxies run before yours and turn `/old-docs` into `/ko/old-docs`, so match the path with its locale segment.
 

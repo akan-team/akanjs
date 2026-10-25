@@ -107,12 +107,20 @@ ConstantRegistry.buildModel(
   },
 );
 
+const SignalTestAttachment = via((f) => ({
+  label: f(String),
+  related: f(SignalTestRelatedFull),
+}));
+ConstantRegistry.buildScalar("signalTestAttachment", SignalTestAttachment, { SignalTestAttachment });
+
 const SignalTestHolderInput = via((f) => ({
   label: f(String),
   related: f(SignalTestRelatedFull).optional(),
   relateds: f([SignalTestRelatedFull]),
   optionalRelateds: f([SignalTestRelatedFull]).optional(),
   requiredRelated: f(SignalTestRelatedFull),
+  attachment: f(SignalTestAttachment).optional(),
+  attachments: f([SignalTestAttachment]),
 }));
 const SignalTestHolderObject = via(SignalTestHolderInput, () => ({}));
 const SignalTestHolderLight = via(SignalTestHolderObject, ["label"] as const, () => ({}));
@@ -1299,6 +1307,76 @@ describe("SignalContext execution", () => {
     expect(await (await call(bytesInfo, bytesCache)).json()).toEqual(bytesMiss);
     expect(bytesMiss).toBe("AAH+/w==");
     expect(runs).toBe(2);
+  });
+
+  test("resolves a cache hit's relations as the miss that filled it did, inside embedded scalars too", async () => {
+    let runs = 0;
+    const savedAt = dayjs("2026-10-14T00:00:00.000Z");
+    const [relA, relB] = ["651000000000000000000001", "651000000000000000000002"];
+    const live = getDefaultLiveRegistry();
+    live.service.set("signalTestRelated", {
+      __load: async (id: string) =>
+        id === relA || id === relB
+          ? { toJSON: () => ({ id, title: `related:${id}`, createdAt: savedAt, updatedAt: savedAt }) }
+          : null,
+    } as unknown as Service);
+    class SignalTestHolderDoc extends by(SignalTestHolderFull) {}
+    const docOf = (fields: Record<string, unknown>) =>
+      Object.assign(Object.create(SignalTestHolderDoc.prototype) as object, {
+        createdAt: savedAt,
+        updatedAt: savedAt,
+        removedAt: null,
+        ...fields,
+      });
+    const info = buildEndpoint.query([SignalTestHolderFull], { guards: [Public], cache: 60_000 }).exec(() => {
+      runs++;
+      return [
+        docOf({
+          id: "650000000000000000000001",
+          label: "every",
+          related: relA,
+          relateds: [relA, relB],
+          optionalRelateds: [relB],
+          requiredRelated: relB,
+          attachment: { label: "cover", related: relA },
+          attachments: [{ label: "page", related: relB }],
+        }),
+        docOf({
+          id: "650000000000000000000002",
+          label: "bare",
+          related: null,
+          relateds: [],
+          requiredRelated: relA,
+          attachments: [],
+        }),
+      ] as never;
+    });
+    const adaptor = new (adapt("signalTestCachedRelationAdaptor"))();
+    const cache = new FakeCacheAdaptor();
+    const call = async () =>
+      (await SignalContext.try(adaptor, info, "cachedHolders", async () => {
+        const context = makeSignalContext({ endpointInfo: info, adaptor, live, registry: makeCacheRegistry(cache) });
+        await context.init();
+        return (await context.exec()) as Response;
+      })) as Response;
+    const relatedOf = (id: string) => ({ id, title: `related:${id}` });
+
+    const missBody = await (await call()).json();
+    const hit = await call();
+    expect(hit.status).toBe(200);
+    expect(await hit.json()).toEqual(missBody);
+    expect(runs).toBe(1);
+    expect(missBody).toMatchObject([
+      {
+        related: relatedOf(relA),
+        relateds: [relatedOf(relA), relatedOf(relB)],
+        optionalRelateds: [relatedOf(relB)],
+        requiredRelated: relatedOf(relB),
+        attachment: { label: "cover", related: relatedOf(relA) },
+        attachments: [{ label: "page", related: relatedOf(relB) }],
+      },
+      { related: null, relateds: [], optionalRelateds: null, requiredRelated: relatedOf(relA), attachment: null },
+    ]);
   });
 
   test("runs a mutation once per Idempotency-Key and its caller, and refuses a repeat while the first still runs", async () => {

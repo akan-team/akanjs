@@ -1,6 +1,11 @@
-import { Backoff, isRecord, type RetryPolicy } from "akanjs/common";
+import { Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
-import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
+import {
+  type ErrorConstructor,
+  type ErrorResponsePayload,
+  type RestoredError,
+  restoreRemoteError,
+} from "./remoteError";
 
 export interface HttpClientOptions {
   headers?: Record<string, string>;
@@ -42,6 +47,7 @@ const transportDetailLimit = 200;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class HttpClient {
+  static readonly #logger = new Logger("HttpClient");
   readonly baseUrl: string;
   #headers: Record<string, string>;
   #timeout?: number | false;
@@ -169,11 +175,11 @@ export class HttpClient {
 
   async #requestOnce<Returns>(url: string, init: RequestInit, deadline: number): Promise<Returns> {
     const res = await this.#fetch(url, this.#withDeadline(init, deadline));
-    const body = await this.#readBody(res);
+    const body = await this.#readBody(url, res);
     if (res.ok) return body as Returns;
     //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
     if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
-      throw this.#transportError(res, JSON.stringify(body));
+      throw this.#transportError(url, res, JSON.stringify(body));
     throw this.#restoreError(body, res.status);
   }
 
@@ -202,22 +208,22 @@ export class HttpClient {
       if (error instanceof Error && error.name === "TimeoutError")
         throw this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
       if (error instanceof Error && error.name === "AbortError") throw error;
-      throw this.#restoreError({ error: serverUnreachableKey, details: String(error) }, 503);
+      throw this.#transportFailure(url, { error: serverUnreachableKey, details: String(error) }, 503);
     }
   }
 
   //* A proxy answers a restarting upstream with its own page (nginx HTML, the gateway's plain-text 503), not our JSON.
-  async #readBody(res: Response) {
+  async #readBody(url: string, res: Response) {
     if (jsonContentType.test(res.headers.get("content-type") ?? "")) {
       try {
         return (await res.json()) as unknown;
       } catch (error) {
-        throw this.#transportError(res, String(error));
+        throw this.#transportError(url, res, String(error));
       }
     }
     const raw = await res.text();
     const parsed = HttpClient.#parseJson(raw);
-    if (parsed === undefined) throw this.#transportError(res, raw);
+    if (parsed === undefined) throw this.#transportError(url, res, raw);
     return parsed;
   }
 
@@ -230,11 +236,35 @@ export class HttpClient {
     }
   }
 
-  #transportError(res: Response, detail: string): RestoredError {
+  #transportError(url: string, res: Response, detail: string): RestoredError {
     const { status } = res;
     const error = transportErrorKeyMap[status as keyof typeof transportErrorKeyMap] ?? unexpectedResponseKey;
     const data = status === 429 ? { status, seconds: HttpClient.#retryAfterSeconds(res) } : { status };
-    return this.#restoreError({ error, data, details: detail.slice(0, transportDetailLimit) }, status);
+    return this.#transportFailure(url, { error, data, details: detail.slice(0, transportDetailLimit) }, status);
+  }
+
+  //* The detail names this side's network (a host, a proxy's page): a server logs it, and a rethrow never sends it.
+  #transportFailure(url: string, body: ErrorResponsePayload, status: number): RestoredError {
+    if (typeof window === "undefined")
+      HttpClient.#logger.warn(`${body.error} from ${HttpClient.#originAndPath(url)}: ${JSON.stringify(body.details)}`);
+    const error = this.#restoreError(body, status);
+    const toJSON = error.toJSON?.bind(error);
+    if (toJSON)
+      error.toJSON = () => {
+        const { details: _local, ...wire } = toJSON();
+        return wire;
+      };
+    return error;
+  }
+
+  // A query carries the call's arguments and userinfo a credential, neither of which belongs in a log.
+  static #originAndPath(url: string) {
+    try {
+      const { origin, pathname } = new URL(url);
+      return `${origin}${pathname}`;
+    } catch {
+      return url.split("?")[0];
+    }
   }
 
   // A proxy's own 429 may name no wait at all; a minute is what the message then promises.

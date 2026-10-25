@@ -955,16 +955,20 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Only internals follow the operation mode.</strong> An internal declared as{" "}
-                      <code>{'cron("0 4 * * *", { operationMode: ["cloud"] })'}</code> never runs on the edge, while
-                      every endpoint is served on both sides.
+                      <strong>A module or an internal can follow the operation mode.</strong>{" "}
+                      <code>{'serve(ref, { operationMode: ["edge"] })'}</code> mounts the whole module, endpoints
+                      included, only on the edge, and <code>{'modules: ["@edge"]'}</code> selects every such module. An
+                      internal declared as <code>{'cron("0 4 * * *", { operationMode: ["cloud"] })'}</code> never runs
+                      on the edge.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>운영 모드를 따르는 것은 internal뿐입니다.</strong>{" "}
+                      <strong>모듈과 internal이 운영 모드를 따를 수 있습니다.</strong>{" "}
+                      <code>{'serve(ref, { operationMode: ["edge"] })'}</code>로 선언한 모듈은 endpoint까지 통째로
+                      엣지에서만 올라가고, <code>{'modules: ["@edge"]'}</code>는 그런 모듈을 모두 고릅니다.{" "}
                       <code>{'cron("0 4 * * *", { operationMode: ["cloud"] })'}</code>처럼 선언한 internal은 엣지에서
-                      돌지 않고, endpoint는 모두 양쪽에서 제공됩니다.
+                      돌지 않습니다.
                     </span>
                   ),
                 })}

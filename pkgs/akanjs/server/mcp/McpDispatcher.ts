@@ -75,10 +75,11 @@ export class McpDispatcher {
   }
 
   // The `Err` a browser's own call would have answered with, in the shape its own `toJSON()` gives the HTTP path, so
-  // the view toasts it in the user's language. Never a refusal (it names the guard structure), and nothing that is
-  // not an `Err`: the HTTP path generalizes the rest too.
+  // the view toasts it in the user's language. A refusal keeps only its status, which picks the view's wording: its
+  // message names the guard structure. Nothing that is not an `Err`: the HTTP path generalizes the rest too.
   static #restorable(error: unknown, status: number | undefined) {
-    if (!status || status >= 500 || status === 401 || status === 403) return null;
+    if (!status || status >= 500) return null;
+    if (status === 401 || status === 403) return { statusCode: status };
     return isExceptionLike(error) ? error.toJSON() : null;
   }
 

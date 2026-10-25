@@ -66,7 +66,10 @@ export interface AkanServerProps extends AkanLibProps {
 
 export interface AkanServerOptions {
   openapi?: boolean;
-  /** `/mcp` is mounted by default; `false` takes it off, and the object form carries the rest of its settings. */
+  /**
+   * `/mcp` is mounted by default, on an edge server only when asked for here or by `AKAN_MCP=true`; `false` takes it
+   * off, and the object form carries the rest of its settings.
+   */
   mcp?: boolean | McpServerOption;
   /** Boot only these modules and what they reach; omitted or empty mounts every enabled module. */
   modules?: string[];
@@ -107,13 +110,15 @@ export interface McpServerOption {
   /** Characters a page prompt may attach before its lists are cut; 60,000 by default. `AKAN_MCP_PROMPT_BUDGET`. */
   promptBudget?: number;
   /**
-   * MCP Apps: a `.prompt()` page is a tool as well, whose result a host speaking the extension renders from the CSR
-   * shell; an endpoint kept off the shelf by `mcp: false` stays callable by that view. `true` by default. `AKAN_MCP_APPS`.
+   * MCP Apps: each `.app()` is a read-only tool whose result a host speaking the extension draws with that app's own
+   * view, and a `.prompt()` page a text tool; an endpoint kept off the shelf by `mcp: false` stays callable by a view.
+   * `false` publishes no page tools. `true` by default. `AKAN_MCP_APPS`.
    */
   apps?: boolean;
   /**
-   * Speak the modern `2026-07-28` revision (`server/discover`) beside the legacy ones. On unless MCP Apps renders views,
-   * since claude.ai renders a view only for a server it reached through `initialize`. `AKAN_MCP_MODERN`.
+   * Speak the modern `2026-07-28` revision (`server/discover`) beside the legacy ones. On unless the build serves views
+   * and a page declares `.app()`, since claude.ai renders a view only for a server it reached through `initialize`.
+   * `AKAN_MCP_MODERN`.
    */
   modern?: boolean;
 }
@@ -818,7 +823,6 @@ export class AkanServer {
     this.#logForwarder = null;
   }
 
-  // Rebuilt per request, not cached: libs register dictionaries at module evaluation, so a snapshot could go stale.
   #getOpenApiDocument(appName: string) {
     this.#openApiDocument ??= createOpenApiDocument(FetchSerializer.serializeRegistry(this.#di.live).signal, {
       title: `${appName} API`,

@@ -63,14 +63,22 @@ export default page()
           ko: "모든 라이브러리에 `akan sync`를 실행한 뒤 모든 앱에 실행합니다.",
         }),
       },
+      {
+        name: "machine-keygen",
+        href: "#machine-keygen",
+        desc: l.trans({
+          en: "Make the Ed25519 key a server signs machine tokens with.",
+          ko: "서버가 machine token에 서명할 Ed25519 키를 만듭니다.",
+        }),
+      },
     ];
 
     const termRows = [
       {
         name: l.trans({ en: "workspace root", ko: "워크스페이스 루트" }),
         desc: l.trans({
-          en: "The repo's top folder, the one holding `package.json`, `tsconfig.json` and `.env`.",
-          ko: "저장소의 최상위 폴더입니다. `package.json`, `tsconfig.json`, `.env`가 있는 곳입니다.",
+          en: "The repo's top folder, the one holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.",
+          ko: "저장소의 최상위 폴더입니다. `package.json`, `tsconfig.json`과 `apps/`, `libs/`, `pkgs/` 중 한 폴더가 있는 곳입니다.",
         }),
       },
       {
@@ -396,6 +404,26 @@ akan lint-all --max-diagnostics 0`,
         }),
         examples: "akan sync-all",
       },
+      {
+        name: "machine-keygen",
+        signature: "akan machine-keygen <out>",
+        desc: l.trans({
+          en: "Write a new Ed25519 private key for machine tokens to `<out>` and print its public key. The server that issues tokens takes the private key as `AKAN_MACHINE_PRIVATE_KEY`; one that only verifies them takes `AKAN_MACHINE_PUBLIC_KEY`.",
+          ko: "machine token용 Ed25519 개인 키를 `<out>`에 쓰고 공개 키를 출력합니다. 토큰을 발급하는 서버는 개인 키를 `AKAN_MACHINE_PRIVATE_KEY`로, 검증만 하는 서버는 공개 키를 `AKAN_MACHINE_PUBLIC_KEY`로 받습니다.",
+        }),
+        args: [
+          {
+            name: "out",
+            type: "String",
+            required: "yes",
+            desc: l.trans({
+              en: "File the private key is written to, with mode 600. An existing file is refused, never overwritten.",
+              ko: "개인 키를 쓸 파일이며 권한은 600입니다. 이미 있는 파일이면 덮어쓰지 않고 거부합니다.",
+            }),
+          },
+        ],
+        examples: "akan machine-keygen ~/keys/akan-machine.pem",
+      },
     ];
 
     return (
@@ -405,8 +433,8 @@ akan lint-all --max-diagnostics 0`,
           <Docs.Description>
             <div>
               {l.trans({
-                en: "These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.",
-                ko: "워크스페이스 전체를 다루는 명령입니다. 새 워크스페이스를 만들고, 모든 앱과 라이브러리를 한 번에 린트·sync합니다.",
+                en: "These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.",
+                ko: "워크스페이스 전체를 다루는 명령입니다. 새 워크스페이스를 만들고, 모든 앱과 라이브러리를 한 번에 린트·sync하거나, machine token 키를 만듭니다.",
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Command", ko: "명령" })} items={catalogue} />
@@ -451,14 +479,15 @@ akan lint-all --max-diagnostics 0`,
                     <span>
                       <strong>Run from the workspace root.</strong> Every command here except{" "}
                       <code>create-workspace</code> runs from the folder holding <code>package.json</code>,{" "}
-                      <code>tsconfig.json</code> and <code>.env</code>.
+                      <code>tsconfig.json</code> and an <code>apps/</code>, <code>libs/</code> or <code>pkgs/</code>{" "}
+                      folder.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>워크스페이스 루트에서 실행합니다.</strong> <code>create-workspace</code>를 뺀 모든 명령은{" "}
-                      <code>package.json</code>, <code>tsconfig.json</code>, <code>.env</code>가 있는 폴더에서
-                      실행합니다.
+                      <code>package.json</code>, <code>tsconfig.json</code>과 <code>apps/</code>, <code>libs/</code>,{" "}
+                      <code>pkgs/</code> 중 한 폴더가 있는 곳에서 실행합니다.
                     </span>
                   ),
                 })}

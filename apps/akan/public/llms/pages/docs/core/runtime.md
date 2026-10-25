@@ -208,7 +208,7 @@ Selective Module Boot
 
 An app mounts every module its libraries declare. The modules option narrows that: name the modules a process should serve and Akan boots those plus the ones they depend on, leaving the rest out of the container entirely. A module left out has no service, no signal, no route, and no scheduled job. This is how one codebase runs as several small processes, such as a batch worker that only needs its own domain.
 
-Dependencies are followed for you, so you list entry points instead of the whole graph. A named module pulls in every service and signal it injects, and every model its cascade removes.
+Dependencies are followed for you, so you list entry points instead of the whole graph. A named module pulls in every service and signal it injects, and every model its cascade removes or its relation fields point to.
 
 disableModules and disableLibs work from the other end: mount everything except what you name and whatever reaches it. disableLibs takes a library's name and stands for every module it registers. Both are accepted wherever modules is, and as AKAN_DISABLE_MODULES and AKAN_DISABLE_LIBS in the environment. A module named in both modules and an exclusion is left out.
 

@@ -6,6 +6,7 @@ import {
   type History,
   type Location,
 } from "akanjs/client";
+import { decodeJwtPayload, isQueryEqual } from "akanjs/common";
 
 interface CsrStackState {
   history: History;
@@ -83,13 +84,14 @@ export class CsrStack {
   }
 
   /**
-   * When `token` is not the one the stack's pages were drawn for, every page but the one on screen is drawn again for
-   * the new account — the one under it at once, the rest when they are shown — and that one stays until it is left.
+   * When `token` names another account than the one the stack's pages were drawn for, every page but the one on screen
+   * is drawn again for the new account — the one under it at once, the rest when they are shown — and that one stays
+   * until it is left. A token refreshed for the same account changes nothing.
    */
   static redrawFor(history: History, current: Location, token: string | null) {
     const account = history.account ?? { token, generation: 0 };
     history.account = account;
-    if (account.token === token) return false;
+    if (CsrStack.#isSameAccount(account.token, token)) return false;
     history.dormant ??= new Set();
     for (const kept of [...history.locations, ...history.cachedLocationMap.values()])
       if (kept.entryId && kept.entryId !== current.entryId) history.dormant.add(kept.entryId);
@@ -97,6 +99,23 @@ export class CsrStack {
     const leaving = account.leaving?.key === key ? account.leaving : { key, generation: account.generation };
     history.account = { token, generation: account.generation + 1, leaving };
     return true;
+  }
+
+  //? The payload whole, but for the claims a refresh moves: the one naming the account lives in the app's own `AddData`.
+  static #isSameAccount(drawnFor: string | null, token: string | null) {
+    if (drawnFor === token) return true;
+    const claimsOf = (jwt: string | null) => {
+      if (!jwt) return null;
+      try {
+        const claims = decodeJwtPayload<Record<string, unknown>>(jwt);
+        for (const claim of ["iat", "exp", "nbf", "jti"]) delete claims[claim];
+        return claims;
+      } catch {
+        return null;
+      }
+    };
+    const drawnClaims = claimsOf(drawnFor);
+    return !!drawnClaims && isQueryEqual(drawnClaims, claimsOf(token));
   }
 
   static leave(history: History, current: Location) {

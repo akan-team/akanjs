@@ -141,7 +141,7 @@ Only `page()` publishes to MCP clients. `.prompt()` briefs a model on what the s
 
 Layout File Shape
 
-A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells. Its own .head() covers child pages that declare none, and its .notFound() and .error() are the fallback for everything below it.
+A layout file wraps child pages. Use it for shared headers, tabs, sidebars, guards, or page-level shells. Its .head() tags reach every page below it unless a deeper head repeats them, and its .notFound() and .error() are the fallback for everything below it.
 
 Layouts wrap the page
 

@@ -85,8 +85,8 @@ export default page()
       {
         title: l.trans({ en: "Endpoint Cache", ko: "Endpoint 캐시" }),
         desc: l.trans({
-          en: "Reuses a query's whole answer for every caller for the milliseconds you declare.",
-          ko: "query의 응답 전체를 선언한 밀리초 동안 모든 호출자에게 재사용합니다.",
+          en: "Reuses a query's whole answer for every caller for the milliseconds you declare, one day at most.",
+          ko: "query의 응답 전체를 선언한 밀리초 동안, 최대 하루까지 모든 호출자에게 재사용합니다.",
         }),
         code: "query(T, { guards, cache: 1000 })",
       },
@@ -295,7 +295,10 @@ keys() · entries() · forEach(fn)`,
           ko: "query가 모든 호출자에게 같은 답을 줍니다.",
         }),
         use: "query(T, { guards, cache: ms })",
-        seen: l.trans({ en: "Every caller, one entry per argument set", ko: "모든 호출자, 인자 조합마다 하나" }),
+        seen: l.trans({
+          en: "Every caller, one entry per argument set, kept a day at most",
+          ko: "모든 호출자, 인자 조합마다 하나, 최대 하루 유지",
+        }),
       },
     ];
 

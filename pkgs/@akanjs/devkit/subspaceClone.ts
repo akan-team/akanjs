@@ -47,10 +47,6 @@ export class SubspaceClone {
     this.#clone = new Executor(`subspace-${declaration.name}`, this.#clonePath);
   }
 
-  async #cloneGit(args: string[]) {
-    return await this.#workspace.spawn("git", ["-C", this.#clonePath, ...args]);
-  }
-
   async #ensure(branch: string) {
     if (!(await FileSys.dirExists(path.join(this.#clonePath, ".git")))) {
       await rm(this.#clonePath, { recursive: true, force: true });
@@ -160,15 +156,13 @@ export class SubspaceClone {
     await rm(path.join(this.#clonePath, SubspaceClone.holdDir), { recursive: true, force: true });
   }
 
-  //* A root entry last written by a sync commit is a copy an earlier push left there, the parent's Jenkinsfile among them:
-  //* it goes. Any other is the subspace's own and is held through the extraction.
+  //* Held even when an earlier push left it, the workspace's Jenkinsfile among them: it is the subspace's only copy.
   async #holdRootEntries() {
     const holdRoot = path.join(this.#clonePath, SubspaceClone.holdDir, "root");
     const held: string[] = [];
     for (const entry of SubspaceClone.subspaceOwnedRootEntries) {
       const from = path.join(this.#clonePath, entry);
       if (!(await FileSys.entryExists(from))) continue;
-      if (await this.#isPushedCopy(entry)) continue;
       await mkdir(holdRoot, { recursive: true });
       await rename(from, path.join(holdRoot, entry));
       held.push(entry);
@@ -183,11 +177,6 @@ export class SubspaceClone {
       await rm(target, { recursive: true, force: true });
       if (held.includes(entry)) await rename(path.join(holdRoot, entry), target);
     }
-  }
-
-  async #isPushedCopy(entry: string) {
-    const subject = await this.#cloneGit(["log", "-1", "--format=%s", "--", entry]).catch(() => "");
-    return subject.trim().startsWith(SubspaceClone.syncSubjectPrefix);
   }
 
   static async #copyMissing(from: string, to: string) {

@@ -81,7 +81,7 @@ Every service is a class that extends `serve(…)`. What you pass to it decides 
 
 Database Service
 
-Bound to one model. It gets `storyModel`, the CRUD methods, and fourteen methods per filter.
+Bound to one model. It gets `storyModel`, the CRUD methods, and fifteen methods per filter.
 
 Plain Service
 
@@ -117,7 +117,7 @@ Plain — serve("x", …)
 
   - get<Model> … remove<Model>: The six CRUD methods listed under Generated Methods.
 
-  - list<Query> … updateOne<Query>: Fourteen methods for each filter in the document.
+  - list<Query> … updateOne<Query>: Fifteen methods for each filter in the document.
 
   - _preCreate … _postRemove: Hooks around create, update and remove.
 
@@ -185,7 +185,7 @@ Method
 
 Filter Methods
 
-Every filter in the document generates fourteen methods. `<Query>` is the filter's key with a capital first letter: filter `inRoot` gives `listInRoot`.
+Every filter in the document generates fifteen methods. `<Query>` is the filter's key with a capital first letter: filter `inRoot` gives `listInRoot`.
 
 Reads
 
@@ -217,15 +217,17 @@ Query-level writes
 
 - removeOne<Query>(...args): Soft-removes the newest match by `createdAt`. For at-most-one queries, not for queues. — Example: `await this.removeOneInRoot(root);`
 
+- purge<Query>(...args): Deletes every match for good, removed rows too, and returns the count. An empty query is refused. — Example: `await this.purgeInRoot(root);`
+
 - update<Query>(...args).set(patch): Updates every match atomically. The patch goes in `.set()`; the chain alone runs nothing. — Example: `await this.updateInRoot(root).set({ status: "archived" });`
 
 - updateOne<Query>(...args).set(patch): Updates the newest match by `createdAt`. The result has counts, not which row changed. — Example: `await this.updateOneInRoot(root).set({ status: "archived" });`
 
-**Query-level writes skip hooks and cascades.** Each is one atomic update, so no `_postRemove` runs and no `cascade` follows. When a model has either, remove its documents one at a time with `remove<Model>(id)`.
+**Query-level writes skip hooks and cascades.** Each goes straight to the database, so no `_postRemove` runs and no `cascade` follows. When a model has either, remove its documents one at a time with `remove<Model>(id)`.
 
 Full-text search
 
-Full-text search is not a method of its own. A filter whose query calls `q.search()` generates the same fourteen methods every other filter does:
+Full-text search is not a method of its own. A filter whose query calls `q.search()` generates the same fifteen methods every other filter does:
 
 **`sort: "relevance"`** orders the results by match score, best first.
 

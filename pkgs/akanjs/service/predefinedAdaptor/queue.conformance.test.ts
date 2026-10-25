@@ -251,7 +251,7 @@ for (const kind of kinds) {
       cleanups.push(async () => release());
       const rescued: string[] = [];
       stuck.registerProcessWorker("mail", async () => await hang);
-      await stuck.registerProcessQueue("mail", ["stuck"]);
+      await stuck.registerProcessQueue("mail", ["stuck"], { attempts: 2 });
       await Bun.sleep(20);
       rescuer.registerProcessWorker("mail", async (job: AkanJob) => {
         rescued.push(job.id);

@@ -47,7 +47,12 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
-import { createAkanLocaleAlternateHeadSnapshot, mergeAkanHeadSnapshots, renderAkanHeadSnapshot } from "./head";
+import {
+  createAkanLocaleAlternateHeadSnapshot,
+  mergeAkanHeadSnapshots,
+  renderAkanHeadSnapshot,
+  resolveHeadResult,
+} from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
@@ -1306,14 +1311,7 @@ export class RscRenderer {
       render.getLayoutViewport?.(),
     );
     const manifestLink = await this.#renderManifestLink(url, route.renderRootLayouts);
-    const routeHead =
-      "resolveHead" in route
-        ? await RouteElementComposer.resolveHeadWithSnapshot({
-            pathRoute: route,
-            params,
-            searchParams,
-          })
-        : { node: undefined };
+    const routeHead = await RscRenderer.#resolveFallbackHead({ kind, route, params, searchParams });
     const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
     return (
       <html lang={params.lang ?? getPathnameLocale(pathname, this.#i18n)} suppressHydrationWarning>
@@ -1333,6 +1331,35 @@ export class RscRenderer {
         <body key="body">{body}</body>
       </html>
     );
+  }
+
+  //? A not-found view is its layouts' view: the page's own head describes what is missing, or is what called notFound(),
+  //? and a layout head that called it would refuse the view again.
+  static async #resolveFallbackHead({
+    kind,
+    route,
+    params,
+    searchParams,
+  }: {
+    kind: "not-found" | "error";
+    route: PathRoute | LayoutFallbackRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string | string[]>;
+  }): Promise<ResolvedHead> {
+    if (!("resolveHead" in route)) return { node: undefined };
+    if (kind === "error")
+      return await RouteElementComposer.resolveHeadWithSnapshot({ pathRoute: route, params, searchParams });
+    const levels = await Promise.all(
+      [...route.renderRootLayouts, ...route.renderLayouts].map(async (render) => {
+        try {
+          return await render.resolveHead?.({ params, searchParams });
+        } catch (error) {
+          if (isAkanNotFoundError(error)) return undefined;
+          throw error;
+        }
+      }),
+    );
+    return resolveHeadResult(RouteHead.mergePage(RouteHead.merge(levels), undefined));
   }
 
   async #renderMatched(

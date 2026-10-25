@@ -202,6 +202,8 @@ export interface DocumentDatabaseOwner {
   lockSchema?<T>(fn: () => Promise<T>): Promise<T>;
   hasTable?(table: string): Promise<boolean>;
   hasValidIndex?(name: string): Promise<boolean>;
+  /** The `definition` `indexesOf` would read for each index, without building it on `table`; undefined if unknown. */
+  indexDefinitions?(table: string, indexes: Omit<CreateIndexProps, "name">[]): Promise<(string | undefined)[]>;
   /** Lets the role `InsightQuery` reads as see the table's base columns, and never `_doc`. */
   grantInsight?(table: string): Promise<void>;
   /** Builds an index on a table that already holds rows without blocking its writes; never inside a transaction. */
@@ -225,10 +227,13 @@ export interface CompiledQuery {
   where: string;
   params: unknown[];
   joins: SearchJoin[];
+  /** The array fields it tests for a member, a subquery on SQLite. */
+  memberTests: string[];
 }
 
 export interface CompileContext {
   joins: SearchJoin[];
+  memberTests: string[];
   conjunctive: boolean;
 }
 
@@ -281,8 +286,13 @@ export interface SqlDialect {
   orderTerm(expr: string, direction: 1 | -1): string;
   indexName(name: string): string;
   createIndex(props: CreateIndexProps): string;
-  /** Rows `{ name, valid }`, one per index on `table` besides its primary key. */
+  /**
+   * Rows `{ name, valid, definition }`, one per index on `table` besides its primary key; `definition` is the index as
+   * the database holds it, its fields in order.
+   */
   indexesOf(table: string): SqlFrag;
+  /** The `definition` `indexesOf` reads back for `createIndex(props)`; absent where only the database can tell. */
+  indexDefinition?(props: CreateIndexProps): string;
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
   /** The stored document with these top-level fields replaced (value as JSON text) and these removed. */
   mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag;

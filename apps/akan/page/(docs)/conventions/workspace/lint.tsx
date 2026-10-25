@@ -386,8 +386,8 @@ async refreshStock() {
       {
         rule: "no-throw-raw-error",
         scope: l.trans({
-          en: "`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`",
-          ko: "`apps/**` `libs/**` (테스트, `*.constant.ts`, `common/**`, `env/**` 제외)",
+          en: "`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`, a root `native/`, `script/migration/**`",
+          ko: "`apps/**` `libs/**` (테스트, `*.constant.ts`, `common/**`, `env/**`, 루트 `native/`, `script/migration/**` 제외)",
         }),
         desc: l.trans({
           en: 'A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key. An `Error` built anywhere else, to reject, return or store, is a warning.',
@@ -463,8 +463,8 @@ async refreshStock() {
         rule: "no-conditional-st-hook",
         scope: l.trans({ en: "every `.tsx` in `apps/` `libs/`", ko: "`apps/` `libs/`의 모든 `.tsx`" }),
         desc: l.trans({
-          en: "An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.",
-          ko: "`||` / `&&`, 삼항, `if`, 반복문, 콜백 안에 둔 `st.use.*`, `st.sel`, `st.ref`, `st.tool(…).exec()`입니다. 각각 먼저 `const`에 읽은 뒤 합칩니다.",
+          en: "An `st` hook that a render can skip. Read each into its own `const` at the top of the component, then combine.",
+          ko: "렌더에 따라 건너뛸 수 있는 `st` 훅입니다. 각각 컴포넌트 맨 위에서 `const`에 읽은 뒤 합칩니다.",
         }),
       },
       {
@@ -575,6 +575,14 @@ async refreshStock() {
         desc: l.trans({
           en: "A third-party package. Re-export it through a lib's `common/`, `webkit/` or `ui/` first.",
           ko: "서드파티 패키지입니다. 먼저 lib의 `common/`, `webkit/`, `ui/`에서 re-export합니다.",
+        }),
+      },
+      {
+        rule: "no-import-external-library-in-test",
+        scope: "`*.signal.test.ts` `*.service.test.ts`",
+        desc: l.trans({
+          en: "A third-party package, as in a module file, but `node:*` and `bun:*` pass.",
+          ko: "모듈 파일과 마찬가지로 서드파티 패키지입니다. 단 `node:*`, `bun:*`는 통과합니다.",
         }),
       },
       {
@@ -699,14 +707,16 @@ async refreshStock() {
           <>
             <strong>Akan&apos;s own packages pass.</strong> Relative paths, <code>akanjs</code>, <code>@akanjs/*</code>,{" "}
             <code>@apps/*</code>, <code>@libs/*</code>, <code>@pkgs/*</code>, <code>react*</code>,{" "}
-            <code>@playwright/*</code> and <code>bun:test</code> are not third-party imports.
+            <code>@playwright/*</code> and <code>bun:test</code> are not third-party imports; in a module test, neither
+            are <code>bun:*</code> and <code>node:*</code>.
           </>
         ),
         ko: (
           <>
             <strong>Akan 자체 패키지는 통과합니다.</strong> 상대 경로, <code>akanjs</code>, <code>@akanjs/*</code>,{" "}
             <code>@apps/*</code>, <code>@libs/*</code>, <code>@pkgs/*</code>, <code>react*</code>,{" "}
-            <code>@playwright/*</code>, <code>bun:test</code>는 서드파티 import로 보지 않습니다.
+            <code>@playwright/*</code>, <code>bun:test</code>는 서드파티 import로 보지 않고, 모듈 테스트에서는{" "}
+            <code>bun:*</code>, <code>node:*</code>도 마찬가지입니다.
           </>
         ),
       }),
@@ -968,16 +978,16 @@ async refreshStock() {
               {l.trans({
                 en: (
                   <span>
-                    Twenty-eight are grit plugins written for Akan, each an error unless its row names a warning, which
-                    prints without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its
-                    scope, so a plain package under <code>pkgs/</code> never trips the module rules.
+                    Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints
+                    without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its scope, so a
+                    plain package under <code>pkgs/</code> never trips the module rules.
                   </span>
                 ),
                 ko: (
                   <span>
-                    스물여덟 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다.
-                    경고는 출력되지만 빌드를 깨지 않습니다. 나머지는 Biome 자체 규칙입니다. 플러그인은 자기 적용 범위만
-                    보므로, <code>pkgs/</code> 아래의 평범한 패키지는 모듈 규칙에 걸리지 않습니다.
+                    서른 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다. 경고는
+                    출력되지만 빌드를 깨지 않습니다. 나머지는 Biome 자체 규칙입니다. 플러그인은 자기 적용 범위만 보므로,{" "}
+                    <code>pkgs/</code> 아래의 평범한 패키지는 모듈 규칙에 걸리지 않습니다.
                   </span>
                 ),
               })}
@@ -1036,6 +1046,59 @@ async refreshStock() {
             </Docs.SubSubTitle>
             <Docs.IntroTable type={ruleType} items={scopedItems(storeRows)} />
             <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
+                      <strong>Two rules check hooks.</strong> Biome&apos;s <code>useHookAtTopLevel</code> checks plain
+                      hooks like <code>useState</code> and <code>useEffect</code> on the same files, after an early{" "}
+                      <code>return</code> too. It cannot see the <code>st</code> hooks, whose names do not start with{" "}
+                      <code>use</code>, so <code>no-conditional-st-hook</code> checks those: <code>st.use.*</code>,{" "}
+                      <code>{"st.slice.<x>.use.*"}</code>, <code>st.sel</code>, <code>st.ref</code>,{" "}
+                      <code>st.tool(…).exec()</code> / <code>.card()</code>, <code>st.useState(…).init()</code> and{" "}
+                      <code>st.expose(…).value()</code>.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <strong>훅은 두 규칙이 검사합니다.</strong> Biome의 <code>useHookAtTopLevel</code>은 같은 파일에서{" "}
+                      <code>useState</code>, <code>useEffect</code> 같은 일반 훅을 early <code>return</code> 뒤까지
+                      검사합니다. 이름이 <code>use</code>로 시작하지 않는 <code>st</code> 훅은 보지 못하므로{" "}
+                      <code>no-conditional-st-hook</code>이 <code>st.use.*</code>, <code>{"st.slice.<x>.use.*"}</code>,{" "}
+                      <code>st.sel</code>, <code>st.ref</code>, <code>st.tool(…).exec()</code> / <code>.card()</code>,{" "}
+                      <code>st.useState(…).init()</code>, <code>st.expose(…).value()</code>를 검사합니다.
+                    </>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
+                      <strong>
+                        Where an <code>st</code> hook is reported.
+                      </strong>{" "}
+                      On the right of <code>{"||"}</code>, <code>{"&&"}</code>, <code>??</code>, <code>{"||="}</code>,{" "}
+                      <code>{"&&="}</code> or <code>??=</code>, in a ternary branch, an <code>if</code> body, a{" "}
+                      <code>switch</code> case, a loop, a <code>catch</code>, a default value, an optional call&apos;s
+                      arguments, or a callback a component hands to a call or a JSX prop. An early <code>return</code>{" "}
+                      before an <code>st</code> hook, and a helper the component calls, are not checked.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <strong>
+                        <code>st</code> 훅을 보고하는 자리입니다.
+                      </strong>{" "}
+                      <code>{"||"}</code>, <code>{"&&"}</code>, <code>??</code>, <code>{"||="}</code>,{" "}
+                      <code>{"&&="}</code>, <code>??=</code>의 오른쪽, 삼항 분기, <code>if</code> 본문,{" "}
+                      <code>switch</code> case, 반복문, <code>catch</code>, 기본값, <code>{"f?.(…)"}</code>의 인자,
+                      그리고 컴포넌트가 호출이나 JSX prop에 넘기는 콜백입니다. early <code>return</code> 뒤의{" "}
+                      <code>st</code> 훅과 컴포넌트가 부르는 helper 안의 훅은 검사하지 않습니다.
+                    </>
+                  ),
+                })}
+              </li>
               <li>
                 {l.trans({
                   en: (

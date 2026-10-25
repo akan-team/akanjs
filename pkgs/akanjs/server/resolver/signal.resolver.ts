@@ -453,6 +453,8 @@ export class SignalResolver {
             ._addInternalArgs(sliceInfo.internalArgs)
             .exec(async function (this: any, ...requestArgs: any) {
               const args = requestArgs.slice(0, argLength);
+              // Checked here too: a client bundle older than the pauseOn declaration would still subscribe.
+              SignalResolver.#assertNotPaused(liveKey, sliceInfo, args);
               const internalArgs = requestArgs.slice(argLength);
               return assertSliceQuery(
                 await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]),
@@ -548,15 +550,10 @@ export class SignalResolver {
       }
     }
   }
-  static #assertNotPaused(
-    key: string,
-    liveOption: LiveEndpointOption,
-    endpointInfo: EndpointInfo,
-    context: SignalContext,
-  ) {
-    for (const name of liveOption.pauseOn) {
-      const idx = endpointInfo.args.findIndex((arg) => arg.name === name);
-      if (idx < 0 || context.args[idx] == null) continue;
+  static #assertNotPaused(key: string, sliceInfo: SliceInfo, args: unknown[]) {
+    for (const name of sliceInfo.liveOption?.pauseOn ?? []) {
+      const idx = sliceInfo.args.findIndex((arg) => arg.name === name);
+      if (idx < 0 || args[idx] == null) continue;
       throw new Error(
         `Live room "${key}" is paused while "${name}" carries a value: the slice declared it in ` +
           `.live({ pauseOn }), so this window updates by refetching instead of subscribing.`,
@@ -702,12 +699,11 @@ export class SignalResolver {
                   { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
                 ).init();
                 const liveOption = endpointInfo.signalOption.live;
+                //? Before the room id, which parses the arguments: a subscribe its guards refuse never reaches a parser.
+                const query = subscribe ? await context.exec() : null;
                 // The client-built id the ack is matched against; for every room but a live one it is also the room.
                 const requestRoomId = context.getRoomId(key);
                 if (subscribe) {
-                  // Checked here too: a client bundle older than the pauseOn declaration would still subscribe.
-                  if (liveOption) SignalResolver.#assertNotPaused(key, liveOption, endpointInfo, context);
-                  const query = await context.exec();
                   const isClosed = SignalResolver.#closedWs.has(ws);
                   //? The close or the unsubscribe already left what it found, so a room joined now would stay joined.
                   if (isClosed || SignalResolver.#pendingSubscribes.isLeft(ws, requestRoomId, arrival)) {
@@ -759,19 +755,19 @@ export class SignalResolver {
                   return ack;
                 }
                 SignalResolver.#pendingSubscribes.leave(ws, requestRoomId, arrival);
-                if (liveOption) await context.resolveInternalArgs();
-                const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
-                ws.unsubscribe(roomId);
-                const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
-                const roomCtx = roomCtxMap?.get(roomId);
-                if (roomCtxMap && roomCtx) {
-                  await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
-                  roomCtxMap.delete(roomId);
-                  if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
-                  SignalResolver.#leaveRoom(roomId, liveOption ? live : undefined);
-                  websocket.leaveRoom(ws, roomId);
+                //? By the id the subscribe was matched with: a live room's id derived again now can differ (`.with(Ws)`).
+                const heldRooms = [...(SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? [])].filter(
+                  ([, roomCtx]) => roomCtx.getRoomId(roomCtx.key) === requestRoomId,
+                );
+                for (const [roomId, roomCtx] of heldRooms) {
+                  SignalResolver.#leaveWsRoom(ws, roomId, roomCtx, websocket, liveOption ? live : undefined);
                   SignalResolver.logger.verbose(`WebSocket unsubscribed from room ${roomId}`);
                 }
+                await SignalResolver.#runLifecycleHandlers(
+                  heldRooms.map(([, roomCtx]) => roomCtx),
+                  ["unsubscribe"],
+                );
+                const roomId = heldRooms[0]?.[0] ?? requestRoomId;
                 const ack: WebsocketSubscribeAck = { type: "sub", roomId, requestRoomId, subscribe };
                 return ack;
               });
@@ -860,16 +856,29 @@ export class SignalResolver {
     const revokedRooms: string[] = [];
     for (const [roomId, roomCtx] of [...roomCtxMap]) {
       if (await roomCtx.authorize()) continue;
-      ws.unsubscribe(roomId);
-      await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
-      roomCtxMap.delete(roomId);
-      SignalResolver.#leaveRoom(roomId, live);
-      websocket.leaveRoom(ws, roomId);
+      if (!SignalResolver.#leaveWsRoom(ws, roomId, roomCtx, websocket, live)) continue;
       revokedRooms.push(roomId);
       SignalResolver.logger.verbose(`WebSocket lost access to room ${roomId}; unsubscribed`);
+      await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
     }
-    if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
     return revokedRooms;
+  }
+  //? Only while this subscribe still holds it, and before any await: leaving twice drops a live room others share.
+  static #leaveWsRoom(
+    ws: Bun.ServerWebSocket<unknown>,
+    roomId: string,
+    roomCtx: SignalContext<WebSocketExecutionContext>,
+    websocket: WebsocketAdaptor,
+    live?: LiveRegistry,
+  ) {
+    const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
+    if (!roomCtxMap || roomCtxMap.get(roomId) !== roomCtx) return false;
+    roomCtxMap.delete(roomId);
+    if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    ws.unsubscribe(roomId);
+    SignalResolver.#leaveRoom(roomId, live);
+    websocket.leaveRoom(ws, roomId);
+    return true;
   }
 
   static async handleWsOpen(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry) {
@@ -880,11 +889,12 @@ export class SignalResolver {
     SignalResolver.#closedWs.add(ws);
     const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
     const contexts = [...(roomCtxMap?.values() ?? []), ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? [])];
+    //? Before the cleanup is awaited, so an unsubscribe or an auth recheck still running finds no room left to leave.
+    SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    SignalResolver.#liveWsMessageCtx.delete(ws);
     await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
     // The routing table must hear about a close too: a room nobody is in still costs an evaluation on every write.
     for (const roomId of roomCtxMap?.keys() ?? []) SignalResolver.#leaveRoom(roomId, live);
-    SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
-    SignalResolver.#liveWsMessageCtx.delete(ws);
 
     await SignalResolver.#getWebsocket(registry).unregisterSocket(ws);
     SignalResolver.logger.verbose(`WebSocket disconnected from all rooms`);

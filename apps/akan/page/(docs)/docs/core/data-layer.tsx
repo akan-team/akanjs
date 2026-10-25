@@ -77,6 +77,12 @@ const filterMethods = [
     ko: "쓰기, hook 없음. 같은 동작을 가장 최근 하나에만 합니다. 큐 항목을 집는 용도가 아니라 많아야 하나인 행에 씁니다.",
   },
   {
+    name: "purge<Filter>",
+    example: "await purgeByOwner(ownerId)",
+    en: "Write, NO hooks or cascade. Hard-deletes every match, removed rows too; returns the count. Refuses an empty query.",
+    ko: "쓰기, hook·cascade 없음. 맞는 모든 행을 삭제된 행까지 영구히 지우고 개수를 돌려줍니다. 빈 query는 거부합니다.",
+  },
+  {
     name: "update<Filter>",
     example: 'await updateByOwner(ownerId).set({ status: "archived" })',
     en: "Write, NO hooks. A chain: the patch goes on a terminal .set(); building it does nothing.",
@@ -379,8 +385,8 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
           <Docs.Description>
             <div>
               {l.trans({
-                en: "A query you declare in the document file is not one method. Akan generates fourteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and eleven more, on both the model and the service.",
-                ko: "document 파일에 선언한 query 하나는 메서드 하나가 아닙니다. Akan은 필터 키를 붙여 열네 개를 만듭니다. byOwner를 선언하면 listByOwner, countByOwner, updateOneByOwner를 비롯한 열네 개가 model과 service 양쪽에 생깁니다.",
+                en: "A query you declare in the document file is not one method. Akan generates fifteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and twelve more, on both the model and the service.",
+                ko: "document 파일에 선언한 query 하나는 메서드 하나가 아닙니다. Akan은 필터 키를 붙여 열다섯 개를 만듭니다. byOwner를 선언하면 listByOwner, countByOwner, updateOneByOwner를 비롯한 열다섯 개가 model과 service 양쪽에 생깁니다.",
               })}
             </div>
             <Code.Snippet
@@ -396,7 +402,7 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
 })) {}`}
             />
             <Docs.Figure
-              title={l.trans({ en: "One filter, fourteen methods", ko: "필터 하나, 메서드 열넷" })}
+              title={l.trans({ en: "One filter, fifteen methods", ko: "필터 하나, 메서드 열다섯" })}
               image="filter-generates"
               prompt={`
               A small luggage tag at the left, labelled "byOwner" with a smaller second line "one filter". Three
@@ -407,14 +413,14 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
               Writes" with a smaller second line "no hooks".
             `}
               alt={l.trans({
-                en: "One filter such as byOwner generates nine reads, one query descriptor for a slice, and four writes that run no hooks.",
-                ko: "byOwner 같은 필터 하나가 읽기 아홉 개, slice용 query descriptor 하나, hook을 실행하지 않는 쓰기 네 개를 만듭니다.",
+                en: "One filter such as byOwner generates nine reads, one query descriptor for a slice, and five writes that run no hooks.",
+                ko: "byOwner 같은 필터 하나가 읽기 아홉 개, slice용 query descriptor 하나, hook을 실행하지 않는 쓰기 다섯 개를 만듭니다.",
               })}
             />
             <div>
               {l.trans({
-                en: "Nine of the fourteen read, one only builds a query descriptor, and the remaining four write. Those four are the ones to be careful with: each is a single atomic statement against the database, so none of the model's document hooks run:",
-                ko: "열넷 중 아홉은 읽기이고, 하나는 query descriptor를 만들 뿐이며, 나머지 넷이 쓰기입니다. 조심해야 하는 쪽은 이 넷입니다. 각각 데이터베이스에 원자적 문장 하나를 보내므로 모델의 document hook이 전혀 실행되지 않습니다:",
+                en: "Nine of the fifteen read, one only builds a query descriptor, and the remaining five write. Those five are the ones to be careful with: each writes straight to the database, so none of the model's document hooks run:",
+                ko: "열다섯 중 아홉은 읽기이고, 하나는 query descriptor를 만들 뿐이며, 나머지 다섯이 쓰기입니다. 조심해야 하는 쪽은 이 다섯입니다. 각각 데이터베이스에 바로 쓰므로 모델의 document hook이 전혀 실행되지 않습니다:",
               })}
             </div>
             <Docs.IntroTable
@@ -427,8 +433,8 @@ export class ProductService extends serve(db.product, ({ use, service }) => ({})
             />
             <Docs.Alert type="warning">
               {l.trans({
-                en: "Reach for the four writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — one atomic UPDATE cannot run any of that.",
-                ko: "이 네 개의 쓰기는 삭제에 부수 효과가 없는 모델에만 씁니다. cascade가 있거나, 저장된 파일을 지우는 _postRemove가 있거나, 실시간 목록이 지켜보고 있는 모델은 remove<Model>(id)로 한 건씩 삭제해야 합니다. 원자적 UPDATE 하나로는 그중 무엇도 실행할 수 없습니다.",
+                en: "Reach for the five writes only on a model whose removal carries no side effect. A model with a cascade, a _postRemove that deletes a stored file, or a live list watching it must be removed one document at a time through remove<Model>(id) — a query-level write cannot run any of that.",
+                ko: "이 다섯 개의 쓰기는 삭제에 부수 효과가 없는 모델에만 씁니다. cascade가 있거나, 저장된 파일을 지우는 _postRemove가 있거나, 실시간 목록이 지켜보고 있는 모델은 remove<Model>(id)로 한 건씩 삭제해야 합니다. 쿼리 단위 쓰기로는 그중 무엇도 실행할 수 없습니다.",
               })}
             </Docs.Alert>
             <div>

@@ -45,7 +45,7 @@ export const NewWrapper_Client = <Full,>({
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const storeUse = st.use as { [key: string]: () => unknown };
   const modelModal = storeUse[names.modelModal]() as string | null;
-  const disabled = modelModal === "edit";
+  const disabled = modelModal === "edit" || (!!modal && modelModal === modal);
   // The slice is the natural key; only a second trigger on the same screen (its own `partial`) needs a namespace.
   const newModel = st
     .tool(`${sliceName.replace(modelName, names.newModel)}${namespace ? `In${capitalize(namespace)}` : ""}`, {

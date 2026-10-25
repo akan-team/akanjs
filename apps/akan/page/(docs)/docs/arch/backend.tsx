@@ -752,14 +752,14 @@ export class InventoryEndpoint extends endpoint(srv.inventory, ({ query, mutatio
                   desc: l.trans({
                     en: (
                       <span>
-                        Milliseconds the answer may be reused. <strong>Only a query taking no internal argument</strong>{" "}
-                        may carry one.
+                        Milliseconds the answer may be reused, one day at most.{" "}
+                        <strong>Only a query taking no internal argument</strong> may carry one.
                       </span>
                     ),
                     ko: (
                       <span>
-                        응답을 재사용할 수 있는 밀리초입니다. <strong>internal argument가 없는 query만</strong> 가질 수
-                        있습니다.
+                        응답을 재사용할 수 있는 밀리초이며, 최대 하루입니다.{" "}
+                        <strong>internal argument가 없는 query만</strong> 가질 수 있습니다.
                       </span>
                     ),
                   }),

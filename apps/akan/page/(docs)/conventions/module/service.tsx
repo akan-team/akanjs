@@ -188,8 +188,8 @@ export default page()
           {
             name: "list<Query> … updateOne<Query>",
             desc: l.trans({
-              en: "Fourteen methods for each filter in the document.",
-              ko: "document의 filter마다 method 열네 개.",
+              en: "Fifteen methods for each filter in the document.",
+              ko: "document의 filter마다 method 열다섯 개.",
             }),
             marks: databaseOnly,
           },
@@ -473,6 +473,14 @@ export default page()
           ko: "`createdAt` 기준 가장 최근 document 하나를 soft remove합니다. 한 건짜리 query용이며 큐 소비용이 아닙니다.",
         }),
         example: "await this.removeOneInRoot(root);",
+      },
+      {
+        name: "purge<Query>(...args)",
+        desc: l.trans({
+          en: "Deletes every match for good, removed rows too, and returns the count. An empty query is refused.",
+          ko: "삭제된 document까지 일치하는 document 전부를 영구히 지우고 개수를 반환합니다. 빈 query는 거부합니다.",
+        }),
+        example: "await this.purgeInRoot(root);",
       },
       {
         name: "update<Query>(...args).set(patch)",
@@ -779,13 +787,13 @@ keys() · entries() · forEach(fn)`,
                   {l.trans({
                     en: (
                       <span>
-                        Bound to one model. It gets <code>storyModel</code>, the CRUD methods, and fourteen methods per
+                        Bound to one model. It gets <code>storyModel</code>, the CRUD methods, and fifteen methods per
                         filter.
                       </span>
                     ),
                     ko: (
                       <span>
-                        모델 하나에 묶입니다. <code>storyModel</code>, CRUD method, filter마다 method 열네 개를
+                        모델 하나에 묶입니다. <code>storyModel</code>, CRUD method, filter마다 method 열다섯 개를
                         받습니다.
                       </span>
                     ),
@@ -1009,13 +1017,13 @@ export class StoryService extends serve(db.story, ({ service }) => ({
               {l.trans({
                 en: (
                   <span>
-                    Every filter in the document generates fourteen methods. <code>{"<Query>"}</code> is the filter's
-                    key with a capital first letter: filter <code>inRoot</code> gives <code>listInRoot</code>.
+                    Every filter in the document generates fifteen methods. <code>{"<Query>"}</code> is the filter's key
+                    with a capital first letter: filter <code>inRoot</code> gives <code>listInRoot</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    document의 filter 하나마다 method 열네 개가 생깁니다. <code>{"<Query>"}</code>는 filter key의 첫
+                    document의 filter 하나마다 method 열다섯 개가 생깁니다. <code>{"<Query>"}</code>는 filter key의 첫
                     글자를 대문자로 바꾼 것입니다. filter <code>inRoot</code>는 <code>listInRoot</code>가 됩니다.
                   </span>
                 ),
@@ -1049,14 +1057,14 @@ export class StoryService extends serve(db.story, ({ service }) => ({
               {l.trans({
                 en: (
                   <span>
-                    <strong>Query-level writes skip hooks and cascades.</strong> Each is one atomic update, so no{" "}
-                    <code>_postRemove</code> runs and no <code>cascade</code> follows. When a model has either, remove
-                    its documents one at a time with <code>{"remove<Model>(id)"}</code>.
+                    <strong>Query-level writes skip hooks and cascades.</strong> Each goes straight to the database, so
+                    no <code>_postRemove</code> runs and no <code>cascade</code> follows. When a model has either,
+                    remove its documents one at a time with <code>{"remove<Model>(id)"}</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>쿼리 단위 쓰기는 hook과 cascade를 건너뜁니다.</strong> 원자적 업데이트 한 번으로 끝나므로{" "}
+                    <strong>쿼리 단위 쓰기는 hook과 cascade를 건너뜁니다.</strong> 데이터베이스에 바로 가므로{" "}
                     <code>_postRemove</code>도 돌지 않고 <code>cascade</code>도 이어지지 않습니다. 둘 중 하나라도 있는
                     모델은 <code>{"remove<Model>(id)"}</code>로 document를 하나씩 삭제하세요.
                   </span>
@@ -1069,13 +1077,13 @@ export class StoryService extends serve(db.story, ({ service }) => ({
                 en: (
                   <span>
                     Full-text search is not a method of its own. A filter whose query calls <code>q.search()</code>{" "}
-                    generates the same fourteen methods every other filter does:
+                    generates the same fifteen methods every other filter does:
                   </span>
                 ),
                 ko: (
                   <span>
                     전문 검색은 별도의 method가 아닙니다. query에서 <code>q.search()</code>를 호출하는 filter도 다른
-                    filter와 똑같이 method 열네 개를 만듭니다:
+                    filter와 똑같이 method 열다섯 개를 만듭니다:
                   </span>
                 ),
               })}

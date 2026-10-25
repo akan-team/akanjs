@@ -103,7 +103,7 @@ A value you will filter or query on belongs in `attrs`, not in the message text:
 
 **Values are primitives:** `string`, `number`, `boolean` or `null`.
 
-**Secret-looking keys are masked before the record exists.** A key containing token, password, passwd, jwt, authorization, cookie, secret, api_key or private_key, in any case, becomes `"[redacted]"`, so no sink ever sees the value.
+**Secret-looking keys are masked before the record exists.** A key containing token, password, passwd, jwt, authorization, cookie, secret, credential, webhook, api_key, private_key or access_key, in any case, or `cred` as a word of its own, becomes `"[redacted]"`, so no sink ever sees the value.
 
 Log Levels
 
@@ -193,7 +193,7 @@ On a server with AKAN_LOG_DIR=/var/log/akan
 
 **Child lines carry a prefix** such as `[child:0 all] [stderr]`, so one search shows which replica and which stream wrote them.
 
-**Child stderr reaches the file even when the terminal hides it.** The gateway prints a child's stderr only with `AKAN_CHILD_STDERR=1`; a child's own Logger errors go to stdout, so they always show.
+**Child stderr reaches the file even when the terminal hides it.** While it writes a log file, the gateway prints a child's stderr only with `AKAN_CHILD_STDERR=1`; without one, as in the image, it always prints it. A child's own Logger errors go to stdout, so they always show.
 
 **`console.log` in a child is captured** through its stdout/stderr pipes. In the gateway process it bypasses the Logger sinks, so use Logger in runtime code.
 

@@ -757,38 +757,60 @@ describe("desktop updates: download and apply", () => {
 });
 
 describe("desktop updates: the signer of a release", () => {
-  type Signature = [status: string, subject: string];
-  /** Get-AuthenticodeSignature's lines for the installed executable and the release's, as the plugin asks for them. */
-  const authenticode = (own: Signature, release: Signature, asked: Record<string, string>[] = []) =>
+  interface PowerShellRun {
+    cmd: string[];
+    env: Record<string, string>;
+  }
+  /** PowerShell running the plugin's script: what it printed and its exit code. */
+  const powershell = (answer: { code: number; output: string }, asked: PowerShellRun[] = []) =>
     (async (cmd, env) => {
       if (!cmd.includes("-EncodedCommand") || !env) return { code: 1, output: "" };
-      asked.push(env);
-      const line = ([status, subject]: Signature) => `${status} ${Buffer.from(subject).toString("base64")}\r\n`;
-      return { code: 0, output: line(own) + line(release) };
+      asked.push({ cmd, env });
+      return answer;
     }) satisfies DesktopUpdatesOptions["signatureTool"];
+  const verdict = (word: string) => ({ code: 0, output: `akan-signer: ${word}\r\n` });
+
+  /** The head of an x64 or arm64 executable (PE32+), with an Authenticode signature in its certificate table or not. */
+  const peImage = (signed: boolean) => {
+    const image = Buffer.alloc(1024);
+    const optional = 0x80 + 24;
+    image.write("MZ");
+    image.writeUInt32LE(0x80, 0x3c);
+    image.write("PE\0\0", 0x80);
+    image.writeUInt16LE(0x20b, optional);
+    image.writeUInt32LE(16, optional + 108);
+    if (signed) {
+      image.writeUInt32LE(0x400, optional + 112 + 32);
+      image.writeUInt32LE(0x2000, optional + 112 + 36);
+    }
+    return image;
+  };
 
   const stops: (() => void)[] = [];
   afterEach(() => {
     for (const stop of stops.splice(0)) stop();
   });
-  const download = async (signatureTool: DesktopUpdatesOptions["signatureTool"], options: ReleaseOptions = {}) => {
+  const download = async (
+    signatureTool: DesktopUpdatesOptions["signatureTool"],
+    options: ReleaseOptions = {},
+    installedExe?: Uint8Array,
+  ) => {
     const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
     roots.push(root);
     const release = serveRelease(root, options);
     stops.push(release.stop);
     const platform = options.mac ? "darwin" : "win32";
     const updates = await harness({ url: release.url, publicKey: release.publicKey, platform, signatureTool });
+    if (installedExe) writeFileSync(join(updates.app, EXE), installedExe);
     return { ...updates, result: await updates.call("download") };
   };
 
-  test("a Windows app signed with Authenticode refuses an unsigned release, and keeps it refused", async () => {
-    const asked: Record<string, string>[] = [];
-    const { result, state, call, install, app } = await download(
-      authenticode(["Valid", "CN=Sample Corp, O=Sample Corp"], ["NotSigned", ""], asked),
-    );
+  test("a Windows app refuses a release PowerShell finds signed by another signer, and keeps it refused", async () => {
+    const asked: PowerShellRun[] = [];
+    const { result, state, call, install, app } = await download(powershell(verdict("other"), asked));
     expect(result).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
-    expect(result.error?.message).toContain("CN=Sample Corp, O=Sample Corp");
-    expect(asked[0]).toMatchObject({
+    expect(result.error?.message).toContain("not Authenticode-signed by the signer of this app");
+    expect(asked[0]?.env).toMatchObject({
       AKAN_NATIVE_INSTALLED_EXE: join(app, EXE),
       AKAN_NATIVE_RELEASE_EXE: join(`${app}.update-2000-abcdef12`, "Sample", EXE),
     });
@@ -798,22 +820,44 @@ describe("desktop updates: the signer of a release", () => {
     expect(await call("check")).toMatchObject({ ok: true, result: { available: false, bundle: "2000-abcdef12" } });
   });
 
-  for (const [own, release, taken] of [
-    [["Valid", "CN=Sample Corp"], ["Valid", "CN=Other Corp"], false],
-    [["Valid", "CN=Sample Corp"], ["HashMismatch", "CN=Sample Corp"], false],
-    [["Valid", "CN=Sample Corp"], ["Valid", "CN=Sample Corp"], true],
-    [["NotSigned", ""], ["NotSigned", ""], true],
-  ] as [Signature, Signature, boolean][])
-    test(`a Windows app ${own[0]} ${own[1]} ${taken ? "takes" : "refuses"} a release ${release[0]} ${release[1]}`, async () => {
-      const { result, state } = await download(authenticode(own, release));
-      expect(result).toMatchObject(taken ? { ok: true } : { ok: false, error: { code: "NOT_ALLOWED" } });
-      expect(state().pending !== undefined).toBe(taken);
+  for (const word of ["same", "unsigned"])
+    test(`a Windows app takes a release on PowerShell's verdict "${word}"`, async () => {
+      const { result, state } = await download(powershell(verdict(word)));
+      expect(result).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
+      expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
     });
 
-  test("a Windows app takes a release when PowerShell cannot say who signed it", async () => {
-    const { result } = await download(async () => ({ code: -1, output: "spawn ENOENT" }));
-    expect(result).toMatchObject({ ok: true });
+  test("PowerShell gets a script Constrained Language Mode runs: no .NET type, method call or base64", async () => {
+    const asked: PowerShellRun[] = [];
+    await download(powershell(verdict("same"), asked));
+    const script = Buffer.from(asked[0]?.cmd.at(-1) ?? "", "base64").toString("utf16le");
+    expect(script).toContain("Get-AuthenticodeSignature");
+    expect(script).not.toMatch(/\[[\w.]+\]|::|\.\w+\(|Add-Type|New-Object/);
   });
+
+  for (const [what, answer] of [
+    ["is blocked by policy", { code: -1, output: "EPERM: operation not permitted, posix_spawn 'powershell.exe'" }],
+    [
+      "runs in Constrained Language Mode",
+      {
+        code: 1,
+        output: "Cannot invoke method. Method invocation is supported only on core types in this language mode.\r\n",
+      },
+    ],
+    ["prints a verdict but fails", { code: 1, output: "akan-signer: same\r\n" }],
+  ] as const)
+    test(`when PowerShell ${what}, a signed Windows app refuses the release and an unsigned one takes it`, async () => {
+      for (const [installedExe, taken] of [
+        [peImage(true), false],
+        [new Uint8Array(), false],
+        [peImage(false), true],
+      ] as const) {
+        const { result, state } = await download(powershell(answer), {}, installedExe);
+        expect(result).toMatchObject(taken ? { ok: true } : { ok: false, error: { code: "NOT_ALLOWED" } });
+        if (!taken) expect(result.error?.message).toContain("PowerShell could not check");
+        expect(state().failed).toEqual(taken ? [] : ["2000-abcdef12"]);
+      }
+    });
 
   /** codesign as it answers for the installed app ("Renamed App") and the release, each signed by `teams` or ad hoc. */
   const codesign = (teams: { own: string | null; release: string | null }, asked: string[][] = []) =>

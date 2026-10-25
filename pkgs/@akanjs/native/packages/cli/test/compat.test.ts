@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { compatProblems, type NativeApi, nativeApiHash, runtimeLine } from "../src/lib/compat.ts";
+import { posix, win32 } from "node:path";
+import { compatProblems, type NativeApi, nativeApiHash, runtimeLine, webPath } from "../src/lib/compat.ts";
 
 const api = (patch: Partial<NativeApi> = {}): NativeApi => ({
   protocol: 1,
@@ -63,5 +64,13 @@ describe("native API compatibility (UP-3)", () => {
     ]);
     expect(compatProblems(api(), api({ platform: "android" }))).toEqual(["the bundle is for android, the app is ios"]);
     expect(compatProblems(api(), api({ acl: { grants: [] } }))).toEqual(["capabilities changed"]);
+  });
+
+  test("a web file's path has / between its folders when the bundle is made on Windows too", () => {
+    expect(webPath("C:\\app\\web", "C:\\app\\web\\public\\icons\\icon-192.png", win32)).toBe(
+      "public/icons/icon-192.png",
+    );
+    expect(webPath("C:\\app\\web", "C:\\app\\web\\index.html", win32)).toBe("index.html");
+    expect(webPath("/app/web", "/app/web/public/icons/icon-192.png", posix)).toBe("public/icons/icon-192.png");
   });
 });

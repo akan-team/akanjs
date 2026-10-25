@@ -191,16 +191,18 @@ export default page()
             marks: onServer,
           },
           {
-            name: "getSelf({ unauthorize })",
+            name: ".guard(() => signedIn())",
             desc: l.trans({
               en: (
                 <span>
-                  Check sign-in in <code>_layout.tsx</code>, before any of the page's markup renders.
+                  Check sign-in on <code>_layout.tsx</code>: it runs before anything renders, so a guest gets a real
+                  307.
                 </span>
               ),
               ko: (
                 <span>
-                  로그인 확인은 페이지 마크업이 렌더링되기 전에 <code>_layout.tsx</code>에서 합니다.
+                  로그인 확인은 <code>_layout.tsx</code>에서 합니다. 무엇이든 렌더링되기 전에 실행되므로 비로그인
+                  사용자는 실제 307을 받습니다.
                 </span>
               ),
             }),

@@ -64,7 +64,7 @@ Connects
 
 Does not connect
 
-**Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and `.env`.
+**Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 **`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands. `cloud: { host }` in the root `akan.config.ts` makes one the default.
 

@@ -213,16 +213,16 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Child stderr reaches the file even when the terminal hides it.</strong> The gateway prints a child's
-            stderr only with <code>AKAN_CHILD_STDERR=1</code>; a child's own Logger errors go to stdout, so they always
-            show.
+            <strong>Child stderr reaches the file even when the terminal hides it.</strong> While it writes a log file,
+            the gateway prints a child's stderr only with <code>AKAN_CHILD_STDERR=1</code>; without one, as in the
+            image, it always prints it. A child's own Logger errors go to stdout, so they always show.
           </>
         ),
         ko: (
           <>
-            <strong>child의 stderr는 터미널에 안 보여도 파일에는 남습니다.</strong> gateway는{" "}
-            <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력합니다. child 자신의 Logger 오류는
-            stdout으로 나가므로 늘 보입니다.
+            <strong>child의 stderr는 터미널에 안 보여도 파일에는 남습니다.</strong> 로그 파일을 쓰는 동안 gateway는{" "}
+            <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력하고, 이미지처럼 로그 파일이 없으면 늘
+            출력합니다. child 자신의 Logger 오류는 stdout으로 나가므로 늘 보입니다.
           </>
         ),
       }),
@@ -1046,14 +1046,16 @@ Logger.emit({
                   en: (
                     <>
                       <strong>Secret-looking keys are masked before the record exists.</strong> A key containing token,
-                      password, passwd, jwt, authorization, cookie, secret, api_key or private_key, in any case, becomes{" "}
+                      password, passwd, jwt, authorization, cookie, secret, credential, webhook, api_key, private_key or
+                      access_key, in any case, or <code>cred</code> as a word of its own, becomes{" "}
                       <code>&quot;[redacted]&quot;</code>, so no sink ever sees the value.
                     </>
                   ),
                   ko: (
                     <>
                       <strong>비밀값처럼 보이는 키는 레코드가 만들어질 때 가려집니다.</strong> token, password, passwd,
-                      jwt, authorization, cookie, secret, api_key, private_key를 포함하는 키는 대소문자와 상관없이{" "}
+                      jwt, authorization, cookie, secret, credential, webhook, api_key, private_key, access_key를
+                      대소문자와 상관없이 포함하거나 <code>cred</code>를 독립된 단어로 가진 키는{" "}
                       <code>&quot;[redacted]&quot;</code>가 되므로, 어떤 sink도 원래 값을 보지 못합니다.
                     </>
                   ),

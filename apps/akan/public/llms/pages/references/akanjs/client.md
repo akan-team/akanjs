@@ -514,6 +514,8 @@ Translation, toast messages and the error class. Import them from your app's `@a
 
 - Err.BadRequest, Err.Unauthorized, Err.Forbidden, Err.NotFound, Err.Conflict: Subclasses with their own status: 400, 401, 403, 404 and 409.
 
+- Err.is(error, ...keys): Narrows an unknown error to an `Err`, one carrying one of `keys` when any are named.
+
 `usePage()` works in a server View, so translated text never needs a client component:
 
 In a store, `msg` reports a failed check and confirms success:
@@ -606,7 +608,7 @@ Device
 
 - vibrate(type?): Haptic feedback: `"light"`, `"medium"` (default), `"heavy"`, or a duration in ms.
 
-- showKeyboard(), hideKeyboard(): Opens or closes the native keyboard.
+- hideKeyboard(): Closes the native keyboard.
 
 - listenKeyboardChanged(fn), unlistenKeyboardChanged(): Reports the keyboard height as it opens and closes.
 

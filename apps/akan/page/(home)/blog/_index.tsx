@@ -16,6 +16,38 @@ interface BlogPost {
 
 const posts: BlogPost[] = [
   {
+    href: "/blog/v3-1release",
+    eyebrow: { en: "Release Note", ko: "Release Note" },
+    title: {
+      en: "Akan.js 3.1: hardened for production",
+      ko: "Akan.js 3.1: 프로덕션을 위해 더 단단하게",
+    },
+    desc: {
+      en: "Routes guarded before they render, a page's component drawn inside the chat, migrations you review before they run, a strict wire with retries, signed updates for unattended devices, and the pipeline next to the code.",
+      ko: "그리기 전에 지키는 라우트, 채팅 안에 그려지는 페이지 컴포넌트, 실행 전에 검토하는 마이그레이션, 재시도까지 갖춘 엄격한 요청, 무인 기기를 위한 서명된 업데이트, 그리고 코드 옆의 파이프라인.",
+    },
+    meta: { en: "Product", ko: "제품" },
+    date: { en: "Oct 25, 2026", ko: "2026년 10월 25일" },
+    image: "/akanjsImage/diagrams/signal-doors.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
+  },
+  {
+    href: "/blog/release-notes-3-1-0",
+    eyebrow: { en: "Release Notes", ko: "Release Notes" },
+    title: {
+      en: "Akan.js 3.1.0 release notes",
+      ko: "Akan.js 3.1.0 릴리즈 노트",
+    },
+    desc: {
+      en: "Everything that changed from 3.0.2 to 3.1.0, by area, with the security fixes, the performance numbers and every step an upgrade can need.",
+      ko: "3.0.2에서 3.1.0까지 바뀐 모든 것을 영역별로 정리하고, 보안 수정, 성능 수치, 업그레이드할 때 필요한 단계를 모았습니다.",
+    },
+    meta: { en: "Changelog", ko: "변경 기록" },
+    date: { en: "Oct 25, 2026", ko: "2026년 10월 25일" },
+    image: "/akanjsImage/diagrams/write-once-deploy-everywhere.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
+  },
+  {
     href: "/blog/v3release",
     eyebrow: { en: "Release Note", ko: "Release Note" },
     title: {

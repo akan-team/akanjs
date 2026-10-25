@@ -30,7 +30,7 @@ Level:
 
 module files, `page/**`, barrels
 
-`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`
+`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`, a root `native/`, `script/migration/**`
 
 A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key. An `Error` built anywhere else, to reject, return or store, is a warning.
 
@@ -56,7 +56,7 @@ every `.tsx` in `apps/` `libs/`
 
 An arrow that only forwards to a form setter. Pass `st.do.setXOnY` by reference.
 
-An `st.use.*`, `st.sel`, `st.ref` or `st.tool(…).exec()` behind `||` / `&&`, a ternary, an `if`, a loop or a callback. Read each into its own `const` first, then combine.
+An `st` hook that a render can skip. Read each into its own `const` at the top of the component, then combine.
 
 `"use client"` files and `*.store.ts`
 
@@ -87,6 +87,8 @@ An async `ui/` component breaks under a client parent. Await in the page instead
 An `@apps`/`@libs` path past `<name>/<entry>`, `../../` in a module file, or `../` in its `.tsx`.
 
 A third-party package. Re-export it through a lib's `common/`, `webkit/` or `ui/` first.
+
+A third-party package, as in a module file, but `node:*` and `bun:*` pass.
 
 `ui/` `webkit/` `page/` `common/`, `*.store.ts` `*.constant.ts`, every `.tsx`
 
@@ -160,7 +162,7 @@ Each diagnostic prints the name of the rule that fired. Find that name below; th
 
 Every Rule That Breaks The Build
 
-Twenty-eight are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
+Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
 
 Colour vocabulary
 
@@ -202,6 +204,10 @@ Errors, logs and comments
 
 Stores, forms and module files
 
+**Two rules check hooks.** Biome's `useHookAtTopLevel` checks plain hooks like `useState` and `useEffect` on the same files, after an early `return` too. It cannot see the `st` hooks, whose names do not start with `use`, so `no-conditional-st-hook` checks those: `st.use.*`, `st.slice.<x>.use.*`, `st.sel`, `st.ref`, `st.tool(…).exec()` / `.card()`, `st.useState(…).init()` and `st.expose(…).value()`.
+
+**Where an `st` hook is reported.** On the right of `||`, `&&`, `??`, `||=`, `&&=` or `??=`, in a ternary branch, an `if` body, a `switch` case, a loop, a `catch`, a default value, an optional call's arguments, or a callback a component hands to a call or a JSX prop. An early `return` before an `st` hook, and a helper the component calls, are not checked.
+
 **Generated CRUD names are taken.** `<model>`, `light<Model>`, `create<Model>`, `update<Model>`, `remove<Model>`, `view<Model>`, `edit<Model>` and `merge<Model>` already exist, so give a custom endpoint another name.
 
 Server components
@@ -216,7 +222,7 @@ Imports
 
 **Barrels count too.** A client file may not import `db`, `srv`, `sig`, `dict`, `option` or `useServer`; a server file may not import `st`, `store` or `useClient`.
 
-**Akan's own packages pass.** Relative paths, `akanjs`, `@akanjs/*`, `@apps/*`, `@libs/*`, `@pkgs/*`, `react*`, `@playwright/*` and `bun:test` are not third-party imports.
+**Akan's own packages pass.** Relative paths, `akanjs`, `@akanjs/*`, `@apps/*`, `@libs/*`, `@pkgs/*`, `react*`, `@playwright/*` and `bun:test` are not third-party imports; in a module test, neither are `bun:*` and `node:*`.
 
 **Cross-module constants are the exception.** A `.ts` module file may import `../map/map.constant`.
 

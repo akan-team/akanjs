@@ -60,7 +60,7 @@ Term
 
 - WAL: SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
-**There is no edge infrastructure to set up.** infra/ carries the cluster chart and the deployment control area only, so an edge site is one container you run yourself: set `AKAN_PUBLIC_OPERATION_MODE=edge` and `AKAN_DATABASE_MODE=single`, and point `AKAN_SQLITE_DIR` at a volume, which then holds its database and its cache and queue file. The operation mode is independent of the database mode, and only an `internal` job can be scoped to it (`operationMode: ["cloud"]`), never an endpoint.
+**There is no edge infrastructure to set up.** infra/ carries the cluster chart and the deployment control area only, so an edge site is one container you run yourself: set `AKAN_PUBLIC_OPERATION_MODE=edge` and `AKAN_DATABASE_MODE=single`, and point `AKAN_SQLITE_DIR` at a volume, which then holds its database and its cache and queue file. The operation mode is independent of the database mode, and a whole module, endpoints included, or a single `internal` job can be scoped to it (`operationMode: ["cloud"]`).
 
 Which Option Should I Use?
 

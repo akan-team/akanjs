@@ -129,7 +129,7 @@ export default page()
       {
         name: "code",
         signature:
-          "akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]",
+          "akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--compact-at <10..100>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]",
         desc: l.trans({
           en: "Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open the full-screen session.",
           ko: "Akan 코딩 에이전트를 실행합니다. 프롬프트를 주면 한 번 실행하고, 생략하면 전체 화면 세션을 엽니다.",
@@ -175,6 +175,16 @@ export default page()
             desc: l.trans({
               en: "`<provider>/<id>`. Default: `deepseek/deepseek-flash`; without its key, the first available.",
               ko: "`<provider>/<id>` 형식입니다. 기본은 `deepseek/deepseek-flash`이고, 그 키가 없으면 쓸 수 있는 첫 모델입니다.",
+            }),
+          },
+          {
+            name: "--compact-at",
+            type: "Number",
+            defaultValue: "-",
+            enumOrFlag: "nullable · flag: -c",
+            desc: l.trans({
+              en: "Compacts the conversation once the context window is this full, in percent: `10`, `20`, … `100`.",
+              ko: "컨텍스트 창이 이 퍼센트만큼 차면 대화를 압축합니다. `10`, `20`, … `100` 중 하나입니다.",
             }),
           },
           {

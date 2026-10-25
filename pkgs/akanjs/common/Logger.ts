@@ -95,7 +95,9 @@ const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
 //* `iapVerify` (its `apple` is the App Store shared secret) and a service account. Not every `…Key`: an `enrollKey`
 //* names a fleet.
 const secretKey =
-  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|cred|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
+  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|credential|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
+//* Case-sensitive, so it finds `cred` as a word (`regcred`, `awsCreds`, `AWS_CREDS`) and not in `credits` or `syncRedis`.
+const credWord = /[cC]reds?(?![a-z])|CREDS?(?![A-Z])/;
 
 // `process.env?.X` does not guard an undeclared `process`: its ReferenceError at module scope kills the client bundle.
 const envValue = (key: string): string | undefined => (typeof process === "undefined" ? undefined : process.env?.[key]);
@@ -181,19 +183,19 @@ export class Logger {
   static inlineData(value: unknown, max = 500): string {
     let text: string;
     try {
-      text = JSON.stringify(value, (key, val) => (key && secretKey.test(key) ? "[redacted]" : val)) ?? "";
+      text = JSON.stringify(value, (key, val) => (key && Logger.isSecretKey(key) ? "[redacted]" : val)) ?? "";
     } catch {
       text = "[unserializable]";
     }
     return text.length > max ? `${text.slice(0, max)}…` : text;
   }
   static isSecretKey(name: string) {
-    return secretKey.test(name);
+    return secretKey.test(name) || credWord.test(name);
   }
   static redactAttrs(attrs: LogAttrs): LogAttrs {
     let redacted: LogAttrs | null = null;
     for (const key of Object.keys(attrs)) {
-      if (!secretKey.test(key)) continue;
+      if (!Logger.isSecretKey(key)) continue;
       redacted ??= { ...attrs };
       redacted[key] = "[redacted]";
     }

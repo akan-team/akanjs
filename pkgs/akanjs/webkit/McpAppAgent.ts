@@ -1,4 +1,5 @@
 "use client";
+import { ImageResult } from "akanjs/base";
 import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
@@ -164,11 +165,12 @@ export class McpAppAgent {
   }
 
   static #contentOf({ name, mimeType, data, url, text }: MessageAttachment): McpToolResult["content"][number] {
-    if (data !== undefined && mimeType.startsWith("image/")) return { type: "image", data, mimeType };
+    const imageTypes: readonly string[] = ImageResult.mimeTypes;
+    if (data !== undefined && imageTypes.includes(mimeType)) return { type: "image", data, mimeType };
     if (text !== undefined) return { type: "text", text: `--- attachment: ${name} (${mimeType}) ---\n${text}` };
     return {
       type: "text",
-      text: `[${name} (${mimeType}) was not attached${url ? `; it is at ${url}` : ""}: an MCP tool result carries only pictures, as bytes.]`,
+      text: `[${name} (${mimeType}) was not attached${url ? `; it is at ${url}` : ""}: an MCP tool result carries only pictures (${imageTypes.join(", ")}), as bytes.]`,
     };
   }
 }

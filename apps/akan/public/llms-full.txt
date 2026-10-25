@@ -297,7 +297,7 @@ Term
 
 - WAL: SQLite's write-ahead log mode, which lets reads keep going while a write is in progress.
 
-**There is no edge infrastructure to set up.** infra/ carries the cluster chart and the deployment control area only, so an edge site is one container you run yourself: set `AKAN_PUBLIC_OPERATION_MODE=edge` and `AKAN_DATABASE_MODE=single`, and point `AKAN_SQLITE_DIR` at a volume, which then holds its database and its cache and queue file. The operation mode is independent of the database mode, and only an `internal` job can be scoped to it (`operationMode: ["cloud"]`), never an endpoint.
+**There is no edge infrastructure to set up.** infra/ carries the cluster chart and the deployment control area only, so an edge site is one container you run yourself: set `AKAN_PUBLIC_OPERATION_MODE=edge` and `AKAN_DATABASE_MODE=single`, and point `AKAN_SQLITE_DIR` at a volume, which then holds its database and its cache and queue file. The operation mode is independent of the database mode, and a whole module, endpoints included, or a single `internal` job can be scoped to it (`operationMode: ["cloud"]`).
 
 Which Option Should I Use?
 
@@ -674,13 +674,13 @@ The service loads a document from the database, the document validates and chang
 
 What A Filter Generates
 
-A query you declare in the document file is not one method. Akan generates fourteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and eleven more, on both the model and the service.
+A query you declare in the document file is not one method. Akan generates fifteen from it, named after the filter key: declare byOwner and you have listByOwner, countByOwner, updateOneByOwner, and twelve more, on both the model and the service.
 
-One filter, fourteen methods
+One filter, fifteen methods
 
-One filter such as byOwner generates nine reads, one query descriptor for a slice, and four writes that run no hooks.
+One filter such as byOwner generates nine reads, one query descriptor for a slice, and five writes that run no hooks.
 
-Nine of the fourteen read, one only builds a query descriptor, and the remaining four write. Those four are the ones to be careful with: each is a single atomic statement against the database, so none of the model's document hooks run:
+Nine of the fifteen read, one only builds a query descriptor, and the remaining five write. Those five are the ones to be careful with: each writes straight to the database, so none of the model's document hooks run:
 
 Method
 
@@ -2105,7 +2105,7 @@ Connects
 
 Does not connect
 
-**Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and `.env`.
+**Run them from the workspace root.** Like most `akan` commands, they need the folder that holds `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 **`--host` points at another cloud.** Every command that talks to Akan Cloud takes it, so a self-hosted cloud works with the same commands. `cloud: { host }` in the root `akan.config.ts` makes one the default.
 
@@ -2175,7 +2175,7 @@ What you get
 
 **One run is the shape for scripts.** It exits when the prompt is done, and `--json` makes its output machine-readable.
 
-`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
+`akan code [prompt] [--app <app>] [--profile <local|pod|review|web>] [--model <provider/id>] [--compact-at <10..100>] [--json <boolean>] [--thinking <boolean>] [--rpc <boolean>] [--resume <id>] [--interactive <boolean>]`
 
 Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open the full-screen session.
 
@@ -2512,7 +2512,7 @@ These hold for every command, so the detail pages do not repeat them.
 
 - Help — `akan <command> --help` — Prints the command's arguments and options with their defaults and choices. Bare `akan` lists every command.
 
-- Run From The Workspace Root — `package.json · tsconfig.json · .env` — Run every command except `create-workspace` from the folder that holds these three files. Anywhere else it stops with an error.
+- Run From The Workspace Root — `package.json · tsconfig.json · apps/` — Run every command except `create-workspace` from the folder that holds both files and an `apps/`, `libs/` or `pkgs/` folder. Anywhere else it stops with an error.
 
 - Short Aliases — `akan ba = akan build-android` — Nine commands also answer to the first letter of each dashed word. The table below lists all of them.
 
@@ -2859,7 +2859,7 @@ Scan every app and library for code quality warnings, or measure the server/clie
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
 
-- where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and `.env`.
+- where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 - what is read: `.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md`.
 
@@ -3107,7 +3107,7 @@ Workspace
 
 Workspace CLI
 
-These commands act on the whole workspace. Create a new one, and lint or sync every app and library at once.
+These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.
 
 Command
 
@@ -3119,11 +3119,13 @@ Command
 
 - sync-all: Run `akan sync` on every library, then on every app.
 
+- machine-keygen: Make the Ed25519 key a server signs machine tokens with.
+
 Words Used On This Page
 
 Term
 
-- workspace root: The repo's top folder, the one holding `package.json`, `tsconfig.json` and `.env`.
+- workspace root: The repo's top folder, the one holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
 - sync: Rescans an app or library and rewrites its generated files. `akan sync <app|lib>` does one.
 
@@ -3160,8 +3162,6 @@ Create a new workspace and its first app in one go. It runs these steps in order
 - --libs (Boolean, default false): Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
 
 - --init (Boolean, default true): Run `bun install` once the files are written.
-
-- --registry (String, default https://registry.npmjs.org): npm registry for the Akan packages, saved to `.npmrc`. `AKAN_NPM_REGISTRY` sets the default.
 
 ## Assets (public/ private/)
 
@@ -3541,7 +3541,7 @@ Words used on this page
 
 Term
 
-- filter: A named, reusable query such as `inProject`. Each one generates fourteen methods.
+- filter: A named, reusable query such as `inProject`. Each one generates fifteen methods.
 
 - document: One loaded record: a class instance with `set()`, `save()` and your own chain methods.
 
@@ -4487,7 +4487,7 @@ Level:
 
 module files, `page/**`, barrels
 
-`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`
+`apps/**` `libs/**`, except tests, `*.constant.ts`, `common/**`, `env/**`, a root `native/`, `script/migration/**`
 
 A thrown `Error`. Throw `new Err("<module>.error.<key>")` and register the key. An `Error` built anywhere else, to reject, return or store, is a warning.
 

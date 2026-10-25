@@ -63,7 +63,7 @@ Files at the root
 
 File
 
-- .env: Workspace-wide settings such as `AKAN_PUBLIC_ENV` and the serve domain, kept out of git.
+- .env: Optional workspace-wide settings such as `AKAN_PUBLIC_ENV` and the serve domain, kept out of git.
 
 - package.json: Root dependencies and the `bun run` scripts such as `dev`, `lint`, `test` and `build`.
 
@@ -72,6 +72,8 @@ File
 - biome.json: One set of format, import and lint rules for every app, lib and package.
 
 - bunfig.toml: Bun's own config, which adds the Tailwind plugin and the `AKAN_PUBLIC_*` browser env prefix.
+
+- akan.config.ts: Optional settings that belong to no app: `subspace` mirrors, the `pipeline` around every app, the `cloud` host.
 
 - AGENTS.md, CLAUDE.md: Coding-agent guide; `CLAUDE.md` points to `AGENTS.md`, which `akan agent install` refreshes.
 
@@ -127,7 +129,7 @@ Skipped
 
 **Command names are kebab-case.** It is `akan lint-all`, not `akan lintAll`.
 
-**Run these commands from the workspace root.** That is the folder holding `package.json`, `tsconfig.json` and `.env`; anywhere else the command stops with an error. `create-workspace`, which makes that folder, is the exception.
+**Run these commands from the workspace root.** That is the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder; anywhere else the command stops with an error. `create-workspace`, which makes that folder, is the exception.
 
 Workspace CLI
 
@@ -157,6 +159,7 @@ The folders inside an app or library, and when code moves outward.
 ├── tsconfig.json
 ├── biome.json
 ├── bunfig.toml
+├── akan.config.ts
 ├── AGENTS.md
 └── CLAUDE.md
 ```
