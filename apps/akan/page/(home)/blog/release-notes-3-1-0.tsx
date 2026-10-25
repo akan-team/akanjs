@@ -461,6 +461,10 @@ const securityFixes = [
     ko: "다른 출처로 가는 서버 쪽 호출이 더는 방문자의 Authorization 헤더, 인증 쿠키, 주소를 싣지 않습니다. 이 서버로 가는 호출만 전달합니다.",
   },
   {
+    en: "router.push, router.replace and router.redirect refuse an absolute URL on another origin unless the call passes { external: true }, so a ?redirect= value handed to them unchecked can no longer send a visitor to another site.",
+    ko: "router.push, router.replace, router.redirect가 { external: true } 없이는 다른 출처의 절대 URL을 거부하므로, 검사 없이 넘긴 ?redirect= 값이 더는 방문자를 다른 사이트로 보내지 못합니다.",
+  },
+  {
     en: "A request body can no longer set a field outside its input class, such as removedAt or a role, for a service that forwards it.",
     ko: "요청 본문이 입력 클래스 밖의 필드, 예를 들어 removedAt이나 역할을 설정해 그대로 넘기는 서비스에 전달할 수 없습니다.",
   },
@@ -596,6 +600,11 @@ const upgradeGroups = [
         en: "A page no longer inherits a canonical link or og:url from a layout, so declare them in the page's own .head(); a page can drop manifest, icon and theme tags it restated from its root.",
         ko: "페이지가 레이아웃의 canonical 링크와 og:url을 더는 물려받지 않으므로 페이지 자신의 .head()에 선언합니다. 루트를 되풀이하던 manifest, icon, theme 태그는 지워도 됩니다.",
         href: "/docs/core/routing",
+      },
+      {
+        en: "A router.push, replace or redirect to an absolute URL on another origin needs { external: true }. Without it, push and replace stay on the page and reject router.navigation(), and redirect goes to the index path; a Link to another site is unchanged.",
+        ko: "다른 출처의 절대 URL로 가는 router.push, replace, redirect에는 { external: true }가 필요합니다. 없으면 push와 replace는 페이지에 머물고 router.navigation()이 reject되며, redirect는 index 경로로 갑니다. 다른 사이트로 가는 Link는 그대로입니다.",
+        href: "/references/akanjs/client",
       },
       {
         en: "Link's prefix match is by path segment and / matches only itself, ServerPortal is gone, and Link.Back renders an inline-block button with type='button' instead of a div.",
