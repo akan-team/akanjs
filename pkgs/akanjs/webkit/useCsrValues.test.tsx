@@ -433,14 +433,14 @@ describe("useCsrValues for a path no page matches", () => {
   });
 });
 
-describe("useCsrValues for an http(s) URL", () => {
+describe("useCsrValues for an external http(s) URL", () => {
   test("a push leaves for it and a redirect leaves for it in place of the page, drawing nothing on the stack", async () => {
     const frame = mountFrame("/en/home", [{ segment: "home" }]);
     const assign = spyOn(client.csrLocation, "assign").mockImplementation(() => undefined);
     const replace = spyOn(window.location, "replace").mockImplementation(() => undefined);
     try {
-      await act(async () => void client.router.push("https://example.com/docs?sig=1"));
-      await act(async () => void client.router.redirect("HTTPS://example.com/signin"));
+      await act(async () => void client.router.push("https://example.com/docs?sig=1", { external: true }));
+      await act(async () => void client.router.redirect("HTTPS://example.com/signin", { external: true }));
       await elapse(50);
 
       expect(assign.mock.calls).toEqual([["https://example.com/docs?sig=1"]]);
