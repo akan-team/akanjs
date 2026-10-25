@@ -1549,7 +1549,7 @@ describe("MCP Apps", () => {
     expect((await call()).json.result._meta).toBeUndefined();
   });
 
-  test("hands a view the domain error a browser would get, and nothing a refusal or a crash would", async () => {
+  test("hands a view the domain error a browser would get, a refusal's status alone, and nothing a crash would", async () => {
     const session = { "mcp-session-id": await uiSession() };
     const id = "507f1f77bcf86cd799439011";
     const call = (name: string, headers: Record<string, string>, meta?: object) =>
@@ -1574,6 +1574,13 @@ describe("MCP Apps", () => {
     );
     expect(misnamed.json.result.isError).toBe(true);
     expect(misnamed.json.result._meta).toBeUndefined();
+    const signedIn = { ...session, authorization: "Bearer whatever" };
+    const denied = (await call("deniedTitle", signedIn, { [MCP_APP_META.view]: true })).json.result;
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toEqual([{ type: "text", text: "You are not permitted to perform this action." }]);
+    expect(denied._meta).toEqual({ [MCP_APP_META.error]: { statusCode: 403 } });
+    expect((await call("deniedTitle", signedIn)).json.result._meta).toBeUndefined();
+    expect((await call("deniedTitle", session, { [MCP_APP_META.view]: true })).res.status).toBe(401);
     expect((await call("failingTitle", session, { [MCP_APP_META.view]: true })).json.result._meta).toBeUndefined();
     const vendor = (await call("vendorTitle", session, { [MCP_APP_META.view]: true })).json.result;
     expect(vendor._meta).toBeUndefined();

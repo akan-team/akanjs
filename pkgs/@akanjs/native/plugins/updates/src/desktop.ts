@@ -36,6 +36,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -164,15 +165,44 @@ const powershell = () =>
   join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 
 /**
- * The status and signer of the installed executable, then of the release's, one `<status> <subject>` line each. The
- * subject goes as base64 of its UTF-8, which no console code page garbles.
+ * Whether the release's executable is signed by the installed one's signer, decided in PowerShell and printed as one
+ * ASCII verdict line: `unsigned` (the installed one has no valid signature), `same` or `other`. Constrained Language
+ * Mode (WDAC, AppLocker) refuses .NET type literals and method calls, so the script makes none, and an error ends it
+ * before any verdict.
  */
-const AUTHENTICODE = `$ProgressPreference = 'SilentlyContinue'
-foreach ($path in $env:AKAN_NATIVE_INSTALLED_EXE, $env:AKAN_NATIVE_RELEASE_EXE) {
-  $signature = Get-AuthenticodeSignature -LiteralPath $path -ErrorAction Stop
-  $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
-  "$($signature.Status) $([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($subject)))"
-}`;
+const AUTHENTICODE = `$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$own = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_INSTALLED_EXE
+$release = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_RELEASE_EXE
+if ("$($own.Status)" -cne 'Valid') { 'akan-signer: unsigned' }
+elseif ("$($release.Status)" -ceq 'Valid' -and "$($release.SignerCertificate.Subject)" -ceq "$($own.SignerCertificate.Subject)") { 'akan-signer: same' }
+else { 'akan-signer: other' }`;
+
+/**
+ * Whether an executable is unsigned, read from its PE header without PowerShell: an x64 or arm64 image (PE32+) whose
+ * certificate table, where Authenticode embeds a signature, is empty.
+ */
+function isUnsignedImage(exe: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(exe, "r");
+    const head = Buffer.alloc(4096);
+    const size = readSync(fd, head, 0, head.length, 0);
+    if (size < 64 || head.toString("latin1", 0, 2) !== "MZ") return false;
+    const pe = head.readUInt32LE(0x3c);
+    if (pe + 176 > size || head.toString("latin1", pe, pe + 4) !== "PE\0\0") return false;
+    //? The optional header follows the signature and the 20-byte COFF header. Its data directories start 112 bytes in,
+    //? 8 bytes each, after their count; the certificate table (IMAGE_DIRECTORY_ENTRY_SECURITY) is the fifth.
+    const optional = pe + 24;
+    if (head.readUInt16LE(optional) !== 0x20b) return false;
+    if (head.readUInt32LE(optional + 108) < 5) return true;
+    return head.readUInt32LE(optional + 112 + 32) === 0 && head.readUInt32LE(optional + 112 + 36) === 0;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 /** A signature tool's exit code and what it printed; -1 when it could not start. */
 async function runSignatureTool(
@@ -522,7 +552,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       return code === 0 ? null : `the release is not signed by team ${team}, as this app is; publish it with --sign`;
     }
     if (!windows) return null;
-    const { output } = await signatureTool(
+    const { code, output } = await signatureTool(
       [
         powershell(),
         "-NoProfile",
@@ -532,12 +562,14 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       ],
       { AKAN_NATIVE_INSTALLED_EXE: executableIn(app), AKAN_NATIVE_RELEASE_EXE: executableIn(staged) },
     );
-    const [own, release] = [...output.matchAll(/^(\w+) ([A-Za-z0-9+/=]*)\r?$/gm)].map(([, status, subject]) => ({
-      status,
-      subject: Buffer.from(subject ?? "", "base64").toString("utf8"),
-    }));
-    if (own?.status !== "Valid" || (release?.status === "Valid" && release.subject === own.subject)) return null;
-    return `the release is not Authenticode-signed by ${own.subject}, as this app is; publish it with --sign`;
+    const verdict = code === 0 ? /^akan-signer: (unsigned|same|other)\r?$/m.exec(output)?.[1] : undefined;
+    if (verdict === "unsigned" || verdict === "same") return null;
+    if (verdict === "other")
+      return "the release is not Authenticode-signed by the signer of this app; publish it with --sign";
+    //? No verdict (PowerShell blocked by AppLocker, SRP or WDAC, or a script it refused) does not make this app unsigned:
+    //? only its PE header shows that. Any other app refuses, so a leaked update key alone cannot replace it.
+    if (isUnsignedImage(executableIn(app))) return null;
+    return "PowerShell could not check the release's signer against this app's; install the release with its installer";
   };
 
   /** null once the carried server answered ready and stayed up SERVER_SETTLE; else why it did not in time. */

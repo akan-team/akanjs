@@ -49,6 +49,7 @@ export type SliceStateKey =
   | "limitOfModel"
   | "hasMoreOfModel"
   | "isCumulativeOfModel"
+  | "hasInsightOfModel"
   | "queryArgsOfModel"
   | "sortOfModel";
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
@@ -119,7 +120,8 @@ export type SliceState<
 } & {
   [K in
     | `hasMoreOf${_CapitalizedRefName}${_CapitalizedSuffix}`
-    | `isCumulativeOf${_CapitalizedRefName}${_CapitalizedSuffix}`]: boolean;
+    | `isCumulativeOf${_CapitalizedRefName}${_CapitalizedSuffix}`
+    | `hasInsightOf${_CapitalizedRefName}${_CapitalizedSuffix}`]: boolean;
 } & {
   [K in `queryArgsOf${_CapitalizedRefName}${_CapitalizedSuffix}`]: Args;
 } & {
@@ -159,7 +161,8 @@ type DefaultSliceStateFields<
 } & {
   [Suffix in _Suffixes as
     | `hasMoreOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`
-    | `isCumulativeOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: boolean;
+    | `isCumulativeOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`
+    | `hasInsightOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: boolean;
 } & {
   [Suffix in _Suffixes as `queryArgsOf${_CapRefName}${StoreSliceSuffixCap<SlceCls, Suffix>}`]: StoreSliceArgs<
     SlceCls,
@@ -218,6 +221,7 @@ export const createSliceState = (refName: string, slice: { [key: string]: Serial
       [namesOfSlice.limitOfModel]: 20,
       [namesOfSlice.hasMoreOfModel]: false,
       [namesOfSlice.isCumulativeOfModel]: false,
+      [namesOfSlice.hasInsightOfModel]: true,
       [namesOfSlice.queryArgsOfModel]: [],
       [namesOfSlice.sortOfModel]: "latest",
     };

@@ -252,6 +252,16 @@ describe("Logger attrs", () => {
     expect(Logger.inlineData({ mailer: { pass: "p", host: "h" } })).toBe('{"mailer":{"pass":"[redacted]","host":"h"}}');
   });
 
+  test("masks a cred only as a word of its own, so a credit count stays readable", () => {
+    for (const name of ["cred", "creds", "regcred", "REGCRED", "awsCreds", "AWS_CREDS", "credsJson", "credentials"])
+      expect(Logger.isSecretKey(name)).toBe(true);
+    for (const name of ["credits", "usedCredit", "creditBalance", "accredited", "CREDIT_LIMIT", "syncRedis"])
+      expect(Logger.isSecretKey(name)).toBe(false);
+    expect(Logger.inlineData({ credits: 120, usedCredit: 3, awsCreds: "c" })).toBe(
+      '{"credits":120,"usedCredit":3,"awsCreds":"[redacted]"}',
+    );
+  });
+
   test("a record without attrs keeps the historical line", () =>
     withSink((entries) => {
       Logger.setLevel("error");

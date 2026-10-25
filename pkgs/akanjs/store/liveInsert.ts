@@ -5,6 +5,8 @@ export interface LivePlacementProps {
   row: LiveSortableRow;
   page: number;
   limit: number;
+  /** The rows the query matches; the server lists at most `MAX_PAGE_SIZE` of them for `limit: 0`. */
+  count: number;
   /** Whether the list is pages `1..N` concatenated rather than one window. */
   cumulative: boolean;
   hasMore: boolean;
@@ -21,6 +23,7 @@ export const livePlacementIndex = ({
   row,
   page,
   limit,
+  count,
   cumulative,
   hasMore,
   sortKey,
@@ -42,9 +45,10 @@ export const livePlacementIndex = ({
   if (!orderable) return null;
   if (index !== -1) return index;
   // Past the rows in hand: a full paged window is followed by the next page, a cumulative list by `hasMore` rows, a
-  // `limit: 0` list by nothing.
+  // `limit: 0` list by the rows past the server's cap.
   if (cumulative) return hasMore ? null : list.length;
-  return !limit || list.length < limit ? list.length : null;
+  if (!limit) return list.length < count ? null : list.length;
+  return list.length < limit ? list.length : null;
 };
 
 // The order `QueryCompiler.orderBy` asks SQL for: NULL below every value, then `id` in the last key's direction.

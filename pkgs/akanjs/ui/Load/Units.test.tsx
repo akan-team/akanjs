@@ -1,33 +1,59 @@
 import "../../test/registerDom";
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { PageActivity } from "akanjs/client";
 import type { ServerInit, ServerView } from "akanjs/fetch";
-import { act, type ReactNode, Suspense } from "react";
+import { Activity, act, type ReactNode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { AgenticSurface, AgentProvider } from "use-agentic";
-import { itemFixtureOf, l, setTestEnv } from "../testHelpers.fixture";
+import { itemFixtureOf, l, setTestEnv, waitFor } from "../testHelpers.fixture";
 
 let Units: typeof import("./Units").default;
 let View: typeof import("./View").default;
 let makeStore: (state?: Record<string, unknown>) => void;
+let makeProjectStore: (state?: Record<string, unknown>) => void;
 let calls: Record<string, ReturnType<typeof mock>>;
-let sliceState: { get: () => Record<string, unknown>; set: (state: Record<string, unknown>) => void };
+let projectCalls: Record<string, ReturnType<typeof mock>>;
+let pathContext: typeof import("akanjs/client").pathContext;
+let pageActivityContext: typeof import("akanjs/client").pageActivityContext;
+let sliceState: {
+  get: () => Record<string, unknown>;
+  set: (state: Record<string, unknown>) => void;
+  do: Record<string, (...args: unknown[]) => Promise<void>>;
+};
+
+const projectRows = {
+  p1: { id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "One" },
+  p2: { id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Two" },
+  p3: { id: "cccccccccccccccccccccccc", title: "Three" },
+} as const;
+type Project = keyof typeof projectRows;
 
 beforeAll(async () => {
   setTestEnv("loadtest");
   const { Light, Full, Insight, storeMaker } = await itemFixtureOf("loadTestItem");
-  const { registerClientRuntime } = await import("akanjs/client");
+  const client = await import("akanjs/client");
   const { st } = await import("akanjs/store");
+  ({ pathContext, pageActivityContext } = client);
   sliceState = st as unknown as typeof sliceState;
   calls = {
     loadTestItemList: mock(async () => [new Light({ id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "Ada" })]),
     loadTestItemInsight: mock(async () => new Insight({ count: 1 })),
     loadTestItem: mock(async (id: string) => new Full({ id, title: "Fresh" })),
   };
-  registerClientRuntime({
+  projectCalls = {
+    loadTestItemList: mock(async (projectId: Project) => [new Light(projectRows[projectId])]),
+    loadTestItemInsight: mock(async () => new Insight({ count: 1 })),
+  };
+  client.registerClientRuntime({
     usePage: () => ({ path: "/", lang: "en", l }),
     fetch: { sortKeyMap: new Map([["loadTestItem", ["latest"]]]), filterQueryMap: new Map([["loadTestItem", {}]]) },
   } as never);
   makeStore = storeMaker({ root: "loadRoot", calls });
+  makeProjectStore = storeMaker({
+    root: "loadProjectRoot",
+    calls: projectCalls,
+    sliceArgs: [{ type: "param", name: "projectId", refName: "String" }],
+  });
   ({ default: Units } = await import("./Units"));
   ({ default: View } = await import("./View"));
 });
@@ -169,6 +195,21 @@ describe("Load.Units", () => {
     await unmount();
   });
 
+  test("refetches without the insight an init opted out of", async () => {
+    makeStore();
+    const { flush, unmount } = mount(
+      <Units<"loadTestItem", Item>
+        init={serverInit({ insight: false, initAt: new Date(Date.now() - 1000) })}
+        staleTime={0}
+        renderItem={(item: Item) => <span>{item.title}</span>}
+      />,
+    );
+    await flush();
+    expect(calls.loadTestItemList).toHaveBeenCalled();
+    expect(calls.loadTestItemInsight).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   test("rehydrates when a route change hands the mounted instance an init with different query args", async () => {
     makeStore();
     const renderItem = (item: Item) => <span>{item.title}</span>;
@@ -289,6 +330,131 @@ describe("Load.Units", () => {
       globalThis.__AKAN_RSC_IS_FROM_CACHE__ = undefined;
     }
     expect(calls.loadTestItemList).toHaveBeenCalled();
+    await unmount();
+  });
+});
+
+describe("Load.Units sharing a slice with another list", () => {
+  let inits: Record<Project, ServerInit<"loadTestItem", Item>>;
+  beforeEach(() => {
+    makeProjectStore();
+    inits = Object.fromEntries(
+      Object.entries(projectRows).map(([project, row]) => [project, serverInit({ args: [project], ...row })]),
+    ) as typeof inits;
+  });
+  const listOf = (project: Project) => (
+    <Units<"loadTestItem", Item> init={inits[project]} renderItem={(item: Item) => <span>{item.title}</span>} />
+  );
+  const pageOf = (pageKey: string, activity: PageActivity, children: ReactNode) => (
+    <Activity key={pageKey} mode={activity === "hidden" ? "hidden" : "visible"}>
+      <pathContext.Provider value={{ pageKey } as never}>
+        <pageActivityContext.Provider value={{ activity, focused: activity === "current" }}>
+          <div id={pageKey}>{children}</div>
+        </pageActivityContext.Provider>
+      </pathContext.Provider>
+    </Activity>
+  );
+  const stackOf = (pages: [pageKey: string, activity: PageActivity, project: Project | null][]) => (
+    <>{pages.map(([pageKey, activity, project]) => pageOf(pageKey, activity, project ? listOf(project) : null))}</>
+  );
+  const textOf = (container: HTMLElement, id: string) => container.querySelector(`#${id}`)?.textContent;
+  const listedProjects = () => projectCalls.loadTestItemList.mock.calls.map(([project]) => project);
+
+  test.each(["hidden", "prev"] as const)(
+    "a page shown again from %s takes back the slice a page pushed over it replaced",
+    async (under) => {
+      const { container, rerender, unmount } = mount(stackOf([["a", "current", "p1"]]));
+      expect(textOf(container, "a")).toBe("One");
+
+      await rerender(
+        stackOf([
+          ["a", "current", "p1"],
+          ["b", "pending", "p2"],
+        ]),
+      );
+      await rerender(
+        stackOf([
+          ["a", under, "p1"],
+          ["b", "current", "p2"],
+        ]),
+      );
+      expect(textOf(container, "b")).toBe("Two");
+      expect(listedProjects()).toEqual([]);
+
+      await rerender(stackOf([["a", "current", "p1"]]));
+      await waitFor(() => textOf(container, "a") === "One");
+      expect(textOf(container, "a")).toBe("One");
+      expect(listedProjects()).toEqual(["p1"]);
+      expect(sliceState.get().queryArgsOfLoadTestItem).toEqual(["p1"]);
+      await unmount();
+    },
+  );
+
+  test("a page shown again keeps the filter it showed, and makes no call while still in step", async () => {
+    const { container, rerender, flush, unmount } = mount(stackOf([["a", "current", "p1"]]));
+    await act(async () => {
+      await sliceState.do.setQueryArgsOfLoadTestItem("p3");
+    });
+    expect(textOf(container, "a")).toBe("Three");
+
+    await rerender(
+      stackOf([
+        ["a", "hidden", "p1"],
+        ["c", "current", null],
+      ]),
+    );
+    await rerender(stackOf([["a", "current", "p1"]]));
+    await flush();
+    expect(listedProjects()).toEqual(["p3"]);
+
+    await rerender(
+      stackOf([
+        ["a", "hidden", "p1"],
+        ["b", "current", "p2"],
+      ]),
+    );
+    await rerender(stackOf([["a", "current", "p1"]]));
+    await waitFor(() => textOf(container, "a") === "Three");
+    expect(listedProjects()).toEqual(["p3", "p3"]);
+    await unmount();
+  });
+
+  test("lists take the slice back with one call once the list that replaced them on their screen unmounts", async () => {
+    const both = (showsSecond: boolean) => (
+      <>
+        <div id="first">{listOf("p1")}</div>
+        <div id="twin">{listOf("p1")}</div>
+        {showsSecond ? <div id="second">{listOf("p2")}</div> : null}
+      </>
+    );
+    const { container, rerender, unmount } = mount(both(false));
+    await rerender(both(true));
+    expect(textOf(container, "second")).toBe("Two");
+
+    await rerender(both(false));
+    await waitFor(() => textOf(container, "first") === "One");
+    expect(textOf(container, "twin")).toBe("One");
+    expect(listedProjects()).toEqual(["p1"]);
+    await unmount();
+  });
+
+  test("two lists of one slice on a page shown again leave it to the one that seeded it last", async () => {
+    const page = (activity: PageActivity) =>
+      pageOf(
+        "a",
+        activity,
+        <>
+          <div id="first">{listOf("p1")}</div>
+          <div id="second">{listOf("p2")}</div>
+        </>,
+      );
+    const { container, rerender, flush, unmount } = mount(page("current"));
+    await rerender(page("hidden"));
+    await rerender(page("current"));
+    await flush();
+    await flush();
+    expect(listedProjects()).toEqual([]);
+    expect(textOf(container, "first")).toBe("Two");
     await unmount();
   });
 });

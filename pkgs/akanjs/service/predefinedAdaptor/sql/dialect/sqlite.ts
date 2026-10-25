@@ -97,9 +97,13 @@ export class SqliteDialect implements SqlDialect {
   // An index SQLite makes for a UNIQUE or PRIMARY KEY constraint has no `sql`.
   indexesOf(table: string): SqlFrag {
     return {
-      sql: `SELECT "name", 1 AS "valid" FROM "sqlite_master" WHERE "type" = 'index' AND "tbl_name" = ? AND "sql" IS NOT NULL`,
+      sql: `SELECT "name", 1 AS "valid", "sql" AS "definition" FROM "sqlite_master" WHERE "type" = 'index' AND "tbl_name" = ? AND "sql" IS NOT NULL`,
       params: [table],
     };
+  }
+  // `sqlite_master` keeps the statement as it was written, less its `IF NOT EXISTS`.
+  indexDefinition(props: CreateIndexProps) {
+    return this.createIndex(props).replace(" IF NOT EXISTS", "");
   }
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag {
     const p = this.#path(path);

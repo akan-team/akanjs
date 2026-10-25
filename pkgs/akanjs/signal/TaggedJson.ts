@@ -1,6 +1,6 @@
 import { Binary, dayjs, FIELD_META } from "akanjs/base";
 import { plainFieldsOf } from "akanjs/common";
-import type { ConstantCls } from "akanjs/constant";
+import type { ConstantCls, ConstantModelRef } from "akanjs/constant";
 
 interface DeclaredShape {
   ref: unknown;
@@ -32,9 +32,12 @@ export class TaggedJson {
     const prototype: unknown = Object.getPrototypeOf(value);
     const isPlain = prototype === null || prototype === Object.prototype;
     if (!isPlain && !TaggedJson.#isModelCls(value.constructor)) return value;
-    const fields = Object.fromEntries(
-      Object.entries(plainFieldsOf(value)).map(([key, item]) => [key, TaggedJson.toTagged(item)]),
+    const entries = Object.entries(plainFieldsOf(value)).map(
+      ([key, item]) => [key, TaggedJson.toTagged(item)] as const,
     );
+    const record = Object.fromEntries(entries);
+    // A record holding the tag key would revive as the value it spells, so it goes out as entries, not as an object.
+    const fields = tag in record ? { [tag]: "plain", entries } : record;
     return isPlain ? fields : { [tag]: "model", fields };
   }
 
@@ -49,6 +52,7 @@ export class TaggedJson {
     if (!value || typeof value !== "object" || !(TaggedJson.#tag in value)) return value;
     const { [TaggedJson.#tag]: kind, entries, base64, iso, fields } = value as Record<string, unknown>;
     if (kind === "map" && Array.isArray(entries)) return new Map(entries as [string, unknown][]);
+    if (kind === "plain" && Array.isArray(entries)) return Object.fromEntries(entries as [string, unknown][]);
     if (kind === "bytes" && typeof base64 === "string") return Binary.parseValue(base64);
     if (kind === "dayjs") return dayjs(iso as string | null);
     if (kind === "date") return new Date(typeof iso === "string" ? iso : Number.NaN);
@@ -67,13 +71,32 @@ export class TaggedJson {
         ? value.map((item) => TaggedJson.#rebuild(item, { ref, arrDepth: arrDepth - 1 }, instances))
         : value;
     if (!TaggedJson.#isModelCls(ref)) return value;
-    if (instances.has(value)) return new (ref as unknown as new (obj: object) => object)(value);
+    if (instances.has(value))
+      return TaggedJson.#restoreRelations(new (ref as unknown as new (obj: object) => object)(value), value, ref);
     const record = value as Record<string, unknown>;
     for (const [key, field] of Object.entries(ref[FIELD_META])) {
       if (!field.isClass || !(key in record)) continue;
       record[key] = TaggedJson.#rebuild(record[key], { ref: field.modelRef, arrDepth: field.arrDepth }, instances);
     }
     return value;
+  }
+
+  //? A model's constructor reads a stored relation id as the related model's fields and loses it, so it is put back.
+  static #restoreRelations(built: unknown, stored: unknown, ref: ConstantModelRef): unknown {
+    if (!built || typeof built !== "object" || !stored || typeof stored !== "object") return built;
+    if (Array.isArray(built)) {
+      if (Array.isArray(stored))
+        for (const [idx, item] of built.entries()) TaggedJson.#restoreRelations(item, stored[idx], ref);
+      return built;
+    }
+    const builtRecord = built as Record<string, unknown>;
+    const storedRecord = stored as Record<string, unknown>;
+    for (const [key, field] of Object.entries(ref[FIELD_META])) {
+      if (!field.isClass) continue;
+      if (field.isScalar) TaggedJson.#restoreRelations(builtRecord[key], storedRecord[key], field.modelRef);
+      else builtRecord[key] = storedRecord[key];
+    }
+    return built;
   }
 
   static #isModelCls(ref: unknown): ref is ConstantCls {

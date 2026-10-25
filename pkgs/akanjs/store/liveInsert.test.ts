@@ -12,6 +12,7 @@ const place = (patch: Partial<Parameters<typeof livePlacementIndex>[0]> = {}) =>
     row: row("new", 250),
     page: 1,
     limit: 5,
+    count: 3,
     cumulative: false,
     hasMore: false,
     sortKey: "latest",
@@ -48,6 +49,11 @@ describe("livePlacementIndex", () => {
 
   test("a `limit: 0` window has no next page, so it takes a row past its tail", () => {
     expect(place({ row: row("new", 50), limit: 0 })).toBe(3);
+  });
+
+  test("a `limit: 0` window holding fewer rows than its count leaves a row past its tail to a refetch", () => {
+    expect(place({ row: row("new", 50), limit: 0, count: 600 })).toBeNull();
+    expect(place({ row: row("new", 250), limit: 0, count: 600 })).toBe(1);
   });
 
   test("a cumulative list takes a row past its tail only once the server has nothing left", () => {
@@ -120,6 +126,7 @@ describe("livePlacementIndex", () => {
         row: { id: "new", rank, createdAt: dayjs(createdAt) },
         page: 1,
         limit: 5,
+        count: 3,
         cumulative: false,
         hasMore: false,
         sortKey: "tier",

@@ -39,6 +39,7 @@ class SolidWorker implements AkanWorker {
     if (this.#closed || this.#running) return;
     this.#running = true;
     try {
+      await this.queue.failStalled(this.name, this.options);
       while (!this.#closed) {
         const job = this.queue.claimJob(this.name);
         if (!job) return;
@@ -111,7 +112,7 @@ export class SolidQueue
          AND "runAt" <= ?
          AND (
           "status" = 'pending'
-          OR ("status" = 'running' AND "lockedUntil" IS NOT NULL AND "lockedUntil" <= ?)
+          OR ("status" = 'running' AND "lockedUntil" IS NOT NULL AND "lockedUntil" <= ? AND "attempts" < "maxAttempts")
          )
        ORDER BY "priority" ASC, "createdAt" ASC
        LIMIT 1`,
@@ -211,15 +212,36 @@ export class SolidQueue
            WHERE "id" = ?`,
         )
         .run(failed ? "failed" : "pending", this.now() + delay, message, this.now(), job.id);
-      if (!failed) return;
-      this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
-      this.#settle(job, "failed", job.opts?.removeOnFail ?? false);
-      await Promise.resolve(onFailed?.(job, error)).catch((hookError: unknown) =>
-        this.logger.warn(
-          `onFailed of ${job.name} threw: ${hookError instanceof Error ? hookError.message : hookError}`,
-        ),
-      );
+      if (failed) await this.#fail(job, error, message, onFailed);
     }
+  }
+
+  // A process that died or hung mid-job never settles it, so a job past its last attempt's lease is failed here.
+  async failStalled(name: string, { onFailed }: ProcessWorkerOptions = {}) {
+    const now = this.now();
+    const message = "Its lease ran out on the last attempt: the process running it died or stopped answering";
+    const rows = this.#db
+      .query(
+        `UPDATE "_akan_solid_jobs"
+         SET "status" = 'failed', "lockedBy" = NULL, "lockedUntil" = NULL, "lastError" = ?, "updatedAt" = ?
+         WHERE "queue" = ? AND "name" = ? AND "status" = 'running' AND "lockedUntil" IS NOT NULL AND "lockedUntil" <= ?
+           AND "attempts" >= "maxAttempts"
+         RETURNING "id", "name", "payload", "attempts"`,
+      )
+      .all(message, now, this.queueName, name, now) as Pick<JobRow, "id" | "name" | "payload" | "attempts">[];
+    for (const row of rows) {
+      const payload = JSON.parse(row.payload) as { args: unknown[]; opts?: AkanJobOptions };
+      const job = { id: row.id, name: row.name, data: payload.args, attemptsMade: row.attempts, opts: payload.opts };
+      await this.#fail(job, new Error(message), message, onFailed);
+    }
+  }
+
+  async #fail(job: AkanJob, error: unknown, message: string, onFailed: ProcessWorkerOptions["onFailed"]) {
+    this.logger.error(`Solid job failed ${job.name}/${job.id}: ${message}`);
+    this.#settle(job, "failed", job.opts?.removeOnFail ?? false);
+    await Promise.resolve(onFailed?.(job, error)).catch((hookError: unknown) =>
+      this.logger.warn(`onFailed of ${job.name} threw: ${hookError instanceof Error ? hookError.message : hookError}`),
+    );
   }
 
   // As bullmq reads `removeOnComplete`/`removeOnFail`: `true` drops, a number keeps that many newest, `false` keeps.

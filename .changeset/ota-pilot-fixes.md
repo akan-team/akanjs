@@ -13,6 +13,7 @@ Fixes for over-the-air updates on a phone, plus the upload commands they were mi
 - **Inlined dictionary:** the dictionary a build inlines into the client bundle is key-sorted, so the same commit gives the same bytes.
 - **`native.devtools: true`:** opens the web inspector of a release build, for an internal test target only.
 - **`akan push-update <app> --platform`:** packs an update and uploads it to the Akan Cloud project, which signs and publishes it.
-  - The pack goes straight to the project's storage, so a proxy's request time limit can't cut off a large one.
-  - It exits 2 when the pack needs a new store build or the project rejects it.
-- **`akan register-binary <app> --platform --distribution`:** registers the store build `release-*` made, with a pack of the same commit. It refuses when the two provide different native APIs.
+  - The pack goes straight to the project's storage, so a proxy's request time limit can't cut off a large one. Only the files the pack's manifest lists go up, though a pack folder keeps every earlier pack's files.
+  - `--pack <dir>` uploads a folder `akan pack-update` already wrote instead of packing again, so one pack built in CI can be checked, then uploaded as it is.
+  - It exits 2 when the pack needs a new store build or the project rejects it, and stops without retrying when the project says the upload was already used.
+- **`akan register-binary <app> --platform --distribution`:** registers the store build `release-*` made, with a pack of the same commit, which goes up and stops the same way. It refuses when the two provide different native APIs.

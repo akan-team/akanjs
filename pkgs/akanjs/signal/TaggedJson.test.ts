@@ -56,4 +56,16 @@ describe("TaggedJson", () => {
     expect(read.items[1]).toEqual({ title: "raw" });
     expect(roundTrip([[item]], TaggedJsonTestItem, 2)).toEqual([[item]]);
   });
+
+  test("reads back verbatim a plain value that carries the tag key itself", () => {
+    const lookalikes = {
+      asDate: { "\u0000akan": "date", iso: "2020-01-01T00:00:00Z" },
+      asMap: { "\u0000akan": "map", entries: [["k", 1]] },
+      asModel: { "\u0000akan": "model", fields: { secret: "unwrapped" } },
+      asPlain: { "\u0000akan": "plain", entries: [["k", { "\u0000akan": "bytes", base64: "AA==" }]] },
+    };
+
+    expect(roundTrip(lookalikes)).toEqual(lookalikes);
+    expect(roundTrip(new Map([["kept", [lookalikes]]]))).toEqual(new Map([["kept", [lookalikes]]]));
+  });
 });

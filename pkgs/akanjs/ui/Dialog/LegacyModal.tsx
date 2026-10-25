@@ -1,6 +1,6 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
-import { useBodyScrollLock, useEscapeKey } from "akanjs/webkit";
+import { useBodyScrollLock, useEscapeKey, usePageActivity } from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
@@ -40,8 +40,10 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
   const overlayLayerProps = useOverlayLayerProps();
   const [{ translate }, api] = useSpring(() => ({ translate: 1 }));
   const portalElement = useOverlayPortal();
+  const isCurrentPage = usePageActivity() === "current";
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [isMounted, setIsMounted] = useState(open);
+  const isActive = isMounted && isCurrentPage;
   const [showBackground, setShowBackground] = useState(false);
 
   const openModal = useCallback(
@@ -126,7 +128,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     }
   }, [closeModal, isMounted, open]);
 
-  useBodyScrollLock(isMounted);
+  useBodyScrollLock(isActive);
 
   useEffect(() => {
     if (!isMounted || !portalElement || typeof document === "undefined") return;
@@ -155,7 +157,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     };
   }, [registerDismiss]);
 
-  useEscapeKey(isMounted, requestClose);
+  useEscapeKey(isActive, requestClose);
 
   useEffect(() => {
     return () => {
@@ -170,13 +172,13 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
       <div
         {...overlayLayerProps}
         className={cn("fixed inset-0", showBackground && "animate-fadeIn bg-black/50 backdrop-blur-sm")}
-        style={{ zIndex: overlayZ.modal }}
+        style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden" }}
       />
       <div
         {...overlayLayerProps}
         ref={setRoot}
         className="fixed inset-0 flex items-center justify-center p-4"
-        style={{ zIndex: overlayZ.modal }}
+        style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden" }}
         onClick={(event) => {
           if (event.target !== event.currentTarget) return;
           requestClose();

@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { act, type ReactNode } from "react";
 import type { AgentRunner, AgentSession, ChatMessage, MessageAttachment, ToolCallRequest } from "use-agentic";
 import { l, mount as mountNode, setTestEnv } from "../testHelpers.fixture";
@@ -13,6 +13,7 @@ let DefaultComposer: typeof import("./Composer").DefaultComposer;
 let Guide: typeof import("./Guide").Guide;
 let UiOverrideProvider: typeof import("../UiOverride").UiOverrideProvider;
 let overlayZ: typeof import("../overlayLayer").overlayZ;
+let Modal: typeof import("../Modal").Modal;
 
 const runtimeFetch: Record<string, unknown> = {};
 
@@ -28,6 +29,7 @@ beforeAll(async () => {
   ({ Guide } = await import("./Guide"));
   ({ UiOverrideProvider } = await import("../UiOverride"));
   ({ overlayZ } = await import("../overlayLayer"));
+  ({ Modal } = await import("../Modal"));
 });
 
 // The chat portals to the body, so the query scope is the body.
@@ -108,15 +110,15 @@ const composer = (container: HTMLElement) => {
     value: () => field()?.value ?? "",
     type: (value: string) => act(() => props().onChange({ target: { value } })),
     // The caret is stated: happy-dom does not track a selection through a props-driven keystroke.
-    press: (key: string, options: { shiftKey?: boolean; caret?: number } = {}) =>
+    press: (key: string, options: { shiftKey?: boolean; caret?: number; event?: KeyboardEvent } = {}) =>
       act(() => {
         const value = field()?.value ?? "";
         const at = options.caret ?? value.length;
         props().onKeyDown({
           key,
           shiftKey: !!options.shiftKey,
-          preventDefault: () => {},
-          nativeEvent: {},
+          preventDefault: () => options.event?.preventDefault(),
+          nativeEvent: options.event ?? {},
           currentTarget: { value, selectionStart: at, selectionEnd: at },
         });
       }),
@@ -1109,6 +1111,41 @@ describe("Agent.Chat", () => {
     expect(container.querySelector("aside")).toBeNull();
     expect(container.querySelector('button[aria-label="base.agent"]')).toBeTruthy();
     unmount();
+  });
+
+  test("an Escape the composer spends on its menu or its panel leaves a modal under the chat open", () => {
+    const onCancel = mock(() => undefined);
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const { container, unmount } = mount(
+      <lib.AgentProvider session={session}>
+        <Modal open onCancel={onCancel}>
+          <div>modal body</div>
+        </Modal>
+        <DefaultChat defaultOpen />
+      </lib.AgentProvider>,
+    );
+    try {
+      const input = composer(container);
+      // React handles a keystroke at its root or a portal's container, so the window always hears it afterwards.
+      const escape = () => {
+        const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+        input.press("Escape", { event });
+        act(() => {
+          window.dispatchEvent(event);
+        });
+      };
+      input.type("/");
+      escape();
+      expect(container.querySelector('[role="option"]')).toBeNull();
+      expect(onCancel).not.toHaveBeenCalled();
+
+      escape();
+      expect(container.querySelector("aside")).toBeNull();
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(container.textContent).toContain("modal body");
+    } finally {
+      unmount();
+    }
   });
 
   test("pressing a menu row leaves focus in the composer, so a phone keeps its keyboard up", () => {

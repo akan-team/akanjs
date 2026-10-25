@@ -5,7 +5,7 @@ import path from "node:path";
 import type { PromiseOrObject } from "akanjs/base";
 import type { ConstantModel } from "akanjs/constant";
 import type { DatabaseModel, DocumentSchema, SchemaOf } from "akanjs/document";
-import type { ReservedSql, Sql } from "postgres";
+import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import { adapt } from "../adapt";
 import { ScheduleAdaptorRole } from "./role.adaptor";
 import {
@@ -30,6 +30,7 @@ import { SqliteInsightSession } from "./sql/SqliteInsightSession";
 import {
   BASE_COLUMNS,
   type ConcurrentIndexBuild,
+  type CreateIndexProps,
   type DatabaseAdaptor,
   type InsightSession,
   type PostgresDatabaseConfig,
@@ -514,6 +515,32 @@ export class PostgresDatabase
       .prepare(`SELECT indisvalid AS "valid" FROM pg_index WHERE indexrelid = to_regclass($1)`)
       .get<{ valid: boolean }>(quoteIdent(name));
     return !!row?.valid;
+  }
+
+  // Built on an empty copy of the table under a savepoint: a failed statement would abort the schema transaction.
+  async indexDefinitions(table: string, indexes: Omit<CreateIndexProps, "name">[]) {
+    const probe = "_akan_index_probe";
+    try {
+      return await this.transaction(
+        async () =>
+          await (this.getConnection().client as TransactionSql).savepoint(async (savepoint) => {
+            const client = new PostgresAkanClient(savepoint);
+            await client.execute(`CREATE TEMP TABLE ${quoteIdent(probe)} (LIKE ${quoteIdent(table)})`);
+            for (const [idx, index] of indexes.entries())
+              await client.execute(this.dialect.createIndex({ ...index, name: `${probe}_${idx}`, table: probe }));
+            const { sql, params } = this.dialect.indexesOf(probe);
+            const rows = await client.prepare(sql).all<{ name: string; definition: string }>(...params);
+            await client.execute(`DROP TABLE ${quoteIdent(probe)}`);
+            const definitions = new Map(rows.map(({ name, definition }) => [name, definition]));
+            return indexes.map((_, idx) => definitions.get(`${probe}_${idx}`));
+          }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not compare the indexes on ${table} with its declared ones, so none of them is taken for a declared index: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return indexes.map(() => undefined);
+    }
   }
 
   // `CREATE INDEX` blocks writes; `CONCURRENTLY` cannot run in a transaction, and a failed build leaves an invalid

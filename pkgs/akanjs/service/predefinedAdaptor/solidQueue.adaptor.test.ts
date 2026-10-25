@@ -177,3 +177,37 @@ describe("SolidQueue job retention", () => {
     expect(rowsOf(filePath).map(({ id }) => id)).toEqual(["kept-completed", "kept-failed", "fresh-failed"]);
   });
 });
+
+describe("SolidQueue leases", () => {
+  test("claims a job again once its lease runs out while an attempt is left", async () => {
+    const queue = await openQueue(newFilePath(), { queueLeaseMs: 1_000 });
+    let at = 1_000_000;
+    queue.now = () => at;
+    const { id } = await queue.registerProcessQueue("mail", ["a"], { attempts: 2 });
+    expect(queue.claimJob("mail")).toMatchObject({ id, attemptsMade: 1 });
+    at += 999;
+    expect(queue.claimJob("mail")).toBeNull();
+    at += 1;
+    expect(queue.claimJob("mail")).toMatchObject({ id, attemptsMade: 2 });
+  });
+
+  test("fails a job whose lease ran out on its last attempt and hands it to onFailed, never running it again", async () => {
+    const filePath = newFilePath();
+    const queue = await openQueue(filePath, { queueLeaseMs: 1_000 });
+    let at = 1_000_000;
+    queue.now = () => at;
+    const { id } = await queue.registerProcessQueue("mail", ["a"]);
+    expect(queue.claimJob("mail")).toMatchObject({ id, attemptsMade: 1 });
+    at += 1_000;
+    expect(queue.claimJob("mail")).toBeNull();
+
+    const ran: string[] = [];
+    const failed = Promise.withResolvers<AkanJob>();
+    queue.registerProcessWorker("mail", async (job) => void ran.push(job.id), {
+      onFailed: (job) => failed.resolve(job),
+    });
+    expect(await failed.promise).toMatchObject({ id, name: "mail", data: ["a"], attemptsMade: 1 });
+    expect(ran).toEqual([]);
+    expect(rowsOf(filePath)).toEqual([{ id, status: "failed" }]);
+  });
+});

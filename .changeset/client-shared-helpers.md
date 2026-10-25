@@ -8,4 +8,4 @@ Helpers the framework used in several copies are public, each in one place:
 - `isMcpView()` and `router.postPathChange(change)` (`akanjs/client`): whether the page runs in an MCP host's view, and the `pathChange` message to the embedding frame, which an MCP view never posts.
 - `ModalSurfaceProps` (`akanjs/ui`): the `presentation` and `placement` every modal surface takes.
 - `TailwindBreakpoint` and `breakpointQuery(name, { below })` (`akanjs/client`), derived from `insetBreakpoints`, and `transitionTypes`, from which `TransitionType` is now derived.
-- `getWebManifestBasePath` moves from `akanjs/server` to `akanjs/client`, beside `webManifestHref`.
+- `webManifestHref(basePath)` and `getWebManifestBasePath(pathname, basePaths, headerBasePath)` (`akanjs/client`): where an SSR document links its root layout's `.manifest()`, and which basePath a `/manifest.webmanifest` request asks for.

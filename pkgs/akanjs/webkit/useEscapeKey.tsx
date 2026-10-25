@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 const stack: (() => void)[] = [];
 
 const onKeyDown = (event: KeyboardEvent) => {
-  if (event.key !== "Escape") return;
+  if (event.key !== "Escape" || event.defaultPrevented) return;
   const topmost = stack.at(-1);
   if (!topmost) return;
   event.preventDefault();
