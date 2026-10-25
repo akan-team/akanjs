@@ -11,6 +11,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
 import { WorkspaceCommand } from "./workspace.command";
 import { defaultMaxDiagnostics, WorkspaceRunner } from "./workspace.runner";
@@ -18,6 +19,7 @@ import { WorkspaceScript } from "./workspace.script";
 
 const originalCwd = process.cwd();
 const originalFetch = globalThis.fetch;
+const repoRoot = path.resolve(import.meta.dir, "../../../..");
 
 const stubNpmLatest = (latest = "1.0.0") => {
   globalThis.fetch = mock(
@@ -357,6 +359,35 @@ describe("WorkspaceRunner", () => {
     expect(workspacePackageJson.dependencies).not.toHaveProperty("capacitor-plugin-safe-area");
   });
 
+  test("gives a new workspace React's type packages at the versions the repo root uses", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { devDependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    const repoPackageJson = (await Bun.file(path.join(repoRoot, "package.json")).json()) as PackageJson;
+    for (const typesPackage of ["@types/react", "@types/react-dom"])
+      expect([typesPackage, devDependencies?.[typesPackage]]).toEqual([
+        typesPackage,
+        repoPackageJson.devDependencies?.[typesPackage] ?? `${typesPackage} missing from the repo root`,
+      ]);
+  });
+
+  test("pins react-dom and react-server-dom-webpack in a new workspace to react's exact version", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { dependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    expect(dependencies?.react).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(dependencies?.["react-dom"]).toBe(dependencies?.react);
+    expect(dependencies?.["react-server-dom-webpack"]).toBe(dependencies?.react);
+  });
+
   test("generates agent rule files without overwriting by default", async () => {
     const runner = new WorkspaceRunner();
     const { root, workspace } = track(await createTempApp("demo"));
@@ -444,6 +475,34 @@ describe("WorkspaceRunner", () => {
       path.join(root, "biome.jsonc"),
       `${root}/apps/demo`,
     ]);
+  });
+
+  test("refuses a recipe with nothing to pick, and says what to make of it instead", async () => {
+    const runner = new WorkspaceRunner();
+    const { root } = track(await createTempApp("demo"));
+    const workspace = createFakeExecutor("workspace");
+    workspace.spawn = mock(async () => "");
+    await writeText(
+      `${root}/apps/demo/ui/Recipe/flatPanel.ts`,
+      'import { recipe, tv } from "akanjs/ui";\n\nexport const flatPanel = recipe(tv({ base: "rounded-box border" }));\n',
+    );
+
+    await expect(
+      runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false }),
+    ).rejects.toThrow(
+      "[recipeGate] variant-less recipe(s): flatPanel\nA look with nothing to pick is not a recipe: promote one that has its own markup to a component, and keep a skin passed into another component's className as a shared class constant.",
+    );
+  });
+
+  test("refuses an AGENTS.md whose recipe index no longer matches the sources, and names the sync that fixes it", async () => {
+    const runner = new WorkspaceRunner();
+    const { app } = track(await createTempApp("stale"));
+    const workspace = createFakeExecutor("workspace");
+    workspace.spawn = mock(async () => "");
+
+    await expect(runner.lint(app, workspace as never, { fix: false })).rejects.toThrow(
+      "[agentsIndex] The recipe index in apps/stale/AGENTS.md is stale: it differs from the recipe sources. Run `akan sync stale` to regenerate it.",
+    );
   });
 
   test("discovers apps/libs/packages through workspace executors", async () => {

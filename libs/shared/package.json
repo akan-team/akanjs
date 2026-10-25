@@ -26,5 +26,7 @@
     "yjs": "^13.6.32",
     "@lexical/code-prism": "^0.52.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/react-dom": "^19.3.0"
+  }
 }

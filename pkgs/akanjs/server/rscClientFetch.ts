@@ -1,4 +1,5 @@
 import {
+  AKAN_RSC_NOT_FOUND_HEADER,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
@@ -6,7 +7,7 @@ import {
 } from "./routeState";
 
 export type RscClientFetchResponseResult =
-  | { type: "response"; response: Response }
+  | { type: "response"; response: Response; notFound?: boolean }
   | { type: "patch"; response: Response; patch: AkanRscPatchMetadata }
   | { type: "not-found" }
   | { type: "redirected"; status?: number };
@@ -17,6 +18,7 @@ export async function fetchRscNavigationResponse(
     buildId?: number;
     currentRouterState: AkanRouterStateV1 | null;
     navigate?: (href: string, options?: { replace?: boolean; scrollToTop?: boolean }) => Promise<void> | void;
+    replaceOnRedirect?: () => boolean;
     sendRouterState?: boolean;
     shouldApplyNavigation?: () => boolean;
   },
@@ -37,11 +39,15 @@ export async function fetchRscNavigationResponse(
     const method = response.headers.get("X-Akan-Redirect-Method");
     const statusHeader = response.headers.get("X-Akan-Redirect-Status");
     const status = statusHeader ? Number(statusHeader) : undefined;
-    if (shouldApplyNavigation()) await options.navigate?.(redirect, { replace: method !== "push", scrollToTop: true });
+    const replace = method !== "push" && (options.replaceOnRedirect?.() ?? true);
+    if (shouldApplyNavigation()) await options.navigate?.(redirect, { replace, scrollToTop: true });
     return { type: "redirected", status };
   }
-  // A 404 carries `0:null`, a Flight root of null that would commit an empty tree over the document if decoded.
   if (response.status === 404) {
+    // A view is a whole document whatever patch its trace names; a bare 404 carries `0:null`, a Flight root of null
+    // that would commit an empty tree over the document if decoded.
+    if (response.headers.get(AKAN_RSC_NOT_FOUND_HEADER) === "view")
+      return { type: "response", response, notFound: true };
     await response.body?.cancel();
     return { type: "not-found" };
   }

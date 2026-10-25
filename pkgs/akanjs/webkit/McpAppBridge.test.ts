@@ -240,6 +240,22 @@ describe("McpAppBridge", () => {
     expect(error.toJSON?.()).toEqual({ error: "memo.error.locked", statusCode: 409, data: { id: "1" } });
   });
 
+  test("restores a refusal the server gave the view by its status alone, with the sentence every caller reads", async () => {
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
+    const asked = bridge.fetchBridge([]).call(call({ refName: "String" }));
+    fromHost({
+      id: lastRequest("tools/call")?.id,
+      result: {
+        content: [{ type: "text", text: "You are not permitted to perform this action." }],
+        isError: true,
+        _meta: { [MCP_APP_META.error]: { statusCode: 403 } },
+      },
+    });
+    const error = (await asked.catch((caught: unknown) => caught)) as RestoredError;
+    expect(error.statusCode).toBe(403);
+    expect(error.toJSON?.()).toEqual({ error: "You are not permitted to perform this action.", statusCode: 403 });
+  });
+
   test("serves the screen's own tools to the host, holding an early list, and answers no call it cancelled", async () => {
     const { bridge } = await started(
       { structuredContent: { href: "/en", params: { lang: "en" } } },

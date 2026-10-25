@@ -709,9 +709,9 @@ describe("WebToolPack", () => {
     }) as typeof fetch);
     try {
       const deepseek = new DeepSeekWeb("sk-test", `http://127.0.0.1:${deepseekServer.port}/v1/tools`);
-      const fetchTool = toolsOf(new WebToolPack({ profile: codeAgentPresets.local(root), deepseek }).extension()).get(
-        "web_fetch",
-      );
+      const lookup = async () => ["93.184.215.14"];
+      const pack = new WebToolPack({ profile: codeAgentPresets.local(root), deepseek, lookup });
+      const fetchTool = toolsOf(pack.extension()).get("web_fetch");
       const read = async (url: string) => (await fetchTool?.("1", { url } as never))?.content[0]?.text ?? "";
 
       expect(await read("https://docs.example.com/install")).toBe(
@@ -725,6 +725,74 @@ describe("WebToolPack", () => {
       direct.mockRestore();
       deepseekServer.stop(true);
       page.stop(true);
+    }
+  });
+
+  test("reads an intranet name, a mapped or unspecified loopback, and a name that does not resolve directly", async () => {
+    const asked: string[] = [];
+    const deepseekServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        asked.push(((await request.json()) as { url: string }).url);
+        return Response.json({ title: "Public", content: "read by DeepSeek" });
+      },
+    });
+    const realFetch = globalThis.fetch;
+    const direct = spyOn(globalThis, "fetch").mockImplementation((async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url).port === String(deepseekServer.port)) return await realFetch(input, init);
+      return new Response("<p>read directly</p>");
+    }) as typeof fetch);
+    const addresses: { [host: string]: string[] } = {
+      "jira.corp.example.com": ["10.0.0.7"],
+      "wiki.example.com": ["93.184.215.14", "fd12::1"],
+      "hosts.example.com": ["::ffff:192.168.0.2"],
+      "docs.example.com": ["93.184.215.14", "2606:2800:21f:cb07:6820:80da:af6b:8b2c"],
+    };
+    const looked: string[] = [];
+    const lookup = async (host: string) => {
+      looked.push(host);
+      const found = addresses[host];
+      if (!found) throw new Error(`getaddrinfo ENOTFOUND ${host}`);
+      return found;
+    };
+    try {
+      const deepseek = new DeepSeekWeb("sk-test", `http://127.0.0.1:${deepseekServer.port}/v1/tools`);
+      const pack = new WebToolPack({ profile: codeAgentPresets.local(root), deepseek, lookup });
+      const fetchTool = toolsOf(pack.extension()).get("web_fetch");
+      const read = async (url: string) => (await fetchTool?.("1", { url } as never))?.content[0]?.text ?? "";
+
+      for (const url of [
+        "http://jira.corp.example.com/browse/SEC-1",
+        "http://wiki.example.com/",
+        "http://hosts.example.com/",
+        "http://foo.test/",
+        "http://[::ffff:127.0.0.1]:8282/x",
+        "http://[::ffff:10.0.0.5]/wiki",
+        "http://[::]:8282/",
+        "http://0.0.0.0:8282/",
+        "http://localhost.:8282/",
+        "http://app.local./",
+      ])
+        expect(await read(url)).toContain("read directly");
+      expect(asked).toEqual([]);
+
+      expect(await read("https://docs.example.com/install")).toContain("read by DeepSeek");
+      expect(await read("http://[2606:4700:4700::1111]/")).toContain("read by DeepSeek");
+      expect(asked).toEqual(["https://docs.example.com/install", "http://[2606:4700:4700::1111]/"]);
+      expect(looked).toEqual([
+        "jira.corp.example.com",
+        "wiki.example.com",
+        "hosts.example.com",
+        "foo.test",
+        "docs.example.com",
+      ]);
+    } finally {
+      direct.mockRestore();
+      deepseekServer.stop(true);
     }
   });
 

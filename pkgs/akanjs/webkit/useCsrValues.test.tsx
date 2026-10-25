@@ -1,5 +1,5 @@
 import "../test/registerDom";
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import type { CsrContextType, PathRoute, RouteGuide, TransitionType } from "akanjs/client";
 import { Activity, act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -430,5 +430,26 @@ describe("useCsrValues for a path no page matches", () => {
     expect(frame.seen.latest?.location.pathname).toBe("/en/404");
     expect(frame.stack()).toEqual(["/en/home", "/en/404"]);
     expect(frame.container.textContent).toContain("missing /en/404");
+  });
+});
+
+describe("useCsrValues for an http(s) URL", () => {
+  test("a push leaves for it and a redirect leaves for it in place of the page, drawing nothing on the stack", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }]);
+    const assign = spyOn(client.csrLocation, "assign").mockImplementation(() => undefined);
+    const replace = spyOn(window.location, "replace").mockImplementation(() => undefined);
+    try {
+      await act(async () => void client.router.push("https://example.com/docs?sig=1"));
+      await act(async () => void client.router.redirect("HTTPS://example.com/signin"));
+      await elapse(50);
+
+      expect(assign.mock.calls).toEqual([["https://example.com/docs?sig=1"]]);
+      expect(replace.mock.calls).toEqual([["https://example.com/signin"]]);
+      expect(frame.stack()).toEqual(["/en/home"]);
+      expect(frame.container.textContent).toBe("home");
+    } finally {
+      assign.mockRestore();
+      replace.mockRestore();
+    }
   });
 });

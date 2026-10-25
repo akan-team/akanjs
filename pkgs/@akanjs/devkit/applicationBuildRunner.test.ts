@@ -172,4 +172,40 @@ console.info(new SampleService().name);
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("asks the bundler for a metafile with AKAN_BUILD_METAFILE=1, and not with 0, false or an empty value", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = [
+      "AKAN_BUILD_METAFILE",
+      "AKAN_PUBLIC_ENV",
+      "AKAN_PUBLIC_REPO_NAME",
+      "AKAN_PUBLIC_SERVE_DOMAIN",
+    ] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    await Promise.all(["main.ts", "server.ts"].map((file) => writeFile(path.join(root, "apps", "portal", file), "")));
+    const app = AppExecutor.from(workspace, "portal");
+    app.prepareCommand = async () => ({ env: {} });
+    const bundle = spyOn(Bun, "build").mockImplementation(async () => {
+      throw new Error("stopped at the first bundle");
+    });
+    const asksForMetafile = async (flag: string) => {
+      process.env.AKAN_BUILD_METAFILE = flag;
+      await expect(new ApplicationBuildRunner(app, { fast: true }).build()).rejects.toThrow(
+        "stopped at the first bundle",
+      );
+      return bundle.mock.lastCall?.[0].metafile === true;
+    };
+    try {
+      const asked: { [flag: string]: boolean } = {};
+      for (const flag of ["1", "0", "false", ""]) asked[flag] = await asksForMetafile(flag);
+      expect(asked).toEqual({ "1": true, "0": false, false: false, "": false });
+    } finally {
+      bundle.mockRestore();
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

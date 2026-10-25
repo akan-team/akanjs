@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { SpawnOptions } from "node:child_process";
 import { run } from "./run";
 
@@ -83,6 +83,28 @@ describe("create-akan-workspace", () => {
     });
 
     expect(calls.at(1)?.args).toEqual(["create-workspace", "my-org", "--app=web", "--libs=false", "--init=true"]);
+  });
+
+  test("refuses a Bun older than its engines range before installing anything", async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+    const printed = spyOn(console, "error").mockImplementation(() => undefined);
+    const exitCode = process.exitCode;
+    try {
+      await run({
+        argv: ["bun", "create-akan-workspace", "my-org"],
+        spawnCommand: spawnCommand as never,
+        bunVersion: "1.4.3",
+      });
+
+      expect(calls).toEqual([]);
+      expect(process.exitCode).toBe(1);
+      expect(printed).toHaveBeenCalledTimes(1);
+      expect(printed.mock.calls[0]?.[0]).toContain("bun upgrade");
+    } finally {
+      printed.mockRestore();
+      //? Bun ignores `process.exitCode = undefined`, so restoring an unset code needs the 0.
+      process.exitCode = exitCode ?? 0;
+    }
   });
 
   test("rejects and skips workspace creation when CLI install fails", async () => {

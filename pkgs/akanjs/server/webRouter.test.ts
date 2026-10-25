@@ -13,7 +13,7 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
-import { encodeAkanRouterState, encodeAkanRscPatchSegmentPath } from "./routeState";
+import { AKAN_RSC_NOT_FOUND_HEADER, encodeAkanRouterState, encodeAkanRscPatchSegmentPath } from "./routeState";
 import type { RscRenderResult } from "./rscWorkerHost";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { SsrLateRedirect } from "./ssrTypes";
@@ -888,6 +888,22 @@ describe("WebRouter RSC stream response", () => {
     expect(response.headers.get("Content-Type")).toBe("text/x-component; charset=utf-8");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     await expect(response.text()).resolves.toBe("flight");
+  });
+
+  test("marks a rendered not-found view apart from the bare not-found payload", async () => {
+    const streamed = (status?: number) =>
+      createRscNavigationStreamResponse({
+        type: "stream",
+        stream: streamOf("flight"),
+        status,
+        lateControl: Promise.resolve(null),
+        cacheState: Promise.resolve({ cacheable: false, reason: "not-found" }),
+        cancel: () => {},
+      });
+
+    expect((await streamed(404)).headers.get(AKAN_RSC_NOT_FOUND_HEADER)).toBe("view");
+    expect((await streamed()).headers.get(AKAN_RSC_NOT_FOUND_HEADER)).toBeNull();
+    expect(createRscNotFoundFallbackResponse().headers.get(AKAN_RSC_NOT_FOUND_HEADER)).toBeNull();
   });
 });
 

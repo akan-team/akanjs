@@ -8,9 +8,10 @@ Native app fixes:
 
 - **Desktop updates keep the installed app's signer.**
   - On macOS, an app signed with a Developer ID team refuses a downloaded release that the same team did not sign.
-  - On Windows, an app whose exe has a valid Authenticode signature refuses a release whose exe isn't signed by the same subject.
+  - On Windows, an app whose exe has a valid Authenticode signature refuses a release whose exe isn't signed by the same subject. The check runs in PowerShell, Constrained Language Mode included. Where AppLocker, SRP or WDAC keeps PowerShell from running, a signed app refuses every release, since none can be checked; update such PCs with the installer.
   - An ad hoc or unsigned installed app takes releases as before.
   - A refused release is recorded as failed (`NOT_ALLOWED`) and is not offered again.
+- **Phone web updates packed on Windows** (`akan pack-update`, `akan-native update publish`) list the files in subfolders with `/`. They listed them with `\`, which phones refuse, and their web hash now matches a store build made on another OS.
 - **iOS:** a pending web bundle becomes the trial when the first window asks for its page, not at launch. A silent push that launches the app in the background no longer starts a trial that the next launch rolls back as `relaunch`.
 - **Android:**
   - A destroyed activity's ready timer no longer fires after `recreate()` and rolls back the trial its new activity runs.

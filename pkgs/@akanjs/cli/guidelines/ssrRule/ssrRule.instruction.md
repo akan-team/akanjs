@@ -141,11 +141,11 @@ eight queries threw; per-section boundaries put each rejection at its own bounda
 **Know which redirects are real.** A streaming response starts while layout and page bodies still run, so a redirect
 is a real 3xx only when it was raised before any I/O was awaited, the body's own or a layout's above it (a layout that
 awaits `fetch.viewOrg` makes every page under it late); after one — `getSelf({ unauthorize: "/signin" })` fetches —
-it reaches the browser as an HTTP 200 that navigates in the page, which a crawler or `curl` does not
-follow. Either way no markup below the redirect is sent. A route's `.guard()` runs before any layout body starts,
-so a redirect from it is a real 3xx even after the guard's own awaited query: gate there. A route that must answer a
-real 3xx from its body after I/O — a moved URL found by a query — takes `.config({ ssr: "block" })`: the response
-waits for the whole render. Never redirect from inside a streamed section.
+a browser gets an HTTP 200 that navigates in the page, which `curl` does not follow, while a crawler, whose response
+waits for the whole render, gets the real 3xx. Either way no markup below the redirect is sent. A route's `.guard()`
+runs before any layout body starts, so a redirect from it is a real 3xx even after the guard's own awaited query:
+gate there. A route that must answer a real 3xx from its body after I/O — a moved URL found by a query — takes
+`.config({ ssr: "block" })`: the response waits for the whole render. Never redirect from inside a streamed section.
 
 **⑥ Use named `ReactNode` slots, not just `children`.** A client shell that takes one slot per region lets a
 server component supply each of them, instead of absorbing the whole subtree into the bundle. `Layout.Navbar`
@@ -155,10 +155,10 @@ is the shape: `title` / `left` / `right` beside `back` and `children`, each fill
 `canWrite(user?)`, `formatTimes()`), and enum→class lookups belong in a module-scope `as const` map. Both sides call
 the same method, so a client component that exists only to compute a label is markup in the wrong place.
 
-**⑧ Gate auth on the server.** `.guard(() => signedIn())` (`@libs/shared/webkit`) on `_layout.tsx` runs before any
-of the route renders, so the redirect is a real 3xx; `getSelf({ unauthorize: "/signin" })` in a layout body still
-redirects before any of the page's markup, in-page after I/O. A client-side check costs a hydration round-trip and
-flashes the wrong UI first.
+**⑧ Gate auth on the server.** `.guard(() => signedIn())` (`@libs/shared/webkit`, which a new workspace has only
+with `create-workspace --libs true`) on `_layout.tsx` runs before any of the route renders, so the redirect is a
+real 3xx; `getSelf({ unauthorize: "/signin" })` in a layout body still redirects before any of the page's markup,
+in-page after I/O. A client-side check costs a hydration round-trip and flashes the wrong UI first.
 
 **⑨ Prefer CSS over client state for pure visibility.** A `data-*` attribute plus `group-data-[…]` variants (see
 `libs/util/ui/Grid/*`) or `<details>`/`<summary>` keeps both branches server-rendered. Reach for `useState` when the

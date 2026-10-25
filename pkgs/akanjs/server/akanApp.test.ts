@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { resetEnvCache } from "../base/baseEnv";
 import { AkanApp } from "./akanApp";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import { HostAllowlist } from "./routing/hostAllowlist";
@@ -125,6 +126,16 @@ const writeOkChild = (serverPath: string, body: string) =>
       };
     `,
   );
+
+const writeNoisyChild = async (serverPath: string) => {
+  await writeOkChild(serverPath, "ok");
+  await Bun.write(
+    serverPath,
+    (await Bun.file(serverPath).text()).replace("async start() {", 'async start() { console.error("boot noise");'),
+  );
+};
+
+const writtenTo = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([chunk]) => String(chunk)).join("");
 
 const writePubsubChild = (serverPath: string) =>
   Bun.write(
@@ -728,6 +739,67 @@ describe("AkanApp", () => {
       expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toBe("1");
     });
   }, 20_000);
+
+  test("prints a child's raw stderr on its own stderr when it writes no log file", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-child-raw-stderr-");
+    await writeNoisyChild(serverPath);
+    const logToFile = process.env.AKAN_LOG_TO_FILE;
+    process.env.AKAN_LOG_TO_FILE = "0";
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        await waitForReady(port);
+        await waitFor(async () =>
+          writtenTo(stderr).includes("[child:0 federation] [stderr] boot noise\n") ? true : null,
+        );
+      });
+    } finally {
+      stderr.mockRestore();
+      if (logToFile === undefined) delete process.env.AKAN_LOG_TO_FILE;
+      else process.env.AKAN_LOG_TO_FILE = logToFile;
+    }
+  }, 20_000);
+
+  test("keeps a child's raw stderr to the log file it writes, and prints it too with AKAN_CHILD_STDERR=1", async () => {
+    const publicEnv = {
+      AKAN_PUBLIC_APP_NAME: "portal",
+      AKAN_PUBLIC_REPO_NAME: "repo",
+      AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+    };
+    const keys = ["AKAN_LOG_TO_FILE", "AKAN_CHILD_STDERR", ...Object.keys(publicEnv)];
+    const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    delete process.env.AKAN_LOG_TO_FILE;
+    Object.assign(process.env, publicEnv);
+    resetEnvCache();
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const bootUntilLogged = async (name: string) => {
+      const { serverPath, runtimeDir, port } = await makeRoot(name);
+      await writeNoisyChild(serverPath);
+      const logDir = path.join(runtimeDir, "logs");
+      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        await waitForReady(port);
+        await waitFor(async () => {
+          const childLog = (await readdir(logDir).catch(() => [])).find((file) => file.includes("-0-federation-"));
+          const text = childLog ? await readFile(path.join(logDir, childLog), "utf8") : "";
+          return text.includes("[child:0 federation] [stderr] boot noise\n") ? true : null;
+        });
+      });
+    };
+    try {
+      await bootUntilLogged("akan-app-child-file-stderr-");
+      expect(writtenTo(stderr)).not.toContain("boot noise");
+      process.env.AKAN_CHILD_STDERR = "1";
+      await bootUntilLogged("akan-app-child-shown-stderr-");
+      expect(writtenTo(stderr)).toContain("[child:0 federation] [stderr] boot noise\n");
+    } finally {
+      stderr.mockRestore();
+      for (const key of keys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+      resetEnvCache();
+    }
+  }, 30_000);
 
   test("serves immutable client artifacts only while ssr is on", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-web-");

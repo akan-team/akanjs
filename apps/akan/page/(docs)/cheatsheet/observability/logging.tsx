@@ -213,16 +213,16 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Child stderr reaches the file even when the terminal hides it.</strong> The gateway prints a child's
-            stderr only with <code>AKAN_CHILD_STDERR=1</code>; a child's own Logger errors go to stdout, so they always
-            show.
+            <strong>Child stderr reaches the file even when the terminal hides it.</strong> While it writes a log file,
+            the gateway prints a child's stderr only with <code>AKAN_CHILD_STDERR=1</code>; without one, as in the
+            image, it always prints it. A child's own Logger errors go to stdout, so they always show.
           </>
         ),
         ko: (
           <>
-            <strong>child의 stderr는 터미널에 안 보여도 파일에는 남습니다.</strong> gateway는{" "}
-            <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력합니다. child 자신의 Logger 오류는
-            stdout으로 나가므로 늘 보입니다.
+            <strong>child의 stderr는 터미널에 안 보여도 파일에는 남습니다.</strong> 로그 파일을 쓰는 동안 gateway는{" "}
+            <code>AKAN_CHILD_STDERR=1</code>일 때만 child의 stderr를 터미널에 출력하고, 이미지처럼 로그 파일이 없으면 늘
+            출력합니다. child 자신의 Logger 오류는 stdout으로 나가므로 늘 보입니다.
           </>
         ),
       }),

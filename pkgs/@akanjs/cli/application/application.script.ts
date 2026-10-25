@@ -200,7 +200,8 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
 
   async test(exec: Exec, { write = true }: { write?: boolean } = {}) {
     if (exec instanceof LibExecutor) {
-      await this.libraryScript.syncLibrary(exec);
+      if (write) await this.libraryScript.syncLibrary(exec);
+      else await exec.scan({ write: false });
       exec.spinning(`Preparing ${exec.name}...`).succeed(`${exec.name} prepared`);
       await this.applicationRunner.test(exec);
       return;

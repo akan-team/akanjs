@@ -32,6 +32,7 @@ const defaultWorkspacePeerDependencies = new Set([
   "tailwindcss",
   "typescript",
 ]);
+const defaultWorkspaceTypeDependencies = { "@types/react": "^19.3.0", "@types/react-dom": "^19.3.0" } as const;
 
 /** High enough that a real cleanup pass sees every finding at once; `0` on the CLI lifts the cap entirely. */
 export const defaultMaxDiagnostics = 200;
@@ -110,6 +111,7 @@ export class WorkspaceRunner extends runner("workspace") {
         ...rootPackageJson.devDependencies,
         "@biomejs/biome": biomeVersion,
         "@types/bun": latestTypesBunVersion,
+        ...defaultWorkspaceTypeDependencies,
         "@akanjs/devkit": akanVersion,
         ...(typescript ? { typescript } : {}),
       },
@@ -222,8 +224,8 @@ export class WorkspaceRunner extends runner("workspace") {
     const actual = existing ? extractAgentBlock(existing) : null;
     if (actual === expected.trim()) return;
     throw new Error(
-      `[agentsIndex] ${scope.type}s/${scope.name}/AGENTS.md 의 recipe 색인이 소스와 다릅니다(stale). ` +
-        `\`akan sync ${scope.name}\` 을 실행해 재생성하세요.`,
+      `[agentsIndex] The recipe index in ${scope.type}s/${scope.name}/AGENTS.md is stale: it differs from the recipe ` +
+        `sources. Run \`akan sync ${scope.name}\` to regenerate it.`,
     );
   }
 
@@ -245,9 +247,9 @@ export class WorkspaceRunner extends runner("workspace") {
     );
     if (offenders.length === 0) return;
     throw new Error(
-      `[recipeGate] variant-less recipe(s): ${offenders.map((recipe) => recipe.name).join(", ")}\n` +
-        "고를 옵션 없는 look 은 recipe 로 두지 마세요 — 자기 마크업이 있으면 컴포넌트로 승격하고, " +
-        "다른 컴포넌트의 className 에 주입하는 스킨이면 공유 클래스 상수로 두세요.",
+      `[recipeGate] variant-less recipe(s): ${[...new Set(offenders.map((recipe) => recipe.name))].join(", ")}\n` +
+        "A look with nothing to pick is not a recipe: promote one that has its own markup to a component, and keep " +
+        "a skin passed into another component's className as a shared class constant.",
     );
   }
 
