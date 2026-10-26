@@ -72,6 +72,16 @@
       "types": "./client/native/*.ts",
       "default": "./client/native/*.ts"
     },
+    "./native/api": {
+      "import": "./native/api.ts",
+      "types": "./native/api.ts",
+      "default": "./native/api.ts"
+    },
+    "./native/config": {
+      "import": "./native/config.ts",
+      "types": "./native/config.ts",
+      "default": "./native/config.ts"
+    },
     "./native/desktop": {
       "import": "./native/desktop.ts",
       "types": "./native/desktop.ts",

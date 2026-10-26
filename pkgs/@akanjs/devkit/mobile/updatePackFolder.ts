@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BundleInfo, UpdateManifest } from "@akanjs/native/api";
 import type { NativeEnv } from "akanjs";
+import type { BundleInfo, UpdateManifest } from "akanjs/native/api";
 import { ExitCodeError } from "../commandDecorators/exitCodeError";
 import type { MobilePlatform } from "./mobileTarget";
 

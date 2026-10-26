@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { UpdateEnvelope, UpdateManifest } from "@akanjs/native/api";
 import { isRecord, trimTrailingSlashes } from "akanjs/common";
+import type { UpdateEnvelope, UpdateManifest } from "akanjs/native/api";
 import { UpdatePackFolder } from "./updatePackFolder";
 
 /** What the uploader needs of an S3 client; Bun.S3Client is one. */

@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { AkanNativeConfig } from "@akanjs/native/config";
 import type { NativeEnv } from "akanjs";
 import { toError } from "akanjs/common";
+import type { AkanNativeConfig } from "akanjs/native/config";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
