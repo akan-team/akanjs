@@ -1,7 +1,7 @@
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ServerPolicy } from "@akanjs/native/api";
 import { toError } from "akanjs/common";
+import type { ServerPolicy } from "akanjs/native/api";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";

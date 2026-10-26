@@ -370,4 +370,53 @@ describe("PackageRunner", () => {
     // Passing means the comment and the `.test.ts` fixture above, which name unresolvable subpaths, were ignored.
     await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "@sample/tool" });
   });
+
+  // @akanjs/devkit 3.1.0 shipped `import type … from "@akanjs/native/api"`, which no installed workspace can resolve.
+  const writeNativeImportingDist = async (source: string) => {
+    const { root, pkg } = track(await createTempPackage("@sample/tool"));
+    const dist = `${root}/dist/pkgs/@sample/tool`;
+    await writeJson(`${dist}/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+    });
+    await writeText(`${dist}/README.md`, "# Tool\n");
+    await writeText(`${dist}/README.ko.md`, "# Tool KO\n");
+    await writeText(`${dist}/mobile/nativeApi.ts`, source);
+    pkg.workspace.spawn = (async () => JSON.stringify([{ files: [{ path: "package.json" }], size: 1 }])) as never;
+    return pkg;
+  };
+
+  test("rejects a dist package that imports a package no registry carries, type-only imports included", async () => {
+    const pkg = await writeNativeImportingDist(
+      [
+        'import type { ServerPolicy } from "@akanjs/native/api";',
+        'import { useAgent } from "use-agentic";',
+        "export type Policy = ServerPolicy;",
+        "export const agent = useAgent;",
+        "",
+      ].join("\n"),
+    );
+
+    const verify = new PackageRunner().verifyDistPackage(pkg);
+
+    await expect(verify).rejects.toThrow(
+      "@sample/tool dist imports 2 specifier(s) of a package that is never published",
+    );
+    await expect(verify).rejects.toThrow("@akanjs/native/api — imported by mobile/nativeApi.ts");
+    await expect(verify).rejects.toThrow("use-agentic — imported by mobile/nativeApi.ts");
+  });
+
+  test("accepts native types reached through akanjs and a native specifier resolved only at runtime", async () => {
+    const pkg = await writeNativeImportingDist(
+      [
+        'import type { ServerPolicy } from "akanjs/native/api";',
+        'export const entryOf = (dir: string) => Bun.resolveSync("@akanjs/native/api", dir);',
+        "export type Policy = ServerPolicy;",
+        "",
+      ].join("\n"),
+    );
+
+    await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "@sample/tool" });
+  });
 });

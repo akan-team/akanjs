@@ -44,6 +44,17 @@ jobs:
       - run: bun run runAkan typecheck util
       - run: bun run runAkan typecheck shared
 
+  packages:
+    name: Packed packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: bun run release:build-packages
+      - run: bun run release:verify-packages
+      - run: bun run release:typecheck-consumer
+
   test:
     name: Test (${{ matrix.package }})
     runs-on: ubuntu-latest

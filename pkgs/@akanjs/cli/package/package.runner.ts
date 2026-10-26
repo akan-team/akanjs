@@ -15,6 +15,15 @@ export class PackageRunner extends runner("package") {
     "@akanjs/devkit",
     "create-akan-workspace",
   ] as const;
+  // Embedded into the dist, so naming them as dependencies would point a consumer at a missing registry entry.
+  //? @akanjs/devkit ships its source and embeds nothing; it reaches native types through `akanjs/native/*`.
+  static readonly #bundledRuntimeDependencies: Record<string, string[]> = {
+    "@akanjs/cli": ["@akanjs/devkit", "@akanjs/native"],
+    akanjs: ["use-agentic", "@akanjs/native"],
+  };
+  static readonly #unpublishedPackages = [
+    ...new Set(Object.values(PackageRunner.#bundledRuntimeDependencies).flat()),
+  ].filter((name) => !(PackageRunner.publishableAkanPackages as readonly string[]).includes(name));
 
   async version(workspace: Workspace | null, { log = true }: { log?: boolean } = {}) {
     const pkgJson =
@@ -84,13 +93,7 @@ export class PackageRunner extends runner("package") {
         "tailwind-scrollbar",
       ].filter((dep) => dep !== "akanjs" && dep !== "@akanjs/devkit");
     }
-    // Embedded into the dist, so naming them as dependencies would point a consumer at a missing registry entry.
-    const packageBundledRuntimeDependencies: Record<string, string[]> = {
-      "@akanjs/cli": ["@akanjs/devkit", "@akanjs/native"],
-      "@akanjs/devkit": ["@akanjs/native"],
-      akanjs: ["use-agentic", "@akanjs/native"],
-    };
-    const bundledRuntimeDeps = new Set(packageBundledRuntimeDependencies[pkg.name] ?? []);
+    const bundledRuntimeDeps = new Set(PackageRunner.#bundledRuntimeDependencies[pkg.name] ?? []);
     const forcedRuntimeDeps = packageRuntimeDependencies[pkg.name] ?? [];
     const forcedRuntimeDevDeps = packageRuntimeDevDependencies[pkg.name] ?? [];
     const [rootPackageJson, pkgJson] = await Promise.all([pkg.workspace.getPackageJson(), pkg.getPackageJson()]);
@@ -201,6 +204,23 @@ export class PackageRunner extends runner("package") {
     );
   }
 
+  // A type-only import counts too: a package that ships its source is typechecked by its consumer.
+  async #verifyDistImportsPublished(pkg: Pkg) {
+    const imports = await this.#collectDistAkanImports(pkg.dist.cwdPath, PackageRunner.#unpublishedPackages);
+    if (!imports.size) return;
+    const failures = [...imports].map(([specifier, importers]) => {
+      const files = [...importers].sort();
+      const shown = files.slice(0, 3).join(", ") + (files.length > 3 ? ` (+${files.length - 3} more)` : "");
+      return `  ${specifier} — imported by ${shown}`;
+    });
+    throw new Error(
+      `[package] ${pkg.name} dist imports ${failures.length} specifier(s) of a package that is never published:\n` +
+        `${failures.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join("\n")}\n` +
+        "Reach it through a published package that embeds it (akanjs/native/api for @akanjs/native/api), or embed it " +
+        "in this package's build.",
+    );
+  }
+
   async verifyDistPackage(
     pkg: Pkg,
     {
@@ -235,6 +255,7 @@ export class PackageRunner extends runner("package") {
       }
     }
     await this.#verifyDistExportsReachable(pkg, peerExportsMaps);
+    await this.#verifyDistImportsPublished(pkg);
     const packOutput = await pkg.workspace.spawn("npm", ["pack", "--dry-run", "--json", pkg.dist.cwdPath], {
       cwd: pkg.workspace.workspaceRoot,
     });

@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { AkanNativeConfig } from "@akanjs/native/config";
 import type {
   AkanNativeDmgConfig,
   AkanNativeTarget,
@@ -10,6 +9,7 @@ import type {
   NativePermission,
 } from "akanjs";
 import { trimSlashes } from "akanjs/common";
+import type { AkanNativeConfig } from "akanjs/native/config";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import type { NativePluginFolder } from "./nativePluginFolders";

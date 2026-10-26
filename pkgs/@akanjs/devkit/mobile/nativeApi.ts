@@ -1,5 +1,5 @@
 import path from "node:path";
-import type * as NativeBuildApi from "@akanjs/native/api";
+import type * as NativeBuildApi from "akanjs/native/api";
 
 export type NativeBuildApiModule = typeof NativeBuildApi;
 

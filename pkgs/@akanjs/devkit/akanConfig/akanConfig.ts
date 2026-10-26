@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ServerPolicy } from "@akanjs/native/api";
 import type { AkanPlugin } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig, trimSlashes } from "akanjs/common";
+import type { ServerPolicy } from "akanjs/native/api";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { LibExecutor, WorkspaceExecutor } from "../executors";
