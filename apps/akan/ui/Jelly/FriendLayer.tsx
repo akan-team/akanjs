@@ -12,10 +12,10 @@ export const FriendLayer = ({ className, src, priority }: FriendLayerProps) => {
       alt=""
       className={cn("absolute inset-0 size-full select-none object-contain", className)}
       draggable={false}
-      height={256}
+      height={96}
       priority={priority}
       src={src}
-      width={256}
+      width={96}
     />
   );
 };

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { isAnimatedImage } from "./animatedImage";
+import { matchesIfNoneMatch } from "./contentEncoding";
 import { ImageOptimizerError } from "./imageOptimizerError";
 import { Semaphore } from "./semaphore";
 import { resolveStaticPath } from "./staticPath";
@@ -386,7 +387,8 @@ export class ImageOptimizer {
       ETag: image.etag,
       Vary: "Accept",
     });
-    if (req.headers.get("if-none-match") === image.etag) return new Response(null, { status: 304, headers });
+    if (matchesIfNoneMatch(req.headers.get("if-none-match"), image.etag))
+      return new Response(null, { status: 304, headers });
     return new Response(ImageOptimizer.#toArrayBuffer(image.buffer), { headers });
   }
 

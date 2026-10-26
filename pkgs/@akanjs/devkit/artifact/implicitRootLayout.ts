@@ -244,7 +244,7 @@ ${layoutExports}(
       className={defaultFontClassName}
       layoutStyle={userLayout.layoutStyle ?? inheritedLayout.layoutStyle}
       reconnect={userLayout.reconnect ?? inheritedLayout.reconnect ?? false}
-      wsConnect={userLayout.wsConnect ?? inheritedLayout.wsConnect ?? true}
+      wsConnect={userLayout.wsConnect ?? inheritedLayout.wsConnect}
       allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}
     >
       ${layoutChild}

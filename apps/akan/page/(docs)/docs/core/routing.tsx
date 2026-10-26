@@ -243,8 +243,8 @@ const chainStages = [
         layout: false,
         rootLayout: true,
         required: false,
-        en: "Connects the WebSocket on load (default true); false waits for fetch.instance.connect().",
-        ko: "로드 후 WebSocket을 연결합니다(기본값 true). false이면 fetch.instance.connect()를 기다립니다.",
+        en: "true connects the WebSocket on load, false waits for fetch.instance.connect(); unset, it opens at the first subscribe or message.",
+        ko: "true면 로드 후 WebSocket을 연결하고, false면 fetch.instance.connect()를 기다립니다. 선언하지 않으면 첫 구독이나 메시지에서 엽니다.",
       },
       {
         name: ".layoutStyle",

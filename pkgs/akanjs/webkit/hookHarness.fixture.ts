@@ -2,6 +2,7 @@ import { createContext } from "react";
 import { csrLocation } from "../client/csrLocation";
 import { Href } from "../client/href";
 import { isMcpView } from "../client/mcpView";
+import { isNativeApp } from "../client/nativeHost";
 
 export const hooks = {
   index: 0,
@@ -84,6 +85,7 @@ export const csrClientBase = () => ({
   debugFrame: () => undefined,
   Href,
   isMcpView,
+  isNativeApp,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },
   setCookie: () => undefined,

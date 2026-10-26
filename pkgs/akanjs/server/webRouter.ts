@@ -8,11 +8,13 @@ import {
   Logger,
   type LogRecord,
   parseAkanI18nEnv,
+  RequestLocale,
   resolveSubRouteHosts,
 } from "akanjs/common";
 import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
+import { type Dictionary, TranslatorState } from "../client/translatorState";
 import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
@@ -39,7 +41,15 @@ import {
   shouldInvalidateRouteCacheEntry,
   shouldStoreRouteCache,
 } from "./cachePolicy";
-import { encodedFileResponse } from "./contentEncoding";
+import {
+  type EncodedBody,
+  encodeBody,
+  encodedBodyResponse,
+  encodedFileResponse,
+  isCompressibleContentType,
+  matchesIfNoneMatch,
+  varyOnEncoding,
+} from "./contentEncoding";
 import { isCrawlerUserAgent } from "./crawler";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
@@ -52,6 +62,7 @@ import type { McpAppShellSource } from "./mcp/McpApps";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
 import { createDefaultRobotsTxt } from "./robots";
 import {
+  AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
   AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
@@ -272,7 +283,7 @@ interface WebRouterOptions {
 }
 
 interface CachedHtmlResult {
-  html: string;
+  body: EncodedBody;
   pathname: string;
   routeId?: string;
   tags?: string[];
@@ -308,7 +319,7 @@ export class WebRouter {
   readonly #htmlCache = new LruTtlCache<CachedHtmlResult>(
     parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_ENTRIES) ?? 100,
     {
-      sizeOf: (result) => result.html.length,
+      sizeOf: (result) => result.body.byteLength,
       maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_HTML_RESULT_CACHE_MAX_BYTES),
       sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
     },
@@ -377,6 +388,12 @@ export class WebRouter {
 
     const clientServePrefix = `/_akan/client`;
     const clientOutputDir = `${this.#artifactDir}/client`;
+    const dictServePrefix = "/_akan/dict";
+    const dictOutputDir = `${this.#artifactDir}/dict`;
+    const stylesServePrefix = "/_akan/styles";
+    const stylesOutputDir = `${this.#artifactDir}/styles`;
+    const fontsServePrefix = "/_akan/fonts";
+    const fontsOutputDir = `${this.#artifactDir}/fonts`;
     const localCsrDir = path.join(process.cwd(), "csr");
     const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
     const publicDir = path.join(process.env.AKAN_APP_DIR ?? path.dirname(Bun.main), "public");
@@ -443,11 +460,11 @@ export class WebRouter {
           cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
         });
       },
-      "/_akan/styles/*": (req) => {
+      [`${stylesServePrefix}/*`]: (req) => {
         this.#requestStats.staticAsset += 1;
         const url = new URL(req.url);
         if (this.#prodMode) {
-          const filePath = resolveStaticPath(this.#artifactDir, url.pathname.slice("/_akan/".length));
+          const filePath = resolveStaticPath(stylesOutputDir, url.pathname.slice(`${stylesServePrefix}/`.length));
           if (filePath) {
             return WebRouter.#fileResponse(req, filePath, {
               contentType: "text/css; charset=utf-8",
@@ -466,15 +483,25 @@ export class WebRouter {
           { headers },
         );
       },
-      "/_akan/fonts/*": (req) => {
+      [`${fontsServePrefix}/*`]: (req) => {
         this.#requestStats.staticAsset += 1;
         const url = new URL(req.url);
-        const filePath = resolveStaticPath(this.#artifactDir, url.pathname.slice("/_akan/".length));
+        const filePath = resolveStaticPath(fontsOutputDir, url.pathname.slice(`${fontsServePrefix}/`.length));
         if (!filePath) return new Response("Not Found", { status: 404 });
         return WebRouter.#fileResponse(req, filePath, {
           contentType: Bun.file(filePath).type || "font/woff2",
           cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
           anyOrigin: true,
+        });
+      },
+      [`${dictServePrefix}/*`]: (req) => {
+        this.#requestStats.staticAsset += 1;
+        const url = new URL(req.url);
+        const filePath = resolveStaticPath(dictOutputDir, url.pathname.slice(`${dictServePrefix}/`.length));
+        if (!filePath) return new Response("Not Found", { status: 404 });
+        return WebRouter.#fileResponse(req, filePath, {
+          contentType: "text/javascript; charset=utf-8",
+          cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
         });
       },
       "/_akan/image": (req) => {
@@ -528,7 +555,10 @@ export class WebRouter {
           if (result.type === "not-found") return createRscNotFoundFallbackResponse();
           if (result.status && result.status >= 500)
             return this.#renderRscErrorResponse("__rsc", "Internal Server Error");
-          return createRscNavigationStreamResponse(result);
+          const response = await createRscNavigationStreamResponse(result);
+          const dictionaryUrl = this.#dictionaryUrlOf(rscHeaders, targetUrl.pathname);
+          if (dictionaryUrl) response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionaryUrl);
+          return response;
         } catch (err) {
           return this.#renderRscErrorResponse("__rsc", err);
         }
@@ -586,7 +616,8 @@ export class WebRouter {
           const contentType = Bun.file(filePath).type || "application/octet-stream";
           return WebRouter.#fileResponse(req, filePath, {
             contentType,
-            cacheControl: this.#prodMode ? "public, max-age=300" : "no-store",
+            //? Unversioned paths: a short max-age lets a replaced file show, SWR keeps repeat views off the network.
+            cacheControl: this.#prodMode ? "public, max-age=300, stale-while-revalidate=86400" : "no-store",
             anyOrigin: contentType.startsWith("font/"),
           });
         }
@@ -641,7 +672,7 @@ export class WebRouter {
           if (cachedHtml) {
             const cachedHeaders = this.#htmlResponseHeaders(200);
             cachedHeaders.set("X-Akan-Cache", "HIT");
-            return new Response(cachedHtml, { headers: cachedHeaders });
+            return encodedBodyResponse(req, cachedHtml, { headers: cachedHeaders });
           }
           const rscResult = await this.#rsc.renderWithMeta(req, {
             clientManifest: manifest.clientManifest,
@@ -654,10 +685,12 @@ export class WebRouter {
           // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
           const cookieTheme = WebRouter.#cookieValue(req, "theme");
           const hostRequestStore = createRequestStore(req);
+          const dictionaryUrl = this.#dictionaryUrlOf(req.headers, url.pathname);
           const extraBootstrapInline = [
             rscResult.trace?.routeState
               ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
               : "",
+            dictionaryUrl ? `self.__AKAN_DICT_URL__=${JSON.stringify(dictionaryUrl)};` : "",
             this.#ssrDevShell
               ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(this.#artifact.vendorMap))
               : "",
@@ -671,6 +704,7 @@ export class WebRouter {
             rscStream: rscResult.stream,
             ssrManifest: manifest.ssrManifest,
             bootstrapModules: [this.#artifact.rscClientUrl],
+            modulePreloads: dictionaryUrl ? [dictionaryUrl] : undefined,
             extraBootstrapInline: extraBootstrapInline || undefined,
             importmap: this.#artifact.vendorMap,
             //? Read once the shell has rendered: the root layout's theme arrives after the stream starts.
@@ -707,7 +741,7 @@ export class WebRouter {
             const headers = new Headers(responseHeaders);
             headers.set("X-Akan-Cache", "MISS");
             let htmlStoreTtl = htmlCacheEntry.ttl;
-            let htmlCacheMetadata: Omit<CachedHtmlResult, "html"> = { pathname: url.pathname };
+            let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname: url.pathname };
             const shouldCacheHtml = Promise.all([rscResult.lateControl, rscResult.cacheState]).then(
               ([control, cacheState]) => {
                 const storeTtl = resolveHtmlRouteCacheStoreTtl({
@@ -730,7 +764,9 @@ export class WebRouter {
               cacheHtmlWhileStreaming(
                 htmlStream,
                 (html) => {
-                  this.#htmlCache.set(htmlCacheEntry.key, { html, ...htmlCacheMetadata }, htmlStoreTtl);
+                  void encodeBody(html).then((body) =>
+                    this.#htmlCache.set(htmlCacheEntry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl),
+                  );
                 },
                 {
                   shouldCache: () => shouldCacheHtml,
@@ -909,14 +945,14 @@ export class WebRouter {
     return decision;
   }
 
-  #getCachedHtml(cacheKey: string): string | null {
+  #getCachedHtml(cacheKey: string): EncodedBody | null {
     const cached = this.#htmlCache.get(cacheKey);
     if (!cached) {
       this.#htmlCacheMisses += 1;
       return null;
     }
     this.#htmlCacheHits += 1;
-    return cached.html;
+    return cached.body;
   }
 
   static #cookieValue(req: Request, name: string): string | undefined {
@@ -1018,6 +1054,17 @@ export class WebRouter {
       error: err,
       ...(this.#prodMode ? {} : { script: `self.__AKAN_HMR_SYSTEM_PAGE__=true;${HMR_CLIENT_SCRIPT}` }),
     });
+  }
+
+  //? The locale the RSC worker's `usePage()` resolves from the same request, so the page and its dictionary agree.
+  #dictionaryUrlOf(headers: Headers, pathname: string): string | undefined {
+    const i18n = parseAkanI18nEnv();
+    const { locale } = RequestLocale.resolve(
+      { localeHeader: headers.get("x-locale"), pathHeader: headers.get("x-path"), pathname },
+      i18n,
+    );
+    const assets = this.#artifact.dictAssets ?? {};
+    return (assets[locale] ?? assets[i18n.defaultLocale])?.url;
   }
 
   #renderRscErrorResponse(scope: string, err: unknown): Response {
@@ -1168,6 +1215,7 @@ export class WebRouter {
     const builtWeb = resolveWebConfig(artifact.web);
     if (!builtWeb.ssr) return null;
     const cssBytesByUrl = await WebRouter.#loadCssBytesByUrl(artifact, artifactDir);
+    await WebRouter.#seedDictionaries(artifact, artifactDir);
     const prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
     //* Production listens before the bundle loads (renders queue until `ready`) and exits if it cannot load rather
     //* than restart-loop behind a healthy API; dev awaits, as the next rebuild hands the worker a fixed bundle.
@@ -1207,6 +1255,7 @@ export class WebRouter {
     return {
       ...artifact,
       cssAssets: artifact.cssAssets ?? {},
+      dictAssets: artifact.dictAssets ?? {},
       pagesBundlePath,
       rscRuntimeSsrManifest: artifact.rscRuntimeSsrManifest
         ? WebRouter.#normalizeSsrManifest(artifact.rscRuntimeSsrManifest, normalizedArtifactDir)
@@ -1251,6 +1300,20 @@ export class WebRouter {
     );
   }
 
+  //? Fizz renders client components in this process, and no flight prop carries their dictionary.
+  static async #seedDictionaries(artifact: BaseBuildArtifact, artifactDir: string): Promise<void> {
+    const normalizedArtifactDir = path.resolve(artifactDir);
+    await Promise.all(
+      Object.values(artifact.dictAssets ?? {}).map(async (asset) => {
+        const { lang, default: dictionary } = (await import(path.join(normalizedArtifactDir, asset.relPath))) as {
+          lang: string;
+          default: Dictionary;
+        };
+        TranslatorState.replace(lang, dictionary);
+      }),
+    );
+  }
+
   static #resolveArtifactPath(artifactPath: string, artifactDir: string): string {
     if (!path.isAbsolute(artifactPath)) return path.resolve(artifactDir, artifactPath);
     if (fs.existsSync(artifactPath)) return artifactPath;
@@ -1284,6 +1347,7 @@ export class WebRouter {
     const etag = `W/"${stat.size.toString(16)}-${lastModifiedMs.toString(16)}"`;
     headers.set("ETag", etag);
     headers.set("Last-Modified", new Date(lastModifiedMs).toUTCString());
+    if (isCompressibleContentType(options.contentType)) varyOnEncoding(headers);
     if (WebRouter.#isNotModified(req, etag, lastModifiedMs)) return new Response(null, { status: 304, headers });
 
     return await encodedFileResponse(req, filePath, options.contentType, headers);
@@ -1340,12 +1404,7 @@ export class WebRouter {
   static #isNotModified(req: Request, etag: string, lastModifiedMs: number): boolean {
     if (req.method !== "GET" && req.method !== "HEAD") return false;
     const ifNoneMatch = req.headers.get("if-none-match");
-    if (ifNoneMatch) {
-      return ifNoneMatch
-        .split(",")
-        .map((value) => value.trim())
-        .some((value) => value === "*" || value === etag);
-    }
+    if (ifNoneMatch) return matchesIfNoneMatch(ifNoneMatch, etag);
 
     const ifModifiedSince = req.headers.get("if-modified-since");
     if (!ifModifiedSince) return false;

@@ -8,6 +8,7 @@ import { computeRouteSeedIndex, type RouteSeedIndex, saveRouteSeedIndex } from "
 import type { App } from "../commandDecorators";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { CssCompiler, type ImportedStylesheet } from "./cssCompiler";
+import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { RouteClientBuilder } from "./routeClientBuilder";
@@ -56,6 +57,7 @@ export class SsrBaseArtifactBuilder {
 
     const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     const { cssCompiler, optimizedFonts, cssAssets } = await this.#buildStyleAssets();
+    const dictAssets = await new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n);
     const pagesBundle = await new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build();
     this.#app.verbose(
       `[base-artifact] pages bundle -> ${pagesBundle.bundlePath} (buildId=${pagesBundle.buildId}, splitting=${pagesBundle.splitting}, entry=${pagesBundle.entryBytes} bytes, outputs=${pagesBundle.outputCount}, chunks=${pagesBundle.chunkCount}, total=${pagesBundle.outputBytes} bytes)`,
@@ -75,6 +77,7 @@ export class SsrBaseArtifactBuilder {
       rscRuntimeSsrManifest,
       vendorMap,
       cssAssets,
+      dictAssets,
       pagesBundlePath:
         this.#command === "build"
           ? path.relative(this.#absArtifactDir, pagesBundle.bundlePath)

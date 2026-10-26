@@ -32,8 +32,8 @@ export default page()
         <meta name="description" content={description} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
-        <link rel="canonical" href="https://akanjs.com" />
-        <meta property="og:url" content="https://akanjs.com" />
+        <link rel="canonical" href={`https://akanjs.com/${lang}`} />
+        <meta property="og:url" content={`https://akanjs.com/${lang}`} />
       </>
     );
   })

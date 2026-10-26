@@ -249,20 +249,24 @@ describe("Translator", () => {
         app: { title: { t: "タイトル" }, nested: {} },
       },
     };
-    const filled = Translator.withDefaultLocale(allDictionary, "ja");
+    const filled = Translator.fillFromDefault(allDictionary, "ja", "en");
 
     expect(filled).toEqual({
       libOnly: { signin: { t: "Sign In" } },
       app: { title: { t: "タイトル" }, partial: { t: "Partial" }, nested: { label: { t: "Label" } } },
     });
     expect(allDictionary.ja).toEqual({ app: { title: { t: "タイトル" }, nested: {} } });
-    expect(Translator.withDefaultLocale(allDictionary, "ja")).toBe(filled);
-    expect(Translator.withDefaultLocale(allDictionary, "en")).toBe(allDictionary.en);
-    expect(Translator.withDefaultLocale(allDictionary, "th")).toEqual(allDictionary.en);
+    expect(Translator.fillFromDefault(allDictionary, "en", "en")).toBe(allDictionary.en);
+    expect(Translator.fillFromDefault(allDictionary, "th", "en")).toEqual(allDictionary.en);
 
     Translator.replace("ja", filled);
     Translator.replace("en", {});
     expect(Translator.translateByLocale("ja", "libOnly.signin")).toBe("Sign In");
     expect(Translator.translateByLocale("ja", "app.title")).toBe("タイトル");
+    expect(Translator.fillFromDefault(allDictionary, "en", "ja")).toEqual({
+      libOnly: { signin: { t: "Sign In" } },
+      app: { title: { t: "Title" }, partial: { t: "Partial" }, nested: { label: { t: "Label" } } },
+    });
+    expect(Translator.fillFromDefault(allDictionary, "th", "ja")).toEqual(allDictionary.ja);
   });
 });

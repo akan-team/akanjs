@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { brotliDecompressSync } from "node:zlib";
 import { getDefaultInjectRegistry } from "akanjs/service";
 import { AkanResponse, WebProxyRunner } from "../proxy";
 import type { HttpRoutes, WebsocketRoutes } from "../types";
@@ -381,5 +382,33 @@ describe("ApiRouter endpoint responses over a real socket", () => {
     expect(await compressed.json()).toEqual(payload);
     expect(await plain.json()).toEqual(payload);
     server.stop(true);
+  });
+
+  test("compresses a render route's HTML on the way out, and leaves it plain for a caller that takes no encoding", async () => {
+    const html = `<!doctype html><html><body>${"<p>rendered</p>".repeat(500)}</body></html>`;
+    const server = Bun.serve({
+      port: 0,
+      routes: (await buildRoutes({
+        renderEnvRoutes: {
+          "/*": () => new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
+        } as HttpRoutes,
+      })) as never,
+    });
+    try {
+      const wire = await fetch(`http://localhost:${server.port}/en`, {
+        headers: { "accept-encoding": "br" },
+        decompress: false,
+      });
+      const plain = await fetch(`http://localhost:${server.port}/en`, { headers: { "accept-encoding": "identity" } });
+
+      expect(wire.headers.get("content-encoding")).toBe("br");
+      const wireBytes = Buffer.from(await wire.arrayBuffer());
+      expect(wireBytes.byteLength).toBeLessThan(html.length / 10);
+      expect(brotliDecompressSync(wireBytes).toString()).toBe(html);
+      expect(plain.headers.get("content-encoding")).toBeNull();
+      expect(await plain.text()).toBe(html);
+    } finally {
+      server.stop(true);
+    }
   });
 });

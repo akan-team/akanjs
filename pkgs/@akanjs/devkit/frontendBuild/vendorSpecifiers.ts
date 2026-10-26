@@ -12,6 +12,7 @@ export const VENDOR_SPECIFIERS = [
   "akanjs/common",
   "akanjs/constant",
   "akanjs/fetch",
+  "tailwind-merge",
 ] as const;
 
 export type VendorSpecifier = (typeof VENDOR_SPECIFIERS)[number];

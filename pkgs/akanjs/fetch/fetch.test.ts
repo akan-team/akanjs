@@ -2377,6 +2377,81 @@ describe("WsClient", () => {
     });
   });
 
+  test("connectOnUse opens nothing until the first emit, then opens and sends it without warning", async () => {
+    setFakeWebSocket();
+    await captureWarnings(async (warnings) => {
+      const client = new WsClient("ws://example/ws");
+      client.connectOnUse();
+      expect(FakeWebSocket.instances).toHaveLength(0);
+
+      client.emit("send", ["hello"]);
+      client.emit("send", ["again"]);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+      expect(ws.sent.map((frame) => JSON.parse(frame))).toEqual([
+        { key: "send", data: ["hello"] },
+        { key: "send", data: ["again"] },
+      ]);
+      await new Promise((resolve) => originalSetTimeout(resolve, 5));
+      expect(warnings).toEqual([]);
+      client.destroy();
+    });
+  });
+
+  test("connectOnUse opens at the first subscribe, and at once for a subscribe already waiting", () => {
+    setFakeWebSocket();
+    const onUse = new WsClient("ws://example/ws");
+    onUse.connectOnUse();
+    onUse.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    FakeWebSocket.instances[0].open();
+    expect(JSON.parse(FakeWebSocket.instances[0].sent.at(-1) ?? "{}")).toEqual({
+      key: "roomKey",
+      data: ["r1"],
+      subscribe: true,
+    });
+    onUse.destroy();
+
+    const waiting = new WsClient("ws://example/ws");
+    waiting.subscribe({ key: "roomKey", data: ["r2"], handleEvent: () => undefined });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    waiting.connectOnUse();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    waiting.destroy();
+  });
+
+  test("tells connect and disconnect listeners when the socket opens and drops, and nothing on destroy", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 5, jitter: 0 } });
+    const events: unknown[] = [];
+    client.on("connect", () => events.push("connect"));
+    client.on("disconnect", (data) => events.push(data));
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].close();
+    expect(events).toEqual(["connect", { code: 1000, reason: "closed" }]);
+    expect(client.state).toBe("closed");
+
+    client.connect();
+    FakeWebSocket.instances[1].open();
+    client.destroy();
+    expect(events).toEqual(["connect", { code: 1000, reason: "closed" }, "connect"]);
+  });
+
+  test("a destroyed client no longer opens on use", async () => {
+    setFakeWebSocket();
+    await captureWarnings(async (warnings) => {
+      const client = new WsClient("ws://example/ws");
+      client.connectOnUse();
+      client.destroy();
+      client.emit("send", ["hello"]);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      await new Promise((resolve) => originalSetTimeout(resolve, 5));
+      expect(warnings).toEqual([]);
+    });
+  });
+
   test("re-keys a live room to the id the server names and matches its frames", () => {
     setFakeWebSocket();
     const client = new WsClient("ws://example/ws");

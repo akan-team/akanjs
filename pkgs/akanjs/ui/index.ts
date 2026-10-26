@@ -137,6 +137,8 @@ export { Select } from "./Select";
 export { Signal } from "./Signal";
 export { Switch, type SwitchProps } from "./Switch";
 export { System, type WebAppManifest } from "./System";
+export { SelectLanguage } from "./System/SelectLanguage";
+export { DevModeToggle, ThemeToggle } from "./System/ThemeToggle";
 export { Tab } from "./Tab";
 export { Table } from "./Table";
 export {

@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync } from "node:zlib";
 import { resetEnvCache } from "../base/baseEnv";
 import { AkanApp } from "./akanApp";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
@@ -386,12 +387,14 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(allowlist.allows(rebound)).toBe(false);
   });
 
-  test("asks the child for an identity body, whatever the real client accepts", () => {
+  test("hands the child the client's Accept-Encoding, and identity when it named none", () => {
     const req = new Request("http://akan-internal/", {
       headers: { host: "internal.example", "accept-encoding": "gzip, deflate, br" },
     });
+    const bare = new Request("http://akan-internal/", { headers: { host: "internal.example" } });
 
-    expect(makeAkanChildProxyHeaders(req, 0).get("accept-encoding")).toBe("identity");
+    expect(makeAkanChildProxyHeaders(req, 0).get("accept-encoding")).toBe("gzip, deflate, br");
+    expect(makeAkanChildProxyHeaders(bare, 0).get("accept-encoding")).toBe("identity");
   });
 
   test("falls back to request host and protocol without upstream forwarded headers", () => {
@@ -848,6 +851,54 @@ describe("AkanApp", () => {
     });
   }, 20_000);
 
+  test("serves a dictionary asset as immutable from its brotli sidecar, and nothing outside dict/", async () => {
+    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-dict-asset-");
+    const source = 'export const lang = "en";\n';
+    await Bun.write(path.join(root, ".akan/artifact/dict/en-abc.js"), source);
+    await Bun.write(path.join(root, ".akan/artifact/dict/en-abc.js.br"), brotliCompressSync(source));
+    await Bun.write(path.join(root, ".akan/artifact/base-artifact.json"), "{}");
+    await writeOkChild(serverPath, "from-child");
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+      const res = await fetch(`http://127.0.0.1:${port}/_akan/dict/en-abc.js`, {
+        headers: { "accept-encoding": "br" },
+        decompress: false,
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-encoding")).toBe("br");
+      expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(brotliDecompressSync(new Uint8Array(await res.arrayBuffer())).toString()).toBe(source);
+      const escaped = await fetch(`http://127.0.0.1:${port}/_akan/dict/..%2Fbase-artifact.json`);
+      expect(escaped.status).toBe(404);
+    });
+  }, 20_000);
+
+  test("serves each artifact prefix from its own folder only", async () => {
+    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-artifact-folders-");
+    await Bun.write(path.join(root, ".akan/artifact/base-artifact.json"), "{}");
+    await Bun.write(path.join(root, ".akan/artifact/server/pages-abc.js"), "export const pages = {};");
+    await Bun.write(path.join(root, ".akan/artifact/styles/root-abc.css"), "body{}");
+    await Bun.write(path.join(root, ".akan/artifact/fonts/brand.woff2"), "font-bytes");
+    await writeOkChild(serverPath, "from-child");
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+      const statusOf = async (pathname: string) => (await fetch(`http://127.0.0.1:${port}/_akan/${pathname}`)).status;
+      const escapes = ["styles", "fonts", "client", "dict"].flatMap((folder) =>
+        ["..%2Fbase-artifact.json", "..%5Cbase-artifact.json", "..%2Fserver%2Fpages-abc.js"].map(
+          (name) => `${folder}/${name}`,
+        ),
+      );
+
+      expect(await statusOf("styles/root-abc.css")).toBe(200);
+      expect(await statusOf("fonts/brand.woff2")).toBe(200);
+      expect(
+        Object.fromEntries(await Promise.all(escapes.map(async (escape) => [escape, await statusOf(escape)]))),
+      ).toEqual(Object.fromEntries(escapes.map((escape) => [escape, 404])));
+    });
+  }, 20_000);
+
   test("force-kills a child that ignores graceful shutdown within the shutdown budget", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-app-slow-shutdown-");
 
@@ -1004,6 +1055,127 @@ describe("AkanApp", () => {
       const large = await fetch(`http://127.0.0.1:${port}/large`, { headers: { "accept-encoding": "br" } });
       expect(large.headers.get("content-encoding")).toBeNull();
       expect(((await large.json()) as unknown[]).length).toBe(160_000);
+    });
+  }, 20_000);
+
+  test("relays a body the replica encoded for the client as it came", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-encoded-");
+
+    await Bun.write(
+      serverPath,
+      `
+          import { brotliCompressSync } from "node:zlib";
+          const page = "<!doctype html><html><body>" + "<p>cached</p>".repeat(400) + "</body></html>";
+          const encoded = brotliCompressSync(page);
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                fetch(req) {
+                  const accepted = req.headers.get("accept-encoding") ?? "";
+                  if (!accepted.includes("br")) return new Response(accepted, { headers: { "content-type": "text/plain" } });
+                  return new Response(encoded, { headers: { "content-type": "text/html; charset=utf-8", "content-encoding": "br" } });
+                },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady()}
+            },
+          };
+        `,
+    );
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+      const page = `<!doctype html><html><body>${"<p>cached</p>".repeat(400)}</body></html>`;
+      const relayed = await fetch(`http://127.0.0.1:${port}/en`, {
+        headers: { "accept-encoding": "gzip, br" },
+        decompress: false,
+      });
+      expect(relayed.headers.get("content-encoding")).toBe("br");
+      expect(brotliDecompressSync(Buffer.from(await relayed.arrayBuffer())).toString()).toBe(page);
+
+      const bare = await fetch(`http://127.0.0.1:${port}/en`, {
+        headers: { "accept-encoding": "" },
+        decompress: false,
+      });
+      expect(bare.headers.get("content-encoding")).toBeNull();
+      await expect(bare.text()).resolves.toBe("identity");
+    });
+  }, 20_000);
+
+  test("compresses a replica's streamed HTML for the client without holding back its shell", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-html-");
+
+    await Bun.write(
+      serverPath,
+      `
+          const shell = "<!doctype html><html><body>" + "<p>shell</p>".repeat(400);
+          let finish = () => {};
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                fetch(req) {
+                  if (new URL(req.url).pathname === "/finish") {
+                    finish();
+                    return new Response("ok");
+                  }
+                  const body = new ReadableStream({
+                    async start(controller) {
+                      controller.enqueue(new TextEncoder().encode(shell));
+                      await new Promise((resolve) => { finish = resolve; });
+                      controller.enqueue(new TextEncoder().encode("<p>late</p></body></html>"));
+                      controller.close();
+                    },
+                  });
+                  return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+                },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady()}
+            },
+          };
+        `,
+    );
+
+    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await waitForReady(port);
+      const shell = `<!doctype html><html><body>${"<p>shell</p>".repeat(400)}`;
+      const page = await fetch(`http://127.0.0.1:${port}/en`, {
+        headers: { "accept-encoding": "gzip" },
+        decompress: false,
+      });
+      expect(page.headers.get("content-encoding")).toBe("gzip");
+      const reader = (page.body as ReadableStream<Uint8Array>).getReader();
+      const chunks: Uint8Array[] = [];
+      const decoded = () => gunzipSync(Buffer.concat(chunks), { finishFlush: constants.Z_SYNC_FLUSH }).toString();
+      do {
+        const { value, done } = await reader.read();
+        if (done) throw new Error("page ended before its shell decoded");
+        chunks.push(value);
+      } while (decoded() !== shell);
+
+      await fetch(`http://127.0.0.1:${port}/finish`);
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      expect(gunzipSync(Buffer.concat(chunks)).toString()).toBe(`${shell}<p>late</p></body></html>`);
     });
   }, 20_000);
 

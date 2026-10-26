@@ -4,6 +4,7 @@ export { CosmosSky } from "./cosmos.util";
 export { Friend, type FriendProps } from "./Friend";
 export { JellyArea } from "./JellyArea";
 export { JellyChatIntro } from "./JellyChatIntro";
+export { JellyHopDefs } from "./JellyHopDefs";
 export { JellyKicker } from "./JellyKicker";
 export { JellyLauncher } from "./JellyLauncher";
 export { JellyLoader } from "./JellyLoader";

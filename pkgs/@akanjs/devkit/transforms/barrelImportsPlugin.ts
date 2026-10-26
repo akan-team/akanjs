@@ -10,14 +10,16 @@ export interface BarrelImportsPluginOptions {
   skipPath?: (absPath: string) => boolean;
   /** Runs after the rewrite in the same onLoad (Bun's onLoad cannot fall through); null means no change. */
   pipeAfter?: (source: string, args: { path: string }) => string | Promise<string | null> | null;
+  /** Barrels the bundle leaves external: a rewritten import would inline the modules the import map already serves. */
+  external?: readonly string[];
 }
 
 export const createBarrelImportsPlugin = async (
   app: App,
-  { skipPath = defaultSkipPath, pipeAfter }: BarrelImportsPluginOptions = {},
+  { skipPath = defaultSkipPath, pipeAfter, external = [] }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
   const akanConfig = await app.getConfig();
-  const barrels = [...new Set(akanConfig.barrelImports)].filter(Boolean);
+  const barrels = [...new Set(akanConfig.barrelImports)].filter((barrel) => barrel && !external.includes(barrel));
   const analyzer = new BarrelAnalyzer({
     resolvePackage: await createTsconfigPackageResolver(app),
   });

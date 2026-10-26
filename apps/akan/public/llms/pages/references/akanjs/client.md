@@ -216,7 +216,7 @@ rootLayout
 
   - .reconnect(on?): The connection-lost overlay.
 
-  - .wsConnect(on?): Opens the websocket when the page loads.
+  - .wsConnect(on?): When the websocket opens: on load, on first use, or only on `fetch.instance.connect()`.
 
 Available
 
@@ -282,7 +282,7 @@ These are app-wide settings, so only the root `_layout.tsx` of an app or a baseP
 
 - .reconnect(on = true) (boolean, default operationMode === "local"): Shows an overlay while the websocket is disconnected.
 
-- .wsConnect(on = true) (boolean, default true): Connects the websocket on load. With `false`, call `fetch.instance.connect()` before subscribing.
+- .wsConnect(on = true) (boolean, default first use): Unset, the websocket opens at the first subscribe or message, or on load while `.reconnect()` is on. `true` connects on load. With `false`, call `fetch.instance.connect()` before subscribing.
 
 An app's root layout. `import "./styles.css";` stays its first line:
 
@@ -468,7 +468,7 @@ Font / createFont
 
 - name (string): Family name. It also names the `--font-<name>` variable and the `font-<name>` class.
 
-- paths ({ src, weight, style? }[]): One file per weight and style. `src` starts with `/` and is read from `public/`.
+- paths ({ src, weight, style?, preload? }[]): One file per weight and style. `src` starts with `/` and is read from `public/`. `preload: false` leaves a weight the first screen does not show to load when text first uses it.
 
 - default (boolean): Applies this font to the whole app. One font per root layout at most.
 

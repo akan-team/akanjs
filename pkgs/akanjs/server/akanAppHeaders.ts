@@ -43,8 +43,8 @@ export function makeAkanChildProxyHeaders(req: Request, childIdx: number, peer?:
     headers.get("x-forwarded-proto") ?? (req.url.startsWith("https:") ? "https" : "http"),
   );
   headers.set("x-akan-child-idx", String(childIdx));
-  // Bun's `fetch` decodes any child encoding anyway; set, not deleted, or `fetch` supplies its own default.
-  headers.set("accept-encoding", "identity");
+  //? The child encodes for the caller and the gateway relays its bytes. Set when absent, or `fetch` supplies its own.
+  if (!headers.get("accept-encoding")) headers.set("accept-encoding", "identity");
   if (!headers.has("x-request-id") && process.env.AKAN_BENCH_SKIP_REQUEST_ID !== "1") {
     headers.set("x-request-id", crypto.randomUUID());
   }

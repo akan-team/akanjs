@@ -169,6 +169,7 @@ export class RouteClientBuilder {
       plugins: [
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
+          external: VENDOR_SPECIFIERS,
         }),
       ],
       external: VENDOR_SPECIFIERS,

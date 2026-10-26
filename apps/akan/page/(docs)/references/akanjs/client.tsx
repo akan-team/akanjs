@@ -456,8 +456,8 @@ export default page()
           {
             name: ".wsConnect(on?)",
             desc: l.trans({
-              en: "Opens the websocket when the page loads.",
-              ko: "페이지가 열릴 때 websocket을 연결합니다.",
+              en: "When the websocket opens: on load, on first use, or only on `fetch.instance.connect()`.",
+              ko: "websocket을 여는 시점입니다. 로드 시, 처음 쓸 때, 또는 `fetch.instance.connect()`를 부를 때만 엽니다.",
             }),
             marks: onRoot,
           },
@@ -570,10 +570,10 @@ export default page()
       {
         key: ".wsConnect(on = true)",
         type: "boolean",
-        default: "true",
+        default: "first use",
         desc: l.trans({
-          en: "Connects the websocket on load. With `false`, call `fetch.instance.connect()` before subscribing.",
-          ko: "페이지가 열리면 websocket을 연결합니다. `false`라면 구독 전에 `fetch.instance.connect()`를 부릅니다.",
+          en: "Unset, the websocket opens at the first subscribe or message, or on load while `.reconnect()` is on. `true` connects on load. With `false`, call `fetch.instance.connect()` before subscribing.",
+          ko: "선언하지 않으면 첫 구독이나 메시지에서 websocket을 열고, `.reconnect()`가 켜져 있으면 로드 시 엽니다. `true`면 로드 시 연결합니다. `false`라면 구독 전에 `fetch.instance.connect()`를 부릅니다.",
         }),
       },
     ];
@@ -861,11 +861,11 @@ export default page()
       },
       {
         key: "paths",
-        type: "{ src, weight, style? }[]",
+        type: "{ src, weight, style?, preload? }[]",
         tags: [l.trans({ en: "required", ko: "필수" })],
         desc: l.trans({
-          en: "One file per weight and style. `src` starts with `/` and is read from `public/`.",
-          ko: "굵기·스타일마다 파일 하나입니다. `src`는 `/`로 시작하고 `public/`에서 읽습니다.",
+          en: "One file per weight and style. `src` starts with `/` and is read from `public/`. `preload: false` leaves a weight the first screen does not show to load when text first uses it.",
+          ko: "굵기·스타일마다 파일 하나입니다. `src`는 `/`로 시작하고 `public/`에서 읽습니다. 첫 화면에 없는 굵기는 `preload: false`로 두면 그 굵기를 처음 쓸 때 받습니다.",
         }),
       },
       {

@@ -1,7 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, csrLocation, getPathInfo, Href, router, usePage, usePathCtx } from "akanjs/client";
-import { openExternalUrl } from "akanjs/client/native";
+import { cn, csrLocation, getPathInfo, Href, openExternalUrl, router, usePage, usePathCtx } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";

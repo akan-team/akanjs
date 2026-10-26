@@ -54,6 +54,8 @@ export interface SsrFromRscInput {
   rscStream: ReadableStream<Uint8Array>;
   ssrManifest: SsrManifest;
   bootstrapModules?: string[];
+  /** Modules a bootstrap module imports at load: preloaded in the head, never run as scripts. */
+  modulePreloads?: string[];
   extraBootstrapInline?: string;
   // One React across route chunks: their externalized specifiers resolve to the base build's vendor entries.
   // Injected by a stream transform, not React children: the spec needs the import map before any module fetch.

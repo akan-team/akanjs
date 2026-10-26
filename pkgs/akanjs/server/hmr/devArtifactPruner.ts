@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import type { CssAsset } from "../types";
+import type { BaseBuildArtifact, CssAsset } from "../types";
 
 //* A dev pages build that changes server output writes a new `pages-<hash>.js` (8MB on minimal, 21MB on apps/akan) and
 //* a CSS change a new stylesheet, and nothing else removes either before the next `akan start` clears `.akan`.
@@ -43,6 +43,17 @@ export class DevArtifactPruner {
     });
   }
 
+  //? A dictionary save restarts the backend onto a new base artifact; the asset it replaced is never asked for again
+  //? once open tabs have refreshed onto the new one.
+  pruneDictionaries(): Promise<void> {
+    return this.#queue(async () => {
+      const keep = new Set((await this.#baseArtifact()).dicts);
+      if (keep.size === 0) return;
+      const dictDir = path.join(this.#artifactDir, "dict");
+      await this.#removeOlder(dictDir, (name) => name.endsWith(".js"), keep, Date.now() - this.#graceMs);
+    });
+  }
+
   #queue(prune: () => Promise<void>): Promise<void> {
     this.#pruning = this.#pruning.then(prune).catch((error: unknown) => {
       this.#logger.verbose(`[dev-artifact] prune skipped: ${String(error)}`);
@@ -70,14 +81,15 @@ export class DevArtifactPruner {
     if (removed > 0) this.#logger.verbose(`[dev-artifact] removed ${removed} superseded file(s) from ${dir}`);
   }
 
-  async #baseArtifact(): Promise<{ pages: string[]; styles: string[] }> {
+  async #baseArtifact(): Promise<{ pages: string[]; styles: string[]; dicts: string[] }> {
     const text = await fs.readFile(path.join(this.#artifactDir, "base-artifact.json"), "utf8").catch(() => null);
     const artifact = text
-      ? (JSON.parse(text) as { pagesBundlePath?: string; cssAssets?: Record<string, CssAsset> })
+      ? (JSON.parse(text) as Partial<Pick<BaseBuildArtifact, "pagesBundlePath" | "cssAssets" | "dictAssets">>)
       : null;
     return {
       pages: artifact?.pagesBundlePath ? [path.resolve(this.#artifactDir, artifact.pagesBundlePath)] : [],
       styles: Object.values(artifact?.cssAssets ?? {}).map((asset) => path.join(this.#artifactDir, asset.cssRelPath)),
+      dicts: Object.values(artifact?.dictAssets ?? {}).map((asset) => path.join(this.#artifactDir, asset.relPath)),
     };
   }
 }

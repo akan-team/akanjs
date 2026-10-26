@@ -615,7 +615,7 @@ export class SsrFromRscRenderer {
 
     const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
       importmap: input.importmap,
-      bootstrapModules: input.bootstrapModules,
+      modulePreloads: [...(input.bootstrapModules ?? []), ...(input.modulePreloads ?? [])],
       theme: input.theme,
       injectThemeInitScript: input.injectThemeInitScript,
     });
@@ -731,20 +731,20 @@ export class SsrFromRscRenderer {
     stream: ReadableStream<Uint8Array>,
     options: {
       importmap?: Record<string, string>;
-      bootstrapModules?: string[];
+      modulePreloads: string[];
       theme?: AkanTheme;
       injectThemeInitScript?: boolean;
     },
   ): ReadableStream<Uint8Array> {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
-    const { importmap, bootstrapModules, theme, injectThemeInitScript } = options;
+    const { importmap, modulePreloads, theme, injectThemeInitScript } = options;
     const htmlTheme = theme && theme !== "css" && theme !== "system" ? theme : undefined;
     const importmapTag =
       importmap && Object.keys(importmap).length > 0
         ? `<script type="importmap">${JSON.stringify({ imports: importmap })}</script>`
         : "";
-    const modulePreloadTags = SsrFromRscRenderer.#createBootstrapModulePreloadTags(bootstrapModules);
+    const modulePreloadTags = SsrFromRscRenderer.#createModulePreloadTags(modulePreloads);
     const shouldInjectThemeScript = theme === "system" || (theme === undefined && injectThemeInitScript);
     const themeInitTag = shouldInjectThemeScript ? SsrFromRscRenderer.#themeInitScript : "";
     const tags = `${themeInitTag}${importmapTag}${modulePreloadTags}`;
@@ -794,8 +794,8 @@ export class SsrFromRscRenderer {
     );
   }
 
-  static #createBootstrapModulePreloadTags(bootstrapModules: string[] = []): string {
-    return bootstrapModules.map((src) => `<link rel="modulepreload" href="${escapeHtmlAttr(src)}">`).join("");
+  static #createModulePreloadTags(modules: string[]): string {
+    return modules.map((src) => `<link rel="modulepreload" href="${escapeHtmlAttr(src)}">`).join("");
   }
 
   static #createBootstrapModuleScriptTags(bootstrapModules: string[] = []): string {

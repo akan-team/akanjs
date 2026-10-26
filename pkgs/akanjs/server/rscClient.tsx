@@ -1,9 +1,11 @@
 import { createElement, type ReactNode, startTransition, type Usable, use, useLayoutEffect, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
+import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
 import {
+  AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
@@ -44,6 +46,7 @@ declare global {
   var __RSC_PUSH__: ((type: InlineRscChunk[0], data: string) => void) | undefined;
   var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
+  var __AKAN_DICT_URL__: string | undefined;
 }
 
 function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
@@ -241,18 +244,23 @@ async function fetchRsc(
     shouldApplyNavigation,
   });
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
+  //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
+  const dictionaryReady = DictionaryAsset.load(responseResult.response.headers.get(AKAN_RSC_DICTIONARY_HEADER));
   if (responseResult.type === "patch") {
-    const patchResult = await validateRscPatchForGuardedCommit({
-      partialCommitEnabled: isAkanRscPartialCommitEnabled(),
-      currentTree: currentSegmentTree,
-      response: responseResult.response,
-      patch: responseResult.patch,
-      href,
-      createThenable: createRscThenable,
-      navId: options.navId,
-      getCurrentNavId: () => navigationSeq,
-      getHeadSnapshotPatchFailureReason: getAkanHeadSnapshotPatchFailureReason,
-    });
+    const [patchResult] = await Promise.all([
+      validateRscPatchForGuardedCommit({
+        partialCommitEnabled: isAkanRscPartialCommitEnabled(),
+        currentTree: currentSegmentTree,
+        response: responseResult.response,
+        patch: responseResult.patch,
+        href,
+        createThenable: createRscThenable,
+        navId: options.navId,
+        getCurrentNavId: () => navigationSeq,
+        getHeadSnapshotPatchFailureReason: getAkanHeadSnapshotPatchFailureReason,
+      }),
+      dictionaryReady,
+    ]);
     if (patchResult.status === "patched") {
       if (!patchResult.headSnapshot) throw new Error("[rscClient] validated RSC patch is missing a head snapshot");
       return {
@@ -289,6 +297,7 @@ async function fetchRsc(
     routerState: responseResult.notFound ? null : readAkanRouterStateResponseHeader(res.headers),
   });
   nodeRef.current = node;
+  await dictionaryReady;
   return {
     type: "rsc",
     node,
@@ -612,4 +621,9 @@ const hydrate = () => {
   hydrateRoot(document, createElement(Root));
   scrollRestoration.restoreDocumentLoad();
 };
-void Promise.resolve(initialThenable).then(hydrate, hydrate);
+//? Hydrating without the dictionary still beats a dead page: client components show their keys until a navigation
+//? loads it.
+const initialDictionary = DictionaryAsset.load(globalThis.__AKAN_DICT_URL__).catch((error: unknown) =>
+  console.error(`[rscClient] the page's dictionary failed to load: ${String(error)}`),
+);
+void Promise.allSettled([initialThenable, initialDictionary]).then(hydrate);

@@ -1,4 +1,5 @@
 import "./styles.css";
+import { JellyHopDefs } from "@apps/akan/ui";
 import { rootLayout } from "akanjs/client";
 
 export default rootLayout()
@@ -7,20 +8,14 @@ export default rootLayout()
       name: "pretendard",
       default: true,
       paths: [
-        { src: "/libs/shared/fonts/Pretendard-Thin.woff2", weight: 100 },
-        { src: "/libs/shared/fonts/Pretendard-ExtraLight.woff2", weight: 200 },
-        { src: "/libs/shared/fonts/Pretendard-Light.woff2", weight: 300 },
+        { src: "/libs/shared/fonts/Pretendard-Light.woff2", weight: 300, preload: false },
         { src: "/libs/shared/fonts/Pretendard-Regular.woff2", weight: 400 },
-        { src: "/libs/shared/fonts/Pretendard-Medium.woff2", weight: 500 },
-        { src: "/libs/shared/fonts/Pretendard-SemiBold.woff2", weight: 600 },
+        { src: "/libs/shared/fonts/Pretendard-Medium.woff2", weight: 500, preload: false },
+        { src: "/libs/shared/fonts/Pretendard-SemiBold.woff2", weight: 600, preload: false },
         { src: "/libs/shared/fonts/Pretendard-Bold.woff2", weight: 700 },
-        { src: "/libs/shared/fonts/Pretendard-ExtraBold.woff2", weight: 800 },
+        { src: "/libs/shared/fonts/Pretendard-ExtraBold.woff2", weight: 800, preload: false },
         { src: "/libs/shared/fonts/Pretendard-Black.woff2", weight: 900 },
       ],
-    },
-    {
-      name: "lemonmilk",
-      paths: [{ src: "/libs/shared/fonts/Lemon Milk Pro Medium.otf", weight: 500 }],
     },
   ])
   .theme("light")
@@ -73,4 +68,9 @@ export default rootLayout()
       <meta name="theme-color" content="#f1f1ee" />
     </>,
   )
-  .render(({ children }) => children);
+  .render(({ children }) => (
+    <>
+      {children}
+      <JellyHopDefs />
+    </>
+  ));

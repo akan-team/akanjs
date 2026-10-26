@@ -321,13 +321,14 @@ export default page()
                   en: (
                     <span>
                       <strong>Cached for 5 minutes in production.</strong> A replaced file can show its old version for
-                      that long, while dev never caches.
+                      that long, and once more within a day, while the browser checks for a new one. Dev never caches.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>프로덕션에서는 5분간 캐시됩니다.</strong> 파일을 바꿔도 그동안은 예전 버전이 보일 수
-                      있습니다. 개발 서버는 캐시하지 않습니다.
+                      <strong>프로덕션에서는 5분간 캐시됩니다.</strong> 파일을 바꿔도 그동안은 예전 버전이 보이고, 그 뒤
+                      하루 안에는 브라우저가 새 버전을 확인하는 동안 한 번 더 보일 수 있습니다. 개발 서버는 캐시하지
+                      않습니다.
                     </span>
                   ),
                 })}

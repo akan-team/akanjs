@@ -3,7 +3,7 @@ import { type cnst, st, usePage } from "@libs/shared/client";
 import { buttonRecipe, Icon } from "@libs/util/ui";
 import { ID } from "akanjs/base";
 import { cn } from "akanjs/client";
-import { Dropdown, Input, Link, Modal, System } from "akanjs/ui";
+import { Dropdown, Input, Link, Modal, ThemeToggle } from "akanjs/ui";
 import { type ReactNode, useState } from "react";
 import { AiFillGithub, AiOutlineMenu, AiOutlinePoweroff } from "react-icons/ai";
 
@@ -172,7 +172,7 @@ export const ToolMenu = ({ themes = ["light", "dark"] }: ToolMenuProps) => {
       content={
         <>
           <li className="flex items-center justify-start px-3 py-2">
-            <System.ThemeToggle themes={themes} />
+            <ThemeToggle themes={themes} />
           </li>
           <li onClick={() => void st.do.signoutAdmin()}>
             <div className={menuItemClass}>

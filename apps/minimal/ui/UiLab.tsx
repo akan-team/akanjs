@@ -24,9 +24,9 @@ import {
   RecentTime,
   Select,
   Switch,
-  System,
   Tab,
   Table,
+  ThemeToggle,
   ToggleSelect,
   Tooltip,
 } from "akanjs/ui";
@@ -72,7 +72,7 @@ const Section = ({ title, note, children }: { title: string; note?: string; chil
 // 페이지처럼 <Screen> + Layout.Navbar(프레임 고정 크롬에 포털) 패턴을 따른다.
 const LabShell = ({ title, children }: { title: string; children: ReactNode }) => (
   <Screen className="pb-24">
-    <Layout.Navbar className={appNavClass} back right={<System.ThemeToggle themes={["dark", "light"]} />}>
+    <Layout.Navbar className={appNavClass} back right={<ThemeToggle themes={["dark", "light"]} />}>
       <span className="font-semibold">{title}</span>
     </Layout.Navbar>
     {children}
@@ -87,7 +87,7 @@ export const LabHub = () => (
         <h1 className="font-bold text-2xl">akanjs/ui Lab</h1>
         <p className="mt-1 text-foreground/60 text-sm">프리미티브를 카테고리별로 light/dark 에서 확인하세요.</p>
       </div>
-      <System.ThemeToggle themes={["dark", "light"]} />
+      <ThemeToggle themes={["dark", "light"]} />
     </header>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {CATEGORIES.map((c) => (

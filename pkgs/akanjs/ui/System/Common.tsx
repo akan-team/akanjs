@@ -1,5 +1,3 @@
-import "dayjs/locale/ko";
-
 import { Binary } from "akanjs/base";
 import {
   type InsetBreakpoint,
@@ -33,9 +31,7 @@ export interface ProviderProps {
   reconnect?: boolean;
   /** Connects the client WebSocket runtime once the browser loads. */
   wsConnect?: boolean;
-  /** SSR only: the active-locale dictionary that seeds the client Translator. */
-  dictionary?: Record<string, Record<string, unknown>>;
-  /** SSR server only: every locale seeds the RSC-worker Translator, and only the active one reaches the client. */
+  /** SSR server only: every locale seeds the RSC-worker Translator; the browser loads its locale's built asset. */
   allDictionary?: Record<string, Record<string, Record<string, unknown>>>;
   /** Root route component for CSR page loading. */
   of: (props: unknown) => ReactNode | null;

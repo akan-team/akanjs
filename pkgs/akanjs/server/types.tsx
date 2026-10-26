@@ -101,6 +101,8 @@ export type BaseBuildArtifact = {
   pagesBundlePath: string;
   pagesBundleBuildId: number;
   cssAssets: Record<string, CssAsset>;
+  /** Per locale; absent in an artifact older than the asset, whose pages carried their dictionary in the flight. */
+  dictAssets?: Record<string, DictAsset>;
   domains: string[];
   subRoutes: { [key: string]: string[] };
   basePaths: string[];
@@ -138,6 +140,11 @@ export interface MobileDeepLinkAssociation {
 export interface CssAsset {
   cssUrl: string;
   cssRelPath: string;
+}
+
+export interface DictAsset {
+  url: string;
+  relPath: string;
 }
 
 export interface RenderState {

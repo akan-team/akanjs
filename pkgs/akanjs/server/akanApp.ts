@@ -9,7 +9,7 @@ import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
 import { type AssetHeaderOptions, assetHeaders } from "./assetHeaders";
-import { compressResponse, encodedFileResponse } from "./contentEncoding";
+import { compressResponse, compressStreamResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
 import { ChildOutputReader } from "./logging/childOutputReader";
@@ -646,8 +646,9 @@ export class AkanApp {
 
   static readonly #immutableArtifacts = [
     { prefix: "/_akan/client/", root: "client", strip: "/_akan/client/".length, type: "application/javascript" },
-    { prefix: "/_akan/styles/", root: "", strip: "/_akan/".length, type: "text/css; charset=utf-8" },
-    { prefix: "/_akan/fonts/", root: "", strip: "/_akan/".length, type: "font/woff2", anyOrigin: true },
+    { prefix: "/_akan/styles/", root: "styles", strip: "/_akan/styles/".length, type: "text/css; charset=utf-8" },
+    { prefix: "/_akan/fonts/", root: "fonts", strip: "/_akan/fonts/".length, type: "font/woff2", anyOrigin: true },
+    { prefix: "/_akan/dict/", root: "dict", strip: "/_akan/dict/".length, type: "text/javascript; charset=utf-8" },
   ] as const;
 
   async #serveImmutableArtifact(req: Request, url: URL): Promise<Response | null> {
@@ -797,6 +798,7 @@ export class AkanApp {
         body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
         signal: req.signal,
         redirect: "manual",
+        decompress: false,
       });
       return await this.#proxyResponse(req, upstreamRes);
     } catch (error) {
@@ -974,19 +976,16 @@ export class AkanApp {
 
   async #proxyResponse(req: Request, upstreamRes: Response): Promise<Response> {
     const headers = new Headers(upstreamRes.headers);
-    // Bun fetch decompresses upstream bodies but keeps these headers, so browsers would decode twice.
-    if (headers.has("content-encoding")) {
-      headers.delete("content-encoding");
-      headers.delete("content-length");
-    }
     this.#rewriteInternalLocation(headers);
     const proxied = new Response(upstreamRes.body, {
       status: upstreamRes.status,
       statusText: upstreamRes.statusText,
       headers,
     });
-    // Only this hop sees the client's Accept-Encoding. JSON only: `compressResponse` buffers; HTML/RSC must stream.
-    return AkanApp.#isProxiedJson(headers) ? await compressResponse(req, proxied) : proxied;
+    // A body the child left unencoded is compressed here: JSON whole, HTML and RSC as they stream.
+    return AkanApp.#isProxiedJson(headers)
+      ? await compressResponse(req, proxied)
+      : compressStreamResponse(req, proxied);
   }
 
   static #isProxiedJson(headers: Headers): boolean {

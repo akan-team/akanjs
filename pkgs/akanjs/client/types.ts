@@ -16,6 +16,7 @@ export interface ReactFontPath {
   src: string;
   weight: number | string;
   style?: ReactFontStyle;
+  preload?: boolean;
   declarations?: ReactFontDeclaration[];
 }
 

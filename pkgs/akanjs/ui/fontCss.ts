@@ -21,7 +21,7 @@ export class FontCss {
     for (const font of fonts) {
       if (!isFontOptimizationEnabled(font) || !isFontPreloadEnabled(font)) continue;
       for (const face of getFontFaces(font)) {
-        if (seen.has(face.optimizedSrc)) continue;
+        if (face.path.preload === false || seen.has(face.optimizedSrc)) continue;
         seen.add(face.optimizedSrc);
         preloads.push({ href: face.optimizedSrc, type: "font/woff2" });
       }

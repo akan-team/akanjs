@@ -85,6 +85,7 @@ export class WsClient {
   #listenerMap = new Map<string, Set<Listener>>();
   #destroyed = false;
   #connectRequested = false;
+  #connectOnUse = false;
   /** Whether this client has been connected before, so the first open is a start rather than a recovery. */
   #hadConnection = false;
   #outbox: string[] = [];
@@ -137,6 +138,12 @@ export class WsClient {
     this.#ws?.send(JSON.stringify(websocketAuthContract.makeRequest(this.#jwt)));
   }
 
+  /** Opens the socket at the first emit or subscribe, so a page that never uses it never opens one. */
+  connectOnUse() {
+    this.#connectOnUse = true;
+    if (this.#outbox.length > 0 || this.#roomSubscribeMap.size > 0) this.connect();
+  }
+
   connect() {
     this.#connectRequested = true;
     if (this.#ws && this.#ws.readyState !== WebSocket.CLOSED) return;
@@ -182,6 +189,7 @@ export class WsClient {
       const queued = this.#outbox;
       this.#outbox = [];
       for (const frame of queued) this.#ws?.send(frame);
+      this.#handleMessage("connect", undefined);
     };
     this.#ws.onmessage = (e) => {
       this.#lastInboundAt = Date.now();
@@ -259,7 +267,10 @@ export class WsClient {
       this.#stopHeartbeat();
       //? Only a socket that stayed up ends the streak: a gateway that upgrades and drops at once is another failure.
       if (openedAt && Date.now() - openedAt >= WsClient.stableMs) this.#reconnectAttempts = 0;
-      if (!this.#destroyed) this.#closed();
+      if (this.#destroyed) return;
+      this.#closed();
+      // After the reconnect is scheduled, so a listener that throws cannot cancel it.
+      this.#handleMessage("disconnect", { code: event.code, reason: event.reason });
     };
   }
 
@@ -407,6 +418,7 @@ export class WsClient {
     this.logger.debug(`WebSocket destroying`);
     this.#destroyed = true;
     this.#connectRequested = false;
+    this.#connectOnUse = false;
     this.#stopHeartbeat();
     this.#cancelReconnect();
     for (const timer of this.#unconnectedWarnTimers.values()) clearTimeout(timer);
@@ -450,6 +462,11 @@ export class WsClient {
   hasListeners(key: string) {
     return (this.#listenerMap.get(key)?.size ?? 0) > 0 || (this.#roomSubscribeMap.get(key)?.listener.size ?? 0) > 0;
   }
+  #requireConnection(action: "emit" | "subscribe", key: string) {
+    if (this.#connectRequested) return;
+    if (this.#connectOnUse) this.connect();
+    else this.#warnUnconnected(action, key);
+  }
   #warnUnconnected(action: "emit" | "subscribe", key: string) {
     const timerKey = `${action}:${key}`;
     if (this.#connectRequested || this.#unconnectedWarnTimers.has(timerKey)) return;
@@ -457,7 +474,7 @@ export class WsClient {
       this.#unconnectedWarnTimers.delete(timerKey);
       if (this.#connectRequested || this.#destroyed) return;
       console.warn(
-        `[akanjs] WebSocket is not connected. Call fetch.instance.connect(), or drop the root layout "wsConnect = false", before ${action} "${key}".`,
+        `[akanjs] WebSocket is not connected. Call fetch.instance.connect(), or drop the root layout's .wsConnect(false), before ${action} "${key}".`,
       );
     }, 0);
     this.#unconnectedWarnTimers.set(timerKey, timer);
@@ -468,7 +485,7 @@ export class WsClient {
     // Queued: a socket opened on demand is still handshaking when the call that opened it emits.
     if (this.#ws?.readyState !== WebSocket.OPEN) {
       this.#outbox.push(frame);
-      this.#warnUnconnected("emit", key);
+      this.#requireConnection("emit", key);
       return this;
     }
     this.#ws.send(frame);
@@ -476,7 +493,6 @@ export class WsClient {
   }
   subscribe(option: RoomSubscription) {
     const roomId = WsClient.makeRoomId(option.key, option.data);
-    if (!this.#ws) this.#warnUnconnected("subscribe", option.key);
     let roomSubscribe = this.#roomSubscribeMap.get(roomId);
     if (!roomSubscribe) {
       roomSubscribe = {
@@ -493,6 +509,7 @@ export class WsClient {
     }
     roomSubscribe.listener.add(option.handleEvent);
     if (option.handleResync) roomSubscribe.resync.add(option.handleResync);
+    if (!this.#ws) this.#requireConnection("subscribe", option.key);
     this.logger.verbose(`Websocket subscribe pubsub for ${roomId} - ${roomSubscribe.listener.size} listeners added`);
     return this;
   }

@@ -104,6 +104,7 @@ export class DevHmrController {
     this.#artifactDir = artifactDir;
     this.#runningBundlePath = pagesBundlePath ? path.resolve(pagesBundlePath) : null;
     this.#pruner = new DevArtifactPruner(artifactDir);
+    void this.#pruner.pruneDictionaries();
     this.#renderState = renderState;
     this.#rsc = rsc;
     this.#seedIndex = seedIndex;

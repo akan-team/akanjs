@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { parseAkanI18nEnv } from "akanjs/common";
+import { parseAkanI18nEnv, RequestLocale } from "akanjs/common";
 import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { csrLocation } from "./csrLocation";
@@ -36,21 +36,15 @@ const getPageInfo = (): { locale: string; path: string } => {
     return { locale, path: hasLocalePrefix ? `/${rest.join("/")}` : pathname };
   }
   const h = untrackedHeaders();
-  // Proxy headers when present, else the request URL, so an unadorned dev request (`curl /en/hello`) resolves.
-  const localeHeader = h.get("x-locale");
-  const pathHeader = h.get("x-path");
-  if (localeHeader && pathHeader) return { locale: localeHeader, path: pathHeader };
   const req = untrackedRequest();
-  if (req) {
-    const urlPath = new URL(req.url).pathname;
-    const [, firstSegment = "", ...rest] = urlPath.split("/");
-    if (!localeHeader && !localeSet.has(firstSegment)) return { locale: defaultLocale, path: pathHeader ?? urlPath };
-    return {
-      locale: localeHeader ?? (firstSegment || defaultLocale),
-      path: pathHeader ?? `/${rest.join("/")}`,
-    };
-  }
-  return { locale: localeHeader ?? defaultLocale, path: pathHeader ?? "/" };
+  return RequestLocale.resolve(
+    {
+      localeHeader: h.get("x-locale"),
+      pathHeader: h.get("x-path"),
+      pathname: req ? new URL(req.url).pathname : undefined,
+    },
+    { defaultLocale, locales },
+  );
 };
 
 export interface TransMessageOption {

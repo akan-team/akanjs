@@ -115,7 +115,7 @@ Stage
 
   - .reconnect: The connection-lost overlay only, not reconnection; off unless you set it. — (on)
 
-  - .wsConnect: Connects the WebSocket on load (default true); false waits for fetch.instance.connect(). — (on)
+  - .wsConnect: true connects the WebSocket on load, false waits for fetch.instance.connect(); unset, it opens at the first subscribe or message. — (on)
 
   - .layoutStyle: The outer page container style, web or mobile. Use mobile for app-like shells. — (style)
 

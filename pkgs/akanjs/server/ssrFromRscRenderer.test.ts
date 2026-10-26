@@ -574,6 +574,26 @@ describe("SsrFromRscRenderer.renderDocument", () => {
   });
 });
 
+describe("SsrFromRscRenderer head", () => {
+  test("preloads the bootstrap modules and the modules they import, and runs only the bootstrap ones", async () => {
+    const flight = `0:["$","html",null,{"children":[["$","head","head",{}],["$","body","body",{"children":"page"}]]}]\n`;
+    const stream = await new SsrFromRscRenderer().render({
+      rscStream: textStream([{ text: flight }]),
+      ssrManifest: { moduleLoading: null, moduleMap: {} },
+      bootstrapModules: ["/_akan/rsc-client.js"],
+      modulePreloads: ["/_akan/dict/en-abc.js"],
+    });
+    const html = await new Response(stream).text();
+    const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+
+    expect(head).toContain(
+      '<link rel="modulepreload" href="/_akan/rsc-client.js"><link rel="modulepreload" href="/_akan/dict/en-abc.js">',
+    );
+    expect(html).toContain('<script type="module" src="/_akan/rsc-client.js"></script>');
+    expect(html).not.toContain('<script type="module" src="/_akan/dict/en-abc.js">');
+  });
+});
+
 describe("SsrFromRscRenderer request scope", () => {
   const expectOwnRequest = ({ alice, bob }: { alice: string[]; bob: string[] }) => {
     expect(alice).toEqual(["alice who=alice", "alice-use who=alice"]);

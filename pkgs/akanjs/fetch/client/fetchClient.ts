@@ -302,6 +302,10 @@ export class FetchClient {
     if (FetchClient.bridged) return;
     this.ws.connect();
   }
+  connectOnUse() {
+    if (FetchClient.bridged) return;
+    this.ws.connectOnUse();
+  }
   disconnect() {
     this.ws.destroy();
     for (const ws of this.#originWs.values()) ws.destroy();

@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
+import { RequestLocale } from "../common/requestLocale";
 
 type EnvMode = "browser" | "server";
 
@@ -50,6 +51,7 @@ beforeAll(() => {
       }, obj),
     interpolateTranslation,
     pathGetLoose,
+    RequestLocale,
   }));
   mock.module("akanjs/fetch", () => ({
     FetchClient: {

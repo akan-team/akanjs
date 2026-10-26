@@ -84,9 +84,9 @@ Related pages
 
 - In-Page Agent — How the tools a control publishes let the agent drive the screen.
 
-- System: The app shell. Akan mounts `Provider` for you, and `Provider` mounts `Reconnect` when you turn it on. `ThemeToggle`, `SelectLanguage` and `DevModeToggle` are controls you place yourself.
+- System: The app shell. Akan mounts `Provider` for you, and `Provider` mounts `Reconnect` when you turn it on. `ThemeToggle`, `SelectLanguage` and `DevModeToggle` are controls you place yourself; import them by name from `akanjs/ui`, because `System` in a `"use client"` file bundles the whole shell into that page.
 
-  - System.Provider ({ appName, params, of, children, className?, env?, theme?, prefix?, manifest?, head?, fonts?, layoutStyle?, reconnect?, wsConnect?, dictionary?, allDictionary? }): The frame around your root `_layout.tsx`, filled from its `rootLayout()` stages.
+  - System.Provider ({ appName, params, of, children, className?, env?, theme?, prefix?, manifest?, head?, fonts?, layoutStyle?, reconnect?, wsConnect?, allDictionary? }): The frame around your root `_layout.tsx`, filled from its `rootLayout()` stages.
 
   - System.Root ({ st, children }): Deprecated: it renders `children` and ignores `st`, so render the children directly.
 
@@ -185,13 +185,13 @@ Related pages
 ### System
 
 ```ts
-import { System } from "akanjs/ui";
+import { SelectLanguage, ThemeToggle } from "akanjs/ui";
 
 export const AppSettings = () => {
   return (
     <div className="flex items-center gap-4">
-      <System.SelectLanguage languages={["en", "ko"]} />
-      <System.ThemeToggle themes={["light", "dark"]} />
+      <SelectLanguage languages={["en", "ko"]} />
+      <ThemeToggle themes={["light", "dark"]} />
     </div>
   );
 };

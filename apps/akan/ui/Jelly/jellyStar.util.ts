@@ -14,6 +14,7 @@ interface Point {
 
 export class JellyStarPath {
   static readonly center = { x: 100, y: 106 } as const;
+  static readonly hopId = "jelly-hop-path";
   static readonly samples = 60;
   static readonly base: StarShape = { outer: 90, inner: 56, sharpness: 1.6, twist: 0, sx: 1, sy: 1 };
 

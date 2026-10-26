@@ -1,9 +1,14 @@
 import "../test/registerDom";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
+import { Translator } from "../client/translator";
 import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
+  AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
   encodeAkanRouterState,
@@ -497,5 +502,56 @@ describe("rscClient not-found", () => {
 
     expect(shown()).toBe("report removed");
     expect(window.location.pathname).toBe("/report");
+  });
+});
+
+describe("rscClient dictionary", () => {
+  const dictionaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-client-dict-"));
+  afterAll(() => fs.rmSync(dictionaryDir, { recursive: true, force: true }));
+  //? The module waits on a gate the test opens, so a commit made before the dictionary is in would show.
+  const gatedDictionaryOf = (lang: string, title: string) => {
+    const file = path.join(dictionaryDir, `${lang}-${title.length}.js`);
+    fs.writeFileSync(
+      file,
+      `await globalThis.__dictGate;
+export const lang = ${JSON.stringify(lang)};
+export default { page: { title: { t: ${JSON.stringify(title)} } } };`,
+    );
+    return file;
+  };
+  const withDictionary = (text: string, url: string) => () =>
+    new Response(rowOf(text), { headers: { "Content-Type": "text/x-component", [AKAN_RSC_DICTIONARY_HEADER]: url } });
+
+  test("a navigation into another locale commits only once that locale's dictionary is in", async () => {
+    let openGate = () => {};
+    Object.assign(globalThis, { __dictGate: new Promise<void>((resolve) => (openGate = resolve)) });
+    served.set("/ko/guide", withDictionary("/ko/guide", gatedDictionaryOf("ko", "안내")));
+    await navigate("/en/guide");
+
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = globalThis.__AKAN_RSC_NAVIGATE__?.("/ko/guide");
+      await sleep(30);
+    });
+    expect(shown()).toBe("/en/guide");
+    expect(Translator.hasLocale("ko")).toBe(false);
+
+    await act(async () => {
+      openGate();
+      await navigation;
+    });
+    expect(Translator.translateByLocale("ko", "page.title")).toBe("안내");
+    expect(shown()).toBe("/ko/guide");
+  });
+
+  test("a refresh after a dictionary edit takes the new build's text", async () => {
+    Object.assign(globalThis, { __dictGate: Promise.resolve() });
+    served.set("/ko/notice", withDictionary("/ko/notice", gatedDictionaryOf("ko", "공지 사항")));
+    await navigate("/ko/notice");
+    served.set("/ko/notice", withDictionary("/ko/notice", gatedDictionaryOf("ko", "새 공지 사항입니다")));
+
+    await refresh();
+
+    expect(Translator.translateByLocale("ko", "page.title")).toBe("새 공지 사항입니다");
   });
 });

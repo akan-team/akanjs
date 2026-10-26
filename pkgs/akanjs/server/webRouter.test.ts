@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
@@ -13,7 +14,12 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
-import { AKAN_RSC_NOT_FOUND_HEADER, encodeAkanRouterState, encodeAkanRscPatchSegmentPath } from "./routeState";
+import {
+  AKAN_RSC_DICTIONARY_HEADER,
+  AKAN_RSC_NOT_FOUND_HEADER,
+  encodeAkanRouterState,
+  encodeAkanRscPatchSegmentPath,
+} from "./routeState";
 import type { RscRenderResult } from "./rscWorkerHost";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { SsrLateRedirect } from "./ssrTypes";
@@ -152,6 +158,7 @@ async function withFullSsrCacheHarness<T>(
     prebuilt?: RoutesManifest;
     seedIndex?: RouteSeedIndex;
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
+    renderBody?: (pathname: string) => string;
   } = {},
 ): Promise<T> {
   const envSnapshot = {
@@ -189,7 +196,9 @@ async function withFullSsrCacheHarness<T>(
     options.onRenderInput?.(input);
     renderCount += 1;
     const pathname = input.request ? new URL(input.request.url).pathname : "/unknown";
-    return streamOf(`<html><body>${pathname}:render-${renderCount}</body></html>`);
+    return streamOf(
+      `<html><body>${pathname}:render-${renderCount}${options.renderBody?.(pathname) ?? ""}</body></html>`,
+    );
   };
 
   const fakeWorker = options.worker ?? createFakeRscWorker();
@@ -628,6 +637,178 @@ describe("WebRouter firebase messaging service worker", () => {
   });
 });
 
+const withArtifactFiles = async <T>(files: Record<string, string | Uint8Array>, run: () => Promise<T>) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-artifact-"));
+  for (const [relPath, content] of Object.entries(files)) {
+    const filePath = path.join(root, ".akan", "artifact", relPath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content);
+  }
+  const cwd = process.cwd();
+  process.chdir(root);
+  try {
+    return await run();
+  } finally {
+    process.chdir(cwd);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+};
+
+describe("WebRouter dictionary assets", () => {
+  const withArtifactCwd = <T>(run: () => Promise<T>) =>
+    withArtifactFiles(
+      {
+        "base-artifact.json": "{}",
+        "dict/en-abc.js": 'export const lang = "en";',
+        "dict/en-abc.js.br": brotliCompressSync('export const lang = "en";'),
+      },
+      run,
+    );
+  const dictRoute = (renderEnvRoutes: Record<string, RouteHandler>) => {
+    const route = renderEnvRoutes["/_akan/dict/*"];
+    if (!route) throw new Error("no /_akan/dict/* route");
+    return route;
+  };
+
+  test("serves a production dictionary as immutable, from its brotli sidecar, and an unknown name as 404", async () => {
+    await withArtifactCwd(() =>
+      withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+        const route = dictRoute(renderEnvRoutes);
+        const res = await route(
+          new Request("https://example.test/_akan/dict/en-abc.js", { headers: { "accept-encoding": "br" } }),
+        );
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+        expect(res.headers.get("Content-Encoding")).toBe("br");
+        expect(res.headers.get("Content-Type")).toStartWith("text/javascript");
+        expect(brotliDecompressSync(new Uint8Array(await res.arrayBuffer())).toString()).toBe(
+          'export const lang = "en";',
+        );
+        expect((await route(new Request("https://example.test/_akan/dict/en-gone.js"))).status).toBe(404);
+        expect((await route(new Request("https://example.test/_akan/dict/..%2Fbase-artifact.json"))).status).toBe(404);
+      }),
+    );
+  });
+
+  const artifactWithDictionaries = (): BaseBuildArtifact => ({
+    ...createTestArtifact(),
+    dictAssets: {
+      en: { url: "/_akan/dict/en-abc.js", relPath: "dict/en-abc.js" },
+      ko: { url: "/_akan/dict/ko-def.js", relPath: "dict/ko-def.js" },
+    },
+  });
+
+  test("names the page's dictionary in a head preload and the bootstrap, by the locale the worker resolves", async () => {
+    const inputs: Array<Parameters<SsrFromRscRenderer["render"]>[0]> = [];
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        await fullSsr(
+          new Request("https://example.test/ko/docs", { headers: { "x-locale": "ko", "x-path": "/docs" } }),
+        );
+        await fullSsr(new Request("https://example.test/docs"));
+        await fullSsr(
+          new Request("https://example.test/fr/docs", { headers: { "x-locale": "fr", "x-path": "/docs" } }),
+        );
+        await fullSsr(
+          new Request("https://example.test/docs/intro", { headers: { "x-locale": "ko", "x-path": "/intro" } }),
+        );
+        await fullSsr(new Request("https://example.test/ko/docs", { headers: { "x-locale": "constructor" } }));
+      },
+      { artifact: artifactWithDictionaries(), onRenderInput: (input) => inputs.push(input) },
+    );
+
+    expect(inputs.map((input) => input.modulePreloads)).toEqual([
+      ["/_akan/dict/ko-def.js"],
+      ["/_akan/dict/en-abc.js"],
+      ["/_akan/dict/en-abc.js"],
+      ["/_akan/dict/ko-def.js"],
+      ["/_akan/dict/ko-def.js"],
+    ]);
+    expect(inputs[0]?.extraBootstrapInline).toContain('self.__AKAN_DICT_URL__="/_akan/dict/ko-def.js";');
+  });
+
+  test("names an RSC navigation's dictionary in a header, by its target's locale", async () => {
+    const dictionaryHeaders = await withFullSsrCacheHarness(
+      async ({ renderEnvRoutes }) =>
+        await Promise.all(
+          ["%2Fko%2Fdocs", "%2Fen%2Fdocs"].map(async (target) => {
+            const res = await renderEnvRoutes["/__rsc"](new Request(`https://example.test/__rsc?url=${target}`));
+            return res.headers.get(AKAN_RSC_DICTIONARY_HEADER);
+          }),
+        ),
+      { artifact: artifactWithDictionaries() },
+    );
+
+    expect(dictionaryHeaders).toEqual(["/_akan/dict/ko-def.js", "/_akan/dict/en-abc.js"]);
+  });
+
+  test("names no dictionary for an artifact built before the asset", async () => {
+    const inputs: Array<Parameters<SsrFromRscRenderer["render"]>[0]> = [];
+    const rscHeader = await withFullSsrCacheHarness(
+      async ({ fullSsr, renderEnvRoutes }) => {
+        await fullSsr(new Request("https://example.test/en/docs"));
+        const res = await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fen%2Fdocs"));
+        return res.headers.get(AKAN_RSC_DICTIONARY_HEADER);
+      },
+      { onRenderInput: (input) => inputs.push(input) },
+    );
+
+    expect(inputs[0]?.modulePreloads).toBeUndefined();
+    expect(inputs[0]?.extraBootstrapInline ?? "").not.toContain("__AKAN_DICT_URL__");
+    expect(rscHeader).toBeNull();
+  });
+
+  test("keeps a dev dictionary out of the browser's HTTP cache", async () => {
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    try {
+      await withArtifactCwd(() =>
+        withFullSsrCacheHarness(
+          async ({ renderEnvRoutes }) => {
+            const res = await dictRoute(renderEnvRoutes)(new Request("https://example.test/_akan/dict/en-abc.js"));
+            expect(res.status).toBe(200);
+            expect(res.headers.get("Cache-Control")).toBe("no-store");
+          },
+          { nodeEnv: "development", commandType: "start" },
+        ),
+      );
+    } finally {
+      process.send = originalSend;
+    }
+  });
+});
+
+describe("WebRouter artifact folders", () => {
+  test("serves styles and fonts from their own folders only", async () => {
+    const files = {
+      "base-artifact.json": "{}",
+      "server/pages-abc.js": "export const pages = {};",
+      "styles/root-abc.css": "body{}",
+      "fonts/brand-400-normal-abc.woff2": "font-bytes",
+    };
+    await withArtifactFiles(files, () =>
+      withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+        const statusOf = async (pathname: string) => {
+          const route = renderEnvRoutes[`/_akan/${pathname.split("/")[0]}/*`];
+          if (!route) throw new Error(`no route for ${pathname}`);
+          return (await route(new Request(`https://example.test/_akan/${pathname}`))).status;
+        };
+        const escapes = ["styles", "fonts", "client", "dict"].flatMap((folder) =>
+          ["..%2Fbase-artifact.json", "..%5Cbase-artifact.json", "..%2Fserver%2Fpages-abc.js"].map(
+            (name) => `${folder}/${name}`,
+          ),
+        );
+
+        expect(await statusOf("styles/root-abc.css")).toBe(200);
+        expect(await statusOf("fonts/brand-400-normal-abc.woff2")).toBe(200);
+        expect(
+          Object.fromEntries(await Promise.all(escapes.map(async (escape) => [escape, await statusOf(escape)]))),
+        ).toEqual(Object.fromEntries(escapes.map((escape) => [escape, 404])));
+      }),
+    );
+  });
+});
+
 describe("WebRouter public files and the web manifest", () => {
   test("lets any origin read a font from public/, as an MCP view's CORS-mode font fetch needs, and nothing else", async () => {
     const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-public-"));
@@ -644,6 +825,30 @@ describe("WebRouter public files and the web manifest", () => {
           expect(font.headers.get("Access-Control-Allow-Origin")).toBe("*");
           expect(image.status).toBe(200);
           expect(image.headers.get("Access-Control-Allow-Origin")).toBeNull();
+        },
+        { appDir },
+      );
+    } finally {
+      fs.rmSync(appDir, { recursive: true, force: true });
+    }
+  });
+
+  test("caches a public file briefly, serves it stale while revalidating, and answers its ETag with a 304", async () => {
+    const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-public-"));
+    fs.mkdirSync(path.join(appDir, "public"), { recursive: true });
+    fs.writeFileSync(path.join(appDir, "public", "poster.webp"), "webp");
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const first = await fullSsr(new Request("https://example.test/poster.webp"));
+          expect(first.headers.get("Cache-Control")).toBe("public, max-age=300, stale-while-revalidate=86400");
+          const etag = first.headers.get("ETag") ?? "";
+          expect(etag).toStartWith("W/");
+
+          const revalidated = await fullSsr(
+            new Request("https://example.test/poster.webp", { headers: { "if-none-match": etag } }),
+          );
+          expect(revalidated.status).toBe(304);
         },
         { appDir },
       );
@@ -1282,6 +1487,23 @@ describe("WebRouter full SSR cache orchestration", () => {
       await expect(second.text()).resolves.toBe(firstHtml);
       expect(fakeWorker.renderCalls).toHaveLength(1);
     });
+  });
+
+  test("answers a cache hit with the stored encoding the client takes", async () => {
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const first = await fullSsr(new Request("https://example.test/docs"));
+        const firstHtml = await first.text();
+        expect(Buffer.byteLength(firstHtml)).toBeGreaterThan(1024);
+        await sleep(50);
+
+        const hit = await fullSsr(new Request("https://example.test/docs", { headers: { "accept-encoding": "br" } }));
+        expect(hit.headers.get("X-Akan-Cache")).toBe("HIT");
+        expect(hit.headers.get("Content-Encoding")).toBe("br");
+        expect(brotliDecompressSync(Buffer.from(await hit.arrayBuffer())).toString()).toBe(firstHtml);
+      },
+      { renderBody: () => "<p>section</p>".repeat(100) },
+    );
   });
 
   test("keeps production HTML cache on by default and allows explicit env opt-out", async () => {

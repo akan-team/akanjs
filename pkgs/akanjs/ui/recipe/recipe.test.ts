@@ -190,3 +190,25 @@ describe("recipe factory — custom recipe(tv(...))", () => {
     expect(t).not.toContain("bg-primary");
   });
 });
+
+describe("recipe factory — tv on its own", () => {
+  test("merges a class prop over the base like cn would", () => {
+    const t = tokens(tv({ base: "rounded-full bg-primary" })({ class: "bg-open" }));
+    expect(t).toContain("bg-open");
+    expect(t).not.toContain("bg-primary");
+  });
+
+  test("merges each slot's class prop", () => {
+    const { root, icon } = tv({ slots: { root: "p-2 text-foreground", icon: "size-4" } })();
+    expect(tokens(root({ class: "p-4" }))).toEqual(["text-foreground", "p-4"]);
+    expect(icon()).toBe("size-4");
+  });
+
+  test("extends a parent built with it", () => {
+    const parent = tv({ base: "rounded-full", variants: { tone: { brand: "bg-primary" } } });
+    const child = tv({ extend: parent, base: "px-2", variants: { tone: { brand: "bg-open" } } });
+    const t = tokens(child({ tone: "brand" }));
+    expect(t).toEqual(expect.arrayContaining(["rounded-full", "px-2", "bg-open"]));
+    expect(t).not.toContain("bg-primary");
+  });
+});

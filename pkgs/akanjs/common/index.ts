@@ -163,6 +163,7 @@ export {
 } from "./pipelinePlan";
 export { type RouteLayer, RouteLayering } from "./RouteLayering";
 export { randomPick, randomPicks } from "./randomPick";
+export { RequestLocale, type RequestLocaleInput } from "./requestLocale";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";
 export { RestClient, type RestClientOptions, type RestRequestOptions } from "./restClient";
 export { round } from "./round";

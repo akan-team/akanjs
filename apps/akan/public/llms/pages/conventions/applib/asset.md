@@ -47,7 +47,7 @@ File
 
 **Link to a file with a plain `<a>`.** `Link` from `akanjs/ui` adds the locale and navigates as a page, so it misses the file.
 
-**Cached for 5 minutes in production.** A replaced file can show its old version for that long, while dev never caches.
+**Cached for 5 minutes in production.** A replaced file can show its old version for that long, and once more within a day, while the browser checks for a new one. Dev never caches.
 
 Link to a PDF with a plain `<a>`:
 

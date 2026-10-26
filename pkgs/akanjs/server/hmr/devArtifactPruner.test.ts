@@ -61,6 +61,25 @@ describe("DevArtifactPruner", () => {
     expect(await list("styles")).toEqual(["root-a.css", "root-c.css", "root-d.css"]);
   });
 
+  test("keeps the base artifact's dictionaries and drops the ones it replaced once the grace passed", async () => {
+    await mkdir(path.join(artifactDir, "dict"), { recursive: true });
+    await writeAged("dict/en-old.js", 300_000);
+    await writeAged("dict/en-recent.js", 10_000);
+    await writeAged("dict/en-current.js", 300_000);
+    await writeAged("dict/ko-current.js", 300_000);
+    await writeFile(
+      path.join(artifactDir, "base-artifact.json"),
+      JSON.stringify({
+        dictAssets: {
+          en: { url: "/_akan/dict/en-current.js", relPath: "dict/en-current.js" },
+          ko: { url: "/_akan/dict/ko-current.js", relPath: "dict/ko-current.js" },
+        },
+      }),
+    );
+    await new DevArtifactPruner(artifactDir, { graceMs: 60_000 }).pruneDictionaries();
+    expect(await list("dict")).toEqual(["en-current.js", "en-recent.js", "ko-current.js"]);
+  });
+
   test("prunes nothing when the running bundle is not on disk", async () => {
     await writeAged("server/pages-old.js", 600_000);
     await new DevArtifactPruner(artifactDir, { graceMs: 0 }).prunePages(path.join(artifactDir, "server/pages-gone.js"));

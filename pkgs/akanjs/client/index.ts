@@ -11,6 +11,7 @@ export * from "./href";
 export * from "./locale";
 export * from "./makePageProto";
 export * from "./mcpView";
+export * from "./nativeHost";
 export * from "./resolveServerUrl";
 export * from "./route";
 export * from "./router";

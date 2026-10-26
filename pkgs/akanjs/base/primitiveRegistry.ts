@@ -1,3 +1,6 @@
+//? Registered here, beside the instance the client import map serves: a locale imported from a route chunk lands on
+//? that chunk's own dayjs copy.
+import "dayjs/locale/ko";
 import dayjsLib, { type Dayjs } from "dayjs";
 import { CLIENT_VALUE, DEFAULT_VALUE, EXAMPLE_VALUE, PURIFIED_VALUE, SERVER_VALUE } from "./symbols";
 import type { Cls } from "./types";

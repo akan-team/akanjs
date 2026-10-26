@@ -12,6 +12,7 @@ import {
   Href,
   initAuth,
   isMcpView,
+  isNativeApp,
   type Location,
   navigateRsc,
   type PageActivity,
@@ -28,7 +29,6 @@ import {
   useCsr,
   ViewportMeta,
 } from "akanjs/client";
-import { isNativeApp } from "akanjs/client/native";
 import { Logger, parseSearchParams } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
@@ -36,6 +36,7 @@ import { DraftStore, getBaseSearchParam, st } from "akanjs/store";
 import { useVisualViewportFrame } from "akanjs/webkit";
 import {
   Children,
+  type ElementType,
   type HTMLAttributes,
   type ReactNode,
   type RefObject,
@@ -48,7 +49,6 @@ import {
 } from "react";
 import { AgentActivity } from "use-agentic";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
-import { animated } from "../animated";
 import { getFrameCssVars, isResponsiveFrame } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
@@ -61,7 +61,8 @@ interface ClientWrapperProps {
   theme?: AkanTheme;
   lang?: string;
   path?: string;
-  dictionary?: Record<string, Record<string, unknown>>;
+  /** `lang` is the locale the server rendered in, whose dictionary the RSC client loads before it commits. */
+  serverLocale?: boolean;
   signals?: SerializedSignal[];
   reconnect?: boolean;
 }
@@ -70,20 +71,24 @@ export const ClientWrapper = ({
   theme,
   lang = "en",
   path,
-  dictionary,
+  serverLocale,
   signals = [],
   reconnect = true,
 }: ClientWrapperProps) => {
-  // Seeded before children render, in the SSR pass and the browser alike; CSR seeds from the build-time macro.
-  if (dictionary) {
-    Translator.replace(lang, dictionary);
+  //? Browser-only: Fizz renders this too, in a process whose concurrent requests share the translator state, and
+  //? there `usePage()` resolves from the request instead.
+  if (typeof window !== "undefined") {
     // The server-resolved locale is the truth for `l()`: under base-path routing the URL segment is not.
-    Translator.setActiveLocale(lang);
+    if (serverLocale) Translator.setActiveLocale(lang);
+    Translator.setActivePath(path);
   }
-  Translator.setActivePath(path);
   useEffect(() => {
     Translator.markHydrated();
   }, [path]);
+  useEffect(() => {
+    if (serverLocale && !Translator.hasLocale(lang))
+      Logger.error(`[i18n] the page was rendered in "${lang}", but that dictionary never reached the browser`);
+  }, [serverLocale, lang]);
   useLayoutEffect(() => {
     Logger.rawLog(logo);
   }, []);
@@ -97,6 +102,9 @@ export const ClientWrapper = ({
 Client.Wrapper = ClientWrapper;
 
 interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "style"> {
+  //? CSR passes `animated.div` for its springs; a server-rendered page has none, so it stays a plain `div` without
+  //? react-spring in the bundle every page loads.
+  frame?: ElementType;
   bind?: () => HTMLAttributes<HTMLDivElement>;
   wrapperRef?: RefObject<HTMLDivElement | null> | null;
   pageType?: CsrPageType;
@@ -118,6 +126,7 @@ interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "s
 }
 export const ClientPathWrapper = ({
   className,
+  frame: Frame = "div",
   bind,
   wrapperRef,
   pageType = "current",
@@ -201,7 +210,7 @@ export const ClientPathWrapper = ({
       }}
     >
       <pageActivityContext.Provider value={pageActivity}>
-        <animated.div
+        <Frame
           {...bindProps}
           {...props}
           className={cn("group/path", className)}
@@ -213,7 +222,7 @@ export const ClientPathWrapper = ({
           data-akan-frame-responsive={responsiveFrame ? "" : undefined}
         >
           <AgentActivity active={activity === "current"}>{children}</AgentActivity>
-        </animated.div>
+        </Frame>
       </pageActivityContext.Provider>
     </pathContext.Provider>
   );
@@ -228,7 +237,7 @@ interface ClientBridgeProps {
   wsConnect?: boolean;
 }
 
-export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect = true }: ClientBridgeProps) => {
+export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: ClientBridgeProps) => {
   // Base env is recomputed here rather than taken from the app's `env/env.client.ts`: that file is imported
   // by a server component, so its `getEnv()` would resolve to the server's own hosts and ship them to the browser.
   (globalThis as typeof globalThis & { __AKAN_CLIENT_ENV__?: ClientEnv }).__AKAN_CLIENT_ENV__ = {
@@ -254,8 +263,10 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect = t
   }, []);
 
   useEffect(() => {
-    if (!wsConnect) return;
-    (fetch.instance as { connect: () => void }).connect();
+    if (wsConnect === false) return;
+    const instance = fetch.instance as { connect: () => void; connectOnUse: () => void };
+    if (wsConnect) instance.connect();
+    else instance.connectOnUse();
   }, [wsConnect]);
 
   useLayoutEffect(() => {

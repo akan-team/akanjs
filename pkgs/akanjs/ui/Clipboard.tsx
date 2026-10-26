@@ -1,5 +1,5 @@
 "use client";
-import { cn } from "akanjs/client";
+import { cn, usePage } from "akanjs/client";
 import { type ReactElement, useEffect, useState } from "react";
 import { FaCheck } from "react-icons/fa";
 import { MdContentCopy } from "react-icons/md";
@@ -10,6 +10,7 @@ export interface ClipboardProps {
   className?: string;
 }
 export const Clipboard = ({ text, className }: ClipboardProps): ReactElement => {
+  const { l } = usePage();
   const [isCopied, setIsCopied] = useState(false);
   useEffect(() => {
     if (isCopied) {
@@ -26,6 +27,7 @@ export const Clipboard = ({ text, className }: ClipboardProps): ReactElement => 
   };
   return (
     <button
+      aria-label={l("base.copy")}
       type="button"
       onClick={async () => {
         await handleCopy();
