@@ -18,10 +18,10 @@ const pascalCasePattern = /^[A-Z][A-Za-z0-9]*$/;
 const camelCasePattern = /^[a-z][A-Za-z0-9]*$/;
 const nameCasePatternForFacet = (facet: string) => (facet === "ui" ? pascalCasePattern : camelCasePattern);
 //? Biome's organizeImports order, or `akan lint` reorders the barrel: A < a < B < b, a digit before a letter, and a
-//? run of digits compared by its length first. DevGeneratedIndexSync sorts the same way.
+//? run of digits compared by its length first. DevGeneratedIndexSync sorts the same way; the env template imports it.
 const letterRankOf = (char: string) => char.toLowerCase().charCodeAt(0) * 2 + (char === char.toLowerCase() ? 1 : 0);
 const digitRunAt = (name: string, idx: number) => /^\d+/.exec(name.slice(idx))?.[0] ?? "";
-const compareExportNames = (a: string, b: string) => {
+export const compareExportNames = (a: string, b: string) => {
   for (let idx = 0; idx < a.length && idx < b.length; ) {
     const [runA, runB] = [digitRunAt(a, idx), digitRunAt(b, idx)];
     if (runA && runB && runA !== runB) return runA.length - runB.length || (runA < runB ? -1 : 1);
