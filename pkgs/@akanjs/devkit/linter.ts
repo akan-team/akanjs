@@ -113,18 +113,21 @@ const emptyResult = (filePath: string): LintResult => ({
 });
 
 export class Linter {
-  //? Bun links a package bin as `<name>.exe` (plus a `.bunx` stub) on Windows, and a bare `<name>` elsewhere.
-  static readonly biomeBinName = process.platform === "win32" ? "biome.exe" : "biome";
+  //? The package's bin is npm's `#!/usr/bin/env node` wrapper, which picks the platform binary; run through the Bun
+  //? running akan, it works in an image with no Node (exit 127 otherwise). A Biome on PATH is the fallback.
+  static biomeCommand(root: string): [string, ...string[]] {
+    const wrapper = path.join(root, "node_modules", "@biomejs", "biome", "bin", "biome");
+    return existsSync(wrapper) ? [process.execPath, wrapper] : ["biome"];
+  }
 
   lintRoot: string;
   configPath: string;
-  #biomeBin: string;
+  #biomeCommand: [string, ...string[]];
 
   constructor(cwdPath: string) {
     this.lintRoot = this.#findBiomeRootPath(cwdPath);
     this.configPath = Linter.#configPathIn(this.lintRoot) ?? path.join(this.lintRoot, "biome.json");
-    const localBiomeBin = path.join(this.lintRoot, "node_modules", ".bin", Linter.biomeBinName);
-    this.#biomeBin = existsSync(localBiomeBin) ? localBiomeBin : "biome";
+    this.#biomeCommand = Linter.biomeCommand(this.lintRoot);
   }
 
   static #configPathIn(dir: string): string | null {
@@ -158,7 +161,8 @@ export class Linter {
       stderr: string;
       code: number | null;
     }>((resolve, reject) => {
-      const proc = spawn(this.#biomeBin, args, {
+      const [command, ...prefixArgs] = this.#biomeCommand;
+      const proc = spawn(command, [...prefixArgs, ...args], {
         cwd: this.lintRoot,
         stdio: ["pipe", "pipe", "pipe"],
       });

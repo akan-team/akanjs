@@ -11,7 +11,7 @@ import { Linter } from "../linter";
 const lintDir = import.meta.dir;
 const fixturesDir = path.join(lintDir, "__fixtures__");
 const workspaceRoot = path.resolve(lintDir, "../../../..");
-const biomeBin = path.join(workspaceRoot, "node_modules", ".bin", Linter.biomeBinName);
+const [biome, ...biomeArgs] = Linter.biomeCommand(workspaceRoot);
 
 interface BiomeDiagnostic {
   severity: string;
@@ -42,7 +42,7 @@ afterAll(async () => {
 
 const runBiome = (args: string[], cwd: string) =>
   new Promise<string>((resolve, reject) => {
-    const proc = spawn(biomeBin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn(biome, [...biomeArgs, ...args], { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
@@ -127,7 +127,7 @@ const fixtures = await collectCases();
 
 describe("grit lint rules", () => {
   test("the harness found the biome binary and at least one fixture", () => {
-    expect(existsSync(biomeBin)).toBe(true);
+    expect(biome).toBe(process.execPath);
     expect(fixtures.length).toBeGreaterThan(0);
   });
 

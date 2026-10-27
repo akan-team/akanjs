@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { type BiomeReport, parseBiomeReport } from "./linter";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { type BiomeReport, Linter, parseBiomeReport } from "./linter";
+import { hasBiome } from "./testHelpers";
 
 const reportOf = (diagnostics: BiomeReport["diagnostics"]): string =>
   JSON.stringify({ summary: { errors: diagnostics?.length ?? 0, warnings: 0 }, diagnostics });
@@ -75,5 +78,19 @@ describe("parseBiomeReport", () => {
 
   test("throws a named error for empty output", () => {
     expect(() => parseBiomeReport("   \n")).toThrow("No Biome JSON output");
+  });
+});
+
+describe("Linter", () => {
+  test.skipIf(!hasBiome || process.platform === "win32")("runs Biome where no node is on PATH", async () => {
+    const pathBefore = process.env.PATH;
+    process.env.PATH = path.join(tmpdir(), "akan-path-without-node");
+    try {
+      const { results, errors } = await new Linter(import.meta.dir).lintFile(path.join(import.meta.dir, "linter.ts"));
+      expect(results).toHaveLength(1);
+      expect(errors).toEqual([]);
+    } finally {
+      process.env.PATH = pathBefore;
+    }
   });
 });
