@@ -1383,7 +1383,13 @@ describe("SysExecutor scan", () => {
     expect(await lib.readFile("srvkit/index.ts")).toBe(
       ["a9", "a10", "aa", "aB"].map((name) => `export * from "./${name}";\n`).join(""),
     );
-    for (const file of ["ui/index.ts", "srvkit/index.ts", "lib/post/index.ts", "akan.lib.json"]) {
+    for (const file of [
+      "ui/index.ts",
+      "srvkit/index.ts",
+      "lib/post/index.ts",
+      "akan.lib.json",
+      "env/env.server.type.ts",
+    ]) {
       const generated = await lib.readFile(file);
       expect(await formatWithBiome(generated, `libs/biomestable/${file}`)).toBe(generated);
     }
@@ -1391,6 +1397,20 @@ describe("SysExecutor scan", () => {
     const events = ["ui/QRCode.tsx", "srvkit/a9.ts", "lib/post"].map((file) => path.join(libDir, file));
     expect(await devSync.syncForBatch(events)).toEqual({ changedFiles: [], errors: [] });
   });
+
+  test.skipIf(!hasBiome)(
+    "writes env.server.type.ts the way Biome prints it, spreading libs in dependency order",
+    async () => {
+      const { default: getContent } = (await import("../cli/templates/env/_env.server.type")) as {
+        default: (scanInfo: unknown) => { content: string };
+      };
+      const libs = ["util", "shared", "shopAdmin", "shop", "a10", "a9"];
+      const { content } = getContent({ getLibs: () => libs });
+
+      expect(await formatWithBiome(content, "apps/biomestable/env/env.server.type.ts")).toBe(content);
+      expect([...content.matchAll(/\.\.\.(\w+)Option/g)].map(([, lib]) => lib)).toEqual(libs);
+    },
+  );
 
   test("refuses a hand-written ui/index.tsx beside the generated barrel, naming the file and the fix", async () => {
     const { lib } = await createScannableLib("shadowedbarrel", {
